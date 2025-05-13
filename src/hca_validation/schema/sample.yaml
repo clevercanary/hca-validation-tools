@@ -17,6 +17,6 @@ imports:
   - core
 
 classes:
-  sample:
+  Sample:
     description: >-
       A biological sample derived from a donor or another sample

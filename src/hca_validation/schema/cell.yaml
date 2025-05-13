@@ -17,6 +17,6 @@ imports:
   - core
 
 classes:
-  cell:
+  Cell:
     description: >-
       A single cell derived from a sample

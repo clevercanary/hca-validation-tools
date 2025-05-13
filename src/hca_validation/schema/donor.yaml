@@ -17,6 +17,6 @@ imports:
   - core
 
 classes:
-  donor:
+  Donor:
     description: >-
       An individual organism from which biological samples have been derived

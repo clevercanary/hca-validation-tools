@@ -22,6 +22,8 @@ help:
 	@echo "  validate-sample  - Validate sample schema"
 	@echo "  validate-cell    - Validate cell schema"
 	@echo "  validate-verbose - Validate dataset schema with warnings"
+	@echo "  lint-schema      - Run LinkML linter on all schema files"
+	@echo "  lint-schema-errors - Run LinkML linter (critical errors only)"
 	@echo "  help             - Show this help message"
 
 # Validate all schema files
@@ -72,3 +74,16 @@ validate-verbose:
 	@echo "Validating dataset schema with warnings..."
 	$(POETRY) gen-yaml $(SCHEMA_DIR)/dataset.yaml > /dev/null
 	@echo "✓ Dataset schema is valid"
+
+# Lint schema files
+.PHONY: lint-schema
+lint-schema:
+	@echo "Linting schema files..."
+	@$(POETRY) linkml lint $(SCHEMA_DIR) --validate
+
+# Lint schema files with only errors (no style warnings)
+.PHONY: lint-schema-errors
+lint-schema-errors:
+	@echo "Linting schema files (errors only)..."
+	@$(POETRY) linkml lint $(SCHEMA_DIR) --validate --ignore-warnings || (echo "❌ Schema has critical errors" && exit 1)
+	@echo "✓ No critical errors found in schema files"

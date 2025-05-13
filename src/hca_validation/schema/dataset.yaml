@@ -24,7 +24,7 @@ types:
     description: A character string
 
 classes:
-  dataset:
+  Dataset:
     description: >-
       A collection of data from a single experiment or study in the Human Cell Atlas
     slots:
@@ -49,8 +49,8 @@ slots:
     multivalued: true
     required: true
     examples:
-      - value: '["Sarah,A,Teichmann"]'
-        description: "Principal Investigator in LastName,FirstInitial,MiddleInitial format"
+      - value: '["Teichmann,Sarah,A."]'
+        description: "Principal Investigator in Last Name,MiddleInitial, FirstName format"
   
   batch_condition:
     description: >-
@@ -62,10 +62,10 @@ slots:
     examples:
       - value: '["patient", "seqBatch"]'
         description: "Multiple batch conditions as a JSON array"
-    notes: >
-      Values must refer to cell metadata keys in obs. Together, these keys define the batches that a normalisation or integration 
-      algorithm should be aware of. For example if "patient" and "seqBatch" are keys of vectors of cell metadata, either 
-      ["patient"], ["seqBatch"], or ["patient", "seqBatch"] are valid values.
+    notes:
+      - Values must refer to cell metadata keys in obs. Together, these keys define the batches that a normalisation or integration 
+        algorithm should be aware of. For example if "patient" and "seqBatch" are keys of vectors of cell metadata, either 
+        ["patient"], ["seqBatch"], or ["patient", "seqBatch"] are valid values.
     annotations:
       cxg: batch_condition
   
@@ -82,9 +82,10 @@ slots:
     required: false
     examples:
       - value: "EFO:0008563"
-    notes: >-
-      Values should be "subClassOf" : ["EFO:0002699"] - https://www.ebi.ac.uk/ols/ontologies/efo/terms?iri=http%3A%2F%2Fwww.ebi.ac.uk%2Fefo%2FEFO_0002699
-    comments: This captures potential strand hopping which may cause data quality issues.
+    notes:
+      - Values should be "subClassOf" ["EFO:0002699"] - https://www.ebi.ac.uk/ols/ontologies/efo/terms?iri=http%3A%2F%2Fwww.ebi.ac.uk%2Fefo%2FEFO_0002699
+    comments:
+      - This captures potential strand hopping which may cause data quality issues.
   
   assay_ontology_term_id:
     description: Platform used for single cell library construction.
@@ -92,21 +93,23 @@ slots:
     required: true
     examples:
       - value: "EFO:0009922"
-    notes: >
-      This must be an EFO term and either:
-      "EFO:0002772" for assay by molecule or preferably its most accurate child
-      "EFO:0010183" for single cell library construction or preferably its most accurate child
-      An assay based on 10X Genomics products should either be "EFO:0008995" for 10x technology or preferably its most accurate child. 
-      An assay based on SMART (Switching Mechanism at the 5' end of the RNA Template) or SMARTer technology SHOULD either be "EFO:0010184" for Smart-like or preferably its most accurate child.
-
-      Recommended:
-      10x 3' v2 "EFO:0009899"
-      10x 3' v3 "EFO:0009922"
-      10x 5' v1 "EFO:0011025"
-      10x 5' v2 "EFO:0009900"
-      Smart-seq2 "EFO:0008931"
-      Visium Spatial Gene Expression "EFO:0010961"
-    comments: Major source of batch effect and dataset filtering criterion
+    notes:
+      - |
+        This must be an EFO term and either:
+        - "EFO:0002772" for assay by molecule or preferably its most accurate child
+        - "EFO:0010183" for single cell library construction or preferably its most accurate child
+        - An assay based on 10X Genomics products should either be "EFO:0008995" for 10x technology or preferably its most accurate child. 
+        - An assay based on SMART (Switching Mechanism at the 5' end of the RNA Template) or SMARTer technology SHOULD either be "EFO:0010184" for Smart-like or preferably its most accurate child.
+        
+        Recommended:
+        - 10x 3' v2 "EFO:0009899"
+        - 10x 3' v3 "EFO:0009922"
+        - 10x 5' v1 "EFO:0011025"
+        - 10x 5' v2 "EFO:0009900"
+        - Smart-seq2 "EFO:0008931"
+        - Visium Spatial Gene Expression "EFO:0010961"
+    comments:
+      - Major source of batch effect and dataset filtering criterion
     annotations:
       cxg: assay_ontology_term_id
   
@@ -117,7 +120,8 @@ slots:
     examples:
       - value: "GRCm37"
       - value: "GRCh37"
-    comments: Possible source of batch effect and confounder for some biological analysis
+    comments:
+      - Possible source of batch effect and confounder for some biological analysis
   
   alignment_software:
     description: Protocol used for alignment analysis, please specify which version was used e.g. cell ranger 2.0, 2.1.1 etc.
@@ -125,7 +129,8 @@ slots:
     required: true
     examples:
       - value: "cellranger_8.0.0"
-    comments: Affects which cells are filtered per dataset, and which reads (introns and exons or only exons) are counted as part of the reported transcriptome. This can convey batch effects.
+    comments:
+      - Affects which cells are filtered per dataset, and which reads (introns and exons or only exons) are counted as part of the reported transcriptome. This can convey batch effects.
   
   intron_inclusion:
     description: Were introns included during read counting in the alignment process?
@@ -141,7 +146,8 @@ slots:
     examples:
       - value: "3 prime tag"
       - value: "full length"
-    comments: May be a source of batch effect that has to be tested.
+    comments:
+      - May be a source of batch effect that has to be tested.
   
   gene_annotation_version:
     description: >
@@ -153,8 +159,10 @@ slots:
     required: true
     examples:
       - value: "GCF_000001405.40"
-    notes: http://www.ensembl.org/info/website/archives/index.html) or NCBI/RefSeq
-    comments: Possible source of batch effect and confounder for some biological analysis
+    notes:
+      - http://www.ensembl.org/info/website/archives/index.html) or NCBI/RefSeq
+    comments:
+      - Possible source of batch effect and confounder for some biological analysis
   
   comments:
     description: >
@@ -171,7 +179,8 @@ slots:
     required: false
     examples:
       - value: "https://www.biorxiv.org/content/early/2017/09/24/193219"
-    comments: Useful to look up protocol data that can provide insight on batch effects. As protocols can sometimes apply to a subset of the study, we capture this at a sample level. This information may not always be available.
+    comments:
+      - Useful to look up protocol data that can provide insight on batch effects. As protocols can sometimes apply to a subset of the study, we capture this at a sample level. This information may not always be available.
   
   title:
     description: >
@@ -182,7 +191,8 @@ slots:
     required: true
     examples:
       - value: "Cells of the adult human heart collection is 'All — Cells of the adult human heart'"
-    comments: Useful to look up protocol data that can provide insight on batch effects. As protocols can sometimes apply to a subset of the study, we capture this at a sample level. This information may not always be available.
+    comments:
+      - Useful to look up protocol data that can provide insight on batch effects. As protocols can sometimes apply to a subset of the study, we capture this at a sample level. This information may not always be available.
     annotations:
       cxg: title
 
@@ -204,9 +214,9 @@ enums:
   
   IntronInclusionEnum:
     permissible_values:
-      yes:
+      "yes":
         description: Introns were included
-      no:
+      "no":
         description: Introns were not included
   
   SequencedFragmentEnum:
