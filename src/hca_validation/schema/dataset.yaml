@@ -9,6 +9,7 @@ prefixes:
   linkml: https://w3id.org/linkml/
   hca: https://github.com/clevercanary/hca-validation-tools/schema/
   xsd: http://www.w3.org/2001/XMLSchema#
+  efo: http://www.ebi.ac.uk/efo/
 
 default_prefix: hca
 default_range: string
@@ -20,3 +21,174 @@ classes:
   dataset:
     description: >-
       A collection of data from a single experiment or study in the Human Cell Atlas
+    slots:
+      - study_pi
+      - batch_condition
+      - default_embedding
+      - sequencing_platform
+      - assay_ontology_term_id
+      - reference_genome
+      - alignment_software
+      - intron_inclusion
+      - sequenced_fragment
+      - gene_annotation_version
+      - comments
+      - protocol_url
+      - title
+
+slots:
+  study_pi:
+    description: Principal Investigator(s) leading the study where the data is/was used.
+    range: string
+    multivalued: true
+    required: true
+    examples:
+      - "Sarah,A,Teichmann"
+  
+  batch_condition:
+    description: >-
+      Name of the covariate that confers the dominant batch effect in the data as judged by the data contributor. 
+      The name provided here should be the label by which this covariate is stored in the AnnData object.
+    range: string
+    multivalued: true
+    required: false
+    examples:
+      - "[\"patient\", \"seqBatch\"]"
+    notes: >
+      Values must refer to cell metadata keys in obs. Together, these keys define the batches that a normalisation or integration 
+      algorithm should be aware of. For example if "patient" and "seqBatch" are keys of vectors of cell metadata, either 
+      ["patient"], ["seqBatch"], or ["patient", "seqBatch"] are valid values.
+    annotations:
+      cxg: batch_condition
+  
+  default_embedding:
+    description: The value must match a key to an embedding in obsm for the embedding to display by default in CELLxGENE Explorer.
+    range: string
+    required: false
+    annotations:
+      cxg: default_embedding
+  
+  sequencing_platform:
+    description: Platform used for sequencing.
+    range: string
+    required: false
+    examples:
+      - "EFO:0008563"
+    notes: >-
+      Values should be "subClassOf" : ["EFO:0002699"] - https://www.ebi.ac.uk/ols/ontologies/efo/terms?iri=http%3A%2F%2Fwww.ebi.ac.uk%2Fefo%2FEFO_0002699
+    comments: This captures potential strand hopping which may cause data quality issues.
+  
+  assay_ontology_term_id:
+    description: Platform used for single cell library construction.
+    range: string
+    required: true
+    examples:
+      - "EFO:0009922"
+    notes: >
+      This must be an EFO term and either:
+      "EFO:0002772" for assay by molecule or preferably its most accurate child
+      "EFO:0010183" for single cell library construction or preferably its most accurate child
+      An assay based on 10X Genomics products should either be "EFO:0008995" for 10x technology or preferably its most accurate child. 
+      An assay based on SMART (Switching Mechanism at the 5' end of the RNA Template) or SMARTer technology SHOULD either be "EFO:0010184" for Smart-like or preferably its most accurate child.
+
+      Recommended:
+      10x 3' v2 "EFO:0009899"
+      10x 3' v3 "EFO:0009922"
+      10x 5' v1 "EFO:0011025"
+      10x 5' v2 "EFO:0009900"
+      Smart-seq2 "EFO:0008931"
+      Visium Spatial Gene Expression "EFO:0010961"
+    comments: Major source of batch effect and dataset filtering criterion
+    annotations:
+      cxg: assay_ontology_term_id
+  
+  reference_genome:
+    description: Reference genome used for alignment.
+    range: string
+    required: true
+    examples:
+      - "GRCm37"
+      - "GRCh37"
+    comments: Possible source of batch effect and confounder for some biological analysis
+    enum:
+      - GRCh38
+      - GRCh37
+      - GRCm39
+      - GRCm38
+      - GRCm37
+      - not applicable
+  
+  alignment_software:
+    description: Protocol used for alignment analysis, please specify which version was used e.g. cell ranger 2.0, 2.1.1 etc.
+    range: string
+    required: true
+    examples:
+      - "cellranger_8.0.0"
+    comments: Affects which cells are filtered per dataset, and which reads (introns and exons or only exons) are counted as part of the reported transcriptome. This can convey batch effects.
+  
+  intron_inclusion:
+    description: Were introns included during read counting in the alignment process?
+    range: string
+    required: false
+    examples:
+      - "yes"
+    enum:
+      - yes
+      - no
+  
+  sequenced_fragment:
+    description: Which part of the RNA transcript was targeted for sequencing.
+    range: string
+    required: true
+    examples:
+      - "3 prime tag"
+      - "full length"
+    comments: May be a source of batch effect that has to be tested.
+    enum:
+      - 3 prime tag
+      - 5 prime tag
+      - probe-based
+      - full length
+  
+  gene_annotation_version:
+    description: >
+      Ensembl release version accession number. Some common codes include:
+      GRCh38.p12 = GCF_000001405.38
+      GRCh38.p13 = GCF_000001405.39
+      GRCh38.p14 = GCF_000001405.40
+    range: string
+    required: true
+    examples:
+      - "GCF_000001405.40"
+    notes: http://www.ensembl.org/info/website/archives/index.html) or NCBI/RefSeq
+    comments: Possible source of batch effect and confounder for some biological analysis
+  
+  comments:
+    description: >
+      Other technical or experimental covariates that could affect the quality or batch of the sample. 
+      Must not contain identifiers. This field is designed to capture potential challenges for data integration not captured elsewhere.
+    range: string
+    required: false
+  
+  protocol_url:
+    description: >
+      The protocols.io URL (if none exists, please use the BioRxiv URL) for the full experimental protocol; 
+      or if multiple protocols exist please list them e.g. sample preparation protocol / sequencing protocol.
+    range: string
+    required: false
+    examples:
+      - "https://www.biorxiv.org/content/early/2017/09/24/193219"
+    comments: Useful to look up protocol data that can provide insight on batch effects. As protocols can sometimes apply to a subset of the study, we capture this at a sample level. This information may not always be available.
+  
+  title:
+    description: >
+      This text describes and differentiates the dataset from other datasets in the same collection. 
+      It is strongly recommended that each dataset title in a collection is unique and does not depend on other metadata 
+      such as a different assay to disambiguate it from other datasets in the collection.
+    range: string
+    required: true
+    examples:
+      - "Cells of the adult human heart collection is \"All — Cells of the adult human heart\""
+    comments: Useful to look up protocol data that can provide insight on batch effects. As protocols can sometimes apply to a subset of the study, we capture this at a sample level. This information may not always be available.
+    annotations:
+      cxg: title
