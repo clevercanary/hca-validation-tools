@@ -68,7 +68,6 @@ slots:
     required: false
     annotations:
       cxg: default_embedding
-
   sequencing_platform:
     description: Platform used for sequencing.
     range: string
