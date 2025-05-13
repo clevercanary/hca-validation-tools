@@ -22,10 +22,13 @@ help:
 	@echo "  validate-sample  - Validate sample schema"
 	@echo "  validate-cell    - Validate cell schema"
 	@echo "  validate-verbose - Validate dataset schema with warnings"
+<<<<<<< HEAD
 	@echo "  lint-schema      - Run LinkML linter on all schema files"
 	@echo "  lint-schema-errors - Run LinkML linter (critical errors only)"
 	@echo "  generate-pydantic-models - Generate Pydantic models from all LinkML schemas"
 	@echo "  test-dataset-validation - Run dataset validation tests"
+=======
+>>>>>>> 9d91f85 (feat: add make file to validate schemas themselves)
 	@echo "  help             - Show this help message"
 
 # Validate all schema files
@@ -76,6 +79,7 @@ validate-verbose:
 	@echo "Validating dataset schema with warnings..."
 	$(POETRY) gen-yaml $(SCHEMA_DIR)/dataset.yaml > /dev/null
 	@echo "✓ Dataset schema is valid"
+<<<<<<< HEAD
 
 # Lint schema files
 .PHONY: lint-schema
@@ -107,3 +111,5 @@ validate-sheet:
 validate-sheet-id:
 	@echo "Validating Google Sheet with ID: $(SHEET_ID)"
 	@$(POETRY) python -m hca_validation.entry_sheet_validator.validate_sheet $(SHEET_ID)
+=======
+>>>>>>> 9d91f85 (feat: add make file to validate schemas themselves)
