@@ -44,7 +44,7 @@ slots:
     examples:
       - value: '["Teichmann,Sarah,A."]'
         description: "Principal Investigator in Last Name,MiddleInitial, FirstName format"
-  
+
   batch_condition:
     description: >-
       Name of the covariate that confers the dominant batch effect in the data as judged by the data contributor. 
@@ -56,19 +56,19 @@ slots:
       - value: '["patient", "seqBatch"]'
         description: "Multiple batch conditions as a JSON array"
     notes:
-      - Values must refer to cell metadata keys in obs. Together, these keys define the batches that a normalisation or integration 
-        algorithm should be aware of. For example if "patient" and "seqBatch" are keys of vectors of cell metadata, either 
+      - Values must refer to cell metadata keys in obs. Together, these keys define the batches that a normalisation or integration
+        algorithm should be aware of. For example if "patient" and "seqBatch" are keys of vectors of cell metadata, either
         ["patient"], ["seqBatch"], or ["patient", "seqBatch"] are valid values.
     annotations:
       cxg: batch_condition
-  
+
   default_embedding:
     description: The value must match a key to an embedding in obsm for the embedding to display by default in CELLxGENE Explorer.
     range: string
     required: false
     annotations:
       cxg: default_embedding
-  
+
   sequencing_platform:
     description: Platform used for sequencing.
     range: string
@@ -79,7 +79,7 @@ slots:
       - Values should be "subClassOf" ["EFO:0002699"] - https://www.ebi.ac.uk/ols/ontologies/efo/terms?iri=http%3A%2F%2Fwww.ebi.ac.uk%2Fefo%2FEFO_0002699
     comments:
       - This captures potential strand hopping which may cause data quality issues.
-  
+
   assay_ontology_term_id:
     description: Platform used for single cell library construction.
     range: string
@@ -93,7 +93,7 @@ slots:
         - "EFO:0010183" for single cell library construction or preferably its most accurate child
         - An assay based on 10X Genomics products should either be "EFO:0008995" for 10x technology or preferably its most accurate child. 
         - An assay based on SMART (Switching Mechanism at the 5' end of the RNA Template) or SMARTer technology SHOULD either be "EFO:0010184" for Smart-like or preferably its most accurate child.
-        
+
         Recommended:
         - 10x 3' v2 "EFO:0009899"
         - 10x 3' v3 "EFO:0009922"
@@ -105,7 +105,7 @@ slots:
       - Major source of batch effect and dataset filtering criterion
     annotations:
       cxg: assay_ontology_term_id
-  
+
   reference_genome:
     description: Reference genome used for alignment.
     range: ReferenceGenomeEnum
@@ -115,7 +115,7 @@ slots:
       - value: "GRCh37"
     comments:
       - Possible source of batch effect and confounder for some biological analysis
-  
+
   alignment_software:
     description: Protocol used for alignment analysis, please specify which version was used e.g. cell ranger 2.0, 2.1.1 etc.
     range: string
@@ -124,14 +124,14 @@ slots:
       - value: "cellranger_8.0.0"
     comments:
       - Affects which cells are filtered per dataset, and which reads (introns and exons or only exons) are counted as part of the reported transcriptome. This can convey batch effects.
-  
+
   intron_inclusion:
     description: Were introns included during read counting in the alignment process?
     range: IntronInclusionEnum
     required: false
     examples:
       - value: "yes"
-  
+
   sequenced_fragment:
     description: Which part of the RNA transcript was targeted for sequencing.
     range: SequencedFragmentEnum
@@ -141,7 +141,7 @@ slots:
       - value: "full length"
     comments:
       - May be a source of batch effect that has to be tested.
-  
+
   gene_annotation_version:
     description: >
       Ensembl release version accession number. Some common codes include:
@@ -156,14 +156,14 @@ slots:
       - http://www.ensembl.org/info/website/archives/index.html) or NCBI/RefSeq
     comments:
       - Possible source of batch effect and confounder for some biological analysis
-  
+
   comments:
     description: >
       Other technical or experimental covariates that could affect the quality or batch of the sample. 
       Must not contain identifiers. This field is designed to capture potential challenges for data integration not captured elsewhere.
     range: string
     required: false
-  
+
   protocol_url:
     description: >
       The protocols.io URL (if none exists, please use the BioRxiv URL) for the full experimental protocol; 
@@ -174,7 +174,7 @@ slots:
       - value: "https://www.biorxiv.org/content/early/2017/09/24/193219"
     comments:
       - Useful to look up protocol data that can provide insight on batch effects. As protocols can sometimes apply to a subset of the study, we capture this at a sample level. This information may not always be available.
-  
+
   title:
     description: >
       This text describes and differentiates the dataset from other datasets in the same collection. 
@@ -204,14 +204,14 @@ enums:
         description: Mouse reference genome version 37
       "not applicable":
         description: No reference genome was used
-  
+
   IntronInclusionEnum:
     permissible_values:
       "yes":
         description: Introns were included
       "no":
         description: Introns were not included
-  
+
   SequencedFragmentEnum:
     permissible_values:
       "3 prime tag":
