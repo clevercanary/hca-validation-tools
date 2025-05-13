@@ -1,0 +1,22 @@
+id: https://github.com/clevercanary/hca-validation-tools/schema/sample
+name: hca-validation-sample
+title: HCA Validation Sample Schema
+description: Schema for validating Human Cell Atlas (HCA) sample metadata
+license: MIT
+version: 0.1.0
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  hca: https://github.com/clevercanary/hca-validation-tools/schema/
+  xsd: http://www.w3.org/2001/XMLSchema#
+
+default_prefix: hca
+default_range: string
+
+imports:
+  - core
+
+classes:
+  sample:
+    description: >-
+      A biological sample derived from a donor or another sample

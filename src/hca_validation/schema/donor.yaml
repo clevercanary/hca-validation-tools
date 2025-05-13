@@ -1,0 +1,22 @@
+id: https://github.com/clevercanary/hca-validation-tools/schema/donor
+name: hca-validation-donor
+title: HCA Validation Donor Schema
+description: Schema for validating Human Cell Atlas (HCA) donor metadata
+license: MIT
+version: 0.1.0
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  hca: https://github.com/clevercanary/hca-validation-tools/schema/
+  xsd: http://www.w3.org/2001/XMLSchema#
+
+default_prefix: hca
+default_range: string
+
+imports:
+  - core
+
+classes:
+  donor:
+    description: >-
+      An individual organism from which biological samples have been derived
