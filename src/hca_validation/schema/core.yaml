@@ -14,7 +14,3 @@ default_range: string
 
 imports:
   - linkml:types
-  - dataset
-  - donor
-  - sample
-  - cell

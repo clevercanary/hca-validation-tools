@@ -14,7 +14,6 @@ default_range: string
 
 imports:
   - linkml:types
-  - core
 
 classes:
   Dataset:
@@ -130,7 +129,6 @@ slots:
     required: false
     examples:
       - value: "yes"
-
   sequenced_fragment:
     description: Which part of the RNA transcript was targeted for sequencing.
     range: SequencedFragmentEnum

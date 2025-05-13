@@ -14,7 +14,6 @@ default_range: string
 
 imports:
   - linkml:types
-  - core
 
 classes:
   Donor:
