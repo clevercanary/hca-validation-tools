@@ -17,6 +17,12 @@ default_range: string
 imports:
   - core
 
+types:
+  string:
+    uri: xsd:string
+    base: str
+    description: A character string
+
 classes:
   dataset:
     description: >-
@@ -43,7 +49,8 @@ slots:
     multivalued: true
     required: true
     examples:
-      - "Sarah,A,Teichmann"
+      - value: '["Sarah,A,Teichmann"]'
+        description: "Principal Investigator in LastName,FirstInitial,MiddleInitial format"
   
   batch_condition:
     description: >-
@@ -53,7 +60,8 @@ slots:
     multivalued: true
     required: false
     examples:
-      - "[\"patient\", \"seqBatch\"]"
+      - value: '["patient", "seqBatch"]'
+        description: "Multiple batch conditions as a JSON array"
     notes: >
       Values must refer to cell metadata keys in obs. Together, these keys define the batches that a normalisation or integration 
       algorithm should be aware of. For example if "patient" and "seqBatch" are keys of vectors of cell metadata, either 
@@ -73,7 +81,7 @@ slots:
     range: string
     required: false
     examples:
-      - "EFO:0008563"
+      - value: "EFO:0008563"
     notes: >-
       Values should be "subClassOf" : ["EFO:0002699"] - https://www.ebi.ac.uk/ols/ontologies/efo/terms?iri=http%3A%2F%2Fwww.ebi.ac.uk%2Fefo%2FEFO_0002699
     comments: This captures potential strand hopping which may cause data quality issues.
@@ -83,7 +91,7 @@ slots:
     range: string
     required: true
     examples:
-      - "EFO:0009922"
+      - value: "EFO:0009922"
     notes: >
       This must be an EFO term and either:
       "EFO:0002772" for assay by molecule or preferably its most accurate child
@@ -104,51 +112,36 @@ slots:
   
   reference_genome:
     description: Reference genome used for alignment.
-    range: string
+    range: ReferenceGenomeEnum
     required: true
     examples:
-      - "GRCm37"
-      - "GRCh37"
+      - value: "GRCm37"
+      - value: "GRCh37"
     comments: Possible source of batch effect and confounder for some biological analysis
-    enum:
-      - GRCh38
-      - GRCh37
-      - GRCm39
-      - GRCm38
-      - GRCm37
-      - not applicable
   
   alignment_software:
     description: Protocol used for alignment analysis, please specify which version was used e.g. cell ranger 2.0, 2.1.1 etc.
     range: string
     required: true
     examples:
-      - "cellranger_8.0.0"
+      - value: "cellranger_8.0.0"
     comments: Affects which cells are filtered per dataset, and which reads (introns and exons or only exons) are counted as part of the reported transcriptome. This can convey batch effects.
   
   intron_inclusion:
     description: Were introns included during read counting in the alignment process?
-    range: string
+    range: IntronInclusionEnum
     required: false
     examples:
-      - "yes"
-    enum:
-      - yes
-      - no
+      - value: "yes"
   
   sequenced_fragment:
     description: Which part of the RNA transcript was targeted for sequencing.
-    range: string
+    range: SequencedFragmentEnum
     required: true
     examples:
-      - "3 prime tag"
-      - "full length"
+      - value: "3 prime tag"
+      - value: "full length"
     comments: May be a source of batch effect that has to be tested.
-    enum:
-      - 3 prime tag
-      - 5 prime tag
-      - probe-based
-      - full length
   
   gene_annotation_version:
     description: >
@@ -159,7 +152,7 @@ slots:
     range: string
     required: true
     examples:
-      - "GCF_000001405.40"
+      - value: "GCF_000001405.40"
     notes: http://www.ensembl.org/info/website/archives/index.html) or NCBI/RefSeq
     comments: Possible source of batch effect and confounder for some biological analysis
   
@@ -177,7 +170,7 @@ slots:
     range: string
     required: false
     examples:
-      - "https://www.biorxiv.org/content/early/2017/09/24/193219"
+      - value: "https://www.biorxiv.org/content/early/2017/09/24/193219"
     comments: Useful to look up protocol data that can provide insight on batch effects. As protocols can sometimes apply to a subset of the study, we capture this at a sample level. This information may not always be available.
   
   title:
@@ -188,7 +181,43 @@ slots:
     range: string
     required: true
     examples:
-      - "Cells of the adult human heart collection is \"All — Cells of the adult human heart\""
+      - value: "Cells of the adult human heart collection is 'All — Cells of the adult human heart'"
     comments: Useful to look up protocol data that can provide insight on batch effects. As protocols can sometimes apply to a subset of the study, we capture this at a sample level. This information may not always be available.
     annotations:
       cxg: title
+
+enums:
+  ReferenceGenomeEnum:
+    permissible_values:
+      GRCh38:
+        description: Human reference genome version 38
+      GRCh37:
+        description: Human reference genome version 37
+      GRCm39:
+        description: Mouse reference genome version 39
+      GRCm38:
+        description: Mouse reference genome version 38
+      GRCm37:
+        description: Mouse reference genome version 37
+      "not applicable":
+        description: No reference genome was used
+  
+  IntronInclusionEnum:
+    permissible_values:
+      yes:
+        description: Introns were included
+      no:
+        description: Introns were not included
+  
+  SequencedFragmentEnum:
+    permissible_values:
+      "3 prime tag":
+        description: 3' end of the transcript
+      "5 prime tag":
+        description: 5' end of the transcript
+      "probe-based":
+        description: Probe-based sequencing
+      "full length":
+        description: Entire transcript
+      "not applicable":
+        description: Not applicable to this dataset
