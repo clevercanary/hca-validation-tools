@@ -24,6 +24,8 @@ help:
 	@echo "  validate-verbose - Validate dataset schema with warnings"
 	@echo "  lint-schema      - Run LinkML linter on all schema files"
 	@echo "  lint-schema-errors - Run LinkML linter (critical errors only)"
+	@echo "  generate-pydantic-models - Generate Pydantic models from all LinkML schemas"
+	@echo "  test-dataset-validation - Run dataset validation tests"
 	@echo "  help             - Show this help message"
 
 # Validate all schema files
@@ -87,3 +89,9 @@ lint-schema-errors:
 	@echo "Linting schema files (errors only)..."
 	@$(POETRY) linkml lint $(SCHEMA_DIR) --validate --ignore-warnings || (echo "❌ Schema has critical errors" && exit 1)
 	@echo "✓ No critical errors found in schema files"
+
+# Run validator tests
+.PHONY: test-validator
+test-validator:
+	@echo "Running validator tests..."
+	@$(POETRY) pytest tests/test_validator.py -v -W ignore::DeprecationWarning
