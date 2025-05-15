@@ -95,3 +95,15 @@ lint-schema-errors:
 test-validator:
 	@echo "Running validator tests..."
 	@$(POETRY) pytest tests/test_validator.py -v -W ignore::DeprecationWarning
+
+# Validate Google Sheet
+.PHONY: validate-sheet
+validate-sheet:
+	@echo "Validating Google Sheet..."
+	@$(POETRY) python -m hca_validation.entry_sheet_validator.validate_sheet
+
+# Validate specific Google Sheet
+.PHONY: validate-sheet-id
+validate-sheet-id:
+	@echo "Validating Google Sheet with ID: $(SHEET_ID)"
+	@$(POETRY) python -m hca_validation.entry_sheet_validator.validate_sheet $(SHEET_ID)
