@@ -131,8 +131,8 @@ def validate_google_sheet(sheet_id="1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY
             # Convert string representations of lists
             if isinstance(value, str) and value.strip().startswith('[') and value.strip().endswith(']'):
                 try:
-                    row_dict[key] = eval(value)  # Simple but works for basic lists
-                except Exception as e:
+                    row_dict[key] = json.loads(value)  # Safely parse JSON-formatted strings
+                except json.JSONDecodeError as e:
                     print(f"Warning: Could not parse list value '{value}' for field '{key}': {e}")
                     row_dict[key] = value
             else:
