@@ -37,11 +37,7 @@ def _create_validator(schema_type: str):
     # Create and return the validator
     return Validator(
         schema=schema_path,
-<<<<<<< HEAD
         validation_plugins=[PydanticValidationPlugin(closed=False)]
-=======
-        validation_plugins=[PydanticValidationPlugin(closed=True)]
->>>>>>> 7e62d2b (feat: basic validator and tests)
     )
 
 
