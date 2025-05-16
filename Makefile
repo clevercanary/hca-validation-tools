@@ -25,6 +25,8 @@ help:
 	@echo "  lint-schema      - Run LinkML linter on all schema files"
 	@echo "  lint-schema-errors - Run LinkML linter (critical errors only)"
 	@echo "  generate-pydantic-models - Generate Pydantic models from all LinkML schemas"
+	@echo "  generate-data-dictionary - Generate data dictionary JSON from core schema to standard path"
+	@echo "  generate-data-dictionary-file - Generate data dictionary from schema to specified file"
 	@echo "  test-dataset-validation - Run dataset validation tests"
 	@echo "  help             - Show this help message"
 
@@ -107,3 +109,25 @@ validate-sheet:
 validate-sheet-id:
 	@echo "Validating Google Sheet with ID: $(SHEET_ID)"
 	@$(POETRY) python -m hca_validation.entry_sheet_validator.validate_sheet $(SHEET_ID)
+
+# Generate data dictionary from core schema to standard path
+.PHONY: generate-data-dictionary
+generate-data-dictionary:
+	@echo "Generating data dictionary from core schema to standard path..."
+	@$(POETRY) python -m hca_validation.data_dictionary.generate_dictionary
+
+# Generate data dictionary from a specific schema file to a specific output file
+.PHONY: generate-data-dictionary-file
+generate-data-dictionary-file:
+	@if [ -z "$(OUTPUT_FILE)" ]; then \
+		echo "Error: OUTPUT_FILE is required. Usage: make generate-data-dictionary-file OUTPUT_FILE=path/to/output.json [SCHEMA_FILE=path/to/schema.yaml]"; \
+		exit 1; \
+	fi
+	@if [ -z "$(SCHEMA_FILE)" ]; then \
+		echo "Generating data dictionary from core schema to $(OUTPUT_FILE)..."; \
+		$(POETRY) python -m hca_validation.data_dictionary.generate_dictionary $(SCHEMA_DIR)/core.yaml $(OUTPUT_FILE); \
+	else \
+		echo "Generating data dictionary from $(SCHEMA_FILE) to $(OUTPUT_FILE)..."; \
+		$(POETRY) python -m hca_validation.data_dictionary.generate_dictionary $(SCHEMA_FILE) $(OUTPUT_FILE); \
+	fi
+	@echo "✓ Data dictionary generated at $(OUTPUT_FILE)"
