@@ -1,0 +1,21 @@
+[tool.poetry]
+name = "hca-validation-tools"
+version = "0.1.0"
+description = "Tools for validating HCA (Human Cell Atlas) ingest data"
+authors = ["Your Name <your.email@example.com>"]
+readme = "README.md"
+packages = [{include = "hca_validation", from = "src"}]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+linkml-runtime = "^1.9.1"
+linkml-validator = "^0.4.5"
+linkml = "^1.9.1"
+pyyaml = "^6.0"
+pandas = "^2.2.3"
+requests = "^2.32.3"
+gspread = "^6.2.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
