@@ -8,12 +8,12 @@ version: 0.1.0
 prefixes:
   linkml: https://w3id.org/linkml/
   hca: https://github.com/clevercanary/hca-validation-tools/schema/
-  xsd: http://www.w3.org/2001/XMLSchema#
 
 default_prefix: hca
 default_range: string
 
 imports:
+  - linkml:types
   - core
 
 classes:
