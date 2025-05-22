@@ -63,7 +63,7 @@
             "cxg": "assay_ontology_term_id"
           },
           "rationale": "Major source of batch effect and dataset filtering criterion",
-          "values": "This must be an EFO term and either:\n- \"EFO:0002772\" for assay by molecule or preferably its most accurate child\n- \"EFO:0010183\" for single cell library construction or preferably its most accurate child\n- An assay based on 10X Genomics products should either be \"EFO:0008995\" for 10x technology or preferably its most accurate child. \n- An assay based on SMART (Switching Mechanism at the 5' end of the RNA Template) or SMARTer technology SHOULD either be \"EFO:0010184\" for Smart-like or preferably its most accurate child.\n\nRecommended:\n- 10x 3' v2 \"EFO:0009899\"\n- 10x 3' v3 \"EFO:0009922\"\n- 10x 5' v1 \"EFO:0011025\"\n- 10x 5' v2 \"EFO:0009900\"\n- Smart-seq2 \"EFO:0008931\"\n- Visium Spatial Gene Expression \"EFO:0010961\"\n"
+          "values": "This must be an EFO term and either:\n- \"EFO:0002772\" for assay by molecule or preferably its most accurate child\n- \"EFO:0010183\" for single cell library construction or preferably its most accurate child\n- An assay based on 10X Genomics products should either be \"EFO:0008995\" for 10x technology or preferably its most accurate child. \n- An assay based on SMART (Switching Mechanism at the 5' end of the RNA Template) or SMARTer technology SHOULD either be \"EFO:0010184\" for Smart-like or preferably its most accurate child.\nRecommended:\n- 10x 3' v2 \"EFO:0009899\"\n- 10x 3' v3 \"EFO:0009922\"\n- 10x 5' v1 \"EFO:0011025\"\n- 10x 5' v2 \"EFO:0009900\"\n- Smart-seq2 \"EFO:0008931\"\n- Visium Spatial Gene Expression \"EFO:0010961\"\n"
         },
         {
           "name": "reference_genome",
