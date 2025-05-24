@@ -1,0 +1,179 @@
+{
+  "name": "tier_1",
+  "title": "HCA Tier 1 Metadata",
+  "classes": [
+    {
+      "title": "Dataset",
+      "description": "A collection of data from a single experiment or study in the Human Cell Atlas",
+      "name": "dataset",
+      "attributes": [
+        {
+          "name": "study_pi",
+          "title": "Study Pi",
+          "description": "Principal Investigator(s) leading the study where the data is/was used.",
+          "range": "string",
+          "required": true,
+          "multivalued": true,
+          "example": "[\"Teichmann,Sarah,A.\"]"
+        },
+        {
+          "name": "batch_condition",
+          "title": "Batch Condition",
+          "description": "Name of the covariate that confers the dominant batch effect in the data as judged by the data contributor.  The name provided here should be the label by which this covariate is stored in the AnnData object.",
+          "range": "string",
+          "required": false,
+          "multivalued": true,
+          "example": "[\"patient\", \"seqBatch\"]",
+          "annotations": {
+            "cxg": "batch_condition"
+          },
+          "values": "Values must refer to cell metadata keys in obs. Together, these keys define the batches that a normalisation or integration algorithm should be aware of. For example if \"patient\" and \"seqBatch\" are keys of vectors of cell metadata, either [\"patient\"], [\"seqBatch\"], or [\"patient\", \"seqBatch\"] are valid values."
+        },
+        {
+          "name": "default_embedding",
+          "title": "Default Embedding",
+          "description": "The value must match a key to an embedding in obsm for the embedding to display by default in CELLxGENE Explorer.",
+          "range": "string",
+          "required": false,
+          "multivalued": false,
+          "annotations": {
+            "cxg": "default_embedding"
+          }
+        },
+        {
+          "name": "sequencing_platform",
+          "title": "Sequencing Platform",
+          "description": "Platform used for sequencing.",
+          "range": "string",
+          "required": false,
+          "multivalued": false,
+          "example": "EFO:0008563",
+          "rationale": "This captures potential strand hopping which may cause data quality issues.",
+          "values": "Values should be \"subClassOf\" [\"EFO:0002699\"] - https://www.ebi.ac.uk/ols/ontologies/efo/terms?iri=http%3A%2F%2Fwww.ebi.ac.uk%2Fefo%2FEFO_0002699"
+        },
+        {
+          "name": "assay_ontology_term_id",
+          "title": "Assay Ontology Term Id",
+          "description": "Platform used for single cell library construction.",
+          "range": "string",
+          "required": true,
+          "multivalued": false,
+          "example": "EFO:0009922",
+          "annotations": {
+            "cxg": "assay_ontology_term_id"
+          },
+          "rationale": "Major source of batch effect and dataset filtering criterion",
+          "values": "This must be an EFO term and either:\n- \"EFO:0002772\" for assay by molecule or preferably its most accurate child\n- \"EFO:0010183\" for single cell library construction or preferably its most accurate child\n- An assay based on 10X Genomics products should either be \"EFO:0008995\" for 10x technology or preferably its most accurate child. \n- An assay based on SMART (Switching Mechanism at the 5' end of the RNA Template) or SMARTer technology SHOULD either be \"EFO:0010184\" for Smart-like or preferably its most accurate child.\nRecommended:\n- 10x 3' v2 \"EFO:0009899\"\n- 10x 3' v3 \"EFO:0009922\"\n- 10x 5' v1 \"EFO:0011025\"\n- 10x 5' v2 \"EFO:0009900\"\n- Smart-seq2 \"EFO:0008931\"\n- Visium Spatial Gene Expression \"EFO:0010961\"\n"
+        },
+        {
+          "name": "reference_genome",
+          "title": "Reference Genome",
+          "description": "Reference genome used for alignment.",
+          "range": "ReferenceGenomeEnum",
+          "required": true,
+          "multivalued": false,
+          "example": "GRCm37",
+          "rationale": "Possible source of batch effect and confounder for some biological analysis",
+          "values": "GRCh38; GRCh37; GRCm39; GRCm38; GRCm37; not applicable"
+        },
+        {
+          "name": "alignment_software",
+          "title": "Alignment Software",
+          "description": "Protocol used for alignment analysis, please specify which version was used e.g. cell ranger 2.0, 2.1.1 etc.",
+          "range": "string",
+          "required": true,
+          "multivalued": false,
+          "example": "cellranger_8.0.0",
+          "rationale": "Affects which cells are filtered per dataset, and which reads (introns and exons or only exons) are counted as part of the reported transcriptome. This can convey batch effects."
+        },
+        {
+          "name": "intron_inclusion",
+          "title": "Intron Inclusion",
+          "description": "Were introns included during read counting in the alignment process?",
+          "range": "IntronInclusionEnum",
+          "required": false,
+          "multivalued": false,
+          "example": "yes",
+          "values": "yes; no"
+        },
+        {
+          "name": "sequenced_fragment",
+          "title": "Sequenced Fragment",
+          "description": "Which part of the RNA transcript was targeted for sequencing.",
+          "range": "SequencedFragmentEnum",
+          "required": true,
+          "multivalued": false,
+          "example": "3 prime tag",
+          "rationale": "May be a source of batch effect that has to be tested.",
+          "values": "3 prime tag; 5 prime tag; probe-based; full length; not applicable"
+        },
+        {
+          "name": "gene_annotation_version",
+          "title": "Gene Annotation Version",
+          "description": "Ensembl release version accession number. Some common codes include: GRCh38.p12 = GCF_000001405.38 GRCh38.p13 = GCF_000001405.39 GRCh38.p14 = GCF_000001405.40\n",
+          "range": "string",
+          "required": true,
+          "multivalued": false,
+          "example": "GCF_000001405.40",
+          "rationale": "Possible source of batch effect and confounder for some biological analysis",
+          "values": "http://www.ensembl.org/info/website/archives/index.html) or NCBI/RefSeq"
+        },
+        {
+          "name": "comments",
+          "title": "Comments",
+          "description": "Other technical or experimental covariates that could affect the quality or batch of the sample.  Must not contain identifiers. This field is designed to capture potential challenges for data integration not captured elsewhere.\n",
+          "range": "string",
+          "required": false,
+          "multivalued": false
+        },
+        {
+          "name": "protocol_url",
+          "title": "Protocol URL",
+          "description": "The protocols.io URL (if none exists, please use the BioRxiv URL) for the full experimental protocol;  or if multiple protocols exist please list them e.g. sample preparation protocol / sequencing protocol.\n",
+          "range": "string",
+          "required": false,
+          "multivalued": false,
+          "example": "https://www.biorxiv.org/content/early/2017/09/24/193219",
+          "rationale": "Useful to look up protocol data that can provide insight on batch effects. As protocols can sometimes apply to a subset of the study, we capture this at a sample level. This information may not always be available."
+        },
+        {
+          "name": "title",
+          "title": "Title",
+          "description": "This text describes and differentiates the dataset from other datasets in the same collection.  It is strongly recommended that each dataset title in a collection is unique and does not depend on other metadata  such as a different assay to disambiguate it from other datasets in the collection.\n",
+          "range": "string",
+          "required": true,
+          "multivalued": false,
+          "example": "Cells of the adult human heart collection is 'All \u2014 Cells of the adult human heart'",
+          "annotations": {
+            "cxg": "title"
+          },
+          "rationale": "Useful to look up protocol data that can provide insight on batch effects. As protocols can sometimes apply to a subset of the study, we capture this at a sample level. This information may not always be available."
+        }
+      ]
+    },
+    {
+      "title": "Donor",
+      "description": "An individual organism from which biological samples have been derived",
+      "name": "donor",
+      "attributes": []
+    },
+    {
+      "title": "Sample",
+      "description": "A biological sample derived from a donor or another sample",
+      "name": "sample",
+      "attributes": []
+    },
+    {
+      "title": "Cell",
+      "description": "A single cell derived from a sample",
+      "name": "cell",
+      "attributes": []
+    }
+  ],
+  "prefixes": {
+    "cxg": "https://github.com/chanzuckerberg/single-cell-curation/blob/main/schema/5.2.0/schema.md"
+  },
+  "annotations": {
+    "cxg": "CELLxGENE"
+  }
+}

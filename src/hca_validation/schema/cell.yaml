@@ -14,9 +14,9 @@ default_range: string
 
 imports:
   - linkml:types
-  - core
 
 classes:
   Cell:
     description: >-
       A single cell derived from a sample
+
