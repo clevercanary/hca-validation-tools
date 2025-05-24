@@ -28,7 +28,12 @@ help:
 	@echo "  generate-data-dictionary - Generate data dictionary JSON from core schema to standard path"
 	@echo "  generate-data-dictionary-file - Generate data dictionary from schema to specified file"
 	@echo "  test-dataset-validation - Run dataset validation tests"
-	@echo "  help             - Show this help message"
+	@echo "  build-lambda-container - Build the entry sheet validator Lambda container image"
+	@echo "  deploy-lambda-container - Deploy the Lambda container image to AWS"
+	@echo "  test-lambda-container  - Test the Lambda container locally"
+	@echo "  test-lambda            - Alias for test-lambda-container"
+	@echo "  invoke-lambda          - Invoke the deployed Lambda function"
+	@echo "  help                   - Show this help message"
 
 # Validate all schema files
 .PHONY: validate-schema
@@ -114,7 +119,7 @@ validate-sheet-id:
 .PHONY: generate-data-dictionary
 generate-data-dictionary:
 	@echo "Generating data dictionary from core schema to standard path..."
-	@cd $(shell pwd) && $(POETRY) python -c "from hca_validation.data_dictionary.generate_dictionary import generate_dictionary; generate_dictionary()"
+	@$(POETRY) python -m hca_validation.data_dictionary.generate_dictionary
 
 # Generate data dictionary from a specific schema file to a specific output file
 .PHONY: generate-data-dictionary-file
@@ -125,9 +130,98 @@ generate-data-dictionary-file:
 	fi
 	@if [ -z "$(SCHEMA_FILE)" ]; then \
 		echo "Generating data dictionary from core schema to $(OUTPUT_FILE)..."; \
-		cd $(shell pwd) && $(POETRY) python -c "from hca_validation.data_dictionary.generate_dictionary import generate_dictionary; generate_dictionary('$(SCHEMA_DIR)/core.yaml', '$(OUTPUT_FILE)')"; \
+		$(POETRY) python -m hca_validation.data_dictionary.generate_dictionary $(SCHEMA_DIR)/core.yaml $(OUTPUT_FILE); \
 	else \
 		echo "Generating data dictionary from $(SCHEMA_FILE) to $(OUTPUT_FILE)..."; \
-		cd $(shell pwd) && $(POETRY) python -c "from hca_validation.data_dictionary.generate_dictionary import generate_dictionary; generate_dictionary('$(SCHEMA_FILE)', '$(OUTPUT_FILE)')"; \
+		$(POETRY) python -m hca_validation.data_dictionary.generate_dictionary $(SCHEMA_FILE) $(OUTPUT_FILE); \
 	fi
 	@echo "✓ Data dictionary generated at $(OUTPUT_FILE)"
+
+# Lambda function targets (Docker-based)
+.PHONY: build-lambda-container
+build-lambda-container:
+	@echo "Building Lambda container image..."
+	@./deployment/docker-build/build_lambda_container.sh
+	@echo "✓ Lambda container image built: hca-entry-sheet-validator"
+
+.PHONY: test-lambda-container
+test-lambda-container:
+	@echo "Testing Lambda container locally..."
+	@./deployment/docker-build/test_lambda_container_locally.sh
+
+.PHONY: deploy-lambda-container
+deploy-lambda-container:
+	@echo "Checking required environment variables..."
+	@if [ -z "$(AWS_ACCOUNT_ID)" ]; then \
+		echo "Error: AWS_ACCOUNT_ID environment variable is not set"; \
+		exit 1; \
+	fi
+	@if [ -z "$(AWS_REGION)" ]; then \
+		echo "Error: AWS_REGION environment variable is not set"; \
+		exit 1; \
+	fi
+	@if [ -z "$(LAMBDA_ROLE)" ]; then \
+		echo "Error: LAMBDA_ROLE is required. Usage: make deploy-lambda-container LAMBDA_ROLE=arn:aws:iam::<ACCOUNT_ID>:role/lambda-execution-role"; \
+		exit 1; \
+	fi
+
+	@echo "Logging in to ECR..."
+	@aws ecr get-login-password --region $(AWS_REGION) | docker login --username AWS --password-stdin $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_REGION).amazonaws.com
+
+	@echo "Creating ECR repository if it doesn't exist..."
+	@aws ecr describe-repositories --repository-names hca-entry-sheet-validator --region $(AWS_REGION) > /dev/null 2>&1 || \
+		aws ecr create-repository --repository-name hca-entry-sheet-validator --region $(AWS_REGION)
+
+	@echo "Tagging and pushing container image to ECR..."
+	@docker tag hca-entry-sheet-validator:latest $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_REGION).amazonaws.com/hca-entry-sheet-validator:latest
+	@docker push $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_REGION).amazonaws.com/hca-entry-sheet-validator:latest
+
+	@echo "Deploying Lambda function..."
+	@if aws lambda get-function --function-name hca-entry-sheet-validator --region $(AWS_REGION) > /dev/null 2>&1; then \
+		echo "Updating existing Lambda function..."; \
+		aws lambda update-function-code \
+			--function-name hca-entry-sheet-validator \
+			--image-uri $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_REGION).amazonaws.com/hca-entry-sheet-validator:latest \
+			--region $(AWS_REGION); \
+	else \
+		echo "Creating new Lambda function..."; \
+		aws lambda create-function \
+			--function-name hca-entry-sheet-validator \
+			--package-type Image \
+			--code ImageUri=$(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_REGION).amazonaws.com/hca-entry-sheet-validator:latest \
+			--role $(LAMBDA_ROLE) \
+			--timeout 30 \
+			--memory-size 256 \
+			--region $(AWS_REGION); \
+	fi
+	@echo "✓ Lambda function deployed successfully as container image"
+
+# Test Lambda function locally
+.PHONY: test-lambda
+test-lambda: test-lambda-container
+	@echo "Redirecting to test-lambda-container target"
+
+.PHONY: invoke-lambda
+invoke-lambda:
+	@echo "Invoking Lambda function..."
+	@if [ -z "$(AWS_REGION)" ]; then \
+		echo "Error: AWS_REGION environment variable is not set"; \
+		exit 1; \
+	fi
+	@if [ -z "$(SHEET_ID)" ]; then \
+		aws lambda invoke \
+			--function-name hca-entry-sheet-validator \
+			--region $(AWS_REGION) \
+			--cli-binary-format raw-in-base64-out \
+			--payload '{}' \
+			response.json; \
+	else \
+		aws lambda invoke \
+			--function-name hca-entry-sheet-validator \
+			--region $(AWS_REGION) \
+			--cli-binary-format raw-in-base64-out \
+			--payload '{"sheet_id": "$(SHEET_ID)"}' \
+			response.json; \
+	fi
+	@echo "Response saved to response.json"
+	@cat response.json
