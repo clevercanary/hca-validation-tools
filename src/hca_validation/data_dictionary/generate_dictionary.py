@@ -45,6 +45,26 @@ def transform_schema_to_data_dictionary(schema_dict: Dict[str, Any]) -> Dict[str
         "Sample": "sample",
         "Cell": "cell"
     }
+
+    def get_all_slots(class_name):
+        class_info = schema_dict["classes"][class_name]
+
+        all_slots = set()
+
+        # Add slots directly defined in the class
+        if "slots" in class_info:
+            all_slots.update(class_info["slots"])
+            
+        # Add slots from mixins/parents
+        if "is_a" in class_info:
+            parent_class = class_info["is_a"]
+            if parent_class in schema_dict["classes"]:
+                all_slots.update(get_all_slots(parent_class))
+        for mixin_class in class_info.get("mixins", []):
+            if mixin_class in schema_dict["classes"]:
+                all_slots.update(get_all_slots(mixin_class))
+        
+        return all_slots
     
     # Process each class in the schema
     for class_name, class_info in schema_dict.get("classes", {}).items():
@@ -60,19 +80,8 @@ def transform_schema_to_data_dictionary(schema_dict: Dict[str, Any]) -> Dict[str
             "attributes": []
         }
         
-        # Get all slots for this class
-        all_slots = []
-        
-        # Add slots directly defined in the class
-        if "slots" in class_info:
-            all_slots.extend(class_info["slots"])
-            
-        # Add slots from mixins/parents
-        if "is_a" in class_info:
-            parent_class = class_info["is_a"]
-            if parent_class in schema_dict.get("classes", {}):
-                parent_slots = schema_dict["classes"][parent_class].get("slots", [])
-                all_slots.extend(parent_slots)
+        # Get all slots for this class, sorting values from the returned set to retain consistent order
+        all_slots = sorted(get_all_slots(class_name))
         
         # Process each slot for this class
         for slot_name in all_slots:
