@@ -71,18 +71,7 @@ Usage:
 ./deployment/docker-build/test_api_endpoint.sh [SHEET_ID]
 ```
 
-### `interactive_lambda_test.sh`
 
-Provides an interactive environment for testing and debugging the Lambda function locally:
-
-1. Creates a Docker container that simulates the AWS Lambda runtime
-2. Sets up the correct PYTHONPATH to include all dependencies
-3. Provides an interactive shell for testing imports and debugging issues
-
-Usage:
-```bash
-./deployment/docker-build/interactive_lambda_test.sh
-```
 
 ## Deployment Process
 
@@ -177,6 +166,6 @@ Memory usage is monitored and reported in the response, showing approximately 24
 
 If you encounter issues with C extensions (like pydantic_core) in the Lambda environment:
 
-1. Use the `interactive_lambda_test.sh` script to debug dependency issues
-2. Verify that the multi-stage build in `build_lambda_container.sh` is correctly configured
-3. Check that all required shared libraries are included in the container image
+1. Verify that the multi-stage build in `build_lambda_container.sh` is correctly configured
+2. Check that all required shared libraries are included in the container image
+3. Use the AWS Lambda container image locally for testing
