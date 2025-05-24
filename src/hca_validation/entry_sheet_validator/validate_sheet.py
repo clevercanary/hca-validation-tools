@@ -33,13 +33,15 @@ def read_public_sheet(sheet_id, sheet_index=0):
         print(f"Error accessing Google Sheet: {e}")
         return pd.DataFrame()
 
-def validate_google_sheet(sheet_id="1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY", sheet_index=0):
+def validate_google_sheet(sheet_id="1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY", sheet_index=0, error_handler=None):
     """
     Validate data from a Google Sheet starting at row 6 until the first empty row.
     
     Args:
         sheet_id: The ID of the Google Sheet
         sheet_index: The index of the sheet (0-based)
+        error_handler: Optional callback function that takes (row_index, error) parameters
+                      to handle validation errors externally
     """
     from hca_validation.validator import validate
     
@@ -149,11 +151,18 @@ def validate_google_sheet(sheet_id="1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY
                 print(f"Row {row_index} has validation errors:")
                 for error in validation_result.results:
                     print(f"  - {error.message}")
+                    # Call error handler if provided
+                    if error_handler:
+                        error_handler(row_index, error)
             else:
                 print(f"Row {row_index} is valid")
         except Exception as e:
             all_valid = False
             print(f"Error validating row {row_index}: {e}")
+            # Call error handler for exceptions if provided
+            if error_handler:
+                error = type('ValidationError', (), {'message': str(e), 'field': None, 'value': None})
+                error_handler(row_index, error)
     
     # Summary
     if all_valid:
