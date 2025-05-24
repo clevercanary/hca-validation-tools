@@ -72,7 +72,7 @@
           "multivalued": false,
           "example": "GCF_000001405.40",
           "rationale": "Possible source of batch effect and confounder for some biological analysis",
-          "values": "http://www.ensembl.org/info/website/archives/index.html) or NCBI/RefSeq"
+          "values": "http://www.ensembl.org/info/website/archives/index.html or NCBI/RefSeq"
         },
         {
           "name": "intron_inclusion",
