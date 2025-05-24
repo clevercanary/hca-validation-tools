@@ -39,11 +39,18 @@ def main():
     print(json.dumps(result, indent=2))
     
     # Print a summary
-    body = json.loads(result['body'])
-    if body['valid']:
+    if 'body' in result:
+        # API Gateway response format
+        body = json.loads(result['body'])
+        validation_errors = body.get('validation_errors', [])
+    else:
+        # Direct Lambda invocation format
+        validation_errors = result.get('validation_errors', [])
+    
+    if not validation_errors:
         print("\n✅ Sheet is valid! No errors found.")
     else:
-        print(f"\n❌ Sheet has {len(body['errors'])} validation errors.")
+        print(f"\n❌ Sheet has {len(validation_errors)} validation errors.")
 
 if __name__ == "__main__":
     main()
