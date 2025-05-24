@@ -119,7 +119,7 @@ validate-sheet-id:
 .PHONY: generate-data-dictionary
 generate-data-dictionary:
 	@echo "Generating data dictionary from core schema to standard path..."
-	@$(POETRY) python -m hca_validation.data_dictionary.generate_dictionary
+	@cd $(shell pwd) && $(POETRY) python -c "from hca_validation.data_dictionary.generate_dictionary import generate_dictionary; generate_dictionary()"
 
 # Generate data dictionary from a specific schema file to a specific output file
 .PHONY: generate-data-dictionary-file
@@ -130,10 +130,10 @@ generate-data-dictionary-file:
 	fi
 	@if [ -z "$(SCHEMA_FILE)" ]; then \
 		echo "Generating data dictionary from core schema to $(OUTPUT_FILE)..."; \
-		$(POETRY) python -m hca_validation.data_dictionary.generate_dictionary $(SCHEMA_DIR)/core.yaml $(OUTPUT_FILE); \
+		cd $(shell pwd) && $(POETRY) python -c "from hca_validation.data_dictionary.generate_dictionary import generate_dictionary; generate_dictionary('$(SCHEMA_DIR)/core.yaml', '$(OUTPUT_FILE)')"; \
 	else \
 		echo "Generating data dictionary from $(SCHEMA_FILE) to $(OUTPUT_FILE)..."; \
-		$(POETRY) python -m hca_validation.data_dictionary.generate_dictionary $(SCHEMA_FILE) $(OUTPUT_FILE); \
+		cd $(shell pwd) && $(POETRY) python -c "from hca_validation.data_dictionary.generate_dictionary import generate_dictionary; generate_dictionary('$(SCHEMA_FILE)', '$(OUTPUT_FILE)')"; \
 	fi
 	@echo "✓ Data dictionary generated at $(OUTPUT_FILE)"
 
