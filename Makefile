@@ -212,14 +212,12 @@ invoke-lambda:
 		aws lambda invoke \
 			--function-name hca-entry-sheet-validator \
 			--region $(AWS_REGION) \
-			--cli-binary-format raw-in-base64-out \
 			--payload '{}' \
 			response.json; \
 	else \
 		aws lambda invoke \
 			--function-name hca-entry-sheet-validator \
 			--region $(AWS_REGION) \
-			--cli-binary-format raw-in-base64-out \
 			--payload '{"sheet_id": "$(SHEET_ID)"}' \
 			response.json; \
 	fi

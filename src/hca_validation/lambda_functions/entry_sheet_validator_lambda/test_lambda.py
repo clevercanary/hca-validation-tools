@@ -42,15 +42,17 @@ def main():
     if 'body' in result:
         # API Gateway response format
         body = json.loads(result['body'])
-        validation_errors = body.get('validation_errors', [])
+        is_valid = body.get('valid', False)
+        errors = body.get('errors', [])
     else:
         # Direct Lambda invocation format
-        validation_errors = result.get('validation_errors', [])
+        is_valid = result.get('valid', False)
+        errors = result.get('errors', [])
     
-    if not validation_errors:
+    if is_valid:
         print("\n✅ Sheet is valid! No errors found.")
     else:
-        print(f"\n❌ Sheet has {len(validation_errors)} validation errors.")
+        print(f"\n❌ Sheet has {len(errors)} validation errors.")
 
 if __name__ == "__main__":
     main()

@@ -158,7 +158,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Prepare the response data
         response_data = {
             'sheet_id': sheet_id,
-            'validation_errors': validation_errors,
+            'errors': validation_errors,
+            'valid': len(validation_errors) == 0,
             'memory_usage': {
                 'initial': initial_memory,
                 'pre_validation': pre_validation_memory,
