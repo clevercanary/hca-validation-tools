@@ -154,7 +154,7 @@ slots:
     examples:
       - value: "GCF_000001405.40"
     notes:
-      - http://www.ensembl.org/info/website/archives/index.html) or NCBI/RefSeq
+      - http://www.ensembl.org/info/website/archives/index.html or NCBI/RefSeq
     comments:
       - Possible source of batch effect and confounder for some biological analysis
   comments:

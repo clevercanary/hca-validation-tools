@@ -172,3 +172,10 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# Lambda deployment packages and environments
+*.zip
+deployment/layers/
+deployment/test-lambda-env/
+deployment/docker-build/output/
+response.json
