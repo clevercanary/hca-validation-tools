@@ -46,6 +46,8 @@ EOF
 # Make the script executable
 chmod +x "$TEST_DIR/run_lambda.sh"
 
+# Ensure the output directory exists
+mkdir -p "$SCRIPT_DIR/output"
 # Copy the test event to the test directory
 cp "$TEST_DIR/test_event.json" "$SCRIPT_DIR/output/test_event.json"
 cp "$TEST_DIR/run_lambda.sh" "$SCRIPT_DIR/output/run_lambda.sh"
