@@ -28,9 +28,11 @@ help:
 	@echo "  generate-data-dictionary - Generate data dictionary JSON from core schema to standard path"
 	@echo "  generate-data-dictionary-file - Generate data dictionary from schema to specified file"
 	@echo "  test-dataset-validation - Run dataset validation tests"
+	@echo "  test-entry-sheet       - Run entry sheet validator tests"
+	@echo "  test-all               - Run all tests"
 	@echo "  build-lambda-container - Build the entry sheet validator Lambda container image"
 	@echo "  deploy-lambda-container - Deploy the Lambda container image to AWS"
-	@echo "  test-lambda-container  - Test the Lambda container locally"
+	@echo "  test-lambda-container  - Test the Lambda container locally (uses .env for credentials)"
 	@echo "  test-lambda            - Alias for test-lambda-container"
 	@echo "  invoke-lambda          - Invoke the deployed Lambda function"
 	@echo "  help                   - Show this help message"
@@ -103,6 +105,18 @@ test-validator:
 	@echo "Running validator tests..."
 	@$(POETRY) pytest tests/test_validator.py -v -W ignore::DeprecationWarning
 
+# Run entry sheet validator tests
+.PHONY: test-entry-sheet
+test-entry-sheet:
+	@echo "Running entry sheet validator tests..."
+	@$(POETRY) pytest tests/test_entry_sheet_validator.py -v -W ignore::DeprecationWarning
+
+# Run all tests
+.PHONY: test-all
+test-all:
+	@echo "Running all tests..."
+	@$(POETRY) pytest tests/ -v -W ignore::DeprecationWarning
+
 # Validate Google Sheet
 .PHONY: validate-sheet
 validate-sheet:
@@ -141,13 +155,14 @@ generate-data-dictionary-file:
 .PHONY: build-lambda-container
 build-lambda-container:
 	@echo "Building Lambda container image..."
-	@./deployment/docker-build/build_lambda_container.sh
+	@./deployment/docker-build/build_lambda_container.sh $(PROFILE)
 	@echo "✓ Lambda container image built: hca-entry-sheet-validator"
 
 .PHONY: test-lambda-container
 test-lambda-container:
-	@echo "Testing Lambda container locally..."
-	@./deployment/docker-build/test_lambda_container_locally.sh
+	@echo "Running pytest smoke test against Lambda container..."
+	@$(POETRY) pytest tests/test_lambda_container_smoke.py -v
+
 
 .PHONY: deploy-lambda-container
 deploy-lambda-container:
