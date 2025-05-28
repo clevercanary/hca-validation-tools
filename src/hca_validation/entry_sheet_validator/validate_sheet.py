@@ -208,7 +208,6 @@ def read_sheet_with_service_account(sheet_id, sheet_index=0):
             
     except json.JSONDecodeError as json_error:
         logger.error(f"Invalid JSON format in service account credentials: {json_error}")
-        logger.error(f"First 100 chars of credentials: {service_account_json[:100]}...")
         return None, None, 'auth_invalid'
     except Exception as e:
         logger.error(f"Unexpected error accessing Google Sheet with service account: {e}")
