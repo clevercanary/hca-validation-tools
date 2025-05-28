@@ -23,7 +23,6 @@ RUN yum install -y unzip file
 RUN echo "EXT_URL=$EXT_URL"
 RUN curl -s "$EXT_URL" -o /tmp/ps-ext.zip && \
     file /tmp/ps-ext.zip && \
-    head -20 /tmp/ps-ext.zip && \
     unzip -q /tmp/ps-ext.zip -d /opt && \
     chmod +x /opt/extensions/*
 

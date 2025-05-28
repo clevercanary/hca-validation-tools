@@ -199,10 +199,6 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             }
         }
         
-        # Print the response data for debugging
-        print("RESPONSE DATA:")
-        print(json.dumps(response_data, indent=2))
-        
         # Check if this was called via API Gateway (event has 'httpMethod')
         if 'httpMethod' in event or 'requestContext' in event:
             return {

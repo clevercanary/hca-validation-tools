@@ -104,7 +104,6 @@ def read_sheet_with_service_account(sheet_id, sheet_index=0):
     if not service_account_json:
         error_msg = "No service account credentials found in GOOGLE_SERVICE_ACCOUNT environment variable or Secrets Extension"
         logger.error(error_msg)
-        print(error_msg)
         return None, None, 'auth_missing'
     
     # Log the length and first few characters of the credentials to verify they're present
@@ -113,16 +112,14 @@ def read_sheet_with_service_account(sheet_id, sheet_index=0):
     # Check if the credentials contain unresolved secret references
     # Check for CloudFormation resolve syntax
     if service_account_json.startswith('{{resolve:'):
-        error_msg = f"Service account credentials were not resolved from Secrets Manager (CloudFormation syntax): {service_account_json[:50]}..."
-        logger.error(error_msg)
-        print(f"Error: Service account credentials were not resolved from Secrets Manager. Check that the Lambda function has the correct permissions to access the secret and that the secret exists.")
+        logger.error(f"Service account credentials were not resolved from Secrets Manager (CloudFormation syntax): {service_account_json[:50]}...")
+        logger.error("Check that the Lambda function has the correct permissions to access the secret and that the secret exists.")
         return None, None, 'auth_unresolved'
     
     # Check for AWS shorthand syntax
     if service_account_json.startswith('aws:secretsmanager:'):
-        error_msg = f"Service account credentials were not resolved from Secrets Manager (AWS shorthand syntax): {service_account_json[:50]}..."
-        logger.error(error_msg)
-        print(f"Error: Service account credentials were not resolved from Secrets Manager. Check that the Lambda function has the correct permissions to access the secret and that the secret exists.")
+        logger.error(f"Service account credentials were not resolved from Secrets Manager (AWS shorthand syntax): {service_account_json[:50]}...")
+        logger.error("Check that the Lambda function has the correct permissions to access the secret and that the secret exists.")
         return None, None, 'auth_unresolved'
     
     try:
@@ -141,7 +138,7 @@ def read_sheet_with_service_account(sheet_id, sheet_index=0):
         if missing_fields:
             error_msg = f"Service account credentials missing required fields: {missing_fields}"
             logger.error(error_msg)
-            print(f"Error: {error_msg}. Check that the service account JSON has the correct format and contains all required fields.")
+            logger.error(f"Error: {error_msg}. Check that the service account JSON has the correct format and contains all required fields.")
             return None, None, 'auth_invalid_format'
         
         logger.info(f"Creating credentials object for service account: {credentials_dict.get('client_email')}")
@@ -154,9 +151,7 @@ def read_sheet_with_service_account(sheet_id, sheet_index=0):
             )
             logger.info("Successfully created credentials object")
         except Exception as cred_error:
-            error_msg = f"Error creating credentials object: {cred_error}"
-            logger.error(error_msg)
-            print(f"Error creating Google credentials object: {cred_error}")
+            logger.error(f"Error creating Google credentials object: {cred_error}")
             return None, None, 'auth_error'
         
         # Authenticate with gspread
@@ -165,9 +160,7 @@ def read_sheet_with_service_account(sheet_id, sheet_index=0):
             gc = gspread.authorize(credentials)
             logger.info("Successfully authorized with gspread")
         except Exception as auth_error:
-            error_msg = f"Error authorizing with gspread: {auth_error}"
-            logger.error(error_msg)
-            print(f"Error authorizing with Google Sheets API: {auth_error}")
+            logger.error(f"Error authorizing with Google Sheets API: {auth_error}")
             return None, None, 'auth_error'
         
         try:
@@ -194,46 +187,33 @@ def read_sheet_with_service_account(sheet_id, sheet_index=0):
                 return df, sheet_title, None
             else:
                 logger.warning(f"Sheet {sheet_id} (index {sheet_index}) appears to be empty")
-                print(f"Warning: Sheet {sheet_id} (index {sheet_index}) appears to be empty")
                 return pd.DataFrame(), sheet_title, None
                 
         except gspread.exceptions.SpreadsheetNotFound:
-            error_msg = f"Sheet {sheet_id} not found or not accessible"
-            logger.error(error_msg)
-            print(f"Error: Sheet {sheet_id} not found. Check if the sheet ID is correct.")
-            print(f"Error accessing Google Sheet with service account: Sheet {sheet_id} not found or not accessible with provided credentials")
+            logger.error(f"Sheet {sheet_id} not found. Check if the sheet ID is correct.")
+            logger.error(f"Error accessing Google Sheet with service account: Sheet {sheet_id} not found or not accessible with provided credentials")
             return None, None, 'sheet_not_found'
         except gspread.exceptions.WorksheetNotFound:
-            error_msg = f"Worksheet index {sheet_index} not found in sheet {sheet_id}"
-            logger.error(error_msg)
-            print(f"Error: Worksheet index {sheet_index} not found in sheet {sheet_id}")
-            print(f"Error accessing Google Sheet with service account: Worksheet index {sheet_index} not found in sheet {sheet_id}")
+            logger.error(f"Worksheet index {sheet_index} not found in sheet {sheet_id}")
+            logger.error(f"Error accessing Google Sheet with service account: Worksheet index {sheet_index} not found in sheet {sheet_id}")
             return None, None, 'worksheet_not_found'
         except gspread.exceptions.APIError as e:
             if "PERMISSION_DENIED" in str(e):
-                error_msg = f"Permission denied accessing sheet {sheet_id}: {e}"
-                logger.error(error_msg)
-                print(f"Error: Permission denied accessing sheet {sheet_id}. Make sure the service account has access.")
-                print(f"Error accessing Google Sheet with service account: Permission denied accessing sheet {sheet_id}")
+                logger.error(f"Permission denied accessing sheet {sheet_id}: {e}")
+                logger.error(f"Make sure the service account has access to the sheet.")
                 return None, None, 'permission_denied'
             else:
-                error_msg = f"Google Sheets API error: {e}"
-                logger.error(error_msg)
-                print(f"Error accessing Google Sheet API: {e}")
+                logger.error(f"Google Sheets API error: {e}")
                 return None, None, 'api_error'
             
     except json.JSONDecodeError as json_error:
-        error_msg = f"Invalid JSON format in service account credentials: {json_error}"
-        logger.error(error_msg)
+        logger.error(f"Invalid JSON format in service account credentials: {json_error}")
         logger.error(f"First 100 chars of credentials: {service_account_json[:100]}...")
-        print("Error: Invalid service account credentials format (not valid JSON)")
         return None, None, 'auth_invalid'
     except Exception as e:
-        error_msg = f"Unexpected error accessing Google Sheet with service account: {e}"
-        logger.error(error_msg)
+        logger.error(f"Unexpected error accessing Google Sheet with service account: {e}")
         logger.error(f"Exception type: {type(e).__name__}")
         logger.error(f"Traceback: {traceback.format_exc()}")
-        print(f"Error accessing Google Sheet with service account: {e}")
         return None, None, 'api_error'
 
 def validate_google_sheet(sheet_id="1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY", sheet_index=0, error_handler=None):
@@ -258,7 +238,7 @@ def validate_google_sheet(sheet_id="1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY
     logger = logging.getLogger()
     
     logger.info(f"Reading sheet: {sheet_id}")
-    print(f"Reading sheet: {sheet_id}")
+    logger.info(f"Reading sheet: {sheet_id}")
     
     # Read the sheet with service account credentials
     df, sheet_title, error_code = read_sheet_with_service_account(sheet_id, sheet_index)
@@ -269,7 +249,7 @@ def validate_google_sheet(sheet_id="1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY
             error_msg += f" (Error: {error_code})"
             logger.error(f"Sheet access failed with error code: {error_code}")
         
-        print(f"Error: {error_msg}")
+        logger.error(f"{error_msg}")
         if error_handler:
             error_handler(0, error_msg)
         return False, sheet_title, error_code
@@ -279,18 +259,18 @@ def validate_google_sheet(sheet_id="1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY
         df = df.iloc[:, 1:]
     
     # Print information about the sheet structure
-    print(f"Sheet has {len(df)} rows total")
+    logger.info(f"Sheet has {len(df)} rows total")
     
     # Find rows with actual data to validate
     rows_to_validate = []
     row_indices = []
     
     # Debug: Print the first few rows to understand the structure
-    print("\nSheet structure:")
+    logger.debug("Sheet structure:")
     for i in range(min(10, len(df))):
         if i < len(df):
             first_col = df.iloc[i, 0] if not pd.isna(df.iloc[i, 0]) else "<empty>"
-            print(f"Row {i+1} (index {i}): {first_col}")
+            logger.debug(f"Row {i+1} (index {i}): {first_col}")
     
     # Process rows 4, 5, and then from row 6 until the first empty row
     # We'll include rows 4 and 5 as you mentioned they also contain data
@@ -302,7 +282,7 @@ def validate_google_sheet(sheet_id="1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY
             row = df.iloc[idx]
             # Skip completely empty rows
             if not row.isna().all() and not all(str(val).strip() == '' for val in row if not pd.isna(val)):
-                print(f"Adding row {idx + 1} for validation")
+                logger.debug(f"Adding row {idx + 1} for validation")
                 rows_to_validate.append(row)
                 row_indices.append(idx)
     
@@ -310,7 +290,7 @@ def validate_google_sheet(sheet_id="1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY
     start_row_index = 5  # Row 6 (1-based) is index 5 (0-based)
     current_row_index = start_row_index
     
-    print(f"\nProcessing data rows starting from row 6 (index {start_row_index})...")
+    logger.info(f"Processing data rows starting from row 6 (index {start_row_index})...")
     
     while current_row_index < len(df):
         # Get the current row
@@ -321,11 +301,11 @@ def validate_google_sheet(sheet_id="1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY
         
         if is_empty:
             # Stop at the first empty row
-            print(f"Found empty row at row {current_row_index + 1}, stopping")
+            logger.debug(f"Found empty row at row {current_row_index + 1}, stopping")
             break
         
         # Add non-empty row for validation
-        print(f"Adding row {current_row_index + 1} for validation")
+        logger.debug(f"Adding row {current_row_index + 1} for validation")
         rows_to_validate.append(row)
         row_indices.append(current_row_index)
         
@@ -333,10 +313,10 @@ def validate_google_sheet(sheet_id="1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY
         current_row_index += 1
     
     if not rows_to_validate:
-        print("No data found to validate starting from row 6.")
+        logger.warning("No data found to validate starting from row 6.")
         return False, sheet_title, 'no_data'
     
-    print(f"Found {len(rows_to_validate)} rows to validate.")
+    logger.info(f"Found {len(rows_to_validate)} rows to validate.")
     
     # Validate each row
     all_valid = True
@@ -356,30 +336,30 @@ def validate_google_sheet(sheet_id="1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY
                 try:
                     row_dict[key] = json.loads(value)  # Safely parse JSON-formatted strings
                 except json.JSONDecodeError as e:
-                    print(f"Warning: Could not parse list value '{value}' for field '{key}': {e}")
+                    logger.warning(f"Could not parse list value '{value}' for field '{key}': {e}")
                     row_dict[key] = value
             else:
                 row_dict[key] = value
         
         # Validate the data
-        print(f"\nValidating row {row_index}...")
+        logger.info(f"Validating row {row_index}...")
         try:
             validation_result = validate(row_dict, schema_type="dataset")
             
             # Report results
             if validation_result.results:
                 all_valid = False
-                print(f"Row {row_index} has validation errors:")
+                logger.warning(f"Row {row_index} has validation errors:")
                 for error in validation_result.results:
-                    print(f"  - {error.message}")
+                    logger.warning(f"  - {error.message}")
                     # Call error handler if provided
                     if error_handler:
                         error_handler(row_index, error)
             else:
-                print(f"Row {row_index} is valid")
+                logger.info(f"Row {row_index} is valid")
         except Exception as e:
             all_valid = False
-            print(f"Error validating row {row_index}: {e}")
+            logger.error(f"Error validating row {row_index}: {e}")
             # Call error handler for exceptions if provided
             if error_handler:
                 error = type('ValidationError', (), {'message': str(e), 'field': None, 'value': None})
@@ -387,12 +367,12 @@ def validate_google_sheet(sheet_id="1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY
     
     # Summary
     if all_valid:
-        print(f"\nAll {len(rows_to_validate)} rows are valid!")
+        logger.info(f"All {len(rows_to_validate)} rows are valid!")
         return True, sheet_title, None
     else:
-        print(f"\nValidation found errors in some of the {len(rows_to_validate)} rows.")
-        print("Please check the schema requirements and update the data accordingly.")
-        print(f"You can view the schema at: {os.path.join(os.path.dirname(__file__), '../../schema/dataset.yaml')}")
+        logger.warning(f"Validation found errors in some of the {len(rows_to_validate)} rows.")
+        logger.warning("Please check the schema requirements and update the data accordingly.")
+        logger.info(f"Schema location: {os.path.join(os.path.dirname(__file__), '../../schema/dataset.yaml')}")
         return False, sheet_title, 'validation_error'
 
 
