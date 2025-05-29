@@ -237,7 +237,6 @@ def validate_google_sheet(sheet_id="1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY
     logger = logging.getLogger()
     
     logger.info(f"Reading sheet: {sheet_id}")
-    logger.info(f"Reading sheet: {sheet_id}")
     
     # Read the sheet with service account credentials
     df, sheet_title, error_code = read_sheet_with_service_account(sheet_id, sheet_index)

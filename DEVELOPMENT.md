@@ -24,10 +24,10 @@ make build-lambda-container
 make test-lambda-container
 
 # Deploy the Lambda container to AWS
-make deploy-lambda
+make deploy-lambda-container
 
 # Run the validation on a Google Sheet
-make validate-sheet SHEET_ID=your-sheet-id
+make validate-sheet-id SHEET_ID=your-sheet-id
 ```
 
 ### Schema Management
