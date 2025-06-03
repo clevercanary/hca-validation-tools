@@ -24,7 +24,7 @@ help:
 	@echo "  validate-verbose - Validate dataset schema with warnings"
 	@echo "  lint-schema      - Run LinkML linter on all schema files"
 	@echo "  lint-schema-errors - Run LinkML linter (critical errors only)"
-	@echo "  generate-pydantic-models - Generate Pydantic models from all LinkML schemas"
+	@echo "  gen-schema - Generate derived models from LinkML schema"
 	@echo "  generate-data-dictionary - Generate data dictionary JSON from core schema to standard path"
 	@echo "  generate-data-dictionary-file - Generate data dictionary from schema to specified file"
 	@echo "  test-dataset-validation - Run dataset validation tests"
@@ -98,6 +98,13 @@ lint-schema-errors:
 	@echo "Linting schema files (errors only)..."
 	@$(POETRY) linkml lint $(SCHEMA_DIR) --validate --ignore-warnings || (echo "❌ Schema has critical errors" && exit 1)
 	@echo "✓ No critical errors found in schema files"
+
+# Generate derived models from schema
+.PHONY: gen-schema
+gen-schema:
+	@echo "Generating models..."
+	@$(POETRY) gen-pydantic src/hca_validation/schema/core.yaml --meta AUTO > src/hca_validation/schema/generated/core.py
+	@echo "Done"
 
 # Run validator tests
 .PHONY: test-validator
