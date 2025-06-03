@@ -27,7 +27,7 @@ class ValidationErrorInfo:
 
 @dataclass
 class SheetErrorInfo:
-    entity_type: str
+    entity_type: Optional[str]
     worksheet_id: Optional[int]
     message: str
     row: Optional[int] = None
