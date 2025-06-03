@@ -7,34 +7,9 @@ import time
 import os
 import json
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, List
 from dataclasses import dataclass
-
-@dataclass
-class SheetInfo:
-    """Container for Google Sheet data and metadata."""
-    data: Optional[pd.DataFrame] = None
-    spreadsheet_title: Optional[str] = None
-    worksheet_id: Optional[int] = None
-    error_code: Optional[str] = None
-
-@dataclass
-class ValidationErrorInfo:
-    type: str
-    severity: str
-    instance: Optional[Any] = None
-    instantiates: Optional[str] = None
-
-@dataclass
-class SheetErrorInfo:
-    entity_type: Optional[str]
-    worksheet_id: Optional[int]
-    message: str
-    row: Optional[int] = None
-    column: Optional[str] = None
-    cell: Optional[str] = None
-    primary_key: Optional[str] = None
-    validation: Optional[ValidationErrorInfo] = None
+from pydantic_core import ErrorDetails
 
 # Import dotenv for loading environment variables
 from dotenv import load_dotenv
@@ -42,6 +17,38 @@ from dotenv import load_dotenv
 # Import gspread for Google Sheets API access
 import gspread
 from google.oauth2 import service_account
+
+@dataclass
+class SheetInfo:
+    """Container for Google Sheet data and metadata."""
+    data: Optional[pd.DataFrame] = None
+    spreadsheet_title: Optional[str] = None
+    worksheet_id: Optional[int] = None
+    source_columns: Optional[List[Any]] = None
+    source_rows_start_index: Optional[int] = None
+    error_code: Optional[str] = None
+
+    def get_a1(self, row, column):
+        """
+        Get A1 notation given a 1-based row index and a column name
+        """
+        if self.source_columns is None or self.source_rows_start_index is None:
+            raise ValueError("Missing source data info for sheet")
+        return gspread.utils.rowcol_to_a1(
+            self.source_rows_start_index + row,
+            self.source_columns.index(column) + 1
+        )
+
+@dataclass
+class SheetErrorInfo:
+    entity_type: Optional[str]
+    worksheet_id: Optional[int]
+    message: str
+    row: Optional[int] = None
+    column: Optional[Any] = None
+    cell: Optional[str] = None
+    primary_key: Optional[str] = None
+    input: Optional[Any] = None
 
 # Load environment variables from .env file if it exists
 dotenv_path = Path(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))) / '.env'
@@ -212,8 +219,16 @@ def read_sheet_with_service_account(sheet_id, sheet_index=0) -> SheetInfo:
             # Convert to DataFrame
             if data:
                 logger.info(f"Successfully retrieved data: {len(data)} rows, {len(data[0]) if data[0] else 0} columns")
-                df = pd.DataFrame(data[1:], columns=data[0])  # First row as header
-                return SheetInfo(data=df, spreadsheet_title=sheet_title, worksheet_id=worksheet_id)
+                source_columns = data[0]
+                source_rows_start_index = 1
+                df = pd.DataFrame(data[source_rows_start_index:], columns=source_columns)  # First row as header
+                return SheetInfo(
+                    data=df,
+                    spreadsheet_title=sheet_title,
+                    worksheet_id=worksheet_id,
+                    source_columns=source_columns,
+                    source_rows_start_index=source_rows_start_index
+                )
             else:
                 logger.warning(f"Sheet {sheet_id} (index {sheet_index}) appears to be empty")
                 return SheetInfo()
@@ -383,30 +398,30 @@ def validate_google_sheet(sheet_id="1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY
         # Validate the data
         logger.info(f"Validating row {row_index}...")
         try:
-            validation_result = validate(row_dict, schema_type="dataset")
+            validation_error = validate(row_dict, schema_type="dataset")
             
             # Report results
-            if validation_result.results:
+            if validation_error:
                 all_valid = False
                 logger.warning(f"Row {row_index} has validation errors:")
-                for error in validation_result.results:
-                    logger.warning(f"  - {error.message}")
+                for error in validation_error.errors():
+                    logger.warning(f"  - {error['msg']}")
                     # Call error handler if provided
                     if error_handler:
+                        error_column_name = None if len(error["loc"]) == 0 else error["loc"][0]
+                        try:
+                            error_a1 = sheet_info.get_a1(row_index, error_column_name)
+                        except ValueError:
+                            error_a1 = None
                         error_info = SheetErrorInfo(
                             entity_type=entity_type,
                             worksheet_id=sheet_info.worksheet_id,
-                            message=error.message,
+                            message=error["msg"],
                             row=row_index,
-                            column=None, # TODO is this even possible with the validator api
-                            cell=None, # TODO see above
+                            column=error_column_name,
+                            cell=error_a1,
                             primary_key=row_primary_key,
-                            validation=ValidationErrorInfo(
-                                type=error.type,
-                                severity=error.severity.value,
-                                instance=error.instance,
-                                instantiates=error.instantiates
-                            )
+                            input=error["input"]
                         )
                         error_handler(error_info)
             else:
