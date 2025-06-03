@@ -24,13 +24,12 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 
-def extract_validation_errors(sheet_id: str, sheet_index: int = 0) -> Tuple[List[SheetErrorInfo], str, str, int]:
+def extract_validation_errors(sheet_id: str) -> Tuple[List[SheetErrorInfo], str, str, int]:
     """
     Extract validation errors from a Google Sheet.
     
     Args:
         sheet_id: The ID of the Google Sheet
-        sheet_index: The index of the sheet (0-based)
         
     Returns:
         Tuple containing (list of validation error objects, sheet title, error_code, http_status_code)
@@ -55,7 +54,7 @@ def extract_validation_errors(sheet_id: str, sheet_index: int = 0) -> Tuple[List
         
         # Call the existing validate_google_sheet function with our error handler
         # The function now returns a tuple of (validation_success, sheet_title, error_code)
-        validation_result, sheet_title, error_code = validate_google_sheet(sheet_id, sheet_index, error_handler=validation_handler)
+        validation_result, sheet_title, error_code = validate_google_sheet(sheet_id, error_handler=validation_handler)
         
         # Restore stdout
         sys.stdout = original_stdout
@@ -123,7 +122,6 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     body = event['body']
                     
                 sheet_id = body.get('sheet_id')
-                sheet_index = body.get('sheet_index', 0)
             except Exception as e:
                 logger.error(f"Error parsing request body: {str(e)}")
                 return {
@@ -139,7 +137,6 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         else:
             # Direct Lambda invocation
             sheet_id = event.get('sheet_id')
-            sheet_index = event.get('sheet_index', 0)
         
         if not sheet_id:
             return {
@@ -158,7 +155,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         logger.info(f"Memory usage before validation: {pre_validation_memory}")
         
         # Extract validation errors using the entry sheet validator
-        validation_errors, sheet_title, error_code, http_status_code = extract_validation_errors(sheet_id, sheet_index)
+        validation_errors, sheet_title, error_code, http_status_code = extract_validation_errors(sheet_id)
         
         # Log memory usage after validation
         post_validation_memory = get_memory_usage()

@@ -99,14 +99,12 @@ aws lambda update-function-code \
 The Lambda function accepts the following parameters:
 
 - `sheet_id` (required): The ID of the Google Sheet to validate
-- `sheet_index` (optional, default: 0): The index of the sheet to validate (0-based)
 
 ### Example Event
 
 ```json
 {
-  "sheet_id": "1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY",
-  "sheet_index": 0
+  "sheet_id": "1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY"
 }
 ```
 
@@ -117,7 +115,6 @@ The Lambda function accepts the following parameters:
   "statusCode": 200,
   "body": {
     "sheet_id": "1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY",
-    "sheet_index": 0,
     "valid": false,
     "errors": [
       {

@@ -109,7 +109,8 @@ def read_sheet_with_service_account(sheet_id, sheet_index=0) -> Union[SheetInfo,
         sheet_index (int, optional): The index of the worksheet to read. Defaults to 0.
         
     Returns:
-        SheetInfo: A dataclass containing the sheet data, title, and any error code.
+        info: If successful, SheetInfo containing sheet data, title, etc; otherwise, ReadErrorSheetInfo containing
+        error code and, if available, sheet title and worksheet ID
     """
     import os
     import json
@@ -264,14 +265,14 @@ def read_sheet_with_service_account(sheet_id, sheet_index=0) -> Union[SheetInfo,
         logger.error(f"Traceback: {traceback.format_exc()}")
         return ReadErrorSheetInfo(error_code='api_error')
 
-def validate_google_sheet(sheet_id="1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY", sheet_index=0, error_handler=None):
+def validate_google_sheet(sheet_id="1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY", entity_type="dataset", error_handler=None):
     """
     Validate data from a Google Sheet starting at row 6 until the first empty row.
     Uses service account credentials from environment variables to access the sheet.
     
     Args:
         sheet_id: The ID of the Google Sheet
-        sheet_index: The index of the sheet (0-based)
+        entity_type: The type of entity to validate, which determines behavior such which worksheet is read and which schema is used
         error_handler: Optional callback function that takes a SheetErrorInfo object
                       to handle validation errors externally
                       
@@ -285,9 +286,16 @@ def validate_google_sheet(sheet_id="1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY
     import logging
     logger = logging.getLogger()
 
-    # TODO derive entity type properly
-    entity_type = "Dataset"
-    
+    # Mapping from entity type to tuple of sheet index and primary key field
+    sheet_structure_by_entity_type = {
+        "dataset": (0, "dataset_id")
+    }
+
+    if entity_type in sheet_structure_by_entity_type:
+        sheet_index, primary_key_field = sheet_structure_by_entity_type[entity_type]
+    else:
+        raise ValueError(f"Invalid entity type: '{entity_type}'")
+
     logger.info(f"Reading sheet: {sheet_id}")
     
     # Read the sheet with service account credentials
@@ -396,13 +404,12 @@ def validate_google_sheet(sheet_id="1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY
             else:
                 row_dict[key] = value
         
-        # TODO generalize
-        row_primary_key = f"dataset_id:{row_dict['dataset_id']}" if "dataset_id" in row_dict else None
+        row_primary_key = f"{primary_key_field}:{row_dict[primary_key_field]}" if primary_key_field in row_dict else None
 
         # Validate the data
         logger.info(f"Validating row {row_index}...")
         try:
-            validation_error = validate(row_dict, schema_type="dataset")
+            validation_error = validate(row_dict, schema_type=entity_type)
             
             # Report results
             if validation_error:

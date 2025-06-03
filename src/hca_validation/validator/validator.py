@@ -9,7 +9,7 @@ from pydantic_core import ValidationError
 from hca_validation.schema.generated.core import Dataset, Donor, Sample, Cell
 
 
-def validate(data: Dict[str, Any], schema_type: str = "dataset") -> Optional[ValidationError]:
+def validate(data: Dict[str, Any], schema_type: str) -> Optional[ValidationError]:
     """
     Validate HCA data against a schema using Pydantic models.
     
