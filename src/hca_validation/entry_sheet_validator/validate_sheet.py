@@ -45,6 +45,7 @@ class ReadErrorSheetInfo:
 
 @dataclass
 class SheetErrorInfo:
+    """Container for info regarding an error that occurred while reading and validating a Google Sheet."""
     entity_type: Optional[str]
     worksheet_id: Optional[int]
     message: str
