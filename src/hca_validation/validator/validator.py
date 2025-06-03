@@ -4,7 +4,7 @@ HCA Validation Tools - Main Validator Module
 This module provides the main validation functionality for HCA data using Pydantic models.
 """
 from typing import Dict, Any, Optional
-from pydantic_core import ValidationError
+from pydantic import ValidationError
 
 from hca_validation.schema.generated.core import Dataset, Donor, Sample, Cell
 
