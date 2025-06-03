@@ -36,6 +36,9 @@ make validate-sheet-id SHEET_ID=your-sheet-id
 # Validate all schemas
 make validate-schema
 
+# Generate derived schema models (e.g. Pydantic classes)
+make gen-schema
+
 # Generate data dictionary
 make generate-data-dictionary
 ```
