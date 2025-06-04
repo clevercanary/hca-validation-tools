@@ -19,3 +19,17 @@ classes:
   Donor:
     description: >-
       An individual organism from which biological samples have been derived
+    slots:
+      - donor_id
+      - dataset_id
+
+slots:
+  donor_id:
+    title: Donor ID
+    range: string
+    required: true
+  dataset_id:
+    title: Dataset ID
+    range: string
+    required: true
+

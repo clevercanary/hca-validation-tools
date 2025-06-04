@@ -247,7 +247,8 @@ class Donor(ConfiguredBaseModel):
     """
     linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'https://github.com/clevercanary/hca-validation-tools/schema/donor'})
 
-    pass
+    donor_id: str = Field(default=..., title="Donor ID", json_schema_extra = { "linkml_meta": {'alias': 'donor_id', 'domain_of': ['Donor', 'Sample']} })
+    dataset_id: str = Field(default=..., title="Dataset ID", json_schema_extra = { "linkml_meta": {'alias': 'dataset_id', 'domain_of': ['Donor', 'Sample']} })
 
 
 class Sample(ConfiguredBaseModel):
@@ -256,7 +257,9 @@ class Sample(ConfiguredBaseModel):
     """
     linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'https://github.com/clevercanary/hca-validation-tools/schema/sample'})
 
-    pass
+    sample_id: str = Field(default=..., title="Sample ID", json_schema_extra = { "linkml_meta": {'alias': 'sample_id', 'domain_of': ['Sample']} })
+    donor_id: str = Field(default=..., title="Donor ID", json_schema_extra = { "linkml_meta": {'alias': 'donor_id', 'domain_of': ['Donor', 'Sample']} })
+    dataset_id: str = Field(default=..., title="Dataset ID", json_schema_extra = { "linkml_meta": {'alias': 'dataset_id', 'domain_of': ['Donor', 'Sample']} })
 
 
 class Cell(ConfiguredBaseModel):
