@@ -13,23 +13,23 @@ import traceback
 import os
 import psutil
 import logging
+from dataclasses import asdict
 from typing import Dict, Any, List, Optional, Union, Tuple
 
 # Import the entry sheet validator
-from hca_validation.entry_sheet_validator.validate_sheet import validate_google_sheet
+from hca_validation.entry_sheet_validator.validate_sheet import SheetErrorInfo, validate_google_sheet
 
 # Configure logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 
-def extract_validation_errors(sheet_id: str, sheet_index: int = 0) -> Tuple[List[Dict[str, Any]], str, str, int]:
+def extract_validation_errors(sheet_id: str) -> Tuple[List[SheetErrorInfo], str, str, int]:
     """
     Extract validation errors from a Google Sheet.
     
     Args:
         sheet_id: The ID of the Google Sheet
-        sheet_index: The index of the sheet (0-based)
         
     Returns:
         Tuple containing (list of validation error objects, sheet title, error_code, http_status_code)
@@ -37,27 +37,11 @@ def extract_validation_errors(sheet_id: str, sheet_index: int = 0) -> Tuple[List
         and http_status_code is the appropriate HTTP status code (200, 400, 401, 404, etc.)
     """
     # Create a list to store validation errors
-    validation_errors = []
+    validation_errors: List[SheetErrorInfo] = []
     
     # Use a custom validation handler to capture errors
-    def validation_handler(row_index, error):
-        # Handle both object-based errors and string errors
-        if hasattr(error, 'message'):
-            # Object-based error
-            validation_errors.append({
-                "row": row_index,
-                "message": error.message,
-                "field": error.field if hasattr(error, 'field') else None,
-                "value": error.value if hasattr(error, 'value') else None
-            })
-        else:
-            # String error
-            validation_errors.append({
-                "row": row_index,
-                "message": str(error),
-                "field": None,
-                "value": None
-            })
+    def validation_handler(error_info: SheetErrorInfo):
+        validation_errors.append(error_info)
     
     # Run the validation with our custom handler
     sheet_title = "Unknown"
@@ -70,7 +54,7 @@ def extract_validation_errors(sheet_id: str, sheet_index: int = 0) -> Tuple[List
         
         # Call the existing validate_google_sheet function with our error handler
         # The function now returns a tuple of (validation_success, sheet_title, error_code)
-        validation_result, sheet_title, error_code = validate_google_sheet(sheet_id, sheet_index, error_handler=validation_handler)
+        validation_result, sheet_title, error_code = validate_google_sheet(sheet_id, error_handler=validation_handler)
         
         # Restore stdout
         sys.stdout = original_stdout
@@ -89,12 +73,7 @@ def extract_validation_errors(sheet_id: str, sheet_index: int = 0) -> Tuple[List
     except Exception as e:
         # If there's an error in the validation process itself
         error_msg = f"Error in validation process: {str(e)}"
-        validation_errors.append({
-            "row": 0,
-            "message": error_msg,
-            "field": None,
-            "value": None
-        })
+        validation_errors.append(SheetErrorInfo(entity_type=None, worksheet_id=None, message=error_msg))
         return validation_errors, "Unknown", "internal_error", 500
     
     return validation_errors, sheet_title, error_code, http_status_code
@@ -143,7 +122,6 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     body = event['body']
                     
                 sheet_id = body.get('sheet_id')
-                sheet_index = body.get('sheet_index', 0)
             except Exception as e:
                 logger.error(f"Error parsing request body: {str(e)}")
                 return {
@@ -159,7 +137,6 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         else:
             # Direct Lambda invocation
             sheet_id = event.get('sheet_id')
-            sheet_index = event.get('sheet_index', 0)
         
         if not sheet_id:
             return {
@@ -178,7 +155,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         logger.info(f"Memory usage before validation: {pre_validation_memory}")
         
         # Extract validation errors using the entry sheet validator
-        validation_errors, sheet_title, error_code, http_status_code = extract_validation_errors(sheet_id, sheet_index)
+        validation_errors, sheet_title, error_code, http_status_code = extract_validation_errors(sheet_id)
         
         # Log memory usage after validation
         post_validation_memory = get_memory_usage()
@@ -189,7 +166,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         response_data = {
             'sheet_id': sheet_id,
             'sheet_title': sheet_title,
-            'errors': validation_errors,
+            'errors': [asdict(e) for e in validation_errors],
             'valid': len(validation_errors) == 0,
             'error_code': error_code,
             'memory_usage': {

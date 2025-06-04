@@ -99,14 +99,12 @@ aws lambda update-function-code \
 The Lambda function accepts the following parameters:
 
 - `sheet_id` (required): The ID of the Google Sheet to validate
-- `sheet_index` (optional, default: 0): The index of the sheet to validate (0-based)
 
 ### Example Event
 
 ```json
 {
-  "sheet_id": "1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY",
-  "sheet_index": 0
+  "sheet_id": "1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY"
 }
 ```
 
@@ -117,16 +115,38 @@ The Lambda function accepts the following parameters:
   "statusCode": 200,
   "body": {
     "sheet_id": "1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY",
-    "sheet_index": 0,
-    "valid": false,
+    "sheet_title": "Test Copy of AgaceHelmsley_HCA_tier 1_metadata",
     "errors": [
       {
-        "row": 4,
-        "message": "Validation error: Missing required field 'title'",
-        "field": "title",
-        "value": null
+        "entity_type": "dataset",
+        "worksheet_id": 1895379728,
+        "message": "Input should be a valid list",
+        "row": 7,
+        "column": "batch_condition",
+        "cell": "F8",
+        "primary_key": "dataset_id:AgaceHelmsley3",
+        "input": "donor_id"
       }
-    ]
+    ],
+    "valid": false,
+    "error_code": "validation_error",
+    "memory_usage": {
+      "initial": {
+        "memory_used_mb": 80.5,
+        "memory_limit_mb": 0,
+        "memory_utilization_percent": null
+      },
+      "pre_validation": {
+        "memory_used_mb": 80.53,
+        "memory_limit_mb": 0,
+        "memory_utilization_percent": null
+      },
+      "post_validation": {
+        "memory_used_mb": 87.62,
+        "memory_limit_mb": 0,
+        "memory_utilization_percent": null
+      }
+    }
   }
 }
 ```

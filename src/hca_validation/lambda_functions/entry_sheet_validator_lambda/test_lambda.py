@@ -60,11 +60,10 @@ def main():
     
     # Create a test event
     test_event = {
-        'sheet_id': args.sheet_id,
-        'sheet_index': args.sheet_index
+        'sheet_id': args.sheet_id
     }
     
-    print(f"Testing Lambda function with sheet ID: {args.sheet_id}, index: {args.sheet_index}")
+    print(f"Testing Lambda function with sheet ID: {args.sheet_id}")
     
     # Call the Lambda function
     result = handler(test_event, None)

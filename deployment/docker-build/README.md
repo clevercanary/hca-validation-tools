@@ -110,7 +110,6 @@ This target:
 ```json
 {
   "sheet_id": "YOUR_GOOGLE_SHEET_ID",
-  "sheet_index": 0
 }
 ```
 

@@ -1,71 +1,46 @@
 """
 HCA Validation Tools - Main Validator Module
 
-This module provides the main validation functionality for HCA data.
+This module provides the main validation functionality for HCA data using Pydantic models.
 """
-from typing import Dict, Any, Optional, Union, TextIO, BinaryIO, IO
-import os
+from typing import Dict, Any, Optional
+from pydantic import ValidationError
 
-from linkml.validator import Validator
-from linkml.validator.plugins import PydanticValidationPlugin
-
-
-# Module-level cache for validators
-_validators = {}
+from hca_validation.schema.generated.core import Dataset, Donor, Sample, Cell
 
 
-def _create_validator(schema_type: str):
+def validate(data: Dict[str, Any], schema_type: str) -> Optional[ValidationError]:
     """
-    Create a validator for the specified schema type.
-    
-    Args:
-        schema_type: Type of schema to validate against ('dataset', 'donor', 'sample', 'cell')
-        
-    Returns:
-        A LinkML validator configured with the appropriate Pydantic plugin
-    """
-    # Validate schema type
-    supported_types = ['dataset', 'donor', 'sample', 'cell']
-    if schema_type not in supported_types:
-        raise ValueError(f"Unsupported schema type: {schema_type}. "
-                         f"Supported types are: {', '.join(supported_types)}")
-    
-    # Get the schema path
-    module_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    schema_path = os.path.join(module_dir, 'schema', f"{schema_type}.yaml")
-    
-    # Create and return the validator
-    return Validator(
-        schema=schema_path,
-        validation_plugins=[PydanticValidationPlugin(closed=False)]
-    )
-
-
-def validate(data: Dict[str, Any], schema_type: str = "dataset") -> Any:
-    """
-    Validate HCA data against a schema.
+    Validate HCA data against a schema using Pydantic models.
     
     Args:
         data: The data to validate as a dictionary
         schema_type: Type of schema to validate against ('dataset', 'donor', 'sample', 'cell')
         
     Returns:
-        The validation report from LinkML
+        Returns a Pydantic ValidationError if validation fails, or None if validation succeeds
+        
+    Raises:
+        ValueError: If an unsupported schema type is provided
     """
-    # Get or create validator
-    if schema_type not in _validators:
-        _validators[schema_type] = _create_validator(schema_type)
+    # Map schema types to their corresponding Pydantic models
+    schema_models = {
+        'dataset': Dataset,
+        'donor': Donor,
+        'sample': Sample,
+        'cell': Cell
+    }
     
-    # Use validator
-    validator = _validators[schema_type]
-    return validator.validate(data, target_class=schema_type.capitalize())
-
-
-def clear_cache():
-    """
-    Clear the validator cache.
+    # Validate schema type
+    if schema_type not in schema_models:
+        raise ValueError(f"Unsupported schema type: {schema_type}. "
+                       f"Supported types are: {', '.join(schema_models.keys())}")
     
-    This can be useful in testing or when you want to force recreation of validators.
-    """
-    global _validators
-    _validators = {}
+    try:
+        # Validate using the appropriate Pydantic model
+        model = schema_models[schema_type]
+        model.model_validate(data)
+        return None
+    except ValidationError as e:
+        # Return validation error
+        return e
