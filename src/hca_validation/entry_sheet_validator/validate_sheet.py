@@ -340,7 +340,8 @@ def validate_google_sheet(sheet_id="1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY
             error_handler(error_info)
         return False, sheet_read_result.spreadsheet_title, sheet_read_result.error_code
     
-    all_valid = True
+    # Tuples of rows list and row indices list
+    rows_info_per_entity_type = []
 
     for entity_type, sheet_info in zip(entity_types, sheet_read_result):
         df = sheet_info.data
@@ -350,7 +351,7 @@ def validate_google_sheet(sheet_id="1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY
             df = df.iloc[:, 1:]
         
         # Print information about the sheet structure
-        logger.info(f"Sheet has {len(df)} rows total")
+        logger.info(f"Sheet has {len(df)} {entity_type} rows total")
         
         # Find rows with actual data to validate
         rows_to_validate = []
@@ -367,7 +368,7 @@ def validate_google_sheet(sheet_id="1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY
         start_row_index = 4  # Row 6 (1-based including header) is index 5 (0-based excluding header)
         current_row_index = start_row_index
         
-        logger.info(f"Processing data rows starting from row 6 (index {start_row_index})...")
+        logger.info(f"Processing {entity_type} data rows starting from row 6 (index {start_row_index})...")
         
         while current_row_index < len(df):
             # Get the current row
@@ -393,8 +394,13 @@ def validate_google_sheet(sheet_id="1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY
             logger.warning(f"No data found to validate starting from {entity_type} row 6.")
             return False, sheet_info.spreadsheet_title, 'no_data'
         
-        logger.info(f"Found {len(rows_to_validate)} rows to validate.")
-        
+        logger.info(f"Found {len(rows_to_validate)} {entity_type} rows to validate.")
+
+        rows_info_per_entity_type.append((rows_to_validate, row_indices))
+    
+    all_valid = True
+
+    for entity_type, sheet_info, (rows_to_validate, row_indices) in zip(entity_types, sheet_read_result, rows_info_per_entity_type):
         # Validate each row
         all_valid_in_worksheet = True
         for i, row in enumerate(rows_to_validate):
