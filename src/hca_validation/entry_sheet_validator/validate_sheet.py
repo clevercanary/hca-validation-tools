@@ -281,7 +281,7 @@ def read_sheet_with_service_account(sheet_id, sheet_indices=[0]) -> Union[List[S
         logger.error(f"Traceback: {traceback.format_exc()}")
         return ReadErrorSheetInfo(error_code='api_error')
 
-def validate_google_sheet(sheet_id="1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY", entity_types=["dataset"], error_handler=None):
+def validate_google_sheet(sheet_id="1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY", entity_types=["dataset", "donor", "sample"], error_handler=None):
     """
     Validate data from a Google Sheet starting at row 6 until the first empty row.
     Uses service account credentials from environment variables to access the sheet.
@@ -306,6 +306,14 @@ def validate_google_sheet(sheet_id="1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY
         "dataset": {
             "sheet_index": 0,
             "primary_key_field": "dataset_id"
+        },
+        "donor": {
+            "sheet_index": 1,
+            "primary_key_field": "donor_id"
+        },
+        "sample": {
+            "sheet_index": 2,
+            "primary_key_field": "sample_id"
         }
     }
 
@@ -337,8 +345,8 @@ def validate_google_sheet(sheet_id="1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY
     for entity_type, sheet_info in zip(entity_types, sheet_read_result):
         df = sheet_info.data
 
-        # Skip the first column as it has no slot name
-        if len(df.columns) > 1:
+        # Skip the first column if it has no slot name
+        if len(df.columns) > 1 and df.columns[0].strip() == "":
             df = df.iloc[:, 1:]
         
         # Print information about the sheet structure

@@ -244,7 +244,7 @@ class TestValidateGoogleSheet:
         result, title, error_code = validate_google_sheet(PUBLIC_SHEET_ID, error_handler=mock_error_handler)
 
         # Verify service account method was used
-        mock_read_service_account.assert_called_once_with(PUBLIC_SHEET_ID, [0])
+        mock_read_service_account.assert_called_once_with(PUBLIC_SHEET_ID, [0, 1, 2])
         
         # Verify title is returned
         assert title == "Test Sheet Title"
@@ -267,7 +267,7 @@ class TestValidateGoogleSheet:
         result, title, error_code = validate_google_sheet(PUBLIC_SHEET_ID, error_handler=mock_error_handler)
 
         # Verify service account method was used
-        mock_read_service_account.assert_called_once_with(PUBLIC_SHEET_ID, [0])
+        mock_read_service_account.assert_called_once_with(PUBLIC_SHEET_ID, [0, 1, 2])
         
         # Verify that an error was reported via the error handler
         assert len(errors) > 0
