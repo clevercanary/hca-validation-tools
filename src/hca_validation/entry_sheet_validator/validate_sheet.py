@@ -365,7 +365,7 @@ def validate_google_sheet(sheet_id="1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY
                 logger.debug(f"Row {i+1} (index {i}): {first_col}")
         
         # Process from row 6 until the first empty row
-        start_row_index = 4  # Row 6 (1-based including header) is index 5 (0-based excluding header)
+        start_row_index = 4  # Row 6 (1-based including header) is index 4 (0-based excluding header)
         current_row_index = start_row_index
         
         logger.info(f"Processing {entity_type} data rows starting from row 6 (index {start_row_index})...")
