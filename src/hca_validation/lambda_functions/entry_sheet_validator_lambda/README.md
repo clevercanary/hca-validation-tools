@@ -130,6 +130,12 @@ The Lambda function accepts the following parameters:
     ],
     "valid": false,
     "error_code": "validation_error",
+    "summary": {
+      "dataset_count": 3,
+      "donor_count": 11,
+      "sample_count": 44,
+      "error_count": 1
+    },
     "memory_usage": {
       "initial": {
         "memory_used_mb": 80.5,
