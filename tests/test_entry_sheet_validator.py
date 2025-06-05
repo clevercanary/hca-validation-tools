@@ -273,10 +273,11 @@ class TestValidateGoogleSheet:
         assert len(errors) > 0
         assert any("access" in error.message.lower() for error in errors)
         
-        # Verify result, title, and error code
+        # Verify result, title, error code, and summary
         assert validation_result.successful is False
         assert validation_result.spreadsheet_title is None
         assert validation_result.error_code == 'auth_missing'
+        assert validation_result.summary is None
 
 
 # Integration tests that use actual Google Sheets
@@ -349,6 +350,17 @@ class TestIntegration:
         # The actual function returns 'validation_error' if validation errors are found
         # or 'no_data' if no data is found to validate
         assert validation_result.error_code in ['validation_error', 'no_data']
+
+        # Verify that a summary with the expected information was returned
+        assert isinstance(validation_result.summary, dict)
+        assert 'dataset_count' in validation_result.summary
+        assert isinstance(validation_result.summary['dataset_count'], int)
+        assert 'donor_count' in validation_result.summary
+        assert isinstance(validation_result.summary['donor_count'], int)
+        assert 'sample_count' in validation_result.summary
+        assert isinstance(validation_result.summary['sample_count'], int)
+        assert 'error_count' in validation_result.summary
+        assert isinstance(validation_result.summary['error_count'], int)
 
     def test_read_private_sheet_with_credentials(self):
         """Test reading a private sheet with service account credentials."""
