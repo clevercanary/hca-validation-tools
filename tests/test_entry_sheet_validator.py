@@ -241,16 +241,16 @@ class TestValidateGoogleSheet:
             errors.append(error)
 
         # Run validation
-        result, title, error_code = validate_google_sheet(PUBLIC_SHEET_ID, error_handler=mock_error_handler)
+        validation_result = validate_google_sheet(PUBLIC_SHEET_ID, error_handler=mock_error_handler)
 
         # Verify service account method was used
         mock_read_service_account.assert_called_once_with(PUBLIC_SHEET_ID, [0, 1, 2])
         
         # Verify title is returned
-        assert title == "Test Sheet Title"
+        assert validation_result.spreadsheet_title == "Test Sheet Title"
         # The mock returns None for error_code, but the actual function may return 'no_data' or 'validation_error'
         # depending on the data in the sheet. For the mock test, we expect None or 'no_data'
-        assert error_code is None or error_code == 'no_data'
+        assert validation_result.error_code is None or validation_result.error_code == 'no_data'
 
     @patch('hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account')
     def test_service_account_access_failure(self, mock_read_service_account):
@@ -264,7 +264,7 @@ class TestValidateGoogleSheet:
             errors.append(error)
 
         # Run validation
-        result, title, error_code = validate_google_sheet(PUBLIC_SHEET_ID, error_handler=mock_error_handler)
+        validation_result = validate_google_sheet(PUBLIC_SHEET_ID, error_handler=mock_error_handler)
 
         # Verify service account method was used
         mock_read_service_account.assert_called_once_with(PUBLIC_SHEET_ID, [0, 1, 2])
@@ -274,9 +274,9 @@ class TestValidateGoogleSheet:
         assert any("access" in error.message.lower() for error in errors)
         
         # Verify result, title, and error code
-        assert result is False
-        assert title is None
-        assert error_code == 'auth_missing'
+        assert validation_result.successful is False
+        assert validation_result.spreadsheet_title is None
+        assert validation_result.error_code == 'auth_missing'
 
 
 # Integration tests that use actual Google Sheets
@@ -334,21 +334,21 @@ class TestIntegration:
             errors.append(error)
 
         # Run validation
-        result, title, error_code = validate_google_sheet(PUBLIC_SHEET_ID, error_handler=mock_error_handler)
+        validation_result = validate_google_sheet(PUBLIC_SHEET_ID, error_handler=mock_error_handler)
         
         # Verify that the title was returned
-        assert title is not None
-        assert isinstance(title, str)
+        assert validation_result.spreadsheet_title is not None
+        assert isinstance(validation_result.spreadsheet_title, str)
         
         # We don't assert on the number of errors since the sheet content may change
         # Just verify that the function ran without exceptions
         
         # For public sheets, we should get the default title
-        assert title == "Title unavailable (public access)" or isinstance(title, str)
+        assert validation_result.spreadsheet_title == "Title unavailable (public access)" or isinstance(validation_result.spreadsheet_title, str)
         
         # The actual function returns 'validation_error' if validation errors are found
         # or 'no_data' if no data is found to validate
-        assert error_code in ['validation_error', 'no_data']
+        assert validation_result.error_code in ['validation_error', 'no_data']
 
     def test_read_private_sheet_with_credentials(self):
         """Test reading a private sheet with service account credentials."""
