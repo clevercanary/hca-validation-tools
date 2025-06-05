@@ -303,7 +303,7 @@ def validate_google_sheet(sheet_id="1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY
         - successful: boolean indicating if validation passed
         - spreadsheet_title: the title of the sheet or None
         - error_code: string indicating the type of error or None if successful
-        - summary: dict containing entity and error counts, ot None if unavailable
+        - summary: dict containing entity and error counts, or None if unavailable
     """
     from hca_validation.validator import validate
     import logging
