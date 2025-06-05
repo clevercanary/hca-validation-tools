@@ -19,3 +19,21 @@ classes:
   Sample:
     description: >-
       A biological sample derived from a donor or another sample
+    slots:
+      - sample_id
+      - donor_id
+      - dataset_id
+
+slots:
+  sample_id:
+    title: Sample ID
+    range: string
+    required: true
+  donor_id:
+    title: Donor ID
+    range: string
+    required: true
+  dataset_id:
+    title: Dataset ID
+    range: string
+    required: true
