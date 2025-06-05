@@ -355,22 +355,8 @@ def validate_google_sheet(sheet_id="1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY
                 first_col = df.iloc[i, 0] if not pd.isna(df.iloc[i, 0]) else "<empty>"
                 logger.debug(f"Row {i+1} (index {i}): {first_col}")
         
-        # Process rows 4, 5, and then from row 6 until the first empty row
-        # We'll include rows 4 and 5 as you mentioned they also contain data
-        data_row_indices = [3, 4]  # Rows 4 and 5 (0-based indices 3 and 4)
-        
-        # First add rows 4 and 5
-        for idx in data_row_indices:
-            if idx < len(df):
-                row = df.iloc[idx]
-                # Skip completely empty rows
-                if not row.isna().all() and not all(str(val).strip() == '' for val in row if not pd.isna(val)):
-                    logger.debug(f"Adding row {idx + 1} for validation")
-                    rows_to_validate.append(row)
-                    row_indices.append(idx)
-        
-        # Then process from row 6 until the first empty row
-        start_row_index = 5  # Row 6 (1-based) is index 5 (0-based)
+        # Process from row 6 until the first empty row
+        start_row_index = 4  # Row 6 (1-based including header) is index 5 (0-based excluding header)
         current_row_index = start_row_index
         
         logger.info(f"Processing data rows starting from row 6 (index {start_row_index})...")
