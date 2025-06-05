@@ -100,17 +100,56 @@ def get_secret_from_extension(secret_name):
         logger.error(f"Error retrieving secret from extension: {e}")
         return None
 
-def read_sheet_with_service_account(sheet_id, sheet_index=0) -> Union[SheetInfo, ReadErrorSheetInfo]:
+def read_worksheet(sheet_id, sheet_title, spreadsheet, sheet_index) -> Union[SheetInfo, ReadErrorSheetInfo]:
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    try:
+        # Get the worksheet
+        logger.info(f"Attempting to get worksheet at index {sheet_index}")
+        worksheet = spreadsheet.get_worksheet(sheet_index)
+        
+        # Get the worksheet ID
+        worksheet_id = worksheet.id
+        logger.info(f"Successfully retrieved worksheet with ID: {worksheet_id}")
+        
+        # Get all values from the worksheet
+        logger.info("Retrieving worksheet data...")
+        data = worksheet.get_all_values()
+        
+        # Convert to DataFrame
+        if len(data) >= 2:
+            logger.info(f"Successfully retrieved data: {len(data)} rows, {len(data[0]) if data[0] else 0} columns")
+            source_columns = data[0]
+            source_rows_start_index = 1
+            df = pd.DataFrame(data[source_rows_start_index:], columns=source_columns)  # First row as header
+            return SheetInfo(
+                data=df,
+                spreadsheet_title=sheet_title,
+                worksheet_id=worksheet_id,
+                source_columns=source_columns,
+                source_rows_start_index=source_rows_start_index
+            )
+        else:
+            logger.warning(f"Sheet {sheet_id} (index {sheet_index}) appears to be empty")
+            return ReadErrorSheetInfo(error_code="sheet_data_empty", spreadsheet_title=sheet_title, worksheet_id=worksheet_id)
+        
+    except gspread.exceptions.WorksheetNotFound:
+        logger.error(f"Worksheet index {sheet_index} not found in sheet {sheet_id}")
+        logger.error(f"Error accessing Google Sheet with service account: Worksheet index {sheet_index} not found in sheet {sheet_id}")
+        return ReadErrorSheetInfo(error_code='worksheet_not_found')
+
+def read_sheet_with_service_account(sheet_id, sheet_indices=[0]) -> Union[List[SheetInfo], ReadErrorSheetInfo]:
     """
     Read data from a Google Sheet using a service account for authentication.
     
     Args:
         sheet_id (str): The ID of the Google Sheet to read.
-        sheet_index (int, optional): The index of the worksheet to read. Defaults to 0.
+        sheet_indices (List[int], optional): The indices of the worksheets to read. Defaults to [0].
         
     Returns:
-        info: If successful, SheetInfo containing sheet data, title, etc; otherwise, ReadErrorSheetInfo containing
-        error code and, if available, sheet title and worksheet ID
+        info: If successful, list of SheetInfo corresponding to the list of sheet indices; otherwise,
+            ReadErrorSheetInfo containing error code and, if available, sheet title and worksheet ID
     """
     import os
     import json
@@ -202,51 +241,28 @@ def read_sheet_with_service_account(sheet_id, sheet_index=0) -> Union[SheetInfo,
             return ReadErrorSheetInfo(error_code='auth_error')
         
         try:
-            # Open the spreadsheet and get the worksheet
+            # Open the spreadsheet and get the worksheets
             logger.info(f"Attempting to open spreadsheet with ID: {sheet_id}")
             spreadsheet = gc.open_by_key(sheet_id)
             
             # Get the spreadsheet title
             sheet_title = spreadsheet.title
             logger.info(f"Successfully opened spreadsheet: '{sheet_title}'")
+        
+            sheets_info: List[SheetInfo] = []
+
+            for sheet_index in sheet_indices:
+                worksheet_info = read_worksheet(sheet_id, sheet_title, spreadsheet, sheet_index)
+                if isinstance(worksheet_info, ReadErrorSheetInfo):
+                    return worksheet_info
+                sheets_info.append(worksheet_info)
             
-            # Get the worksheet
-            logger.info(f"Attempting to get worksheet at index {sheet_index}")
-            worksheet = spreadsheet.get_worksheet(sheet_index)
-            
-            # Get the worksheet ID
-            worksheet_id = worksheet.id
-            logger.info(f"Successfully retrieved worksheet with ID: {worksheet_id}")
-            
-            # Get all values from the worksheet
-            logger.info("Retrieving worksheet data...")
-            data = worksheet.get_all_values()
-            
-            # Convert to DataFrame
-            if len(data) >= 2:
-                logger.info(f"Successfully retrieved data: {len(data)} rows, {len(data[0]) if data[0] else 0} columns")
-                source_columns = data[0]
-                source_rows_start_index = 1
-                df = pd.DataFrame(data[source_rows_start_index:], columns=source_columns)  # First row as header
-                return SheetInfo(
-                    data=df,
-                    spreadsheet_title=sheet_title,
-                    worksheet_id=worksheet_id,
-                    source_columns=source_columns,
-                    source_rows_start_index=source_rows_start_index
-                )
-            else:
-                logger.warning(f"Sheet {sheet_id} (index {sheet_index}) appears to be empty")
-                return ReadErrorSheetInfo(error_code="sheet_data_empty", spreadsheet_title=sheet_title, worksheet_id=worksheet_id)
+            return sheets_info
                 
         except gspread.exceptions.SpreadsheetNotFound:
             logger.error(f"Sheet {sheet_id} not found. Check if the sheet ID is correct.")
             logger.error(f"Error accessing Google Sheet with service account: Sheet {sheet_id} not found or not accessible with provided credentials")
             return ReadErrorSheetInfo(error_code='sheet_not_found')
-        except gspread.exceptions.WorksheetNotFound:
-            logger.error(f"Worksheet index {sheet_index} not found in sheet {sheet_id}")
-            logger.error(f"Error accessing Google Sheet with service account: Worksheet index {sheet_index} not found in sheet {sheet_id}")
-            return ReadErrorSheetInfo(error_code='worksheet_not_found')
         except gspread.exceptions.APIError as e:
             if "PERMISSION_DENIED" in str(e):
                 logger.error(f"Permission denied accessing sheet {sheet_id}: {e}")
@@ -265,14 +281,14 @@ def read_sheet_with_service_account(sheet_id, sheet_index=0) -> Union[SheetInfo,
         logger.error(f"Traceback: {traceback.format_exc()}")
         return ReadErrorSheetInfo(error_code='api_error')
 
-def validate_google_sheet(sheet_id="1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY", entity_type="dataset", error_handler=None):
+def validate_google_sheet(sheet_id="1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY", entity_types=["dataset"], error_handler=None):
     """
     Validate data from a Google Sheet starting at row 6 until the first empty row.
     Uses service account credentials from environment variables to access the sheet.
     
     Args:
         sheet_id: The ID of the Google Sheet
-        entity_type: The type of entity to validate, which determines behavior such which worksheet is read and which schema is used
+        entity_types: The types of entity to validate, which determines behavior such which worksheets are read and which schema is used for each one
         error_handler: Optional callback function that takes a SheetErrorInfo object
                       to handle validation errors externally
                       
@@ -286,180 +302,191 @@ def validate_google_sheet(sheet_id="1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY
     import logging
     logger = logging.getLogger()
 
-    # Mapping from entity type to tuple of sheet index and primary key field
     sheet_structure_by_entity_type = {
-        "dataset": (0, "dataset_id")
+        "dataset": {
+            "sheet_index": 0,
+            "primary_key_field": "dataset_id"
+        }
     }
 
-    if entity_type in sheet_structure_by_entity_type:
-        sheet_index, primary_key_field = sheet_structure_by_entity_type[entity_type]
-    else:
-        raise ValueError(f"Invalid entity type: '{entity_type}'")
+    invalid_entity_types = [t for t in entity_types if t not in sheet_structure_by_entity_type]
+    if invalid_entity_types:
+        raise ValueError(f"Invalid entity types: {', '.join(invalid_entity_types)}")
 
     logger.info(f"Reading sheet: {sheet_id}")
     
     # Read the sheet with service account credentials
-    sheet_info = read_sheet_with_service_account(sheet_id, sheet_index)
+    sheet_read_result = read_sheet_with_service_account(sheet_id, [sheet_structure_by_entity_type[t]["sheet_index"] for t in entity_types])
     
-    if isinstance(sheet_info, ReadErrorSheetInfo):
-        error_msg = f"Could not access or read data from sheet {sheet_id} (Error: {sheet_info.error_code})"
-        logger.error(f"Sheet access failed with error code: {sheet_info.error_code}")
+    if isinstance(sheet_read_result, ReadErrorSheetInfo):
+        error_msg = f"Could not access or read data from sheet {sheet_id} (Error: {sheet_read_result.error_code})"
+        logger.error(f"Sheet access failed with error code: {sheet_read_result.error_code}")
         
         logger.error(f"{error_msg}")
         if error_handler:
             error_info = SheetErrorInfo(
-                entity_type=entity_type,
-                worksheet_id=sheet_info.worksheet_id,
+                entity_type=None,
+                worksheet_id=sheet_read_result.worksheet_id,
                 message=error_msg
             )
             error_handler(error_info)
-        return False, sheet_info.spreadsheet_title, sheet_info.error_code
+        return False, sheet_read_result.spreadsheet_title, sheet_read_result.error_code
     
-    df = sheet_info.data
-
-    # Skip the first column as it has no slot name
-    if len(df.columns) > 1:
-        df = df.iloc[:, 1:]
-    
-    # Print information about the sheet structure
-    logger.info(f"Sheet has {len(df)} rows total")
-    
-    # Find rows with actual data to validate
-    rows_to_validate = []
-    row_indices = []
-    
-    # Debug: Print the first few rows to understand the structure
-    logger.debug("Sheet structure:")
-    for i in range(min(10, len(df))):
-        if i < len(df):
-            first_col = df.iloc[i, 0] if not pd.isna(df.iloc[i, 0]) else "<empty>"
-            logger.debug(f"Row {i+1} (index {i}): {first_col}")
-    
-    # Process rows 4, 5, and then from row 6 until the first empty row
-    # We'll include rows 4 and 5 as you mentioned they also contain data
-    data_row_indices = [3, 4]  # Rows 4 and 5 (0-based indices 3 and 4)
-    
-    # First add rows 4 and 5
-    for idx in data_row_indices:
-        if idx < len(df):
-            row = df.iloc[idx]
-            # Skip completely empty rows
-            if not row.isna().all() and not all(str(val).strip() == '' for val in row if not pd.isna(val)):
-                logger.debug(f"Adding row {idx + 1} for validation")
-                rows_to_validate.append(row)
-                row_indices.append(idx)
-    
-    # Then process from row 6 until the first empty row
-    start_row_index = 5  # Row 6 (1-based) is index 5 (0-based)
-    current_row_index = start_row_index
-    
-    logger.info(f"Processing data rows starting from row 6 (index {start_row_index})...")
-    
-    while current_row_index < len(df):
-        # Get the current row
-        row = df.iloc[current_row_index]
-        
-        # Check if row is empty (all values are NaN or empty strings)
-        is_empty = row.isna().all() or all(str(val).strip() == '' for val in row if not pd.isna(val))
-        
-        if is_empty:
-            # Stop at the first empty row
-            logger.debug(f"Found empty row at row {current_row_index + 1}, stopping")
-            break
-        
-        # Add non-empty row for validation
-        logger.debug(f"Adding row {current_row_index + 1} for validation")
-        rows_to_validate.append(row)
-        row_indices.append(current_row_index)
-        
-        # Move to the next row
-        current_row_index += 1
-    
-    if not rows_to_validate:
-        logger.warning("No data found to validate starting from row 6.")
-        return False, sheet_info.spreadsheet_title, 'no_data'
-    
-    logger.info(f"Found {len(rows_to_validate)} rows to validate.")
-    
-    # Validate each row
     all_valid = True
-    for i, row in enumerate(rows_to_validate):
-        # Get the actual row number in the spreadsheet (1-based)
-        row_index = row_indices[i] + 1  # Convert from 0-based index to 1-based row number
-        
-        # Convert row to dictionary and clean up
-        row_dict = {}
-        for key, value in row.to_dict().items():
-            # Skip empty values and columns with no name
-            if pd.isna(value) or not key or key.strip() == '':
-                continue
-                
-            # Convert string representations of lists
-            if isinstance(value, str) and value.strip().startswith('[') and value.strip().endswith(']'):
-                try:
-                    row_dict[key] = json.loads(value)  # Safely parse JSON-formatted strings
-                except json.JSONDecodeError as e:
-                    logger.warning(f"Could not parse list value '{value}' for field '{key}': {e}")
-                    row_dict[key] = value
-            else:
-                row_dict[key] = value
-        
-        row_primary_key = f"{primary_key_field}:{row_dict[primary_key_field]}" if primary_key_field in row_dict else None
 
-        # Validate the data
-        logger.info(f"Validating row {row_index}...")
-        try:
-            validation_error = validate(row_dict, schema_type=entity_type)
+    for entity_type, sheet_info in zip(entity_types, sheet_read_result):
+        df = sheet_info.data
+
+        # Skip the first column as it has no slot name
+        if len(df.columns) > 1:
+            df = df.iloc[:, 1:]
+        
+        # Print information about the sheet structure
+        logger.info(f"Sheet has {len(df)} rows total")
+        
+        # Find rows with actual data to validate
+        rows_to_validate = []
+        row_indices = []
+        
+        # Debug: Print the first few rows to understand the structure
+        logger.debug("Sheet structure:")
+        for i in range(min(10, len(df))):
+            if i < len(df):
+                first_col = df.iloc[i, 0] if not pd.isna(df.iloc[i, 0]) else "<empty>"
+                logger.debug(f"Row {i+1} (index {i}): {first_col}")
+        
+        # Process rows 4, 5, and then from row 6 until the first empty row
+        # We'll include rows 4 and 5 as you mentioned they also contain data
+        data_row_indices = [3, 4]  # Rows 4 and 5 (0-based indices 3 and 4)
+        
+        # First add rows 4 and 5
+        for idx in data_row_indices:
+            if idx < len(df):
+                row = df.iloc[idx]
+                # Skip completely empty rows
+                if not row.isna().all() and not all(str(val).strip() == '' for val in row if not pd.isna(val)):
+                    logger.debug(f"Adding row {idx + 1} for validation")
+                    rows_to_validate.append(row)
+                    row_indices.append(idx)
+        
+        # Then process from row 6 until the first empty row
+        start_row_index = 5  # Row 6 (1-based) is index 5 (0-based)
+        current_row_index = start_row_index
+        
+        logger.info(f"Processing data rows starting from row 6 (index {start_row_index})...")
+        
+        while current_row_index < len(df):
+            # Get the current row
+            row = df.iloc[current_row_index]
             
-            # Report results
-            if validation_error:
-                all_valid = False
-                logger.warning(f"Row {row_index} has validation errors:")
-                for error in validation_error.errors():
-                    logger.warning(f"  - {error['msg']}")
-                    # Call error handler if provided
-                    if error_handler:
-                        error_column_name = None if len(error["loc"]) == 0 else error["loc"][0]
-                        try:
-                            error_a1 = sheet_info.get_a1(row_index, error_column_name)
-                        except ValueError:
-                            error_a1 = None
-                        error_info = SheetErrorInfo(
-                            entity_type=entity_type,
-                            worksheet_id=sheet_info.worksheet_id,
-                            message=error["msg"],
-                            row=row_index,
-                            column=error_column_name,
-                            cell=error_a1,
-                            primary_key=row_primary_key,
-                            input=error["input"]
-                        )
-                        error_handler(error_info)
-            else:
-                logger.info(f"Row {row_index} is valid")
-        except Exception as e:
+            # Check if row is empty (all values are NaN or empty strings)
+            is_empty = row.isna().all() or all(str(val).strip() == '' for val in row if not pd.isna(val))
+            
+            if is_empty:
+                # Stop at the first empty row
+                logger.debug(f"Found empty row at row {current_row_index + 1}, stopping")
+                break
+            
+            # Add non-empty row for validation
+            logger.debug(f"Adding row {current_row_index + 1} for validation")
+            rows_to_validate.append(row)
+            row_indices.append(current_row_index)
+            
+            # Move to the next row
+            current_row_index += 1
+        
+        if not rows_to_validate:
+            logger.warning(f"No data found to validate starting from {entity_type} row 6.")
+            return False, sheet_info.spreadsheet_title, 'no_data'
+        
+        logger.info(f"Found {len(rows_to_validate)} rows to validate.")
+        
+        # Validate each row
+        all_valid_in_worksheet = True
+        for i, row in enumerate(rows_to_validate):
+            # Get the actual row number in the spreadsheet (1-based)
+            row_index = row_indices[i] + 1  # Convert from 0-based index to 1-based row number
+            
+            # Convert row to dictionary and clean up
+            row_dict = {}
+            for key, value in row.to_dict().items():
+                # Skip empty values and columns with no name
+                if pd.isna(value) or not key or key.strip() == '':
+                    continue
+                    
+                # Convert string representations of lists
+                if isinstance(value, str) and value.strip().startswith('[') and value.strip().endswith(']'):
+                    try:
+                        row_dict[key] = json.loads(value)  # Safely parse JSON-formatted strings
+                    except json.JSONDecodeError as e:
+                        logger.warning(f"Could not parse list value '{value}' for field '{key}': {e}")
+                        row_dict[key] = value
+                else:
+                    row_dict[key] = value
+            
+            primary_key_field = sheet_structure_by_entity_type[entity_type]["primary_key_field"]
+            row_primary_key = f"{primary_key_field}:{row_dict[primary_key_field]}" if primary_key_field in row_dict else None
+
+            # Validate the data
+            logger.info(f"Validating row {row_index}...")
+            try:
+                validation_error = validate(row_dict, schema_type=entity_type)
+                
+                # Report results
+                if validation_error:
+                    all_valid_in_worksheet = False
+                    logger.warning(f"Row {row_index} has validation errors:")
+                    for error in validation_error.errors():
+                        logger.warning(f"  - {error['msg']}")
+                        # Call error handler if provided
+                        if error_handler:
+                            error_column_name = None if len(error["loc"]) == 0 else error["loc"][0]
+                            try:
+                                error_a1 = sheet_info.get_a1(row_index, error_column_name)
+                            except ValueError:
+                                error_a1 = None
+                            error_info = SheetErrorInfo(
+                                entity_type=entity_type,
+                                worksheet_id=sheet_info.worksheet_id,
+                                message=error["msg"],
+                                row=row_index,
+                                column=error_column_name,
+                                cell=error_a1,
+                                primary_key=row_primary_key,
+                                input=error["input"]
+                            )
+                            error_handler(error_info)
+                else:
+                    logger.info(f"Row {row_index} is valid")
+            except Exception as e:
+                all_valid_in_worksheet = False
+                logger.error(f"Error validating row {row_index}: {e}")
+                # Call error handler for exceptions if provided
+                if error_handler:
+                    error_info = SheetErrorInfo(
+                        entity_type=entity_type,
+                        worksheet_id=sheet_info.worksheet_id,
+                        message=str(e),
+                        row=row_index,
+                        primary_key=row_primary_key
+                    )
+                    error_handler(error_info)
+
+        if all_valid_in_worksheet:
+            logger.info(f"All {len(rows_to_validate)} {entity_type} rows are valid!")
+        else:
             all_valid = False
-            logger.error(f"Error validating row {row_index}: {e}")
-            # Call error handler for exceptions if provided
-            if error_handler:
-                error_info = SheetErrorInfo(
-                    entity_type=entity_type,
-                    worksheet_id=sheet_info.worksheet_id,
-                    message=str(e),
-                    row=row_index,
-                    primary_key=row_primary_key
-                )
-                error_handler(error_info)
+            logger.warning(f"Validation found errors in some of the {len(rows_to_validate)} {entity_type} rows.")
+            logger.warning("Please check the schema requirements and update the data accordingly.")
+            logger.info(f"Schema location: {os.path.join(os.path.dirname(__file__), f'../../schema/{entity_type}.yaml')}")
     
     # Summary
     if all_valid:
-        logger.info(f"All {len(rows_to_validate)} rows are valid!")
-        return True, sheet_info.spreadsheet_title, None
+        logger.info(f"All rows for the {len(entity_types)} specified entity types are valid!")
+        return True, sheet_read_result[0].spreadsheet_title, None
     else:
-        logger.warning(f"Validation found errors in some of the {len(rows_to_validate)} rows.")
-        logger.warning("Please check the schema requirements and update the data accordingly.")
-        logger.info(f"Schema location: {os.path.join(os.path.dirname(__file__), '../../schema/dataset.yaml')}")
-        return False, sheet_info.spreadsheet_title, 'validation_error'
+        logger.warning(f"Validation found errors in some of the {len(entity_types)} entity types.")
+        return False, sheet_read_result[0].spreadsheet_title, 'validation_error'
 
 
 if __name__ == "__main__":
