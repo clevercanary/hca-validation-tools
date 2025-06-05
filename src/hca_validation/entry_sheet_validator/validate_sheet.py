@@ -57,6 +57,7 @@ class SheetErrorInfo:
 
 @dataclass
 class SheetValidationResult:
+    """Container for general info on the outcome of a Google Sheet validation."""
     successful: bool
     spreadsheet_title: Optional[str]
     error_code: Optional[str]
