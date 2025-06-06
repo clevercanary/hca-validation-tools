@@ -55,6 +55,14 @@ class SheetErrorInfo:
     primary_key: Optional[str] = None
     input: Optional[Any] = None
 
+@dataclass
+class SheetValidationResult:
+    """Container for general info on the outcome of a Google Sheet validation."""
+    successful: bool
+    spreadsheet_title: Optional[str]
+    error_code: Optional[str]
+    summary: Optional[dict[str, int]]
+
 # Load environment variables from .env file if it exists
 dotenv_path = Path(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))) / '.env'
 if dotenv_path.exists():
@@ -280,7 +288,7 @@ def read_sheet_with_service_account(sheet_id, sheet_indices=[0]) -> Union[List[S
         logger.error(f"Traceback: {traceback.format_exc()}")
         return ReadErrorSheetInfo(error_code='api_error')
 
-def validate_google_sheet(sheet_id="1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY", entity_types=["dataset", "donor", "sample"], error_handler=None):
+def validate_google_sheet(sheet_id="1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY", entity_types=["dataset", "donor", "sample"], error_handler=None) -> SheetValidationResult:
     """
     Validate data from a Google Sheet starting at row 6 until the first empty row.
     Uses service account credentials from environment variables to access the sheet.
@@ -292,10 +300,11 @@ def validate_google_sheet(sheet_id="1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY
                       to handle validation errors externally
                       
     Returns:
-        Tuple of (validation_success, sheet_title, error_code) where:
-        - validation_success is a boolean indicating if validation passed
-        - sheet_title is the title of the sheet or None
-        - error_code is a string indicating the type of error or None if successful
+        SheetValidationResult: Object with fields:
+        - successful: boolean indicating if validation passed
+        - spreadsheet_title: the title of the sheet or None
+        - error_code: string indicating the type of error or None if successful
+        - summary: dict containing entity and error counts, or None if unavailable
     """
     from hca_validation.validator import validate
     import logging
@@ -337,7 +346,12 @@ def validate_google_sheet(sheet_id="1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY
                 message=error_msg
             )
             error_handler(error_info)
-        return False, sheet_read_result.spreadsheet_title, sheet_read_result.error_code
+        return SheetValidationResult(
+            successful=False,
+            spreadsheet_title=sheet_read_result.spreadsheet_title,
+            error_code=sheet_read_result.error_code,
+            summary=None
+        )
     
     # Tuples of rows list and row indices list
     rows_info_per_entity_type = []
@@ -391,12 +405,23 @@ def validate_google_sheet(sheet_id="1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY
         
         if not rows_to_validate:
             logger.warning(f"No data found to validate starting from {entity_type} row 6.")
-            return False, sheet_info.spreadsheet_title, 'no_data'
+            return SheetValidationResult(
+                successful=False,
+                spreadsheet_title=sheet_info.spreadsheet_title,
+                error_code='no_data',
+                summary=None
+            )
         
         logger.info(f"Found {len(rows_to_validate)} {entity_type} rows to validate.")
 
         rows_info_per_entity_type.append((rows_to_validate, row_indices))
     
+    # Set up validation summary with entity counts and initial error count
+    validation_summary = {
+        **{f"{entity_type}_count": len(rows_to_validate) for entity_type, (rows_to_validate, _) in zip(entity_types, rows_info_per_entity_type)},
+        "error_count": 0
+    }
+
     all_valid = True
 
     for entity_type, sheet_info, (rows_to_validate, row_indices) in zip(entity_types, sheet_read_result, rows_info_per_entity_type):
@@ -437,6 +462,8 @@ def validate_google_sheet(sheet_id="1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY
                     logger.warning(f"Row {row_index} has validation errors:")
                     for error in validation_error.errors():
                         logger.warning(f"  - {error['msg']}")
+                        # Update error count
+                        validation_summary["error_count"] += 1
                         # Call error handler if provided
                         if error_handler:
                             error_column_name = None if len(error["loc"]) == 0 else error["loc"][0]
@@ -460,6 +487,8 @@ def validate_google_sheet(sheet_id="1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY
             except Exception as e:
                 all_valid_in_worksheet = False
                 logger.error(f"Error validating row {row_index}: {e}")
+                # Update error count
+                validation_summary["error_count"] += 1
                 # Call error handler for exceptions if provided
                 if error_handler:
                     error_info = SheetErrorInfo(
@@ -482,10 +511,20 @@ def validate_google_sheet(sheet_id="1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY
     # Summary
     if all_valid:
         logger.info(f"All rows for the {len(entity_types)} specified entity types are valid!")
-        return True, sheet_read_result[0].spreadsheet_title, None
+        return SheetValidationResult(
+            successful=True,
+            spreadsheet_title=sheet_read_result[0].spreadsheet_title,
+            error_code=None,
+            summary=validation_summary
+        )
     else:
         logger.warning(f"Validation found errors in some of the {len(entity_types)} entity types.")
-        return False, sheet_read_result[0].spreadsheet_title, 'validation_error'
+        return SheetValidationResult(
+            successful=False,
+            spreadsheet_title=sheet_read_result[0].spreadsheet_title,
+            error_code='validation_error',
+            summary=validation_summary
+        )
 
 
 if __name__ == "__main__":

@@ -17,14 +17,14 @@ from dataclasses import asdict
 from typing import Dict, Any, List, Optional, Union, Tuple
 
 # Import the entry sheet validator
-from hca_validation.entry_sheet_validator.validate_sheet import SheetErrorInfo, validate_google_sheet
+from hca_validation.entry_sheet_validator.validate_sheet import SheetErrorInfo, SheetValidationResult, validate_google_sheet
 
 # Configure logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 
-def extract_validation_errors(sheet_id: str) -> Tuple[List[SheetErrorInfo], str, str, int]:
+def extract_validation_errors(sheet_id: str) -> Tuple[SheetValidationResult, List[SheetErrorInfo], int]:
     """
     Extract validation errors from a Google Sheet.
     
@@ -32,9 +32,8 @@ def extract_validation_errors(sheet_id: str) -> Tuple[List[SheetErrorInfo], str,
         sheet_id: The ID of the Google Sheet
         
     Returns:
-        Tuple containing (list of validation error objects, sheet title, error_code, http_status_code)
-        where error_code is a string indicating the type of error or None if successful,
-        and http_status_code is the appropriate HTTP status code (200, 400, 401, 404, etc.)
+        Tuple containing (SheetValidationResult, list of validation error objects, http_status_code)
+        where http_status_code is the appropriate HTTP status code (200, 400, 401, 404, etc.)
     """
     # Create a list to store validation errors
     validation_errors: List[SheetErrorInfo] = []
@@ -44,7 +43,6 @@ def extract_validation_errors(sheet_id: str) -> Tuple[List[SheetErrorInfo], str,
         validation_errors.append(error_info)
     
     # Run the validation with our custom handler
-    sheet_title = "Unknown"
     try:
         # Suppress print statements during validation by redirecting stdout
         import sys
@@ -52,9 +50,10 @@ def extract_validation_errors(sheet_id: str) -> Tuple[List[SheetErrorInfo], str,
         original_stdout = sys.stdout
         sys.stdout = StringIO()
         
-        # Call the existing validate_google_sheet function with our error handler
-        # The function now returns a tuple of (validation_success, sheet_title, error_code)
-        validation_result, sheet_title, error_code = validate_google_sheet(sheet_id, error_handler=validation_handler)
+        # Call the validate_google_sheet function with our error handler
+        # The function returns a SheetValidationResult object
+        validation_result = validate_google_sheet(sheet_id, error_handler=validation_handler)
+        error_code = validation_result.error_code
         
         # Restore stdout
         sys.stdout = original_stdout
@@ -74,9 +73,9 @@ def extract_validation_errors(sheet_id: str) -> Tuple[List[SheetErrorInfo], str,
         # If there's an error in the validation process itself
         error_msg = f"Error in validation process: {str(e)}"
         validation_errors.append(SheetErrorInfo(entity_type=None, worksheet_id=None, message=error_msg))
-        return validation_errors, "Unknown", "internal_error", 500
+        return SheetValidationResult(successful=False, spreadsheet_title=None, error_code="internal_error", summary=None), validation_errors, 500
     
-    return validation_errors, sheet_title, error_code, http_status_code
+    return validation_result, validation_errors, http_status_code
 
 
 def get_memory_usage():
@@ -155,20 +154,21 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         logger.info(f"Memory usage before validation: {pre_validation_memory}")
         
         # Extract validation errors using the entry sheet validator
-        validation_errors, sheet_title, error_code, http_status_code = extract_validation_errors(sheet_id)
+        validation_result, validation_errors, http_status_code = extract_validation_errors(sheet_id)
         
         # Log memory usage after validation
         post_validation_memory = get_memory_usage()
         logger.info(f"Memory usage after validation: {post_validation_memory}")
-        logger.info(f"Validation completed with error_code: {error_code}, http_status_code: {http_status_code}")
+        logger.info(f"Validation completed with error_code: {validation_result.error_code}, http_status_code: {http_status_code}")
         
         # Prepare the response data
         response_data = {
             'sheet_id': sheet_id,
-            'sheet_title': sheet_title,
+            'sheet_title': validation_result.spreadsheet_title,
             'errors': [asdict(e) for e in validation_errors],
             'valid': len(validation_errors) == 0,
-            'error_code': error_code,
+            'error_code': validation_result.error_code,
+            'summary': validation_result.summary,
             'memory_usage': {
                 'initial': initial_memory,
                 'pre_validation': pre_validation_memory,
