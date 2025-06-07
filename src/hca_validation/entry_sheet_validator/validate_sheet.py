@@ -167,8 +167,9 @@ def read_sheet_with_service_account(sheet_id, sheet_indices=[0]) -> Union[Spread
         sheet_indices (List[int], optional): The indices of the worksheets to read. Defaults to [0].
         
     Returns:
-        info: If successful, list of SheetInfo corresponding to the list of sheet indices; otherwise,
-            ReadErrorSheetInfo containing error code and, if available, sheet title and worksheet ID
+        info: If successful, SpreadsheetInfo object containing list of WorksheetInfo corresponding to
+            the list of sheet indices; otherwise, ReadErrorSheetInfo containing error code and, if available,
+            sheet title and worksheet ID
     """
     import os
     import json
@@ -342,7 +343,7 @@ def validate_google_sheet(sheet_id="1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY
     Returns:
         SheetValidationResult: Object with fields:
         - successful: boolean indicating if validation passed
-        - spreadsheet_title: the title of the sheet or None
+        - spreadsheet_metadata: object containing title and last update information, or None
         - error_code: string indicating the type of error or None if successful
         - summary: dict containing entity and error counts, or None if unavailable
     """
