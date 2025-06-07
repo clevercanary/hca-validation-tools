@@ -19,7 +19,9 @@ from gspread.exceptions import SpreadsheetNotFound, WorksheetNotFound, APIError
 
 from hca_validation.entry_sheet_validator.validate_sheet import (
     ReadErrorSheetInfo,
-    SheetInfo,
+    SpreadsheetInfo,
+    SpreadsheetMetadata,
+    WorksheetInfo,
     read_sheet_with_service_account,
     validate_google_sheet
 )
@@ -60,14 +62,20 @@ class TestReadSheetWithServiceAccount:
         os.environ.clear()
         os.environ.update(original_env)
 
+    @patch('googleapiclient.discovery.build')
     @patch('gspread.authorize')
     @patch('google.oauth2.service_account.Credentials.from_service_account_info')
-    def test_with_service_account_credentials(self, mock_credentials, mock_authorize, mock_env_with_credentials):
+    def test_with_service_account_credentials(self, mock_credentials, mock_authorize, mock_build, mock_env_with_credentials):
         """Test reading a sheet with service account credentials."""
         # Mock the gspread client
         mock_client = MagicMock()
         mock_sheet = MagicMock()
         mock_worksheet = MagicMock()
+
+        # Mock the Drive API
+        mock_get = MagicMock()
+        mock_files = MagicMock()
+        mock_drive = MagicMock()
         
         # Mock worksheet.get_all_values (not get_all_records)
         mock_data = [
@@ -83,15 +91,26 @@ class TestReadSheetWithServiceAccount:
 
         # Mock the sheet title
         mock_sheet.title = "Test Sheet Title"
+
+        # Mock the Drive API response
+        mock_get.execute.return_value = {
+            "modifiedTime": "2025-06-06T22:43:57.554Z",
+            "lastModifyingUser": {
+                "displayName": "foo"
+            }
+        }
+        mock_files.get.return_value = mock_get
+        mock_drive.files.return_value = mock_files
+        mock_build.return_value = mock_drive
         
         # Test the function
         sheet_read_result = read_sheet_with_service_account(PUBLIC_SHEET_ID)
-        assert isinstance(sheet_read_result, list)
-        sheet_info = sheet_read_result[0]
+        assert isinstance(sheet_read_result, SpreadsheetInfo)
+        assert sheet_read_result.spreadsheet_metadata.spreadsheet_title == "Test Sheet Title"
+        sheet_info = sheet_read_result.worksheets[0]
         assert sheet_info.data is not None
         assert isinstance(sheet_info.data, pd.DataFrame)
         assert not sheet_info.data.empty
-        assert sheet_info.spreadsheet_title == "Test Sheet Title"
         assert sheet_info.worksheet_id == 123
         assert sheet_info.source_columns == ["header1", "header2"]
         assert sheet_info.source_rows_start_index == 1
@@ -113,7 +132,7 @@ class TestReadSheetWithServiceAccount:
         sheet_read_result = read_sheet_with_service_account(PUBLIC_SHEET_ID)
         assert isinstance(sheet_read_result, ReadErrorSheetInfo)
         assert sheet_read_result.error_code == 'auth_missing'
-        assert sheet_read_result.spreadsheet_title is None
+        assert sheet_read_result.spreadsheet_metadata is None
         assert sheet_read_result.worksheet_id is None
         
     def test_with_unresolved_credentials(self):
@@ -127,7 +146,7 @@ class TestReadSheetWithServiceAccount:
             sheet_read_result = read_sheet_with_service_account(PUBLIC_SHEET_ID)
             assert isinstance(sheet_read_result, ReadErrorSheetInfo)
             assert sheet_read_result.error_code == 'auth_unresolved'
-            assert sheet_read_result.spreadsheet_title is None
+            assert sheet_read_result.spreadsheet_metadata is None
             assert sheet_read_result.worksheet_id is None
         finally:
             # Restore original environment
@@ -149,7 +168,7 @@ class TestReadSheetWithServiceAccount:
             sheet_read_result = read_sheet_with_service_account(PUBLIC_SHEET_ID)
             assert isinstance(sheet_read_result, ReadErrorSheetInfo)
             assert sheet_read_result.error_code == 'auth_invalid_format'
-            assert sheet_read_result.spreadsheet_title is None
+            assert sheet_read_result.spreadsheet_metadata is None
             assert sheet_read_result.worksheet_id is None
         finally:
             # Restore original environment
@@ -169,15 +188,16 @@ class TestReadSheetWithServiceAccount:
         sheet_read_result = read_sheet_with_service_account(NONEXISTENT_SHEET_ID)
         assert isinstance(sheet_read_result, ReadErrorSheetInfo)
         assert sheet_read_result.error_code == 'sheet_not_found'
-        assert sheet_read_result.spreadsheet_title is None
+        assert sheet_read_result.spreadsheet_metadata is None
         assert sheet_read_result.worksheet_id is None
         
         # Verify the mocks were called correctly
         mock_client.open_by_key.assert_called_once_with(NONEXISTENT_SHEET_ID)
 
+    @patch('googleapiclient.discovery.build')
     @patch('gspread.authorize')
     @patch('google.oauth2.service_account.Credentials.from_service_account_info')
-    def test_worksheet_not_found(self, mock_credentials, mock_authorize, mock_env_with_credentials):
+    def test_worksheet_not_found(self, mock_credentials, mock_authorize, mock_build, mock_env_with_credentials):
         """Test handling of worksheet not found error."""
         # Mock the gspread client
         mock_client = MagicMock()
@@ -190,7 +210,7 @@ class TestReadSheetWithServiceAccount:
         sheet_read_result = read_sheet_with_service_account(PUBLIC_SHEET_ID)
         assert isinstance(sheet_read_result, ReadErrorSheetInfo)
         assert sheet_read_result.error_code == 'worksheet_not_found'
-        assert sheet_read_result.spreadsheet_title is None
+        assert sheet_read_result.spreadsheet_metadata is None
         assert sheet_read_result.worksheet_id is None
         
         # Verify the mocks were called correctly
@@ -211,7 +231,7 @@ class TestReadSheetWithServiceAccount:
         sheet_read_result = read_sheet_with_service_account(PUBLIC_SHEET_ID)
         assert isinstance(sheet_read_result, ReadErrorSheetInfo)
         assert sheet_read_result.error_code == 'api_error'
-        assert sheet_read_result.spreadsheet_title is None
+        assert sheet_read_result.spreadsheet_metadata is None
         assert sheet_read_result.worksheet_id is None
         
         # Verify the mocks were called correctly
@@ -225,15 +245,22 @@ class TestValidateGoogleSheet:
     def test_service_account_access(self, mock_read_service_account):
         """Test validation with service account access."""
         # Mock successful service account read
-        mock_read_service_account.return_value = [
-            SheetInfo(
-                data=SAMPLE_SHEET_DATA,
+        mock_read_service_account.return_value = SpreadsheetInfo(
+            spreadsheet_metadata=SpreadsheetMetadata(
                 spreadsheet_title="Test Sheet Title",
-                worksheet_id=123,
-                source_columns=list(SAMPLE_SHEET_DATA.columns),
-                source_rows_start_index=1
-            )
-        ]
+                last_updated_date="2025-06-06T22:43:57.554Z",
+                last_updated_by="foo",
+                last_updated_email="foo@example.com"
+            ),
+            worksheets=[
+                WorksheetInfo(
+                    data=SAMPLE_SHEET_DATA,
+                    worksheet_id=123,
+                    source_columns=list(SAMPLE_SHEET_DATA.columns),
+                    source_rows_start_index=1
+                )
+            ]
+        )
 
         # Create a mock error handler to capture validation errors
         errors = []
@@ -246,8 +273,12 @@ class TestValidateGoogleSheet:
         # Verify service account method was used
         mock_read_service_account.assert_called_once_with(PUBLIC_SHEET_ID, [0, 1, 2])
         
-        # Verify title is returned
-        assert validation_result.spreadsheet_title == "Test Sheet Title"
+        # Verify metadata is returned
+        assert validation_result.spreadsheet_metadata
+        assert validation_result.spreadsheet_metadata.spreadsheet_title == "Test Sheet Title"
+        assert validation_result.spreadsheet_metadata.last_updated_date == "2025-06-06T22:43:57.554Z"
+        assert validation_result.spreadsheet_metadata.last_updated_by == "foo"
+        assert validation_result.spreadsheet_metadata.last_updated_email == "foo@example.com"
         # The mock returns None for error_code, but the actual function may return 'no_data' or 'validation_error'
         # depending on the data in the sheet. For the mock test, we expect None or 'no_data'
         assert validation_result.error_code is None or validation_result.error_code == 'no_data'
@@ -273,9 +304,9 @@ class TestValidateGoogleSheet:
         assert len(errors) > 0
         assert any("access" in error.message.lower() for error in errors)
         
-        # Verify result, title, error code, and summary
+        # Verify result, metadata, error code, and summary
         assert validation_result.successful is False
-        assert validation_result.spreadsheet_title is None
+        assert validation_result.spreadsheet_metadata is None
         assert validation_result.error_code == 'auth_missing'
         assert validation_result.summary is None
 
@@ -302,13 +333,14 @@ class TestIntegration:
             pytest.skip("No service account credentials available for integration test")
             
         sheet_read_result = read_sheet_with_service_account(PUBLIC_SHEET_ID)
-        assert isinstance(sheet_read_result, list)
-        sheet_info = sheet_read_result[0]
+        assert isinstance(sheet_read_result, SpreadsheetInfo)
+        assert isinstance(sheet_read_result.spreadsheet_metadata.spreadsheet_title, str)
+        assert isinstance(sheet_read_result.spreadsheet_metadata.last_updated_date, str)
+        assert isinstance(sheet_read_result.spreadsheet_metadata.last_updated_by, str)
+        sheet_info = sheet_read_result.worksheets[0]
         assert sheet_info.data is not None
         assert isinstance(sheet_info.data, pd.DataFrame)
         assert not sheet_info.data.empty
-        assert sheet_info.spreadsheet_title is not None
-        assert isinstance(sheet_info.spreadsheet_title, str)
         assert isinstance(sheet_info.worksheet_id, int)
         assert isinstance(sheet_info.source_columns, list)
         assert len(sheet_info.source_columns) > 0
@@ -337,15 +369,18 @@ class TestIntegration:
         # Run validation
         validation_result = validate_google_sheet(PUBLIC_SHEET_ID, error_handler=mock_error_handler)
         
-        # Verify that the title was returned
-        assert validation_result.spreadsheet_title is not None
-        assert isinstance(validation_result.spreadsheet_title, str)
+        # Verify that the metadata was returned
+        assert validation_result.spreadsheet_metadata is not None
+        assert isinstance(validation_result.spreadsheet_metadata.spreadsheet_title, str)
+        assert isinstance(validation_result.spreadsheet_metadata.last_updated_date, str)
+        assert isinstance(validation_result.spreadsheet_metadata.last_updated_by, str)
         
         # We don't assert on the number of errors since the sheet content may change
         # Just verify that the function ran without exceptions
         
         # For public sheets, we should get the default title
-        assert validation_result.spreadsheet_title == "Title unavailable (public access)" or isinstance(validation_result.spreadsheet_title, str)
+        spreadsheet_title = validation_result.spreadsheet_metadata.spreadsheet_title
+        assert spreadsheet_title == "Title unavailable (public access)" or isinstance(spreadsheet_title, str)
         
         # The actual function returns 'validation_error' if validation errors are found
         # or 'no_data' if no data is found to validate
@@ -383,14 +418,16 @@ class TestIntegration:
             
         # This test only runs if GOOGLE_SERVICE_ACCOUNT is set
         sheet_read_result = read_sheet_with_service_account(PRIVATE_SHEET_ID)
-        assert isinstance(sheet_read_result, list)
-        sheet_info = sheet_read_result[0]
+        assert isinstance(sheet_read_result, SpreadsheetInfo)
+        assert sheet_read_result.spreadsheet_metadata is not None
+        assert isinstance(sheet_read_result.spreadsheet_metadata.spreadsheet_title, str)
+        assert len(sheet_read_result.spreadsheet_metadata.spreadsheet_title) > 0
+        assert isinstance(sheet_read_result.spreadsheet_metadata.last_updated_date, str)
+        assert isinstance(sheet_read_result.spreadsheet_metadata.last_updated_by, str)
+        sheet_info = sheet_read_result.worksheets[0]
         assert sheet_info.data is not None
         assert isinstance(sheet_info.data, pd.DataFrame)
         assert not sheet_info.data.empty
-        assert sheet_info.spreadsheet_title is not None
-        assert isinstance(sheet_info.spreadsheet_title, str)
-        assert len(sheet_info.spreadsheet_title) > 0
         assert isinstance(sheet_info.worksheet_id, int)
         assert isinstance(sheet_info.source_columns, list)
         assert len(sheet_info.source_columns) > 0

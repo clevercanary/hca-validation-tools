@@ -73,7 +73,7 @@ def extract_validation_errors(sheet_id: str) -> Tuple[SheetValidationResult, Lis
         # If there's an error in the validation process itself
         error_msg = f"Error in validation process: {str(e)}"
         validation_errors.append(SheetErrorInfo(entity_type=None, worksheet_id=None, message=error_msg))
-        return SheetValidationResult(successful=False, spreadsheet_title=None, error_code="internal_error", summary=None), validation_errors, 500
+        return SheetValidationResult(successful=False, spreadsheet_metadata=None, error_code="internal_error", summary=None), validation_errors, 500
     
     return validation_result, validation_errors, http_status_code
 
@@ -155,6 +155,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         
         # Extract validation errors using the entry sheet validator
         validation_result, validation_errors, http_status_code = extract_validation_errors(sheet_id)
+        spreadsheet_metadata = validation_result.spreadsheet_metadata
         
         # Log memory usage after validation
         post_validation_memory = get_memory_usage()
@@ -164,7 +165,12 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Prepare the response data
         response_data = {
             'sheet_id': sheet_id,
-            'sheet_title': validation_result.spreadsheet_title,
+            'sheet_title': None if spreadsheet_metadata is None else spreadsheet_metadata.spreadsheet_title,
+            'last_updated': None if spreadsheet_metadata is None else {
+                "date": spreadsheet_metadata.last_updated_date,
+                "by": spreadsheet_metadata.last_updated_by,
+                "by_email": spreadsheet_metadata.last_updated_email
+            },
             'errors': [asdict(e) for e in validation_errors],
             'valid': len(validation_errors) == 0,
             'error_code': validation_result.error_code,

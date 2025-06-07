@@ -116,6 +116,11 @@ The Lambda function accepts the following parameters:
   "body": {
     "sheet_id": "1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY",
     "sheet_title": "Test Copy of AgaceHelmsley_HCA_tier 1_metadata",
+    "last_updated": {
+      "date": "2025-05-14T07:39:12.419Z",
+      "by": "foo",
+      "by_email": "foo@example.com"
+    },
     "errors": [
       {
         "entity_type": "dataset",
