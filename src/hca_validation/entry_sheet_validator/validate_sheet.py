@@ -19,10 +19,9 @@ import gspread
 from google.oauth2 import service_account
 
 @dataclass
-class SheetInfo:
-    """Container for Google Sheet data and metadata."""
+class WorksheetInfo:
+    """Container for Google Sheets worksheet data and metadata."""
     data: pd.DataFrame
-    spreadsheet_title: str
     worksheet_id: int
     source_columns: List[Any]
     source_rows_start_index: int
@@ -37,10 +36,24 @@ class SheetInfo:
         )
 
 @dataclass
+class SpreadsheetMetadata:
+    """Container for Google Sheet metadata"""
+    spreadsheet_title: str
+    last_updated_date: str
+    last_updated_by: str
+    last_updated_email: Optional[str]
+
+@dataclass
+class SpreadsheetInfo:
+    """Container for Google Sheet data and metadata."""
+    spreadsheet_metadata: SpreadsheetMetadata
+    worksheets: List[WorksheetInfo]
+
+@dataclass
 class ReadErrorSheetInfo:
     """Container for info regarding a failed read of a Google Sheet."""
     error_code: str
-    spreadsheet_title: Optional[str] = None
+    spreadsheet_metadata: Optional[SpreadsheetMetadata] = None
     worksheet_id: Optional[int] = None
 
 @dataclass
@@ -59,7 +72,7 @@ class SheetErrorInfo:
 class SheetValidationResult:
     """Container for general info on the outcome of a Google Sheet validation."""
     successful: bool
-    spreadsheet_title: Optional[str]
+    spreadsheet_metadata: Optional[SpreadsheetMetadata]
     error_code: Optional[str]
     summary: Optional[dict[str, int]]
 
@@ -108,7 +121,7 @@ def get_secret_from_extension(secret_name):
         logger.error(f"Error retrieving secret from extension: {e}")
         return None
 
-def read_worksheet(sheet_id, sheet_title, spreadsheet, sheet_index) -> Union[SheetInfo, ReadErrorSheetInfo]:
+def read_worksheet(sheet_id, spreadsheet_metadata, spreadsheet, sheet_index) -> Union[WorksheetInfo, ReadErrorSheetInfo]:
     import logging
     logger = logging.getLogger(__name__)
     
@@ -131,22 +144,21 @@ def read_worksheet(sheet_id, sheet_title, spreadsheet, sheet_index) -> Union[She
             source_columns = data[0]
             source_rows_start_index = 1
             df = pd.DataFrame(data[source_rows_start_index:], columns=source_columns)  # First row as header
-            return SheetInfo(
+            return WorksheetInfo(
                 data=df,
-                spreadsheet_title=sheet_title,
                 worksheet_id=worksheet_id,
                 source_columns=source_columns,
                 source_rows_start_index=source_rows_start_index
             )
         else:
             logger.warning(f"Sheet {sheet_id} (index {sheet_index}) appears to be empty")
-            return ReadErrorSheetInfo(error_code="sheet_data_empty", spreadsheet_title=sheet_title, worksheet_id=worksheet_id)
+            return ReadErrorSheetInfo(error_code="sheet_data_empty", spreadsheet_metadata=spreadsheet_metadata, worksheet_id=worksheet_id)
         
     except gspread.exceptions.WorksheetNotFound:
         logger.error(f"Error accessing Google Sheet with service account: Worksheet index {sheet_index} not found in sheet {sheet_id}")
         return ReadErrorSheetInfo(error_code='worksheet_not_found')
 
-def read_sheet_with_service_account(sheet_id, sheet_indices=[0]) -> Union[List[SheetInfo], ReadErrorSheetInfo]:
+def read_sheet_with_service_account(sheet_id, sheet_indices=[0]) -> Union[SpreadsheetInfo, ReadErrorSheetInfo]:
     """
     Read data from a Google Sheet using a service account for authentication.
     
@@ -163,6 +175,7 @@ def read_sheet_with_service_account(sheet_id, sheet_indices=[0]) -> Union[List[S
     import traceback
     import pandas as pd
     import gspread
+    from googleapiclient.discovery import build
     from google.oauth2 import service_account
     import logging
     
@@ -231,7 +244,10 @@ def read_sheet_with_service_account(sheet_id, sheet_indices=[0]) -> Union[List[S
         try:
             credentials = service_account.Credentials.from_service_account_info(
                 credentials_dict,
-                scopes=['https://www.googleapis.com/auth/spreadsheets.readonly']
+                scopes=[
+                    'https://www.googleapis.com/auth/spreadsheets.readonly',
+                    'https://www.googleapis.com/auth/drive.metadata.readonly'
+                ]
             )
             logger.info("Successfully created credentials object")
         except Exception as cred_error:
@@ -247,6 +263,15 @@ def read_sheet_with_service_account(sheet_id, sheet_indices=[0]) -> Union[List[S
             logger.error(f"Error authorizing with Google Sheets API: {auth_error}")
             return ReadErrorSheetInfo(error_code='auth_error')
         
+        # Authenticate with Drive API
+        logger.info("Authorizing with Drive API...")
+        try:
+            drive = build("drive", "v3", credentials=credentials)
+            logger.info("Successfully authorized with Drive API")
+        except Exception as auth_error:
+            logger.error(f"Error authorizing with Google Drive API: {auth_error}")
+            return ReadErrorSheetInfo(error_code='auth_error')
+        
         try:
             # Open the spreadsheet and get the worksheets
             logger.info(f"Attempting to open spreadsheet with ID: {sheet_id}")
@@ -255,17 +280,32 @@ def read_sheet_with_service_account(sheet_id, sheet_indices=[0]) -> Union[List[S
             # Get the spreadsheet title
             sheet_title = spreadsheet.title
             logger.info(f"Successfully opened spreadsheet: '{sheet_title}'")
+
+            # Get the spreadsheet metadata from Drive
+            logger.info(f"Attempting to get metadata for spreadsheet with ID: {sheet_id}")
+            file_metadata = drive.files().get(fileId=sheet_id, fields="modifiedTime, lastModifyingUser(displayName, emailAddress)").execute()
+            last_updated_date = file_metadata["modifiedTime"]
+            last_updated_by = file_metadata["lastModifyingUser"]["displayName"]
+            last_updated_email = file_metadata["lastModifyingUser"].get("emailAddress") or None
+            logger.info(f"Successfully got metadata from Drive API")
         
-            sheets_info: List[SheetInfo] = []
+            spreadsheet_metadata = SpreadsheetMetadata(
+                spreadsheet_title=sheet_title,
+                last_updated_date=last_updated_date,
+                last_updated_by=last_updated_by,
+                last_updated_email=last_updated_email
+            )
+
+            sheets_info: List[WorksheetInfo] = []
 
             for sheet_index in sheet_indices:
-                worksheet_info = read_worksheet(sheet_id, sheet_title, spreadsheet, sheet_index)
+                worksheet_info = read_worksheet(sheet_id, spreadsheet_metadata, spreadsheet, sheet_index)
                 if isinstance(worksheet_info, ReadErrorSheetInfo):
                     return worksheet_info
                 sheets_info.append(worksheet_info)
             
-            return sheets_info
-                
+            return SpreadsheetInfo(spreadsheet_metadata, sheets_info)
+        
         except gspread.exceptions.SpreadsheetNotFound:
             logger.error(f"Sheet {sheet_id} not found. Check if the sheet ID is correct.")
             logger.error(f"Error accessing Google Sheet with service account: Sheet {sheet_id} not found or not accessible with provided credentials")
@@ -348,7 +388,7 @@ def validate_google_sheet(sheet_id="1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY
             error_handler(error_info)
         return SheetValidationResult(
             successful=False,
-            spreadsheet_title=sheet_read_result.spreadsheet_title,
+            spreadsheet_metadata=sheet_read_result.spreadsheet_metadata,
             error_code=sheet_read_result.error_code,
             summary=None
         )
@@ -356,7 +396,7 @@ def validate_google_sheet(sheet_id="1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY
     # Tuples of rows list and row indices list
     rows_info_per_entity_type = []
 
-    for entity_type, sheet_info in zip(entity_types, sheet_read_result):
+    for entity_type, sheet_info in zip(entity_types, sheet_read_result.worksheets):
         df = sheet_info.data
 
         # Skip the first column if it has no slot name
@@ -407,7 +447,7 @@ def validate_google_sheet(sheet_id="1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY
             logger.warning(f"No data found to validate starting from {entity_type} row 6.")
             return SheetValidationResult(
                 successful=False,
-                spreadsheet_title=sheet_info.spreadsheet_title,
+                spreadsheet_metadata=sheet_read_result.spreadsheet_metadata,
                 error_code='no_data',
                 summary=None
             )
@@ -424,7 +464,7 @@ def validate_google_sheet(sheet_id="1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY
 
     all_valid = True
 
-    for entity_type, sheet_info, (rows_to_validate, row_indices) in zip(entity_types, sheet_read_result, rows_info_per_entity_type):
+    for entity_type, sheet_info, (rows_to_validate, row_indices) in zip(entity_types, sheet_read_result.worksheets, rows_info_per_entity_type):
         # Validate each row
         all_valid_in_worksheet = True
         for i, row in enumerate(rows_to_validate):
@@ -513,7 +553,7 @@ def validate_google_sheet(sheet_id="1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY
         logger.info(f"All rows for the {len(entity_types)} specified entity types are valid!")
         return SheetValidationResult(
             successful=True,
-            spreadsheet_title=sheet_read_result[0].spreadsheet_title,
+            spreadsheet_metadata=sheet_read_result.spreadsheet_metadata,
             error_code=None,
             summary=validation_summary
         )
@@ -521,7 +561,7 @@ def validate_google_sheet(sheet_id="1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY
         logger.warning(f"Validation found errors in some of the {len(entity_types)} entity types.")
         return SheetValidationResult(
             successful=False,
-            spreadsheet_title=sheet_read_result[0].spreadsheet_title,
+            spreadsheet_metadata=sheet_read_result.spreadsheet_metadata,
             error_code='validation_error',
             summary=validation_summary
         )
