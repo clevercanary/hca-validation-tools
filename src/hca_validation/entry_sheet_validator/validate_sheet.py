@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Optional, List, Union
 from dataclasses import dataclass
 from pydantic_core import ErrorDetails
+from linkml_runtime import SchemaView
 
 # Import dotenv for loading environment variables
 from dotenv import load_dotenv
@@ -329,6 +330,13 @@ def read_sheet_with_service_account(sheet_id, sheet_indices=[0]) -> Union[Spread
         logger.error(f"Traceback: {traceback.format_exc()}")
         return ReadErrorSheetInfo(error_code='api_error')
 
+def load_schemaview(entity_type):
+    # Get the schema path
+    module_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    schema_path = os.path.join(module_dir, 'schema', f"{entity_type}.yaml")
+    # Create a schemaview
+    return SchemaView(schema_path)
+
 def validate_google_sheet(sheet_id="1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY", entity_types=["dataset", "donor", "sample"], error_handler=None) -> SheetValidationResult:
     """
     Validate data from a Google Sheet starting at row 6 until the first empty row.
@@ -466,6 +474,8 @@ def validate_google_sheet(sheet_id="1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY
     all_valid = True
 
     for entity_type, sheet_info, (rows_to_validate, row_indices) in zip(entity_types, sheet_read_result.worksheets, rows_info_per_entity_type):
+        # Load schema for use in interpreting input values
+        schemaview = load_schemaview(entity_type)
         # Validate each row
         all_valid_in_worksheet = True
         for i, row in enumerate(rows_to_validate):
@@ -478,14 +488,16 @@ def validate_google_sheet(sheet_id="1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY
                 # Skip empty values and columns with no name
                 if pd.isna(value) or not key or key.strip() == '':
                     continue
-                    
+                
+                # Get slot info from schema if available
+                try:
+                    slot = schemaview.induced_slot(key)
+                except ValueError:
+                    slot = None
+
                 # Convert string representations of lists
-                if isinstance(value, str) and value.strip().startswith('[') and value.strip().endswith(']'):
-                    try:
-                        row_dict[key] = json.loads(value)  # Safely parse JSON-formatted strings
-                    except json.JSONDecodeError as e:
-                        logger.warning(f"Could not parse list value '{value}' for field '{key}': {e}")
-                        row_dict[key] = value
+                if isinstance(value, str) and slot is not None and slot.multivalued:
+                    row_dict[key] = [item.strip() for item in value.split(";")] if value.strip() else []
                 else:
                     row_dict[key] = value
             
