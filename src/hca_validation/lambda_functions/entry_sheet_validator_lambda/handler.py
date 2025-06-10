@@ -44,19 +44,10 @@ def extract_validation_errors(sheet_id: str) -> Tuple[SheetValidationResult, Lis
     
     # Run the validation with our custom handler
     try:
-        # Suppress print statements during validation by redirecting stdout
-        import sys
-        from io import StringIO
-        original_stdout = sys.stdout
-        sys.stdout = StringIO()
-        
         # Call the validate_google_sheet function with our error handler
         # The function returns a SheetValidationResult object
         validation_result = validate_google_sheet(sheet_id, error_handler=validation_handler)
         error_code = validation_result.error_code
-        
-        # Restore stdout
-        sys.stdout = original_stdout
         
         # Determine the appropriate HTTP status code based on the error code
         http_status_code = 200  # Default to success
