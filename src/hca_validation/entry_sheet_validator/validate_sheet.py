@@ -7,7 +7,7 @@ import time
 import os
 import json
 from pathlib import Path
-from typing import Any, Optional, List, Union
+from typing import Any, Mapping, Optional, List, Union
 from dataclasses import dataclass
 from pydantic_core import ErrorDetails
 from linkml_runtime import SchemaView
@@ -75,7 +75,10 @@ class SheetValidationResult:
     successful: bool
     spreadsheet_metadata: Optional[SpreadsheetMetadata]
     error_code: Optional[str]
-    summary: Optional[dict[str, int]]
+    summary: Mapping[str, int | None]
+
+# Default list of entity types to validate
+default_entity_types = ["dataset", "donor", "sample"]
 
 # Load environment variables from .env file if it exists
 dotenv_path = Path(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))) / '.env'
@@ -337,7 +340,13 @@ def load_schemaview(entity_type):
     # Create a schemaview
     return SchemaView(schema_path)
 
-def validate_google_sheet(sheet_id="1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY", entity_types=["dataset", "donor", "sample"], error_handler=None) -> SheetValidationResult:
+def make_summary_without_entities(error_count: int, entity_types: List[str] = default_entity_types) -> dict[str, int | None]:
+    return {
+        **{f"{entity_type}_count": None for entity_type in entity_types},
+        "error_count": error_count
+    }
+
+def validate_google_sheet(sheet_id="1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY", entity_types=default_entity_types, error_handler=None) -> SheetValidationResult:
     """
     Validate data from a Google Sheet starting at row 6 until the first empty row.
     Uses service account credentials from environment variables to access the sheet.
@@ -353,7 +362,7 @@ def validate_google_sheet(sheet_id="1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY
         - successful: boolean indicating if validation passed
         - spreadsheet_metadata: object containing title and last update information, or None
         - error_code: string indicating the type of error or None if successful
-        - summary: dict containing entity and error counts, or None if unavailable
+        - summary: dict containing entity counts (set to None if unavailable) and error count
     """
     from hca_validation.validator import validate
     import logging
@@ -399,7 +408,7 @@ def validate_google_sheet(sheet_id="1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY
             successful=False,
             spreadsheet_metadata=sheet_read_result.spreadsheet_metadata,
             error_code=sheet_read_result.error_code,
-            summary=None
+            summary=make_summary_without_entities(1, entity_types)
         )
     
     # Tuples of rows list and row indices list
@@ -458,7 +467,7 @@ def validate_google_sheet(sheet_id="1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY
                 successful=False,
                 spreadsheet_metadata=sheet_read_result.spreadsheet_metadata,
                 error_code='no_data',
-                summary=None
+                summary=make_summary_without_entities(1, entity_types)
             )
         
         logger.info(f"Found {len(rows_to_validate)} {entity_type} rows to validate.")
