@@ -308,7 +308,7 @@ class TestValidateGoogleSheet:
         assert validation_result.successful is False
         assert validation_result.spreadsheet_metadata is None
         assert validation_result.error_code == 'auth_missing'
-        assert validation_result.summary is None
+        assert validation_result.summary  == {"dataset_count": None, "donor_count": None, "sample_count": None, "error_count": 1}
 
 
 # Integration tests that use actual Google Sheets

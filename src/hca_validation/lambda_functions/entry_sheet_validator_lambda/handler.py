@@ -17,7 +17,7 @@ from dataclasses import asdict
 from typing import Dict, Any, List, Optional, Union, Tuple
 
 # Import the entry sheet validator
-from hca_validation.entry_sheet_validator.validate_sheet import SheetErrorInfo, SheetValidationResult, validate_google_sheet
+from hca_validation.entry_sheet_validator.validate_sheet import SheetErrorInfo, SheetValidationResult, make_summary_without_entities, validate_google_sheet
 
 # Configure logging
 logger = logging.getLogger()
@@ -64,7 +64,16 @@ def extract_validation_errors(sheet_id: str) -> Tuple[SheetValidationResult, Lis
         # If there's an error in the validation process itself
         error_msg = f"Error in validation process: {str(e)}"
         validation_errors.append(SheetErrorInfo(entity_type=None, worksheet_id=None, message=error_msg))
-        return SheetValidationResult(successful=False, spreadsheet_metadata=None, error_code="internal_error", summary=None), validation_errors, 500
+        return (
+            SheetValidationResult(
+                successful=False,
+                spreadsheet_metadata=None,
+                error_code="internal_error",
+                summary=make_summary_without_entities(len(validation_errors))
+            ),
+            validation_errors,
+            500
+        )
     
     return validation_result, validation_errors, http_status_code
 
