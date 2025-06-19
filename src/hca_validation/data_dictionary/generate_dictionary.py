@@ -12,10 +12,10 @@ import os
 import json
 from pathlib import Path
 from typing import Dict, List, Any, Optional
+from linkml_runtime import SchemaView
+import jsonasobj2
 
-from .expand_schema import expand
-
-def transform_schema_to_data_dictionary(schema_dict: Dict[str, Any]) -> Dict[str, Any]:
+def transform_schema_to_data_dictionary(schemaview: SchemaView) -> Dict[str, Any]:
     """
     Transform the LinkML schema into the requested data dictionary format.
     
@@ -46,102 +46,76 @@ def transform_schema_to_data_dictionary(schema_dict: Dict[str, Any]) -> Dict[str
         "Cell": "cell"
     }
 
-    def get_all_slots(class_name):
-        class_info = schema_dict["classes"][class_name]
+    # Get set of names of all enums in the schema
+    schema_enum_names = set(schemaview.all_enums())
 
-        all_slots = set()
-
-        # Add slots directly defined in the class
-        if "slots" in class_info:
-            all_slots.update(class_info["slots"])
-            
-        # Add slots from mixins/parents
-        if "is_a" in class_info:
-            parent_class = class_info["is_a"]
-            if parent_class in schema_dict["classes"]:
-                all_slots.update(get_all_slots(parent_class))
-        for mixin_class in class_info.get("mixins", []):
-            if mixin_class in schema_dict["classes"]:
-                all_slots.update(get_all_slots(mixin_class))
-        
-        return all_slots
-    
     # Process each class in the schema
-    for class_name, class_info in schema_dict.get("classes", {}).items():
+    for class_name, class_info in schemaview.all_classes().items():
         # Skip abstract classes or other non-relevant classes
-        if class_info.get("abstract", False) or class_name not in class_name_mapping:
+        if class_info.abstract or class_name not in class_name_mapping:
             continue
             
         # Create the class entry with title-cased name for title
         class_entry = {
             "title": class_name.title(),  # Ensure title case
-            "description": class_info.get("description", ""),
+            "description": class_info.description or "",
             "name": class_name_mapping.get(class_name, class_name.lower()),  # Use lowercase name
             "attributes": []
         }
         
         # Get all slots for this class, sorting values from the returned set to retain consistent order
-        all_slots = sorted(get_all_slots(class_name))
-        
+        all_slots = sorted(schemaview.class_induced_slots(class_name), key=lambda slot: slot.name)
+
         # Process each slot for this class
-        for slot_name in all_slots:
-            if slot_name in schema_dict.get("slots", {}):
-                slot_info = schema_dict["slots"][slot_name]
-                
-                # Create the attribute entry with the exact structure requested
-                attribute = {
-                    "name": slot_name,
-                    "title": slot_info.get("title", slot_name),  # Use title from schema if available
-                    "description": slot_info.get("description", ""),
-                    "range": slot_info.get("range", "string"),
-                    "required": slot_info.get("required", False),
-                    "multivalued": slot_info.get("multivalued", False)
-                }
-                
-                # Add examples if available
-                if "examples" in slot_info and len(slot_info["examples"]) > 0:
-                    # Get the first example value
-                    example = slot_info["examples"][0]
-                    if isinstance(example, dict) and "value" in example:
-                        attribute["example"] = example["value"]
-                    else:
-                        attribute["example"] = str(example)
-                
-                # Add annotations if available - format as requested
-                if "annotations" in slot_info:
-                    formatted_annotations = {}
-                    for annot_name, annot_info in slot_info["annotations"].items():
-                        if isinstance(annot_info, dict) and "value" in annot_info:
-                            formatted_annotations[annot_name] = annot_info["value"]
-                        else:
-                            formatted_annotations[annot_name] = annot_info
-                    attribute["annotations"] = formatted_annotations
-                
-                # Add rationale if available in comments - as a string, not an array
-                if "comments" in slot_info:
-                    if isinstance(slot_info["comments"], list):
-                        attribute["rationale"] = "\n".join(slot_info["comments"])
-                    else:
-                        attribute["rationale"] = slot_info["comments"]
-                
-                # Add values information if available in notes - as a string, not an array
-                if "notes" in slot_info:
-                    if isinstance(slot_info["notes"], list):
-                        attribute["values"] = "\n".join(slot_info["notes"])
-                    else:
-                        attribute["values"] = slot_info["notes"]
-                
-                # If this is an enum, add the values
-                if "range" in slot_info and slot_info["range"] in schema_dict.get("enums", {}):
-                    enum_info = schema_dict["enums"][slot_info["range"]]
-                    values_list = []
-                    for pv_name, pv_info in enum_info.get("permissible_values", {}).items():
-                        values_list.append(pv_name)
-                    if values_list:
-                        attribute["values"] = "; ".join(values_list)
-                
-                # Add the attribute to the class
-                class_entry["attributes"].append(attribute)
+        for slot_info in all_slots:
+            # Create the attribute entry with the exact structure requested
+            attribute = {
+                "name": slot_info.name,
+                "title": slot_info.title if slot_info.title is not None else slot_info.name,  # Use title from schema if available
+                "description": slot_info.description or "",
+                "range": slot_info.range if slot_info.range is not None else "string",
+                "required": slot_info.required if slot_info.required is not None else False,
+                "multivalued": slot_info.multivalued if slot_info.multivalued is not None else False
+            }
+            
+            # Add examples if available
+            if slot_info.examples:
+                # Get the first example value
+                example = slot_info.examples[0]
+                attribute["example"] = example.value
+            
+            # Add annotations if available - format as requested
+            if slot_info.annotations:
+                formatted_annotations = {}
+                for annot_name, annot_info in jsonasobj2.items(slot_info.annotations):
+                    formatted_annotations[annot_name] = annot_info.value
+                attribute["annotations"] = formatted_annotations
+            
+            # Add rationale if available in comments - as a string, not an array
+            if slot_info.comments:
+                if isinstance(slot_info.comments, list):
+                    attribute["rationale"] = "\n".join(slot_info.comments)
+                else:
+                    attribute["rationale"] = slot_info.comments
+            
+            # Add values information if available in notes - as a string, not an array
+            if slot_info.notes:
+                if isinstance(slot_info.notes, list):
+                    attribute["values"] = "\n".join(slot_info.notes)
+                else:
+                    attribute["values"] = slot_info.notes
+            
+            # If this is an enum, add the values
+            if slot_info.range in schema_enum_names:
+                enum_info = schemaview.induced_enum(slot_info.range)
+                values_list = []
+                for pv_name in (enum_info.permissible_values or {}):
+                    values_list.append(pv_name)
+                if values_list:
+                    attribute["values"] = "; ".join(values_list)
+            
+            # Add the attribute to the class
+            class_entry["attributes"].append(attribute)
         
         # Add the class to the output
         output["classes"].append(class_entry)
@@ -166,11 +140,11 @@ def generate_dictionary(schema_path=None, output_path=None):
         schema_dir = current_dir.parent / "schema"
         schema_path = schema_dir / "core.yaml"
     
-    # Expand the schema
-    schema_dict = expand(schema_path)
+    # Load the schema
+    schemaview = SchemaView(str(schema_path), merge_imports=True)
     
     # Transform the schema into the requested format
-    data_dict = transform_schema_to_data_dictionary(schema_dict)
+    data_dict = transform_schema_to_data_dictionary(schemaview)
     
     # If no output path is provided, use the standard path
     if output_path is None:
