@@ -8,10 +8,9 @@ By default, the dictionary is saved to the 'data_dictionaries' directory in the 
 """
 
 import sys
-import os
 import json
 from pathlib import Path
-from typing import Dict, List, Any, Optional
+from typing import Dict, Any
 from linkml_runtime import SchemaView
 import jsonasobj2
 
