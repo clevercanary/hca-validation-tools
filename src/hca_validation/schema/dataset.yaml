@@ -14,6 +14,7 @@ default_range: string
 
 imports:
   - linkml:types
+  - enums
 
 classes:
   Dataset:
@@ -124,10 +125,11 @@ slots:
   intron_inclusion:
     title: Intron Inclusion
     description: Were introns included during read counting in the alignment process?
-    range: IntronInclusionEnum
+    range: YesNoEnum
     required: false
     examples:
       - value: "yes"
+      - value: "no"
 
   protocol_url:
     title: Protocol URL
@@ -201,13 +203,6 @@ slots:
       cxg: title
 
 enums:
-  IntronInclusionEnum:
-    permissible_values:
-      "no":
-        description: Introns were not included
-      "yes":
-        description: Introns were included
-
   ReferenceGenomeEnum:
     permissible_values:
       GRCh37:

@@ -1,0 +1,24 @@
+id: https://github.com/clevercanary/hca-validation-tools/schema/enums
+name: hca-validation-enums
+title: Shared Enumerations for HCA Validation Tools
+description: Enumerations reused across HCA validation schemas
+license: MIT
+version: 0.1.0
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  hca: https://github.com/clevercanary/hca-validation-tools/schema/
+
+default_prefix: hca
+default_range: string
+
+imports:
+  - linkml:types
+
+enums:
+  YesNoEnum:
+    permissible_values:
+      "no":
+        description: Negative / false
+      "yes":
+        description: Affirmative / true
