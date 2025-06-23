@@ -1,0 +1,35 @@
+id: https://github.com/clevercanary/hca-validation-tools/schema/bionetwork/gut
+name: hca-validation-gut
+title: Gut BioNetwork Extensions
+description: Gut network–specific refinements to the HCA dataset schema
+license: MIT
+version: 0.1.0
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  hca: https://github.com/clevercanary/hca-validation-tools/schema/
+
+default_prefix: hca
+default_range: string
+
+imports:
+  - linkml:types
+  - ../dataset
+  - ../slots
+  - ../enums
+classes:
+  GutDataset:
+    is_a: Dataset
+    description: Dataset with Gut BioNetwork–specific metadata requirements.
+    slots:
+      - ambient_count_correction  
+      - doublet_detection
+    slot_usage:
+      ambient_count_correction:
+        required: true                  # override default (was optional)
+      doublet_detection:
+        required: true                  # override default (was optional)
+        
+         
+      
+    

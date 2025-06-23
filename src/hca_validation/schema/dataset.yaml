@@ -14,7 +14,7 @@ default_range: string
 
 imports:
   - linkml:types
-  - enums
+  - ./enums
 
 classes:
   Dataset:

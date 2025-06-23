@@ -1,0 +1,37 @@
+id: https://github.com/clevercanary/hca-validation-tools/schema/slots
+name: hca-validation-slots
+title: Shared Slot Definitions for HCA Validation Tools
+description: Reusable slots employed across multiple HCA validation schemas
+license: MIT
+version: 0.1.0
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  hca: https://github.com/clevercanary/hca-validation-tools/schema/
+
+default_prefix: hca
+default_range: string
+
+imports:
+  - linkml:types
+
+slots:
+  ambient_count_correction:
+    title: Ambient Count Correction
+    description: Method used to correct ambient RNA contamination in single-cell data.
+    range: string
+    required: false
+    examples:
+      - value: "none"
+      - value: "soupx"
+      - value: "cellbender"
+
+  doublet_detection:
+    title: Doublet Detection
+    description: Was doublet detection software used during CELLxGENE processing? If so, which software?
+    range: string
+    required: false
+    examples:
+      - value: "none"
+      - value: "doublet_finder"
+      - value: "manual"
