@@ -155,13 +155,55 @@
       "title": "Donor",
       "description": "An individual organism from which biological samples have been derived",
       "name": "donor",
-      "attributes": []
+      "attributes": [
+        {
+          "name": "dataset_id",
+          "title": "Dataset ID",
+          "description": "",
+          "range": "string",
+          "required": true,
+          "multivalued": false
+        },
+        {
+          "name": "donor_id",
+          "title": "Donor ID",
+          "description": "",
+          "range": "string",
+          "required": true,
+          "multivalued": false
+        }
+      ]
     },
     {
       "title": "Sample",
       "description": "A biological sample derived from a donor or another sample",
       "name": "sample",
-      "attributes": []
+      "attributes": [
+        {
+          "name": "dataset_id",
+          "title": "Dataset ID",
+          "description": "",
+          "range": "string",
+          "required": true,
+          "multivalued": false
+        },
+        {
+          "name": "donor_id",
+          "title": "Donor ID",
+          "description": "",
+          "range": "string",
+          "required": true,
+          "multivalued": false
+        },
+        {
+          "name": "sample_id",
+          "title": "Sample ID",
+          "description": "",
+          "range": "string",
+          "required": true,
+          "multivalued": false
+        }
+      ]
     },
     {
       "title": "Cell",
