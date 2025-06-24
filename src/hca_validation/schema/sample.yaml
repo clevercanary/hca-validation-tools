@@ -22,7 +22,7 @@ classes:
     slots:
       - sample_id
       - donor_id
-      - dataset_id
+      - study_dataset_id
 
 slots:
   sample_id:
@@ -33,7 +33,4 @@ slots:
     title: Donor ID
     range: string
     required: true
-  dataset_id:
-    title: Dataset ID
-    range: string
-    required: true
+
