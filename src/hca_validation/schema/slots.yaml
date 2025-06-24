@@ -39,3 +39,9 @@ slots:
       - value: "manual"
     annotations:
       annDataLocation: uns
+
+  study_dataset_id:
+    title: Study Dataset ID
+    description: A unique identifier for each dataset in the study. This should be unique to the study.
+    range: string
+    required: true
