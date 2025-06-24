@@ -16,6 +16,7 @@ help:
 	@echo ""
 	@echo "Available targets:"
 	@echo "  validate-schema  - Validate all schema files"
+	@echo "  validate         - Validate a specific schema (make validate FILE=relative/path)"
 	@echo "  validate-core    - Validate core schema"
 	@echo "  validate-dataset - Validate dataset schema"
 	@echo "  validate-donor   - Validate donor schema"
@@ -47,6 +48,14 @@ validate-schema:
 		echo "✓ $$schema is valid"; \
 	done
 	@echo "All schema files are valid!"
+
+# Validate a specific schema file: make validate FILE=dataset or FILE=bionetwork/gut
+.PHONY: validate
+validate:
+	@if [ -z "$(FILE)" ]; then echo "Usage: make validate FILE=<schema-relative-path (without .yaml)>"; exit 1; fi
+	@echo "Validating $(FILE).yaml..."
+	@$(POETRY) gen-yaml $(SCHEMA_DIR)/$(FILE).yaml > /dev/null $(SUPPRESS_WARNINGS) || (echo "❌ $(FILE) schema validation failed" && exit 1)
+	@echo "✓ $(FILE) schema is valid"
 
 # Validate individual schema files
 .PHONY: validate-core
