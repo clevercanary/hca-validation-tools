@@ -45,6 +45,8 @@ slots:
       - value: "cellranger_8.0.0"
     comments:
       - Affects which cells are filtered per dataset, and which reads (introns and exons or only exons) are counted as part of the reported transcriptome. This can convey batch effects.
+    annotations:
+      annDataLocation: obs
 
   assay_ontology_term_id:
     title: Assay Ontology Term Id
@@ -71,6 +73,7 @@ slots:
       - Major source of batch effect and dataset filtering criterion
     annotations:
       cxg: assay_ontology_term_id
+      annDataLocation: obs
 
   batch_condition:
     title: Batch Condition
@@ -89,6 +92,7 @@ slots:
         ["patient"], ["seqBatch"], or ["patient", "seqBatch"] are valid values.
     annotations:
       cxg: batch_condition
+      annDataLocation: uns
 
   comments:
     title: Comments
@@ -97,6 +101,8 @@ slots:
       Must not contain identifiers. This field is designed to capture potential challenges for data integration not captured elsewhere.
     range: string
     required: false
+    annotations:
+      annDataLocation: uns
 
   default_embedding:
     title: Default Embedding
@@ -105,6 +111,7 @@ slots:
     required: false
     annotations:
       cxg: default_embedding
+      annDataLocation: uns
 
   gene_annotation_version:
     title: Gene Annotation Version
@@ -121,6 +128,8 @@ slots:
       - http://www.ensembl.org/info/website/archives/index.html or NCBI/RefSeq
     comments:
       - Possible source of batch effect and confounder for some biological analysis
+    annotations:
+      annDataLocation: obs
 
   intron_inclusion:
     title: Intron Inclusion
@@ -130,6 +139,8 @@ slots:
     examples:
       - value: "yes"
       - value: "no"
+    annotations:
+      annDataLocation: obs
 
   protocol_url:
     title: Protocol URL
@@ -142,6 +153,8 @@ slots:
       - value: "https://www.biorxiv.org/content/early/2017/09/24/193219"
     comments:
       - Useful to look up protocol data that can provide insight on batch effects. As protocols can sometimes apply to a subset of the study, we capture this at a sample level. This information may not always be available.
+    annotations:
+      annDataLocation: obs
 
   reference_genome:
     title: Reference Genome
@@ -153,6 +166,8 @@ slots:
       - value: "GRCh37"
     comments:
       - Possible source of batch effect and confounder for some biological analysis
+    annotations:
+      annDataLocation: obs
 
   sequenced_fragment:
     title: Sequenced Fragment
@@ -164,6 +179,8 @@ slots:
       - value: "full length"
     comments:
       - May be a source of batch effect that has to be tested.
+    annotations:
+      annDataLocation: obs
 
   sequencing_platform:
     title: Sequencing Platform
@@ -176,6 +193,8 @@ slots:
       - Values should be "subClassOf" ["EFO:0002699"] - https://www.ebi.ac.uk/ols/ontologies/efo/terms?iri=http%3A%2F%2Fwww.ebi.ac.uk%2Fefo%2FEFO_0002699
     comments:
       - This captures potential strand hopping which may cause data quality issues.
+    annotations:
+      annDataLocation: obs
 
   study_pi:
     title: Study Pi
@@ -186,6 +205,8 @@ slots:
     examples:
       - value: '["Teichmann,Sarah,A."]'
         description: "Principal Investigator in Last Name,MiddleInitial, FirstName format"
+    annotations:
+      annDataLocation: uns
 
   title:
     title: Title
@@ -201,6 +222,7 @@ slots:
       - Useful to look up protocol data that can provide insight on batch effects. As protocols can sometimes apply to a subset of the study, we capture this at a sample level. This information may not always be available.
     annotations:
       cxg: title
+      annDataLocation: uns
 
 enums:
   ReferenceGenomeEnum:

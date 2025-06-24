@@ -22,14 +22,8 @@ classes:
     is_a: Dataset
     description: Dataset with Gut BioNetwork–specific metadata requirements.
     slots:
-      - ambient_count_correction  
+      - ambient_count_correction
       - doublet_detection
-    slot_usage:
-      ambient_count_correction:
-        required: true                  # override default (was optional)
-      doublet_detection:
-        required: true                  # override default (was optional)
-        
          
       
     

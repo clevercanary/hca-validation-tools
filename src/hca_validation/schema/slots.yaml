@@ -20,18 +20,22 @@ slots:
     title: Ambient Count Correction
     description: Method used to correct ambient RNA contamination in single-cell data.
     range: string
-    required: false
+    required: true
     examples:
       - value: "none"
       - value: "soupx"
       - value: "cellbender"
+    annotations:
+      annDataLocation: uns
 
   doublet_detection:
     title: Doublet Detection
     description: Was doublet detection software used during CELLxGENE processing? If so, which software?
     range: string
-    required: false
+    required: true
     examples:
       - value: "none"
       - value: "doublet_finder"
       - value: "manual"
+    annotations:
+      annDataLocation: uns
