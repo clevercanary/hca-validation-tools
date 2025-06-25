@@ -350,7 +350,7 @@ def validate_google_sheet(
     sheet_id: str,
     entity_types=default_entity_types,
     error_handler=None,
-    bio_network: str | None = None,
+    bionetwork: str | None = None,
 ) -> SheetValidationResult:
     """
     Validate data from a Google Sheet starting at row 6 until the first empty row.
@@ -360,7 +360,7 @@ def validate_google_sheet(
         sheet_id: The ID of the Google Sheet (required)
         entity_types: The types of entity to validate, which determines behavior such which worksheets are read and which schema is used for each one
         error_handler: Optional callback for handling SheetErrorInfo externally.
-        bio_network: Optional string indicating biological network context (reserved; currently unused).
+        bionetwork: Optional string indicating biological network context (reserved; currently unused).
         
     Returns:
         SheetValidationResult: Object with fields:
