@@ -89,6 +89,23 @@ def extract_validation_errors(sheet_id: str, bionetwork: str | None = None) -> T
             http_status_code = HTTPStatus.OK.value
         else:
             http_status_code = ERROR_TO_STATUS.get(error_code, HTTPStatus.BAD_REQUEST).value
+    except ValueError as ve:
+        # Guard violations (e.g., missing required params) → 400 Bad Request
+        error_msg = str(ve)
+        validation_errors.append(
+            SheetErrorInfo(entity_type=None, worksheet_id=None, message=error_msg)
+        )
+        return (
+            SheetValidationResult(
+                successful=False,
+                spreadsheet_metadata=None,
+                error_code="bad_request",
+                summary=make_summary_without_entities(len(validation_errors)),
+            ),
+            validation_errors,
+            HTTPStatus.BAD_REQUEST.value,
+        )
+    
     except Exception as e:
         # If there's an error in the validation process itself
         error_msg = f"Error in validation process: {str(e)}"
