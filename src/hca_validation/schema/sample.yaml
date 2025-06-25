@@ -22,7 +22,7 @@ classes:
     slots:
       - sample_id
       - donor_id
-      - study_dataset_id
+      - dataset_id
 
 slots:
   sample_id:

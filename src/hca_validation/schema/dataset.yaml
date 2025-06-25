@@ -35,7 +35,7 @@ classes:
       - sequencing_platform
       - study_pi
       - title
-      - study_dataset_id
+      - dataset_id
 
 slots:
   alignment_software:

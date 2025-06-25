@@ -253,7 +253,7 @@ class Dataset(ConfiguredBaseModel):
          'domain_of': ['Dataset'],
          'examples': [{'value': "Cells of the adult human heart collection is 'All — "
                                 "Cells of the adult human heart'"}]} })
-    study_dataset_id: str = Field(default=..., title="Study Dataset ID", description="""A unique identifier for each dataset in the study. This should be unique to the study.""", json_schema_extra = { "linkml_meta": {'alias': 'study_dataset_id', 'domain_of': ['Dataset', 'Donor', 'Sample']} })
+    dataset_id: str = Field(default=..., title="Dataset ID", description="""A unique identifier for each dataset in the study. This should be unique to the study.""", json_schema_extra = { "linkml_meta": {'alias': 'dataset_id', 'domain_of': ['Dataset', 'Donor', 'Sample']} })
 
 
 class Donor(ConfiguredBaseModel):
@@ -285,7 +285,7 @@ class Donor(ConfiguredBaseModel):
          'domain_of': ['Donor'],
          'examples': [{'value': '1'}],
          'notes': ['1; 2; 3; 4; 0; unknown; not applicable']} })
-    study_dataset_id: str = Field(default=..., title="Study Dataset ID", description="""A unique identifier for each dataset in the study. This should be unique to the study.""", json_schema_extra = { "linkml_meta": {'alias': 'study_dataset_id', 'domain_of': ['Dataset', 'Donor', 'Sample']} })
+    dataset_id: str = Field(default=..., title="Dataset ID", description="""A unique identifier for each dataset in the study. This should be unique to the study.""", json_schema_extra = { "linkml_meta": {'alias': 'dataset_id', 'domain_of': ['Dataset', 'Donor', 'Sample']} })
 
 
 class Sample(ConfiguredBaseModel):
@@ -296,7 +296,7 @@ class Sample(ConfiguredBaseModel):
 
     sample_id: str = Field(default=..., title="Sample ID", json_schema_extra = { "linkml_meta": {'alias': 'sample_id', 'domain_of': ['Sample']} })
     donor_id: str = Field(default=..., title="Donor ID", json_schema_extra = { "linkml_meta": {'alias': 'donor_id', 'domain_of': ['Donor', 'Sample']} })
-    study_dataset_id: str = Field(default=..., title="Study Dataset ID", description="""A unique identifier for each dataset in the study. This should be unique to the study.""", json_schema_extra = { "linkml_meta": {'alias': 'study_dataset_id', 'domain_of': ['Dataset', 'Donor', 'Sample']} })
+    dataset_id: str = Field(default=..., title="Dataset ID", description="""A unique identifier for each dataset in the study. This should be unique to the study.""", json_schema_extra = { "linkml_meta": {'alias': 'dataset_id', 'domain_of': ['Dataset', 'Donor', 'Sample']} })
 
 
 class Cell(ConfiguredBaseModel):

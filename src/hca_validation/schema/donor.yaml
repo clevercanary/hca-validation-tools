@@ -14,6 +14,7 @@ default_range: string
 
 imports:
   - linkml:types
+  - ./slots
 
 classes:
   Donor:
@@ -23,7 +24,7 @@ classes:
       - donor_id
       - sex_ontology_term_id
       - manner_of_death
-      - study_dataset_id
+      - dataset_id
 
 slots:
   donor_id:
