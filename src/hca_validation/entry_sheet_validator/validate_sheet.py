@@ -7,7 +7,7 @@ import time
 import os
 import json
 from pathlib import Path
-from typing import Any, Mapping, Optional, List, Union
+from typing import Any, Mapping, Optional, List, Union, Callable
 from dataclasses import dataclass
 from pydantic_core import ErrorDetails
 from linkml_runtime import SchemaView
@@ -348,9 +348,10 @@ def make_summary_without_entities(error_count: int, entity_types: List[str] = de
 
 def validate_google_sheet(
     sheet_id: str,
-    entity_types=default_entity_types,
-    error_handler=None,
-    bionetwork: str | None = None,
+    *,
+    entity_types: List[str] = default_entity_types,
+    error_handler: Optional[Callable[[SheetErrorInfo], None]] = None,
+    bionetwork: Optional[str] = None,
 ) -> SheetValidationResult:
     """
     Validate data from a Google Sheet starting at row 6 until the first empty row.
@@ -358,9 +359,9 @@ def validate_google_sheet(
     
     Args:
         sheet_id: The ID of the Google Sheet (required)
-        entity_types: The types of entity to validate, which determines behavior such which worksheets are read and which schema is used for each one
-        error_handler: Optional callback for handling SheetErrorInfo externally.
-        bionetwork: Optional string indicating biological network context (reserved; currently unused).
+        entity_types: List of entity types to validate. Determines which worksheets are read and which schema is used for each.
+        error_handler: Optional callback ``Callable[[SheetErrorInfo], None]`` for handling validation errors externally.
+        bionetwork: Optional string identifying the biological network context (reserved; currently unused).
         
     Returns:
         SheetValidationResult: Object with fields:

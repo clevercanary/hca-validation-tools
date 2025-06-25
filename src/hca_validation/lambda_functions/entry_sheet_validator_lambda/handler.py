@@ -51,7 +51,7 @@ ERROR_TO_STATUS: dict[str, HTTPStatus] = {
 }
 
 
-def extract_validation_errors(sheet_id: str, bionetwork: str | None = None) -> Tuple[SheetValidationResult, List[SheetErrorInfo], int]:
+def extract_validation_errors(sheet_id: str, bionetwork: Optional[str] = None) -> Tuple[SheetValidationResult, List[SheetErrorInfo], int]:
     """
     Extract validation errors from a Google Sheet.
     
