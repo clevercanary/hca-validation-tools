@@ -346,7 +346,12 @@ def make_summary_without_entities(error_count: int, entity_types: List[str] = de
         "error_count": error_count
     }
 
-def validate_google_sheet(sheet_id: str, entity_types=default_entity_types, error_handler=None) -> SheetValidationResult:
+def validate_google_sheet(
+    sheet_id: str,
+    entity_types=default_entity_types,
+    error_handler=None,
+    bio_network: str | None = None,
+) -> SheetValidationResult:
     """
     Validate data from a Google Sheet starting at row 6 until the first empty row.
     Uses service account credentials from environment variables to access the sheet.
@@ -354,9 +359,9 @@ def validate_google_sheet(sheet_id: str, entity_types=default_entity_types, erro
     Args:
         sheet_id: The ID of the Google Sheet (required)
         entity_types: The types of entity to validate, which determines behavior such which worksheets are read and which schema is used for each one
-        error_handler: Optional callback function that takes a SheetErrorInfo object
-                      to handle validation errors externally
-                      
+        error_handler: Optional callback for handling SheetErrorInfo externally.
+        bio_network: Optional string indicating biological network context (reserved; currently unused).
+        
     Returns:
         SheetValidationResult: Object with fields:
         - successful: boolean indicating if validation passed

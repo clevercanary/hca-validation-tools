@@ -51,12 +51,13 @@ ERROR_TO_STATUS: dict[str, HTTPStatus] = {
 }
 
 
-def extract_validation_errors(sheet_id: str) -> Tuple[SheetValidationResult, List[SheetErrorInfo], int]:
+def extract_validation_errors(sheet_id: str, bio_network: str | None = None) -> Tuple[SheetValidationResult, List[SheetErrorInfo], int]:
     """
     Extract validation errors from a Google Sheet.
     
     Args:
         sheet_id: The ID of the Google Sheet
+        bio_network: Optional biological network identifier (currently unused by the validator)
         
     Returns:
         Tuple containing (SheetValidationResult, list of validation error objects, http_status_code)
@@ -72,8 +73,12 @@ def extract_validation_errors(sheet_id: str) -> Tuple[SheetValidationResult, Lis
     # Run the validation with our custom handler
     try:
         # Call the validate_google_sheet function with our error handler
-        # The function returns a SheetValidationResult object
-        validation_result = validate_google_sheet(sheet_id, error_handler=validation_handler)
+        # bio_network is passed through but not yet used downstream.
+        validation_result = validate_google_sheet(
+            sheet_id,
+            error_handler=validation_handler,
+            bio_network=bio_network,
+        )
         error_code = validation_result.error_code
         
         # Resolve HTTP status code using the mapping. Default logic:
@@ -145,6 +150,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     body = event['body']
                     
                 sheet_id = body.get('sheet_id')
+                bio_network = body.get('bio_network')
             except Exception as e:
                 logger.error(f"Error parsing request body: {str(e)}")
                 return {
@@ -160,6 +166,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         else:
             # Direct Lambda invocation
             sheet_id = event.get('sheet_id')
+            bio_network = event.get('bio_network')
         
         if not sheet_id:
             return {
@@ -178,7 +185,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         logger.info(f"Memory usage before validation: {pre_validation_memory}")
         
         # Extract validation errors using the entry sheet validator
-        validation_result, validation_errors, http_status_code = extract_validation_errors(sheet_id)
+        validation_result, validation_errors, http_status_code = extract_validation_errors(sheet_id, bio_network)
         spreadsheet_metadata = validation_result.spreadsheet_metadata
         
         # Log memory usage after validation
