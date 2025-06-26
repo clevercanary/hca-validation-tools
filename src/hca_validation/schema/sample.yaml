@@ -38,16 +38,6 @@ classes:
       - tissue_free_text
 
 slots:
-  sample_id:
-    title: Sample ID
-    range: string
-    required: true
-
-  donor_id:
-    title: Donor ID
-    range: string
-    required: true
-
   author_batch_notes:
     title: Author Batch Notes
     description: >-

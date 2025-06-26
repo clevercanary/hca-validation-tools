@@ -27,13 +27,6 @@ classes:
       - dataset_id
 
 slots:
-  donor_id:
-    title: Donor ID
-    description: This must be free-text that identifies a unique individual that data were derived from.
-    notes: >
-      It is strongly recommended that this identifier be designed so that it is unique to: a given individual within the collection of datasets that includes this dataset, and a given individual across all collections in CELLxGENE Discover. It is strongly recommended that "pooled" be used for observations from a sample of multiple individuals that were not confidently assigned to a single individual through demultiplexing. It is strongly recommended that "unknown" ONLY be used for observations in a dataset when it is not known which observations are from the same individual.
-    range: string
-    required: true
   sex_ontology_term_id:
     title: Sex Ontology Term ID
     description: Reported sex of the donor.

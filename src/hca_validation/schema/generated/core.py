@@ -396,7 +396,23 @@ class Donor(ConfiguredBaseModel):
     """
     linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'https://github.com/clevercanary/hca-validation-tools/schema/donor'})
 
-    donor_id: str = Field(default=..., title="Donor ID", json_schema_extra = { "linkml_meta": {'alias': 'donor_id', 'domain_of': ['Donor', 'Sample']} })
+    donor_id: str = Field(default=..., title="Donor ID", description="""This must be free-text that identifies a unique individual that data were derived from.""", json_schema_extra = { "linkml_meta": {'alias': 'donor_id',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
+                         'cxg': {'tag': 'cxg', 'value': 'donor_id'},
+                         'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'comments': ['Fundamental unit of biological variation of the data. It is '
+                      'strongly recommended that this identifier be designed so that '
+                      'it is unique to: a given individual within the collection of '
+                      'datasets that includes this dataset, and a given individual '
+                      'across all collections in CELLxGENE Discover. It is strongly '
+                      'recommended that "pooled" be used for observations from a '
+                      'sample of multiple individuals that were not confidently '
+                      'assigned to a single individual through demultiplexing. It is '
+                      'strongly recommended that "unknown" ONLY be used for '
+                      'observations in a dataset when it is not known which '
+                      'observations are from the same individual.'],
+         'domain_of': ['Donor', 'Sample'],
+         'examples': [{'value': 'CR_donor_1; MM_donor_1; LR_donor_2'}]} })
     sex_ontology_term_id: str = Field(default=..., title="Sex Ontology Term ID", description="""Reported sex of the donor.""", json_schema_extra = { "linkml_meta": {'alias': 'sex_ontology_term_id',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'cxg': {'tag': 'cxg', 'value': 'sex_ontology_term_id'}},
@@ -428,8 +444,28 @@ class Sample(ConfiguredBaseModel):
     """
     linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'https://github.com/clevercanary/hca-validation-tools/schema/sample'})
 
-    sample_id: str = Field(default=..., title="Sample ID", json_schema_extra = { "linkml_meta": {'alias': 'sample_id', 'domain_of': ['Sample']} })
-    donor_id: str = Field(default=..., title="Donor ID", json_schema_extra = { "linkml_meta": {'alias': 'donor_id', 'domain_of': ['Donor', 'Sample']} })
+    sample_id: str = Field(default=..., title="Sample ID", description="""Identification number of the sample. This is the fundamental unit of sampling the tissue (the specimen taken from the subject), which can be the same as the 'subject_ID', but is often different if multiple samples are taken from the same subject. Note: this is NOT a unit of multiplexing of donor samples, which should be stored in \"library\".""", json_schema_extra = { "linkml_meta": {'alias': 'sample_id',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
+                         'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'domain_of': ['Sample'],
+         'examples': [{'value': 'SC24; SC25; SC28'}]} })
+    donor_id: str = Field(default=..., title="Donor ID", description="""This must be free-text that identifies a unique individual that data were derived from.""", json_schema_extra = { "linkml_meta": {'alias': 'donor_id',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
+                         'cxg': {'tag': 'cxg', 'value': 'donor_id'},
+                         'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'comments': ['Fundamental unit of biological variation of the data. It is '
+                      'strongly recommended that this identifier be designed so that '
+                      'it is unique to: a given individual within the collection of '
+                      'datasets that includes this dataset, and a given individual '
+                      'across all collections in CELLxGENE Discover. It is strongly '
+                      'recommended that "pooled" be used for observations from a '
+                      'sample of multiple individuals that were not confidently '
+                      'assigned to a single individual through demultiplexing. It is '
+                      'strongly recommended that "unknown" ONLY be used for '
+                      'observations in a dataset when it is not known which '
+                      'observations are from the same individual.'],
+         'domain_of': ['Donor', 'Sample'],
+         'examples': [{'value': 'CR_donor_1; MM_donor_1; LR_donor_2'}]} })
     dataset_id: str = Field(default=..., title="Dataset ID", description="""A unique identifier for each dataset in the study. This should be unique to the study.""", json_schema_extra = { "linkml_meta": {'alias': 'dataset_id', 'domain_of': ['Dataset', 'Donor', 'Sample']} })
     author_batch_notes: Optional[str] = Field(default=None, title="Author Batch Notes", description="""Encoding of author knowledge on any further information related to likely batch effects.""", json_schema_extra = { "linkml_meta": {'alias': 'author_batch_notes',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
