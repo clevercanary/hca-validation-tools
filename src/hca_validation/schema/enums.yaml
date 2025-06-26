@@ -22,3 +22,15 @@ enums:
         description: Negative / false
       "yes":
         description: Affirmative / true
+        
+  RadialTissueTerm:
+    permissible_values:
+      EPI: {}
+      LP: {}
+      MUSC: {}
+      EPI_LP_MUSC: {}
+      MLN: {}
+      SUB: {}
+      "Peyers patch": {}
+      "Mucosal ILF": {}
+      "Submucosal ILF": {}

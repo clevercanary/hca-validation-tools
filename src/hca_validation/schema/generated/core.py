@@ -141,6 +141,18 @@ class YesNoEnum(str, Enum):
     """
 
 
+class RadialTissueTerm(str, Enum):
+    EPI = "EPI"
+    LP = "LP"
+    MUSC = "MUSC"
+    EPI_LP_MUSC = "EPI_LP_MUSC"
+    MLN = "MLN"
+    SUB = "SUB"
+    Peyers_patch = "Peyers patch"
+    Mucosal_ILF = "Mucosal ILF"
+    Submucosal_ILF = "Submucosal ILF"
+
+
 
 class Dataset(ConfiguredBaseModel):
     """
@@ -277,6 +289,7 @@ class GutDataset(Dataset):
          'examples': [{'value': 'none'},
                       {'value': 'doublet_finder'},
                       {'value': 'manual'}]} })
+    radial_tissue_term: RadialTissueTerm = Field(default=..., title="Radial Tissue Term", description="""Radial compartment/location of the tissue sample.""", json_schema_extra = { "linkml_meta": {'alias': 'radial_tissue_term', 'domain_of': ['GutDataset']} })
     alignment_software: str = Field(default=..., title="Alignment Software", description="""Protocol used for alignment analysis, please specify which version was used e.g. cell ranger 2.0, 2.1.1 etc.""", json_schema_extra = { "linkml_meta": {'alias': 'alignment_software',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'comments': ['Affects which cells are filtered per dataset, and which reads '

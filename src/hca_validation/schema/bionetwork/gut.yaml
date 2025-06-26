@@ -24,6 +24,6 @@ classes:
     slots:
       - ambient_count_correction
       - doublet_detection
-         
-      
-    
+      - radial_tissue_term
+
+  

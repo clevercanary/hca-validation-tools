@@ -14,6 +14,7 @@ default_range: string
 
 imports:
   - linkml:types
+  - ./enums
 
 slots:
   ambient_count_correction:
@@ -72,3 +73,9 @@ slots:
     required: true
     comments: >-
       Fundamental unit of biological variation of the data. It is strongly recommended that this identifier be designed so that it is unique to: a given individual within the collection of datasets that includes this dataset, and a given individual across all collections in CELLxGENE Discover. It is strongly recommended that "pooled" be used for observations from a sample of multiple individuals that were not confidently assigned to a single individual through demultiplexing. It is strongly recommended that "unknown" ONLY be used for observations in a dataset when it is not known which observations are from the same individual.
+
+  radial_tissue_term:
+    title: Radial Tissue Term
+    description: Radial compartment/location of the tissue sample.
+    range: RadialTissueTerm
+    required: true
