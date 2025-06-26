@@ -27,6 +27,7 @@ classes:
       - author_batch_notes
       - cell_number_loaded
       - cell_viability_percentage
+      - institute
 
 slots:
   sample_id:
@@ -83,3 +84,18 @@ slots:
     multivalued: false
     comments: >-
       Is a measure of sample quality that could be used to explain outlier samples
+
+  institute:
+    title: Institute
+    description: >-
+      Institution where the samples were processed.
+    examples:
+      - value: EMBL-EBI; Genome Institute of Singapore
+    annotations:
+      annDataLocation: obs
+      tier: Tier 1
+    range: string
+    required: true
+    multivalued: false
+    comments: >-
+      To be able to link to other studies from the same institution as sometimes samples from different labs in the same institute are processed via similar core facilities. Thus batch effects may be smaller for datasets from the same institute even if other factors differ.

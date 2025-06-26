@@ -450,6 +450,16 @@ class Sample(ConfiguredBaseModel):
                       'outlier samples'],
          'domain_of': ['Sample'],
          'examples': [{'value': '88; 95; 93.5'}]} })
+    institute: str = Field(default=..., title="Institute", description="""Institution where the samples were processed.""", json_schema_extra = { "linkml_meta": {'alias': 'institute',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
+                         'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'comments': ['To be able to link to other studies from the same institution '
+                      'as sometimes samples from different labs in the same institute '
+                      'are processed via similar core facilities. Thus batch effects '
+                      'may be smaller for datasets from the same institute even if '
+                      'other factors differ.'],
+         'domain_of': ['Sample'],
+         'examples': [{'value': 'EMBL-EBI; Genome Institute of Singapore'}]} })
 
 
 class Cell(ConfiguredBaseModel):
