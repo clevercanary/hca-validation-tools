@@ -486,6 +486,39 @@ class Sample(ConfiguredBaseModel):
          'comments': ['Library sequencing is a major source of batch effects'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'run1; NV0087'}]} })
+    sample_collection_year: Optional[str] = Field(default=None, title="Sample Collection Year", description="""Year of sample collection. Should not be detailed further (to exact month and day), to prevent identifiability.""", json_schema_extra = { "linkml_meta": {'alias': 'sample_collection_year',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
+                         'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'comments': ['May explain whether a dataset was separated into smaller '
+                      'batches.'],
+         'domain_of': ['Sample'],
+         'examples': [{'value': '2018'}]} })
+    sample_collection_site: Optional[str] = Field(default=None, title="Sample Collection Site", description="""The pseudonymised name of the site where the sample was collected.""", json_schema_extra = { "linkml_meta": {'alias': 'sample_collection_site',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
+                         'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'comments': ['To understand whether the collection site contributes to batch '
+                      'effects. It is strongly recommended that this identifier be '
+                      'designed so that it is unique to a given site within the '
+                      'collection of datasets that includes this site (for example, '
+                      "the labels 'site1', 'site2' may appear in other datasets thus "
+                      'rendering them indistinguishable).'],
+         'domain_of': ['Sample'],
+         'examples': [{'value': 'AIDA_site_1; AIDA_site_2'}]} })
+    sample_collection_relative_time_point: Optional[str] = Field(default=None, title="Sample Collection Relative Time Point", description="""Time point when the sample was collected. This field is only needed if multiple samples from the same subject are available and collected at different time points. Sample collection dates (e.g. 23/09/22) cannot be used due to patient data protection, only relative time points should be used here (e.g. day3).""", json_schema_extra = { "linkml_meta": {'alias': 'sample_collection_relative_time_point',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
+                         'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'comments': ['Explains variability in the data between samples from the same '
+                      'subject.'],
+         'domain_of': ['Sample'],
+         'examples': [{'value': 'sampleX_day1'}]} })
+    tissue_free_text: Optional[str] = Field(default=None, title="Tissue Free Text", description="""The detailed anatomical location of the sample - this does not have to tie to an ontology term.""", json_schema_extra = { "linkml_meta": {'alias': 'tissue_free_text',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
+                         'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'comments': ['To help the integration team understand the anatomical location '
+                      'of the sample, specifically to solve the problem when the '
+                      'UBERON ontology terms are insufficiently precise.'],
+         'domain_of': ['Sample'],
+         'examples': [{'value': 'terminal ileum'}]} })
 
 
 class Cell(ConfiguredBaseModel):
