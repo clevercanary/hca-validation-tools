@@ -8,28 +8,56 @@ This Lambda function accepts a Google Sheet ID, validates the sheet using the
 HCA validation tools, and returns the validation results as JSON.
 """
 
+# Standard library imports
 import json
 import traceback
 import os
 import psutil
 import logging
+from http import HTTPStatus
 from dataclasses import asdict
 from typing import Dict, Any, List, Optional, Union, Tuple
 
-# Import the entry sheet validator
-from hca_validation.entry_sheet_validator.validate_sheet import SheetErrorInfo, SheetValidationResult, make_summary_without_entities, validate_google_sheet
+# Third-party / local imports
+from hca_validation.entry_sheet_validator.validate_sheet import (
+    SheetErrorInfo,
+    SheetValidationResult,
+    make_summary_without_entities,
+    validate_google_sheet,
+)
 
 # Configure logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
+# ---------------------------------------------------------------------------
+# Error-code → HTTP status mapping
+# ---------------------------------------------------------------------------
+# Known validation error codes mapped to appropriate HTTP status responses.
+# This avoids repetitive if/elif chains and simplifies future maintenance.
+ERROR_TO_STATUS: dict[str, HTTPStatus] = {
+    # Authentication / authorization errors
+    "auth_missing": HTTPStatus.UNAUTHORIZED,
+    "auth_unresolved": HTTPStatus.UNAUTHORIZED,
+    "auth_invalid_format": HTTPStatus.UNAUTHORIZED,
+    "auth_error": HTTPStatus.UNAUTHORIZED,
 
-def extract_validation_errors(sheet_id: str) -> Tuple[SheetValidationResult, List[SheetErrorInfo], int]:
+    # Permission issues
+    "permission_denied": HTTPStatus.FORBIDDEN,
+
+    # Resource not found
+    "sheet_not_found": HTTPStatus.NOT_FOUND,
+    "worksheet_not_found": HTTPStatus.NOT_FOUND,
+}
+
+
+def extract_validation_errors(sheet_id: str, bionetwork: Optional[str] = None) -> Tuple[SheetValidationResult, List[SheetErrorInfo], int]:
     """
     Extract validation errors from a Google Sheet.
     
     Args:
         sheet_id: The ID of the Google Sheet
+        bionetwork: Optional biological network identifier (currently unused by the validator)
         
     Returns:
         Tuple containing (SheetValidationResult, list of validation error objects, http_status_code)
@@ -45,21 +73,39 @@ def extract_validation_errors(sheet_id: str) -> Tuple[SheetValidationResult, Lis
     # Run the validation with our custom handler
     try:
         # Call the validate_google_sheet function with our error handler
-        # The function returns a SheetValidationResult object
-        validation_result = validate_google_sheet(sheet_id, error_handler=validation_handler)
+        # bionetwork is passed through but not yet used downstream.
+        validation_result = validate_google_sheet(
+            sheet_id,
+            error_handler=validation_handler,
+            bionetwork=bionetwork,
+        )
         error_code = validation_result.error_code
         
-        # Determine the appropriate HTTP status code based on the error code
-        http_status_code = 200  # Default to success
-        if error_code:
-            if error_code == 'auth_missing' or error_code == 'auth_unresolved' or error_code == 'auth_invalid_format' or error_code == 'auth_error':
-                http_status_code = 401  # Unauthorized
-            elif error_code == 'sheet_not_found' or error_code == 'worksheet_not_found':
-                http_status_code = 404  # Not Found
-            elif error_code == 'permission_denied':
-                http_status_code = 403  # Forbidden
-            else:
-                http_status_code = 400  # Bad Request
+        # Resolve HTTP status code using the mapping. Default logic:
+        #   • No error_code   → 200 OK
+        #   • Known error     → mapped status
+        #   • Unknown error   → 400 Bad Request
+        if error_code is None:
+            http_status_code = HTTPStatus.OK.value
+        else:
+            http_status_code = ERROR_TO_STATUS.get(error_code, HTTPStatus.BAD_REQUEST).value
+    except ValueError as ve:
+        # Guard violations (e.g., missing required params) → 400 Bad Request
+        error_msg = str(ve)
+        validation_errors.append(
+            SheetErrorInfo(entity_type=None, worksheet_id=None, message=error_msg)
+        )
+        return (
+            SheetValidationResult(
+                successful=False,
+                spreadsheet_metadata=None,
+                error_code="bad_request",
+                summary=make_summary_without_entities(len(validation_errors)),
+            ),
+            validation_errors,
+            HTTPStatus.BAD_REQUEST.value,
+        )
+    
     except Exception as e:
         # If there's an error in the validation process itself
         error_msg = f"Error in validation process: {str(e)}"
@@ -121,10 +167,11 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     body = event['body']
                     
                 sheet_id = body.get('sheet_id')
+                bionetwork = body.get('bionetwork')
             except Exception as e:
                 logger.error(f"Error parsing request body: {str(e)}")
                 return {
-                    'statusCode': 400,
+                    'statusCode': HTTPStatus.BAD_REQUEST.value,
                     'body': json.dumps({
                         'error': f"Invalid request body: {str(e)}"
                     }),
@@ -136,10 +183,11 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         else:
             # Direct Lambda invocation
             sheet_id = event.get('sheet_id')
+            bionetwork = event.get('bionetwork')
         
         if not sheet_id:
             return {
-                'statusCode': 400,
+                'statusCode': HTTPStatus.BAD_REQUEST.value,
                 'body': json.dumps({
                     'error': 'Missing required parameter: sheet_id'
                 }),
@@ -154,7 +202,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         logger.info(f"Memory usage before validation: {pre_validation_memory}")
         
         # Extract validation errors using the entry sheet validator
-        validation_result, validation_errors, http_status_code = extract_validation_errors(sheet_id)
+        validation_result, validation_errors, http_status_code = extract_validation_errors(sheet_id, bionetwork)
         spreadsheet_metadata = validation_result.spreadsheet_metadata
         
         # Log memory usage after validation

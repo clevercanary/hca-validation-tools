@@ -7,7 +7,7 @@ import time
 import os
 import json
 from pathlib import Path
-from typing import Any, Mapping, Optional, List, Union
+from typing import Any, Mapping, Optional, List, Union, Callable
 from dataclasses import dataclass
 from pydantic_core import ErrorDetails
 from linkml_runtime import SchemaView
@@ -346,17 +346,23 @@ def make_summary_without_entities(error_count: int, entity_types: List[str] = de
         "error_count": error_count
     }
 
-def validate_google_sheet(sheet_id="1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY", entity_types=default_entity_types, error_handler=None) -> SheetValidationResult:
+def validate_google_sheet(
+    sheet_id: str,
+    *,
+    entity_types: List[str] = default_entity_types,
+    error_handler: Optional[Callable[[SheetErrorInfo], None]] = None,
+    bionetwork: Optional[str] = None,
+) -> SheetValidationResult:
     """
     Validate data from a Google Sheet starting at row 6 until the first empty row.
     Uses service account credentials from environment variables to access the sheet.
     
     Args:
-        sheet_id: The ID of the Google Sheet
-        entity_types: The types of entity to validate, which determines behavior such which worksheets are read and which schema is used for each one
-        error_handler: Optional callback function that takes a SheetErrorInfo object
-                      to handle validation errors externally
-                      
+        sheet_id: The ID of the Google Sheet (required)
+        entity_types: List of entity types to validate. Determines which worksheets are read and which schema is used for each.
+        error_handler: Optional callback ``Callable[[SheetErrorInfo], None]`` for handling validation errors externally.
+        bionetwork: Optional string identifying the biological network context (reserved; currently unused).
+        
     Returns:
         SheetValidationResult: Object with fields:
         - successful: boolean indicating if validation passed
@@ -364,6 +370,10 @@ def validate_google_sheet(sheet_id="1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY
         - error_code: string indicating the type of error or None if successful
         - summary: dict containing entity counts (set to None if unavailable) and error count
     """
+    # --- Parameter validation -------------------------------------------------
+    if not sheet_id:
+        raise ValueError("sheet_id is required for validate_google_sheet()")
+
     from hca_validation.validator import validate
     import logging
     logger = logging.getLogger()
@@ -590,6 +600,10 @@ def validate_google_sheet(sheet_id="1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY
 
 
 if __name__ == "__main__":
-    # Get sheet ID from command line if provided
-    sheet_id = sys.argv[1] if len(sys.argv) > 1 else "1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY"
+    # Expect a sheet_id argument when run as a script
+    if len(sys.argv) < 2:
+        print("Usage: python -m hca_validation.entry_sheet_validator.validate_sheet SHEET_ID", file=sys.stderr)
+        sys.exit(1)
+
+    sheet_id = sys.argv[1]
     validate_google_sheet(sheet_id)
