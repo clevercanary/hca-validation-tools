@@ -14,6 +14,7 @@ default_range: string
 
 imports:
   - linkml:types
+  - ./slots
 
 classes:
   Sample:
@@ -23,6 +24,7 @@ classes:
       - sample_id
       - donor_id
       - dataset_id
+      - author_batch_notes
 
 slots:
   sample_id:
@@ -33,4 +35,17 @@ slots:
     title: Donor ID
     range: string
     required: true
-
+  author_batch_notes:
+    title: Author Batch Notes
+    description: >-
+      Encoding of author knowledge on any further information related to likely batch effects.
+    examples:
+      - value: Batch run by different personnel on different days
+    annotations:
+      annDataLocation: obs
+      tier: Tier 1
+    range: string
+    required: false
+    multivalued: false
+    comments: >-
+      Space for author intuition of batch effects in their dataset
