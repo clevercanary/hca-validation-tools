@@ -25,9 +25,12 @@ classes:
       - donor_id
       - dataset_id
       - author_batch_notes
+      - age_range
       - cell_number_loaded
       - cell_viability_percentage
+      - cell_enrichment
       - development_stage_ontology_term_id
+      - disease_ontology_term
       - institute
       - library_id
       - library_id_repository
@@ -43,6 +46,7 @@ classes:
       - sampled_site_condition
       - sample_preservation_method
       - sample_source
+      - tissue_ontology_term
 
 slots:
   author_batch_notes:
@@ -59,6 +63,11 @@ slots:
     multivalued: false
     comments: >-
       Space for author intuition of batch effects in their dataset
+
+  age_range:
+    is_a: deprecated_slot
+    title: Age Range
+    description: Deprecated placeholder for age range metadata.
 
   cell_number_loaded:
     title: Cell Number Loaded
@@ -89,6 +98,19 @@ slots:
     multivalued: false
     comments: >-
       Is a measure of sample quality that could be used to explain outlier samples
+
+  cell_enrichment:
+    title: Cell Enrichment
+    description: Specifies the cell types targeted for enrichment or depletion beyond the selection of live cells.
+    examples:
+      - value: CL:0000057+
+    annotations:
+      annDataLocation: obs
+      tier: Tier 1
+    range: string
+    required: true
+    multivalued: false
+    notes: "This must be a Cell Ontology (CL) term (http://www.ebi.ac.uk/ols4/ontologies/cl). For cells that are enriched, list the CL code followed by a '+'. For cells that were depleted, list the CL code followed by a '-'. If no enrichment or depletion occurred, please use 'na' (not applicable)"
 
   institute:
     title: Institute
@@ -327,3 +349,13 @@ slots:
     range: SampleCollectionMethod
     required: true
     notes: "brush; scraping; biopsy; surgical resection; blood draw; body fluid; other"
+
+  tissue_ontology_term:
+    is_a: deprecated_slot
+    title: Tissue Ontology Term
+    description: Deprecated placeholder for tissue ontology term.
+
+  disease_ontology_term:
+    is_a: deprecated_slot
+    title: Disease Ontology Term
+    description: Deprecated placeholder for disease ontology term.

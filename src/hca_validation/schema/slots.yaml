@@ -79,3 +79,10 @@ slots:
     description: Radial compartment/location of the tissue sample.
     range: RadialTissueTerm
     required: true
+
+  deprecated_slot:
+    title: Deprecated Slot
+    description: Placeholder string slot that can be extended (via is_a) for deprecated or transitional metadata fields.
+    range: string
+    required: false
+    multivalued: false

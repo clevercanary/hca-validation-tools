@@ -553,6 +553,7 @@ class Sample(ConfiguredBaseModel):
          'comments': ['Space for author intuition of batch effects in their dataset'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'Batch run by different personnel on different days'}]} })
+    age_range: Optional[str] = Field(default=None, title="Age Range", description="""Deprecated placeholder for age range metadata.""", json_schema_extra = { "linkml_meta": {'alias': 'age_range', 'domain_of': ['Sample'], 'is_a': 'deprecated_slot'} })
     cell_number_loaded: Optional[int] = Field(default=None, title="Cell Number Loaded", description="""Estimated number of cells loaded for library construction.""", json_schema_extra = { "linkml_meta": {'alias': 'cell_number_loaded',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
@@ -566,6 +567,16 @@ class Sample(ConfiguredBaseModel):
                       'outlier samples'],
          'domain_of': ['Sample'],
          'examples': [{'value': '88; 95; 93.5'}]} })
+    cell_enrichment: str = Field(default=..., title="Cell Enrichment", description="""Specifies the cell types targeted for enrichment or depletion beyond the selection of live cells.""", json_schema_extra = { "linkml_meta": {'alias': 'cell_enrichment',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
+                         'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'domain_of': ['Sample'],
+         'examples': [{'value': 'CL:0000057+'}],
+         'notes': ['This must be a Cell Ontology (CL) term '
+                   '(http://www.ebi.ac.uk/ols4/ontologies/cl). For cells that are '
+                   "enriched, list the CL code followed by a '+'. For cells that were "
+                   "depleted, list the CL code followed by a '-'. If no enrichment or "
+                   "depletion occurred, please use 'na' (not applicable)"]} })
     development_stage_ontology_term_id: DevelopmentStage = Field(default=..., title="Development Stage Ontology Term ID", description="""Age of the subject.""", json_schema_extra = { "linkml_meta": {'alias': 'development_stage_ontology_term_id',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'cxg': {'tag': 'cxg',
@@ -578,6 +589,9 @@ class Sample(ConfiguredBaseModel):
                    'organism_ontolology_term_id is "NCBITaxon:10090" for Mus musculus, '
                    'this should be an MmusDv term. Refer to broader age bracket terms '
                    'as needed.']} })
+    disease_ontology_term: Optional[str] = Field(default=None, title="Disease Ontology Term", description="""Deprecated placeholder for disease ontology term.""", json_schema_extra = { "linkml_meta": {'alias': 'disease_ontology_term',
+         'domain_of': ['Sample'],
+         'is_a': 'deprecated_slot'} })
     institute: str = Field(default=..., title="Institute", description="""Institution where the samples were processed.""", json_schema_extra = { "linkml_meta": {'alias': 'institute',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
@@ -698,6 +712,9 @@ class Sample(ConfiguredBaseModel):
          'domain_of': ['Sample'],
          'examples': [{'value': 'surgical donor'}],
          'notes': ['surgical donor; postmortem donor; living organ donor']} })
+    tissue_ontology_term: Optional[str] = Field(default=None, title="Tissue Ontology Term", description="""Deprecated placeholder for tissue ontology term.""", json_schema_extra = { "linkml_meta": {'alias': 'tissue_ontology_term',
+         'domain_of': ['Sample'],
+         'is_a': 'deprecated_slot'} })
 
 
 class Cell(ConfiguredBaseModel):
