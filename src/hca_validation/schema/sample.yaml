@@ -26,6 +26,7 @@ classes:
       - dataset_id
       - author_batch_notes
       - cell_number_loaded
+      - cell_viability_percentage
 
 slots:
   sample_id:
@@ -67,3 +68,18 @@ slots:
     multivalued: false
     comments: >-
       Can explain the number of doublets found in samples
+
+  cell_viability_percentage:
+    title: Cell Viability Percentage
+    description: >-
+      If measured, per sample cell viability before library preparation (as a percentage).
+    examples:
+      - value: "88; 95; 93.5"
+    annotations:
+      annDataLocation: obs
+      tier: Tier 1
+    range: decimal
+    required: false
+    multivalued: false
+    comments: >-
+      Is a measure of sample quality that could be used to explain outlier samples

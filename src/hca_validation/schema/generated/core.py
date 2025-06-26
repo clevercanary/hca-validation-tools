@@ -443,6 +443,13 @@ class Sample(ConfiguredBaseModel):
          'comments': ['Can explain the number of doublets found in samples'],
          'domain_of': ['Sample'],
          'examples': [{'value': '5000; 4000'}]} })
+    cell_viability_percentage: Optional[Decimal] = Field(default=None, title="Cell Viability Percentage", description="""If measured, per sample cell viability before library preparation (as a percentage).""", json_schema_extra = { "linkml_meta": {'alias': 'cell_viability_percentage',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
+                         'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'comments': ['Is a measure of sample quality that could be used to explain '
+                      'outlier samples'],
+         'domain_of': ['Sample'],
+         'examples': [{'value': '88; 95; 93.5'}]} })
 
 
 class Cell(ConfiguredBaseModel):
