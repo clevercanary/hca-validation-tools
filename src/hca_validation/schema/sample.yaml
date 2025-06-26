@@ -28,6 +28,10 @@ classes:
       - cell_number_loaded
       - cell_viability_percentage
       - institute
+      - library_id
+      - library_id_repository
+      - library_preparation_batch
+      - library_sequencing_run
 
 slots:
   sample_id:
@@ -99,3 +103,63 @@ slots:
     multivalued: false
     comments: >-
       To be able to link to other studies from the same institution as sometimes samples from different labs in the same institute are processed via similar core facilities. Thus batch effects may be smaller for datasets from the same institute even if other factors differ.
+
+  library_id:
+    title: Library ID
+    description: >-
+      The unique ID that is used to track libraries in the investigator's institution (should align with the publication).
+    examples:
+      - value: A24; NK_healthy_001
+    annotations:
+      annDataLocation: obs
+      tier: Tier 1
+    range: string
+    required: true
+    multivalued: false
+    comments: >-
+      A way to track the unit of data generation. This should include sample pooling
+
+  library_id_repository:
+    title: Library ID Repository
+    description: >-
+      The unique ID used to track libraries from one of the following public data repositories: EGAX*, GSM*, SRX*, ERX*, DRX, HRX, CRX.
+    examples:
+      - value: GSM1684095
+    annotations:
+      annDataLocation: obs
+      tier: Tier 1
+    range: string
+    required: false
+    multivalued: false
+    comments: >-
+      Links a dataset back to the source from which it was ingested, optional only if this is the same as the library_id.
+
+  library_preparation_batch:
+    title: Library Preparation Batch
+    description: >-
+      Indicating which samples' libraries were prepared in the same chip/plate/etc., e.g. batch1, batch2.
+    examples:
+      - value: batch01; batch02
+    annotations:
+      annDataLocation: obs
+      tier: Tier 1
+    range: string
+    required: true
+    multivalued: false
+    comments: >-
+      Sample preparation is a major source of batch effects.
+
+  library_sequencing_run:
+    title: Library Sequencing Run
+    description: >-
+      The identifier (or accession number) that indicates which samples' libraries were sequenced in the same run.
+    examples:
+      - value: run1; NV0087
+    annotations:
+      annDataLocation: obs
+      tier: Tier 1
+    range: string
+    required: true
+    multivalued: false
+    comments: >-
+      Library sequencing is a major source of batch effects

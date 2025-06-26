@@ -460,6 +460,32 @@ class Sample(ConfiguredBaseModel):
                       'other factors differ.'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'EMBL-EBI; Genome Institute of Singapore'}]} })
+    library_id: str = Field(default=..., title="Library ID", description="""The unique ID that is used to track libraries in the investigator's institution (should align with the publication).""", json_schema_extra = { "linkml_meta": {'alias': 'library_id',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
+                         'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'comments': ['A way to track the unit of data generation. This should include '
+                      'sample pooling'],
+         'domain_of': ['Sample'],
+         'examples': [{'value': 'A24; NK_healthy_001'}]} })
+    library_id_repository: Optional[str] = Field(default=None, title="Library ID Repository", description="""The unique ID used to track libraries from one of the following public data repositories: EGAX*, GSM*, SRX*, ERX*, DRX, HRX, CRX.""", json_schema_extra = { "linkml_meta": {'alias': 'library_id_repository',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
+                         'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'comments': ['Links a dataset back to the source from which it was ingested, '
+                      'optional only if this is the same as the library_id.'],
+         'domain_of': ['Sample'],
+         'examples': [{'value': 'GSM1684095'}]} })
+    library_preparation_batch: str = Field(default=..., title="Library Preparation Batch", description="""Indicating which samples' libraries were prepared in the same chip/plate/etc., e.g. batch1, batch2.""", json_schema_extra = { "linkml_meta": {'alias': 'library_preparation_batch',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
+                         'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'comments': ['Sample preparation is a major source of batch effects.'],
+         'domain_of': ['Sample'],
+         'examples': [{'value': 'batch01; batch02'}]} })
+    library_sequencing_run: str = Field(default=..., title="Library Sequencing Run", description="""The identifier (or accession number) that indicates which samples' libraries were sequenced in the same run.""", json_schema_extra = { "linkml_meta": {'alias': 'library_sequencing_run',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
+                         'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'comments': ['Library sequencing is a major source of batch effects'],
+         'domain_of': ['Sample'],
+         'examples': [{'value': 'run1; NV0087'}]} })
 
 
 class Cell(ConfiguredBaseModel):
