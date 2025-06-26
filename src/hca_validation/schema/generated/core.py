@@ -197,6 +197,29 @@ class SamplePreservationMethod(str, Enum):
     other = "other"
 
 
+class SampleSource(str, Enum):
+    surgical_donor = "surgical donor"
+    postmortem_donor = "postmortem donor"
+    living_organ_donor = "living organ donor"
+
+
+class DevelopmentStage(str, Enum):
+    HsapDvCOLON0000003 = "HsapDv:0000003"
+    HsapDvCOLON0000046 = "HsapDv:0000046"
+    HsapDvCOLON0000264 = "HsapDv:0000264"
+    HsapDvCOLON0000268 = "HsapDv:0000268"
+    HsapDvCOLON0000237 = "HsapDv:0000237"
+    HsapDvCOLON0000238 = "HsapDv:0000238"
+    HsapDvCOLON0000239 = "HsapDv:0000239"
+    HsapDvCOLON0000240 = "HsapDv:0000240"
+    HsapDvCOLON0000241 = "HsapDv:0000241"
+    HsapDvCOLON0000242 = "HsapDv:0000242"
+    HsapDvCOLON0000243 = "HsapDv:0000243"
+    MmusDvCOLON0000001 = "MmusDv:0000001"
+    MmusDvCOLON0000002 = "MmusDv:0000002"
+    unknown = "unknown"
+
+
 
 class Dataset(ConfiguredBaseModel):
     """
@@ -543,6 +566,18 @@ class Sample(ConfiguredBaseModel):
                       'outlier samples'],
          'domain_of': ['Sample'],
          'examples': [{'value': '88; 95; 93.5'}]} })
+    development_stage_ontology_term_id: DevelopmentStage = Field(default=..., title="Development Stage Ontology Term ID", description="""Age of the subject.""", json_schema_extra = { "linkml_meta": {'alias': 'development_stage_ontology_term_id',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
+                         'cxg': {'tag': 'cxg',
+                                 'value': 'development_stage_ontology_term_id'},
+                         'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'domain_of': ['Sample'],
+         'examples': [{'value': 'HsapDv:0000237'}],
+         'notes': ['If organism_ontolology_term_id is "NCBITaxon:9606" for Homo '
+                   'sapiens, this should be an HsapDv term. If '
+                   'organism_ontolology_term_id is "NCBITaxon:10090" for Mus musculus, '
+                   'this should be an MmusDv term. Refer to broader age bracket terms '
+                   'as needed.']} })
     institute: str = Field(default=..., title="Institute", description="""Institution where the samples were processed.""", json_schema_extra = { "linkml_meta": {'alias': 'institute',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
@@ -579,6 +614,10 @@ class Sample(ConfiguredBaseModel):
          'comments': ['Library sequencing is a major source of batch effects'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'run1; NV0087'}]} })
+    sample_collection_method: SampleCollectionMethod = Field(default=..., title="Sample Collection Method", description="""The method the sample was physically obtained from the donor.""", json_schema_extra = { "linkml_meta": {'alias': 'sample_collection_method',
+         'domain_of': ['Sample'],
+         'notes': ['brush; scraping; biopsy; surgical resection; blood draw; body '
+                   'fluid; other']} })
     sample_collection_year: Optional[str] = Field(default=None, title="Sample Collection Year", description="""Year of sample collection. Should not be detailed further (to exact month and day), to prevent identifiability.""", json_schema_extra = { "linkml_meta": {'alias': 'sample_collection_year',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
@@ -653,6 +692,12 @@ class Sample(ConfiguredBaseModel):
                    '-80C; frozen at -150C; frozen in liquid nitrogen; frozen in vapor '
                    'phase; paraffin block; RNAlater at 4C; RNAlater at 25C; RNAlater '
                    'at -20C; other']} })
+    sample_source: SampleSource = Field(default=..., title="Sample Source", description="""The study subgroup that the participant belongs to, indicating whether the participant was a surgical donor, a postmortem donor, or an organ donor.""", json_schema_extra = { "linkml_meta": {'alias': 'sample_source',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
+                         'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'domain_of': ['Sample'],
+         'examples': [{'value': 'surgical donor'}],
+         'notes': ['surgical donor; postmortem donor; living organ donor']} })
 
 
 class Cell(ConfiguredBaseModel):

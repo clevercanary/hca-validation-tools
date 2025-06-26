@@ -27,11 +27,13 @@ classes:
       - author_batch_notes
       - cell_number_loaded
       - cell_viability_percentage
+      - development_stage_ontology_term_id
       - institute
       - library_id
       - library_id_repository
       - library_preparation_batch
       - library_sequencing_run
+      - sample_collection_method
       - sample_collection_year
       - sample_collection_site
       - sample_collection_relative_time_point
@@ -40,6 +42,7 @@ classes:
       - suspension_type
       - sampled_site_condition
       - sample_preservation_method
+      - sample_source
 
 slots:
   author_batch_notes:
@@ -287,6 +290,36 @@ slots:
     required: true
     multivalued: false
     notes: "ambient temperature; cut slide; fresh; frozen at -70C; frozen at -80C; frozen at -150C; frozen in liquid nitrogen; frozen in vapor phase; paraffin block; RNAlater at 4C; RNAlater at 25C; RNAlater at -20C; other"
+
+  sample_source:
+    title: Sample Source
+    description: The study subgroup that the participant belongs to, indicating whether the participant was a surgical donor, a postmortem donor, or an organ donor.
+    examples:
+      - value: surgical donor
+    annotations:
+      annDataLocation: obs
+      tier: Tier 1
+    range: SampleSource
+    required: true
+    multivalued: false
+    notes: "surgical donor; postmortem donor; living organ donor"
+
+  development_stage_ontology_term_id:
+    title: Development Stage Ontology Term ID
+    description: Age of the subject.
+    examples:
+      - value: HsapDv:0000237
+    annotations:
+      annDataLocation: obs
+      cxg: development_stage_ontology_term_id
+      tier: Tier 1
+    range: DevelopmentStage
+    required: true
+    multivalued: false
+    notes: >-
+      If organism_ontolology_term_id is "NCBITaxon:9606" for Homo sapiens, this should be an HsapDv term.
+      If organism_ontolology_term_id is "NCBITaxon:10090" for Mus musculus, this should be an MmusDv term.
+      Refer to broader age bracket terms as needed.
 
   sample_collection_method:
     title: Sample Collection Method

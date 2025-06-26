@@ -78,3 +78,26 @@ enums:
       "RNAlater at 25C": {}
       "RNAlater at -20C": {}
       other: {}
+ 
+  SampleSource:
+    permissible_values:
+      "surgical donor": {}
+      "postmortem donor": {}
+      "living organ donor": {}
+      
+  DevelopmentStage:
+    permissible_values:
+      HsapDv:0000003: {}
+      HsapDv:0000046: {}
+      HsapDv:0000264: {}
+      HsapDv:0000268: {}
+      HsapDv:0000237: {}
+      HsapDv:0000238: {}
+      HsapDv:0000239: {}
+      HsapDv:0000240: {}
+      HsapDv:0000241: {}
+      HsapDv:0000242: {}
+      HsapDv:0000243: {}
+      MmusDv:0000001: {}
+      MmusDv:0000002: {}
+      unknown: {}
