@@ -34,3 +34,13 @@ enums:
       "Peyers patch": {}
       "Mucosal ILF": {}
       "Submucosal ILF": {}
+      
+  SampleCollectionMethod:
+    permissible_values:
+      brush: {}
+      scraping: {}
+      biopsy: {}
+      "surgical resection": {}
+      "blood draw": {}
+      "body fluid": {}
+      other: {}

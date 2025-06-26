@@ -153,6 +153,16 @@ class RadialTissueTerm(str, Enum):
     Submucosal_ILF = "Submucosal ILF"
 
 
+class SampleCollectionMethod(str, Enum):
+    brush = "brush"
+    scraping = "scraping"
+    biopsy = "biopsy"
+    surgical_resection = "surgical resection"
+    blood_draw = "blood draw"
+    body_fluid = "body fluid"
+    other = "other"
+
+
 
 class Dataset(ConfiguredBaseModel):
     """

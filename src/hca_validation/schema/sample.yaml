@@ -217,3 +217,10 @@ slots:
     multivalued: false
     comments: >-
       To help the integration team understand the anatomical location of the sample, specifically to solve the problem when the UBERON ontology terms are insufficiently precise.
+
+  sample_collection_method:
+    title: Sample Collection Method
+    description: The method the sample was physically obtained from the donor.
+    range: SampleCollectionMethod
+    required: true
+    notes: "brush; scraping; biopsy; surgical resection; blood draw; body fluid; other"
