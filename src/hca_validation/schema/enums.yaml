@@ -85,6 +85,16 @@ enums:
       "postmortem donor": {}
       "living organ donor": {}
       
+  MannerOfDeath:
+    permissible_values:
+      "1": {}
+      "2": {}
+      "3": {}
+      "4": {}
+      "0": {}
+      unknown: {}
+      "not applicable": {}
+      
   DevelopmentStage:
     permissible_values:
       HsapDv:0000003: {}

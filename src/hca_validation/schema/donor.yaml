@@ -55,7 +55,7 @@ slots:
       * Unknown = The cause of death is unknown.
       * Not applicable = Subject is alive.
       [Leave blank for embryonic/fetal tissue.]
-    range: string
+    range: MannerOfDeath
     required: true
     examples:
       - value: "1"

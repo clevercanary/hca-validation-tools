@@ -32,6 +32,7 @@ classes:
       - development_stage_ontology_term_id
       - disease_ontology_term
       - institute
+      - is_primary_data
       - library_id
       - library_id_repository
       - library_preparation_batch
@@ -90,10 +91,13 @@ slots:
       If measured, per sample cell viability before library preparation (as a percentage).
     examples:
       - value: "88; 95; 93.5"
+      - value: unknown
     annotations:
       annDataLocation: obs
       tier: Tier 1
-    range: decimal
+    any_of:
+      - range: decimal
+      - range: string
     required: false
     multivalued: false
     comments: >-
@@ -126,6 +130,11 @@ slots:
     multivalued: false
     comments: >-
       To be able to link to other studies from the same institution as sometimes samples from different labs in the same institute are processed via similar core facilities. Thus batch effects may be smaller for datasets from the same institute even if other factors differ.
+
+  is_primary_data:
+    is_a: deprecated_slot
+    title: Is Primary Data
+    description: Deprecated placeholder indicating whether sample represents primary data.
 
   library_id:
     title: Library ID

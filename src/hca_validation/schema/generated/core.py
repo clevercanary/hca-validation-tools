@@ -203,6 +203,16 @@ class SampleSource(str, Enum):
     living_organ_donor = "living organ donor"
 
 
+class MannerOfDeath(str, Enum):
+    number_1 = "1"
+    number_2 = "2"
+    number_3 = "3"
+    number_4 = "4"
+    number_0 = "0"
+    unknown = "unknown"
+    not_applicable = "not applicable"
+
+
 class DevelopmentStage(str, Enum):
     HsapDvCOLON0000003 = "HsapDv:0000003"
     HsapDvCOLON0000046 = "HsapDv:0000046"
@@ -259,6 +269,9 @@ class Dataset(ConfiguredBaseModel):
                    '- 10x 5\' v2 "EFO:0009900"\n'
                    '- Smart-seq2 "EFO:0008931"\n'
                    '- Visium Spatial Gene Expression "EFO:0010961"\n']} })
+    assay_ontology_term: Optional[str] = Field(default=None, title="Assay Ontology Term", description="""Deprecated placeholder for assay ontology term.""", json_schema_extra = { "linkml_meta": {'alias': 'assay_ontology_term',
+         'domain_of': ['Dataset'],
+         'is_a': 'deprecated_slot'} })
     batch_condition: Optional[list[str]] = Field(default=None, title="Batch Condition", description="""Name of the covariate that confers the dominant batch effect in the data as judged by the data contributor.  The name provided here should be the label by which this covariate is stored in the AnnData object.""", json_schema_extra = { "linkml_meta": {'alias': 'batch_condition',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'uns'},
                          'cxg': {'tag': 'cxg', 'value': 'batch_condition'}},
@@ -275,6 +288,7 @@ class Dataset(ConfiguredBaseModel):
 """, json_schema_extra = { "linkml_meta": {'alias': 'comments',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'uns'}},
          'domain_of': ['Dataset']} })
+    consortia: Optional[str] = Field(default=None, title="Consortia", description="""Deprecated placeholder for consortia information.""", json_schema_extra = { "linkml_meta": {'alias': 'consortia', 'domain_of': ['Dataset'], 'is_a': 'deprecated_slot'} })
     default_embedding: Optional[str] = Field(default=None, title="Default Embedding", description="""The value must match a key to an embedding in obsm for the embedding to display by default in CELLxGENE Explorer.""", json_schema_extra = { "linkml_meta": {'alias': 'default_embedding',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'uns'},
                          'cxg': {'tag': 'cxg', 'value': 'default_embedding'}},
@@ -501,7 +515,7 @@ class Donor(ConfiguredBaseModel):
                       {'description': 'male', 'value': 'PATO:0000384'}],
          'notes': ['This must be a child of PATO:0001894 for phenotypic sex or '
                    '"unknown" if unavailable.\n']} })
-    manner_of_death: str = Field(default=..., title="Manner of Death", description="""Manner of death classification based on the Hardy Scale or \"unknown\" or \"not applicable\":
+    manner_of_death: MannerOfDeath = Field(default=..., title="Manner of Death", description="""Manner of death classification based on the Hardy Scale or \"unknown\" or \"not applicable\":
 * Category 1 = Violent and fast death — deaths due to accident, blunt force trauma or suicide, terminal phase < 10 min.
 * Category 2 = Fast death of natural causes — sudden unexpected deaths of reasonably healthy people, terminal phase < 1 h.
 * Category 3 = Intermediate death — terminal phase 1–24 h, patients ill but death unexpected.
@@ -560,13 +574,14 @@ class Sample(ConfiguredBaseModel):
          'comments': ['Can explain the number of doublets found in samples'],
          'domain_of': ['Sample'],
          'examples': [{'value': '5000; 4000'}]} })
-    cell_viability_percentage: Optional[Decimal] = Field(default=None, title="Cell Viability Percentage", description="""If measured, per sample cell viability before library preparation (as a percentage).""", json_schema_extra = { "linkml_meta": {'alias': 'cell_viability_percentage',
+    cell_viability_percentage: Optional[Union[Decimal, str]] = Field(default=None, title="Cell Viability Percentage", description="""If measured, per sample cell viability before library preparation (as a percentage).""", json_schema_extra = { "linkml_meta": {'alias': 'cell_viability_percentage',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'any_of': [{'range': 'decimal'}, {'range': 'string'}],
          'comments': ['Is a measure of sample quality that could be used to explain '
                       'outlier samples'],
          'domain_of': ['Sample'],
-         'examples': [{'value': '88; 95; 93.5'}]} })
+         'examples': [{'value': '88; 95; 93.5'}, {'value': 'unknown'}]} })
     cell_enrichment: str = Field(default=..., title="Cell Enrichment", description="""Specifies the cell types targeted for enrichment or depletion beyond the selection of live cells.""", json_schema_extra = { "linkml_meta": {'alias': 'cell_enrichment',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
@@ -602,6 +617,7 @@ class Sample(ConfiguredBaseModel):
                       'other factors differ.'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'EMBL-EBI; Genome Institute of Singapore'}]} })
+    is_primary_data: Optional[str] = Field(default=None, title="Is Primary Data", description="""Deprecated placeholder indicating whether sample represents primary data.""", json_schema_extra = { "linkml_meta": {'alias': 'is_primary_data', 'domain_of': ['Sample'], 'is_a': 'deprecated_slot'} })
     library_id: str = Field(default=..., title="Library ID", description="""The unique ID that is used to track libraries in the investigator's institution (should align with the publication).""", json_schema_extra = { "linkml_meta": {'alias': 'library_id',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},

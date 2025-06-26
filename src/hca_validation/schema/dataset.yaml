@@ -24,8 +24,10 @@ classes:
     slots:
       - alignment_software
       - assay_ontology_term_id
+      - assay_ontology_term
       - batch_condition
       - comments
+      - consortia
       - default_embedding
       - gene_annotation_version
       - intron_inclusion
@@ -77,6 +79,11 @@ slots:
       cxg: assay_ontology_term_id
       annDataLocation: obs
 
+  assay_ontology_term:
+    is_a: deprecated_slot
+    title: Assay Ontology Term
+    description: Deprecated placeholder for assay ontology term.
+
   batch_condition:
     title: Batch Condition
     description: >-
@@ -105,6 +112,11 @@ slots:
     required: false
     annotations:
       annDataLocation: uns
+
+  consortia:
+    is_a: deprecated_slot
+    title: Consortia
+    description: Deprecated placeholder for consortia information.
 
   default_embedding:
     title: Default Embedding
