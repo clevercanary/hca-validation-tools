@@ -25,16 +25,19 @@ classes:
       - donor_id
       - dataset_id
       - author_batch_notes
+      - cell_number_loaded
 
 slots:
   sample_id:
     title: Sample ID
     range: string
     required: true
+
   donor_id:
     title: Donor ID
     range: string
     required: true
+
   author_batch_notes:
     title: Author Batch Notes
     description: >-
@@ -49,3 +52,18 @@ slots:
     multivalued: false
     comments: >-
       Space for author intuition of batch effects in their dataset
+
+  cell_number_loaded:
+    title: Cell Number Loaded
+    description: >-
+      Estimated number of cells loaded for library construction.
+    examples:
+      - value: "5000; 4000"
+    annotations:
+      annDataLocation: obs
+      tier: Tier 1
+    range: integer
+    required: false
+    multivalued: false
+    comments: >-
+      Can explain the number of doublets found in samples

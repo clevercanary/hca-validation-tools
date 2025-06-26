@@ -437,6 +437,12 @@ class Sample(ConfiguredBaseModel):
          'comments': ['Space for author intuition of batch effects in their dataset'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'Batch run by different personnel on different days'}]} })
+    cell_number_loaded: Optional[int] = Field(default=None, title="Cell Number Loaded", description="""Estimated number of cells loaded for library construction.""", json_schema_extra = { "linkml_meta": {'alias': 'cell_number_loaded',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
+                         'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'comments': ['Can explain the number of doublets found in samples'],
+         'domain_of': ['Sample'],
+         'examples': [{'value': '5000; 4000'}]} })
 
 
 class Cell(ConfiguredBaseModel):
