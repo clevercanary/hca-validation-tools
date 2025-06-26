@@ -36,6 +36,10 @@ classes:
       - sample_collection_site
       - sample_collection_relative_time_point
       - tissue_free_text
+      - tissue_type
+      - suspension_type
+      - sampled_site_condition
+      - sample_preservation_method
 
 slots:
   author_batch_notes:
@@ -217,6 +221,72 @@ slots:
     multivalued: false
     comments: >-
       To help the integration team understand the anatomical location of the sample, specifically to solve the problem when the UBERON ontology terms are insufficiently precise.
+
+  tissue_type:
+    title: Tissue Type
+    description: Whether the tissue is "tissue", "organoid", or "cell culture".
+    examples:
+      - value: tissue
+    annotations:
+      annDataLocation: obs
+      cxg: tissue_type
+      tier: Tier 1
+    range: TissueType
+    required: true
+    multivalued: false
+    notes: "tissue; organoid; cell culture"
+
+  suspension_type:
+    title: Suspension Type
+    description: Specifies whether the sample contains single cells or single nuclei data.
+    examples:
+      - value: cell
+    annotations:
+      annDataLocation: obs
+      cxg: suspension_type
+      tier: Tier 1
+    range: SuspensionType
+    required: true
+    multivalued: false
+    notes: |
+      This must be "cell", "nucleus", or "na".
+      This must be the correct type for the corresponding assay:
+      * 10x transcription profiling [EFO:0030080] and its children = "cell" or "nucleus"
+      * ATAC-seq [EFO:0007045] and its children = "nucleus"
+      * BD Rhapsody Whole Transcriptome Analysis [EFO:0700003] = "cell"
+      * BD Rhapsody Targeted mRNA [EFO:0700004] = "cell"
+      * CEL-seq2 [EFO:0010010] = "cell" or "nucleus"
+      * CITE-seq [EFO:0009294] and its children = "cell"
+      * DroNc-seq [EFO:0008720] = "nucleus"
+      * Drop-seq [EFO:0008722] = "cell" or "nucleus"
+      * GEXSCOPE technology [EFO:0700011] = "cell" or "nucleus"
+      * inDrop [EFO:0008780] = "cell" or "nucleus"
+
+  sampled_site_condition:
+    title: Sampled Site Condition
+    description: Whether the site is considered healthy, diseased or adjacent to disease.
+    examples:
+      - value: healthy
+    annotations:
+      annDataLocation: obs
+      tier: Tier 1
+    range: SampledSiteCondition
+    required: true
+    multivalued: false
+    notes: "healthy; diseased; adjacent"
+
+  sample_preservation_method:
+    title: Sample Preservation Method
+    description: Indicating if tissue was frozen, or not, at any point before library preparation.
+    examples:
+      - value: fresh
+    annotations:
+      annDataLocation: obs
+      tier: Tier 1
+    range: SamplePreservationMethod
+    required: true
+    multivalued: false
+    notes: "ambient temperature; cut slide; fresh; frozen at -70C; frozen at -80C; frozen at -150C; frozen in liquid nitrogen; frozen in vapor phase; paraffin block; RNAlater at 4C; RNAlater at 25C; RNAlater at -20C; other"
 
   sample_collection_method:
     title: Sample Collection Method

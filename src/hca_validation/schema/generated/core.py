@@ -163,6 +163,40 @@ class SampleCollectionMethod(str, Enum):
     other = "other"
 
 
+class TissueType(str, Enum):
+    tissue = "tissue"
+    organoid = "organoid"
+    cell_culture = "cell culture"
+
+
+class SuspensionType(str, Enum):
+    cell = "cell"
+    nucleus = "nucleus"
+    na = "na"
+
+
+class SampledSiteCondition(str, Enum):
+    healthy = "healthy"
+    diseased = "diseased"
+    adjacent = "adjacent"
+
+
+class SamplePreservationMethod(str, Enum):
+    ambient_temperature = "ambient temperature"
+    cut_slide = "cut slide"
+    fresh = "fresh"
+    frozen_at__70C = "frozen at -70C"
+    frozen_at__80C = "frozen at -80C"
+    frozen_at__150C = "frozen at -150C"
+    frozen_in_liquid_nitrogen = "frozen in liquid nitrogen"
+    frozen_in_vapor_phase = "frozen in vapor phase"
+    paraffin_block = "paraffin block"
+    RNAlater_at_4C = "RNAlater at 4C"
+    RNAlater_at_25C = "RNAlater at 25C"
+    RNAlater_at__20C = "RNAlater at -20C"
+    other = "other"
+
+
 
 class Dataset(ConfiguredBaseModel):
     """
@@ -578,6 +612,47 @@ class Sample(ConfiguredBaseModel):
                       'UBERON ontology terms are insufficiently precise.'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'terminal ileum'}]} })
+    tissue_type: TissueType = Field(default=..., title="Tissue Type", description="""Whether the tissue is \"tissue\", \"organoid\", or \"cell culture\".""", json_schema_extra = { "linkml_meta": {'alias': 'tissue_type',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
+                         'cxg': {'tag': 'cxg', 'value': 'tissue_type'},
+                         'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'domain_of': ['Sample'],
+         'examples': [{'value': 'tissue'}],
+         'notes': ['tissue; organoid; cell culture']} })
+    suspension_type: SuspensionType = Field(default=..., title="Suspension Type", description="""Specifies whether the sample contains single cells or single nuclei data.""", json_schema_extra = { "linkml_meta": {'alias': 'suspension_type',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
+                         'cxg': {'tag': 'cxg', 'value': 'suspension_type'},
+                         'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'domain_of': ['Sample'],
+         'examples': [{'value': 'cell'}],
+         'notes': ['This must be "cell", "nucleus", or "na".\n'
+                   'This must be the correct type for the corresponding assay:\n'
+                   '* 10x transcription profiling [EFO:0030080] and its children = '
+                   '"cell" or "nucleus"\n'
+                   '* ATAC-seq [EFO:0007045] and its children = "nucleus"\n'
+                   '* BD Rhapsody Whole Transcriptome Analysis [EFO:0700003] = "cell"\n'
+                   '* BD Rhapsody Targeted mRNA [EFO:0700004] = "cell"\n'
+                   '* CEL-seq2 [EFO:0010010] = "cell" or "nucleus"\n'
+                   '* CITE-seq [EFO:0009294] and its children = "cell"\n'
+                   '* DroNc-seq [EFO:0008720] = "nucleus"\n'
+                   '* Drop-seq [EFO:0008722] = "cell" or "nucleus"\n'
+                   '* GEXSCOPE technology [EFO:0700011] = "cell" or "nucleus"\n'
+                   '* inDrop [EFO:0008780] = "cell" or "nucleus"\n']} })
+    sampled_site_condition: SampledSiteCondition = Field(default=..., title="Sampled Site Condition", description="""Whether the site is considered healthy, diseased or adjacent to disease.""", json_schema_extra = { "linkml_meta": {'alias': 'sampled_site_condition',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
+                         'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'domain_of': ['Sample'],
+         'examples': [{'value': 'healthy'}],
+         'notes': ['healthy; diseased; adjacent']} })
+    sample_preservation_method: SamplePreservationMethod = Field(default=..., title="Sample Preservation Method", description="""Indicating if tissue was frozen, or not, at any point before library preparation.""", json_schema_extra = { "linkml_meta": {'alias': 'sample_preservation_method',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
+                         'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'domain_of': ['Sample'],
+         'examples': [{'value': 'fresh'}],
+         'notes': ['ambient temperature; cut slide; fresh; frozen at -70C; frozen at '
+                   '-80C; frozen at -150C; frozen in liquid nitrogen; frozen in vapor '
+                   'phase; paraffin block; RNAlater at 4C; RNAlater at 25C; RNAlater '
+                   'at -20C; other']} })
 
 
 class Cell(ConfiguredBaseModel):

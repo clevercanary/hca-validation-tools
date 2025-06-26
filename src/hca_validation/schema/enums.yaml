@@ -44,3 +44,37 @@ enums:
       "blood draw": {}
       "body fluid": {}
       other: {}
+      
+  TissueType:
+    permissible_values:
+      tissue: {}
+      organoid: {}
+      "cell culture": {}
+      
+  SuspensionType:
+    permissible_values:
+       cell: {}
+       nucleus: {}
+       na: {}
+       
+  SampledSiteCondition:
+    permissible_values:
+       healthy: {}
+       diseased: {}
+       adjacent: {}
+       
+  SamplePreservationMethod:
+    permissible_values:
+      "ambient temperature": {}
+      "cut slide": {}
+      fresh: {}
+      "frozen at -70C": {}
+      "frozen at -80C": {}
+      "frozen at -150C": {}
+      "frozen in liquid nitrogen": {}
+      "frozen in vapor phase": {}
+      "paraffin block": {}
+      "RNAlater at 4C": {}
+      "RNAlater at 25C": {}
+      "RNAlater at -20C": {}
+      other: {}
