@@ -111,3 +111,8 @@ enums:
       MmusDv:0000001: {}
       MmusDv:0000002: {}
       unknown: {}
+      
+  Organism:
+    permissible_values:
+      "NCBITaxon:9606": {}
+      "NCBITaxon:10090": {}

@@ -85,6 +85,13 @@ slots:
     range: RadialTissueTerm
     required: true
 
+  dissociation_protocol:
+    title: Dissociation Protocol
+    description: Dissociation chemicals used during sample preparation
+    range: string
+    required: true
+    notes: "trypsin; trypLE; collagenase"
+
   deprecated_slot:
     title: Deprecated Slot
     description: Placeholder string slot that can be extended (via is_a) for deprecated or transitional metadata fields.

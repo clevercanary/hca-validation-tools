@@ -22,6 +22,7 @@ classes:
       An individual organism from which biological samples have been derived
     slots:
       - donor_id
+      - organism_ontology_term_id
       - sex_ontology_term_id
       - sex_ontology_term
       - manner_of_death
@@ -69,3 +70,14 @@ slots:
     notes: "1; 2; 3; 4; 0; unknown; not applicable"
     annotations:
       annDataLocation: obs
+
+  organism_ontology_term_id:
+    title: Organism Ontology Term ID
+    description: The name given to the type of organism, collected in NCBITaxon:0000 format.
+    range: Organism
+    required: true
+    notes: "\"NCBITaxon:9606\" for Homo sapiens or \"NCBITaxon:10090\" for Mus musculus."
+    annotations:
+      annDataLocation: obs
+      cxg: organism_ontology_term_id
+      tier: Tier 1

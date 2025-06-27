@@ -230,6 +230,11 @@ class DevelopmentStage(str, Enum):
     unknown = "unknown"
 
 
+class Organism(str, Enum):
+    NCBITaxonCOLON9606 = "NCBITaxon:9606"
+    NCBITaxonCOLON10090 = "NCBITaxon:10090"
+
+
 
 class Dataset(ConfiguredBaseModel):
     """
@@ -376,6 +381,9 @@ class GutDataset(Dataset):
                       {'value': 'doublet_finder'},
                       {'value': 'manual'}]} })
     radial_tissue_term: RadialTissueTerm = Field(default=..., title="Radial Tissue Term", description="""Radial compartment/location of the tissue sample.""", json_schema_extra = { "linkml_meta": {'alias': 'radial_tissue_term', 'domain_of': ['GutDataset']} })
+    dissociation_protocol: str = Field(default=..., title="Dissociation Protocol", description="""Dissociation chemicals used during sample preparation""", json_schema_extra = { "linkml_meta": {'alias': 'dissociation_protocol',
+         'domain_of': ['GutDataset'],
+         'notes': ['trypsin; trypLE; collagenase']} })
     alignment_software: str = Field(default=..., title="Alignment Software", description="""Protocol used for alignment analysis, please specify which version was used e.g. cell ranger 2.0, 2.1.1 etc.""", json_schema_extra = { "linkml_meta": {'alias': 'alignment_software',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'comments': ['Affects which cells are filtered per dataset, and which reads '
@@ -408,6 +416,9 @@ class GutDataset(Dataset):
                    '- 10x 5\' v2 "EFO:0009900"\n'
                    '- Smart-seq2 "EFO:0008931"\n'
                    '- Visium Spatial Gene Expression "EFO:0010961"\n']} })
+    assay_ontology_term: Optional[str] = Field(default=None, title="Assay Ontology Term", description="""Deprecated placeholder for assay ontology term.""", json_schema_extra = { "linkml_meta": {'alias': 'assay_ontology_term',
+         'domain_of': ['Dataset'],
+         'is_a': 'deprecated_slot'} })
     batch_condition: Optional[list[str]] = Field(default=None, title="Batch Condition", description="""Name of the covariate that confers the dominant batch effect in the data as judged by the data contributor.  The name provided here should be the label by which this covariate is stored in the AnnData object.""", json_schema_extra = { "linkml_meta": {'alias': 'batch_condition',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'uns'},
                          'cxg': {'tag': 'cxg', 'value': 'batch_condition'}},
@@ -424,9 +435,14 @@ class GutDataset(Dataset):
 """, json_schema_extra = { "linkml_meta": {'alias': 'comments',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'uns'}},
          'domain_of': ['Dataset']} })
+    consortia: Optional[str] = Field(default=None, title="Consortia", description="""Deprecated placeholder for consortia information.""", json_schema_extra = { "linkml_meta": {'alias': 'consortia', 'domain_of': ['Dataset'], 'is_a': 'deprecated_slot'} })
+    contact_email: str = Field(default=..., title="Contact Email", description="""Contact name and email of the submitting person""", json_schema_extra = { "linkml_meta": {'alias': 'contact_email', 'domain_of': ['Dataset']} })
     default_embedding: Optional[str] = Field(default=None, title="Default Embedding", description="""The value must match a key to an embedding in obsm for the embedding to display by default in CELLxGENE Explorer.""", json_schema_extra = { "linkml_meta": {'alias': 'default_embedding',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'uns'},
                          'cxg': {'tag': 'cxg', 'value': 'default_embedding'}},
+         'domain_of': ['Dataset']} })
+    description: str = Field(default=..., title="Description", description="""Short description of the dataset""", json_schema_extra = { "linkml_meta": {'alias': 'description',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'uns'}},
          'domain_of': ['Dataset']} })
     gene_annotation_version: str = Field(default=..., title="Gene Annotation Version", description="""Ensembl release version accession number. Some common codes include: GRCh38.p12 = GCF_000001405.38 GRCh38.p13 = GCF_000001405.39 GRCh38.p14 = GCF_000001405.40
 """, json_schema_extra = { "linkml_meta": {'alias': 'gene_annotation_version',
@@ -475,7 +491,7 @@ class GutDataset(Dataset):
          'examples': [{'description': 'Principal Investigator in Last '
                                       'Name,MiddleInitial, FirstName format',
                        'value': '["Teichmann,Sarah,A."]'}]} })
-    title: str = Field(default=..., title="Title", description="""This text describes and differentiates the dataset from other datasets in the same collection.  It is strongly recommended that each dataset title in a collection is unique and does not depend on other metadata  such as a different assay to disambiguate it from other datasets in the collection.
+    title: Optional[str] = Field(default=None, title="Title", description="""This text describes and differentiates the dataset from other datasets in the same collection.  It is strongly recommended that each dataset title in a collection is unique and does not depend on other metadata  such as a different assay to disambiguate it from other datasets in the collection.
 """, json_schema_extra = { "linkml_meta": {'alias': 'title',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'uns'},
                          'cxg': {'tag': 'cxg', 'value': 'title'}},
@@ -485,7 +501,8 @@ class GutDataset(Dataset):
                       'may not always be available.'],
          'domain_of': ['Dataset'],
          'examples': [{'value': "Cells of the adult human heart collection is 'All — "
-                                "Cells of the adult human heart'"}]} })
+                                "Cells of the adult human heart'"}],
+         'is_a': 'deprecated_slot'} })
     dataset_id: str = Field(default=..., title="Dataset ID", description="""A unique identifier for each dataset in the study. This should be unique to the study.""", json_schema_extra = { "linkml_meta": {'alias': 'dataset_id', 'domain_of': ['Dataset', 'Donor', 'Sample']} })
 
 
@@ -512,6 +529,13 @@ class Donor(ConfiguredBaseModel):
                       'observations are from the same individual.'],
          'domain_of': ['Donor', 'Sample'],
          'examples': [{'value': 'CR_donor_1; MM_donor_1; LR_donor_2'}]} })
+    organism_ontology_term_id: Organism = Field(default=..., title="Organism Ontology Term ID", description="""The name given to the type of organism, collected in NCBITaxon:0000 format.""", json_schema_extra = { "linkml_meta": {'alias': 'organism_ontology_term_id',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
+                         'cxg': {'tag': 'cxg', 'value': 'organism_ontology_term_id'},
+                         'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'domain_of': ['Donor'],
+         'notes': ['"NCBITaxon:9606" for Homo sapiens or "NCBITaxon:10090" for Mus '
+                   'musculus.']} })
     sex_ontology_term_id: str = Field(default=..., title="Sex Ontology Term ID", description="""Reported sex of the donor.""", json_schema_extra = { "linkml_meta": {'alias': 'sex_ontology_term_id',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'cxg': {'tag': 'cxg', 'value': 'sex_ontology_term_id'}},
