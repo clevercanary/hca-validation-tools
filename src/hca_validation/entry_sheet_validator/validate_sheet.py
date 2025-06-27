@@ -396,7 +396,7 @@ def validate_google_sheet(
     if not sheet_id:
         raise ValueError("sheet_id is required for validate_google_sheet()")
     if bionetwork is not None and bionetwork not in allowed_bionetwork_names:
-        raise ValueError(f"'${bionetwork}' is not a valid bionetwork")
+        raise ValueError(f"'{bionetwork}' is not a valid bionetwork")
 
     from hca_validation.validator import validate
     import logging
