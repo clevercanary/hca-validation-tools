@@ -6,7 +6,7 @@ This module provides the main validation functionality for HCA data using Pydant
 from typing import Dict, Any, Optional
 from pydantic import ValidationError
 
-from hca_validation.schema.generated.core import Dataset, GutDataset, Donor, Sample, Cell
+from hca_validation.schema.generated.core import Dataset, GutDataset, Donor, Sample, GutSample, Cell
 
 # Map schema types and bionetworks to their corresponding Pydantic models
 schema_models = {
@@ -18,7 +18,8 @@ schema_models = {
       "DEFAULT": Donor
     },
     "sample": {
-      "DEFAULT": Sample
+      "DEFAULT": Sample,
+      "gut": GutSample
     },
     "cell": {
       "DEFAULT": Cell
