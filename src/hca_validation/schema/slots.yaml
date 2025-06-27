@@ -16,6 +16,11 @@ imports:
   - linkml:types
   - ./enums
 
+types:
+  Email:
+    typeof: string
+    pattern: '^[^@\s]+@[^@\s]+\.[^@\s]+$'
+
 slots:
   ambient_count_correction:
     title: Ambient Count Correction

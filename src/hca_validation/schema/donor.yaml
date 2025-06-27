@@ -23,6 +23,7 @@ classes:
     slots:
       - donor_id
       - sex_ontology_term_id
+      - sex_ontology_term
       - manner_of_death
       - dataset_id
 
@@ -43,6 +44,12 @@ slots:
     annotations:
       annDataLocation: obs
       cxg: sex_ontology_term_id
+  
+  sex_ontology_term:
+    is_a: deprecated_slot
+    title: Sex Ontology Term
+    description: Deprecated placeholder for sex ontology term.
+  
   manner_of_death:
     title: Manner of Death
     description: |

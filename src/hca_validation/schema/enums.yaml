@@ -40,9 +40,9 @@ enums:
       brush: {}
       scraping: {}
       biopsy: {}
-      "surgical resection": {}
-      "blood draw": {}
-      "body fluid": {}
+      "surgical_resection": {}
+      "blood_draw": {}
+      "body_fluid": {}
       other: {}
       
   TissueType:
@@ -81,9 +81,9 @@ enums:
  
   SampleSource:
     permissible_values:
-      "surgical donor": {}
-      "postmortem donor": {}
-      "living organ donor": {}
+      "surgical_donor": {}
+      "postmortem_donor": {}
+      "living_organ_donor": {}
       
   MannerOfDeath:
     permissible_values:
@@ -93,7 +93,7 @@ enums:
       "4": {}
       "0": {}
       unknown: {}
-      "not applicable": {}
+      "not_applicable": {}
       
   DevelopmentStage:
     permissible_values:

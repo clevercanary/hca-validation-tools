@@ -157,9 +157,9 @@ class SampleCollectionMethod(str, Enum):
     brush = "brush"
     scraping = "scraping"
     biopsy = "biopsy"
-    surgical_resection = "surgical resection"
-    blood_draw = "blood draw"
-    body_fluid = "body fluid"
+    surgical_resection = "surgical_resection"
+    blood_draw = "blood_draw"
+    body_fluid = "body_fluid"
     other = "other"
 
 
@@ -198,9 +198,9 @@ class SamplePreservationMethod(str, Enum):
 
 
 class SampleSource(str, Enum):
-    surgical_donor = "surgical donor"
-    postmortem_donor = "postmortem donor"
-    living_organ_donor = "living organ donor"
+    surgical_donor = "surgical_donor"
+    postmortem_donor = "postmortem_donor"
+    living_organ_donor = "living_organ_donor"
 
 
 class MannerOfDeath(str, Enum):
@@ -210,7 +210,7 @@ class MannerOfDeath(str, Enum):
     number_4 = "4"
     number_0 = "0"
     unknown = "unknown"
-    not_applicable = "not applicable"
+    not_applicable = "not_applicable"
 
 
 class DevelopmentStage(str, Enum):
@@ -289,9 +289,13 @@ class Dataset(ConfiguredBaseModel):
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'uns'}},
          'domain_of': ['Dataset']} })
     consortia: Optional[str] = Field(default=None, title="Consortia", description="""Deprecated placeholder for consortia information.""", json_schema_extra = { "linkml_meta": {'alias': 'consortia', 'domain_of': ['Dataset'], 'is_a': 'deprecated_slot'} })
+    contact_email: str = Field(default=..., title="Contact Email", description="""Contact name and email of the submitting person""", json_schema_extra = { "linkml_meta": {'alias': 'contact_email', 'domain_of': ['Dataset']} })
     default_embedding: Optional[str] = Field(default=None, title="Default Embedding", description="""The value must match a key to an embedding in obsm for the embedding to display by default in CELLxGENE Explorer.""", json_schema_extra = { "linkml_meta": {'alias': 'default_embedding',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'uns'},
                          'cxg': {'tag': 'cxg', 'value': 'default_embedding'}},
+         'domain_of': ['Dataset']} })
+    description: str = Field(default=..., title="Description", description="""Short description of the dataset""", json_schema_extra = { "linkml_meta": {'alias': 'description',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'uns'}},
          'domain_of': ['Dataset']} })
     gene_annotation_version: str = Field(default=..., title="Gene Annotation Version", description="""Ensembl release version accession number. Some common codes include: GRCh38.p12 = GCF_000001405.38 GRCh38.p13 = GCF_000001405.39 GRCh38.p14 = GCF_000001405.40
 """, json_schema_extra = { "linkml_meta": {'alias': 'gene_annotation_version',
@@ -340,7 +344,7 @@ class Dataset(ConfiguredBaseModel):
          'examples': [{'description': 'Principal Investigator in Last '
                                       'Name,MiddleInitial, FirstName format',
                        'value': '["Teichmann,Sarah,A."]'}]} })
-    title: str = Field(default=..., title="Title", description="""This text describes and differentiates the dataset from other datasets in the same collection.  It is strongly recommended that each dataset title in a collection is unique and does not depend on other metadata  such as a different assay to disambiguate it from other datasets in the collection.
+    title: Optional[str] = Field(default=None, title="Title", description="""This text describes and differentiates the dataset from other datasets in the same collection.  It is strongly recommended that each dataset title in a collection is unique and does not depend on other metadata  such as a different assay to disambiguate it from other datasets in the collection.
 """, json_schema_extra = { "linkml_meta": {'alias': 'title',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'uns'},
                          'cxg': {'tag': 'cxg', 'value': 'title'}},
@@ -350,7 +354,8 @@ class Dataset(ConfiguredBaseModel):
                       'may not always be available.'],
          'domain_of': ['Dataset'],
          'examples': [{'value': "Cells of the adult human heart collection is 'All — "
-                                "Cells of the adult human heart'"}]} })
+                                "Cells of the adult human heart'"}],
+         'is_a': 'deprecated_slot'} })
     dataset_id: str = Field(default=..., title="Dataset ID", description="""A unique identifier for each dataset in the study. This should be unique to the study.""", json_schema_extra = { "linkml_meta": {'alias': 'dataset_id', 'domain_of': ['Dataset', 'Donor', 'Sample']} })
 
 
@@ -515,6 +520,9 @@ class Donor(ConfiguredBaseModel):
                       {'description': 'male', 'value': 'PATO:0000384'}],
          'notes': ['This must be a child of PATO:0001894 for phenotypic sex or '
                    '"unknown" if unavailable.\n']} })
+    sex_ontology_term: Optional[str] = Field(default=None, title="Sex Ontology Term", description="""Deprecated placeholder for sex ontology term.""", json_schema_extra = { "linkml_meta": {'alias': 'sex_ontology_term',
+         'domain_of': ['Donor'],
+         'is_a': 'deprecated_slot'} })
     manner_of_death: MannerOfDeath = Field(default=..., title="Manner of Death", description="""Manner of death classification based on the Hardy Scale or \"unknown\" or \"not applicable\":
 * Category 1 = Violent and fast death — deaths due to accident, blunt force trauma or suicide, terminal phase < 10 min.
 * Category 2 = Fast death of natural causes — sudden unexpected deaths of reasonably healthy people, terminal phase < 1 h.

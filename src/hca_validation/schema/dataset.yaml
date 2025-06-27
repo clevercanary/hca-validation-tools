@@ -28,7 +28,9 @@ classes:
       - batch_condition
       - comments
       - consortia
+      - contact_email
       - default_embedding
+      - description
       - gene_annotation_version
       - intron_inclusion
       - protocol_url
@@ -113,6 +115,12 @@ slots:
     annotations:
       annDataLocation: uns
 
+  contact_email:
+    title: Contact Email
+    description: Contact name and email of the submitting person
+    range: Email
+    required: true
+
   consortia:
     is_a: deprecated_slot
     title: Consortia
@@ -125,6 +133,14 @@ slots:
     required: false
     annotations:
       cxg: default_embedding
+      annDataLocation: uns
+
+  description:
+    title: Description
+    description: Short description of the dataset
+    range: string
+    required: true
+    annotations:
       annDataLocation: uns
 
   gene_annotation_version:
@@ -223,13 +239,13 @@ slots:
       annDataLocation: uns
 
   title:
+    is_a: deprecated_slot
     title: Title
     description: >
       This text describes and differentiates the dataset from other datasets in the same collection. 
       It is strongly recommended that each dataset title in a collection is unique and does not depend on other metadata 
       such as a different assay to disambiguate it from other datasets in the collection.
     range: string
-    required: true
     examples:
       - value: "Cells of the adult human heart collection is 'All — Cells of the adult human heart'"
     comments:
