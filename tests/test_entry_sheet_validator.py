@@ -33,8 +33,8 @@ NONEXISTENT_SHEET_ID = "1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"  # This shee
 
 # Sample data for mocking
 SAMPLE_SHEET_DATA = pd.DataFrame({
-    'column1': ['value1', 'value2'],
-    'column2': ['value3', 'value4']
+    'column1': ['', '', '', '', 'value1', 'value2'],
+    'column2': ['', '', '', '', 'value3', 'value4']
 })
 
 
@@ -241,9 +241,8 @@ class TestReadSheetWithServiceAccount:
 class TestValidateGoogleSheet:
     """Tests for the validate_google_sheet function."""
 
-    @patch('hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account')
-    def test_service_account_access(self, mock_read_service_account):
-        """Test validation with service account access."""
+    def _test_service_account_access_helper(self, mock_read_service_account, bionetwork=None):
+        """Helper method for testing validation with service account access."""
         # Mock successful service account read
         mock_read_service_account.return_value = SpreadsheetInfo(
             spreadsheet_metadata=SpreadsheetMetadata(
@@ -268,7 +267,7 @@ class TestValidateGoogleSheet:
             errors.append(error)
 
         # Run validation
-        validation_result = validate_google_sheet(PUBLIC_SHEET_ID, error_handler=mock_error_handler)
+        validation_result = validate_google_sheet(PUBLIC_SHEET_ID, error_handler=mock_error_handler, bionetwork=bionetwork)
 
         # Verify service account method was used
         mock_read_service_account.assert_called_once_with(PUBLIC_SHEET_ID, [0, 1, 2])
@@ -279,9 +278,22 @@ class TestValidateGoogleSheet:
         assert validation_result.spreadsheet_metadata.last_updated_date == "2025-06-06T22:43:57.554Z"
         assert validation_result.spreadsheet_metadata.last_updated_by == "foo"
         assert validation_result.spreadsheet_metadata.last_updated_email == "foo@example.com"
-        # The mock returns None for error_code, but the actual function may return 'no_data' or 'validation_error'
-        # depending on the data in the sheet. For the mock test, we expect None or 'no_data'
-        assert validation_result.error_code is None or validation_result.error_code == 'no_data'
+        # The mock data is in the format necessary to be parsed, but does not contain actual dataset fields, so we expect the 'validation_error' code
+        assert validation_result.error_code == 'validation_error'
+        
+        return errors, validation_result
+
+    @patch('hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account')
+    def test_service_account_access(self, mock_read_service_account):
+        """Test validation with service account access."""
+        self._test_service_account_access_helper(mock_read_service_account)
+
+    @patch('hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account')
+    def test_service_account_access_with_bionetwork(self, mock_read_service_account):
+        """Test validation using network-specific model."""
+        errors, _ = self._test_service_account_access_helper(mock_read_service_account, bionetwork="gut")
+        # We expect there to be an error referencing `doublet_detection`, a field required by the Gut Network model but not by the default model
+        assert any(error.column == "doublet_detection" for error in errors)
 
     @patch('hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account')
     def test_service_account_access_failure(self, mock_read_service_account):
@@ -309,6 +321,13 @@ class TestValidateGoogleSheet:
         assert validation_result.spreadsheet_metadata is None
         assert validation_result.error_code == 'auth_missing'
         assert validation_result.summary  == {"dataset_count": None, "donor_count": None, "sample_count": None, "error_count": 1}
+
+    def test_invalid_bionetwork(self):
+        """Test validation when `bionetwork` parameter has an invalid value."""
+
+        # Run validation
+        with pytest.raises(ValueError, match="'not-a-bionetwork' is not a valid bionetwork"):
+            validate_google_sheet(PUBLIC_SHEET_ID, bionetwork="not-a-bionetwork")
 
 
 # Integration tests that use actual Google Sheets

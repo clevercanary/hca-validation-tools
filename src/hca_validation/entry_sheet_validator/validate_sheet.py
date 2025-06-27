@@ -80,6 +80,28 @@ class SheetValidationResult:
 # Default list of entity types to validate
 default_entity_types = ["dataset", "donor", "sample"]
 
+# Possible bionetworks that a sheet may be associated with
+allowed_bionetwork_names = [
+  "adipose",
+  "breast",
+  "development",
+  "eye",
+  "genetic-diversity",
+  "gut",
+  "heart",
+  "immune",
+  "kidney",
+  "liver",
+  "lung",
+  "musculoskeletal",
+  "nervous-system",
+  "oral",
+  "organoid",
+  "pancreas",
+  "reproduction",
+  "skin",
+]
+
 # Load environment variables from .env file if it exists
 dotenv_path = Path(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))) / '.env'
 if dotenv_path.exists():
@@ -373,6 +395,8 @@ def validate_google_sheet(
     # --- Parameter validation -------------------------------------------------
     if not sheet_id:
         raise ValueError("sheet_id is required for validate_google_sheet()")
+    if bionetwork is not None and bionetwork not in allowed_bionetwork_names:
+        raise ValueError(f"'{bionetwork}' is not a valid bionetwork")
 
     from hca_validation.validator import validate
     import logging
@@ -526,7 +550,7 @@ def validate_google_sheet(
             # Validate the data
             logger.info(f"Validating row {row_index}...")
             try:
-                validation_error = validate(row_dict, schema_type=entity_type)
+                validation_error = validate(row_dict, schema_type=entity_type, bionetwork=bionetwork)
                 
                 # Report results
                 if validation_error:
