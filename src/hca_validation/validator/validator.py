@@ -6,10 +6,27 @@ This module provides the main validation functionality for HCA data using Pydant
 from typing import Dict, Any, Optional
 from pydantic import ValidationError
 
-from hca_validation.schema.generated.core import Dataset, Donor, Sample, Cell
+from hca_validation.schema.generated.core import Dataset, GutDataset, Donor, Sample, Cell
+
+# Map schema types and bionetworks to their corresponding Pydantic models
+schema_models = {
+    "dataset": {
+      "DEFAULT": Dataset,
+      "gut": GutDataset
+    },
+    "donor": {
+      "DEFAULT": Donor
+    },
+    "sample": {
+      "DEFAULT": Sample
+    },
+    "cell": {
+      "DEFAULT": Cell
+    }
+}
 
 
-def validate(data: Dict[str, Any], schema_type: str) -> Optional[ValidationError]:
+def validate(data: Dict[str, Any], schema_type: str, bionetwork: Optional[str] = None) -> Optional[ValidationError]:
     """
     Validate HCA data against a schema using Pydantic models.
     
@@ -23,13 +40,6 @@ def validate(data: Dict[str, Any], schema_type: str) -> Optional[ValidationError
     Raises:
         ValueError: If an unsupported schema type is provided
     """
-    # Map schema types to their corresponding Pydantic models
-    schema_models = {
-        'dataset': Dataset,
-        'donor': Donor,
-        'sample': Sample,
-        'cell': Cell
-    }
     
     # Validate schema type
     if schema_type not in schema_models:
@@ -38,7 +48,8 @@ def validate(data: Dict[str, Any], schema_type: str) -> Optional[ValidationError
     
     try:
         # Validate using the appropriate Pydantic model
-        model = schema_models[schema_type]
+        type_models = schema_models[schema_type]
+        model = type_models.get(bionetwork, type_models["DEFAULT"])
         model.model_validate(data)
         return None
     except ValidationError as e:
