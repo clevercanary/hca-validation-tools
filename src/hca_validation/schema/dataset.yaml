@@ -34,6 +34,7 @@ classes:
       - gene_annotation_version
       - intron_inclusion
       - protocol_url
+      - publication_doi
       - reference_genome
       - sequenced_fragment
       - sequencing_platform
@@ -185,6 +186,15 @@ slots:
       - Useful to look up protocol data that can provide insight on batch effects. As protocols can sometimes apply to a subset of the study, we capture this at a sample level. This information may not always be available.
     annotations:
       annDataLocation: obs
+
+  publication_doi:
+    title: Publication DOI
+    description: >
+      The publication digital object identifier (doi) for the protocol. If no pre-print nor publication exists, please write 'not applicable'.
+    range: string
+    required: false
+    examples:
+      - value: "10.1016/j.cell.2016.07.054"
 
   reference_genome:
     title: Reference Genome

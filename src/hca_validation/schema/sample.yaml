@@ -30,6 +30,7 @@ classes:
       - cell_viability_percentage
       - cell_enrichment
       - development_stage_ontology_term_id
+      - disease_ontology_term_id
       - disease_ontology_term
       - institute
       - is_primary_data
@@ -43,6 +44,7 @@ classes:
       - sample_collection_relative_time_point
       - tissue_free_text
       - tissue_type
+      - tissue_ontology_term_id
       - suspension_type
       - sampled_site_condition
       - sample_preservation_method
@@ -270,6 +272,21 @@ slots:
     multivalued: false
     notes: "tissue; organoid; cell culture"
 
+  tissue_ontology_term_id:
+    title: Tissue Ontology Term ID
+    description: The detailed anatomical location of the sample, please provide a specific UBERON term.
+    range: string
+    required: true
+    examples:
+      - value: "UBERON:0001828"
+      - value: "UBERON:0000966"
+    notes: |
+      If tissue_type is "tissue" or "organoid", this must be the most accurate child of UBERON:0001062 for anatomical entity. If tissue_type is "cell culture" this must follow the requirements for cell_type_ontology_term_id.
+    annotations:
+      annDataLocation: obs
+      cxg: tissue_ontology_term_id
+      tier: Tier 1
+
   suspension_type:
     title: Suspension Type
     description: Specifies whether the sample contains single cells or single nuclei data.
@@ -368,3 +385,20 @@ slots:
     is_a: deprecated_slot
     title: Disease Ontology Term
     description: Deprecated placeholder for disease ontology term.
+
+  disease_ontology_term_id:
+    title: Disease Ontology Term ID
+    description: Disease, if expected to impact the sample.
+    range: string
+    required: true
+    examples:
+      - value: "MONDO:0005385"
+      - value: "PATO:0000461"
+    notes: |
+      This must be a MONDO term or "PATO:0000461" for normal or healthy.
+      
+      Requirements for data contributors adhering to GDPR or like standards: In the case of disease, HCA requests that you submit a higher order ontology term - this is especially important in the case of rare disease.
+    annotations:
+      annDataLocation: obs
+      cxg: disease_ontology_term_id
+      tier: Tier 1

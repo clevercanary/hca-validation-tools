@@ -145,6 +145,8 @@ class RadialTissueTerm(str, Enum):
     EPI = "EPI"
     LP = "LP"
     MUSC = "MUSC"
+    EPI_LP = "EPI_LP"
+    LP_MUSC = "LP_MUSC"
     EPI_LP_MUSC = "EPI_LP_MUSC"
     MLN = "MLN"
     SUB = "SUB"
@@ -324,6 +326,10 @@ class Dataset(ConfiguredBaseModel):
                       'may not always be available.'],
          'domain_of': ['Dataset'],
          'examples': [{'value': 'https://www.biorxiv.org/content/early/2017/09/24/193219'}]} })
+    publication_doi: Optional[str] = Field(default=None, title="Publication DOI", description="""The publication digital object identifier (doi) for the protocol. If no pre-print nor publication exists, please write 'not applicable'.
+""", json_schema_extra = { "linkml_meta": {'alias': 'publication_doi',
+         'domain_of': ['Dataset'],
+         'examples': [{'value': '10.1016/j.cell.2016.07.054'}]} })
     reference_genome: ReferenceGenomeEnum = Field(default=..., title="Reference Genome", description="""Reference genome used for alignment.""", json_schema_extra = { "linkml_meta": {'alias': 'reference_genome',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'comments': ['Possible source of batch effect and confounder for some '
@@ -462,6 +468,10 @@ class GutDataset(Dataset):
                       'may not always be available.'],
          'domain_of': ['Dataset'],
          'examples': [{'value': 'https://www.biorxiv.org/content/early/2017/09/24/193219'}]} })
+    publication_doi: Optional[str] = Field(default=None, title="Publication DOI", description="""The publication digital object identifier (doi) for the protocol. If no pre-print nor publication exists, please write 'not applicable'.
+""", json_schema_extra = { "linkml_meta": {'alias': 'publication_doi',
+         'domain_of': ['Dataset'],
+         'examples': [{'value': '10.1016/j.cell.2016.07.054'}]} })
     reference_genome: ReferenceGenomeEnum = Field(default=..., title="Reference Genome", description="""Reference genome used for alignment.""", json_schema_extra = { "linkml_meta": {'alias': 'reference_genome',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'comments': ['Possible source of batch effect and confounder for some '
@@ -632,6 +642,19 @@ class Sample(ConfiguredBaseModel):
                    'organism_ontolology_term_id is "NCBITaxon:10090" for Mus musculus, '
                    'this should be an MmusDv term. Refer to broader age bracket terms '
                    'as needed.']} })
+    disease_ontology_term_id: str = Field(default=..., title="Disease Ontology Term ID", description="""Disease, if expected to impact the sample.""", json_schema_extra = { "linkml_meta": {'alias': 'disease_ontology_term_id',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
+                         'cxg': {'tag': 'cxg', 'value': 'disease_ontology_term_id'},
+                         'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'domain_of': ['Sample'],
+         'examples': [{'value': 'MONDO:0005385'}, {'value': 'PATO:0000461'}],
+         'notes': ['This must be a MONDO term or "PATO:0000461" for normal or '
+                   'healthy.\n'
+                   '\n'
+                   'Requirements for data contributors adhering to GDPR or like '
+                   'standards: In the case of disease, HCA requests that you submit a '
+                   'higher order ontology term - this is especially important in the '
+                   'case of rare disease.\n']} })
     disease_ontology_term: Optional[str] = Field(default=None, title="Disease Ontology Term", description="""Deprecated placeholder for disease ontology term.""", json_schema_extra = { "linkml_meta": {'alias': 'disease_ontology_term',
          'domain_of': ['Sample'],
          'is_a': 'deprecated_slot'} })
@@ -716,6 +739,16 @@ class Sample(ConfiguredBaseModel):
          'domain_of': ['Sample'],
          'examples': [{'value': 'tissue'}],
          'notes': ['tissue; organoid; cell culture']} })
+    tissue_ontology_term_id: str = Field(default=..., title="Tissue Ontology Term ID", description="""The detailed anatomical location of the sample, please provide a specific UBERON term.""", json_schema_extra = { "linkml_meta": {'alias': 'tissue_ontology_term_id',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
+                         'cxg': {'tag': 'cxg', 'value': 'tissue_ontology_term_id'},
+                         'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'domain_of': ['Sample'],
+         'examples': [{'value': 'UBERON:0001828'}, {'value': 'UBERON:0000966'}],
+         'notes': ['If tissue_type is "tissue" or "organoid", this must be the most '
+                   'accurate child of UBERON:0001062 for anatomical entity. If '
+                   'tissue_type is "cell culture" this must follow the requirements '
+                   'for cell_type_ontology_term_id.\n']} })
     suspension_type: SuspensionType = Field(default=..., title="Suspension Type", description="""Specifies whether the sample contains single cells or single nuclei data.""", json_schema_extra = { "linkml_meta": {'alias': 'suspension_type',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'cxg': {'tag': 'cxg', 'value': 'suspension_type'},
@@ -837,6 +870,19 @@ class GutSample(Sample):
                    'organism_ontolology_term_id is "NCBITaxon:10090" for Mus musculus, '
                    'this should be an MmusDv term. Refer to broader age bracket terms '
                    'as needed.']} })
+    disease_ontology_term_id: str = Field(default=..., title="Disease Ontology Term ID", description="""Disease, if expected to impact the sample.""", json_schema_extra = { "linkml_meta": {'alias': 'disease_ontology_term_id',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
+                         'cxg': {'tag': 'cxg', 'value': 'disease_ontology_term_id'},
+                         'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'domain_of': ['Sample'],
+         'examples': [{'value': 'MONDO:0005385'}, {'value': 'PATO:0000461'}],
+         'notes': ['This must be a MONDO term or "PATO:0000461" for normal or '
+                   'healthy.\n'
+                   '\n'
+                   'Requirements for data contributors adhering to GDPR or like '
+                   'standards: In the case of disease, HCA requests that you submit a '
+                   'higher order ontology term - this is especially important in the '
+                   'case of rare disease.\n']} })
     disease_ontology_term: Optional[str] = Field(default=None, title="Disease Ontology Term", description="""Deprecated placeholder for disease ontology term.""", json_schema_extra = { "linkml_meta": {'alias': 'disease_ontology_term',
          'domain_of': ['Sample'],
          'is_a': 'deprecated_slot'} })
@@ -921,6 +967,16 @@ class GutSample(Sample):
          'domain_of': ['Sample'],
          'examples': [{'value': 'tissue'}],
          'notes': ['tissue; organoid; cell culture']} })
+    tissue_ontology_term_id: str = Field(default=..., title="Tissue Ontology Term ID", description="""The detailed anatomical location of the sample, please provide a specific UBERON term.""", json_schema_extra = { "linkml_meta": {'alias': 'tissue_ontology_term_id',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
+                         'cxg': {'tag': 'cxg', 'value': 'tissue_ontology_term_id'},
+                         'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'domain_of': ['Sample'],
+         'examples': [{'value': 'UBERON:0001828'}, {'value': 'UBERON:0000966'}],
+         'notes': ['If tissue_type is "tissue" or "organoid", this must be the most '
+                   'accurate child of UBERON:0001062 for anatomical entity. If '
+                   'tissue_type is "cell culture" this must follow the requirements '
+                   'for cell_type_ontology_term_id.\n']} })
     suspension_type: SuspensionType = Field(default=..., title="Suspension Type", description="""Specifies whether the sample contains single cells or single nuclei data.""", json_schema_extra = { "linkml_meta": {'alias': 'suspension_type',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'cxg': {'tag': 'cxg', 'value': 'suspension_type'},

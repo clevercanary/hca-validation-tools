@@ -28,6 +28,8 @@ enums:
       EPI: {}
       LP: {}
       MUSC: {}
+      EPI_LP: {}
+      LP_MUSC: {}
       EPI_LP_MUSC: {}
       MLN: {}
       SUB: {}
