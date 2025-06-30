@@ -24,12 +24,17 @@ classes:
     slots:
       - alignment_software
       - assay_ontology_term_id
+      - assay_ontology_term
       - batch_condition
       - comments
+      - consortia
+      - contact_email
       - default_embedding
+      - description
       - gene_annotation_version
       - intron_inclusion
       - protocol_url
+      - publication_doi
       - reference_genome
       - sequenced_fragment
       - sequencing_platform
@@ -77,6 +82,11 @@ slots:
       cxg: assay_ontology_term_id
       annDataLocation: obs
 
+  assay_ontology_term:
+    is_a: deprecated_slot
+    title: Assay Ontology Term
+    description: Deprecated placeholder for assay ontology term.
+
   batch_condition:
     title: Batch Condition
     description: >-
@@ -106,6 +116,17 @@ slots:
     annotations:
       annDataLocation: uns
 
+  contact_email:
+    title: Contact Email
+    description: Contact name and email of the submitting person
+    range: Email
+    required: true
+
+  consortia:
+    is_a: deprecated_slot
+    title: Consortia
+    description: Deprecated placeholder for consortia information.
+
   default_embedding:
     title: Default Embedding
     description: The value must match a key to an embedding in obsm for the embedding to display by default in CELLxGENE Explorer.
@@ -113,6 +134,14 @@ slots:
     required: false
     annotations:
       cxg: default_embedding
+      annDataLocation: uns
+
+  description:
+    title: Description
+    description: Short description of the dataset
+    range: string
+    required: true
+    annotations:
       annDataLocation: uns
 
   gene_annotation_version:
@@ -157,6 +186,15 @@ slots:
       - Useful to look up protocol data that can provide insight on batch effects. As protocols can sometimes apply to a subset of the study, we capture this at a sample level. This information may not always be available.
     annotations:
       annDataLocation: obs
+
+  publication_doi:
+    title: Publication DOI
+    description: >
+      The publication digital object identifier (doi) for the protocol. If no pre-print nor publication exists, please write 'not applicable'.
+    range: string
+    required: false
+    examples:
+      - value: "10.1016/j.cell.2016.07.054"
 
   reference_genome:
     title: Reference Genome
@@ -211,13 +249,13 @@ slots:
       annDataLocation: uns
 
   title:
+    is_a: deprecated_slot
     title: Title
     description: >
       This text describes and differentiates the dataset from other datasets in the same collection. 
       It is strongly recommended that each dataset title in a collection is unique and does not depend on other metadata 
       such as a different assay to disambiguate it from other datasets in the collection.
     range: string
-    required: true
     examples:
       - value: "Cells of the adult human heart collection is 'All — Cells of the adult human heart'"
     comments:

@@ -22,3 +22,99 @@ enums:
         description: Negative / false
       "yes":
         description: Affirmative / true
+        
+  RadialTissueTerm:
+    permissible_values:
+      EPI: {}
+      LP: {}
+      MUSC: {}
+      EPI_LP: {}
+      LP_MUSC: {}
+      EPI_LP_MUSC: {}
+      MLN: {}
+      SUB: {}
+      "Peyers patch": {}
+      "Mucosal ILF": {}
+      "Submucosal ILF": {}
+      
+  SampleCollectionMethod:
+    permissible_values:
+      brush: {}
+      scraping: {}
+      biopsy: {}
+      "surgical_resection": {}
+      "blood_draw": {}
+      "body_fluid": {}
+      other: {}
+      
+  TissueType:
+    permissible_values:
+      tissue: {}
+      organoid: {}
+      "cell culture": {}
+      
+  SuspensionType:
+    permissible_values:
+       cell: {}
+       nucleus: {}
+       na: {}
+       
+  SampledSiteCondition:
+    permissible_values:
+       healthy: {}
+       diseased: {}
+       adjacent: {}
+       
+  SamplePreservationMethod:
+    permissible_values:
+      "ambient temperature": {}
+      "cut slide": {}
+      fresh: {}
+      "frozen at -70C": {}
+      "frozen at -80C": {}
+      "frozen at -150C": {}
+      "frozen in liquid nitrogen": {}
+      "frozen in vapor phase": {}
+      "paraffin block": {}
+      "RNAlater at 4C": {}
+      "RNAlater at 25C": {}
+      "RNAlater at -20C": {}
+      other: {}
+ 
+  SampleSource:
+    permissible_values:
+      "surgical_donor": {}
+      "postmortem_donor": {}
+      "living_organ_donor": {}
+      
+  MannerOfDeath:
+    permissible_values:
+      "1": {}
+      "2": {}
+      "3": {}
+      "4": {}
+      "0": {}
+      unknown: {}
+      "not_applicable": {}
+      
+  DevelopmentStage:
+    permissible_values:
+      HsapDv:0000003: {}
+      HsapDv:0000046: {}
+      HsapDv:0000264: {}
+      HsapDv:0000268: {}
+      HsapDv:0000237: {}
+      HsapDv:0000238: {}
+      HsapDv:0000239: {}
+      HsapDv:0000240: {}
+      HsapDv:0000241: {}
+      HsapDv:0000242: {}
+      HsapDv:0000243: {}
+      MmusDv:0000001: {}
+      MmusDv:0000002: {}
+      unknown: {}
+      
+  Organism:
+    permissible_values:
+      "NCBITaxon:9606": {}
+      "NCBITaxon:10090": {}

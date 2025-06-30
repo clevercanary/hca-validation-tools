@@ -12,5 +12,7 @@
   "comments": "Sample dataset for testing validation",
   "protocol_url": "https://www.biorxiv.org/content/early/2017/09/24/193219",
   "title": "Human Heart Cell Atlas - Test Dataset",
-  "dataset_id": "HCA-TEST-2"
+  "dataset_id": "HCA-TEST-2",
+  "contact_email": "sam@sneed.com",
+  "description": "Sample dataset for testing validation"
 }

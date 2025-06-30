@@ -22,18 +22,13 @@ classes:
       An individual organism from which biological samples have been derived
     slots:
       - donor_id
+      - organism_ontology_term_id
       - sex_ontology_term_id
+      - sex_ontology_term
       - manner_of_death
       - dataset_id
 
 slots:
-  donor_id:
-    title: Donor ID
-    description: This must be free-text that identifies a unique individual that data were derived from.
-    notes: >
-      It is strongly recommended that this identifier be designed so that it is unique to: a given individual within the collection of datasets that includes this dataset, and a given individual across all collections in CELLxGENE Discover. It is strongly recommended that "pooled" be used for observations from a sample of multiple individuals that were not confidently assigned to a single individual through demultiplexing. It is strongly recommended that "unknown" ONLY be used for observations in a dataset when it is not known which observations are from the same individual.
-    range: string
-    required: true
   sex_ontology_term_id:
     title: Sex Ontology Term ID
     description: Reported sex of the donor.
@@ -50,6 +45,12 @@ slots:
     annotations:
       annDataLocation: obs
       cxg: sex_ontology_term_id
+  
+  sex_ontology_term:
+    is_a: deprecated_slot
+    title: Sex Ontology Term
+    description: Deprecated placeholder for sex ontology term.
+  
   manner_of_death:
     title: Manner of Death
     description: |
@@ -62,10 +63,21 @@ slots:
       * Unknown = The cause of death is unknown.
       * Not applicable = Subject is alive.
       [Leave blank for embryonic/fetal tissue.]
-    range: string
+    range: MannerOfDeath
     required: true
     examples:
       - value: "1"
     notes: "1; 2; 3; 4; 0; unknown; not applicable"
     annotations:
       annDataLocation: obs
+
+  organism_ontology_term_id:
+    title: Organism Ontology Term ID
+    description: The name given to the type of organism, collected in NCBITaxon:0000 format.
+    range: Organism
+    required: true
+    notes: "\"NCBITaxon:9606\" for Homo sapiens or \"NCBITaxon:10090\" for Mus musculus."
+    annotations:
+      annDataLocation: obs
+      cxg: organism_ontology_term_id
+      tier: Tier 1
