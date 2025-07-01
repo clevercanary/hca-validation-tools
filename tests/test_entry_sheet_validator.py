@@ -11,7 +11,7 @@ This script tests the functionality of the entry sheet validator, including:
 import os
 import json
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import DEFAULT, patch, MagicMock
 import pandas as pd
 from google.oauth2.service_account import Credentials
 import gspread
@@ -36,6 +36,17 @@ SAMPLE_SHEET_DATA = pd.DataFrame({
     'column1': ['', '', '', '', 'value1', 'value2'],
     'column2': ['', '', '', '', 'value3', 'value4']
 })
+SAMPLE_SHEET_DATA_WITH_CASTS = pd.DataFrame({
+    'contact_email': ['', '', '', '', "foo@example.com", '   ', 'bar@example.com'],
+    'study_pi': ['', '', '', '', 'Foo', 'Bar; Baz', '']
+})
+
+# Data to be compared with output values
+SAMPLE_SHEET_DATA_WITH_CASTS_EXPECTED_NORMALIZATION = [
+    {"contact_email": "foo@example.com", "study_pi": ["Foo"]},
+    {"contact_email": None, "study_pi": ["Bar", "Baz"]},
+    {"contact_email": "bar@example.com", "study_pi": None},
+]
 
 
 
@@ -241,7 +252,7 @@ class TestReadSheetWithServiceAccount:
 class TestValidateGoogleSheet:
     """Tests for the validate_google_sheet function."""
 
-    def _test_service_account_access_helper(self, mock_read_service_account, bionetwork=None):
+    def _test_service_account_access_helper(self, mock_read_service_account, *, bionetwork=None, sheet_data=SAMPLE_SHEET_DATA):
         """Helper method for testing validation with service account access."""
         # Mock successful service account read
         mock_read_service_account.return_value = SpreadsheetInfo(
@@ -253,9 +264,9 @@ class TestValidateGoogleSheet:
             ),
             worksheets=[
                 WorksheetInfo(
-                    data=SAMPLE_SHEET_DATA,
+                    data=sheet_data,
                     worksheet_id=123,
-                    source_columns=list(SAMPLE_SHEET_DATA.columns),
+                    source_columns=list(sheet_data.columns),
                     source_rows_start_index=1
                 )
             ]
@@ -294,6 +305,21 @@ class TestValidateGoogleSheet:
         errors, _ = self._test_service_account_access_helper(mock_read_service_account, bionetwork="gut")
         # We expect there to be an error referencing `doublet_detection`, a field required by the Gut Network model but not by the default model
         assert any(error.column == "doublet_detection" for error in errors)
+
+    @patch('hca_validation.validator.validate')
+    @patch('hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account')
+    def test_row_normalization_before_validation(self, mock_read_service_account, mock_validate):
+        """Test normalization of rows passed to the validation function."""
+        # Store dicts that the validation function is called with
+        validated_dicts = []
+        def save_data(data, schema_type, bionetwork):
+            validated_dicts.append(data)
+            return DEFAULT
+        mock_validate.side_effect = save_data
+        # Validate the mock sheet
+        self._test_service_account_access_helper(mock_read_service_account, sheet_data=SAMPLE_SHEET_DATA_WITH_CASTS)
+        # Confirm that values were converted as expected
+        assert validated_dicts == SAMPLE_SHEET_DATA_WITH_CASTS_EXPECTED_NORMALIZATION
 
     @patch('hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account')
     def test_service_account_access_failure(self, mock_read_service_account):
