@@ -362,6 +362,34 @@ def load_schemaview(entity_type):
     # Create a schemaview
     return SchemaView(schema_path)
 
+def row_to_normalized_dict(row: pd.Series, schemaview: SchemaView):
+    """
+    Convert a row to a dict to be validated, omitting empty keys and casting values as necessary.
+    """
+    row_dict = {}
+    for key, value in row.to_dict().items():
+        # Skip columns with no name
+        if not key or key.strip() == "":
+            continue
+        
+        # Interpret empty string as None
+        if value == "":
+            row_dict[key] = None
+            continue
+
+        # Get slot info from schema if available
+        try:
+            slot = schemaview.induced_slot(key)
+        except ValueError:
+            slot = None
+
+        # Convert string representations of lists
+        if isinstance(value, str) and slot is not None and slot.multivalued:
+            row_dict[key] = [item.strip() for item in value.split(";")] if value.strip() else []
+        else:
+            row_dict[key] = value
+    return row_dict
+
 def make_summary_without_entities(error_count: int, entity_types: List[str] = default_entity_types) -> dict[str, int | None]:
     return {
         **{f"{entity_type}_count": None for entity_type in entity_types},
@@ -526,23 +554,7 @@ def validate_google_sheet(
             row_index = row_indices[i] + 1  # Convert from 0-based index to 1-based row number
             
             # Convert row to dictionary and clean up
-            row_dict = {}
-            for key, value in row.to_dict().items():
-                # Skip empty values and columns with no name
-                if pd.isna(value) or not key or key.strip() == '':
-                    continue
-                
-                # Get slot info from schema if available
-                try:
-                    slot = schemaview.induced_slot(key)
-                except ValueError:
-                    slot = None
-
-                # Convert string representations of lists
-                if isinstance(value, str) and slot is not None and slot.multivalued:
-                    row_dict[key] = [item.strip() for item in value.split(";")] if value.strip() else []
-                else:
-                    row_dict[key] = value
+            row_dict = row_to_normalized_dict(row, schemaview)
             
             primary_key_field = sheet_structure_by_entity_type[entity_type]["primary_key_field"]
             row_primary_key = f"{primary_key_field}:{row_dict[primary_key_field]}" if primary_key_field in row_dict else None
