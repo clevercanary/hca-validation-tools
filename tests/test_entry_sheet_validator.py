@@ -37,7 +37,7 @@ SAMPLE_SHEET_DATA = pd.DataFrame({
     'column2': ['', '', '', '', 'value3', 'value4']
 })
 SAMPLE_SHEET_DATA_WITH_CASTS = pd.DataFrame({
-    'contact_email': ['', '', '', '', "foo@example.com", '', 'bar@example.com'],
+    'contact_email': ['', '', '', '', "foo@example.com", '   ', 'bar@example.com'],
     'study_pi': ['', '', '', '', 'Foo', 'Bar; Baz', '']
 })
 

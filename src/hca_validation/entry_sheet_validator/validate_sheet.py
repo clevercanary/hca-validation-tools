@@ -373,7 +373,7 @@ def row_to_normalized_dict(row: pd.Series, schemaview: SchemaView):
             continue
         
         # Interpret empty string as None
-        if value == "":
+        if value.strip() == "":
             row_dict[key] = None
             continue
 
