@@ -217,11 +217,11 @@ class TestReadSheetWithServiceAccount:
         mock_client.open_by_key.return_value = mock_sheet
         mock_authorize.return_value = mock_client
 
-        # The function should return read error containing only 'worksheet_not_found' code when the worksheet is not found
+        # The function should return read error containing 'worksheet_not_found' code and spreadsheet metadata when the worksheet is not found
         sheet_read_result = read_sheet_with_service_account(PUBLIC_SHEET_ID)
         assert isinstance(sheet_read_result, ReadErrorSheetInfo)
         assert sheet_read_result.error_code == 'worksheet_not_found'
-        assert sheet_read_result.spreadsheet_metadata is None
+        assert sheet_read_result.spreadsheet_metadata is not None
         assert sheet_read_result.worksheet_id is None
         
         # Verify the mocks were called correctly
@@ -247,6 +247,29 @@ class TestReadSheetWithServiceAccount:
         
         # Verify the mocks were called correctly
         mock_client.open_by_key.assert_called_once_with(PUBLIC_SHEET_ID)
+
+    @patch('googleapiclient.discovery.build')
+    @patch('gspread.authorize')
+    @patch('google.oauth2.service_account.Credentials.from_service_account_info')
+    def test_generic_exception_with_metadata(self, mock_credentials, mock_authorize, mock_build, mock_env_with_credentials):
+        """Test handling of generic exception after spreadsheet metadata is obtained."""
+        # Mock the gspread client
+        mock_client = MagicMock()
+        mock_sheet = MagicMock()
+        mock_sheet.get_worksheet.side_effect = Exception("Exception")
+        mock_client.open_by_key.return_value = mock_sheet
+        mock_authorize.return_value = mock_client
+
+        # The function should return read error containing 'api_error' code and spreadsheet metadata
+        sheet_read_result = read_sheet_with_service_account(PUBLIC_SHEET_ID)
+        assert isinstance(sheet_read_result, ReadErrorSheetInfo)
+        assert sheet_read_result.error_code == 'api_error'
+        assert sheet_read_result.spreadsheet_metadata is not None
+        assert sheet_read_result.worksheet_id is None
+        
+        # Verify the mocks were called correctly
+        mock_client.open_by_key.assert_called_once_with(PUBLIC_SHEET_ID)
+        mock_sheet.get_worksheet.assert_called_once_with(0)
 
 
 class TestValidateGoogleSheet:
