@@ -246,6 +246,9 @@ def read_sheet_with_service_account(sheet_id, sheet_indices=[0]) -> Union[Spread
         logger.error("Check that the Lambda function has the correct permissions to access the secret and that the secret exists.")
         return ReadErrorSheetInfo(error_code='auth_unresolved')
     
+    # Set up a variable to hold spreadsheet metadata so that it can be referenced if an unexpected type of error occurs after metadata is obtained
+    spreadsheet_metadata = None
+
     try:
         # Parse the service account JSON
         logger.info("Attempting to parse service account JSON...")
@@ -336,24 +339,24 @@ def read_sheet_with_service_account(sheet_id, sheet_indices=[0]) -> Union[Spread
         except gspread.exceptions.SpreadsheetNotFound:
             logger.error(f"Sheet {sheet_id} not found. Check if the sheet ID is correct.")
             logger.error(f"Error accessing Google Sheet with service account: Sheet {sheet_id} not found or not accessible with provided credentials")
-            return ReadErrorSheetInfo(error_code='sheet_not_found')
+            return ReadErrorSheetInfo(error_code='sheet_not_found', spreadsheet_metadata=spreadsheet_metadata)
         except gspread.exceptions.APIError as e:
             if "PERMISSION_DENIED" in str(e):
                 logger.error(f"Permission denied accessing sheet {sheet_id}: {e}")
                 logger.error(f"Make sure the service account has access to the sheet.")
-                return ReadErrorSheetInfo(error_code='permission_denied')
+                return ReadErrorSheetInfo(error_code='permission_denied', spreadsheet_metadata=spreadsheet_metadata)
             else:
                 logger.error(f"Google Sheets API error: {e}")
-                return ReadErrorSheetInfo(error_code='api_error')
+                return ReadErrorSheetInfo(error_code='api_error', spreadsheet_metadata=spreadsheet_metadata)
             
     except json.JSONDecodeError as json_error:
         logger.error(f"Invalid JSON format in service account credentials: {json_error}")
-        return ReadErrorSheetInfo(error_code='auth_invalid_format')
+        return ReadErrorSheetInfo(error_code='auth_invalid_format', spreadsheet_metadata=spreadsheet_metadata)
     except Exception as e:
         logger.error(f"Unexpected error accessing Google Sheet with service account: {e}")
         logger.error(f"Exception type: {type(e).__name__}")
         logger.error(f"Traceback: {traceback.format_exc()}")
-        return ReadErrorSheetInfo(error_code='api_error')
+        return ReadErrorSheetInfo(error_code='api_error', spreadsheet_metadata=spreadsheet_metadata)
 
 def load_schemaview(entity_type):
     # Get the schema path
