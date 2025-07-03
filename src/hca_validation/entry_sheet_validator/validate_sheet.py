@@ -182,7 +182,7 @@ def read_worksheet(sheet_id, spreadsheet_metadata, spreadsheet, sheet_index) -> 
         
     except gspread.exceptions.WorksheetNotFound:
         logger.error(f"Error accessing Google Sheet with service account: Worksheet index {sheet_index} not found in sheet {sheet_id}")
-        return ReadErrorSheetInfo(error_code='worksheet_not_found')
+        return ReadErrorSheetInfo(error_code='worksheet_not_found', spreadsheet_metadata=spreadsheet_metadata)
 
 def read_sheet_with_service_account(sheet_id, sheet_indices=[0]) -> Union[SpreadsheetInfo, ReadErrorSheetInfo]:
     """

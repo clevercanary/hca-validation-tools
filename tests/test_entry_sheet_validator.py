@@ -217,11 +217,11 @@ class TestReadSheetWithServiceAccount:
         mock_client.open_by_key.return_value = mock_sheet
         mock_authorize.return_value = mock_client
 
-        # The function should return read error containing only 'worksheet_not_found' code when the worksheet is not found
+        # The function should return read error containing 'worksheet_not_found' code and spreadsheet metadata when the worksheet is not found
         sheet_read_result = read_sheet_with_service_account(PUBLIC_SHEET_ID)
         assert isinstance(sheet_read_result, ReadErrorSheetInfo)
         assert sheet_read_result.error_code == 'worksheet_not_found'
-        assert sheet_read_result.spreadsheet_metadata is None
+        assert sheet_read_result.spreadsheet_metadata is not None
         assert sheet_read_result.worksheet_id is None
         
         # Verify the mocks were called correctly
