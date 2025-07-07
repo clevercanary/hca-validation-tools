@@ -344,6 +344,26 @@ class TestValidateGoogleSheet:
         # Confirm that values were converted as expected
         assert validated_dicts == SAMPLE_SHEET_DATA_WITH_CASTS_EXPECTED_NORMALIZATION
 
+    @patch('hca_validation.validator.validate')
+    @patch('hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account')
+    def test_class_name(self, mock_read_service_account, mock_validate):
+        """Test that the correct class name is passed to the validation function."""
+        # Store class name that the validation function was last called with
+        last_class_name_info = {}
+        def save_class_name(data, class_name):
+            last_class_name_info["value"] = class_name
+            return DEFAULT
+        mock_validate.side_effect = save_class_name
+        # Validate the mock sheet with default dataset model
+        self._test_service_account_access_helper(mock_read_service_account)
+        # Confirm that correct class was used
+        assert last_class_name_info["value"] == "Dataset"
+        mock_read_service_account.reset_mock()
+        # Validate the mock sheet with Gut Network dataset model
+        self._test_service_account_access_helper(mock_read_service_account, bionetwork="gut")
+        # Confirm that correct class was used
+        assert last_class_name_info["value"] == "GutDataset"
+
     @patch('hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account')
     def test_service_account_access_failure(self, mock_read_service_account):
         """Test validation when service account access fails."""
