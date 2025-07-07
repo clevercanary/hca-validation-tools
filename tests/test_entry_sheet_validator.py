@@ -335,7 +335,7 @@ class TestValidateGoogleSheet:
         """Test normalization of rows passed to the validation function."""
         # Store dicts that the validation function is called with
         validated_dicts = []
-        def save_data(data, schema_type, bionetwork):
+        def save_data(data, class_name):
             validated_dicts.append(data)
             return DEFAULT
         mock_validate.side_effect = save_data

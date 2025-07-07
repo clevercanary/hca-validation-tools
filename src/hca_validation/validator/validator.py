@@ -6,28 +6,38 @@ This module provides the main validation functionality for HCA data using Pydant
 from typing import Dict, Any, Optional
 from pydantic import ValidationError
 
-from hca_validation.schema.generated.core import Dataset, GutDataset, Donor, Sample, GutSample, Cell
+import hca_validation.schema.generated.core as schema
 
-# Map schema types and bionetworks to their corresponding Pydantic models
-schema_models = {
+# Map schema types and bionetworks to their corresponding class names
+schema_classes = {
     "dataset": {
-      "DEFAULT": Dataset,
-      "gut": GutDataset
+      "DEFAULT": "Dataset",
+      "gut": "GutDataset"
     },
     "donor": {
-      "DEFAULT": Donor
+      "DEFAULT": "Donor"
     },
     "sample": {
-      "DEFAULT": Sample,
-      "gut": GutSample
+      "DEFAULT": "Sample",
+      "gut": "GutSample"
     },
     "cell": {
-      "DEFAULT": Cell
+      "DEFAULT": "Cell"
     }
 }
 
 
-def validate(data: Dict[str, Any], schema_type: str, bionetwork: Optional[str] = None) -> Optional[ValidationError]:
+def get_entity_class_name(schema_type: str, bionetwork: Optional[str] = None) -> str:
+    # Validate schema type
+    if schema_type not in schema_classes:
+        raise ValueError(f"Unsupported schema type: {schema_type}. "
+                       f"Supported types are: {', '.join(schema_classes.keys())}")
+    
+    type_classes = schema_classes[schema_type]
+    return type_classes.get(bionetwork, type_classes["DEFAULT"])
+
+
+def validate(data: Dict[str, Any], *, class_name: str) -> Optional[ValidationError]:
     """
     Validate HCA data against a schema using Pydantic models.
     
@@ -42,15 +52,9 @@ def validate(data: Dict[str, Any], schema_type: str, bionetwork: Optional[str] =
         ValueError: If an unsupported schema type is provided
     """
     
-    # Validate schema type
-    if schema_type not in schema_models:
-        raise ValueError(f"Unsupported schema type: {schema_type}. "
-                       f"Supported types are: {', '.join(schema_models.keys())}")
-    
     try:
         # Validate using the appropriate Pydantic model
-        type_models = schema_models[schema_type]
-        model = type_models.get(bionetwork, type_models["DEFAULT"])
+        model = getattr(schema, class_name)
         model.model_validate(data)
         return None
     except ValidationError as e:

@@ -429,7 +429,7 @@ def validate_google_sheet(
     if bionetwork is not None and bionetwork not in allowed_bionetwork_names:
         raise ValueError(f"'{bionetwork}' is not a valid bionetwork")
 
-    from hca_validation.validator import validate
+    from hca_validation.validator import get_entity_class_name, validate
     import logging
     logger = logging.getLogger()
 
@@ -548,6 +548,8 @@ def validate_google_sheet(
     all_valid = True
 
     for entity_type, sheet_info, (rows_to_validate, row_indices) in zip(entity_types, sheet_read_result.worksheets, rows_info_per_entity_type):
+        # Determine schema class name to use for validation
+        class_name = get_entity_class_name(entity_type, bionetwork)
         # Load schema for use in interpreting input values
         schemaview = load_schemaview(entity_type)
         # Validate each row
@@ -565,7 +567,7 @@ def validate_google_sheet(
             # Validate the data
             logger.info(f"Validating row {row_index}...")
             try:
-                validation_error = validate(row_dict, schema_type=entity_type, bionetwork=bionetwork)
+                validation_error = validate(row_dict, class_name=class_name)
                 
                 # Report results
                 if validation_error:
