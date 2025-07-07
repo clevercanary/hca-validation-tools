@@ -370,15 +370,16 @@ def normalize_dataframe_values(df: pd.DataFrame, schemaview: SchemaView, class_n
     Normalize a dataframe by dropping columns with empty names and casting types according to the given schema class.
     """
 
+    class_slots_by_name = {
+        slot.name: slot for slot in schemaview.class_induced_slots(class_name)
+    }
+
     def parse_list(value):
         return [item.strip() for item in value.split(";")] if value.strip() else []
 
     def map_column(name):
         # Get slot info from schema if available
-        try:
-            slot = schemaview.induced_slot(name)
-        except ValueError:
-            slot = None
+        slot = class_slots_by_name.get(name)
         
         # Determine how to parse a non-empty value in this column
         parse_value = parse_list if slot is not None and slot.multivalued else None
