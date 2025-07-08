@@ -153,6 +153,7 @@ class RadialTissueTerm(str, Enum):
     Peyers_patch = "Peyers patch"
     Mucosal_ILF = "Mucosal ILF"
     Submucosal_ILF = "Submucosal ILF"
+    WM = "WM"
 
 
 class SampleCollectionMethod(str, Enum):

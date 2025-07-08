@@ -36,6 +36,7 @@ enums:
       "Peyers patch": {}
       "Mucosal ILF": {}
       "Submucosal ILF": {}
+      WM: {}
       
   SampleCollectionMethod:
     permissible_values:
