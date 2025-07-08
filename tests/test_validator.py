@@ -42,7 +42,7 @@ def voibm_dataset():
 def test_validate_valid_dataset(valid_dataset):
     """Test validation of a valid dataset."""
     # Validate the dataset
-    validation_error = validate(valid_dataset, schema_type="dataset")
+    validation_error = validate(valid_dataset, class_name="Dataset")
 
     # Assert that validation passed
     assert not validation_error, "Valid dataset should have no validation errors"
@@ -51,7 +51,7 @@ def test_validate_valid_dataset(valid_dataset):
 def test_validate_invalid_dataset(invalid_dataset):
     """Test validation of an invalid dataset."""
     # Validate the dataset
-    validation_error = validate(invalid_dataset, schema_type="dataset")
+    validation_error = validate(invalid_dataset, class_name="Dataset")
 
     # Assert that validation failed
     assert validation_error, "Invalid dataset should have validation errors"
@@ -67,13 +67,13 @@ def test_validate_valid_or_invalid_by_model_dataset(voibm_dataset):
     """Test validation of a dataset that is valid for the default model but invalid for a network-specific model."""
 
     # Validate the dataset with the default model
-    default_validation_error = validate(voibm_dataset, schema_type="dataset")
+    default_validation_error = validate(voibm_dataset, class_name="Dataset")
 
     # Assert that validation passed
     assert not default_validation_error, "Dataset should have no validation errors when validated with default model"
 
     # Validate the dataset with a network-specific model
-    gut_validation_error = validate(voibm_dataset, schema_type="dataset", bionetwork="gut")
+    gut_validation_error = validate(voibm_dataset, class_name="GutDataset")
 
     # Assert that validation failed
     assert gut_validation_error, "Dataset should have validation errors when validation with network-specific model"

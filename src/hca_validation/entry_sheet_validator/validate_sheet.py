@@ -358,40 +358,40 @@ def read_sheet_with_service_account(sheet_id, sheet_indices=[0]) -> Union[Spread
         logger.error(f"Traceback: {traceback.format_exc()}")
         return ReadErrorSheetInfo(error_code='api_error', spreadsheet_metadata=spreadsheet_metadata)
 
-def load_schemaview(entity_type):
+def load_schemaview():
     # Get the schema path
     module_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    schema_path = os.path.join(module_dir, 'schema', f"{entity_type}.yaml")
+    schema_path = os.path.join(module_dir, "schema/core.yaml")
     # Create a schemaview
     return SchemaView(schema_path)
 
-def row_to_normalized_dict(row: pd.Series, schemaview: SchemaView):
+def normalize_dataframe_values(df: pd.DataFrame, schemaview: SchemaView, class_name: str) -> pd.DataFrame:
     """
-    Convert a row to a dict to be validated, omitting empty keys and casting values as necessary.
+    Normalize a dataframe by dropping columns with empty names and casting types according to the given schema class.
     """
-    row_dict = {}
-    for key, value in row.to_dict().items():
-        # Skip columns with no name
-        if not key or key.strip() == "":
-            continue
-        
-        # Interpret empty string as None
-        if value.strip() == "":
-            row_dict[key] = None
-            continue
 
+    class_slots_by_name = {
+        slot.name: slot for slot in schemaview.class_induced_slots(class_name)
+    }
+
+    def parse_list(value):
+        return [item.strip() for item in value.split(";")] if value.strip() else []
+
+    def map_column(name):
         # Get slot info from schema if available
-        try:
-            slot = schemaview.induced_slot(key)
-        except ValueError:
-            slot = None
+        slot = class_slots_by_name.get(name)
+        
+        # Determine how to parse a non-empty value in this column
+        parse_value = parse_list if slot is not None and slot.multivalued else None
 
-        # Convert string representations of lists
-        if isinstance(value, str) and slot is not None and slot.multivalued:
-            row_dict[key] = [item.strip() for item in value.split(";")] if value.strip() else []
-        else:
-            row_dict[key] = value
-    return row_dict
+        # Map over the column, converting whitespace-only value to None and parsing other values where applicable
+        return df[name].map(lambda value: None if value.strip() == "" else value if parse_value is None else parse_value(value))
+
+    return pd.DataFrame({
+        name: map_column(name)
+        for name in df.columns
+        if name and name.strip() != ""
+    })
 
 def make_summary_without_entities(error_count: int, entity_types: List[str] = default_entity_types) -> dict[str, int | None]:
     return {
@@ -429,7 +429,7 @@ def validate_google_sheet(
     if bionetwork is not None and bionetwork not in allowed_bionetwork_names:
         raise ValueError(f"'{bionetwork}' is not a valid bionetwork")
 
-    from hca_validation.validator import validate
+    from hca_validation.validator import get_entity_class_name, validate
     import logging
     logger = logging.getLogger()
 
@@ -452,6 +452,9 @@ def validate_google_sheet(
     if invalid_entity_types:
         raise ValueError(f"Invalid entity types: {', '.join(invalid_entity_types)}")
 
+    # Load schema for use in interpreting and validating input values
+    schemaview = load_schemaview()
+    
     logger.info(f"Reading sheet: {sheet_id}")
     
     # Read the sheet with service account credentials
@@ -476,8 +479,7 @@ def validate_google_sheet(
             summary=make_summary_without_entities(1, entity_types)
         )
     
-    # Tuples of rows list and row indices list
-    rows_info_per_entity_type = []
+    row_indices_to_validate_per_entity_type = []
 
     for entity_type, sheet_info in zip(entity_types, sheet_read_result.worksheets):
         df = sheet_info.data
@@ -490,7 +492,6 @@ def validate_google_sheet(
         logger.info(f"Sheet has {len(df)} {entity_type} rows total")
         
         # Find rows with actual data to validate
-        rows_to_validate = []
         row_indices = []
         
         # Debug: Print the first few rows to understand the structure
@@ -520,13 +521,12 @@ def validate_google_sheet(
             
             # Add non-empty row for validation
             logger.debug(f"Adding row {current_row_index + 1} for validation")
-            rows_to_validate.append(row)
             row_indices.append(current_row_index)
             
             # Move to the next row
             current_row_index += 1
         
-        if not rows_to_validate:
+        if not row_indices:
             logger.warning(f"No data found to validate starting from {entity_type} row 6.")
             return SheetValidationResult(
                 successful=False,
@@ -535,29 +535,35 @@ def validate_google_sheet(
                 summary=make_summary_without_entities(1, entity_types)
             )
         
-        logger.info(f"Found {len(rows_to_validate)} {entity_type} rows to validate.")
+        logger.info(f"Found {len(row_indices)} {entity_type} rows to validate.")
 
-        rows_info_per_entity_type.append((rows_to_validate, row_indices))
+        row_indices_to_validate_per_entity_type.append(row_indices)
     
     # Set up validation summary with entity counts and initial error count
     validation_summary = {
-        **{f"{entity_type}_count": len(rows_to_validate) for entity_type, (rows_to_validate, _) in zip(entity_types, rows_info_per_entity_type)},
+        **{f"{entity_type}_count": len(row_indices) for entity_type, row_indices in zip(entity_types, row_indices_to_validate_per_entity_type)},
         "error_count": 0
     }
 
     all_valid = True
 
-    for entity_type, sheet_info, (rows_to_validate, row_indices) in zip(entity_types, sheet_read_result.worksheets, rows_info_per_entity_type):
-        # Load schema for use in interpreting input values
-        schemaview = load_schemaview(entity_type)
+    for entity_type, sheet_info, row_indices_to_validate in zip(entity_types, sheet_read_result.worksheets, row_indices_to_validate_per_entity_type):
+        # Determine schema class name to use for validation
+        class_name = get_entity_class_name(entity_type, bionetwork)
+        # Get normalized dataframe of rows to validate
+        rows_to_validate = normalize_dataframe_values(
+            sheet_info.data.iloc[row_indices_to_validate],
+            schemaview,
+            class_name
+        )
         # Validate each row
         all_valid_in_worksheet = True
-        for i, row in enumerate(rows_to_validate):
+        for row_index_from_zero, (_, row) in zip(row_indices_to_validate, rows_to_validate.iterrows()):
             # Get the actual row number in the spreadsheet (1-based)
-            row_index = row_indices[i] + 1  # Convert from 0-based index to 1-based row number
+            row_index = row_index_from_zero + 1  # Convert from 0-based index to 1-based row number
             
-            # Convert row to dictionary and clean up
-            row_dict = row_to_normalized_dict(row, schemaview)
+            # Convert row to dictionary
+            row_dict = row.to_dict()
             
             primary_key_field = sheet_structure_by_entity_type[entity_type]["primary_key_field"]
             row_primary_key = f"{primary_key_field}:{row_dict[primary_key_field]}" if primary_key_field in row_dict else None
@@ -565,7 +571,7 @@ def validate_google_sheet(
             # Validate the data
             logger.info(f"Validating row {row_index}...")
             try:
-                validation_error = validate(row_dict, schema_type=entity_type, bionetwork=bionetwork)
+                validation_error = validate(row_dict, class_name=class_name)
                 
                 # Report results
                 if validation_error:
