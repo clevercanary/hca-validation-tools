@@ -27,6 +27,22 @@ classes:
       - sex_ontology_term
       - manner_of_death
       - dataset_id
+    attributes:
+      donor_id:
+        title: Donor ID
+        description: >-
+          This must be free-text that identifies a unique individual that data were derived from.
+        examples:
+          - value: CR_donor_1; MM_donor_1; LR_donor_2
+        annotations:
+          annDataLocation: obs
+          tier: Tier 1
+          cxg: donor_id
+        range: string
+        required: true
+        identifier: true
+        comments: >-
+          Fundamental unit of biological variation of the data. It is strongly recommended that this identifier be designed so that it is unique to: a given individual within the collection of datasets that includes this dataset, and a given individual across all collections in CELLxGENE Discover. It is strongly recommended that "pooled" be used for observations from a sample of multiple individuals that were not confidently assigned to a single individual through demultiplexing. It is strongly recommended that "unknown" ONLY be used for observations in a dataset when it is not known which observations are from the same individual.
 
 slots:
   sex_ontology_term_id:

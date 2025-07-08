@@ -15,6 +15,8 @@ default_range: string
 imports:
   - linkml:types
   - ./enums
+  - ./dataset
+  - ./donor
 
 types:
   Email:
@@ -49,19 +51,8 @@ slots:
   dataset_id:
     title: Dataset ID
     description: A unique identifier for each dataset in the study. This should be unique to the study.
-    range: string
-    required: true
-
-  sample_id:
-    title: Sample ID
-    description: >-
-      Identification number of the sample. This is the fundamental unit of sampling the tissue (the specimen taken from the subject), which can be the same as the 'subject_ID', but is often different if multiple samples are taken from the same subject. Note: this is NOT a unit of multiplexing of donor samples, which should be stored in "library".
-    examples:
-      - value: SC24; SC25; SC28
-    annotations:
-      annDataLocation: obs
-      tier: Tier 1
-    range: string
+    range: Dataset
+    inlined: false
     required: true
 
   donor_id:
@@ -74,7 +65,8 @@ slots:
       annDataLocation: obs
       tier: Tier 1
       cxg: donor_id
-    range: string
+    range: Donor
+    inlined: false
     required: true
     comments: >-
       Fundamental unit of biological variation of the data. It is strongly recommended that this identifier be designed so that it is unique to: a given individual within the collection of datasets that includes this dataset, and a given individual across all collections in CELLxGENE Discover. It is strongly recommended that "pooled" be used for observations from a sample of multiple individuals that were not confidently assigned to a single individual through demultiplexing. It is strongly recommended that "unknown" ONLY be used for observations in a dataset when it is not known which observations are from the same individual.
