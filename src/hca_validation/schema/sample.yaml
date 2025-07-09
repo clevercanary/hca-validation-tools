@@ -50,19 +50,6 @@ classes:
       - sample_preservation_method
       - sample_source
       - tissue_ontology_term
-    attributes:
-      sample_id:
-        title: Sample ID
-        description: >-
-          Identification number of the sample. This is the fundamental unit of sampling the tissue (the specimen taken from the subject), which can be the same as the 'subject_ID', but is often different if multiple samples are taken from the same subject. Note: this is NOT a unit of multiplexing of donor samples, which should be stored in "library".
-        examples:
-          - value: SC24; SC25; SC28
-        annotations:
-          annDataLocation: obs
-          tier: Tier 1
-        range: string
-        required: true
-        identifier: true
 
 slots:
   author_batch_notes:

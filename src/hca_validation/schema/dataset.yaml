@@ -41,13 +41,6 @@ classes:
       - study_pi
       - title
       - dataset_id
-    attributes:
-      dataset_id:
-        title: Dataset ID
-        description: A unique identifier for each dataset in the study. This should be unique to the study.
-        range: string
-        required: true
-        identifier: true
 
 slots:
   alignment_software:

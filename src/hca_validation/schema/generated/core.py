@@ -371,64 +371,6 @@ class Dataset(ConfiguredBaseModel):
     dataset_id: str = Field(default=..., title="Dataset ID", description="""A unique identifier for each dataset in the study. This should be unique to the study.""", json_schema_extra = { "linkml_meta": {'alias': 'dataset_id', 'domain_of': ['Dataset', 'Donor', 'Sample']} })
 
 
-class Donor(ConfiguredBaseModel):
-    """
-    An individual organism from which biological samples have been derived
-    """
-    linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'https://github.com/clevercanary/hca-validation-tools/schema/donor'})
-
-    donor_id: str = Field(default=..., title="Donor ID", description="""This must be free-text that identifies a unique individual that data were derived from.""", json_schema_extra = { "linkml_meta": {'alias': 'donor_id',
-         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
-                         'cxg': {'tag': 'cxg', 'value': 'donor_id'},
-                         'tier': {'tag': 'tier', 'value': 'Tier 1'}},
-         'comments': ['Fundamental unit of biological variation of the data. It is '
-                      'strongly recommended that this identifier be designed so that '
-                      'it is unique to: a given individual within the collection of '
-                      'datasets that includes this dataset, and a given individual '
-                      'across all collections in CELLxGENE Discover. It is strongly '
-                      'recommended that "pooled" be used for observations from a '
-                      'sample of multiple individuals that were not confidently '
-                      'assigned to a single individual through demultiplexing. It is '
-                      'strongly recommended that "unknown" ONLY be used for '
-                      'observations in a dataset when it is not known which '
-                      'observations are from the same individual.'],
-         'domain_of': ['Donor', 'Sample'],
-         'examples': [{'value': 'CR_donor_1; MM_donor_1; LR_donor_2'}]} })
-    organism_ontology_term_id: Organism = Field(default=..., title="Organism Ontology Term ID", description="""The name given to the type of organism, collected in NCBITaxon:0000 format.""", json_schema_extra = { "linkml_meta": {'alias': 'organism_ontology_term_id',
-         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
-                         'cxg': {'tag': 'cxg', 'value': 'organism_ontology_term_id'},
-                         'tier': {'tag': 'tier', 'value': 'Tier 1'}},
-         'domain_of': ['Donor'],
-         'notes': ['"NCBITaxon:9606" for Homo sapiens or "NCBITaxon:10090" for Mus '
-                   'musculus.']} })
-    sex_ontology_term_id: str = Field(default=..., title="Sex Ontology Term ID", description="""Reported sex of the donor.""", json_schema_extra = { "linkml_meta": {'alias': 'sex_ontology_term_id',
-         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
-                         'cxg': {'tag': 'cxg', 'value': 'sex_ontology_term_id'}},
-         'domain_of': ['Donor'],
-         'examples': [{'description': 'female', 'value': 'PATO:0000383'},
-                      {'description': 'male', 'value': 'PATO:0000384'}],
-         'notes': ['This must be a child of PATO:0001894 for phenotypic sex or '
-                   '"unknown" if unavailable.\n']} })
-    sex_ontology_term: Optional[str] = Field(default=None, title="Sex Ontology Term", description="""Deprecated placeholder for sex ontology term.""", json_schema_extra = { "linkml_meta": {'alias': 'sex_ontology_term',
-         'domain_of': ['Donor'],
-         'is_a': 'deprecated_slot'} })
-    manner_of_death: MannerOfDeath = Field(default=..., title="Manner of Death", description="""Manner of death classification based on the Hardy Scale or \"unknown\" or \"not applicable\":
-* Category 1 = Violent and fast death — deaths due to accident, blunt force trauma or suicide, terminal phase < 10 min.
-* Category 2 = Fast death of natural causes — sudden unexpected deaths of reasonably healthy people, terminal phase < 1 h.
-* Category 3 = Intermediate death — terminal phase 1–24 h, patients ill but death unexpected.
-* Category 4 = Slow death — terminal phase > 1 day (e.g. cancer, chronic pulmonary disease).
-* Category 0 = Ventilator case — on a ventilator immediately before death.
-* Unknown = The cause of death is unknown.
-* Not applicable = Subject is alive.
-[Leave blank for embryonic/fetal tissue.]
-""", json_schema_extra = { "linkml_meta": {'alias': 'manner_of_death',
-         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
-         'domain_of': ['Donor'],
-         'examples': [{'value': '1'}],
-         'notes': ['1; 2; 3; 4; 0; unknown; not applicable']} })
-    dataset_id: str = Field(default=..., title="Dataset ID", description="""A unique identifier for each dataset in the study. This should be unique to the study.""", json_schema_extra = { "linkml_meta": {'alias': 'dataset_id', 'domain_of': ['Dataset', 'Donor', 'Sample']} })
-
-
 class GutDataset(Dataset):
     """
     Dataset with Gut BioNetwork–specific metadata requirements.
@@ -568,6 +510,64 @@ class GutDataset(Dataset):
          'examples': [{'value': "Cells of the adult human heart collection is 'All — "
                                 "Cells of the adult human heart'"}],
          'is_a': 'deprecated_slot'} })
+    dataset_id: str = Field(default=..., title="Dataset ID", description="""A unique identifier for each dataset in the study. This should be unique to the study.""", json_schema_extra = { "linkml_meta": {'alias': 'dataset_id', 'domain_of': ['Dataset', 'Donor', 'Sample']} })
+
+
+class Donor(ConfiguredBaseModel):
+    """
+    An individual organism from which biological samples have been derived
+    """
+    linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'https://github.com/clevercanary/hca-validation-tools/schema/donor'})
+
+    donor_id: str = Field(default=..., title="Donor ID", description="""This must be free-text that identifies a unique individual that data were derived from.""", json_schema_extra = { "linkml_meta": {'alias': 'donor_id',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
+                         'cxg': {'tag': 'cxg', 'value': 'donor_id'},
+                         'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'comments': ['Fundamental unit of biological variation of the data. It is '
+                      'strongly recommended that this identifier be designed so that '
+                      'it is unique to: a given individual within the collection of '
+                      'datasets that includes this dataset, and a given individual '
+                      'across all collections in CELLxGENE Discover. It is strongly '
+                      'recommended that "pooled" be used for observations from a '
+                      'sample of multiple individuals that were not confidently '
+                      'assigned to a single individual through demultiplexing. It is '
+                      'strongly recommended that "unknown" ONLY be used for '
+                      'observations in a dataset when it is not known which '
+                      'observations are from the same individual.'],
+         'domain_of': ['Donor', 'Sample'],
+         'examples': [{'value': 'CR_donor_1; MM_donor_1; LR_donor_2'}]} })
+    organism_ontology_term_id: Organism = Field(default=..., title="Organism Ontology Term ID", description="""The name given to the type of organism, collected in NCBITaxon:0000 format.""", json_schema_extra = { "linkml_meta": {'alias': 'organism_ontology_term_id',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
+                         'cxg': {'tag': 'cxg', 'value': 'organism_ontology_term_id'},
+                         'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'domain_of': ['Donor'],
+         'notes': ['"NCBITaxon:9606" for Homo sapiens or "NCBITaxon:10090" for Mus '
+                   'musculus.']} })
+    sex_ontology_term_id: str = Field(default=..., title="Sex Ontology Term ID", description="""Reported sex of the donor.""", json_schema_extra = { "linkml_meta": {'alias': 'sex_ontology_term_id',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
+                         'cxg': {'tag': 'cxg', 'value': 'sex_ontology_term_id'}},
+         'domain_of': ['Donor'],
+         'examples': [{'description': 'female', 'value': 'PATO:0000383'},
+                      {'description': 'male', 'value': 'PATO:0000384'}],
+         'notes': ['This must be a child of PATO:0001894 for phenotypic sex or '
+                   '"unknown" if unavailable.\n']} })
+    sex_ontology_term: Optional[str] = Field(default=None, title="Sex Ontology Term", description="""Deprecated placeholder for sex ontology term.""", json_schema_extra = { "linkml_meta": {'alias': 'sex_ontology_term',
+         'domain_of': ['Donor'],
+         'is_a': 'deprecated_slot'} })
+    manner_of_death: MannerOfDeath = Field(default=..., title="Manner of Death", description="""Manner of death classification based on the Hardy Scale or \"unknown\" or \"not applicable\":
+* Category 1 = Violent and fast death — deaths due to accident, blunt force trauma or suicide, terminal phase < 10 min.
+* Category 2 = Fast death of natural causes — sudden unexpected deaths of reasonably healthy people, terminal phase < 1 h.
+* Category 3 = Intermediate death — terminal phase 1–24 h, patients ill but death unexpected.
+* Category 4 = Slow death — terminal phase > 1 day (e.g. cancer, chronic pulmonary disease).
+* Category 0 = Ventilator case — on a ventilator immediately before death.
+* Unknown = The cause of death is unknown.
+* Not applicable = Subject is alive.
+[Leave blank for embryonic/fetal tissue.]
+""", json_schema_extra = { "linkml_meta": {'alias': 'manner_of_death',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
+         'domain_of': ['Donor'],
+         'examples': [{'value': '1'}],
+         'notes': ['1; 2; 3; 4; 0; unknown; not applicable']} })
     dataset_id: str = Field(default=..., title="Dataset ID", description="""A unique identifier for each dataset in the study. This should be unique to the study.""", json_schema_extra = { "linkml_meta": {'alias': 'dataset_id', 'domain_of': ['Dataset', 'Donor', 'Sample']} })
 
 
@@ -1035,8 +1035,8 @@ class Cell(ConfiguredBaseModel):
 # Model rebuild
 # see https://pydantic-docs.helpmanual.io/usage/models/#rebuilding-a-model
 Dataset.model_rebuild()
-Donor.model_rebuild()
 GutDataset.model_rebuild()
+Donor.model_rebuild()
 Sample.model_rebuild()
 GutSample.model_rebuild()
 Cell.model_rebuild()
