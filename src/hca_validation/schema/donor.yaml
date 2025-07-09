@@ -27,6 +27,10 @@ classes:
       - sex_ontology_term
       - manner_of_death
       - dataset_id
+    slot_usage:
+      donor_id:
+        range: string
+        identifier: true
 
 slots:
   sex_ontology_term_id:

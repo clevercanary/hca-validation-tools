@@ -41,6 +41,10 @@ classes:
       - study_pi
       - title
       - dataset_id
+    slot_usage:
+      dataset_id:
+        range: string
+        identifier: true
 
 slots:
   alignment_software:

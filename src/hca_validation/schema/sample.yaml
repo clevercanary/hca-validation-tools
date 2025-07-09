@@ -50,6 +50,10 @@ classes:
       - sample_preservation_method
       - sample_source
       - tissue_ontology_term
+    slot_usage:
+      sample_id:
+        range: string
+        identifier: true
 
 slots:
   author_batch_notes:
