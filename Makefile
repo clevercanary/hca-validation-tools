@@ -9,18 +9,28 @@ POETRY := poetry run
 # These warnings are related to the LinkML tool implementation and not to schema issues
 SUPPRESS_WARNINGS := 2>/dev/null
 
+# Load Make-specific environment overrides (not checked in)
+# Put only simple KEY=value pairs here (no JSON). Example .env.make is provided.
+ifneq (,$(wildcard .env.make))
+  include .env.make
+endif
+
 # Deployment environment selector (dev is default). Usage: make <target> ENV=prod
 ENV ?= dev
 
 # ----- Environment-specific settings -----
 ifeq ($(ENV),prod)
-AWS_ACCOUNT_ID ?= 211125733018
-REPO_NAME      := k4g-hca-validator
-LAMBDA_FUNCTION := djg-hca-validator
+AWS_ACCOUNT_ID   ?= $(PROD_AWS_ACCOUNT_ID)
+REPO_NAME        ?= $(PROD_REPO_NAME)
+LAMBDA_FUNCTION  ?= $(PROD_LAMBDA_FUNCTION)
+AWS_REGION       ?= $(PROD_AWS_REGION)
+LAMBDA_ROLE      ?= $(PROD_LAMBDA_ROLE)
 else # dev
-AWS_ACCOUNT_ID ?= 708377107803
-REPO_NAME      := hca-entry-sheet-validator
-LAMBDA_FUNCTION := hca-entry-sheet-validator
+AWS_ACCOUNT_ID   ?= $(DEV_AWS_ACCOUNT_ID)
+REPO_NAME        ?= $(DEV_REPO_NAME)
+LAMBDA_FUNCTION  ?= $(DEV_LAMBDA_FUNCTION)
+AWS_REGION       ?= $(DEV_AWS_REGION)
+LAMBDA_ROLE      ?= $(DEV_LAMBDA_ROLE)
 endif
 
 # Derived value used throughout the deploy target
@@ -199,13 +209,18 @@ test-lambda-container:
 
 .PHONY: deploy-lambda-container
 deploy-lambda-container:
+	@if [ "$(ENV)" = "prod" ]; then \
+		echo "******** DEPLOYING TO PRODUCTION ********"; \
+	else \
+		echo "******** DEPLOYING TO DEVELOPMENT ********"; \
+	fi
 	@echo "Checking required environment variables..."
 	@if [ -z "$(AWS_REGION)" ]; then \
-		echo "Error: AWS_REGION environment variable is not set"; \
+		echo "Error: AWS_REGION environment variable is not set and could not be derived from .env"; \
 		exit 1; \
 	fi
 	@if [ -z "$(LAMBDA_ROLE)" ]; then \
-		echo "Error: LAMBDA_ROLE is required. Usage: make deploy-lambda-container LAMBDA_ROLE=arn:aws:iam::<ACCOUNT_ID>:role/lambda-execution-role"; \
+		echo "Error: LAMBDA_ROLE is required (set in .env)"; \
 		exit 1; \
 	fi
 
