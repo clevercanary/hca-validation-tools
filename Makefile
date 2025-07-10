@@ -9,6 +9,23 @@ POETRY := poetry run
 # These warnings are related to the LinkML tool implementation and not to schema issues
 SUPPRESS_WARNINGS := 2>/dev/null
 
+# Deployment environment selector (dev is default). Usage: make <target> ENV=prod
+ENV ?= dev
+
+# ----- Environment-specific settings -----
+ifeq ($(ENV),prod)
+AWS_ACCOUNT_ID ?= 211125733018
+REPO_NAME      := k4g-hca-validator
+LAMBDA_FUNCTION := djg-hca-validator
+else # dev
+AWS_ACCOUNT_ID ?= 708377107803
+REPO_NAME      := hca-entry-sheet-validator
+LAMBDA_FUNCTION := hca-entry-sheet-validator
+endif
+
+# Derived value used throughout the deploy target
+ECR_REPO := $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_REGION).amazonaws.com/$(REPO_NAME)
+
 # Default target
 .PHONY: help
 help:
@@ -183,10 +200,6 @@ test-lambda-container:
 .PHONY: deploy-lambda-container
 deploy-lambda-container:
 	@echo "Checking required environment variables..."
-	@if [ -z "$(AWS_ACCOUNT_ID)" ]; then \
-		echo "Error: AWS_ACCOUNT_ID environment variable is not set"; \
-		exit 1; \
-	fi
 	@if [ -z "$(AWS_REGION)" ]; then \
 		echo "Error: AWS_REGION environment variable is not set"; \
 		exit 1; \
@@ -200,26 +213,26 @@ deploy-lambda-container:
 	@aws ecr get-login-password --region $(AWS_REGION) | docker login --username AWS --password-stdin $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_REGION).amazonaws.com
 
 	@echo "Creating ECR repository if it doesn't exist..."
-	@aws ecr describe-repositories --repository-names hca-entry-sheet-validator --region $(AWS_REGION) > /dev/null 2>&1 || \
-		aws ecr create-repository --repository-name hca-entry-sheet-validator --region $(AWS_REGION)
+	@aws ecr describe-repositories --repository-names $(REPO_NAME) --region $(AWS_REGION) > /dev/null 2>&1 || \
+		aws ecr create-repository --repository-name $(REPO_NAME) --region $(AWS_REGION)
 
 	@echo "Tagging and pushing container image to ECR..."
-	@docker tag hca-entry-sheet-validator:latest $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_REGION).amazonaws.com/hca-entry-sheet-validator:latest
-	@docker push $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_REGION).amazonaws.com/hca-entry-sheet-validator:latest
+	@docker tag hca-entry-sheet-validator:latest $(ECR_REPO):latest
+	@docker push $(ECR_REPO):latest
 
 	@echo "Deploying Lambda function..."
-	@if aws lambda get-function --function-name hca-entry-sheet-validator --region $(AWS_REGION) > /dev/null 2>&1; then \
+	@if aws lambda get-function --function-name $(LAMBDA_FUNCTION) --region $(AWS_REGION) > /dev/null 2>&1; then \
 		echo "Updating existing Lambda function..."; \
 		aws lambda update-function-code \
-			--function-name hca-entry-sheet-validator \
-			--image-uri $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_REGION).amazonaws.com/hca-entry-sheet-validator:latest \
+			--function-name $(LAMBDA_FUNCTION) \
+			--image-uri $(ECR_REPO):latest \
 			--region $(AWS_REGION); \
 	else \
 		echo "Creating new Lambda function..."; \
 		aws lambda create-function \
-			--function-name hca-entry-sheet-validator \
+			--function-name $(LAMBDA_FUNCTION) \
 			--package-type Image \
-			--code ImageUri=$(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_REGION).amazonaws.com/hca-entry-sheet-validator:latest \
+			--code ImageUri=$(ECR_REPO):latest \
 			--role $(LAMBDA_ROLE) \
 			--timeout 30 \
 			--memory-size 256 \
@@ -241,13 +254,13 @@ invoke-lambda:
 	fi
 	@if [ -z "$(SHEET_ID)" ]; then \
 		aws lambda invoke \
-			--function-name hca-entry-sheet-validator \
+			--function-name $(LAMBDA_FUNCTION) \
 			--region $(AWS_REGION) \
 			--payload '{}' \
 			response.json; \
 	else \
 		aws lambda invoke \
-			--function-name hca-entry-sheet-validator \
+			--function-name $(LAMBDA_FUNCTION) \
 			--region $(AWS_REGION) \
 			--payload '{"sheet_id": "$(SHEET_ID)"}' \
 			response.json; \
