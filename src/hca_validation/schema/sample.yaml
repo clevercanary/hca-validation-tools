@@ -50,6 +50,14 @@ classes:
       - sample_preservation_method
       - sample_source
       - tissue_ontology_term
+    slot_usage:
+      sample_id:
+        range: string
+        identifier: true
+        # Annotations are duplicated here to get around an apparent bug in inheriting them (https://github.com/linkml/linkml/issues/2805)
+        annotations:
+          annDataLocation: obs
+          tier: Tier 1
 
 slots:
   author_batch_notes:
