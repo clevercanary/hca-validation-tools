@@ -54,6 +54,9 @@ classes:
       sample_id:
         range: string
         identifier: true
+        annotations:
+          annDataLocation: obs
+          tier: Tier 1
 
 slots:
   author_batch_notes:

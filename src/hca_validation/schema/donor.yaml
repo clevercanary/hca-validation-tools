@@ -31,6 +31,10 @@ classes:
       donor_id:
         range: string
         identifier: true
+        annotations:
+          annDataLocation: obs
+          tier: Tier 1
+          cxg: donor_id
 
 slots:
   sex_ontology_term_id:
