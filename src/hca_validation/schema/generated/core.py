@@ -379,7 +379,13 @@ class Donor(ConfiguredBaseModel):
     An individual organism from which biological samples have been derived
     """
     linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'https://github.com/clevercanary/hca-validation-tools/schema/donor',
-         'slot_usage': {'donor_id': {'identifier': True,
+         'slot_usage': {'donor_id': {'annotations': {'annDataLocation': {'tag': 'annDataLocation',
+                                                                         'value': 'obs'},
+                                                     'cxg': {'tag': 'cxg',
+                                                             'value': 'donor_id'},
+                                                     'tier': {'tag': 'tier',
+                                                              'value': 'Tier 1'}},
+                                     'identifier': True,
                                      'name': 'donor_id',
                                      'range': 'string'}}})
 
@@ -440,7 +446,11 @@ class Sample(ConfiguredBaseModel):
     A biological sample derived from a donor or another sample
     """
     linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'https://github.com/clevercanary/hca-validation-tools/schema/sample',
-         'slot_usage': {'sample_id': {'identifier': True,
+         'slot_usage': {'sample_id': {'annotations': {'annDataLocation': {'tag': 'annDataLocation',
+                                                                          'value': 'obs'},
+                                                      'tier': {'tag': 'tier',
+                                                               'value': 'Tier 1'}},
+                                      'identifier': True,
                                       'name': 'sample_id',
                                       'range': 'string'}}})
 

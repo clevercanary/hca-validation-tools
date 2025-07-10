@@ -31,6 +31,11 @@ classes:
       donor_id:
         range: string
         identifier: true
+        # Annotations are duplicated here to get around an apparent bug in inheriting them (https://github.com/linkml/linkml/issues/2805)
+        annotations:
+          annDataLocation: obs
+          tier: Tier 1
+          cxg: donor_id
 
 slots:
   sex_ontology_term_id:
