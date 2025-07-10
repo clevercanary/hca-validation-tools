@@ -494,7 +494,8 @@ def validate_google_sheet(
             summary=make_summary_without_entities(1, entity_types)
         )
     
-    row_indices_to_validate_per_entity_type = []
+    # Each item is a dataframe of rows to validate, with an index containing the original 1-based indices of the rows
+    rows_to_validate_per_entity_type = []
 
     for entity_type, sheet_info in zip(entity_types, sheet_read_result.worksheets):
         df = sheet_info.data
@@ -552,31 +553,33 @@ def validate_google_sheet(
         
         logger.info(f"Found {len(row_indices)} {entity_type} rows to validate.")
 
-        row_indices_to_validate_per_entity_type.append(row_indices)
+        # Set the dataframe index to 1-based indices
+        df = df.reset_index(drop=True)
+        df.index += 1
+
+        # Save the subset of rows that should be validated
+        rows_to_validate_per_entity_type.append(df.iloc[row_indices])
     
     # Set up validation summary with entity counts and initial error count
     validation_summary = {
-        **{f"{entity_type}_count": len(row_indices) for entity_type, row_indices in zip(entity_types, row_indices_to_validate_per_entity_type)},
+        **{f"{entity_type}_count": len(rows_df) for entity_type, rows_df in zip(entity_types, rows_to_validate_per_entity_type)},
         "error_count": 0
     }
 
     all_valid = True
 
-    for entity_type, sheet_info, row_indices_to_validate in zip(entity_types, sheet_read_result.worksheets, row_indices_to_validate_per_entity_type):
+    for entity_type, sheet_info, rows_to_validate_source in zip(entity_types, sheet_read_result.worksheets, rows_to_validate_per_entity_type):
         # Determine schema class name to use for validation
         class_name = get_entity_class_name(entity_type, bionetwork)
         # Get normalized dataframe of rows to validate
         rows_to_validate = normalize_dataframe_values(
-            sheet_info.data.iloc[row_indices_to_validate],
+            rows_to_validate_source,
             schemaview,
             class_name
         )
         # Validate each row
         all_valid_in_worksheet = True
-        for row_index_from_zero, (_, row) in zip(row_indices_to_validate, rows_to_validate.iterrows()):
-            # Get the actual row number in the spreadsheet (1-based)
-            row_index = row_index_from_zero + 1  # Convert from 0-based index to 1-based row number
-            
+        for row_index, row in rows_to_validate.iterrows():
             # Convert row to dictionary
             row_dict = row.to_dict()
             
