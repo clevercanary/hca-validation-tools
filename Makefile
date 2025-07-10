@@ -33,8 +33,9 @@ AWS_REGION       ?= $(DEV_AWS_REGION)
 LAMBDA_ROLE      ?= $(DEV_LAMBDA_ROLE)
 endif
 
-# Derived value used throughout the deploy target
-ECR_REPO := $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_REGION).amazonaws.com/$(REPO_NAME)
+# ECR registry and repository path
+ECR_REGISTRY := $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_REGION).amazonaws.com
+ECR_REPO     := $(ECR_REGISTRY)/$(REPO_NAME)
 
 # Default target
 .PHONY: help
@@ -229,7 +230,7 @@ deploy-lambda-container:
 	fi
 
 	@echo "Logging in to ECR..."
-	@aws ecr get-login-password --region $(AWS_REGION) | docker login --username AWS --password-stdin $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_REGION).amazonaws.com
+	@aws ecr get-login-password --region $(AWS_REGION) | docker login --username AWS --password-stdin $(ECR_REGISTRY)
 
 	@echo "Creating ECR repository if it doesn't exist..."
 	@aws ecr describe-repositories --repository-names $(REPO_NAME) --region $(AWS_REGION) > /dev/null 2>&1 || \
