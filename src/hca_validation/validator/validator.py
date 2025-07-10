@@ -4,9 +4,13 @@ HCA Validation Tools - Main Validator Module
 This module provides the main validation functionality for HCA data using Pydantic models.
 """
 from typing import Dict, Any, Optional
+from linkml_runtime import SchemaView
 from pydantic import ValidationError
+import pandas as pd
 
 import hca_validation.schema.generated.core as schema
+
+
 
 # Map schema types and bionetworks to their corresponding class names
 schema_classes = {
@@ -60,3 +64,29 @@ def validate(data: Dict[str, Any], *, class_name: str) -> Optional[ValidationErr
     except ValidationError as e:
         # Return validation error
         return e
+
+
+def get_class_identifier_name(schemaview: SchemaView, class_name: str) -> str:
+    for slot in schemaview.class_induced_slots(class_name):
+        if slot.identifier:
+            return slot.name
+    raise ValueError(f"No identifier slot found for class {class_name}")
+
+
+def validate_id_uniqueness(data: pd.DataFrame, schemaview: SchemaView, class_name: str) -> Optional[ValidationError]:
+    id_name = get_class_identifier_name(schemaview, class_name)
+    duplicate_ids = data[id_name][data[id_name].duplicated(keep=False)]
+    if len(duplicate_ids) == 0:
+        return None
+    return ValidationError.from_exception_data(
+        title="Duplicate identifiers",
+        line_errors=[
+            {
+                "type": "duplicate_id",
+                "loc": (id_name,),
+                "input": value,
+                "ctx": {"row_index": index}
+            }
+            for index, value in duplicate_ids.items()
+        ]
+    )
