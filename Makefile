@@ -209,6 +209,10 @@ test-lambda-container:
 
 .PHONY: deploy-lambda-container
 deploy-lambda-container:
+	@if [ -z "$(AWS_ACCOUNT_ID)" ]; then \
+		echo "Error: AWS_ACCOUNT_ID is not set (check .env.make or your environment)"; \
+		exit 1; \
+	fi
 	@if [ "$(ENV)" = "prod" ]; then \
 		echo "******** DEPLOYING TO PRODUCTION ********"; \
 	else \
