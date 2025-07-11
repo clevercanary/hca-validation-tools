@@ -220,7 +220,7 @@ deploy-lambda-container:
 	else \
 		echo "******** DEPLOYING TO DEVELOPMENT ********"; \
 	fi
-	@echo "Checking required environment variables..."
+	@echo "Validating required environment variables: AWS_REGION and LAMBDA_ROLE..."
 	@if [ -z "$(AWS_REGION)" ]; then \
 		echo "Error: AWS_REGION environment variable is not set and could not be derived from .env.make"; \
 		exit 1; \
