@@ -290,3 +290,14 @@ invoke-lambda:
 	fi
 	@echo "Response saved to response.json"
 	@cat response.json
+
+# Build and test everything in sequence
+.PHONY: build-all
+build-all:
+	@echo "Running full build & test chain..."
+	@$(MAKE) gen-schema
+	@$(MAKE) validate-schema
+	@$(MAKE) generate-data-dictionary
+	@$(MAKE) build-lambda-container PROFILE=excira
+	@$(MAKE) test-all
+	@echo "✓ All steps succeeded"
