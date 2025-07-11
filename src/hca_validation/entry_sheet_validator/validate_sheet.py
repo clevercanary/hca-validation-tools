@@ -9,6 +9,7 @@ import json
 from pathlib import Path
 from typing import Any, Mapping, Optional, List, Union, Callable
 from dataclasses import dataclass
+from pydantic import ValidationError
 from pydantic_core import ErrorDetails
 from linkml_runtime import SchemaView
 
@@ -411,6 +412,42 @@ def make_summary_without_entities(error_count: int, entity_types: List[str] = de
         "error_count": error_count
     }
 
+def handle_validation_error(
+        validation_error: ValidationError,
+        *,
+        validation_summary: dict[str, int],
+        entity_type: str,
+        sheet_info: WorksheetInfo,
+        error_handler: Optional[Callable[[SheetErrorInfo], None]],
+        row_index: Optional[int] = None,
+        row_id: Optional[Any] = None
+):
+    for error in validation_error.errors():
+        # Update error count
+        validation_summary["error_count"] += 1
+        # Call error handler if provided
+        if error_handler:
+            error_row_index = error.get("ctx", {}).get("row_index", row_index)
+            if error_row_index is None: raise ValueError(f"No row index provided for {entity_type} error {error}")
+            error_row_id = error.get("ctx", {}).get("row_index", row_id)
+            if error_row_id is None: raise ValueError(f"No row ID provided for {entity_type} error {error}")
+            error_column_name = None if len(error["loc"]) == 0 else error["loc"][0]
+            try:
+                error_a1 = sheet_info.get_a1(error_row_index, error_column_name)
+            except ValueError:
+                error_a1 = None
+            error_info = SheetErrorInfo(
+                entity_type=entity_type,
+                worksheet_id=sheet_info.worksheet_id,
+                message=error["msg"],
+                row=error_row_index,
+                column=error_column_name,
+                cell=error_a1,
+                primary_key=error_row_id,
+                input=error["input"]
+            )
+            error_handler(error_info)
+
 def validate_google_sheet(
     sheet_id: str,
     *,
@@ -441,7 +478,7 @@ def validate_google_sheet(
     if bionetwork is not None and bionetwork not in allowed_bionetwork_names:
         raise ValueError(f"'{bionetwork}' is not a valid bionetwork")
 
-    from hca_validation.validator import get_entity_class_name, validate
+    from hca_validation.validator import get_entity_class_name, validate, validate_id_uniqueness
     import logging
     logger = logging.getLogger()
 
@@ -577,6 +614,17 @@ def validate_google_sheet(
             schemaview,
             class_name
         )
+        # Validate uniqueness and report results
+        uniqueness_validation_error = validate_id_uniqueness(rows_to_validate, schemaview, class_name)
+        if uniqueness_validation_error:
+            all_valid_in_worksheet = False
+            handle_validation_error(
+                uniqueness_validation_error,
+                validation_summary=validation_summary,
+                entity_type=entity_type,
+                sheet_info=sheet_info,
+                error_handler=error_handler
+            )
         # Validate each row
         all_valid_in_worksheet = True
         for row_index, row in rows_to_validate.iterrows():
@@ -589,31 +637,18 @@ def validate_google_sheet(
             # Validate the data
             try:
                 validation_error = validate(row_dict, class_name=class_name)
-                
                 # Report results
                 if validation_error:
                     all_valid_in_worksheet = False
-                    for error in validation_error.errors():
-                        # Update error count
-                        validation_summary["error_count"] += 1
-                        # Call error handler if provided
-                        if error_handler:
-                            error_column_name = None if len(error["loc"]) == 0 else error["loc"][0]
-                            try:
-                                error_a1 = sheet_info.get_a1(row_index, error_column_name)
-                            except ValueError:
-                                error_a1 = None
-                            error_info = SheetErrorInfo(
-                                entity_type=entity_type,
-                                worksheet_id=sheet_info.worksheet_id,
-                                message=error["msg"],
-                                row=row_index,
-                                column=error_column_name,
-                                cell=error_a1,
-                                primary_key=row_primary_key,
-                                input=error["input"]
-                            )
-                            error_handler(error_info)
+                    handle_validation_error(
+                        validation_error,
+                        validation_summary=validation_summary,
+                        entity_type=entity_type,
+                        sheet_info=sheet_info,
+                        error_handler=error_handler,
+                        row_index=row_index,
+                        row_id=row_primary_key
+                    )
             except Exception as e:
                 all_valid_in_worksheet = False
                 # Update error count

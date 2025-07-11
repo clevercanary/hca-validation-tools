@@ -75,6 +75,8 @@ def get_class_identifier_name(schemaview: SchemaView, class_name: str) -> str:
 
 def validate_id_uniqueness(data: pd.DataFrame, schemaview: SchemaView, class_name: str) -> Optional[ValidationError]:
     id_name = get_class_identifier_name(schemaview, class_name)
+    if id_name not in data:
+        return None
     duplicate_ids = data[id_name][data[id_name].duplicated(keep=False)]
     if len(duplicate_ids) == 0:
         return None
@@ -85,7 +87,10 @@ def validate_id_uniqueness(data: pd.DataFrame, schemaview: SchemaView, class_nam
                 "type": "duplicate_id",
                 "loc": (id_name,),
                 "input": value,
-                "ctx": {"row_index": index}
+                "ctx": {
+                    "row_index": index,
+                    "row_id": value
+                }
             }
             for index, value in duplicate_ids.items()
         ]
