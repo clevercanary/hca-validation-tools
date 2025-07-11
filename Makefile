@@ -233,9 +233,11 @@ deploy-lambda-container:
 	@echo "Logging in to ECR..."
 	@aws ecr get-login-password --region $(AWS_REGION) | docker login --username AWS --password-stdin $(ECR_REGISTRY)
 
-	@echo "Creating ECR repository if it doesn't exist..."
-	@aws ecr describe-repositories --repository-names $(REPO_NAME) --region $(AWS_REGION) > /dev/null 2>&1 || \
-		aws ecr create-repository --repository-name $(REPO_NAME) --region $(AWS_REGION)
+	@echo "Checking that ECR repository $(REPO_NAME) exists..."
+	@aws ecr describe-repositories --repository-names $(REPO_NAME) --region $(AWS_REGION) > /dev/null 2>&1 || { \
+		echo "Error: ECR repository $(REPO_NAME) not found in account $(AWS_ACCOUNT_ID). Please create it manually before deploying."; \
+		exit 1; \
+	}
 
 	@echo "Tagging and pushing container image to ECR..."
 	@docker tag hca-entry-sheet-validator:latest $(ECR_REPO):latest
