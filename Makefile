@@ -226,7 +226,7 @@ deploy-lambda-container:
 		exit 1; \
 	fi
 	@if [ -z "$(LAMBDA_ROLE)" ]; then \
-		echo "Error: LAMBDA_ROLE is required (set in .env)"; \
+		echo "Error: LAMBDA_ROLE is required (set in .env.make)"; \
 		exit 1; \
 	fi
 
