@@ -10,7 +10,8 @@ POETRY := poetry run
 SUPPRESS_WARNINGS := 2>/dev/null
 
 # Load Make-specific environment overrides (not checked in)
-# Put only simple KEY=value pairs here (no JSON). Example .env.make is provided.
+# Put only simple KEY=value pairs here (no JSON).
+# Copy the provided `.env.make.example` to `.env.make` and fill in real values.
 ifneq (,$(wildcard .env.make))
   include .env.make
 endif
