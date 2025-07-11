@@ -54,6 +54,7 @@ class SpreadsheetInfo:
 class ReadErrorSheetInfo:
     """Container for info regarding a failed read of a Google Sheet."""
     error_code: str
+    error_message: Optional[str] = None
     spreadsheet_metadata: Optional[SpreadsheetMetadata] = None
     worksheet_id: Optional[int] = None
 
@@ -203,6 +204,7 @@ def read_sheet_with_service_account(sheet_id, sheet_indices=[0]) -> Union[Spread
     import pandas as pd
     import gspread
     from googleapiclient.discovery import build
+    from googleapiclient.errors import HttpError as GoogleHttpError
     from google.oauth2 import service_account
     import logging
     
@@ -340,14 +342,24 @@ def read_sheet_with_service_account(sheet_id, sheet_indices=[0]) -> Union[Spread
             logger.error(f"Sheet {sheet_id} not found. Check if the sheet ID is correct.")
             logger.error(f"Error accessing Google Sheet with service account: Sheet {sheet_id} not found or not accessible with provided credentials")
             return ReadErrorSheetInfo(error_code='sheet_not_found', spreadsheet_metadata=spreadsheet_metadata)
+        except PermissionError as e:
+            logger.error(f"Permission denied accessing sheet {sheet_id}: {e}")
+            logger.error(f"Make sure the service account has access to the sheet.")
+            return ReadErrorSheetInfo(error_code='permission_denied', spreadsheet_metadata=spreadsheet_metadata)
         except gspread.exceptions.APIError as e:
-            if "PERMISSION_DENIED" in str(e):
-                logger.error(f"Permission denied accessing sheet {sheet_id}: {e}")
-                logger.error(f"Make sure the service account has access to the sheet.")
-                return ReadErrorSheetInfo(error_code='permission_denied', spreadsheet_metadata=spreadsheet_metadata)
-            else:
-                logger.error(f"Google Sheets API error: {e}")
-                return ReadErrorSheetInfo(error_code='api_error', spreadsheet_metadata=spreadsheet_metadata)
+            logger.error(f"Google Sheets API error: {e}")
+            return ReadErrorSheetInfo(
+                error_code='api_error',
+                error_message=f"Received error {e.code} from Google Sheets API: {e.error['message']}",
+                spreadsheet_metadata=spreadsheet_metadata
+            )
+        except GoogleHttpError as e:
+            logger.error(f"Google API error: {e}")
+            return ReadErrorSheetInfo(
+                error_code="api_error",
+                error_message=f"Received error {e.status_code} from Google API: {e.reason}",
+                spreadsheet_metadata=spreadsheet_metadata
+            )
             
     except json.JSONDecodeError as json_error:
         logger.error(f"Invalid JSON format in service account credentials: {json_error}")
@@ -461,7 +473,10 @@ def validate_google_sheet(
     sheet_read_result = read_sheet_with_service_account(sheet_id, [sheet_structure_by_entity_type[t]["sheet_index"] for t in entity_types])
     
     if isinstance(sheet_read_result, ReadErrorSheetInfo):
-        error_msg = f"Could not access or read data from sheet {sheet_id} (Error: {sheet_read_result.error_code})"
+        error_msg = (
+            sheet_read_result.error_message
+            or f"Could not access or read data from sheet {sheet_id} (Error: {sheet_read_result.error_code})"
+        )
         logger.warning(f"Sheet access failed with error code: {sheet_read_result.error_code}")
         
         logger.warning(f"{error_msg}")
