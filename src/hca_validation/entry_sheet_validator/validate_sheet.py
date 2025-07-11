@@ -462,9 +462,9 @@ def validate_google_sheet(
     
     if isinstance(sheet_read_result, ReadErrorSheetInfo):
         error_msg = f"Could not access or read data from sheet {sheet_id} (Error: {sheet_read_result.error_code})"
-        logger.error(f"Sheet access failed with error code: {sheet_read_result.error_code}")
+        logger.warning(f"Sheet access failed with error code: {sheet_read_result.error_code}")
         
-        logger.error(f"{error_msg}")
+        logger.warning(f"{error_msg}")
         if error_handler:
             error_info = SheetErrorInfo(
                 entity_type=None,
@@ -569,16 +569,13 @@ def validate_google_sheet(
             row_primary_key = f"{primary_key_field}:{row_dict[primary_key_field]}" if primary_key_field in row_dict else None
 
             # Validate the data
-            logger.info(f"Validating row {row_index}...")
             try:
                 validation_error = validate(row_dict, class_name=class_name)
                 
                 # Report results
                 if validation_error:
                     all_valid_in_worksheet = False
-                    logger.warning(f"Row {row_index} has validation errors:")
                     for error in validation_error.errors():
-                        logger.warning(f"  - {error['msg']}")
                         # Update error count
                         validation_summary["error_count"] += 1
                         # Call error handler if provided
@@ -599,11 +596,8 @@ def validate_google_sheet(
                                 input=error["input"]
                             )
                             error_handler(error_info)
-                else:
-                    logger.info(f"Row {row_index} is valid")
             except Exception as e:
                 all_valid_in_worksheet = False
-                logger.error(f"Error validating row {row_index}: {e}")
                 # Update error count
                 validation_summary["error_count"] += 1
                 # Call error handler for exceptions if provided

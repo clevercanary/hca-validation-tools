@@ -28,7 +28,7 @@ from hca_validation.entry_sheet_validator.validate_sheet import (
 
 # Configure logging
 logger = logging.getLogger()
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.ERROR)
 
 # ---------------------------------------------------------------------------
 # Error-code → HTTP status mapping
@@ -169,7 +169,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 sheet_id = body.get('sheet_id')
                 bionetwork = body.get('bionetwork')
             except Exception as e:
-                logger.error(f"Error parsing request body: {str(e)}")
+                logger.warning(f"Error parsing request body: {str(e)}")
                 return {
                     'statusCode': HTTPStatus.BAD_REQUEST.value,
                     'body': json.dumps({
