@@ -430,7 +430,7 @@ def handle_validation_error(
         if error_handler:
             error_row_index = error.get("ctx", {}).get("row_index", row_index)
             if error_row_index is ...: raise ValueError(f"No row index provided for {entity_type} error {error}")
-            error_row_id = error.get("ctx", {}).get("row_index", row_id)
+            error_row_id = error.get("ctx", {}).get("row_id", row_id)
             if error_row_id is ...: raise ValueError(f"No row ID provided for {entity_type} error {error}")
             error_column_name = None if len(error["loc"]) == 0 else error["loc"][0]
             try:
