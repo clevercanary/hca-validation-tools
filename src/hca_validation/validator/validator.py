@@ -7,6 +7,7 @@ from typing import Dict, Any, Optional
 from linkml_runtime import SchemaView
 from pydantic import ValidationError
 import pandas as pd
+from pydantic_core import InitErrorDetails, PydanticCustomError
 
 import hca_validation.schema.generated.core as schema
 
@@ -75,23 +76,31 @@ def get_class_identifier_name(schemaview: SchemaView, class_name: str) -> str:
 
 def validate_id_uniqueness(data: pd.DataFrame, schemaview: SchemaView, class_name: str) -> Optional[ValidationError]:
     id_name = get_class_identifier_name(schemaview, class_name)
+
     if id_name not in data:
         return None
+    
     duplicate_ids = data[id_name][data[id_name].duplicated(keep=False)]
+
     if len(duplicate_ids) == 0:
         return None
+    
+    def get_row_error_details(index, id) -> InitErrorDetails:
+        ctx = {
+            "row_index": index,
+            "row_id": id
+        }
+        return {
+            "type": PydanticCustomError("duplicate_id", "Duplicate identifier {row_id}", ctx),
+            "loc": (id_name,),
+            "input": id,
+            "ctx": ctx
+        }
+
     return ValidationError.from_exception_data(
         title="Duplicate identifiers",
         line_errors=[
-            {
-                "type": "duplicate_id",
-                "loc": (id_name,),
-                "input": value,
-                "ctx": {
-                    "row_index": index,
-                    "row_id": value
-                }
-            }
+            get_row_error_details(index, value)
             for index, value in duplicate_ids.items()
         ]
     )
