@@ -80,7 +80,7 @@ def validate_id_uniqueness(data: pd.DataFrame, schemaview: SchemaView, class_nam
     if id_name not in data:
         return None
     
-    duplicate_ids = data[id_name][data[id_name].duplicated(keep=False)]
+    duplicate_ids = data[id_name][data[id_name].notna() & data[id_name].duplicated(keep=False)]
 
     if len(duplicate_ids) == 0:
         return None
