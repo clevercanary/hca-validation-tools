@@ -373,7 +373,7 @@ class TestValidateGoogleSheet:
 
     @patch('hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account')
     def test_duplicate_ids(self, mock_read_service_account):
-        """Test validation using network-specific model."""
+        """Test validation of duplicate IDs."""
         errors, _ = self._test_service_account_access_helper(mock_read_service_account, sheet_data=SAMPLE_SHEET_DATA_WITH_DUPLICATE_IDS)
         # Based on the mock data, expect five duplicate ID errors, for IDs "foo" and "baz" but not "bar" (which is not duplicated) or None (which is not an ID)
         duplicate_id_errors = [error for error in errors if error.message.startswith("Duplicate identifier ")]
