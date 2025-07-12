@@ -11,8 +11,6 @@ from pydantic_core import InitErrorDetails, PydanticCustomError
 
 import hca_validation.schema.generated.core as schema
 
-
-
 # Map schema types and bionetworks to their corresponding class names
 schema_classes = {
     "dataset": {
