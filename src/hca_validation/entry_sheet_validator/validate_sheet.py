@@ -621,6 +621,7 @@ def validate_google_sheet(
             schemaview,
             class_name
         )
+        all_valid_in_worksheet = True
         # Validate uniqueness and report results
         uniqueness_validation_error = validate_id_uniqueness(rows_to_validate, schemaview, class_name)
         if uniqueness_validation_error:
@@ -633,7 +634,6 @@ def validate_google_sheet(
                 error_handler=error_handler
             )
         # Validate each row
-        all_valid_in_worksheet = True
         for row_index, row in rows_to_validate.iterrows():
             # Convert row to dictionary
             row_dict = row.to_dict()
