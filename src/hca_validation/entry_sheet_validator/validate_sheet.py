@@ -11,7 +11,6 @@ from pathlib import Path
 from typing import Any, Mapping, Optional, List, Union, Callable
 from dataclasses import dataclass
 from pydantic import ValidationError
-from pydantic_core import ErrorDetails
 from linkml_runtime import SchemaView
 
 # Import dotenv for loading environment variables
