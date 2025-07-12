@@ -428,15 +428,20 @@ def handle_validation_error(
         validation_summary["error_count"] += 1
         # Call error handler if provided
         if error_handler:
+            # Use row index from error if possible
             error_row_index = error.get("ctx", {}).get("row_index", row_index)
             if error_row_index is ...: raise ValueError(f"No row index provided for {entity_type} error {error}")
+            # Use row ID from error if possible
             error_row_id = error.get("ctx", {}).get("row_id", row_id)
             if error_row_id is ...: raise ValueError(f"No row ID provided for {entity_type} error {error}")
+            # Get field name if available
             error_column_name = None if len(error["loc"]) == 0 else error["loc"][0]
+            # Get A1 if possible
             try:
                 error_a1 = sheet_info.get_a1(error_row_index, error_column_name)
             except ValueError:
                 error_a1 = None
+            # Create error info
             error_info = SheetErrorInfo(
                 entity_type=entity_type,
                 worksheet_id=sheet_info.worksheet_id,
@@ -447,6 +452,7 @@ def handle_validation_error(
                 primary_key=error_row_id,
                 input=error["input"]
             )
+            # Call handler
             error_handler(error_info)
 
 def validate_google_sheet(
