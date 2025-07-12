@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from types import EllipsisType
 import pandas as pd
 import sys
 import time
@@ -419,8 +420,8 @@ def handle_validation_error(
         entity_type: str,
         sheet_info: WorksheetInfo,
         error_handler: Optional[Callable[[SheetErrorInfo], None]],
-        row_index: Optional[int] = None,
-        row_id: Optional[Any] = None
+        row_index: int | EllipsisType = ...,
+        row_id: Optional[Any] | EllipsisType = ...
 ):
     for error in validation_error.errors():
         # Update error count
@@ -428,9 +429,9 @@ def handle_validation_error(
         # Call error handler if provided
         if error_handler:
             error_row_index = error.get("ctx", {}).get("row_index", row_index)
-            if error_row_index is None: raise ValueError(f"No row index provided for {entity_type} error {error}")
+            if error_row_index is ...: raise ValueError(f"No row index provided for {entity_type} error {error}")
             error_row_id = error.get("ctx", {}).get("row_index", row_id)
-            if error_row_id is None: raise ValueError(f"No row ID provided for {entity_type} error {error}")
+            if error_row_id is ...: raise ValueError(f"No row ID provided for {entity_type} error {error}")
             error_column_name = None if len(error["loc"]) == 0 else error["loc"][0]
             try:
                 error_a1 = sheet_info.get_a1(error_row_index, error_column_name)
