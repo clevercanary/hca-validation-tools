@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from types import EllipsisType
+from enum import Enum
 import pandas as pd
 import sys
 import time
@@ -79,6 +79,12 @@ class SheetValidationResult:
     spreadsheet_metadata: Optional[SpreadsheetMetadata]
     error_code: Optional[str]
     summary: Mapping[str, int | None]
+
+# Custom sentinel value used to detect missing parameters
+class MissingSentinel(Enum):
+    MISSING = 0
+
+MISSING = MissingSentinel.MISSING
 
 # Default list of entity types to validate
 default_entity_types = ["dataset", "donor", "sample"]
@@ -420,8 +426,8 @@ def handle_validation_error(
         entity_type: str,
         sheet_info: WorksheetInfo,
         error_handler: Optional[Callable[[SheetErrorInfo], None]],
-        row_index: int | EllipsisType = ...,
-        row_id: Optional[Any] | EllipsisType = ...
+        row_index: int | MissingSentinel = MISSING,
+        row_id: Optional[Any] | MissingSentinel = MISSING
 ):
     for error in validation_error.errors():
         # Update error count
@@ -430,10 +436,10 @@ def handle_validation_error(
         if error_handler:
             # Use row index from error if possible
             error_row_index = error.get("ctx", {}).get("row_index", row_index)
-            if error_row_index is ...: raise ValueError(f"No row index provided for {entity_type} error {error}")
+            if error_row_index is MISSING: raise ValueError(f"No row index provided for {entity_type} error {error}")
             # Use row ID from error if possible
             error_row_id = error.get("ctx", {}).get("row_id", row_id)
-            if error_row_id is ...: raise ValueError(f"No row ID provided for {entity_type} error {error}")
+            if error_row_id is MISSING: raise ValueError(f"No row ID provided for {entity_type} error {error}")
             # Get field name if available
             error_column_name = None if len(error["loc"]) == 0 else error["loc"][0]
             # Get A1 if possible
