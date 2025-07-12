@@ -44,7 +44,8 @@ SAMPLE_SHEET_DATA_WITH_CASTS = pd.DataFrame({
 })
 SAMPLE_SHEET_DATA_WITH_DUPLICATE_IDS = pd.DataFrame({
     'dataset_id': ['', '', '', '', 'foo', 'bar', 'foo', '', '', 'baz', 'baz', 'baz'],
-    'description': ['', '', '', '', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'] # This column is required to prevent the empty IDs from being treated as the end of the data
+    # This column is required to prevent the empty IDs from being treated as the end of the data
+    'description': ['', '', '', '', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']
 })
 
 # Data to be compared with output values
