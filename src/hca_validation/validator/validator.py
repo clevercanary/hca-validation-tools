@@ -97,6 +97,7 @@ def validate_id_uniqueness(data: pd.DataFrame, schemaview: SchemaView, class_nam
         return None
     
     def get_row_error_details(index, id) -> InitErrorDetails:
+        # Provide row-specific info to facilitate error handling
         ctx = {
             "row_index": index,
             "row_id": id
