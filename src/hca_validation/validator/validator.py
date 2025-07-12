@@ -75,11 +75,24 @@ def get_class_identifier_name(schemaview: SchemaView, class_name: str) -> str:
 
 
 def validate_id_uniqueness(data: pd.DataFrame, schemaview: SchemaView, class_name: str) -> Optional[ValidationError]:
+    """
+    Validate that no entities in the given data have duplicate IDs.
+
+    Args:
+        data: A dataframe containing the entities to validate
+        schemaview: The schemaview to use to determine the identifier slot
+        class_name: The schema class name of the entities being validated
+    
+    Returns:
+        A Pydantic ValidationError if any duplicate IDs appear, or None otherwise
+    """
+
     id_name = get_class_identifier_name(schemaview, class_name)
 
     if id_name not in data:
         return None
     
+    # Get IDs that are not missing and appear multiple times
     duplicate_ids = data[id_name][data[id_name].notna() & data[id_name].duplicated(keep=False)]
 
     if len(duplicate_ids) == 0:
