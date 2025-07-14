@@ -10,6 +10,7 @@ This script tests the functionality of the entry sheet validator, including:
 """
 import os
 import json
+from typing import List
 import pytest
 from unittest.mock import DEFAULT, patch, MagicMock
 import pandas as pd
@@ -19,6 +20,7 @@ from gspread.exceptions import SpreadsheetNotFound, WorksheetNotFound, APIError
 
 from hca_validation.entry_sheet_validator.validate_sheet import (
     ReadErrorSheetInfo,
+    SheetErrorInfo,
     SpreadsheetInfo,
     SpreadsheetMetadata,
     WorksheetInfo,
@@ -39,6 +41,11 @@ SAMPLE_SHEET_DATA = pd.DataFrame({
 SAMPLE_SHEET_DATA_WITH_CASTS = pd.DataFrame({
     'contact_email': ['', '', '', '', "foo@example.com", '   ', 'bar@example.com'],
     'study_pi': ['', '', '', '', 'Foo', 'Bar; Baz', '']
+})
+SAMPLE_SHEET_DATA_WITH_DUPLICATE_IDS = pd.DataFrame({
+    'dataset_id': ['', '', '', '', 'foo', 'bar', 'foo', '', '', 'baz', 'baz', 'baz'],
+    # This column is required to prevent the empty IDs from being treated as the end of the data
+    'description': ['', '', '', '', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']
 })
 
 # Data to be compared with output values
@@ -296,7 +303,7 @@ class TestValidateGoogleSheet:
         )
 
         # Create a mock error handler to capture validation errors
-        errors = []
+        errors: List[SheetErrorInfo] = []
         def mock_error_handler(error):
             errors.append(error)
 
@@ -363,6 +370,15 @@ class TestValidateGoogleSheet:
         self._test_service_account_access_helper(mock_read_service_account, bionetwork="gut")
         # Confirm that correct class was used
         assert last_class_name_info["value"] == "GutDataset"
+
+    @patch('hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account')
+    def test_duplicate_ids(self, mock_read_service_account):
+        """Test validation of duplicate IDs."""
+        errors, _ = self._test_service_account_access_helper(mock_read_service_account, sheet_data=SAMPLE_SHEET_DATA_WITH_DUPLICATE_IDS)
+        # Based on the mock data, expect five duplicate ID errors, for IDs "foo" and "baz" but not "bar" (which is not duplicated) or None (which is not an ID)
+        duplicate_id_errors = [error for error in errors if error.message.startswith("Duplicate identifier ")]
+        assert len(duplicate_id_errors) == 5
+        assert all(("foo" in error.message or "baz" in error.message) and not ("bar" in error.message or "None" in error.message) for error in duplicate_id_errors)
 
     @patch('hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account')
     def test_service_account_access_failure(self, mock_read_service_account):

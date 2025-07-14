@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from enum import Enum
 import pandas as pd
 import sys
 import time
@@ -9,7 +10,7 @@ import json
 from pathlib import Path
 from typing import Any, Mapping, Optional, List, Union, Callable
 from dataclasses import dataclass
-from pydantic_core import ErrorDetails
+from pydantic import ValidationError
 from linkml_runtime import SchemaView
 
 # Import dotenv for loading environment variables
@@ -77,6 +78,12 @@ class SheetValidationResult:
     spreadsheet_metadata: Optional[SpreadsheetMetadata]
     error_code: Optional[str]
     summary: Mapping[str, int | None]
+
+# Custom sentinel value used to detect missing parameters
+class MissingSentinel(Enum):
+    MISSING = 0
+
+MISSING = MissingSentinel.MISSING
 
 # Default list of entity types to validate
 default_entity_types = ["dataset", "donor", "sample"]
@@ -411,6 +418,48 @@ def make_summary_without_entities(error_count: int, entity_types: List[str] = de
         "error_count": error_count
     }
 
+def handle_validation_error(
+        validation_error: ValidationError,
+        *,
+        validation_summary: dict[str, int],
+        entity_type: str,
+        sheet_info: WorksheetInfo,
+        error_handler: Optional[Callable[[SheetErrorInfo], None]],
+        row_index: int | MissingSentinel = MISSING,
+        row_id: Optional[Any] | MissingSentinel = MISSING
+):
+    for error in validation_error.errors():
+        # Update error count
+        validation_summary["error_count"] += 1
+        # Call error handler if provided
+        if error_handler:
+            # Use row index from error if possible
+            error_row_index = error.get("ctx", {}).get("row_index", row_index)
+            if error_row_index is MISSING: raise ValueError(f"No row index provided for {entity_type} error {error}")
+            # Use row ID from error if possible
+            error_row_id = error.get("ctx", {}).get("row_id", row_id)
+            if error_row_id is MISSING: raise ValueError(f"No row ID provided for {entity_type} error {error}")
+            # Get field name if available
+            error_column_name = None if len(error["loc"]) == 0 else error["loc"][0]
+            # Get A1 if possible
+            try:
+                error_a1 = sheet_info.get_a1(error_row_index, error_column_name)
+            except ValueError:
+                error_a1 = None
+            # Create error info
+            error_info = SheetErrorInfo(
+                entity_type=entity_type,
+                worksheet_id=sheet_info.worksheet_id,
+                message=error["msg"],
+                row=error_row_index,
+                column=error_column_name,
+                cell=error_a1,
+                primary_key=error_row_id,
+                input=error["input"]
+            )
+            # Call handler
+            error_handler(error_info)
+
 def validate_google_sheet(
     sheet_id: str,
     *,
@@ -441,7 +490,7 @@ def validate_google_sheet(
     if bionetwork is not None and bionetwork not in allowed_bionetwork_names:
         raise ValueError(f"'{bionetwork}' is not a valid bionetwork")
 
-    from hca_validation.validator import get_entity_class_name, validate
+    from hca_validation.validator import get_entity_class_name, validate, validate_id_uniqueness
     import logging
     logger = logging.getLogger()
 
@@ -494,7 +543,8 @@ def validate_google_sheet(
             summary=make_summary_without_entities(1, entity_types)
         )
     
-    row_indices_to_validate_per_entity_type = []
+    # Each item is a dataframe of rows to validate, with an index containing the original 1-based indices of the rows
+    rows_to_validate_per_entity_type = []
 
     for entity_type, sheet_info in zip(entity_types, sheet_read_result.worksheets):
         df = sheet_info.data
@@ -552,31 +602,44 @@ def validate_google_sheet(
         
         logger.info(f"Found {len(row_indices)} {entity_type} rows to validate.")
 
-        row_indices_to_validate_per_entity_type.append(row_indices)
+        # Set the dataframe index to 1-based indices
+        df = df.reset_index(drop=True)
+        df.index += 1
+
+        # Save the subset of rows that should be validated
+        rows_to_validate_per_entity_type.append(df.iloc[row_indices])
     
     # Set up validation summary with entity counts and initial error count
     validation_summary = {
-        **{f"{entity_type}_count": len(row_indices) for entity_type, row_indices in zip(entity_types, row_indices_to_validate_per_entity_type)},
+        **{f"{entity_type}_count": len(rows_df) for entity_type, rows_df in zip(entity_types, rows_to_validate_per_entity_type)},
         "error_count": 0
     }
 
     all_valid = True
 
-    for entity_type, sheet_info, row_indices_to_validate in zip(entity_types, sheet_read_result.worksheets, row_indices_to_validate_per_entity_type):
+    for entity_type, sheet_info, rows_to_validate_source in zip(entity_types, sheet_read_result.worksheets, rows_to_validate_per_entity_type):
         # Determine schema class name to use for validation
         class_name = get_entity_class_name(entity_type, bionetwork)
         # Get normalized dataframe of rows to validate
         rows_to_validate = normalize_dataframe_values(
-            sheet_info.data.iloc[row_indices_to_validate],
+            rows_to_validate_source,
             schemaview,
             class_name
         )
-        # Validate each row
         all_valid_in_worksheet = True
-        for row_index_from_zero, (_, row) in zip(row_indices_to_validate, rows_to_validate.iterrows()):
-            # Get the actual row number in the spreadsheet (1-based)
-            row_index = row_index_from_zero + 1  # Convert from 0-based index to 1-based row number
-            
+        # Validate uniqueness and report results
+        uniqueness_validation_error = validate_id_uniqueness(rows_to_validate, schemaview, class_name)
+        if uniqueness_validation_error:
+            all_valid_in_worksheet = False
+            handle_validation_error(
+                uniqueness_validation_error,
+                validation_summary=validation_summary,
+                entity_type=entity_type,
+                sheet_info=sheet_info,
+                error_handler=error_handler
+            )
+        # Validate each row
+        for row_index, row in rows_to_validate.iterrows():
             # Convert row to dictionary
             row_dict = row.to_dict()
             
@@ -586,31 +649,18 @@ def validate_google_sheet(
             # Validate the data
             try:
                 validation_error = validate(row_dict, class_name=class_name)
-                
                 # Report results
                 if validation_error:
                     all_valid_in_worksheet = False
-                    for error in validation_error.errors():
-                        # Update error count
-                        validation_summary["error_count"] += 1
-                        # Call error handler if provided
-                        if error_handler:
-                            error_column_name = None if len(error["loc"]) == 0 else error["loc"][0]
-                            try:
-                                error_a1 = sheet_info.get_a1(row_index, error_column_name)
-                            except ValueError:
-                                error_a1 = None
-                            error_info = SheetErrorInfo(
-                                entity_type=entity_type,
-                                worksheet_id=sheet_info.worksheet_id,
-                                message=error["msg"],
-                                row=row_index,
-                                column=error_column_name,
-                                cell=error_a1,
-                                primary_key=row_primary_key,
-                                input=error["input"]
-                            )
-                            error_handler(error_info)
+                    handle_validation_error(
+                        validation_error,
+                        validation_summary=validation_summary,
+                        entity_type=entity_type,
+                        sheet_info=sheet_info,
+                        error_handler=error_handler,
+                        row_index=row_index,
+                        row_id=row_primary_key
+                    )
             except Exception as e:
                 all_valid_in_worksheet = False
                 # Update error count
