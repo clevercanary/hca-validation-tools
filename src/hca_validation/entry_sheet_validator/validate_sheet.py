@@ -324,8 +324,9 @@ def read_sheet_with_service_account(sheet_id, sheet_indices=[0]) -> Union[Spread
             logger.info(f"Attempting to get metadata for spreadsheet with ID: {sheet_id}")
             file_metadata = drive.files().get(fileId=sheet_id, fields="modifiedTime, lastModifyingUser(displayName, emailAddress)").execute()
             last_updated_date = file_metadata["modifiedTime"]
-            last_updated_by = file_metadata["lastModifyingUser"]["displayName"]
-            last_updated_email = file_metadata["lastModifyingUser"].get("emailAddress") or None
+            last_modifying_user = file_metadata.get("lastModifyingUser", {})
+            last_updated_by = last_modifying_user.get("displayName", "unknown")
+            last_updated_email = last_modifying_user.get("emailAddress") or None
             logger.info(f"Successfully got metadata from Drive API")
         
             spreadsheet_metadata = SpreadsheetMetadata(
