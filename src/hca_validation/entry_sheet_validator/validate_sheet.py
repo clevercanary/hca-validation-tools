@@ -592,7 +592,15 @@ def validate_google_sheet(
             current_row_index += 1
         
         if not row_indices:
-            logger.warning(f"No data found to validate starting from {entity_type} row 6.")
+            error_msg = f"No data found to validate starting from {entity_type} row 6."
+            logger.warning(error_msg)
+            if error_handler:
+                error_info = SheetErrorInfo(
+                    entity_type=entity_type,
+                    worksheet_id=sheet_info.worksheet_id,
+                    message=error_msg
+                )
+                error_handler(error_info)
             return SheetValidationResult(
                 successful=False,
                 spreadsheet_metadata=sheet_read_result.spreadsheet_metadata,
