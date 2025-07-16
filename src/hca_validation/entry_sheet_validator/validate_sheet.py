@@ -742,5 +742,4 @@ if __name__ == "__main__":
         sys.exit(1)
 
     sheet_id = sys.argv[1]
-    r = validate_google_sheet(sheet_id)
-    print(r.error_code)
+    validate_google_sheet(sheet_id)
