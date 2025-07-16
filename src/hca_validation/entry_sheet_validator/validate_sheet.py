@@ -16,9 +16,14 @@ from linkml_runtime import SchemaView
 # Import dotenv for loading environment variables
 from dotenv import load_dotenv
 
-# Import gspread for Google Sheets API access
+# Import libraries for Google API access
 import gspread
 from google.oauth2 import service_account
+from google.auth.transport.requests import AuthorizedSession
+from google.auth.credentials import Credentials
+import requests.adapters
+import urllib3
+import requests
 
 @dataclass
 class WorksheetInfo:
@@ -154,6 +159,21 @@ def get_secret_from_extension(secret_name):
     except Exception as e:
         logger.error(f"Error retrieving secret from extension: {e}")
         return None
+
+def create_requests_session(credentials: Credentials) -> requests.Session:
+    """
+    Create a requests session with retry behavior configured
+    """
+    session = AuthorizedSession(gspread.utils.convert_credentials(credentials))
+    retry_cfg = urllib3.Retry(
+        total=2,
+        status_forcelist=(429, 500, 502, 503, 504),
+        backoff_factor=10,
+        backoff_jitter=5,
+        respect_retry_after_header=True
+    )
+    session.mount("https://", requests.adapters.HTTPAdapter(max_retries=retry_cfg))
+    return session
 
 def read_worksheet(sheet_id, spreadsheet_metadata, spreadsheet, sheet_index) -> Union[WorksheetInfo, ReadErrorSheetInfo]:
     import logging
@@ -296,7 +316,7 @@ def read_sheet_with_service_account(sheet_id, sheet_indices=[0]) -> Union[Spread
         # Authenticate with gspread
         logger.info("Authorizing with gspread...")
         try:
-            gc = gspread.authorize(credentials)
+            gc = gspread.authorize(credentials, session=create_requests_session(credentials))
             logger.info("Successfully authorized with gspread")
         except Exception as auth_error:
             logger.error(f"Error authorizing with Google Sheets API: {auth_error}")
@@ -368,6 +388,9 @@ def read_sheet_with_service_account(sheet_id, sheet_indices=[0]) -> Union[Spread
                 error_message=f"Received error {e.status_code} from Google API: {e.reason}",
                 spreadsheet_metadata=spreadsheet_metadata
             )
+        except requests.exceptions.RetryError as e:
+            logger.error(f"Reached maximum configured API retries: {e}")
+            return ReadErrorSheetInfo(error_code="max_api_retries", spreadsheet_metadata=spreadsheet_metadata)
             
     except json.JSONDecodeError as json_error:
         logger.error(f"Invalid JSON format in service account credentials: {json_error}")
