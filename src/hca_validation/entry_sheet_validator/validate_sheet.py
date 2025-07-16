@@ -166,7 +166,7 @@ def create_requests_session(credentials: Credentials) -> requests.Session:
     """
     session = AuthorizedSession(gspread.utils.convert_credentials(credentials))
     retry_cfg = urllib3.Retry(
-        total=4,
+        total=2,
         status_forcelist=(429, 500, 502, 503, 504),
         backoff_factor=10,
         respect_retry_after_header=True
@@ -387,7 +387,7 @@ def read_sheet_with_service_account(sheet_id, sheet_indices=[0]) -> Union[Spread
                 error_message=f"Received error {e.status_code} from Google API: {e.reason}",
                 spreadsheet_metadata=spreadsheet_metadata
             )
-        except urllib3.exceptions.MaxRetryError as e:
+        except requests.exceptions.RetryError as e:
             logger.error(f"Reached maximum configured API retries: {e}")
             return ReadErrorSheetInfo(error_code="max_api_retries", spreadsheet_metadata=spreadsheet_metadata)
             
@@ -741,4 +741,5 @@ if __name__ == "__main__":
         sys.exit(1)
 
     sheet_id = sys.argv[1]
-    validate_google_sheet(sheet_id)
+    r = validate_google_sheet(sheet_id)
+    print(r.error_code)
