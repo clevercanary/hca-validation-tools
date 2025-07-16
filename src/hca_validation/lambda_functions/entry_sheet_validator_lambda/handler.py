@@ -48,6 +48,9 @@ ERROR_TO_STATUS: dict[str, HTTPStatus] = {
     # Resource not found
     "sheet_not_found": HTTPStatus.NOT_FOUND,
     "worksheet_not_found": HTTPStatus.NOT_FOUND,
+
+    # Service unavailable
+    "max_api_retries": HTTPStatus.SERVICE_UNAVAILABLE,
 }
 
 
