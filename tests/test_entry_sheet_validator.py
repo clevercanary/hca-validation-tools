@@ -81,9 +81,10 @@ class TestReadSheetWithServiceAccount:
         os.environ.update(original_env)
 
     @patch('googleapiclient.discovery.build')
+    @patch('hca_validation.entry_sheet_validator.validate_sheet.create_requests_session')
     @patch('gspread.authorize')
     @patch('google.oauth2.service_account.Credentials.from_service_account_info')
-    def test_with_service_account_credentials(self, mock_credentials, mock_authorize, mock_build, mock_env_with_credentials):
+    def test_with_service_account_credentials(self, mock_credentials, mock_authorize, mock_create_requests_session, mock_build, mock_env_with_credentials):
         """Test reading a sheet with service account credentials."""
         # Mock the gspread client
         mock_client = MagicMock()
@@ -193,9 +194,10 @@ class TestReadSheetWithServiceAccount:
             os.environ.clear()
             os.environ.update(original_env)
 
+    @patch('hca_validation.entry_sheet_validator.validate_sheet.create_requests_session')
     @patch('gspread.authorize')
     @patch('google.oauth2.service_account.Credentials.from_service_account_info')
-    def test_sheet_not_found(self, mock_credentials, mock_authorize, mock_env_with_credentials):
+    def test_sheet_not_found(self, mock_credentials, mock_authorize, mock_create_requests_session, mock_env_with_credentials):
         """Test handling of sheet not found error."""
         # Mock the gspread client to raise SpreadsheetNotFound
         mock_client = MagicMock()
@@ -213,9 +215,10 @@ class TestReadSheetWithServiceAccount:
         mock_client.open_by_key.assert_called_once_with(NONEXISTENT_SHEET_ID)
 
     @patch('googleapiclient.discovery.build')
+    @patch('hca_validation.entry_sheet_validator.validate_sheet.create_requests_session')
     @patch('gspread.authorize')
     @patch('google.oauth2.service_account.Credentials.from_service_account_info')
-    def test_worksheet_not_found(self, mock_credentials, mock_authorize, mock_build, mock_env_with_credentials):
+    def test_worksheet_not_found(self, mock_credentials, mock_authorize, mock_create_requests_session, mock_build, mock_env_with_credentials):
         """Test handling of worksheet not found error."""
         # Mock the gspread client
         mock_client = MagicMock()
@@ -235,9 +238,10 @@ class TestReadSheetWithServiceAccount:
         mock_client.open_by_key.assert_called_once_with(PUBLIC_SHEET_ID)
         mock_sheet.get_worksheet.assert_called_once_with(0)
 
+    @patch('hca_validation.entry_sheet_validator.validate_sheet.create_requests_session')
     @patch('gspread.authorize')
     @patch('google.oauth2.service_account.Credentials.from_service_account_info')
-    def test_api_error(self, mock_credentials, mock_authorize, mock_env_with_credentials):
+    def test_api_error(self, mock_credentials, mock_authorize, mock_create_requests_session, mock_env_with_credentials):
         """Test handling of API error."""
         # Mock the gspread client
         mock_client = MagicMock()
@@ -256,9 +260,10 @@ class TestReadSheetWithServiceAccount:
         mock_client.open_by_key.assert_called_once_with(PUBLIC_SHEET_ID)
 
     @patch('googleapiclient.discovery.build')
+    @patch('hca_validation.entry_sheet_validator.validate_sheet.create_requests_session')
     @patch('gspread.authorize')
     @patch('google.oauth2.service_account.Credentials.from_service_account_info')
-    def test_generic_exception_with_metadata(self, mock_credentials, mock_authorize, mock_build, mock_env_with_credentials):
+    def test_generic_exception_with_metadata(self, mock_credentials, mock_authorize, mock_create_requests_session, mock_build, mock_env_with_credentials):
         """Test handling of generic exception after spreadsheet metadata is obtained."""
         # Mock the gspread client
         mock_client = MagicMock()
