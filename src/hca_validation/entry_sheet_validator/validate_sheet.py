@@ -169,6 +169,7 @@ def create_requests_session(credentials: Credentials) -> requests.Session:
         total=2,
         status_forcelist=(429, 500, 502, 503, 504),
         backoff_factor=10,
+        backoff_jitter=5,
         respect_retry_after_header=True
     )
     session.mount("https://", requests.adapters.HTTPAdapter(max_retries=retry_cfg))
