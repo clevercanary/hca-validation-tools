@@ -166,7 +166,7 @@ def create_requests_session(credentials: Credentials) -> requests.Session:
     """
     session = AuthorizedSession(gspread.utils.convert_credentials(credentials))
     retry_cfg = urllib3.Retry(
-        total=2,
+        total=4,
         status_forcelist=(429, 500, 502, 503, 504),
         backoff_factor=10,
         backoff_jitter=5,
