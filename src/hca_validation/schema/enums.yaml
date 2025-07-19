@@ -28,9 +28,9 @@ enums:
       EPI: {}
       LP: {}
       MUSC: {}
-      EPI_LP: {}
-      LP_MUSC: {}
-      EPI_LP_MUSC: {}
+      "EPI LP": {}
+      "LP MUSC": {}
+      "EPI LP MUSC": {}
       MLN: {}
       SUB: {}
       "Peyers patch": {}
@@ -43,9 +43,9 @@ enums:
       brush: {}
       scraping: {}
       biopsy: {}
-      "surgical_resection": {}
-      "blood_draw": {}
-      "body_fluid": {}
+      "surgical resection": {}
+      "blood draw": {}
+      "body fluid": {}
       other: {}
       
   TissueType:
@@ -84,9 +84,9 @@ enums:
  
   SampleSource:
     permissible_values:
-      "surgical_donor": {}
-      "postmortem_donor": {}
-      "living_organ_donor": {}
+      "surgical donor": {}
+      "postmortem donor": {}
+      "living organ donor": {}
       
   MannerOfDeath:
     permissible_values:
@@ -96,7 +96,7 @@ enums:
       "4": {}
       "0": {}
       unknown: {}
-      "not_applicable": {}
+      "not applicable": {}
       
   DevelopmentStage:
     permissible_values:
