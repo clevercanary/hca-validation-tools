@@ -15,6 +15,7 @@ default_range: string
 imports:
   - linkml:types
   - dataset
+  - bionetwork/adipose
   - bionetwork/gut
   - donor
   - sample

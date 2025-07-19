@@ -1,0 +1,33 @@
+id: https://github.com/clevercanary/hca-validation-tools/schema/bionetwork/adipose
+name: hca-validation-adipose
+title: Adipose BioNetwork Extensions
+description: Adipose network–specific refinements to the HCA dataset schema
+license: MIT
+version: 0.1.0
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  hca: https://github.com/clevercanary/hca-validation-tools/schema/
+
+default_prefix: hca
+default_range: string
+
+imports:
+  - linkml:types
+  - ../dataset
+  - ../slots
+  - ../enums
+
+classes:
+  AdiposeDataset:
+    is_a: Dataset
+    description: Dataset with Adipose BioNetwork–specific metadata requirements.
+    slots:
+      - ambient_count_correction
+      - doublet_detection
+    
+  AdiposeSample:
+    is_a: Sample
+    description: Sample with Adipose BioNetwork–specific metadata requirements.
+    slots:
+      - dissociation_protocol

@@ -15,6 +15,7 @@ import hca_validation.schema.generated.core as schema
 schema_classes = {
     "dataset": {
       "DEFAULT": "Dataset",
+      "adipose": "AdiposeDataset",
       "gut": "GutDataset"
     },
     "donor": {
@@ -22,6 +23,7 @@ schema_classes = {
     },
     "sample": {
       "DEFAULT": "Sample",
+      "adipose": "AdiposeSample",
       "gut": "GutSample"
     },
     "cell": {
