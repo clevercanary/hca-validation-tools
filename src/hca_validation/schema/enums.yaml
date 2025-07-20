@@ -28,9 +28,9 @@ enums:
       EPI: {}
       LP: {}
       MUSC: {}
-      "EPI LP": {}
-      "LP MUSC": {}
-      "EPI LP MUSC": {}
+      EPI_LP: {}
+      LP_MUSC: {}
+      EPI_LP_MUSC: {}
       MLN: {}
       SUB: {}
       "Peyers patch": {}

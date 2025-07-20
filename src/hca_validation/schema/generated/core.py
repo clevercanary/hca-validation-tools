@@ -161,9 +161,9 @@ class SampleCollectionMethod(str, Enum):
     brush = "brush"
     scraping = "scraping"
     biopsy = "biopsy"
-    surgical_resection = "surgical_resection"
-    blood_draw = "blood_draw"
-    body_fluid = "body_fluid"
+    surgical_resection = "surgical resection"
+    blood_draw = "blood draw"
+    body_fluid = "body fluid"
     other = "other"
 
 
@@ -202,9 +202,9 @@ class SamplePreservationMethod(str, Enum):
 
 
 class SampleSource(str, Enum):
-    surgical_donor = "surgical_donor"
-    postmortem_donor = "postmortem_donor"
-    living_organ_donor = "living_organ_donor"
+    surgical_donor = "surgical donor"
+    postmortem_donor = "postmortem donor"
+    living_organ_donor = "living organ donor"
 
 
 class MannerOfDeath(str, Enum):
@@ -214,7 +214,7 @@ class MannerOfDeath(str, Enum):
     number_4 = "4"
     number_0 = "0"
     unknown = "unknown"
-    not_applicable = "not_applicable"
+    not_applicable = "not applicable"
 
 
 class DevelopmentStage(str, Enum):

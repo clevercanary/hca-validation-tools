@@ -21,6 +21,14 @@
           "rationale": "Affects which cells are filtered per dataset, and which reads (introns and exons or only exons) are counted as part of the reported transcriptome. This can convey batch effects."
         },
         {
+          "name": "assay_ontology_term",
+          "title": "Assay Ontology Term",
+          "description": "Deprecated placeholder for assay ontology term.",
+          "range": "string",
+          "required": false,
+          "multivalued": false
+        },
+        {
           "name": "assay_ontology_term_id",
           "title": "Assay Ontology Term Id",
           "description": "Platform used for single cell library construction.",
@@ -61,6 +69,30 @@
           }
         },
         {
+          "name": "consortia",
+          "title": "Consortia",
+          "description": "Deprecated placeholder for consortia information.",
+          "range": "string",
+          "required": false,
+          "multivalued": false
+        },
+        {
+          "name": "contact_email",
+          "title": "Contact Email",
+          "description": "Contact name and email of the submitting person",
+          "range": "Email",
+          "required": true,
+          "multivalued": false
+        },
+        {
+          "name": "dataset_id",
+          "title": "Dataset ID",
+          "description": "A unique identifier for each dataset in the study. This should be unique to the study.",
+          "range": "string",
+          "required": true,
+          "multivalued": false
+        },
+        {
           "name": "default_embedding",
           "title": "Default Embedding",
           "description": "The value must match a key to an embedding in obsm for the embedding to display by default in CELLxGENE Explorer.",
@@ -69,6 +101,17 @@
           "multivalued": false,
           "annotations": {
             "cxg": "default_embedding",
+            "annDataLocation": "uns"
+          }
+        },
+        {
+          "name": "description",
+          "title": "Description",
+          "description": "Short description of the dataset",
+          "range": "string",
+          "required": true,
+          "multivalued": false,
+          "annotations": {
             "annDataLocation": "uns"
           }
         },
@@ -111,6 +154,15 @@
             "annDataLocation": "obs"
           },
           "rationale": "Useful to look up protocol data that can provide insight on batch effects. As protocols can sometimes apply to a subset of the study, we capture this at a sample level. This information may not always be available."
+        },
+        {
+          "name": "publication_doi",
+          "title": "Publication DOI",
+          "description": "The publication digital object identifier (doi) for the protocol. If no pre-print nor publication exists, please write 'not applicable'.\n",
+          "range": "string",
+          "required": false,
+          "multivalued": false,
+          "example": "10.1016/j.cell.2016.07.054"
         },
         {
           "name": "reference_genome",
@@ -171,7 +223,7 @@
           "title": "Title",
           "description": "This text describes and differentiates the dataset from other datasets in the same collection.  It is strongly recommended that each dataset title in a collection is unique and does not depend on other metadata  such as a different assay to disambiguate it from other datasets in the collection.\n",
           "range": "string",
-          "required": true,
+          "required": false,
           "multivalued": false,
           "example": "Cells of the adult human heart collection is 'All \u2014 Cells of the adult human heart'",
           "annotations": {
@@ -190,18 +242,74 @@
         {
           "name": "dataset_id",
           "title": "Dataset ID",
-          "description": "",
-          "range": "string",
+          "description": "A unique identifier for each dataset in the study. This should be unique to the study.",
+          "range": "Dataset",
           "required": true,
           "multivalued": false
         },
         {
           "name": "donor_id",
           "title": "Donor ID",
-          "description": "",
+          "description": "This must be free-text that identifies a unique individual that data were derived from.",
           "range": "string",
           "required": true,
+          "multivalued": false,
+          "example": "CR_donor_1; MM_donor_1; LR_donor_2",
+          "annotations": {
+            "annDataLocation": "obs",
+            "tier": "Tier 1",
+            "cxg": "donor_id"
+          },
+          "rationale": "Fundamental unit of biological variation of the data. It is strongly recommended that this identifier be designed so that it is unique to: a given individual within the collection of datasets that includes this dataset, and a given individual across all collections in CELLxGENE Discover. It is strongly recommended that \"pooled\" be used for observations from a sample of multiple individuals that were not confidently assigned to a single individual through demultiplexing. It is strongly recommended that \"unknown\" ONLY be used for observations in a dataset when it is not known which observations are from the same individual."
+        },
+        {
+          "name": "manner_of_death",
+          "title": "Manner of Death",
+          "description": "Manner of death classification based on the Hardy Scale or \"unknown\" or \"not applicable\":\n* Category 1 = Violent and fast death \u2014 deaths due to accident, blunt force trauma or suicide, terminal phase < 10 min.\n* Category 2 = Fast death of natural causes \u2014 sudden unexpected deaths of reasonably healthy people, terminal phase < 1 h.\n* Category 3 = Intermediate death \u2014 terminal phase 1\u201324 h, patients ill but death unexpected.\n* Category 4 = Slow death \u2014 terminal phase > 1 day (e.g. cancer, chronic pulmonary disease).\n* Category 0 = Ventilator case \u2014 on a ventilator immediately before death.\n* Unknown = The cause of death is unknown.\n* Not applicable = Subject is alive.\n[Leave blank for embryonic/fetal tissue.]\n",
+          "range": "MannerOfDeath",
+          "required": true,
+          "multivalued": false,
+          "example": "1",
+          "annotations": {
+            "annDataLocation": "obs"
+          },
+          "values": "1; 2; 3; 4; 0; unknown; not applicable"
+        },
+        {
+          "name": "organism_ontology_term_id",
+          "title": "Organism Ontology Term ID",
+          "description": "The name given to the type of organism, collected in NCBITaxon:0000 format.",
+          "range": "Organism",
+          "required": true,
+          "multivalued": false,
+          "annotations": {
+            "annDataLocation": "obs",
+            "cxg": "organism_ontology_term_id",
+            "tier": "Tier 1"
+          },
+          "values": "NCBITaxon:9606; NCBITaxon:10090"
+        },
+        {
+          "name": "sex_ontology_term",
+          "title": "Sex Ontology Term",
+          "description": "Deprecated placeholder for sex ontology term.",
+          "range": "string",
+          "required": false,
           "multivalued": false
+        },
+        {
+          "name": "sex_ontology_term_id",
+          "title": "Sex Ontology Term ID",
+          "description": "Reported sex of the donor.",
+          "range": "string",
+          "required": true,
+          "multivalued": false,
+          "example": "PATO:0000383",
+          "annotations": {
+            "annDataLocation": "obs",
+            "cxg": "sex_ontology_term_id"
+          },
+          "values": "This must be a child of PATO:0001894 for phenotypic sex or \"unknown\" if unavailable.\n"
         }
       ]
     },
@@ -211,28 +319,380 @@
       "name": "sample",
       "attributes": [
         {
-          "name": "dataset_id",
-          "title": "Dataset ID",
-          "description": "",
+          "name": "age_range",
+          "title": "Age Range",
+          "description": "Deprecated placeholder for age range metadata.",
+          "range": "string",
+          "required": false,
+          "multivalued": false
+        },
+        {
+          "name": "author_batch_notes",
+          "title": "Author Batch Notes",
+          "description": "Encoding of author knowledge on any further information related to likely batch effects.",
+          "range": "string",
+          "required": false,
+          "multivalued": false,
+          "example": "Batch run by different personnel on different days",
+          "annotations": {
+            "annDataLocation": "obs",
+            "tier": "Tier 1"
+          },
+          "rationale": "Space for author intuition of batch effects in their dataset"
+        },
+        {
+          "name": "cell_enrichment",
+          "title": "Cell Enrichment",
+          "description": "Specifies the cell types targeted for enrichment or depletion beyond the selection of live cells.",
           "range": "string",
           "required": true,
+          "multivalued": false,
+          "example": "CL:0000057+",
+          "annotations": {
+            "annDataLocation": "obs",
+            "tier": "Tier 1"
+          },
+          "values": "This must be a Cell Ontology (CL) term (http://www.ebi.ac.uk/ols4/ontologies/cl). For cells that are enriched, list the CL code followed by a '+'. For cells that were depleted, list the CL code followed by a '-'. If no enrichment or depletion occurred, please use 'na' (not applicable)"
+        },
+        {
+          "name": "cell_number_loaded",
+          "title": "Cell Number Loaded",
+          "description": "Estimated number of cells loaded for library construction.",
+          "range": "integer",
+          "required": false,
+          "multivalued": false,
+          "example": "5000; 4000",
+          "annotations": {
+            "annDataLocation": "obs",
+            "tier": "Tier 1"
+          },
+          "rationale": "Can explain the number of doublets found in samples"
+        },
+        {
+          "name": "cell_viability_percentage",
+          "title": "Cell Viability Percentage",
+          "description": "If measured, per sample cell viability before library preparation (as a percentage).",
+          "range": "string",
+          "required": false,
+          "multivalued": false,
+          "example": "88; 95; 93.5",
+          "annotations": {
+            "annDataLocation": "obs",
+            "tier": "Tier 1"
+          },
+          "rationale": "Is a measure of sample quality that could be used to explain outlier samples"
+        },
+        {
+          "name": "dataset_id",
+          "title": "Dataset ID",
+          "description": "A unique identifier for each dataset in the study. This should be unique to the study.",
+          "range": "Dataset",
+          "required": true,
           "multivalued": false
+        },
+        {
+          "name": "development_stage_ontology_term_id",
+          "title": "Development Stage Ontology Term ID",
+          "description": "Age of the subject.",
+          "range": "DevelopmentStage",
+          "required": true,
+          "multivalued": false,
+          "example": "HsapDv:0000237",
+          "annotations": {
+            "annDataLocation": "obs",
+            "cxg": "development_stage_ontology_term_id",
+            "tier": "Tier 1"
+          },
+          "values": "HsapDv:0000003; HsapDv:0000046; HsapDv:0000264; HsapDv:0000268; HsapDv:0000237; HsapDv:0000238; HsapDv:0000239; HsapDv:0000240; HsapDv:0000241; HsapDv:0000242; HsapDv:0000243; MmusDv:0000001; MmusDv:0000002; unknown"
+        },
+        {
+          "name": "disease_ontology_term",
+          "title": "Disease Ontology Term",
+          "description": "Deprecated placeholder for disease ontology term.",
+          "range": "string",
+          "required": false,
+          "multivalued": false
+        },
+        {
+          "name": "disease_ontology_term_id",
+          "title": "Disease Ontology Term ID",
+          "description": "Disease, if expected to impact the sample.",
+          "range": "string",
+          "required": true,
+          "multivalued": false,
+          "example": "MONDO:0005385",
+          "annotations": {
+            "annDataLocation": "obs",
+            "cxg": "disease_ontology_term_id",
+            "tier": "Tier 1"
+          },
+          "values": "This must be a MONDO term or \"PATO:0000461\" for normal or healthy.\n\nRequirements for data contributors adhering to GDPR or like standards: In the case of disease, HCA requests that you submit a higher order ontology term - this is especially important in the case of rare disease.\n"
         },
         {
           "name": "donor_id",
           "title": "Donor ID",
-          "description": "",
+          "description": "This must be free-text that identifies a unique individual that data were derived from.",
+          "range": "Donor",
+          "required": true,
+          "multivalued": false,
+          "example": "CR_donor_1; MM_donor_1; LR_donor_2",
+          "annotations": {
+            "annDataLocation": "obs",
+            "tier": "Tier 1",
+            "cxg": "donor_id"
+          },
+          "rationale": "Fundamental unit of biological variation of the data. It is strongly recommended that this identifier be designed so that it is unique to: a given individual within the collection of datasets that includes this dataset, and a given individual across all collections in CELLxGENE Discover. It is strongly recommended that \"pooled\" be used for observations from a sample of multiple individuals that were not confidently assigned to a single individual through demultiplexing. It is strongly recommended that \"unknown\" ONLY be used for observations in a dataset when it is not known which observations are from the same individual."
+        },
+        {
+          "name": "institute",
+          "title": "Institute",
+          "description": "Institution where the samples were processed.",
           "range": "string",
           "required": true,
+          "multivalued": false,
+          "example": "EMBL-EBI; Genome Institute of Singapore",
+          "annotations": {
+            "annDataLocation": "obs",
+            "tier": "Tier 1"
+          },
+          "rationale": "To be able to link to other studies from the same institution as sometimes samples from different labs in the same institute are processed via similar core facilities. Thus batch effects may be smaller for datasets from the same institute even if other factors differ."
+        },
+        {
+          "name": "is_primary_data",
+          "title": "Is Primary Data",
+          "description": "Deprecated placeholder indicating whether sample represents primary data.",
+          "range": "string",
+          "required": false,
           "multivalued": false
+        },
+        {
+          "name": "library_id",
+          "title": "Library ID",
+          "description": "The unique ID that is used to track libraries in the investigator's institution (should align with the publication).",
+          "range": "string",
+          "required": true,
+          "multivalued": false,
+          "example": "A24; NK_healthy_001",
+          "annotations": {
+            "annDataLocation": "obs",
+            "tier": "Tier 1"
+          },
+          "rationale": "A way to track the unit of data generation. This should include sample pooling"
+        },
+        {
+          "name": "library_id_repository",
+          "title": "Library ID Repository",
+          "description": "The unique ID used to track libraries from one of the following public data repositories: EGAX*, GSM*, SRX*, ERX*, DRX, HRX, CRX.",
+          "range": "string",
+          "required": false,
+          "multivalued": false,
+          "example": "GSM1684095",
+          "annotations": {
+            "annDataLocation": "obs",
+            "tier": "Tier 1"
+          },
+          "rationale": "Links a dataset back to the source from which it was ingested, optional only if this is the same as the library_id."
+        },
+        {
+          "name": "library_preparation_batch",
+          "title": "Library Preparation Batch",
+          "description": "Indicating which samples' libraries were prepared in the same chip/plate/etc., e.g. batch1, batch2.",
+          "range": "string",
+          "required": true,
+          "multivalued": false,
+          "example": "batch01; batch02",
+          "annotations": {
+            "annDataLocation": "obs",
+            "tier": "Tier 1"
+          },
+          "rationale": "Sample preparation is a major source of batch effects."
+        },
+        {
+          "name": "library_sequencing_run",
+          "title": "Library Sequencing Run",
+          "description": "The identifier (or accession number) that indicates which samples' libraries were sequenced in the same run.",
+          "range": "string",
+          "required": true,
+          "multivalued": false,
+          "example": "run1; NV0087",
+          "annotations": {
+            "annDataLocation": "obs",
+            "tier": "Tier 1"
+          },
+          "rationale": "Library sequencing is a major source of batch effects"
+        },
+        {
+          "name": "sample_collection_method",
+          "title": "Sample Collection Method",
+          "description": "The method the sample was physically obtained from the donor.",
+          "range": "SampleCollectionMethod",
+          "required": true,
+          "multivalued": false,
+          "values": "brush; scraping; biopsy; surgical resection; blood draw; body fluid; other"
+        },
+        {
+          "name": "sample_collection_relative_time_point",
+          "title": "Sample Collection Relative Time Point",
+          "description": "Time point when the sample was collected. This field is only needed if multiple samples from the same subject are available and collected at different time points. Sample collection dates (e.g. 23/09/22) cannot be used due to patient data protection, only relative time points should be used here (e.g. day3).",
+          "range": "string",
+          "required": false,
+          "multivalued": false,
+          "example": "sampleX_day1",
+          "annotations": {
+            "annDataLocation": "obs",
+            "tier": "Tier 1"
+          },
+          "rationale": "Explains variability in the data between samples from the same subject."
+        },
+        {
+          "name": "sample_collection_site",
+          "title": "Sample Collection Site",
+          "description": "The pseudonymised name of the site where the sample was collected.",
+          "range": "string",
+          "required": false,
+          "multivalued": false,
+          "example": "AIDA_site_1; AIDA_site_2",
+          "annotations": {
+            "annDataLocation": "obs",
+            "tier": "Tier 1"
+          },
+          "rationale": "To understand whether the collection site contributes to batch effects. It is strongly recommended that this identifier be designed so that it is unique to a given site within the collection of datasets that includes this site (for example, the labels 'site1', 'site2' may appear in other datasets thus rendering them indistinguishable)."
+        },
+        {
+          "name": "sample_collection_year",
+          "title": "Sample Collection Year",
+          "description": "Year of sample collection. Should not be detailed further (to exact month and day), to prevent identifiability.",
+          "range": "string",
+          "required": false,
+          "multivalued": false,
+          "example": "2018",
+          "annotations": {
+            "annDataLocation": "obs",
+            "tier": "Tier 1"
+          },
+          "rationale": "May explain whether a dataset was separated into smaller batches."
         },
         {
           "name": "sample_id",
           "title": "Sample ID",
-          "description": "",
+          "description": "Identification number of the sample. This is the fundamental unit of sampling the tissue (the specimen taken from the subject), which can be the same as the 'subject_ID', but is often different if multiple samples are taken from the same subject. Note: this is NOT a unit of multiplexing of donor samples, which should be stored in \"library\".",
           "range": "string",
           "required": true,
+          "multivalued": false,
+          "example": "SC24; SC25; SC28",
+          "annotations": {
+            "annDataLocation": "obs",
+            "tier": "Tier 1"
+          }
+        },
+        {
+          "name": "sample_preservation_method",
+          "title": "Sample Preservation Method",
+          "description": "Indicating if tissue was frozen, or not, at any point before library preparation.",
+          "range": "SamplePreservationMethod",
+          "required": true,
+          "multivalued": false,
+          "example": "fresh",
+          "annotations": {
+            "annDataLocation": "obs",
+            "tier": "Tier 1"
+          },
+          "values": "ambient temperature; cut slide; fresh; frozen at -70C; frozen at -80C; frozen at -150C; frozen in liquid nitrogen; frozen in vapor phase; paraffin block; RNAlater at 4C; RNAlater at 25C; RNAlater at -20C; other"
+        },
+        {
+          "name": "sample_source",
+          "title": "Sample Source",
+          "description": "The study subgroup that the participant belongs to, indicating whether the participant was a surgical donor, a postmortem donor, or an organ donor.",
+          "range": "SampleSource",
+          "required": true,
+          "multivalued": false,
+          "example": "surgical donor",
+          "annotations": {
+            "annDataLocation": "obs",
+            "tier": "Tier 1"
+          },
+          "values": "surgical donor; postmortem donor; living organ donor"
+        },
+        {
+          "name": "sampled_site_condition",
+          "title": "Sampled Site Condition",
+          "description": "Whether the site is considered healthy, diseased or adjacent to disease.",
+          "range": "SampledSiteCondition",
+          "required": true,
+          "multivalued": false,
+          "example": "healthy",
+          "annotations": {
+            "annDataLocation": "obs",
+            "tier": "Tier 1"
+          },
+          "values": "healthy; diseased; adjacent"
+        },
+        {
+          "name": "suspension_type",
+          "title": "Suspension Type",
+          "description": "Specifies whether the sample contains single cells or single nuclei data.",
+          "range": "SuspensionType",
+          "required": true,
+          "multivalued": false,
+          "example": "cell",
+          "annotations": {
+            "annDataLocation": "obs",
+            "cxg": "suspension_type",
+            "tier": "Tier 1"
+          },
+          "values": "cell; nucleus; na"
+        },
+        {
+          "name": "tissue_free_text",
+          "title": "Tissue Free Text",
+          "description": "The detailed anatomical location of the sample - this does not have to tie to an ontology term.",
+          "range": "string",
+          "required": false,
+          "multivalued": false,
+          "example": "terminal ileum",
+          "annotations": {
+            "annDataLocation": "obs",
+            "tier": "Tier 1"
+          },
+          "rationale": "To help the integration team understand the anatomical location of the sample, specifically to solve the problem when the UBERON ontology terms are insufficiently precise."
+        },
+        {
+          "name": "tissue_ontology_term",
+          "title": "Tissue Ontology Term",
+          "description": "Deprecated placeholder for tissue ontology term.",
+          "range": "string",
+          "required": false,
           "multivalued": false
+        },
+        {
+          "name": "tissue_ontology_term_id",
+          "title": "Tissue Ontology Term ID",
+          "description": "The detailed anatomical location of the sample, please provide a specific UBERON term.",
+          "range": "string",
+          "required": true,
+          "multivalued": false,
+          "example": "UBERON:0001828",
+          "annotations": {
+            "annDataLocation": "obs",
+            "cxg": "tissue_ontology_term_id",
+            "tier": "Tier 1"
+          },
+          "values": "If tissue_type is \"tissue\" or \"organoid\", this must be the most accurate child of UBERON:0001062 for anatomical entity. If tissue_type is \"cell culture\" this must follow the requirements for cell_type_ontology_term_id.\n"
+        },
+        {
+          "name": "tissue_type",
+          "title": "Tissue Type",
+          "description": "Whether the tissue is \"tissue\", \"organoid\", or \"cell culture\".",
+          "range": "TissueType",
+          "required": true,
+          "multivalued": false,
+          "example": "tissue",
+          "annotations": {
+            "annDataLocation": "obs",
+            "cxg": "tissue_type",
+            "tier": "Tier 1"
+          },
+          "values": "tissue; organoid; cell culture"
         }
       ]
     },
