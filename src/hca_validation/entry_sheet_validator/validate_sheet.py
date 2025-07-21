@@ -175,40 +175,58 @@ def create_requests_session(credentials: Credentials) -> requests.Session:
     session.mount("https://", requests.adapters.HTTPAdapter(max_retries=retry_cfg))
     return session
 
-def read_worksheet(sheet_id: str, spreadsheet_metadata: SpreadsheetMetadata, worksheets: List[gspread.Worksheet], sheet_index: int) -> Union[WorksheetInfo, ReadErrorSheetInfo]:
+def read_worksheets(
+    sheet_id: str,
+    spreadsheet_metadata: SpreadsheetMetadata,
+    spreadsheet: gspread.Spreadsheet,
+    sheet_indices: List[int]
+) -> Union[List[WorksheetInfo], ReadErrorSheetInfo]:
     import logging
     logger = logging.getLogger(__name__)
     
-    # Get the worksheet
-    logger.info(f"Attempting to get worksheet at index {sheet_index}")
-    if not sheet_index < len(worksheets):
-        logger.error(f"Error accessing Google Sheet with service account: Worksheet index {sheet_index} not found in sheet {sheet_id}")
-        return ReadErrorSheetInfo(error_code='worksheet_not_found', spreadsheet_metadata=spreadsheet_metadata)
-    worksheet = worksheets[sheet_index]
+    # Get list of worksheets
+
+    all_worksheets = spreadsheet.worksheets()
+    worksheets: List[gspread.Worksheet] = []
+
+    logger.info(f"Attempting to get worksheets of spreadsheet {sheet_id} at indices: {', '.join(str(i) for i in sheet_indices)}")
+    for sheet_index in sheet_indices:
+        if not sheet_index < len(all_worksheets):
+            logger.error(f"Error accessing Google Sheet with service account: Worksheet index {sheet_index} not found in sheet {sheet_id}")
+            return ReadErrorSheetInfo(error_code='worksheet_not_found', spreadsheet_metadata=spreadsheet_metadata)
+        worksheets.append(all_worksheets[sheet_index])
     
-    # Get the worksheet ID
-    worksheet_id = worksheet.id
-    logger.info(f"Successfully retrieved worksheet with ID: {worksheet_id}")
+    logger.info(f"Successfully retrieved worksheets")
+
+    # Get data from worksheets
     
-    # Get all values from the worksheet
-    logger.info("Retrieving worksheet data...")
-    data = worksheet.get_all_values()
+    logger.info("Retrieving worksheets data...")
+
+    api_result = spreadsheet.values_batch_get([gspread.utils.absolute_range_name(worksheet.title) for worksheet in worksheets])
+
+    worksheets_info = []
+
+    for sheet_index, worksheet, value_range in zip(sheet_indices, worksheets, api_result["valueRanges"]):
+        data = gspread.utils.fill_gaps(value_range["values"])
+         # Convert to DataFrame
+        if len(data) >= 2:
+            logger.info(f"Successfully retrieved data from worksheet index {sheet_index}: {len(data)} rows, {len(data[0]) if data[0] else 0} columns")
+            source_columns = data[0]
+            source_rows_start_index = 1
+            df = pd.DataFrame(data[source_rows_start_index:], columns=source_columns)  # First row as header
+            worksheets_info.append(
+                WorksheetInfo(
+                    data=df,
+                    worksheet_id=worksheet.id,
+                    source_columns=source_columns,
+                    source_rows_start_index=source_rows_start_index
+                )
+            )
+        else:
+            logger.warning(f"Sheet {sheet_id} (index {sheet_index}) appears to be empty")
+            return ReadErrorSheetInfo(error_code="sheet_data_empty", spreadsheet_metadata=spreadsheet_metadata, worksheet_id=worksheet.id)
     
-    # Convert to DataFrame
-    if len(data) >= 2:
-        logger.info(f"Successfully retrieved data: {len(data)} rows, {len(data[0]) if data[0] else 0} columns")
-        source_columns = data[0]
-        source_rows_start_index = 1
-        df = pd.DataFrame(data[source_rows_start_index:], columns=source_columns)  # First row as header
-        return WorksheetInfo(
-            data=df,
-            worksheet_id=worksheet_id,
-            source_columns=source_columns,
-            source_rows_start_index=source_rows_start_index
-        )
-    else:
-        logger.warning(f"Sheet {sheet_id} (index {sheet_index}) appears to be empty")
-        return ReadErrorSheetInfo(error_code="sheet_data_empty", spreadsheet_metadata=spreadsheet_metadata, worksheet_id=worksheet_id)
+    return worksheets_info
 
 def read_sheet_with_service_account(sheet_id, sheet_indices=[0]) -> Union[SpreadsheetInfo, ReadErrorSheetInfo]:
     """
@@ -355,17 +373,10 @@ def read_sheet_with_service_account(sheet_id, sheet_indices=[0]) -> Union[Spread
             )
 
             # Get all worksheets
-            logger.info(f"Attempting to get worksheets for spreadsheet with ID: {sheet_id}")
-            worksheets = spreadsheet.worksheets()
-            logger.info(f"Successfully got list of worksheets")
-
-            sheets_info: List[WorksheetInfo] = []
-
-            for sheet_index in sheet_indices:
-                worksheet_info = read_worksheet(sheet_id, spreadsheet_metadata, worksheets, sheet_index)
-                if isinstance(worksheet_info, ReadErrorSheetInfo):
-                    return worksheet_info
-                sheets_info.append(worksheet_info)
+            sheets_info = read_worksheets(sheet_id, spreadsheet_metadata, spreadsheet, sheet_indices)
+            
+            if (isinstance(sheets_info, ReadErrorSheetInfo)):
+                return sheets_info
             
             return SpreadsheetInfo(spreadsheet_metadata, sheets_info)
         
