@@ -96,15 +96,20 @@ class TestReadSheetWithServiceAccount:
         mock_files = MagicMock()
         mock_drive = MagicMock()
         
-        # Mock worksheet.get_all_values (not get_all_records)
-        mock_data = [
-            ['header1', 'header2'],  # Headers
-            ['value1', 'value3'],    # Row 1
-            ['value2', 'value4']     # Row 2
-        ]
-        mock_worksheet.get_all_values.return_value = mock_data
+        # Mock spreadsheet.values_batch_get
+        mock_data = {
+            "valueRanges": [{
+                "values": [
+                    ['header1', 'header2'],  # Headers
+                    ['value1', 'value3'],    # Row 1
+                    ['value2', 'value4']     # Row 2
+                ]
+            }]
+        }
+        mock_sheet.values_batch_get.return_value = mock_data
         mock_worksheet.id = 123
-        mock_sheet.get_worksheet.return_value = mock_worksheet
+        mock_worksheet.title = "Test Worksheet"
+        mock_sheet.worksheets.return_value = [mock_worksheet]
         mock_client.open_by_key.return_value = mock_sheet
         mock_authorize.return_value = mock_client
 
@@ -138,8 +143,9 @@ class TestReadSheetWithServiceAccount:
         mock_credentials.assert_called_once()
         mock_authorize.assert_called_once()
         mock_client.open_by_key.assert_called_once_with(PUBLIC_SHEET_ID)
-        mock_sheet.get_worksheet.assert_called_once_with(0)
-        mock_worksheet.get_all_values.assert_called_once()
+        mock_sheet.worksheets.assert_called_once()
+        # Expect values_batch_get to have been called with a range consisting of the quoted worksheet title
+        mock_sheet.values_batch_get.assert_called_once_with(["'Test Worksheet'"])
 
     def test_without_service_account_credentials(self):
         """Test reading a sheet without service account credentials."""
@@ -219,11 +225,11 @@ class TestReadSheetWithServiceAccount:
     @patch('gspread.authorize')
     @patch('google.oauth2.service_account.Credentials.from_service_account_info')
     def test_worksheet_not_found(self, mock_credentials, mock_authorize, mock_create_requests_session, mock_build, mock_env_with_credentials):
-        """Test handling of worksheet not found error."""
+        """Test handling of missing worksheet."""
         # Mock the gspread client
         mock_client = MagicMock()
         mock_sheet = MagicMock()
-        mock_sheet.get_worksheet.side_effect = WorksheetNotFound("Worksheet not found")
+        mock_sheet.worksheets.return_value = []
         mock_client.open_by_key.return_value = mock_sheet
         mock_authorize.return_value = mock_client
 
@@ -236,7 +242,7 @@ class TestReadSheetWithServiceAccount:
         
         # Verify the mocks were called correctly
         mock_client.open_by_key.assert_called_once_with(PUBLIC_SHEET_ID)
-        mock_sheet.get_worksheet.assert_called_once_with(0)
+        mock_sheet.worksheets.assert_called_once()
 
     @patch('hca_validation.entry_sheet_validator.validate_sheet.create_requests_session')
     @patch('gspread.authorize')
@@ -268,7 +274,7 @@ class TestReadSheetWithServiceAccount:
         # Mock the gspread client
         mock_client = MagicMock()
         mock_sheet = MagicMock()
-        mock_sheet.get_worksheet.side_effect = Exception("Exception")
+        mock_sheet.worksheets.side_effect = Exception("Exception")
         mock_client.open_by_key.return_value = mock_sheet
         mock_authorize.return_value = mock_client
 
@@ -281,7 +287,7 @@ class TestReadSheetWithServiceAccount:
         
         # Verify the mocks were called correctly
         mock_client.open_by_key.assert_called_once_with(PUBLIC_SHEET_ID)
-        mock_sheet.get_worksheet.assert_called_once_with(0)
+        mock_sheet.worksheets.assert_called_once()
 
 
 class TestValidateGoogleSheet:
