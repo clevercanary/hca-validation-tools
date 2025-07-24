@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 from enum import Enum
+import re
 import pandas as pd
 import sys
 import time
@@ -431,18 +432,30 @@ def normalize_dataframe_values(df: pd.DataFrame, schemaview: SchemaView, class_n
         slot.name: slot for slot in schemaview.class_induced_slots(class_name)
     }
 
-    def parse_list(value):
-        return [item.strip() for item in value.split(";")] if value.strip() else []
+    # An integer should consist of an optional negative sign, followed by either a nonzero number of non-seperated digits,
+    # or 1-3 digits followed by a nonzero number of comma-separated three-digit groups
+    int_re = re.compile(r"^-?(?:\d+|\d{1,3}(?:,\d{3})+)$")
+    
+    def parse_int(value):
+        if int_re.fullmatch(value) is None:
+            return value
+        return int(value.replace(",", ""))
+
+    def parse_list(value, parse_item):
+        return [parse_item(item.strip()) for item in value.split(";")] if value.strip() else []
 
     def map_column(name):
         # Get slot info from schema if available
         slot = class_slots_by_name.get(name)
         
         # Determine how to parse a non-empty value in this column
-        parse_value = parse_list if slot is not None and slot.multivalued else None
+        parse_value = parse_int if slot is not None and slot.range == "integer" else lambda v: v
+        if slot is not None and slot.multivalued:
+            parse_item = parse_value
+            parse_value = lambda v: parse_list(v, parse_item)
 
         # Map over the column, converting whitespace-only value to None and parsing other values where applicable
-        return df[name].map(lambda value: None if value.strip() == "" else value if parse_value is None else parse_value(value))
+        return df[name].map(lambda value: None if value.strip() == "" else parse_value(value))
 
     return pd.DataFrame({
         name: map_column(name)
