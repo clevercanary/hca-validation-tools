@@ -42,6 +42,9 @@ SAMPLE_SHEET_DATA_WITH_CASTS = pd.DataFrame({
     'contact_email': ['', '', '', '', "foo@example.com", '   ', 'bar@example.com'],
     'study_pi': ['', '', '', '', 'Foo', 'Bar; Baz', '']
 })
+SAMPLE_SHEET_DATA_WITH_INTEGERS = pd.DataFrame({
+    'cell_number_loaded': ['', '', '', '', '1', '-23', '456', '7890', '1,234', '-56,789', '123,456', '78,901,234', '56,78', '9,012345']
+})
 SAMPLE_SHEET_DATA_WITH_DUPLICATE_IDS = pd.DataFrame({
     'dataset_id': ['', '', '', '', 'foo', 'bar', 'foo', '', '', 'baz', 'baz', 'baz'],
     # This column is required to prevent the empty IDs from being treated as the end of the data
@@ -54,7 +57,18 @@ SAMPLE_SHEET_DATA_WITH_CASTS_EXPECTED_NORMALIZATION = [
     {"contact_email": None, "study_pi": ["Bar", "Baz"]},
     {"contact_email": "bar@example.com", "study_pi": None},
 ]
-
+SAMPLE_SHEET_DATA_WITH_INTEGERS_EXPECTED_NORMALIZATION = [
+    {"cell_number_loaded": 1},
+    {"cell_number_loaded": -23},
+    {"cell_number_loaded": 456},
+    {"cell_number_loaded": 7890},
+    {"cell_number_loaded": 1234},
+    {"cell_number_loaded": -56789},
+    {"cell_number_loaded": 123456},
+    {"cell_number_loaded": 78901234},
+    {"cell_number_loaded": "56,78"},
+    {"cell_number_loaded": "9,012345"},
+]
 
 
 class TestReadSheetWithServiceAccount:
@@ -293,8 +307,50 @@ class TestReadSheetWithServiceAccount:
 class TestValidateGoogleSheet:
     """Tests for the validate_google_sheet function."""
 
-    def _test_service_account_access_helper(self, mock_read_service_account, *, bionetwork=None, sheet_data=SAMPLE_SHEET_DATA):
+    def _test_service_account_access_helper(
+        self,
+        mock_read_service_account,
+        *,
+        bionetwork=None,
+        sheet_data=None,
+        datasets_sheet_data=None,
+        donors_sheet_data=None,
+        samples_sheet_data=None
+    ):
         """Helper method for testing validation with service account access."""
+
+        if datasets_sheet_data is None:
+            datasets_sheet_data = SAMPLE_SHEET_DATA if sheet_data is None else sheet_data
+        if samples_sheet_data is not None and donors_sheet_data is None:
+            donors_sheet_data = SAMPLE_SHEET_DATA
+        
+        worksheets = [
+            WorksheetInfo(
+                data=datasets_sheet_data,
+                worksheet_id=123,
+                source_columns=list(datasets_sheet_data.columns),
+                source_rows_start_index=1
+            )
+        ]
+        if donors_sheet_data is not None:
+            worksheets.append(
+                WorksheetInfo(
+                    data=donors_sheet_data,
+                    worksheet_id=456,
+                    source_columns=list(donors_sheet_data.columns),
+                    source_rows_start_index=1
+                )
+            )
+        if samples_sheet_data is not None:
+            worksheets.append(
+                WorksheetInfo(
+                    data=samples_sheet_data,
+                    worksheet_id=789,
+                    source_columns=list(samples_sheet_data.columns),
+                    source_rows_start_index=1
+                )
+            )
+
         # Mock successful service account read
         mock_read_service_account.return_value = SpreadsheetInfo(
             spreadsheet_metadata=SpreadsheetMetadata(
@@ -303,14 +359,7 @@ class TestValidateGoogleSheet:
                 last_updated_by="foo",
                 last_updated_email="foo@example.com"
             ),
-            worksheets=[
-                WorksheetInfo(
-                    data=sheet_data,
-                    worksheet_id=123,
-                    source_columns=list(sheet_data.columns),
-                    source_rows_start_index=1
-                )
-            ]
+            worksheets=worksheets
         )
 
         # Create a mock error handler to capture validation errors
@@ -361,6 +410,21 @@ class TestValidateGoogleSheet:
         self._test_service_account_access_helper(mock_read_service_account, sheet_data=SAMPLE_SHEET_DATA_WITH_CASTS)
         # Confirm that values were converted as expected
         assert validated_dicts == SAMPLE_SHEET_DATA_WITH_CASTS_EXPECTED_NORMALIZATION
+
+    @patch('hca_validation.validator.validate')
+    @patch('hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account')
+    def test_int_normalization_before_validation(self, mock_read_service_account, mock_validate):
+        """Test normalization of integer fields passed to the validation function."""
+        # Store dicts that the validation function is called with
+        validated_dicts = []
+        def save_data(data, class_name):
+            if class_name.endswith("Sample"): validated_dicts.append(data)
+            return DEFAULT
+        mock_validate.side_effect = save_data
+        # Validate the mock sheet
+        self._test_service_account_access_helper(mock_read_service_account, samples_sheet_data=SAMPLE_SHEET_DATA_WITH_INTEGERS)
+        # Confirm that values were converted as expected
+        assert validated_dicts == SAMPLE_SHEET_DATA_WITH_INTEGERS_EXPECTED_NORMALIZATION
 
     @patch('hca_validation.validator.validate')
     @patch('hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account')
