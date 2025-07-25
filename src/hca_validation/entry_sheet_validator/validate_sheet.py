@@ -455,7 +455,8 @@ def normalize_dataframe_values(df: pd.DataFrame, schemaview: SchemaView, class_n
             parse_value = lambda v: parse_list(v, parse_item)
 
         # Map over the column, converting whitespace-only value to None and parsing other values where applicable
-        return df[name].map(lambda value: None if value.strip() == "" else parse_value(value))
+        # Use the Series constructor with a list comprehension to ensure that values are put directly into an object series and can't be cast by Pandas
+        return pd.Series([None if value.strip() == "" else parse_value(value) for value in df[name]], dtype="object", index=df.index)
 
     return pd.DataFrame({
         name: map_column(name)
