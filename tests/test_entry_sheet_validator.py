@@ -43,7 +43,14 @@ SAMPLE_SHEET_DATA_WITH_CASTS = pd.DataFrame({
     'study_pi': ['', '', '', '', 'Foo', 'Bar; Baz', '']
 })
 SAMPLE_SHEET_DATA_WITH_INTEGERS = pd.DataFrame({
-    'cell_number_loaded': ['', '', '', '', '1', '-23', '456', '7890', '1,234', '-56,789', '123,456', '78,901,234', '56,78', '9,012345']
+    'cell_number_loaded': ['', '', '', '', '1', '-23', '456', '', '7890', '1,234', '-56,789', '123,456', '78,901,234', '56,78', '9,012345'],
+    # Required to prevent the empty value above from being treated as the end of the data
+    'sample_id': ['', '', '', '', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k']
+})
+SAMPLE_SHEET_DATA_WITH_VALID_AND_MISSING_INTEGERS = pd.DataFrame({
+    'cell_number_loaded': ['', '', '', '', '1', '-23', '', '7890'],
+    # Required to prevent the empty value above from being treated as the end of the data
+    'sample_id': ['', '', '', '', 'a', 'b', 'c', 'd']
 })
 SAMPLE_SHEET_DATA_WITH_DUPLICATE_IDS = pd.DataFrame({
     'dataset_id': ['', '', '', '', 'foo', 'bar', 'foo', '', '', 'baz', 'baz', 'baz'],
@@ -58,16 +65,23 @@ SAMPLE_SHEET_DATA_WITH_CASTS_EXPECTED_NORMALIZATION = [
     {"contact_email": "bar@example.com", "study_pi": None},
 ]
 SAMPLE_SHEET_DATA_WITH_INTEGERS_EXPECTED_NORMALIZATION = [
-    {"cell_number_loaded": 1},
-    {"cell_number_loaded": -23},
-    {"cell_number_loaded": 456},
-    {"cell_number_loaded": 7890},
-    {"cell_number_loaded": 1234},
-    {"cell_number_loaded": -56789},
-    {"cell_number_loaded": 123456},
-    {"cell_number_loaded": 78901234},
-    {"cell_number_loaded": "56,78"},
-    {"cell_number_loaded": "9,012345"},
+    {"sample_id": "a", "cell_number_loaded": 1},
+    {"sample_id": "b", "cell_number_loaded": -23},
+    {"sample_id": "c", "cell_number_loaded": 456},
+    {"sample_id": "d", "cell_number_loaded": None},
+    {"sample_id": "e", "cell_number_loaded": 7890},
+    {"sample_id": "f", "cell_number_loaded": 1234},
+    {"sample_id": "g", "cell_number_loaded": -56789},
+    {"sample_id": "h", "cell_number_loaded": 123456},
+    {"sample_id": "i", "cell_number_loaded": 78901234},
+    {"sample_id": "j", "cell_number_loaded": "56,78"},
+    {"sample_id": "k", "cell_number_loaded": "9,012345"},
+]
+SAMPLE_SHEET_DATA_WITH_VALID_AND_MISSING_INTEGERS_EXPECTED_NORMALIZATION = [
+    {"sample_id": "a", "cell_number_loaded": 1},
+    {"sample_id": "b", "cell_number_loaded": -23},
+    {"sample_id": "c", "cell_number_loaded": None},
+    {"sample_id": "d", "cell_number_loaded": 7890},
 ]
 
 
@@ -425,6 +439,21 @@ class TestValidateGoogleSheet:
         self._test_service_account_access_helper(mock_read_service_account, samples_sheet_data=SAMPLE_SHEET_DATA_WITH_INTEGERS)
         # Confirm that values were converted as expected
         assert validated_dicts == SAMPLE_SHEET_DATA_WITH_INTEGERS_EXPECTED_NORMALIZATION
+
+    @patch('hca_validation.validator.validate')
+    @patch('hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account')
+    def test_valid_and_missing_int_normalization_before_validation(self, mock_read_service_account, mock_validate):
+        """Test normalization of integer fields passed to the validation function, with only valid and missing integers."""
+        # Store dicts that the validation function is called with
+        validated_dicts = []
+        def save_data(data, class_name):
+            if class_name.endswith("Sample"): validated_dicts.append(data)
+            return DEFAULT
+        mock_validate.side_effect = save_data
+        # Validate the mock sheet
+        self._test_service_account_access_helper(mock_read_service_account, samples_sheet_data=SAMPLE_SHEET_DATA_WITH_VALID_AND_MISSING_INTEGERS)
+        # Confirm that values were converted as expected
+        assert validated_dicts == SAMPLE_SHEET_DATA_WITH_VALID_AND_MISSING_INTEGERS_EXPECTED_NORMALIZATION
 
     @patch('hca_validation.validator.validate')
     @patch('hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account')
