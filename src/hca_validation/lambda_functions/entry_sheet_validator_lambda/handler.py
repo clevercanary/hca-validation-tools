@@ -54,7 +54,7 @@ ERROR_TO_STATUS: dict[str, HTTPStatus] = {
 }
 
 
-def extract_validation_errors(sheet_id: str, bionetwork: Optional[str] = None) -> Tuple[SheetValidationResult, List[SheetErrorInfo], int]:
+def extract_validation_errors(sheet_id: str, bionetwork: Optional[str] = None) -> Tuple[SheetValidationResult, int]:
     """
     Extract validation errors from a Google Sheet.
     
@@ -66,20 +66,12 @@ def extract_validation_errors(sheet_id: str, bionetwork: Optional[str] = None) -
         Tuple containing (SheetValidationResult, list of validation error objects, http_status_code)
         where http_status_code is the appropriate HTTP status code (200, 400, 401, 404, etc.)
     """
-    # Create a list to store validation errors
-    validation_errors: List[SheetErrorInfo] = []
-    
-    # Use a custom validation handler to capture errors
-    def validation_handler(error_info: SheetErrorInfo):
-        validation_errors.append(error_info)
     
     # Run the validation with our custom handler
     try:
-        # Call the validate_google_sheet function with our error handler
-        # bionetwork is passed through but not yet used downstream.
+        # Call the validate_google_sheet function
         validation_result = validate_google_sheet(
             sheet_id,
-            error_handler=validation_handler,
             bionetwork=bionetwork,
         )
         error_code = validation_result.error_code
@@ -95,36 +87,34 @@ def extract_validation_errors(sheet_id: str, bionetwork: Optional[str] = None) -
     except ValueError as ve:
         # Guard violations (e.g., missing required params) → 400 Bad Request
         error_msg = str(ve)
-        validation_errors.append(
-            SheetErrorInfo(entity_type=None, worksheet_id=None, message=error_msg)
-        )
+        error_info = SheetErrorInfo(entity_type=None, worksheet_id=None, message=error_msg)
         return (
             SheetValidationResult(
                 successful=False,
                 spreadsheet_metadata=None,
                 error_code="bad_request",
-                summary=make_summary_without_entities(len(validation_errors)),
+                summary=make_summary_without_entities(1),
+                errors=[error_info]
             ),
-            validation_errors,
             HTTPStatus.BAD_REQUEST.value,
         )
     
     except Exception as e:
         # If there's an error in the validation process itself
         error_msg = f"Error in validation process: {str(e)}"
-        validation_errors.append(SheetErrorInfo(entity_type=None, worksheet_id=None, message=error_msg))
+        error_info = SheetErrorInfo(entity_type=None, worksheet_id=None, message=error_msg)
         return (
             SheetValidationResult(
                 successful=False,
                 spreadsheet_metadata=None,
                 error_code="internal_error",
-                summary=make_summary_without_entities(len(validation_errors))
+                summary=make_summary_without_entities(1),
+                errors=[error_info]
             ),
-            validation_errors,
             500
         )
     
-    return validation_result, validation_errors, http_status_code
+    return validation_result, http_status_code
 
 
 def get_memory_usage():
@@ -205,7 +195,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         logger.info(f"Memory usage before validation: {pre_validation_memory}")
         
         # Extract validation errors using the entry sheet validator
-        validation_result, validation_errors, http_status_code = extract_validation_errors(sheet_id, bionetwork)
+        validation_result, http_status_code = extract_validation_errors(sheet_id, bionetwork)
         spreadsheet_metadata = validation_result.spreadsheet_metadata
         
         # Log memory usage after validation
@@ -222,8 +212,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 "by": spreadsheet_metadata.last_updated_by,
                 "by_email": spreadsheet_metadata.last_updated_email
             },
-            'errors': [asdict(e) for e in validation_errors],
-            'valid': len(validation_errors) == 0,
+            'errors': [asdict(e) for e in validation_result.errors],
+            'valid': len(validation_result.errors) == 0,
             'error_code': validation_result.error_code,
             'summary': validation_result.summary,
             'memory_usage': {

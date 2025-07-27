@@ -84,6 +84,7 @@ class SheetValidationResult:
     spreadsheet_metadata: Optional[SpreadsheetMetadata]
     error_code: Optional[str]
     summary: Mapping[str, int | None]
+    errors: List[SheetErrorInfo]
 
 # Custom sentinel value used to detect missing parameters
 class MissingSentinel(Enum):
@@ -474,32 +475,32 @@ def handle_validation_error(
         validation_error: ValidationError,
         *,
         validation_summary: dict[str, int],
+        validation_errors_list: List[SheetErrorInfo],
         entity_type: str,
         sheet_info: WorksheetInfo,
-        error_handler: Optional[Callable[[SheetErrorInfo], None]],
         row_index: int | MissingSentinel = MISSING,
         row_id: Optional[Any] | MissingSentinel = MISSING
 ):
     for error in validation_error.errors():
         # Update error count
         validation_summary["error_count"] += 1
-        # Call error handler if provided
-        if error_handler:
-            # Use row index from error if possible
-            error_row_index = error.get("ctx", {}).get("row_index", row_index)
-            if error_row_index is MISSING: raise ValueError(f"No row index provided for {entity_type} error {error}")
-            # Use row ID from error if possible
-            error_row_id = error.get("ctx", {}).get("row_id", row_id)
-            if error_row_id is MISSING: raise ValueError(f"No row ID provided for {entity_type} error {error}")
-            # Get field name if available
-            error_column_name = None if len(error["loc"]) == 0 else error["loc"][0]
-            # Get A1 if possible
-            try:
-                error_a1 = sheet_info.get_a1(error_row_index, error_column_name)
-            except ValueError:
-                error_a1 = None
-            # Create error info
-            error_info = SheetErrorInfo(
+        
+        # Use row index from error if possible
+        error_row_index = error.get("ctx", {}).get("row_index", row_index)
+        if error_row_index is MISSING: raise ValueError(f"No row index provided for {entity_type} error {error}")
+        # Use row ID from error if possible
+        error_row_id = error.get("ctx", {}).get("row_id", row_id)
+        if error_row_id is MISSING: raise ValueError(f"No row ID provided for {entity_type} error {error}")
+        # Get field name if available
+        error_column_name = None if len(error["loc"]) == 0 else error["loc"][0]
+        # Get A1 if possible
+        try:
+            error_a1 = sheet_info.get_a1(error_row_index, error_column_name)
+        except ValueError:
+            error_a1 = None
+        # Save error info to provided list
+        validation_errors_list.append(
+            SheetErrorInfo(
                 entity_type=entity_type,
                 worksheet_id=sheet_info.worksheet_id,
                 message=error["msg"],
@@ -509,14 +510,12 @@ def handle_validation_error(
                 primary_key=error_row_id,
                 input=error["input"]
             )
-            # Call handler
-            error_handler(error_info)
+        )
 
 def validate_google_sheet(
     sheet_id: str,
     *,
     entity_types: List[str] = default_entity_types,
-    error_handler: Optional[Callable[[SheetErrorInfo], None]] = None,
     bionetwork: Optional[str] = None,
 ) -> SheetValidationResult:
     """
@@ -526,7 +525,6 @@ def validate_google_sheet(
     Args:
         sheet_id: The ID of the Google Sheet (required)
         entity_types: List of entity types to validate. Determines which worksheets are read and which schema is used for each.
-        error_handler: Optional callback ``Callable[[SheetErrorInfo], None]`` for handling validation errors externally.
         bionetwork: Optional string identifying the biological network context (reserved; currently unused).
         
     Returns:
@@ -581,18 +579,17 @@ def validate_google_sheet(
         logger.warning(f"Sheet access failed with error code: {sheet_read_result.error_code}")
         
         logger.warning(f"{error_msg}")
-        if error_handler:
-            error_info = SheetErrorInfo(
-                entity_type=None,
-                worksheet_id=sheet_read_result.worksheet_id,
-                message=error_msg
-            )
-            error_handler(error_info)
+        error_info = SheetErrorInfo(
+            entity_type=None,
+            worksheet_id=sheet_read_result.worksheet_id,
+            message=error_msg
+        )
         return SheetValidationResult(
             successful=False,
             spreadsheet_metadata=sheet_read_result.spreadsheet_metadata,
             error_code=sheet_read_result.error_code,
-            summary=make_summary_without_entities(1, entity_types)
+            summary=make_summary_without_entities(1, entity_types),
+            errors=[error_info]
         )
     
     # Each item is a dataframe of rows to validate, with an index containing the original 1-based indices of the rows
@@ -646,18 +643,17 @@ def validate_google_sheet(
         if not row_indices:
             error_msg = f"No data found to validate starting from {entity_type} row 6."
             logger.warning(error_msg)
-            if error_handler:
-                error_info = SheetErrorInfo(
-                    entity_type=entity_type,
-                    worksheet_id=sheet_info.worksheet_id,
-                    message=error_msg
-                )
-                error_handler(error_info)
+            error_info = SheetErrorInfo(
+                entity_type=entity_type,
+                worksheet_id=sheet_info.worksheet_id,
+                message=error_msg
+            )
             return SheetValidationResult(
                 successful=False,
                 spreadsheet_metadata=sheet_read_result.spreadsheet_metadata,
                 error_code='no_data',
-                summary=make_summary_without_entities(1, entity_types)
+                summary=make_summary_without_entities(1, entity_types),
+                errors=[error_info]
             )
         
         logger.info(f"Found {len(row_indices)} {entity_type} rows to validate.")
@@ -674,6 +670,9 @@ def validate_google_sheet(
         **{f"{entity_type}_count": len(rows_df) for entity_type, rows_df in zip(entity_types, rows_to_validate_per_entity_type)},
         "error_count": 0
     }
+
+    # Initialize list of validation errors
+    validation_errors = []
 
     all_valid = True
 
@@ -694,9 +693,9 @@ def validate_google_sheet(
             handle_validation_error(
                 uniqueness_validation_error,
                 validation_summary=validation_summary,
+                validation_errors_list=validation_errors,
                 entity_type=entity_type,
-                sheet_info=sheet_info,
-                error_handler=error_handler
+                sheet_info=sheet_info
             )
         # Validate each row
         for row_index, row in rows_to_validate.iterrows():
@@ -715,9 +714,9 @@ def validate_google_sheet(
                     handle_validation_error(
                         validation_error,
                         validation_summary=validation_summary,
+                        validation_errors_list=validation_errors,
                         entity_type=entity_type,
                         sheet_info=sheet_info,
-                        error_handler=error_handler,
                         row_index=row_index,
                         row_id=row_primary_key
                     )
@@ -725,16 +724,16 @@ def validate_google_sheet(
                 all_valid_in_worksheet = False
                 # Update error count
                 validation_summary["error_count"] += 1
-                # Call error handler for exceptions if provided
-                if error_handler:
-                    error_info = SheetErrorInfo(
+                # Store error info
+                validation_errors.append(
+                    SheetErrorInfo(
                         entity_type=entity_type,
                         worksheet_id=sheet_info.worksheet_id,
                         message=str(e),
                         row=row_index,
                         primary_key=row_primary_key
                     )
-                    error_handler(error_info)
+                )
 
         if all_valid_in_worksheet:
             logger.info(f"All {len(rows_to_validate)} {entity_type} rows are valid!")
@@ -751,7 +750,8 @@ def validate_google_sheet(
             successful=True,
             spreadsheet_metadata=sheet_read_result.spreadsheet_metadata,
             error_code=None,
-            summary=validation_summary
+            summary=validation_summary,
+            errors=validation_errors
         )
     else:
         logger.warning(f"Validation found errors in some of the {len(entity_types)} entity types.")
@@ -759,7 +759,8 @@ def validate_google_sheet(
             successful=False,
             spreadsheet_metadata=sheet_read_result.spreadsheet_metadata,
             error_code='validation_error',
-            summary=validation_summary
+            summary=validation_summary,
+            errors=validation_errors
         )
 
 
