@@ -492,7 +492,7 @@ class TestValidateGoogleSheet:
         # Verify service account method was used
         mock_read_service_account.assert_called_once_with(PUBLIC_SHEET_ID, [0, 1, 2])
         
-        # Verify that an error was reported via the error handler
+        # Verify that an error was reported
         assert len(validation_result.errors) > 0
         assert any("access" in error.message.lower() for error in validation_result.errors)
         

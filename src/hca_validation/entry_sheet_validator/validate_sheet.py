@@ -525,7 +525,6 @@ def validate_google_sheet(
     Args:
         sheet_id: The ID of the Google Sheet (required)
         entity_types: List of entity types to validate. Determines which worksheets are read and which schema is used for each.
-        error_handler: Optional callback ``Callable[[SheetErrorInfo], None]`` for handling validation errors externally.
         bionetwork: Optional string identifying the biological network context (reserved; currently unused).
         
     Returns:
