@@ -21,6 +21,7 @@ from gspread.exceptions import SpreadsheetNotFound, WorksheetNotFound, APIError
 from hca_validation.entry_sheet_validator.validate_sheet import (
     ReadErrorSheetInfo,
     SheetErrorInfo,
+    SheetValidationResult,
     SpreadsheetInfo,
     SpreadsheetMetadata,
     WorksheetInfo,
@@ -330,7 +331,7 @@ class TestValidateGoogleSheet:
         datasets_sheet_data=None,
         donors_sheet_data=None,
         samples_sheet_data=None
-    ):
+    ) -> SheetValidationResult:
         """Helper method for testing validation with service account access."""
 
         if datasets_sheet_data is None:
@@ -376,13 +377,8 @@ class TestValidateGoogleSheet:
             worksheets=worksheets
         )
 
-        # Create a mock error handler to capture validation errors
-        errors: List[SheetErrorInfo] = []
-        def mock_error_handler(error):
-            errors.append(error)
-
         # Run validation
-        validation_result = validate_google_sheet(PUBLIC_SHEET_ID, error_handler=mock_error_handler, bionetwork=bionetwork)
+        validation_result = validate_google_sheet(PUBLIC_SHEET_ID, bionetwork=bionetwork)
 
         # Verify service account method was used
         mock_read_service_account.assert_called_once_with(PUBLIC_SHEET_ID, [0, 1, 2])
@@ -396,7 +392,7 @@ class TestValidateGoogleSheet:
         # The mock data is in the format necessary to be parsed, but does not contain actual dataset fields, so we expect the 'validation_error' code
         assert validation_result.error_code == 'validation_error'
         
-        return errors, validation_result
+        return validation_result
 
     @patch('hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account')
     def test_service_account_access(self, mock_read_service_account):
@@ -406,9 +402,9 @@ class TestValidateGoogleSheet:
     @patch('hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account')
     def test_service_account_access_with_bionetwork(self, mock_read_service_account):
         """Test validation using network-specific model."""
-        errors, _ = self._test_service_account_access_helper(mock_read_service_account, bionetwork="gut")
+        result = self._test_service_account_access_helper(mock_read_service_account, bionetwork="gut")
         # We expect there to be an error referencing `doublet_detection`, a field required by the Gut Network model but not by the default model
-        assert any(error.column == "doublet_detection" for error in errors)
+        assert any(error.column == "doublet_detection" for error in result.errors)
 
     @patch('hca_validation.validator.validate')
     @patch('hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account')
@@ -478,9 +474,9 @@ class TestValidateGoogleSheet:
     @patch('hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account')
     def test_duplicate_ids(self, mock_read_service_account):
         """Test validation of duplicate IDs."""
-        errors, _ = self._test_service_account_access_helper(mock_read_service_account, sheet_data=SAMPLE_SHEET_DATA_WITH_DUPLICATE_IDS)
+        result = self._test_service_account_access_helper(mock_read_service_account, sheet_data=SAMPLE_SHEET_DATA_WITH_DUPLICATE_IDS)
         # Based on the mock data, expect five duplicate ID errors, for IDs "foo" and "baz" but not "bar" (which is not duplicated) or None (which is not an ID)
-        duplicate_id_errors = [error for error in errors if error.message.startswith("Duplicate identifier ")]
+        duplicate_id_errors = [error for error in result.errors if error.message.startswith("Duplicate identifier ")]
         assert len(duplicate_id_errors) == 5
         assert all(("foo" in error.message or "baz" in error.message) and not ("bar" in error.message or "None" in error.message) for error in duplicate_id_errors)
 
@@ -490,20 +486,15 @@ class TestValidateGoogleSheet:
         # Mock service account read failure
         mock_read_service_account.return_value = ReadErrorSheetInfo(error_code='auth_missing')
 
-        # Create a mock error handler to capture validation errors
-        errors = []
-        def mock_error_handler(error):
-            errors.append(error)
-
         # Run validation
-        validation_result = validate_google_sheet(PUBLIC_SHEET_ID, error_handler=mock_error_handler)
+        validation_result = validate_google_sheet(PUBLIC_SHEET_ID)
 
         # Verify service account method was used
         mock_read_service_account.assert_called_once_with(PUBLIC_SHEET_ID, [0, 1, 2])
         
         # Verify that an error was reported via the error handler
-        assert len(errors) > 0
-        assert any("access" in error.message.lower() for error in errors)
+        assert len(validation_result.errors) > 0
+        assert any("access" in error.message.lower() for error in validation_result.errors)
         
         # Verify result, metadata, error code, and summary
         assert validation_result.successful is False
@@ -568,14 +559,9 @@ class TestIntegration:
         # Skip test if credentials are still not available
         if not os.environ.get('GOOGLE_SERVICE_ACCOUNT'):
             pytest.skip("No service account credentials available for integration test")
-            
-        # Create a mock error handler to capture validation errors
-        errors = []
-        def mock_error_handler(error):
-            errors.append(error)
-
+        
         # Run validation
-        validation_result = validate_google_sheet(PUBLIC_SHEET_ID, error_handler=mock_error_handler)
+        validation_result = validate_google_sheet(PUBLIC_SHEET_ID)
         
         # Verify that the metadata was returned
         assert validation_result.spreadsheet_metadata is not None
