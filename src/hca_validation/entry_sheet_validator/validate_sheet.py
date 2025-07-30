@@ -485,8 +485,9 @@ def make_summary_without_entities(error_count: int, entity_types: List[str] = de
         "error_count": error_count
     }
 
-def get_fixed_value(entity_type: str, entity_class_definition: ClassDefinition, slot_name: str, value: Hashable) -> Optional[str]:
-    if slot_name not in entity_class_definition.attributes:
+def get_fixed_value(entity_type: str, entity_induced_class: ClassDefinition, slot_name: str, value: Hashable) -> Optional[str]:
+    # We only need to check `attributes`, since an induced class has nothing in `slots`
+    if slot_name not in entity_induced_class.attributes:
         return None
     return sheet_value_fix_map.get((entity_type, slot_name, value))
 
@@ -496,7 +497,7 @@ def handle_validation_error(
         validation_summary: dict[str, int],
         validation_errors_list: List[SheetErrorInfo],
         entity_type: str,
-        entity_class_definition: ClassDefinition,
+        entity_induced_class: ClassDefinition,
         sheet_info: WorksheetInfo,
         row_index: int | MissingSentinel = MISSING,
         row_id: Optional[Any] | MissingSentinel = MISSING
@@ -523,7 +524,7 @@ def handle_validation_error(
         # Get fixed value, if available
         # Limit to string input values to avoid values that consist of the entire input row
         if error_column_name is not None and isinstance(input_value, str):
-            input_fix = get_fixed_value(entity_type, entity_class_definition, error_column_name, input_value)
+            input_fix = get_fixed_value(entity_type, entity_induced_class, error_column_name, input_value)
         else:
             input_fix = None
         # Save error info to provided list
@@ -708,7 +709,7 @@ def validate_google_sheet(
     for entity_type, sheet_info, rows_to_validate_source in zip(entity_types, sheet_read_result.worksheets, rows_to_validate_per_entity_type):
         # Determine schema class to use for validation
         class_name = get_entity_class_name(entity_type, bionetwork)
-        class_definition = schemaview.induced_class(class_name)
+        induced_class = schemaview.induced_class(class_name)
         # Get normalized dataframe of rows to validate
         rows_to_validate = normalize_dataframe_values(
             rows_to_validate_source,
@@ -725,7 +726,7 @@ def validate_google_sheet(
                 validation_summary=validation_summary,
                 validation_errors_list=validation_errors,
                 entity_type=entity_type,
-                entity_class_definition=class_definition,
+                entity_induced_class=induced_class,
                 sheet_info=sheet_info
             )
         # Validate each row
@@ -747,7 +748,7 @@ def validate_google_sheet(
                         validation_summary=validation_summary,
                         validation_errors_list=validation_errors,
                         entity_type=entity_type,
-                        entity_class_definition=class_definition,
+                        entity_induced_class=induced_class,
                         sheet_info=sheet_info,
                         row_index=row_index,
                         row_id=row_primary_key
