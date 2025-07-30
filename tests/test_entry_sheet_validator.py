@@ -58,6 +58,9 @@ SAMPLE_SHEET_DATA_WITH_DUPLICATE_IDS = pd.DataFrame({
     # This column is required to prevent the empty IDs from being treated as the end of the data
     'description': ['', '', '', '', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']
 })
+SAMPLE_SHEET_DATA_WITH_FIXES = pd.DataFrame({
+    'manner_of_death': ['', '', '', '', '1', 'unknown', 'not_applicable', '4', 'not applicable', 'not a manner of death', 'not_applicable'],
+})
 
 # Data to be compared with output values
 SAMPLE_SHEET_DATA_WITH_CASTS_EXPECTED_NORMALIZATION = [
@@ -479,6 +482,20 @@ class TestValidateGoogleSheet:
         duplicate_id_errors = [error for error in result.errors if error.message.startswith("Duplicate identifier ")]
         assert len(duplicate_id_errors) == 5
         assert all(("foo" in error.message or "baz" in error.message) and not ("bar" in error.message or "None" in error.message) for error in duplicate_id_errors)
+
+    @patch('hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account')
+    def test_available_fixes(self, mock_read_service_account):
+        """Test that available fixes are present in error info."""
+        result = self._test_service_account_access_helper(mock_read_service_account, donors_sheet_data=SAMPLE_SHEET_DATA_WITH_FIXES)
+        # Based on the mock data, expect three errors in the manner_of_death column, with appropriate input values and fixed values (or lack thereof)
+        mod_errors = [error for error in result.errors if error.column == "manner_of_death"]
+        assert len(mod_errors) == 3
+        assert mod_errors[0].input == "not_applicable"
+        assert mod_errors[0].input_fix == "not applicable"
+        assert mod_errors[1].input == "not a manner of death"
+        assert mod_errors[1].input_fix is None
+        assert mod_errors[2].input == "not_applicable"
+        assert mod_errors[2].input_fix == "not applicable"
 
     @patch('hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account')
     def test_service_account_access_failure(self, mock_read_service_account):
