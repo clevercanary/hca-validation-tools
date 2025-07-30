@@ -10,7 +10,6 @@ import os
 import json
 from pathlib import Path
 from typing import Any, Mapping, Optional, List, Union, Callable
-from collections.abc import Hashable
 from dataclasses import dataclass
 from pydantic import ValidationError
 from linkml_runtime import SchemaView
@@ -485,7 +484,7 @@ def make_summary_without_entities(error_count: int, entity_types: List[str] = de
         "error_count": error_count
     }
 
-def get_fixed_value(entity_type: str, entity_induced_class: ClassDefinition, slot_name: str, value: Hashable) -> Optional[str]:
+def get_fixed_value(entity_type: str, entity_induced_class: ClassDefinition, slot_name: str, value: str) -> Optional[str]:
     # We only need to check `attributes`, since an induced class has nothing in `slots`
     if slot_name not in entity_induced_class.attributes:
         return None
