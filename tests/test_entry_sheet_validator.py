@@ -28,6 +28,7 @@ from hca_validation.entry_sheet_validator.validate_sheet import (
     read_sheet_with_service_account,
     validate_google_sheet
 )
+from hca_validation.entry_sheet_validator.process_sheet import process_google_sheet
 
 # Test sheet IDs
 PUBLIC_SHEET_ID = "1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY"  # This is a public sheet
@@ -58,6 +59,9 @@ SAMPLE_SHEET_DATA_WITH_DUPLICATE_IDS = pd.DataFrame({
     # This column is required to prevent the empty IDs from being treated as the end of the data
     'description': ['', '', '', '', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']
 })
+SAMPLE_SHEET_DATA_WITH_FIXES = pd.DataFrame({
+    'manner_of_death': ['', '', '', '', '1', 'unknown', 'not_applicable', '4', 'not applicable', 'not a manner of death', 'not_applicable'],
+})
 
 # Data to be compared with output values
 SAMPLE_SHEET_DATA_WITH_CASTS_EXPECTED_NORMALIZATION = [
@@ -84,6 +88,79 @@ SAMPLE_SHEET_DATA_WITH_VALID_AND_MISSING_INTEGERS_EXPECTED_NORMALIZATION = [
     {"sample_id": "c", "cell_number_loaded": None},
     {"sample_id": "d", "cell_number_loaded": 7890},
 ]
+
+
+def _test_validation_with_mock_sheets_response(
+    validation_function,
+    mock_read_service_account,
+    *,
+    bionetwork=None,
+    sheet_data=None,
+    datasets_sheet_data=None,
+    donors_sheet_data=None,
+    samples_sheet_data=None
+) -> SheetValidationResult:
+    """Helper function for testing validation with service account access, for a validation function with a call signature like validate_google_sheet."""
+
+    if datasets_sheet_data is None:
+        datasets_sheet_data = SAMPLE_SHEET_DATA if sheet_data is None else sheet_data
+    if samples_sheet_data is not None and donors_sheet_data is None:
+        donors_sheet_data = SAMPLE_SHEET_DATA
+    
+    worksheets = [
+        WorksheetInfo(
+            data=datasets_sheet_data,
+            worksheet_id=123,
+            source_columns=list(datasets_sheet_data.columns),
+            source_rows_start_index=1
+        )
+    ]
+    if donors_sheet_data is not None:
+        worksheets.append(
+            WorksheetInfo(
+                data=donors_sheet_data,
+                worksheet_id=456,
+                source_columns=list(donors_sheet_data.columns),
+                source_rows_start_index=1
+            )
+        )
+    if samples_sheet_data is not None:
+        worksheets.append(
+            WorksheetInfo(
+                data=samples_sheet_data,
+                worksheet_id=789,
+                source_columns=list(samples_sheet_data.columns),
+                source_rows_start_index=1
+            )
+        )
+
+    # Mock successful service account read
+    mock_read_service_account.return_value = SpreadsheetInfo(
+        spreadsheet_metadata=SpreadsheetMetadata(
+            spreadsheet_title="Test Sheet Title",
+            last_updated_date="2025-06-06T22:43:57.554Z",
+            last_updated_by="foo",
+            last_updated_email="foo@example.com"
+        ),
+        worksheets=worksheets
+    )
+
+    # Run validation
+    validation_result = validation_function(PUBLIC_SHEET_ID, bionetwork=bionetwork)
+
+    # Verify service account method was used
+    mock_read_service_account.assert_called_once_with(PUBLIC_SHEET_ID, [0, 1, 2])
+    
+    # Verify metadata is returned
+    assert validation_result.spreadsheet_metadata
+    assert validation_result.spreadsheet_metadata.spreadsheet_title == "Test Sheet Title"
+    assert validation_result.spreadsheet_metadata.last_updated_date == "2025-06-06T22:43:57.554Z"
+    assert validation_result.spreadsheet_metadata.last_updated_by == "foo"
+    assert validation_result.spreadsheet_metadata.last_updated_email == "foo@example.com"
+    # The mock data is in the format necessary to be parsed, but does not contain actual dataset fields, so we expect the 'validation_error' code
+    assert validation_result.error_code == 'validation_error'
+    
+    return validation_result
 
 
 class TestReadSheetWithServiceAccount:
@@ -322,87 +399,15 @@ class TestReadSheetWithServiceAccount:
 class TestValidateGoogleSheet:
     """Tests for the validate_google_sheet function."""
 
-    def _test_service_account_access_helper(
-        self,
-        mock_read_service_account,
-        *,
-        bionetwork=None,
-        sheet_data=None,
-        datasets_sheet_data=None,
-        donors_sheet_data=None,
-        samples_sheet_data=None
-    ) -> SheetValidationResult:
-        """Helper method for testing validation with service account access."""
-
-        if datasets_sheet_data is None:
-            datasets_sheet_data = SAMPLE_SHEET_DATA if sheet_data is None else sheet_data
-        if samples_sheet_data is not None and donors_sheet_data is None:
-            donors_sheet_data = SAMPLE_SHEET_DATA
-        
-        worksheets = [
-            WorksheetInfo(
-                data=datasets_sheet_data,
-                worksheet_id=123,
-                source_columns=list(datasets_sheet_data.columns),
-                source_rows_start_index=1
-            )
-        ]
-        if donors_sheet_data is not None:
-            worksheets.append(
-                WorksheetInfo(
-                    data=donors_sheet_data,
-                    worksheet_id=456,
-                    source_columns=list(donors_sheet_data.columns),
-                    source_rows_start_index=1
-                )
-            )
-        if samples_sheet_data is not None:
-            worksheets.append(
-                WorksheetInfo(
-                    data=samples_sheet_data,
-                    worksheet_id=789,
-                    source_columns=list(samples_sheet_data.columns),
-                    source_rows_start_index=1
-                )
-            )
-
-        # Mock successful service account read
-        mock_read_service_account.return_value = SpreadsheetInfo(
-            spreadsheet_metadata=SpreadsheetMetadata(
-                spreadsheet_title="Test Sheet Title",
-                last_updated_date="2025-06-06T22:43:57.554Z",
-                last_updated_by="foo",
-                last_updated_email="foo@example.com"
-            ),
-            worksheets=worksheets
-        )
-
-        # Run validation
-        validation_result = validate_google_sheet(PUBLIC_SHEET_ID, bionetwork=bionetwork)
-
-        # Verify service account method was used
-        mock_read_service_account.assert_called_once_with(PUBLIC_SHEET_ID, [0, 1, 2])
-        
-        # Verify metadata is returned
-        assert validation_result.spreadsheet_metadata
-        assert validation_result.spreadsheet_metadata.spreadsheet_title == "Test Sheet Title"
-        assert validation_result.spreadsheet_metadata.last_updated_date == "2025-06-06T22:43:57.554Z"
-        assert validation_result.spreadsheet_metadata.last_updated_by == "foo"
-        assert validation_result.spreadsheet_metadata.last_updated_email == "foo@example.com"
-        # The mock data is in the format necessary to be parsed, but does not contain actual dataset fields, so we expect the 'validation_error' code
-        assert validation_result.error_code == 'validation_error'
-        
-        return validation_result
-
     @patch('hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account')
     def test_service_account_access(self, mock_read_service_account):
         """Test validation with service account access."""
-        self._test_service_account_access_helper(mock_read_service_account)
+        _test_validation_with_mock_sheets_response(validate_google_sheet, mock_read_service_account)
 
     @patch('hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account')
     def test_service_account_access_with_bionetwork(self, mock_read_service_account):
         """Test validation using network-specific model."""
-        result = self._test_service_account_access_helper(mock_read_service_account, bionetwork="gut")
+        result = _test_validation_with_mock_sheets_response(validate_google_sheet, mock_read_service_account, bionetwork="gut")
         # We expect there to be an error referencing `doublet_detection`, a field required by the Gut Network model but not by the default model
         assert any(error.column == "doublet_detection" for error in result.errors)
 
@@ -417,7 +422,7 @@ class TestValidateGoogleSheet:
             return DEFAULT
         mock_validate.side_effect = save_data
         # Validate the mock sheet
-        self._test_service_account_access_helper(mock_read_service_account, sheet_data=SAMPLE_SHEET_DATA_WITH_CASTS)
+        _test_validation_with_mock_sheets_response(validate_google_sheet, mock_read_service_account, sheet_data=SAMPLE_SHEET_DATA_WITH_CASTS)
         # Confirm that values were converted as expected
         assert validated_dicts == SAMPLE_SHEET_DATA_WITH_CASTS_EXPECTED_NORMALIZATION
 
@@ -432,7 +437,7 @@ class TestValidateGoogleSheet:
             return DEFAULT
         mock_validate.side_effect = save_data
         # Validate the mock sheet
-        self._test_service_account_access_helper(mock_read_service_account, samples_sheet_data=SAMPLE_SHEET_DATA_WITH_INTEGERS)
+        _test_validation_with_mock_sheets_response(validate_google_sheet, mock_read_service_account, samples_sheet_data=SAMPLE_SHEET_DATA_WITH_INTEGERS)
         # Confirm that values were converted as expected
         assert validated_dicts == SAMPLE_SHEET_DATA_WITH_INTEGERS_EXPECTED_NORMALIZATION
 
@@ -447,7 +452,7 @@ class TestValidateGoogleSheet:
             return DEFAULT
         mock_validate.side_effect = save_data
         # Validate the mock sheet
-        self._test_service_account_access_helper(mock_read_service_account, samples_sheet_data=SAMPLE_SHEET_DATA_WITH_VALID_AND_MISSING_INTEGERS)
+        _test_validation_with_mock_sheets_response(validate_google_sheet, mock_read_service_account, samples_sheet_data=SAMPLE_SHEET_DATA_WITH_VALID_AND_MISSING_INTEGERS)
         # Confirm that values were converted as expected
         assert validated_dicts == SAMPLE_SHEET_DATA_WITH_VALID_AND_MISSING_INTEGERS_EXPECTED_NORMALIZATION
 
@@ -462,23 +467,29 @@ class TestValidateGoogleSheet:
             return DEFAULT
         mock_validate.side_effect = save_class_name
         # Validate the mock sheet with default dataset model
-        self._test_service_account_access_helper(mock_read_service_account)
+        _test_validation_with_mock_sheets_response(validate_google_sheet, mock_read_service_account)
         # Confirm that correct class was used
         assert last_class_name_info["value"] == "Dataset"
         mock_read_service_account.reset_mock()
         # Validate the mock sheet with Gut Network dataset model
-        self._test_service_account_access_helper(mock_read_service_account, bionetwork="gut")
+        _test_validation_with_mock_sheets_response(validate_google_sheet, mock_read_service_account, bionetwork="gut")
         # Confirm that correct class was used
         assert last_class_name_info["value"] == "GutDataset"
 
     @patch('hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account')
     def test_duplicate_ids(self, mock_read_service_account):
         """Test validation of duplicate IDs."""
-        result = self._test_service_account_access_helper(mock_read_service_account, sheet_data=SAMPLE_SHEET_DATA_WITH_DUPLICATE_IDS)
+        result = _test_validation_with_mock_sheets_response(validate_google_sheet, mock_read_service_account, sheet_data=SAMPLE_SHEET_DATA_WITH_DUPLICATE_IDS)
         # Based on the mock data, expect five duplicate ID errors, for IDs "foo" and "baz" but not "bar" (which is not duplicated) or None (which is not an ID)
         duplicate_id_errors = [error for error in result.errors if error.message.startswith("Duplicate identifier ")]
         assert len(duplicate_id_errors) == 5
         assert all(("foo" in error.message or "baz" in error.message) and not ("bar" in error.message or "None" in error.message) for error in duplicate_id_errors)
+
+    @patch('hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account')
+    def test_available_fixes(self, mock_read_service_account):
+        """Test that validate_google_sheet does not provide fixes on its own."""
+        result = _test_validation_with_mock_sheets_response(validate_google_sheet, mock_read_service_account, donors_sheet_data=SAMPLE_SHEET_DATA_WITH_FIXES)
+        assert all(error.input_fix is None for error in result.errors)
 
     @patch('hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account')
     def test_service_account_access_failure(self, mock_read_service_account):
@@ -508,6 +519,24 @@ class TestValidateGoogleSheet:
         # Run validation
         with pytest.raises(ValueError, match="'not-a-bionetwork' is not a valid bionetwork"):
             validate_google_sheet(PUBLIC_SHEET_ID, bionetwork="not-a-bionetwork")
+
+
+class TestProcessGoogleSheet:
+    """Tests for the process_google_sheet function."""
+
+    @patch('hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account')
+    def test_available_fixes(self, mock_read_service_account):
+        """Test that available fixes are present in error info."""
+        result = _test_validation_with_mock_sheets_response(process_google_sheet, mock_read_service_account, donors_sheet_data=SAMPLE_SHEET_DATA_WITH_FIXES)
+        # Based on the mock data, expect three errors in the manner_of_death column, with appropriate input values and fixed values (or lack thereof)
+        mod_errors = [error for error in result.errors if error.column == "manner_of_death"]
+        assert len(mod_errors) == 3
+        assert mod_errors[0].input == "not_applicable"
+        assert mod_errors[0].input_fix == "not applicable"
+        assert mod_errors[1].input == "not a manner of death"
+        assert mod_errors[1].input_fix is None
+        assert mod_errors[2].input == "not_applicable"
+        assert mod_errors[2].input_fix == "not applicable"
 
 
 # Integration tests that use actual Google Sheets

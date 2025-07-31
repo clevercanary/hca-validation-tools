@@ -10,6 +10,7 @@ import pandas as pd
 from pydantic_core import InitErrorDetails, PydanticCustomError
 
 import hca_validation.schema.generated.core as schema
+from hca_validation.schema_utils import get_class_identifier_name
 
 # Map schema types and bionetworks to their corresponding class names
 schema_classes = {
@@ -30,16 +31,6 @@ schema_classes = {
       "DEFAULT": "Cell"
     }
 }
-
-
-def get_entity_class_name(schema_type: str, bionetwork: Optional[str] = None) -> str:
-    # Validate schema type
-    if schema_type not in schema_classes:
-        raise ValueError(f"Unsupported schema type: {schema_type}. "
-                       f"Supported types are: {', '.join(schema_classes.keys())}")
-    
-    type_classes = schema_classes[schema_type]
-    return type_classes.get(bionetwork, type_classes["DEFAULT"])
 
 
 def validate(data: Dict[str, Any], *, class_name: str) -> Optional[ValidationError]:
@@ -65,13 +56,6 @@ def validate(data: Dict[str, Any], *, class_name: str) -> Optional[ValidationErr
     except ValidationError as e:
         # Return validation error
         return e
-
-
-def get_class_identifier_name(schemaview: SchemaView, class_name: str) -> str:
-    for slot in schemaview.class_induced_slots(class_name):
-        if slot.identifier:
-            return slot.name
-    raise ValueError(f"No identifier slot found for class {class_name}")
 
 
 def validate_id_uniqueness(data: pd.DataFrame, schemaview: SchemaView, class_name: str) -> Optional[ValidationError]:

@@ -14,6 +14,8 @@ from dataclasses import dataclass
 from pydantic import ValidationError
 from linkml_runtime import SchemaView
 
+from .common import default_entity_types
+
 # Import dotenv for loading environment variables
 from dotenv import load_dotenv
 
@@ -76,6 +78,7 @@ class SheetErrorInfo:
     cell: Optional[str] = None
     primary_key: Optional[str] = None
     input: Optional[Any] = None
+    input_fix: Optional[str] = None
 
 @dataclass
 class SheetValidationResult:
@@ -91,9 +94,6 @@ class MissingSentinel(Enum):
     MISSING = 0
 
 MISSING = MissingSentinel.MISSING
-
-# Default list of entity types to validate
-default_entity_types = ["dataset", "donor", "sample"]
 
 # Possible bionetworks that a sheet may be associated with
 allowed_bionetwork_names = [
@@ -417,13 +417,6 @@ def read_sheet_with_service_account(sheet_id, sheet_indices=[0]) -> Union[Spread
         logger.error(f"Traceback: {traceback.format_exc()}")
         return ReadErrorSheetInfo(error_code='api_error', spreadsheet_metadata=spreadsheet_metadata)
 
-def load_schemaview():
-    # Get the schema path
-    module_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    schema_path = os.path.join(module_dir, "schema/core.yaml")
-    # Create a schemaview
-    return SchemaView(schema_path)
-
 def normalize_dataframe_values(df: pd.DataFrame, schemaview: SchemaView, class_name: str) -> pd.DataFrame:
     """
     Normalize a dataframe by dropping columns with empty names and casting types according to the given schema class.
@@ -508,7 +501,9 @@ def handle_validation_error(
                 column=error_column_name,
                 cell=error_a1,
                 primary_key=error_row_id,
-                input=error["input"]
+                input=error["input"],
+                # Leave empty to be potentially populated after the sheet has been fully processed by the validator
+                input_fix=None
             )
         )
 
@@ -525,7 +520,7 @@ def validate_google_sheet(
     Args:
         sheet_id: The ID of the Google Sheet (required)
         entity_types: List of entity types to validate. Determines which worksheets are read and which schema is used for each.
-        bionetwork: Optional string identifying the biological network context (reserved; currently unused).
+        bionetwork: Optional string identifying the biological network context.
         
     Returns:
         SheetValidationResult: Object with fields:
@@ -540,7 +535,8 @@ def validate_google_sheet(
     if bionetwork is not None and bionetwork not in allowed_bionetwork_names:
         raise ValueError(f"'{bionetwork}' is not a valid bionetwork")
 
-    from hca_validation.validator import get_entity_class_name, validate, validate_id_uniqueness
+    from hca_validation.validator import validate, validate_id_uniqueness
+    from hca_validation.schema_utils import load_schemaview, get_entity_class_name
     import logging
     logger = logging.getLogger()
 
