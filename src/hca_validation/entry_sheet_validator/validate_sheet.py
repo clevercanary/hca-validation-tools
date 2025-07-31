@@ -52,6 +52,7 @@ class SpreadsheetMetadata:
     last_updated_date: str
     last_updated_by: str
     last_updated_email: Optional[str]
+    can_edit: bool
 
 @dataclass
 class SpreadsheetInfo:
@@ -360,18 +361,20 @@ def read_sheet_with_service_account(sheet_id, sheet_indices=[0]) -> Union[Spread
 
             # Get the spreadsheet metadata from Drive
             logger.info(f"Attempting to get metadata for spreadsheet with ID: {sheet_id}")
-            file_metadata = drive.files().get(fileId=sheet_id, fields="modifiedTime, lastModifyingUser(displayName, emailAddress)").execute()
+            file_metadata = drive.files().get(fileId=sheet_id, fields="modifiedTime, lastModifyingUser(displayName, emailAddress), capabilities(canModifyContent)").execute()
             last_updated_date = file_metadata["modifiedTime"]
             last_modifying_user = file_metadata.get("lastModifyingUser", {})
             last_updated_by = last_modifying_user.get("displayName", "unknown")
             last_updated_email = last_modifying_user.get("emailAddress") or None
+            can_edit = file_metadata["capabilities"]["canModifyContent"]
             logger.info(f"Successfully got metadata from Drive API")
         
             spreadsheet_metadata = SpreadsheetMetadata(
                 spreadsheet_title=sheet_title,
                 last_updated_date=last_updated_date,
                 last_updated_by=last_updated_by,
-                last_updated_email=last_updated_email
+                last_updated_email=last_updated_email,
+                can_edit=can_edit
             )
 
             # Get all worksheets

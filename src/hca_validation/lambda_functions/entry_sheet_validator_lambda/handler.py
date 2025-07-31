@@ -212,6 +212,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 "by": spreadsheet_metadata.last_updated_by,
                 "by_email": spreadsheet_metadata.last_updated_email
             },
+            'can_edit': None if spreadsheet_metadata is None else spreadsheet_metadata.can_edit,
             'errors': [asdict(e) for e in validation_result.errors],
             'valid': len(validation_result.errors) == 0,
             'error_code': validation_result.error_code,
