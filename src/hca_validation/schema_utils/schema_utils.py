@@ -1,7 +1,7 @@
+import os
 from typing import Optional
 from linkml_runtime import SchemaView
-
-import hca_validation.schema.generated.core as schema
+from linkml_runtime.linkml_model.meta import ClassDefinition
 
 # Map schema types and bionetworks to their corresponding class names
 schema_classes = {
@@ -22,6 +22,14 @@ schema_classes = {
       "DEFAULT": "Cell"
     }
 }
+
+
+def load_schemaview():
+    # Get the schema path
+    module_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    schema_path = os.path.join(module_dir, "schema/core.yaml")
+    # Create a schemaview
+    return SchemaView(schema_path)
 
 
 def get_entity_class_name(schema_type: str, bionetwork: Optional[str] = None) -> str:

@@ -23,8 +23,8 @@ from hca_validation.entry_sheet_validator.validate_sheet import (
     SheetErrorInfo,
     SheetValidationResult,
     make_summary_without_entities,
-    validate_google_sheet,
 )
+from hca_validation.entry_sheet_validator.process_sheet import process_google_sheet
 
 # Configure logging
 logger = logging.getLogger()
@@ -69,8 +69,8 @@ def extract_validation_errors(sheet_id: str, bionetwork: Optional[str] = None) -
     
     # Run the validation with our custom handler
     try:
-        # Call the validate_google_sheet function
-        validation_result = validate_google_sheet(
+        # Call the process_google_sheet function to perform validation and check for fixes
+        validation_result = process_google_sheet(
             sheet_id,
             bionetwork=bionetwork,
         )

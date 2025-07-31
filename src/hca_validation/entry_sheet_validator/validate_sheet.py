@@ -13,7 +13,8 @@ from typing import Any, Mapping, Optional, List, Union, Callable
 from dataclasses import dataclass
 from pydantic import ValidationError
 from linkml_runtime import SchemaView
-from linkml_runtime.linkml_model.meta import ClassDefinition
+
+from .common import default_entity_types
 
 # Import dotenv for loading environment variables
 from dotenv import load_dotenv
@@ -94,9 +95,6 @@ class MissingSentinel(Enum):
 
 MISSING = MissingSentinel.MISSING
 
-# Default list of entity types to validate
-default_entity_types = ["dataset", "donor", "sample"]
-
 # Possible bionetworks that a sheet may be associated with
 allowed_bionetwork_names = [
   "adipose",
@@ -118,17 +116,6 @@ allowed_bionetwork_names = [
   "reproduction",
   "skin",
 ]
-
-# Spreadsheet values to identify possible fixes for
-sheet_value_fix_map = {
-    ("donor", "manner_of_death", "not_applicable"): "not applicable",
-    ("sample", "sample_source", "surgical_donor"): "surgical donor",
-    ("sample", "sample_source", "postmortem_donor"): "postmortem donor",
-    ("sample", "sample_source", "living_organ_donor"): "living organ donor",
-    ("sample", "sample_collection_method", "surgical_resection"): "surgical resection",
-    ("sample", "sample_collection_method", "blood_draw"): "blood draw",
-    ("sample", "sample_collection_method", "body_fluid"): "body fluid",
-}
 
 # Load environment variables from .env file if it exists
 dotenv_path = Path(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))) / '.env'
@@ -430,13 +417,6 @@ def read_sheet_with_service_account(sheet_id, sheet_indices=[0]) -> Union[Spread
         logger.error(f"Traceback: {traceback.format_exc()}")
         return ReadErrorSheetInfo(error_code='api_error', spreadsheet_metadata=spreadsheet_metadata)
 
-def load_schemaview():
-    # Get the schema path
-    module_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    schema_path = os.path.join(module_dir, "schema/core.yaml")
-    # Create a schemaview
-    return SchemaView(schema_path)
-
 def normalize_dataframe_values(df: pd.DataFrame, schemaview: SchemaView, class_name: str) -> pd.DataFrame:
     """
     Normalize a dataframe by dropping columns with empty names and casting types according to the given schema class.
@@ -484,19 +464,12 @@ def make_summary_without_entities(error_count: int, entity_types: List[str] = de
         "error_count": error_count
     }
 
-def get_fixed_value(entity_type: str, entity_induced_class: ClassDefinition, slot_name: str, value: str) -> Optional[str]:
-    # We only need to check `attributes`, since an induced class has nothing in `slots`
-    if slot_name not in entity_induced_class.attributes:
-        return None
-    return sheet_value_fix_map.get((entity_type, slot_name, value))
-
 def handle_validation_error(
         validation_error: ValidationError,
         *,
         validation_summary: dict[str, int],
         validation_errors_list: List[SheetErrorInfo],
         entity_type: str,
-        entity_induced_class: ClassDefinition,
         sheet_info: WorksheetInfo,
         row_index: int | MissingSentinel = MISSING,
         row_id: Optional[Any] | MissingSentinel = MISSING
@@ -518,14 +491,6 @@ def handle_validation_error(
             error_a1 = sheet_info.get_a1(error_row_index, error_column_name)
         except ValueError:
             error_a1 = None
-        # Get input value
-        input_value = error["input"]
-        # Get fixed value, if available
-        # Limit to string input values to avoid values that consist of the entire input row
-        if error_column_name is not None and isinstance(input_value, str):
-            input_fix = get_fixed_value(entity_type, entity_induced_class, error_column_name, input_value)
-        else:
-            input_fix = None
         # Save error info to provided list
         validation_errors_list.append(
             SheetErrorInfo(
@@ -536,8 +501,9 @@ def handle_validation_error(
                 column=error_column_name,
                 cell=error_a1,
                 primary_key=error_row_id,
-                input=input_value,
-                input_fix=input_fix
+                input=error["input"],
+                # Leave empty to be potentially populated after the sheet has been fully processed by the validator
+                input_fix=None
             )
         )
 
@@ -554,7 +520,7 @@ def validate_google_sheet(
     Args:
         sheet_id: The ID of the Google Sheet (required)
         entity_types: List of entity types to validate. Determines which worksheets are read and which schema is used for each.
-        bionetwork: Optional string identifying the biological network context (reserved; currently unused).
+        bionetwork: Optional string identifying the biological network context.
         
     Returns:
         SheetValidationResult: Object with fields:
@@ -570,7 +536,7 @@ def validate_google_sheet(
         raise ValueError(f"'{bionetwork}' is not a valid bionetwork")
 
     from hca_validation.validator import validate, validate_id_uniqueness
-    from hca_validation.schema_utils import get_entity_class_name
+    from hca_validation.schema_utils import load_schemaview, get_entity_class_name
     import logging
     logger = logging.getLogger()
 
@@ -707,9 +673,8 @@ def validate_google_sheet(
     all_valid = True
 
     for entity_type, sheet_info, rows_to_validate_source in zip(entity_types, sheet_read_result.worksheets, rows_to_validate_per_entity_type):
-        # Determine schema class to use for validation
+        # Determine schema class name to use for validation
         class_name = get_entity_class_name(entity_type, bionetwork)
-        induced_class = schemaview.induced_class(class_name)
         # Get normalized dataframe of rows to validate
         rows_to_validate = normalize_dataframe_values(
             rows_to_validate_source,
@@ -726,7 +691,6 @@ def validate_google_sheet(
                 validation_summary=validation_summary,
                 validation_errors_list=validation_errors,
                 entity_type=entity_type,
-                entity_induced_class=induced_class,
                 sheet_info=sheet_info
             )
         # Validate each row
@@ -748,7 +712,6 @@ def validate_google_sheet(
                         validation_summary=validation_summary,
                         validation_errors_list=validation_errors,
                         entity_type=entity_type,
-                        entity_induced_class=induced_class,
                         sheet_info=sheet_info,
                         row_index=row_index,
                         row_id=row_primary_key
