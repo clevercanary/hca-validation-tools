@@ -228,6 +228,9 @@ class TestReadSheetWithServiceAccount:
             "modifiedTime": "2025-06-06T22:43:57.554Z",
             "lastModifyingUser": {
                 "displayName": "foo"
+            },
+            "capabilities": {
+                "canModifyContent": True
             }
         }
         mock_files.get.return_value = mock_get
@@ -238,6 +241,7 @@ class TestReadSheetWithServiceAccount:
         sheet_read_result = read_sheet_with_service_account(PUBLIC_SHEET_ID)
         assert isinstance(sheet_read_result, SpreadsheetInfo)
         assert sheet_read_result.spreadsheet_metadata.spreadsheet_title == "Test Sheet Title"
+        assert sheet_read_result.spreadsheet_metadata.can_edit is True
         sheet_info = sheet_read_result.worksheets[0]
         assert sheet_info.data is not None
         assert isinstance(sheet_info.data, pd.DataFrame)
