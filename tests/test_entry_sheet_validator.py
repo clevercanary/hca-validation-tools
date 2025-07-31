@@ -140,7 +140,8 @@ def _test_validation_with_mock_sheets_response(
             spreadsheet_title="Test Sheet Title",
             last_updated_date="2025-06-06T22:43:57.554Z",
             last_updated_by="foo",
-            last_updated_email="foo@example.com"
+            last_updated_email="foo@example.com",
+            can_edit=False
         ),
         worksheets=worksheets
     )
