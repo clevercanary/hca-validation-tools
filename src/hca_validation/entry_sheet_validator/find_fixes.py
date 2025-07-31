@@ -1,4 +1,3 @@
-import copy
 import dataclasses
 from typing import List, Optional
 from linkml_runtime import SchemaView
