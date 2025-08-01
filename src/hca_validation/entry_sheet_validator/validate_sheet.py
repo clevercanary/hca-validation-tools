@@ -29,6 +29,12 @@ import urllib3
 import requests
 
 @dataclass
+class ApiInstances:
+    """Container for instances of APIs used in the validation process."""
+    gspread: gspread.Client
+    drive: Any
+
+@dataclass
 class WorksheetInfo:
     """Container for Google Sheets worksheet data and metadata."""
     data: pd.DataFrame
@@ -178,78 +184,10 @@ def create_requests_session(credentials: Credentials) -> requests.Session:
     session.mount("https://", requests.adapters.HTTPAdapter(max_retries=retry_cfg))
     return session
 
-def read_worksheets(
-    sheet_id: str,
-    spreadsheet_metadata: SpreadsheetMetadata,
-    spreadsheet: gspread.Spreadsheet,
-    sheet_indices: List[int]
-) -> List[WorksheetInfo]:
-    import logging
-    logger = logging.getLogger(__name__)
-    
-    # Get list of worksheets
-
-    all_worksheets = spreadsheet.worksheets()
-    worksheets: List[gspread.Worksheet] = []
-
-    logger.info(f"Attempting to get worksheets of spreadsheet {sheet_id} at indices: {', '.join(str(i) for i in sheet_indices)}")
-    for sheet_index in sheet_indices:
-        if not sheet_index < len(all_worksheets):
-            logger.error(f"Error accessing Google Sheet with service account: Worksheet index {sheet_index} not found in sheet {sheet_id}")
-            raise SheetReadError(error_code='worksheet_not_found', spreadsheet_metadata=spreadsheet_metadata)
-        worksheets.append(all_worksheets[sheet_index])
-    
-    logger.info(f"Successfully retrieved worksheets")
-
-    # Get data from worksheets
-    
-    logger.info("Retrieving worksheets data...")
-
-    api_result = spreadsheet.values_batch_get([gspread.utils.absolute_range_name(worksheet.title) for worksheet in worksheets])
-
-    worksheets_info = []
-
-    for sheet_index, worksheet, value_range in zip(sheet_indices, worksheets, api_result["valueRanges"]):
-        data = gspread.utils.fill_gaps(value_range.get("values", [[]]))
-         # Convert to DataFrame
-        if len(data) >= 2:
-            logger.info(f"Successfully retrieved data from worksheet index {sheet_index}: {len(data)} rows, {len(data[0]) if data[0] else 0} columns")
-            source_columns = data[0]
-            source_rows_start_index = 1
-            df = pd.DataFrame(data[source_rows_start_index:], columns=source_columns)  # First row as header
-            worksheets_info.append(
-                WorksheetInfo(
-                    data=df,
-                    worksheet_id=worksheet.id,
-                    source_columns=source_columns,
-                    source_rows_start_index=source_rows_start_index
-                )
-            )
-        else:
-            logger.warning(f"Sheet {sheet_id} (index {sheet_index}) appears to be empty")
-            raise SheetReadError(error_code="sheet_data_empty", spreadsheet_metadata=spreadsheet_metadata, worksheet_id=worksheet.id)
-    
-    return worksheets_info
-
-def read_sheet_with_service_account(sheet_id, sheet_indices=[0]) -> SpreadsheetInfo:
-    """
-    Read data from a Google Sheet using a service account for authentication.
-    
-    Args:
-        sheet_id (str): The ID of the Google Sheet to read.
-        sheet_indices (List[int], optional): The indices of the worksheets to read. Defaults to [0].
-        
-    Returns:
-        info: If successful, SpreadsheetInfo object containing list of WorksheetInfo corresponding to
-            the list of sheet indices
-    
-    Raises:
-        SheetReadError containing error code and, if available, sheet title and worksheet ID
-    """
+def init_apis() -> ApiInstances:
     import os
     import json
     import traceback
-    import pandas as pd
     import gspread
     from googleapiclient.discovery import build
     from googleapiclient.errors import HttpError as GoogleHttpError
@@ -296,9 +234,6 @@ def read_sheet_with_service_account(sheet_id, sheet_indices=[0]) -> SpreadsheetI
         logger.error("Check that the Lambda function has the correct permissions to access the secret and that the secret exists.")
         raise SheetReadError(error_code='auth_unresolved')
     
-    # Set up a variable to hold spreadsheet metadata so that it can be referenced if an unexpected type of error occurs after metadata is obtained
-    spreadsheet_metadata = None
-
     try:
         # Parse the service account JSON
         logger.info("Attempting to parse service account JSON...")
@@ -352,10 +287,122 @@ def read_sheet_with_service_account(sheet_id, sheet_indices=[0]) -> SpreadsheetI
             logger.error(f"Error authorizing with Google Drive API: {auth_error}")
             raise SheetReadError(error_code='auth_error')
         
+        return ApiInstances(gspread=gc, drive=drive)
+    
+    except json.JSONDecodeError as json_error:
+        logger.error(f"Invalid JSON format in service account credentials: {json_error}")
+        raise SheetReadError(error_code='auth_invalid_format')
+    except gspread.exceptions.APIError as e:
+        logger.error(f"Google Sheets API error: {e}")
+        raise SheetReadError(
+            error_code='api_error',
+            error_message=f"Received error {e.code} from Google Sheets API: {e.error['message']}"
+        )
+    except GoogleHttpError as e:
+        logger.error(f"Google API error: {e}")
+        raise SheetReadError(
+            error_code="api_error",
+            error_message=f"Received error {e.status_code} from Google API: {e.reason}"
+        )
+    except requests.exceptions.RetryError as e:
+        logger.error(f"Reached maximum configured API retries: {e}")
+        raise SheetReadError(error_code="max_api_retries")
+    except SheetReadError as e:
+        raise e
+    except Exception as e:
+        logger.error(f"Unexpected error initializing APIs with service account: {e}")
+        logger.error(f"Exception type: {type(e).__name__}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        raise SheetReadError(error_code='api_error')
+
+def read_worksheets(
+    sheet_id: str,
+    spreadsheet_metadata: SpreadsheetMetadata,
+    spreadsheet: gspread.Spreadsheet,
+    sheet_indices: List[int]
+) -> List[WorksheetInfo]:
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    # Get list of worksheets
+
+    all_worksheets = spreadsheet.worksheets()
+    worksheets: List[gspread.Worksheet] = []
+
+    logger.info(f"Attempting to get worksheets of spreadsheet {sheet_id} at indices: {', '.join(str(i) for i in sheet_indices)}")
+    for sheet_index in sheet_indices:
+        if not sheet_index < len(all_worksheets):
+            logger.error(f"Error accessing Google Sheet with service account: Worksheet index {sheet_index} not found in sheet {sheet_id}")
+            raise SheetReadError(error_code='worksheet_not_found', spreadsheet_metadata=spreadsheet_metadata)
+        worksheets.append(all_worksheets[sheet_index])
+    
+    logger.info(f"Successfully retrieved worksheets")
+
+    # Get data from worksheets
+    
+    logger.info("Retrieving worksheets data...")
+
+    api_result = spreadsheet.values_batch_get([gspread.utils.absolute_range_name(worksheet.title) for worksheet in worksheets])
+
+    worksheets_info = []
+
+    for sheet_index, worksheet, value_range in zip(sheet_indices, worksheets, api_result["valueRanges"]):
+        data = gspread.utils.fill_gaps(value_range.get("values", [[]]))
+         # Convert to DataFrame
+        if len(data) >= 2:
+            logger.info(f"Successfully retrieved data from worksheet index {sheet_index}: {len(data)} rows, {len(data[0]) if data[0] else 0} columns")
+            source_columns = data[0]
+            source_rows_start_index = 1
+            df = pd.DataFrame(data[source_rows_start_index:], columns=source_columns)  # First row as header
+            worksheets_info.append(
+                WorksheetInfo(
+                    data=df,
+                    worksheet_id=worksheet.id,
+                    source_columns=source_columns,
+                    source_rows_start_index=source_rows_start_index
+                )
+            )
+        else:
+            logger.warning(f"Sheet {sheet_id} (index {sheet_index}) appears to be empty")
+            raise SheetReadError(error_code="sheet_data_empty", spreadsheet_metadata=spreadsheet_metadata, worksheet_id=worksheet.id)
+    
+    return worksheets_info
+
+def read_sheet_with_service_account(sheet_id: str, sheet_indices: List[int] = [0], apis: Optional[ApiInstances] = None) -> SpreadsheetInfo:
+    """
+    Read data from a Google Sheet using a service account for authentication.
+    
+    Args:
+        sheet_id (str): The ID of the Google Sheet to read.
+        sheet_indices (List[int], optional): The indices of the worksheets to read. Defaults to [0].
+        
+    Returns:
+        info: If successful, SpreadsheetInfo object containing list of WorksheetInfo corresponding to
+            the list of sheet indices
+    
+    Raises:
+        SheetReadError containing error code and, if available, sheet title and worksheet ID
+    """
+    import traceback
+    import gspread
+    from googleapiclient.errors import HttpError as GoogleHttpError
+    import logging
+    
+    # Configure logging
+    logger = logging.getLogger(__name__)
+    
+    # If not provided, initialize APIs
+    if apis is None:
+        apis = init_apis()
+
+    # Set up a variable to hold spreadsheet metadata so that it can be referenced if an unexpected type of error occurs after metadata is obtained
+    spreadsheet_metadata = None
+
+    try:
         try:
             # Open the spreadsheet and get the worksheets
             logger.info(f"Attempting to open spreadsheet with ID: {sheet_id}")
-            spreadsheet = gc.open_by_key(sheet_id)
+            spreadsheet = apis.gspread.open_by_key(sheet_id)
             
             # Get the spreadsheet title
             sheet_title = spreadsheet.title
@@ -363,7 +410,7 @@ def read_sheet_with_service_account(sheet_id, sheet_indices=[0]) -> SpreadsheetI
 
             # Get the spreadsheet metadata from Drive
             logger.info(f"Attempting to get metadata for spreadsheet with ID: {sheet_id}")
-            file_metadata = drive.files().get(fileId=sheet_id, fields="modifiedTime, lastModifyingUser(displayName, emailAddress), capabilities(canModifyContent)").execute()
+            file_metadata = apis.drive.files().get(fileId=sheet_id, fields="modifiedTime, lastModifyingUser(displayName, emailAddress), capabilities(canModifyContent)").execute()
             last_updated_date = file_metadata["modifiedTime"]
             last_modifying_user = file_metadata.get("lastModifyingUser", {})
             last_updated_by = last_modifying_user.get("displayName", "unknown")
@@ -410,9 +457,6 @@ def read_sheet_with_service_account(sheet_id, sheet_indices=[0]) -> SpreadsheetI
             logger.error(f"Reached maximum configured API retries: {e}")
             raise SheetReadError(error_code="max_api_retries", spreadsheet_metadata=spreadsheet_metadata)
             
-    except json.JSONDecodeError as json_error:
-        logger.error(f"Invalid JSON format in service account credentials: {json_error}")
-        raise SheetReadError(error_code='auth_invalid_format', spreadsheet_metadata=spreadsheet_metadata)
     except SheetReadError as e:
         raise e
     except Exception as e:
