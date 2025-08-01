@@ -68,7 +68,7 @@ class SpreadsheetInfo:
 
 @dataclass
 class SheetReadError(Exception):
-    """Exception raised when reading a Googe Sheet fails."""
+    """Exception raised when reading a Google Sheet fails."""
     error_code: str
     error_message: Optional[str] = None
     spreadsheet_metadata: Optional[SpreadsheetMetadata] = None
