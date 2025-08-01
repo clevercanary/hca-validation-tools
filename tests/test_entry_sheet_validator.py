@@ -153,7 +153,7 @@ def _test_validation_with_mock_sheets_response(
     validation_result = validation_function(PUBLIC_SHEET_ID, bionetwork=bionetwork)
 
     # Verify service account method was used
-    mock_read_service_account.assert_called_once_with(PUBLIC_SHEET_ID, [0, 1, 2])
+    mock_read_service_account.assert_called_once_with(PUBLIC_SHEET_ID, [0, 1, 2], None)
     
     # Verify metadata is returned
     assert validation_result.spreadsheet_metadata
@@ -509,7 +509,7 @@ class TestValidateGoogleSheet:
         validation_result = validate_google_sheet(PUBLIC_SHEET_ID)
 
         # Verify service account method was used
-        mock_read_service_account.assert_called_once_with(PUBLIC_SHEET_ID, [0, 1, 2])
+        mock_read_service_account.assert_called_once_with(PUBLIC_SHEET_ID, [0, 1, 2], None)
         
         # Verify that an error was reported
         assert len(validation_result.errors) > 0

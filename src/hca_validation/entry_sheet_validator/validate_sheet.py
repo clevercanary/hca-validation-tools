@@ -561,6 +561,8 @@ def validate_google_sheet(
     *,
     entity_types: List[str] = default_entity_types,
     bionetwork: Optional[str] = None,
+    sheet_read_result: Optional[SpreadsheetInfo] = None,
+    apis: Optional[ApiInstances] = None,
 ) -> SheetValidationResult:
     """
     Validate data from a Google Sheet starting at row 6 until the first empty row.
@@ -611,32 +613,35 @@ def validate_google_sheet(
     # Load schema for use in interpreting and validating input values
     schemaview = load_schemaview()
     
-    logger.info(f"Reading sheet: {sheet_id}")
-    
-    try:
-        # Read the sheet with service account credentials
-        sheet_read_result = read_sheet_with_service_account(sheet_id, [sheet_structure_by_entity_type[t]["sheet_index"] for t in entity_types])[0]
-    
-    except SheetReadError as read_error:
-        error_msg = (
-            read_error.error_message
-            or f"Could not access or read data from sheet {sheet_id} (Error: {read_error.error_code})"
-        )
-        logger.warning(f"Sheet access failed with error code: {read_error.error_code}")
-        
-        logger.warning(f"{error_msg}")
-        error_info = SheetErrorInfo(
-            entity_type=None,
-            worksheet_id=read_error.worksheet_id,
-            message=error_msg
-        )
-        return SheetValidationResult(
-            successful=False,
-            spreadsheet_metadata=read_error.spreadsheet_metadata,
-            error_code=read_error.error_code,
-            summary=make_summary_without_entities(1, entity_types),
-            errors=[error_info]
-        )
+    if sheet_read_result is None:
+        logger.info(f"Reading sheet: {sheet_id}")
+        try:
+            # Read the sheet with service account credentials
+            sheet_read_result = read_sheet_with_service_account(
+                sheet_id,
+                [sheet_structure_by_entity_type[t]["sheet_index"] for t in entity_types],
+                apis
+            )[0]
+        except SheetReadError as read_error:
+            error_msg = (
+                read_error.error_message
+                or f"Could not access or read data from sheet {sheet_id} (Error: {read_error.error_code})"
+            )
+            logger.warning(f"Sheet access failed with error code: {read_error.error_code}")
+            
+            logger.warning(f"{error_msg}")
+            error_info = SheetErrorInfo(
+                entity_type=None,
+                worksheet_id=read_error.worksheet_id,
+                message=error_msg
+            )
+            return SheetValidationResult(
+                successful=False,
+                spreadsheet_metadata=read_error.spreadsheet_metadata,
+                error_code=read_error.error_code,
+                summary=make_summary_without_entities(1, entity_types),
+                errors=[error_info]
+            )
     
     # Each item is a dataframe of rows to validate, with an index containing the original 1-based indices of the rows
     rows_to_validate_per_entity_type = []
