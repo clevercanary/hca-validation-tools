@@ -135,15 +135,18 @@ def _test_validation_with_mock_sheets_response(
         )
 
     # Mock successful service account read
-    mock_read_service_account.return_value = SpreadsheetInfo(
-        spreadsheet_metadata=SpreadsheetMetadata(
-            spreadsheet_title="Test Sheet Title",
-            last_updated_date="2025-06-06T22:43:57.554Z",
-            last_updated_by="foo",
-            last_updated_email="foo@example.com",
-            can_edit=False
+    mock_read_service_account.return_value = (
+        SpreadsheetInfo(
+            spreadsheet_metadata=SpreadsheetMetadata(
+                spreadsheet_title="Test Sheet Title",
+                last_updated_date="2025-06-06T22:43:57.554Z",
+                last_updated_by="foo",
+                last_updated_email="foo@example.com",
+                can_edit=False
+            ),
+            worksheets=worksheets
         ),
-        worksheets=worksheets
+        [MagicMock() for _ in worksheets]
     )
 
     # Run validation
@@ -238,7 +241,7 @@ class TestReadSheetWithServiceAccount:
         mock_build.return_value = mock_drive
         
         # Test the function
-        sheet_read_result = read_sheet_with_service_account(PUBLIC_SHEET_ID)
+        sheet_read_result = read_sheet_with_service_account(PUBLIC_SHEET_ID)[0]
         assert isinstance(sheet_read_result, SpreadsheetInfo)
         assert sheet_read_result.spreadsheet_metadata.spreadsheet_title == "Test Sheet Title"
         assert sheet_read_result.spreadsheet_metadata.can_edit is True
@@ -565,7 +568,7 @@ class TestIntegration:
         if not os.environ.get('GOOGLE_SERVICE_ACCOUNT'):
             pytest.skip("No service account credentials available for integration test")
             
-        sheet_read_result = read_sheet_with_service_account(PUBLIC_SHEET_ID)
+        sheet_read_result = read_sheet_with_service_account(PUBLIC_SHEET_ID)[0]
         assert isinstance(sheet_read_result, SpreadsheetInfo)
         assert isinstance(sheet_read_result.spreadsheet_metadata.spreadsheet_title, str)
         assert isinstance(sheet_read_result.spreadsheet_metadata.last_updated_date, str)
@@ -645,7 +648,7 @@ class TestIntegration:
             pytest.skip("Service account credentials not available")
             
         # This test only runs if GOOGLE_SERVICE_ACCOUNT is set
-        sheet_read_result = read_sheet_with_service_account(PRIVATE_SHEET_ID)
+        sheet_read_result = read_sheet_with_service_account(PRIVATE_SHEET_ID)[0]
         assert isinstance(sheet_read_result, SpreadsheetInfo)
         assert sheet_read_result.spreadsheet_metadata is not None
         assert isinstance(sheet_read_result.spreadsheet_metadata.spreadsheet_title, str)

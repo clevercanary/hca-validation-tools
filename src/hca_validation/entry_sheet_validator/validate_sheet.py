@@ -320,7 +320,7 @@ def read_worksheets(
     spreadsheet_metadata: SpreadsheetMetadata,
     spreadsheet: gspread.Spreadsheet,
     sheet_indices: List[int]
-) -> List[WorksheetInfo]:
+) -> tuple[List[WorksheetInfo], List[gspread.Worksheet]]:
     import logging
     logger = logging.getLogger(__name__)
     
@@ -366,9 +366,9 @@ def read_worksheets(
             logger.warning(f"Sheet {sheet_id} (index {sheet_index}) appears to be empty")
             raise SheetReadError(error_code="sheet_data_empty", spreadsheet_metadata=spreadsheet_metadata, worksheet_id=worksheet.id)
     
-    return worksheets_info
+    return worksheets_info, worksheets
 
-def read_sheet_with_service_account(sheet_id: str, sheet_indices: List[int] = [0], apis: Optional[ApiInstances] = None) -> SpreadsheetInfo:
+def read_sheet_with_service_account(sheet_id: str, sheet_indices: List[int] = [0], apis: Optional[ApiInstances] = None) -> tuple[SpreadsheetInfo, List[gspread.Worksheet]]:
     """
     Read data from a Google Sheet using a service account for authentication.
     
@@ -377,8 +377,9 @@ def read_sheet_with_service_account(sheet_id: str, sheet_indices: List[int] = [0
         sheet_indices (List[int], optional): The indices of the worksheets to read. Defaults to [0].
         
     Returns:
-        info: If successful, SpreadsheetInfo object containing list of WorksheetInfo corresponding to
+        info: SpreadsheetInfo object containing list of WorksheetInfo corresponding to
             the list of sheet indices
+        worksheets: List of gspread worksheets
     
     Raises:
         SheetReadError containing error code and, if available, sheet title and worksheet ID
@@ -427,9 +428,9 @@ def read_sheet_with_service_account(sheet_id: str, sheet_indices: List[int] = [0
             )
 
             # Get all worksheets
-            sheets_info = read_worksheets(sheet_id, spreadsheet_metadata, spreadsheet, sheet_indices)
+            sheets_info, gspread_worksheets = read_worksheets(sheet_id, spreadsheet_metadata, spreadsheet, sheet_indices)
             
-            return SpreadsheetInfo(spreadsheet_metadata, sheets_info)
+            return SpreadsheetInfo(spreadsheet_metadata, sheets_info), gspread_worksheets
         
         except gspread.exceptions.SpreadsheetNotFound:
             logger.error(f"Sheet {sheet_id} not found. Check if the sheet ID is correct.")
@@ -614,7 +615,7 @@ def validate_google_sheet(
     
     try:
         # Read the sheet with service account credentials
-        sheet_read_result = read_sheet_with_service_account(sheet_id, [sheet_structure_by_entity_type[t]["sheet_index"] for t in entity_types])
+        sheet_read_result = read_sheet_with_service_account(sheet_id, [sheet_structure_by_entity_type[t]["sheet_index"] for t in entity_types])[0]
     
     except SheetReadError as read_error:
         error_msg = (
