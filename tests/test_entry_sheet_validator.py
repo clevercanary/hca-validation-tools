@@ -19,7 +19,7 @@ import gspread
 from gspread.exceptions import SpreadsheetNotFound, WorksheetNotFound, APIError
 
 from hca_validation.entry_sheet_validator.validate_sheet import (
-    ReadErrorSheetInfo,
+    SheetReadError,
     SheetErrorInfo,
     SheetValidationResult,
     SpreadsheetInfo,
@@ -264,12 +264,12 @@ class TestReadSheetWithServiceAccount:
         if 'GOOGLE_SERVICE_ACCOUNT' in os.environ:
             del os.environ['GOOGLE_SERVICE_ACCOUNT']
 
-        # The function should return read error containing only 'auth_missing' code when no credentials are available
-        sheet_read_result = read_sheet_with_service_account(PUBLIC_SHEET_ID)
-        assert isinstance(sheet_read_result, ReadErrorSheetInfo)
-        assert sheet_read_result.error_code == 'auth_missing'
-        assert sheet_read_result.spreadsheet_metadata is None
-        assert sheet_read_result.worksheet_id is None
+        # The function should raise a read error containing only 'auth_missing' code when no credentials are available
+        with pytest.raises(SheetReadError) as error_info:
+            read_sheet_with_service_account(PUBLIC_SHEET_ID)
+        assert error_info.value.error_code == 'auth_missing'
+        assert error_info.value.spreadsheet_metadata is None
+        assert error_info.value.worksheet_id is None
         
     def test_with_unresolved_credentials(self):
         """Test reading a sheet with unresolved credentials from Secrets Manager."""
@@ -279,11 +279,11 @@ class TestReadSheetWithServiceAccount:
         
         try:
             # The function should return read error containing only 'auth_unresolved' code when credentials weren't resolved
-            sheet_read_result = read_sheet_with_service_account(PUBLIC_SHEET_ID)
-            assert isinstance(sheet_read_result, ReadErrorSheetInfo)
-            assert sheet_read_result.error_code == 'auth_unresolved'
-            assert sheet_read_result.spreadsheet_metadata is None
-            assert sheet_read_result.worksheet_id is None
+            with pytest.raises(SheetReadError) as error_info:
+                read_sheet_with_service_account(PUBLIC_SHEET_ID)
+            assert error_info.value.error_code == 'auth_unresolved'
+            assert error_info.value.spreadsheet_metadata is None
+            assert error_info.value.worksheet_id is None
         finally:
             # Restore original environment
             os.environ.clear()
@@ -301,11 +301,11 @@ class TestReadSheetWithServiceAccount:
         
         try:
             # The function should return read error containing only 'auth_invalid_format' code when credentials are missing required fields
-            sheet_read_result = read_sheet_with_service_account(PUBLIC_SHEET_ID)
-            assert isinstance(sheet_read_result, ReadErrorSheetInfo)
-            assert sheet_read_result.error_code == 'auth_invalid_format'
-            assert sheet_read_result.spreadsheet_metadata is None
-            assert sheet_read_result.worksheet_id is None
+            with pytest.raises(SheetReadError) as error_info:
+                read_sheet_with_service_account(PUBLIC_SHEET_ID)
+            assert error_info.value.error_code == 'auth_invalid_format'
+            assert error_info.value.spreadsheet_metadata is None
+            assert error_info.value.worksheet_id is None
         finally:
             # Restore original environment
             os.environ.clear()
@@ -322,11 +322,11 @@ class TestReadSheetWithServiceAccount:
         mock_authorize.return_value = mock_client
 
         # The function should return read error containing only 'sheet_not_found' code when the sheet is not found
-        sheet_read_result = read_sheet_with_service_account(NONEXISTENT_SHEET_ID)
-        assert isinstance(sheet_read_result, ReadErrorSheetInfo)
-        assert sheet_read_result.error_code == 'sheet_not_found'
-        assert sheet_read_result.spreadsheet_metadata is None
-        assert sheet_read_result.worksheet_id is None
+        with pytest.raises(SheetReadError) as error_info:
+            read_sheet_with_service_account(NONEXISTENT_SHEET_ID)
+        assert error_info.value.error_code == 'sheet_not_found'
+        assert error_info.value.spreadsheet_metadata is None
+        assert error_info.value.worksheet_id is None
         
         # Verify the mocks were called correctly
         mock_client.open_by_key.assert_called_once_with(NONEXISTENT_SHEET_ID)
@@ -345,11 +345,11 @@ class TestReadSheetWithServiceAccount:
         mock_authorize.return_value = mock_client
 
         # The function should return read error containing 'worksheet_not_found' code and spreadsheet metadata when the worksheet is not found
-        sheet_read_result = read_sheet_with_service_account(PUBLIC_SHEET_ID)
-        assert isinstance(sheet_read_result, ReadErrorSheetInfo)
-        assert sheet_read_result.error_code == 'worksheet_not_found'
-        assert sheet_read_result.spreadsheet_metadata is not None
-        assert sheet_read_result.worksheet_id is None
+        with pytest.raises(SheetReadError) as error_info:
+            read_sheet_with_service_account(PUBLIC_SHEET_ID)
+        assert error_info.value.error_code == 'worksheet_not_found'
+        assert error_info.value.spreadsheet_metadata is not None
+        assert error_info.value.worksheet_id is None
         
         # Verify the mocks were called correctly
         mock_client.open_by_key.assert_called_once_with(PUBLIC_SHEET_ID)
@@ -367,11 +367,11 @@ class TestReadSheetWithServiceAccount:
         mock_authorize.return_value = mock_client
 
         # The function should return read error containing only 'api_error' code when an API error occurs
-        sheet_read_result = read_sheet_with_service_account(PUBLIC_SHEET_ID)
-        assert isinstance(sheet_read_result, ReadErrorSheetInfo)
-        assert sheet_read_result.error_code == 'api_error'
-        assert sheet_read_result.spreadsheet_metadata is None
-        assert sheet_read_result.worksheet_id is None
+        with pytest.raises(SheetReadError) as error_info:
+            read_sheet_with_service_account(PUBLIC_SHEET_ID)
+        assert error_info.value.error_code == 'api_error'
+        assert error_info.value.spreadsheet_metadata is None
+        assert error_info.value.worksheet_id is None
         
         # Verify the mocks were called correctly
         mock_client.open_by_key.assert_called_once_with(PUBLIC_SHEET_ID)
@@ -390,11 +390,11 @@ class TestReadSheetWithServiceAccount:
         mock_authorize.return_value = mock_client
 
         # The function should return read error containing 'api_error' code and spreadsheet metadata
-        sheet_read_result = read_sheet_with_service_account(PUBLIC_SHEET_ID)
-        assert isinstance(sheet_read_result, ReadErrorSheetInfo)
-        assert sheet_read_result.error_code == 'api_error'
-        assert sheet_read_result.spreadsheet_metadata is not None
-        assert sheet_read_result.worksheet_id is None
+        with pytest.raises(SheetReadError) as error_info:
+            read_sheet_with_service_account(PUBLIC_SHEET_ID)
+        assert error_info.value.error_code == 'api_error'
+        assert error_info.value.spreadsheet_metadata is not None
+        assert error_info.value.worksheet_id is None
         
         # Verify the mocks were called correctly
         mock_client.open_by_key.assert_called_once_with(PUBLIC_SHEET_ID)
@@ -500,7 +500,7 @@ class TestValidateGoogleSheet:
     def test_service_account_access_failure(self, mock_read_service_account):
         """Test validation when service account access fails."""
         # Mock service account read failure
-        mock_read_service_account.return_value = ReadErrorSheetInfo(error_code='auth_missing')
+        mock_read_service_account.side_effect = SheetReadError(error_code='auth_missing')
 
         # Run validation
         validation_result = validate_google_sheet(PUBLIC_SHEET_ID)
