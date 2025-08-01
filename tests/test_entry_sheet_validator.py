@@ -19,6 +19,7 @@ import gspread
 from gspread.exceptions import SpreadsheetNotFound, WorksheetNotFound, APIError
 
 from hca_validation.entry_sheet_validator.validate_sheet import (
+    ApiInstances,
     SheetReadError,
     SheetErrorInfo,
     SheetValidationResult,
@@ -90,17 +91,13 @@ SAMPLE_SHEET_DATA_WITH_VALID_AND_MISSING_INTEGERS_EXPECTED_NORMALIZATION = [
 ]
 
 
-def _test_validation_with_mock_sheets_response(
-    validation_function,
-    mock_read_service_account,
-    *,
-    bionetwork=None,
+def _create_mock_spreadsheet_info(
     sheet_data=None,
     datasets_sheet_data=None,
     donors_sheet_data=None,
-    samples_sheet_data=None
-) -> SheetValidationResult:
-    """Helper function for testing validation with service account access, for a validation function with a call signature like validate_google_sheet."""
+    samples_sheet_data=None,
+):
+    """Helper function to create a SpreadsheetInfo object from test data."""
 
     if datasets_sheet_data is None:
         datasets_sheet_data = SAMPLE_SHEET_DATA if sheet_data is None else sheet_data
@@ -133,27 +130,54 @@ def _test_validation_with_mock_sheets_response(
                 source_rows_start_index=1
             )
         )
+    
+    return SpreadsheetInfo(
+        spreadsheet_metadata=SpreadsheetMetadata(
+            spreadsheet_title="Test Sheet Title",
+            last_updated_date="2025-06-06T22:43:57.554Z",
+            last_updated_by="foo",
+            last_updated_email="foo@example.com",
+            can_edit=False
+        ),
+        worksheets=worksheets
+    )
+
+def _test_validation_with_mock_sheets_response(
+    validation_function,
+    mock_read_service_account,
+    *,
+    bionetwork=None,
+    sheet_data=None,
+    datasets_sheet_data=None,
+    donors_sheet_data=None,
+    samples_sheet_data=None,
+    expect_read_call=True,
+    expected_apis_parameter=None,
+    additional_arguments={}
+) -> SheetValidationResult:
+    """Helper function for testing validation with service account access, for a validation function with a call signature like validate_google_sheet."""
 
     # Mock successful service account read
+    mock_spreadsheet_info = _create_mock_spreadsheet_info(
+        sheet_data=sheet_data,
+        datasets_sheet_data=datasets_sheet_data,
+        donors_sheet_data=donors_sheet_data,
+        samples_sheet_data=samples_sheet_data
+    )
     mock_read_service_account.return_value = (
-        SpreadsheetInfo(
-            spreadsheet_metadata=SpreadsheetMetadata(
-                spreadsheet_title="Test Sheet Title",
-                last_updated_date="2025-06-06T22:43:57.554Z",
-                last_updated_by="foo",
-                last_updated_email="foo@example.com",
-                can_edit=False
-            ),
-            worksheets=worksheets
-        ),
-        [MagicMock() for _ in worksheets]
+        mock_spreadsheet_info,
+        [MagicMock() for _ in mock_spreadsheet_info.worksheets]
     )
 
     # Run validation
-    validation_result = validation_function(PUBLIC_SHEET_ID, bionetwork=bionetwork)
+    validation_result = validation_function(PUBLIC_SHEET_ID, bionetwork=bionetwork, **additional_arguments)
 
-    # Verify service account method was used
-    mock_read_service_account.assert_called_once_with(PUBLIC_SHEET_ID, [0, 1, 2], None)
+    if expect_read_call:
+        # If expected, verify service account method was used
+        mock_read_service_account.assert_called_once_with(PUBLIC_SHEET_ID, [0, 1, 2], expected_apis_parameter)
+    else:
+        # Otherwise, verify sheet data was not read
+        mock_read_service_account.assert_not_called()
     
     # Verify metadata is returned
     assert validation_result.spreadsheet_metadata
@@ -190,21 +214,16 @@ class TestReadSheetWithServiceAccount:
         os.environ.clear()
         os.environ.update(original_env)
 
-    @patch('googleapiclient.discovery.build')
-    @patch('hca_validation.entry_sheet_validator.validate_sheet.create_requests_session')
-    @patch('gspread.authorize')
-    @patch('google.oauth2.service_account.Credentials.from_service_account_info')
-    def test_with_service_account_credentials(self, mock_credentials, mock_authorize, mock_create_requests_session, mock_build, mock_env_with_credentials):
-        """Test reading a sheet with service account credentials."""
+    def _mock_api_outputs(self, mock_client, mock_drive):
+        """Helper function to set up mocks of values returned by the APIs."""
+
         # Mock the gspread client
-        mock_client = MagicMock()
         mock_sheet = MagicMock()
         mock_worksheet = MagicMock()
 
         # Mock the Drive API
         mock_get = MagicMock()
         mock_files = MagicMock()
-        mock_drive = MagicMock()
         
         # Mock spreadsheet.values_batch_get
         mock_data = {
@@ -221,7 +240,6 @@ class TestReadSheetWithServiceAccount:
         mock_worksheet.title = "Test Worksheet"
         mock_sheet.worksheets.return_value = [mock_worksheet]
         mock_client.open_by_key.return_value = mock_sheet
-        mock_authorize.return_value = mock_client
 
         # Mock the sheet title
         mock_sheet.title = "Test Sheet Title"
@@ -238,8 +256,25 @@ class TestReadSheetWithServiceAccount:
         }
         mock_files.get.return_value = mock_get
         mock_drive.files.return_value = mock_files
+
+        return mock_sheet
+
+    @patch('googleapiclient.discovery.build')
+    @patch('hca_validation.entry_sheet_validator.validate_sheet.create_requests_session')
+    @patch('gspread.authorize')
+    @patch('google.oauth2.service_account.Credentials.from_service_account_info')
+    def test_with_service_account_credentials(self, mock_credentials, mock_authorize, mock_create_requests_session, mock_build, mock_env_with_credentials):
+        """Test reading a sheet with service account credentials."""
+        # Mock the gspread client
+        mock_client = MagicMock()
+        mock_authorize.return_value = mock_client
+
+        # Mock the Drive API
+        mock_drive = MagicMock()
         mock_build.return_value = mock_drive
-        
+
+        mock_sheet = self._mock_api_outputs(mock_client, mock_drive)
+
         # Test the function
         sheet_read_result = read_sheet_with_service_account(PUBLIC_SHEET_ID)[0]
         assert isinstance(sheet_read_result, SpreadsheetInfo)
@@ -258,8 +293,34 @@ class TestReadSheetWithServiceAccount:
         mock_authorize.assert_called_once()
         mock_client.open_by_key.assert_called_once_with(PUBLIC_SHEET_ID)
         mock_sheet.worksheets.assert_called_once()
+        mock_build.assert_called_once()
         # Expect values_batch_get to have been called with a range consisting of the quoted worksheet title
         mock_sheet.values_batch_get.assert_called_once_with(["'Test Worksheet'"])
+
+    @patch('googleapiclient.discovery.build')
+    @patch('hca_validation.entry_sheet_validator.validate_sheet.create_requests_session')
+    @patch('gspread.authorize')
+    @patch('google.oauth2.service_account.Credentials.from_service_account_info')
+    def test_pre_initialize_apis(self, mock_credentials, mock_authorize, mock_create_requests_session, mock_build, mock_env_with_credentials):
+        """Test reading a sheet with pre-initialized APIs."""
+
+        # Mock pre-initialized APIs
+        mock_existing_client = MagicMock()
+        mock_existing_drive = MagicMock()
+        existing_apis = ApiInstances(gspread=mock_existing_client, drive=mock_existing_drive)
+
+        self._mock_api_outputs(mock_existing_client, mock_existing_drive)
+
+        # Test the function, passing in the API instances
+        read_sheet_with_service_account(PUBLIC_SHEET_ID, apis=existing_apis)
+
+        # Verify the provided API instances were used
+        mock_existing_client.open_by_key.assert_called_once()
+        mock_existing_drive.files.assert_called_once()
+
+        # Verify new API instances were not created
+        mock_authorize.assert_not_called()
+        mock_build.assert_not_called()
 
     def test_without_service_account_credentials(self):
         """Test reading a sheet without service account credentials."""
@@ -498,6 +559,28 @@ class TestValidateGoogleSheet:
         """Test that validate_google_sheet does not provide fixes on its own."""
         result = _test_validation_with_mock_sheets_response(validate_google_sheet, mock_read_service_account, donors_sheet_data=SAMPLE_SHEET_DATA_WITH_FIXES)
         assert all(error.input_fix is None for error in result.errors)
+
+    @patch('hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account')
+    def test_pre_initialized_apis(self, mock_read_service_account):
+        """Test that pre-initialized APIs get passed to read_sheet_with_service_account."""
+        mock_apis = MagicMock()
+        _test_validation_with_mock_sheets_response(
+            validate_google_sheet,
+            mock_read_service_account,
+            additional_arguments={"apis": mock_apis},
+            expected_apis_parameter=mock_apis
+        )
+
+    @patch('hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account')
+    def test_pre_loaded_sheet_data(self, mock_read_service_account):
+        """Test validation of pre-loaded sheet data."""
+        mock_sheet_info = _create_mock_spreadsheet_info()
+        _test_validation_with_mock_sheets_response(
+            validate_google_sheet,
+            mock_read_service_account,
+            additional_arguments={"sheet_read_result": mock_sheet_info},
+            expect_read_call=False
+        )
 
     @patch('hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account')
     def test_service_account_access_failure(self, mock_read_service_account):
