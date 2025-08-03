@@ -174,7 +174,7 @@ def _test_validation_with_mock_sheets_response(
 
     if expect_read_call:
         # If expected, verify service account method was used
-        mock_read_service_account.assert_called_once_with(PUBLIC_SHEET_ID, [0, 1, 2], expected_apis_parameter)
+        mock_read_service_account.assert_called_once_with(PUBLIC_SHEET_ID, ["dataset", "donor", "sample"], expected_apis_parameter)
     else:
         # Otherwise, verify sheet data was not read
         mock_read_service_account.assert_not_called()
@@ -592,7 +592,7 @@ class TestValidateGoogleSheet:
         validation_result = validate_google_sheet(PUBLIC_SHEET_ID)
 
         # Verify service account method was used
-        mock_read_service_account.assert_called_once_with(PUBLIC_SHEET_ID, [0, 1, 2], None)
+        mock_read_service_account.assert_called_once_with(PUBLIC_SHEET_ID, ["dataset", "donor", "sample"], None)
         
         # Verify that an error was reported
         assert len(validation_result.errors) > 0

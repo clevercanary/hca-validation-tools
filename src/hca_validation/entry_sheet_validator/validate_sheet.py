@@ -124,6 +124,22 @@ allowed_bionetwork_names = [
   "skin",
 ]
 
+# Mapping of supported entity types to information about how they're represented in spreadsheets
+sheet_structure_by_entity_type = {
+    "dataset": {
+        "sheet_index": 0,
+        "primary_key_field": "dataset_id"
+    },
+    "donor": {
+        "sheet_index": 1,
+        "primary_key_field": "donor_id"
+    },
+    "sample": {
+        "sheet_index": 2,
+        "primary_key_field": "sample_id"
+    }
+}
+
 # Load environment variables from .env file if it exists
 dotenv_path = Path(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))) / '.env'
 if dotenv_path.exists():
@@ -368,7 +384,7 @@ def read_worksheets(
     
     return worksheets_info, worksheets
 
-def read_sheet_with_service_account(sheet_id: str, sheet_indices: List[int] = [0], apis: Optional[ApiInstances] = None) -> tuple[SpreadsheetInfo, List[gspread.Worksheet]]:
+def read_sheet_with_service_account(sheet_id: str, entity_types: List[str] = ["dataset"], apis: Optional[ApiInstances] = None) -> tuple[SpreadsheetInfo, List[gspread.Worksheet]]:
     """
     Read data from a Google Sheet using a service account for authentication.
     
@@ -392,6 +408,9 @@ def read_sheet_with_service_account(sheet_id: str, sheet_indices: List[int] = [0
     # Configure logging
     logger = logging.getLogger(__name__)
     
+    # Get sheet indices
+    sheet_indices = [sheet_structure_by_entity_type[t]["sheet_index"] for t in entity_types]
+
     # If not provided, initialize APIs
     if apis is None:
         apis = init_apis()
@@ -591,21 +610,6 @@ def validate_google_sheet(
     import logging
     logger = logging.getLogger()
 
-    sheet_structure_by_entity_type = {
-        "dataset": {
-            "sheet_index": 0,
-            "primary_key_field": "dataset_id"
-        },
-        "donor": {
-            "sheet_index": 1,
-            "primary_key_field": "donor_id"
-        },
-        "sample": {
-            "sheet_index": 2,
-            "primary_key_field": "sample_id"
-        }
-    }
-
     invalid_entity_types = [t for t in entity_types if t not in sheet_structure_by_entity_type]
     if invalid_entity_types:
         raise ValueError(f"Invalid entity types: {', '.join(invalid_entity_types)}")
@@ -619,7 +623,7 @@ def validate_google_sheet(
             # Read the sheet with service account credentials
             sheet_read_result = read_sheet_with_service_account(
                 sheet_id,
-                [sheet_structure_by_entity_type[t]["sheet_index"] for t in entity_types],
+                entity_types,
                 apis
             )[0]
         except SheetReadError as read_error:
