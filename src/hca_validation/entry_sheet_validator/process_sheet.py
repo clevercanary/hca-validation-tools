@@ -1,8 +1,9 @@
 import dataclasses
 from typing import List, Optional
 
-from .validate_sheet import SheetValidationResult, validate_google_sheet
+from .validate_sheet import SheetValidationResult, init_apis, read_sheet_with_service_account, validate_google_sheet
 from .find_fixes import add_fixes_to_errors
+from .apply_fixes import apply_fixes
 from .common import default_entity_types
 
 def process_google_sheet(
@@ -25,8 +26,25 @@ def process_google_sheet(
         SheetValidationResult object
     """
 
-    # Get validation result
-    validation_result = validate_google_sheet(sheet_id, entity_types=entity_types, bionetwork=bionetwork)
+    # Initialize APIs
+    apis = init_apis()
 
-    # Return with available fixes added to errors
-    return dataclasses.replace(validation_result, errors=add_fixes_to_errors(validation_result.errors, bionetwork))
+    # Read spreadsheet=
+    sheet_data, gspread_worksheets = read_sheet_with_service_account(sheet_id, entity_types, apis)
+
+    # Get validation result
+    validation_result = validate_google_sheet(sheet_id, entity_types=entity_types, bionetwork=bionetwork, sheet_read_result=sheet_data)
+
+    # Add available fixes to errors
+    validation_result = dataclasses.replace(validation_result, errors=add_fixes_to_errors(validation_result.errors, bionetwork))
+
+    # If the the spreadsheet is editable, apply any available fixes
+    if validation_result.spreadsheet_metadata is not None and validation_result.spreadsheet_metadata.can_edit:
+        made_changes = apply_fixes(validation_result, entity_types, gspread_worksheets)
+
+        # If the spreadsheet was updated, re-validate
+        if made_changes:
+            validation_result = validate_google_sheet(sheet_id, entity_types=entity_types, bionetwork=bionetwork, apis=apis)
+    
+    # Return validation result
+    return validation_result

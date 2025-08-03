@@ -615,10 +615,18 @@ class TestValidateGoogleSheet:
 class TestProcessGoogleSheet:
     """Tests for the process_google_sheet function."""
 
-    @patch('hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account')
-    def test_available_fixes(self, mock_read_service_account):
+    @patch('hca_validation.entry_sheet_validator.process_sheet.init_apis')
+    @patch('hca_validation.entry_sheet_validator.process_sheet.read_sheet_with_service_account')
+    def test_available_fixes(self, mock_read_service_account, mock_init_apis):
         """Test that available fixes are present in error info."""
-        result = _test_validation_with_mock_sheets_response(process_google_sheet, mock_read_service_account, donors_sheet_data=SAMPLE_SHEET_DATA_WITH_FIXES)
+        mock_apis = MagicMock()
+        mock_init_apis.return_value = mock_apis
+        result = _test_validation_with_mock_sheets_response(
+            process_google_sheet,
+            mock_read_service_account,
+            donors_sheet_data=SAMPLE_SHEET_DATA_WITH_FIXES,
+            expected_apis_parameter=mock_apis
+        )
         # Based on the mock data, expect three errors in the manner_of_death column, with appropriate input values and fixed values (or lack thereof)
         mod_errors = [error for error in result.errors if error.column == "manner_of_death"]
         assert len(mod_errors) == 3
