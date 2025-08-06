@@ -12,7 +12,7 @@ import os
 import json
 from typing import List
 import pytest
-from unittest.mock import DEFAULT, patch, MagicMock
+from unittest.mock import DEFAULT, patch, MagicMock, call
 import pandas as pd
 from google.oauth2.service_account import Credentials
 import gspread
@@ -64,7 +64,7 @@ SAMPLE_SHEET_DATA_WITH_FIXES = pd.DataFrame({
     'manner_of_death': ['', '', '', '', '1', 'unknown', 'not_applicable', '4', 'not applicable', 'not a manner of death', 'not_applicable'],
 })
 
-# Data to be compared with output values
+# Data to be compared with derived values
 SAMPLE_SHEET_DATA_WITH_CASTS_EXPECTED_NORMALIZATION = [
     {"contact_email": "foo@example.com", "study_pi": ["Foo"]},
     {"contact_email": None, "study_pi": ["Bar", "Baz"]},
@@ -89,10 +89,15 @@ SAMPLE_SHEET_DATA_WITH_VALID_AND_MISSING_INTEGERS_EXPECTED_NORMALIZATION = [
     {"sample_id": "c", "cell_number_loaded": None},
     {"sample_id": "d", "cell_number_loaded": 7890},
 ]
+SAMPLE_SHEET_DATA_WITH_FIXES_EXPECTED_VALUE_RANGES = [
+    {"range": "A8", "values": [["not applicable"]]},
+    {"range": "A12", "values": [["not applicable"]]},
+]
 
 
 def _create_mock_spreadsheet_info(
     sheet_data=None,
+    sheet_editable=False,
     datasets_sheet_data=None,
     donors_sheet_data=None,
     samples_sheet_data=None,
@@ -137,7 +142,7 @@ def _create_mock_spreadsheet_info(
             last_updated_date="2025-06-06T22:43:57.554Z",
             last_updated_by="foo",
             last_updated_email="foo@example.com",
-            can_edit=False
+            can_edit=sheet_editable
         ),
         worksheets=worksheets
     )
@@ -618,7 +623,7 @@ class TestProcessGoogleSheet:
     @patch('hca_validation.entry_sheet_validator.process_sheet.init_apis')
     @patch('hca_validation.entry_sheet_validator.process_sheet.read_sheet_with_service_account')
     def test_available_fixes(self, mock_read_service_account, mock_init_apis):
-        """Test that available fixes are present in error info."""
+        """Test that available fixes are present in error info for non-editable spreadsheet."""
         mock_apis = MagicMock()
         mock_init_apis.return_value = mock_apis
         result = _test_validation_with_mock_sheets_response(
@@ -636,6 +641,50 @@ class TestProcessGoogleSheet:
         assert mod_errors[1].input_fix is None
         assert mod_errors[2].input == "not_applicable"
         assert mod_errors[2].input_fix == "not applicable"
+
+    @patch('hca_validation.entry_sheet_validator.process_sheet.init_apis')
+    @patch('hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account')
+    @patch('hca_validation.entry_sheet_validator.process_sheet.read_sheet_with_service_account')
+    def test_application_of_fixes(self, mock_read_service_account_a, mock_read_service_account_b, mock_init_apis):
+        """Test validation and updating of editable spreadsheet with fixes available."""
+        mock_apis = MagicMock()
+        mock_init_apis.return_value = mock_apis
+        mock_datasets_worksheet = MagicMock()
+        mock_donors_worksheet = MagicMock()
+        mock_read_result = (
+            _create_mock_spreadsheet_info(donors_sheet_data=SAMPLE_SHEET_DATA_WITH_FIXES, sheet_editable=True),
+            [mock_datasets_worksheet, mock_donors_worksheet]
+        )
+        mock_read_service_account_a.return_value = mock_read_result
+        mock_read_service_account_b.return_value = mock_read_result
+        process_google_sheet(PUBLIC_SHEET_ID)
+        # Verify that batch_update was called only for the donors worksheet, and with the values expected for the mock data
+        mock_datasets_worksheet.batch_update.assert_not_called()
+        mock_donors_worksheet.batch_update.assert_called_once_with(SAMPLE_SHEET_DATA_WITH_FIXES_EXPECTED_VALUE_RANGES)
+        # Verify that spreadsheet was read twice
+        mock_read_service_account_a.assert_called_once_with(PUBLIC_SHEET_ID, ["dataset", "donor", "sample"], mock_apis)
+        mock_read_service_account_b.assert_called_once_with(PUBLIC_SHEET_ID, ["dataset", "donor", "sample"], mock_apis)
+
+    @patch('hca_validation.entry_sheet_validator.process_sheet.init_apis')
+    @patch('hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account')
+    @patch('hca_validation.entry_sheet_validator.process_sheet.read_sheet_with_service_account')
+    def test_sheet_without_fixes(self, mock_read_service_account_a, mock_read_service_account_b, mock_init_apis):
+        """Test processing of editable spreadsheet without fixes."""
+        mock_apis = MagicMock()
+        mock_init_apis.return_value = mock_apis
+        mock_datasets_worksheet = MagicMock()
+        mock_read_result = (
+            _create_mock_spreadsheet_info(sheet_editable=True),
+            [mock_datasets_worksheet]
+        )
+        mock_read_service_account_a.return_value = mock_read_result
+        mock_read_service_account_b.return_value = mock_read_result
+        process_google_sheet(PUBLIC_SHEET_ID)
+        # Verify that batch_update wasn't called
+        mock_datasets_worksheet.batch_update.assert_not_called()
+        # Verify that spreadsheet was only read once
+        mock_read_service_account_a.assert_called_once_with(PUBLIC_SHEET_ID, ["dataset", "donor", "sample"], mock_apis)
+        mock_read_service_account_b.assert_not_called()
 
 
 # Integration tests that use actual Google Sheets
