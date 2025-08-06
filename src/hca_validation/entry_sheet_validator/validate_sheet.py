@@ -276,7 +276,7 @@ def init_apis() -> ApiInstances:
             credentials = service_account.Credentials.from_service_account_info(
                 credentials_dict,
                 scopes=[
-                    'https://www.googleapis.com/auth/spreadsheets.readonly',
+                    'https://www.googleapis.com/auth/spreadsheets',
                     'https://www.googleapis.com/auth/drive.metadata.readonly'
                 ]
             )
