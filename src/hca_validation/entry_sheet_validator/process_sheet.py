@@ -17,6 +17,7 @@ def process_google_sheet(
     Process a Google Sheet by:
     - Validating it according to the HCA schema
     - Identifying fixes where possible for any resulting validation errors
+    - If the spreadsheet is editable, applying the fixes and revalidating
 
     Args:
         sheet_id: The ID of the Google Sheet (required)
