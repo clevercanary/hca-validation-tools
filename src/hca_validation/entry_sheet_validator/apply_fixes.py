@@ -27,6 +27,8 @@ def get_fix_value_range(a1: str, value: str):
 def get_fix_value_ranges_by_entity_type(errors: List[SheetErrorInfo], entity_types: List[str]):
   """
   Create value range dicts to be passed to gspread in order to fix the given errors, organized by entity type
+
+  If multiple errors for the same cell specify fixes, only the first is included in the returned list
   
   Args:
     errors:
@@ -65,6 +67,10 @@ def apply_fixes(validation_result: SheetValidationResult, entity_types: List[str
   Returns:
     bool:
       True if any fixes were applied to any worksheet, False if no fixes were applied
+
+  Raises:
+    gspread.exceptions.APIError:
+      May be raised if a gspread operation fails
   """
   worksheets_by_entity_type = dict(zip(entity_types, worksheets))
 
