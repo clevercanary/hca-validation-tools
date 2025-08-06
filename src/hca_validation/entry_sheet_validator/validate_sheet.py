@@ -532,6 +532,50 @@ def make_summary_without_entities(error_count: int, entity_types: List[str] = de
         "error_count": error_count
     }
 
+def make_validation_result_for_whole_sheet_error(
+    *,
+    sheet_id: str,
+    entity_types: List[str],
+    error_code: str,
+    error_message: Optional[str] = None,
+    spreadsheet_metadata: Optional[SpreadsheetMetadata] = None,
+    worksheet_id: Optional[int] = None,
+    entity_type: Optional[str] = None
+) -> SheetValidationResult:
+    error_msg = error_message or f"Error processing sheet {sheet_id} (Error: {error_code})"
+    error_info = SheetErrorInfo(
+        entity_type=entity_type,
+        worksheet_id=worksheet_id,
+        message=error_msg
+    )
+    return SheetValidationResult(
+        successful=False,
+        spreadsheet_metadata=spreadsheet_metadata,
+        error_code=error_code,
+        summary=make_summary_without_entities(1, entity_types),
+        errors=[error_info]
+    )
+
+def make_read_error_validation_result(sheet_id: str, entity_types: List[str], read_error: SheetReadError) -> SheetValidationResult:
+    import logging
+    logger = logging.getLogger()
+
+    error_msg = (
+        read_error.error_message
+        or f"Could not access or read data from sheet {sheet_id} (Error: {read_error.error_code})"
+    )
+    logger.warning(f"Sheet access failed with error code: {read_error.error_code}")
+    
+    logger.warning(f"{error_msg}")
+    return make_validation_result_for_whole_sheet_error(
+        sheet_id=sheet_id,
+        entity_types=entity_types,
+        error_code=read_error.error_code,
+        error_message=error_msg,
+        spreadsheet_metadata=read_error.spreadsheet_metadata,
+        worksheet_id=read_error.worksheet_id
+    )
+
 def handle_validation_error(
         validation_error: ValidationError,
         *,
@@ -627,25 +671,7 @@ def validate_google_sheet(
                 apis
             )[0]
         except SheetReadError as read_error:
-            error_msg = (
-                read_error.error_message
-                or f"Could not access or read data from sheet {sheet_id} (Error: {read_error.error_code})"
-            )
-            logger.warning(f"Sheet access failed with error code: {read_error.error_code}")
-            
-            logger.warning(f"{error_msg}")
-            error_info = SheetErrorInfo(
-                entity_type=None,
-                worksheet_id=read_error.worksheet_id,
-                message=error_msg
-            )
-            return SheetValidationResult(
-                successful=False,
-                spreadsheet_metadata=read_error.spreadsheet_metadata,
-                error_code=read_error.error_code,
-                summary=make_summary_without_entities(1, entity_types),
-                errors=[error_info]
-            )
+            return make_read_error_validation_result(sheet_id, entity_types, read_error)
     
     # Each item is a dataframe of rows to validate, with an index containing the original 1-based indices of the rows
     rows_to_validate_per_entity_type = []
@@ -698,17 +724,14 @@ def validate_google_sheet(
         if not row_indices:
             error_msg = f"No data found to validate starting from {entity_type} row 6."
             logger.warning(error_msg)
-            error_info = SheetErrorInfo(
-                entity_type=entity_type,
-                worksheet_id=sheet_info.worksheet_id,
-                message=error_msg
-            )
-            return SheetValidationResult(
-                successful=False,
+            return make_validation_result_for_whole_sheet_error(
+                sheet_id=sheet_id,
+                entity_types=entity_types,
+                error_code="no_data",
+                error_message=error_msg,
                 spreadsheet_metadata=sheet_read_result.spreadsheet_metadata,
-                error_code='no_data',
-                summary=make_summary_without_entities(1, entity_types),
-                errors=[error_info]
+                worksheet_id=sheet_info.worksheet_id,
+                entity_type=entity_type
             )
         
         logger.info(f"Found {len(row_indices)} {entity_type} rows to validate.")
