@@ -685,6 +685,75 @@ class TestProcessGoogleSheet:
         # Verify that spreadsheet was only read once
         mock_read_service_account_a.assert_called_once_with(PUBLIC_SHEET_ID, ["dataset", "donor", "sample"], mock_apis)
         mock_read_service_account_b.assert_not_called()
+    
+    @patch('hca_validation.entry_sheet_validator.process_sheet.init_apis')
+    @patch('hca_validation.entry_sheet_validator.process_sheet.read_sheet_with_service_account')
+    def test_early_read_error(self, mock_read_service_account, mock_init_apis):
+        """Test that a validation result object is properly returned when the initial read call raises a SheetReadError."""
+        
+        # Mock APIs
+        mock_apis = MagicMock()
+        mock_init_apis.return_value = mock_apis
+
+        # Mock read failure
+        mock_read_service_account.side_effect = SheetReadError(error_code='sheet_not_found')
+
+        # Run processing pipeline
+        validation_result = process_google_sheet(PUBLIC_SHEET_ID)
+
+        # Verify read function was called
+        mock_read_service_account.assert_called_once_with(PUBLIC_SHEET_ID, ["dataset", "donor", "sample"], mock_apis)
+        
+        # Verify that an error was reported
+        assert len(validation_result.errors) > 0
+        assert any("access" in error.message.lower() for error in validation_result.errors)
+        
+        # Verify result, metadata, error code, and summary
+        assert validation_result.successful is False
+        assert validation_result.spreadsheet_metadata is None
+        assert validation_result.error_code == 'sheet_not_found'
+        assert validation_result.summary  == {"dataset_count": None, "donor_count": None, "sample_count": None, "error_count": 1}
+
+    @patch('hca_validation.entry_sheet_validator.process_sheet.init_apis')
+    @patch('hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account')
+    @patch('hca_validation.entry_sheet_validator.process_sheet.read_sheet_with_service_account')
+    def test_google_error_while_applying_fixes(self, mock_read_service_account_a, mock_read_service_account_b, mock_init_apis):
+        """Test that a validation result object is properly returned when an API error occurs while applying fixes."""
+
+        mock_apis = MagicMock()
+        mock_init_apis.return_value = mock_apis
+        mock_datasets_worksheet = MagicMock()
+        mock_donors_worksheet = MagicMock()
+        mock_update_response = MagicMock()
+        mock_read_service_account_a.return_value = (
+            _create_mock_spreadsheet_info(donors_sheet_data=SAMPLE_SHEET_DATA_WITH_FIXES, sheet_editable=True),
+            [mock_datasets_worksheet, mock_donors_worksheet]
+        )
+        mock_update_response.json.return_value = {
+            "error": {
+                "code": 500,
+                "message": "Test error",
+                "status": "internal_server_error"
+            }
+        }
+        mock_donors_worksheet.batch_update.side_effect = gspread.exceptions.APIError(mock_update_response)
+
+        validation_result = process_google_sheet(PUBLIC_SHEET_ID)
+
+        # Verify that spreadsheet only ended up being read once
+        mock_read_service_account_a.assert_called_once_with(PUBLIC_SHEET_ID, ["dataset", "donor", "sample"], mock_apis)
+        mock_read_service_account_b.assert_not_called()
+
+        # Verify that an error was reported
+        assert len(validation_result.errors) > 0
+        assert any("Test error" in error.message for error in validation_result.errors)
+
+        # Verify result, metadata, error code, and summary
+        assert validation_result.successful is False
+        assert validation_result.spreadsheet_metadata is not None
+        assert validation_result.spreadsheet_metadata.spreadsheet_title == "Test Sheet Title"
+        assert validation_result.error_code == 'api_error'
+        assert validation_result.summary  == {"dataset_count": None, "donor_count": None, "sample_count": None, "error_count": 1}
 
 
 # Integration tests that use actual Google Sheets
