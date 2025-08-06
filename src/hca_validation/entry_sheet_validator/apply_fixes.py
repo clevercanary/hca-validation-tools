@@ -24,7 +24,7 @@ def get_fix_value_range(a1: str, value: str):
   }
 
 
-def get_fix_value_ranges_by_entity_type(errors: List[SheetErrorInfo], entity_types: List[str]):
+def get_fix_value_ranges_by_entity_type(errors: List[SheetErrorInfo], entity_types: List[str], sheet_id: str):
   """
   Create value range dicts to be passed to gspread in order to fix the given errors, organized by entity type
 
@@ -40,19 +40,25 @@ def get_fix_value_ranges_by_entity_type(errors: List[SheetErrorInfo], entity_typ
     dict:
       Dictionary mapping entity types to lists of value range dicts.
   """
+  import logging
+  logger = logging.getLogger(__name__)
+  
   cells_with_fixes = set()
   value_ranges = {entity_type: [] for entity_type in entity_types}
 
   for error in errors:
     has_fields_for_fix = error.input_fix is not None and error.entity_type is not None and error.cell is not None
-    if has_fields_for_fix and (error.entity_type, error.cell) not in cells_with_fixes:
+    cell_has_existing_fix = (error.entity_type, error.cell) in cells_with_fixes
+    if has_fields_for_fix and not cell_has_existing_fix:
       value_ranges[error.entity_type].append(get_fix_value_range(error.cell, error.input_fix))
       cells_with_fixes.add((error.entity_type, error.cell))
+    elif cell_has_existing_fix:
+      logger.error(f"Found duplicate fix for cell {error.cell} of {error.entity_type} sheet in {sheet_id}")
   
   return value_ranges
 
 
-def apply_fixes(validation_result: SheetValidationResult, entity_types: List[str], worksheets: List[gspread.Worksheet]) -> bool:
+def apply_fixes(validation_result: SheetValidationResult, entity_types: List[str], worksheets: List[gspread.Worksheet], sheet_id: str) -> bool:
   """
   Apply available fixes from the given validation result to the given gspread worksheets
   
@@ -63,6 +69,8 @@ def apply_fixes(validation_result: SheetValidationResult, entity_types: List[str
       List of entity types being processed
     worksheets:
       List of gspread worksheets, corresponding element-wise to entity_types
+    sheet_id:
+      Google Sheet ID, for error reporting
     
   Returns:
     bool:
@@ -74,7 +82,7 @@ def apply_fixes(validation_result: SheetValidationResult, entity_types: List[str
   """
   worksheets_by_entity_type = dict(zip(entity_types, worksheets))
 
-  value_ranges_by_entity_type = get_fix_value_ranges_by_entity_type(validation_result.errors, entity_types)
+  value_ranges_by_entity_type = get_fix_value_ranges_by_entity_type(validation_result.errors, entity_types, sheet_id)
 
   made_fixes = False
 

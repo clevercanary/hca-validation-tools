@@ -49,11 +49,15 @@ def process_google_sheet(
 
         # If the spreadsheet is editable, apply any available fixes
         if validation_result.spreadsheet_metadata is not None and validation_result.spreadsheet_metadata.can_edit:
-            made_changes = apply_fixes(validation_result, entity_types, gspread_worksheets)
+            made_changes = apply_fixes(validation_result, entity_types, gspread_worksheets, sheet_id)
 
             # If the spreadsheet was updated, re-validate
             if made_changes:
                 validation_result = validate_google_sheet(sheet_id, entity_types=entity_types, bionetwork=bionetwork, apis=apis)
+                # Verify that fixes are no longer available, and log an error otherwise
+                errors_with_fix_info = add_fixes_to_errors(validation_result.errors, bionetwork)
+                if any(error.input_fix is not None for error in errors_with_fix_info):
+                    logger.error(f"Sheet {sheet_id} still has fixes available after fixes were applied")
         
         # Return validation result
         return validation_result
