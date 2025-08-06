@@ -42,7 +42,8 @@ def get_fix_value_ranges_by_entity_type(errors: List[SheetErrorInfo], entity_typ
   value_ranges = {entity_type: [] for entity_type in entity_types}
 
   for error in errors:
-    if error.input_fix is not None and error.entity_type is not None and error.cell is not None and (error.entity_type, error.cell) not in cells_with_fixes:
+    has_fields_for_fix = error.input_fix is not None and error.entity_type is not None and error.cell is not None
+    if has_fields_for_fix and (error.entity_type, error.cell) not in cells_with_fixes:
       value_ranges[error.entity_type].append(get_fix_value_range(error.cell, error.input_fix))
       cells_with_fixes.add((error.entity_type, error.cell))
   
