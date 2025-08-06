@@ -29,7 +29,7 @@ def process_google_sheet(
     # Initialize APIs
     apis = init_apis()
 
-    # Read spreadsheet=
+    # Read spreadsheet
     sheet_data, gspread_worksheets = read_sheet_with_service_account(sheet_id, entity_types, apis)
 
     # Get validation result
@@ -38,7 +38,7 @@ def process_google_sheet(
     # Add available fixes to errors
     validation_result = dataclasses.replace(validation_result, errors=add_fixes_to_errors(validation_result.errors, bionetwork))
 
-    # If the the spreadsheet is editable, apply any available fixes
+    # If the spreadsheet is editable, apply any available fixes
     if validation_result.spreadsheet_metadata is not None and validation_result.spreadsheet_metadata.can_edit:
         made_changes = apply_fixes(validation_result, entity_types, gspread_worksheets)
 
