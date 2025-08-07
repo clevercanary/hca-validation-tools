@@ -12,7 +12,7 @@ import os
 import json
 from typing import List
 import pytest
-from unittest.mock import DEFAULT, patch, MagicMock
+from unittest.mock import DEFAULT, patch, MagicMock, call
 import pandas as pd
 from google.oauth2.service_account import Credentials
 import gspread
@@ -64,7 +64,7 @@ SAMPLE_SHEET_DATA_WITH_FIXES = pd.DataFrame({
     'manner_of_death': ['', '', '', '', '1', 'unknown', 'not_applicable', '4', 'not applicable', 'not a manner of death', 'not_applicable'],
 })
 
-# Data to be compared with output values
+# Data to be compared with derived values
 SAMPLE_SHEET_DATA_WITH_CASTS_EXPECTED_NORMALIZATION = [
     {"contact_email": "foo@example.com", "study_pi": ["Foo"]},
     {"contact_email": None, "study_pi": ["Bar", "Baz"]},
@@ -89,10 +89,15 @@ SAMPLE_SHEET_DATA_WITH_VALID_AND_MISSING_INTEGERS_EXPECTED_NORMALIZATION = [
     {"sample_id": "c", "cell_number_loaded": None},
     {"sample_id": "d", "cell_number_loaded": 7890},
 ]
+SAMPLE_SHEET_DATA_WITH_FIXES_EXPECTED_VALUE_RANGES = [
+    {"range": "A8", "values": [["not applicable"]]},
+    {"range": "A12", "values": [["not applicable"]]},
+]
 
 
 def _create_mock_spreadsheet_info(
     sheet_data=None,
+    sheet_editable=False,
     datasets_sheet_data=None,
     donors_sheet_data=None,
     samples_sheet_data=None,
@@ -137,7 +142,7 @@ def _create_mock_spreadsheet_info(
             last_updated_date="2025-06-06T22:43:57.554Z",
             last_updated_by="foo",
             last_updated_email="foo@example.com",
-            can_edit=False
+            can_edit=sheet_editable
         ),
         worksheets=worksheets
     )
@@ -174,7 +179,7 @@ def _test_validation_with_mock_sheets_response(
 
     if expect_read_call:
         # If expected, verify service account method was used
-        mock_read_service_account.assert_called_once_with(PUBLIC_SHEET_ID, [0, 1, 2], expected_apis_parameter)
+        mock_read_service_account.assert_called_once_with(PUBLIC_SHEET_ID, ["dataset", "donor", "sample"], expected_apis_parameter)
     else:
         # Otherwise, verify sheet data was not read
         mock_read_service_account.assert_not_called()
@@ -592,7 +597,7 @@ class TestValidateGoogleSheet:
         validation_result = validate_google_sheet(PUBLIC_SHEET_ID)
 
         # Verify service account method was used
-        mock_read_service_account.assert_called_once_with(PUBLIC_SHEET_ID, [0, 1, 2], None)
+        mock_read_service_account.assert_called_once_with(PUBLIC_SHEET_ID, ["dataset", "donor", "sample"], None)
         
         # Verify that an error was reported
         assert len(validation_result.errors) > 0
@@ -615,10 +620,18 @@ class TestValidateGoogleSheet:
 class TestProcessGoogleSheet:
     """Tests for the process_google_sheet function."""
 
-    @patch('hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account')
-    def test_available_fixes(self, mock_read_service_account):
-        """Test that available fixes are present in error info."""
-        result = _test_validation_with_mock_sheets_response(process_google_sheet, mock_read_service_account, donors_sheet_data=SAMPLE_SHEET_DATA_WITH_FIXES)
+    @patch('hca_validation.entry_sheet_validator.process_sheet.init_apis')
+    @patch('hca_validation.entry_sheet_validator.process_sheet.read_sheet_with_service_account')
+    def test_available_fixes(self, mock_read_service_account, mock_init_apis):
+        """Test that available fixes are present in error info for non-editable spreadsheet."""
+        mock_apis = MagicMock()
+        mock_init_apis.return_value = mock_apis
+        result = _test_validation_with_mock_sheets_response(
+            process_google_sheet,
+            mock_read_service_account,
+            donors_sheet_data=SAMPLE_SHEET_DATA_WITH_FIXES,
+            expected_apis_parameter=mock_apis
+        )
         # Based on the mock data, expect three errors in the manner_of_death column, with appropriate input values and fixed values (or lack thereof)
         mod_errors = [error for error in result.errors if error.column == "manner_of_death"]
         assert len(mod_errors) == 3
@@ -628,6 +641,119 @@ class TestProcessGoogleSheet:
         assert mod_errors[1].input_fix is None
         assert mod_errors[2].input == "not_applicable"
         assert mod_errors[2].input_fix == "not applicable"
+
+    @patch('hca_validation.entry_sheet_validator.process_sheet.init_apis')
+    @patch('hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account')
+    @patch('hca_validation.entry_sheet_validator.process_sheet.read_sheet_with_service_account')
+    def test_application_of_fixes(self, mock_read_service_account_a, mock_read_service_account_b, mock_init_apis):
+        """Test validation and updating of editable spreadsheet with fixes available."""
+        mock_apis = MagicMock()
+        mock_init_apis.return_value = mock_apis
+        mock_datasets_worksheet = MagicMock()
+        mock_donors_worksheet = MagicMock()
+        mock_read_result = (
+            _create_mock_spreadsheet_info(donors_sheet_data=SAMPLE_SHEET_DATA_WITH_FIXES, sheet_editable=True),
+            [mock_datasets_worksheet, mock_donors_worksheet]
+        )
+        mock_read_service_account_a.return_value = mock_read_result
+        mock_read_service_account_b.return_value = mock_read_result
+        process_google_sheet(PUBLIC_SHEET_ID)
+        # Verify that batch_update was called only for the donors worksheet, and with the values expected for the mock data
+        mock_datasets_worksheet.batch_update.assert_not_called()
+        mock_donors_worksheet.batch_update.assert_called_once_with(SAMPLE_SHEET_DATA_WITH_FIXES_EXPECTED_VALUE_RANGES)
+        # Verify that spreadsheet was read twice
+        mock_read_service_account_a.assert_called_once_with(PUBLIC_SHEET_ID, ["dataset", "donor", "sample"], mock_apis)
+        mock_read_service_account_b.assert_called_once_with(PUBLIC_SHEET_ID, ["dataset", "donor", "sample"], mock_apis)
+
+    @patch('hca_validation.entry_sheet_validator.process_sheet.init_apis')
+    @patch('hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account')
+    @patch('hca_validation.entry_sheet_validator.process_sheet.read_sheet_with_service_account')
+    def test_sheet_without_fixes(self, mock_read_service_account_a, mock_read_service_account_b, mock_init_apis):
+        """Test processing of editable spreadsheet without fixes."""
+        mock_apis = MagicMock()
+        mock_init_apis.return_value = mock_apis
+        mock_datasets_worksheet = MagicMock()
+        mock_read_result = (
+            _create_mock_spreadsheet_info(sheet_editable=True),
+            [mock_datasets_worksheet]
+        )
+        mock_read_service_account_a.return_value = mock_read_result
+        mock_read_service_account_b.return_value = mock_read_result
+        process_google_sheet(PUBLIC_SHEET_ID)
+        # Verify that batch_update wasn't called
+        mock_datasets_worksheet.batch_update.assert_not_called()
+        # Verify that spreadsheet was only read once
+        mock_read_service_account_a.assert_called_once_with(PUBLIC_SHEET_ID, ["dataset", "donor", "sample"], mock_apis)
+        mock_read_service_account_b.assert_not_called()
+    
+    @patch('hca_validation.entry_sheet_validator.process_sheet.init_apis')
+    @patch('hca_validation.entry_sheet_validator.process_sheet.read_sheet_with_service_account')
+    def test_early_read_error(self, mock_read_service_account, mock_init_apis):
+        """Test that a validation result object is properly returned when the initial read call raises a SheetReadError."""
+        
+        # Mock APIs
+        mock_apis = MagicMock()
+        mock_init_apis.return_value = mock_apis
+
+        # Mock read failure
+        mock_read_service_account.side_effect = SheetReadError(error_code='sheet_not_found')
+
+        # Run processing pipeline
+        validation_result = process_google_sheet(PUBLIC_SHEET_ID)
+
+        # Verify read function was called
+        mock_read_service_account.assert_called_once_with(PUBLIC_SHEET_ID, ["dataset", "donor", "sample"], mock_apis)
+        
+        # Verify that an error was reported
+        assert len(validation_result.errors) > 0
+        assert any("access" in error.message.lower() for error in validation_result.errors)
+        
+        # Verify result, metadata, error code, and summary
+        assert validation_result.successful is False
+        assert validation_result.spreadsheet_metadata is None
+        assert validation_result.error_code == 'sheet_not_found'
+        assert validation_result.summary  == {"dataset_count": None, "donor_count": None, "sample_count": None, "error_count": 1}
+
+    @patch('hca_validation.entry_sheet_validator.process_sheet.init_apis')
+    @patch('hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account')
+    @patch('hca_validation.entry_sheet_validator.process_sheet.read_sheet_with_service_account')
+    def test_google_error_while_applying_fixes(self, mock_read_service_account_a, mock_read_service_account_b, mock_init_apis):
+        """Test that a validation result object is properly returned when an API error occurs while applying fixes."""
+
+        mock_apis = MagicMock()
+        mock_init_apis.return_value = mock_apis
+        mock_datasets_worksheet = MagicMock()
+        mock_donors_worksheet = MagicMock()
+        mock_update_response = MagicMock()
+        mock_read_service_account_a.return_value = (
+            _create_mock_spreadsheet_info(donors_sheet_data=SAMPLE_SHEET_DATA_WITH_FIXES, sheet_editable=True),
+            [mock_datasets_worksheet, mock_donors_worksheet]
+        )
+        mock_update_response.json.return_value = {
+            "error": {
+                "code": 500,
+                "message": "Test error",
+                "status": "internal_server_error"
+            }
+        }
+        mock_donors_worksheet.batch_update.side_effect = gspread.exceptions.APIError(mock_update_response)
+
+        validation_result = process_google_sheet(PUBLIC_SHEET_ID)
+
+        # Verify that spreadsheet only ended up being read once
+        mock_read_service_account_a.assert_called_once_with(PUBLIC_SHEET_ID, ["dataset", "donor", "sample"], mock_apis)
+        mock_read_service_account_b.assert_not_called()
+
+        # Verify that an error was reported
+        assert len(validation_result.errors) > 0
+        assert any("Test error" in error.message for error in validation_result.errors)
+
+        # Verify result, metadata, error code, and summary
+        assert validation_result.successful is False
+        assert validation_result.spreadsheet_metadata is not None
+        assert validation_result.spreadsheet_metadata.spreadsheet_title == "Test Sheet Title"
+        assert validation_result.error_code == 'api_error'
+        assert validation_result.summary  == {"dataset_count": None, "donor_count": None, "sample_count": None, "error_count": 1}
 
 
 # Integration tests that use actual Google Sheets
