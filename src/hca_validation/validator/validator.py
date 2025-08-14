@@ -10,7 +10,7 @@ import pandas as pd
 from pydantic_core import InitErrorDetails, PydanticCustomError
 
 import hca_validation.schema.generated.core as schema
-from hca_validation.schema_utils import get_class_identifier_name
+from hca_validation.schema_utils.schema_utils import get_class_entity_type, get_class_foreign_keys, get_class_identifier_name
 
 # Map schema types and bionetworks to their corresponding class names
 schema_classes = {
@@ -102,3 +102,58 @@ def validate_id_uniqueness(data: pd.DataFrame, schemaview: SchemaView, class_nam
             for index, value in duplicate_ids.items()
         ]
     )
+
+def validate_referential_integrity(data_by_entity_type: dict[str, pd.DataFrame], schemaview: SchemaView, class_name: str):
+    """
+    Validate that no foreign references in the data for the specified class are missing corresponding rows in the foreign data.
+
+    Args:
+        data_by_entity_type: Dict containing dataframes for all entity types, keyed by entity type
+        schemaview: The schemaview to use to determine class and slot relationships
+        class_name: The schema class name of the entities being validated
+    
+    Returns:
+        A Pydantic ValidationError if any referenced entities are missing, or None otherwise
+    """
+
+    data = data_by_entity_type[get_class_entity_type(class_name)]
+
+    def get_row_error_details(index, id, id_name, foreign_class_name) -> InitErrorDetails:
+        # Provide row-specific info to facilitate error handling
+        ctx = {
+            "row_index": index,
+            "row_id": id,
+            "foreign_class_name": foreign_class_name
+        }
+        return {
+            "type": PydanticCustomError("missing_reference", "Referenced {foreign_class_name} with ID {row_id} doesn't exist", ctx),
+            "loc": (id_name,),
+            "input": id,
+            "ctx": ctx
+        }
+
+    line_errors = []
+
+    for fk_slot_name, fk_class_name in get_class_foreign_keys(schemaview, class_name):
+        # If the foreign key column doesn't exist, skip
+        if fk_slot_name not in data:
+            continue
+        foreign_data = data_by_entity_type[get_class_entity_type(fk_class_name)]
+        foreign_id_name = get_class_identifier_name(schemaview, fk_class_name)
+        if foreign_id_name not in foreign_data:
+            # If the foreign data's ID column doesn't exist, all non-empty reference IDs are missing a corresponding entry
+            missing_ids = data[fk_slot_name][data[fk_slot_name].notna()]
+        else:
+            # Otherwise, get reference IDs that are not empty and are not in the foreign ID column
+            missing_ids = data[fk_slot_name][data[fk_slot_name].notna() & ~data[fk_slot_name].isin(foreign_data[foreign_id_name])]
+        # Add errors to list
+        line_errors.extend(get_row_error_details(index, value, fk_slot_name, fk_class_name) for index, value in missing_ids.items())
+    
+    if not line_errors:
+        return None
+
+    return ValidationError.from_exception_data(
+        title="Missing referenced entities",
+        line_errors=line_errors
+    )
+
