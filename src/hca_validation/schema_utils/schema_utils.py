@@ -72,6 +72,6 @@ def get_class_foreign_keys(schemaview: SchemaView, class_name: str):
     foreign_keys = []
     classes = schemaview.all_classes()
     for slot in schemaview.class_induced_slots(class_name):
-        if slot.inlined and slot.range in classes:
+        if slot.inlined is False and slot.range in classes:
             foreign_keys.append((slot.name, slot.range))
     return foreign_keys
