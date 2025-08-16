@@ -649,7 +649,7 @@ def validate_google_sheet(
     if bionetwork is not None and bionetwork not in allowed_bionetwork_names:
         raise ValueError(f"'{bionetwork}' is not a valid bionetwork")
 
-    from hca_validation.validator import validate, validate_id_uniqueness
+    from hca_validation.validator import validate, validate_id_uniqueness, validate_referential_integrity
     from hca_validation.schema_utils import load_schemaview, get_entity_class_name
     import logging
     logger = logging.getLogger()
@@ -773,6 +773,17 @@ def validate_google_sheet(
             all_valid_in_worksheet = False
             handle_validation_error(
                 uniqueness_validation_error,
+                validation_summary=validation_summary,
+                validation_errors_list=validation_errors,
+                entity_type=entity_type,
+                sheet_info=sheet_info
+            )
+        # Validate references and report results
+        references_validation_error = validate_referential_integrity(rows_to_validate_by_entity_type, schemaview, class_name)
+        if references_validation_error:
+            all_valid_in_worksheet = False
+            handle_validation_error(
+                references_validation_error,
                 validation_summary=validation_summary,
                 validation_errors_list=validation_errors,
                 entity_type=entity_type,
