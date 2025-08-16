@@ -117,18 +117,20 @@ def validate_referential_integrity(data_by_entity_type: dict[str, pd.DataFrame],
     """
 
     data = data_by_entity_type[get_class_entity_type(class_name)]
+    id_name = get_class_identifier_name(schemaview, class_name)
 
-    def get_row_error_details(index, id, id_name, foreign_class_name) -> InitErrorDetails:
+    def get_row_error_details(index, id, fk_value, fk_slot_name, foreign_class_name) -> InitErrorDetails:
         # Provide row-specific info to facilitate error handling
         ctx = {
             "row_index": index,
             "row_id": id,
-            "foreign_class_name": foreign_class_name
+            "foreign_class_name": foreign_class_name,
+            "foreign_key_value": fk_value
         }
         return {
-            "type": PydanticCustomError("missing_reference", "Referenced {foreign_class_name} with ID {row_id} doesn't exist", ctx),
-            "loc": (id_name,),
-            "input": id,
+            "type": PydanticCustomError("missing_reference", "Referenced {foreign_class_name} with ID {foreign_key_value} doesn't exist", ctx),
+            "loc": (fk_slot_name,),
+            "input": fk_value,
             "ctx": ctx
         }
 
@@ -142,12 +144,15 @@ def validate_referential_integrity(data_by_entity_type: dict[str, pd.DataFrame],
         foreign_id_name = get_class_identifier_name(schemaview, fk_class_name)
         if foreign_id_name not in foreign_data:
             # If the foreign data's ID column doesn't exist, all non-empty reference IDs are missing a corresponding entry
-            missing_ids = data[fk_slot_name][data[fk_slot_name].notna()]
+            missing_ref_rows = data[data[fk_slot_name].notna()]
         else:
             # Otherwise, get reference IDs that are not empty and are not in the foreign ID column
-            missing_ids = data[fk_slot_name][data[fk_slot_name].notna() & ~data[fk_slot_name].isin(foreign_data[foreign_id_name])]
+            missing_ref_rows = data[data[fk_slot_name].notna() & ~data[fk_slot_name].isin(foreign_data[foreign_id_name])]
         # Add errors to list
-        line_errors.extend(get_row_error_details(index, value, fk_slot_name, fk_class_name) for index, value in missing_ids.items())
+        line_errors.extend(
+            get_row_error_details(index, id_value, fk_value, fk_slot_name, fk_class_name)
+            for index, id_value, fk_value in missing_ref_rows[[id_name, fk_slot_name]].itertuples()
+        )
     
     if not line_errors:
         return None
