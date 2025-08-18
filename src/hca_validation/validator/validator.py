@@ -3,6 +3,7 @@ HCA Validation Tools - Main Validator Module
 
 This module provides the main validation functionality for HCA data using Pydantic models.
 """
+import itertools
 from typing import Dict, Any, Optional
 from linkml_runtime import SchemaView
 from pydantic import ValidationError
@@ -149,10 +150,12 @@ def validate_referential_integrity(data_by_entity_type: dict[str, pd.DataFrame],
         else:
             # Otherwise, get reference IDs that are not empty and are not in the foreign ID column
             missing_ref_rows = data[data[fk_slot_name].notna() & ~data[fk_slot_name].isin(foreign_data[foreign_id_name])]
+        # Get iterable of row IDs; default to all-None if the ID column doesn't exist
+        missing_ref_row_ids = missing_ref_rows[id_name] if id_name in missing_ref_rows else itertools.repeat(None, len(missing_ref_rows))
         # Add errors to list
         line_errors.extend(
             get_row_error_details(index, id_value, fk_value, fk_slot_name, fk_entity_type)
-            for index, id_value, fk_value in missing_ref_rows[[id_name, fk_slot_name]].itertuples()
+            for (index, fk_value), id_value in zip(missing_ref_rows[fk_slot_name].items(), missing_ref_row_ids)
         )
     
     if not line_errors:
