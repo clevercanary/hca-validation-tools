@@ -583,7 +583,7 @@ class TestValidateGoogleSheet:
         assert all(("foo" in error.message or "baz" in error.message) and not ("bar" in error.message or "None" in error.message) for error in duplicate_id_errors)
 
     @patch('hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account')
-    def test_referential_integerity(self, mock_read_service_account):
+    def test_referential_integrity(self, mock_read_service_account):
         """Test validation of referential integrity."""
         result = _test_validation_with_mock_sheets_response(
             validate_google_sheet,
