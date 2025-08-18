@@ -583,6 +583,25 @@ class TestValidateGoogleSheet:
         assert all(("foo" in error.message or "baz" in error.message) and not ("bar" in error.message or "None" in error.message) for error in duplicate_id_errors)
 
     @patch('hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account')
+    def test_referential_integerity(self, mock_read_service_account):
+        """Test validation of referential integrity."""
+        result = _test_validation_with_mock_sheets_response(
+            validate_google_sheet,
+            mock_read_service_account,
+            datasets_sheet_data=SAMPLE_DATASETS_SHEET_DATA_WITH_REFERENCES,
+            donors_sheet_data=SAMPLE_DONORS_SHEET_DATA_WITH_REFERENCES,
+            samples_sheet_data=SAMPLE_SAMPLES_SHEET_DATA_WITH_REFERENCES
+        )
+        # Based on the mock data, expect:
+        # - Three missing reference errors for donors
+        # - Four missing reference errors for samples, all for donor_id
+        donors_reference_errors = [error for error in result.errors if error.entity_type == "donor" and "doesn't exist" in error.message]
+        samples_reference_errors = [error for error in result.errors if error.entity_type == "sample" and "doesn't exist" in error.message]
+        assert len(donors_reference_errors) == 3
+        assert len(samples_reference_errors) == 4
+        assert all(error.column == "donor_id" for error in samples_reference_errors)
+
+    @patch('hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account')
     def test_available_fixes(self, mock_read_service_account):
         """Test that validate_google_sheet does not provide fixes on its own."""
         result = _test_validation_with_mock_sheets_response(validate_google_sheet, mock_read_service_account, donors_sheet_data=SAMPLE_SHEET_DATA_WITH_FIXES)
