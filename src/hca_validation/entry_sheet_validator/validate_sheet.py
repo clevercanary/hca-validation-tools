@@ -649,7 +649,7 @@ def validate_google_sheet(
     if bionetwork is not None and bionetwork not in allowed_bionetwork_names:
         raise ValueError(f"'{bionetwork}' is not a valid bionetwork")
 
-    from hca_validation.validator import validate, validate_id_uniqueness
+    from hca_validation.validator import validate, validate_id_uniqueness, validate_referential_integrity
     from hca_validation.schema_utils import load_schemaview, get_entity_class_name
     import logging
     logger = logging.getLogger()
@@ -673,8 +673,8 @@ def validate_google_sheet(
         except SheetReadError as read_error:
             return make_read_error_validation_result(sheet_id, entity_types, read_error)
     
-    # Each item is a dataframe of rows to validate, with an index containing the original 1-based indices of the rows
-    rows_to_validate_per_entity_type = []
+    # Mapping from entity type to dataframe of rows to validate, with normalized values, and an index containing the original 1-based indices of the rows
+    rows_to_validate_by_entity_type = {}
 
     for entity_type, sheet_info in zip(entity_types, sheet_read_result.worksheets):
         df = sheet_info.data
@@ -740,12 +740,19 @@ def validate_google_sheet(
         df = df.reset_index(drop=True)
         df.index += 1
 
-        # Save the subset of rows that should be validated
-        rows_to_validate_per_entity_type.append(df.iloc[row_indices])
+        # Get the subset of rows that should be validated
+        source_rows_to_validate = df.iloc[row_indices]
+
+        # Save the dataframe with normalized values
+        rows_to_validate_by_entity_type[entity_type] = normalize_dataframe_values(
+            source_rows_to_validate,
+            schemaview,
+            get_entity_class_name(entity_type, bionetwork)
+        )
     
     # Set up validation summary with entity counts and initial error count
     validation_summary = {
-        **{f"{entity_type}_count": len(rows_df) for entity_type, rows_df in zip(entity_types, rows_to_validate_per_entity_type)},
+        **{f"{entity_type}_count": len(rows_df) for entity_type, rows_df in rows_to_validate_by_entity_type.items()},
         "error_count": 0
     }
 
@@ -754,15 +761,11 @@ def validate_google_sheet(
 
     all_valid = True
 
-    for entity_type, sheet_info, rows_to_validate_source in zip(entity_types, sheet_read_result.worksheets, rows_to_validate_per_entity_type):
+    for entity_type, sheet_info in zip(entity_types, sheet_read_result.worksheets):
         # Determine schema class name to use for validation
         class_name = get_entity_class_name(entity_type, bionetwork)
         # Get normalized dataframe of rows to validate
-        rows_to_validate = normalize_dataframe_values(
-            rows_to_validate_source,
-            schemaview,
-            class_name
-        )
+        rows_to_validate = rows_to_validate_by_entity_type[entity_type]
         all_valid_in_worksheet = True
         # Validate uniqueness and report results
         uniqueness_validation_error = validate_id_uniqueness(rows_to_validate, schemaview, class_name)
@@ -770,6 +773,17 @@ def validate_google_sheet(
             all_valid_in_worksheet = False
             handle_validation_error(
                 uniqueness_validation_error,
+                validation_summary=validation_summary,
+                validation_errors_list=validation_errors,
+                entity_type=entity_type,
+                sheet_info=sheet_info
+            )
+        # Validate references and report results
+        references_validation_error = validate_referential_integrity(rows_to_validate_by_entity_type, schemaview, class_name)
+        if references_validation_error:
+            all_valid_in_worksheet = False
+            handle_validation_error(
+                references_validation_error,
                 validation_summary=validation_summary,
                 validation_errors_list=validation_errors,
                 entity_type=entity_type,

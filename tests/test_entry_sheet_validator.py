@@ -37,29 +37,52 @@ PRIVATE_SHEET_ID = "1Gp2yocEq9OWECfDgCVbExIgzYfM7s6nJV5ftyn-SMXQ"  # This is a p
 NONEXISTENT_SHEET_ID = "1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"  # This sheet doesn't exist
 
 # Sample data for mocking
+# Generic data
 SAMPLE_SHEET_DATA = pd.DataFrame({
     'column1': ['', '', '', '', 'value1', 'value2'],
     'column2': ['', '', '', '', 'value3', 'value4']
 })
+# Data to test parsing of empty values and lists
 SAMPLE_SHEET_DATA_WITH_CASTS = pd.DataFrame({
     'contact_email': ['', '', '', '', "foo@example.com", '   ', 'bar@example.com'],
     'study_pi': ['', '', '', '', 'Foo', 'Bar; Baz', '']
 })
+# Data to test parsing of integers, including invalid values that will be left as strings
 SAMPLE_SHEET_DATA_WITH_INTEGERS = pd.DataFrame({
     'cell_number_loaded': ['', '', '', '', '1', '-23', '456', '', '7890', '1,234', '-56,789', '123,456', '78,901,234', '56,78', '9,012345'],
     # Required to prevent the empty value above from being treated as the end of the data
     'sample_id': ['', '', '', '', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k']
 })
+# Data to test parsing of integers, with values that can all be represented as optional integers
 SAMPLE_SHEET_DATA_WITH_VALID_AND_MISSING_INTEGERS = pd.DataFrame({
     'cell_number_loaded': ['', '', '', '', '1', '-23', '', '7890'],
     # Required to prevent the empty value above from being treated as the end of the data
     'sample_id': ['', '', '', '', 'a', 'b', 'c', 'd']
 })
+# Data to test validation of ID uniqueness
 SAMPLE_SHEET_DATA_WITH_DUPLICATE_IDS = pd.DataFrame({
     'dataset_id': ['', '', '', '', 'foo', 'bar', 'foo', '', '', 'baz', 'baz', 'baz'],
     # This column is required to prevent the empty IDs from being treated as the end of the data
     'description': ['', '', '', '', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']
 })
+# Data to test validation of referential integrity
+SAMPLE_DATASETS_SHEET_DATA_WITH_REFERENCES = pd.DataFrame({
+    'dataset_id': ['', '', '', '', 'dataset_a', 'dataset_b', 'dataset_c']
+})
+SAMPLE_DONORS_SHEET_DATA_WITH_REFERENCES = pd.DataFrame({
+    # References to datasets, which do have an ID column; contains empty cells and references to missing datasets
+    'dataset_id': ['', '', '', '', 'dataset_b', 'dataset_a', '', 'dataset_missing_a', 'dataset_missing_b', 'dataset_b', '', 'dataset_a', 'dataset_missing_b'],
+    # Prevent the empty IDs from being treated as the end of the data
+    'description': ['', '', '', '', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i']
+})
+SAMPLE_SAMPLES_SHEET_DATA_WITH_REFERENCES = pd.DataFrame({
+    # Missing references to datasets
+    # References to donors, which are missing an ID column; contains empty cells
+    'donor_id': ['', '', '', '', 'donor_b', '', 'donor_a', '', '', 'donor_b', 'donor_b'],
+    # Prevent the empty IDs from being treated as the end of the data
+    'description': ['', '', '', '', 'a', 'b', 'c', 'd', 'e', 'f', 'g']
+})
+# Data to test automatic fixes
 SAMPLE_SHEET_DATA_WITH_FIXES = pd.DataFrame({
     'manner_of_death': ['', '', '', '', '1', 'unknown', 'not_applicable', '4', 'not applicable', 'not a manner of death', 'not_applicable'],
 })
@@ -558,6 +581,25 @@ class TestValidateGoogleSheet:
         duplicate_id_errors = [error for error in result.errors if error.message.startswith("Duplicate identifier ")]
         assert len(duplicate_id_errors) == 5
         assert all(("foo" in error.message or "baz" in error.message) and not ("bar" in error.message or "None" in error.message) for error in duplicate_id_errors)
+
+    @patch('hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account')
+    def test_referential_integrity(self, mock_read_service_account):
+        """Test validation of referential integrity."""
+        result = _test_validation_with_mock_sheets_response(
+            validate_google_sheet,
+            mock_read_service_account,
+            datasets_sheet_data=SAMPLE_DATASETS_SHEET_DATA_WITH_REFERENCES,
+            donors_sheet_data=SAMPLE_DONORS_SHEET_DATA_WITH_REFERENCES,
+            samples_sheet_data=SAMPLE_SAMPLES_SHEET_DATA_WITH_REFERENCES
+        )
+        # Based on the mock data, expect:
+        # - Three missing reference errors for donors
+        # - Four missing reference errors for samples, all for donor_id
+        donors_reference_errors = [error for error in result.errors if error.entity_type == "donor" and "doesn't exist" in error.message]
+        samples_reference_errors = [error for error in result.errors if error.entity_type == "sample" and "doesn't exist" in error.message]
+        assert len(donors_reference_errors) == 3
+        assert len(samples_reference_errors) == 4
+        assert all(error.column == "donor_id" for error in samples_reference_errors)
 
     @patch('hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account')
     def test_available_fixes(self, mock_read_service_account):
