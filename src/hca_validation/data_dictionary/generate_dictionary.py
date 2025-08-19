@@ -14,6 +14,8 @@ from typing import Dict, Any
 from linkml_runtime import SchemaView
 import jsonasobj2
 
+from hca_validation.schema_utils import get_class_entity_type
+
 def transform_schema_to_data_dictionary(schemaview: SchemaView) -> Dict[str, Any]:
     """
     Transform the LinkML schema into the requested data dictionary format.
@@ -37,12 +39,12 @@ def transform_schema_to_data_dictionary(schemaview: SchemaView) -> Dict[str, Any
         }
     }
     
-    # Class name mapping to ensure lowercase names in output
-    class_name_mapping = {
-        "Dataset": "dataset",
-        "Donor": "donor",
-        "Sample": "sample",
-        "Cell": "cell"
+    # Names of the classes to include in output
+    included_classes = {
+        "Dataset",
+        "Donor",
+        "Sample",
+        "Cell"
     }
 
     # Get set of names of all enums in the schema
@@ -51,14 +53,14 @@ def transform_schema_to_data_dictionary(schemaview: SchemaView) -> Dict[str, Any
     # Process each class in the schema
     for class_name, class_info in schemaview.all_classes().items():
         # Skip abstract classes or other non-relevant classes
-        if class_info.abstract or class_name not in class_name_mapping:
+        if class_info.abstract or class_name not in included_classes:
             continue
             
         # Create the class entry with title-cased name for title
         class_entry = {
             "title": class_name.title(),  # Ensure title case
             "description": class_info.description or "",
-            "name": class_name_mapping.get(class_name, class_name.lower()),  # Use lowercase name
+            "name": get_class_entity_type(class_name),  # Use lowercase entity type
             "attributes": []
         }
         
