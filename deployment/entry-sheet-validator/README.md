@@ -55,7 +55,7 @@ make test-lambda-container
 
 After running this script, you can test the Lambda function locally with:
 ```bash
-cd deployment/docker-build/output && ./run_lambda.sh
+cd deployment/entry-sheet-validator/output && ./run_lambda.sh
 ```
 
 ### `test_api_endpoint.sh`
@@ -68,7 +68,7 @@ Tests the deployed API Gateway endpoint for the Lambda function:
 
 Usage:
 ```bash
-./deployment/docker-build/test_api_endpoint.sh [SHEET_ID]
+./deployment/entry-sheet-validator/test_api_endpoint.sh [SHEET_ID]
 ```
 
 

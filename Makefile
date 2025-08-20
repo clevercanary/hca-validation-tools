@@ -200,7 +200,7 @@ generate-data-dictionary-file:
 .PHONY: build-lambda-container
 build-lambda-container:
 	@echo "Building Lambda container image..."
-	@./deployment/docker-build/build_lambda_container.sh $(PROFILE)
+	@./deployment/entry-sheet-validator/build_lambda_container.sh $(PROFILE)
 	@echo "✓ Lambda container image built: hca-entry-sheet-validator"
 
 .PHONY: test-lambda-container

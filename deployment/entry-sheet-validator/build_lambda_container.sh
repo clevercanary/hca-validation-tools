@@ -22,4 +22,4 @@ if [ -z "$EXT_URL" ]; then
   exit 1
 fi
 
-docker build --platform=linux/amd64 --build-arg EXT_URL="$EXT_URL" -t hca-entry-sheet-validator -f deployment/docker-build/Dockerfile .
+docker build --platform=linux/amd64 --build-arg EXT_URL="$EXT_URL" -t hca-entry-sheet-validator -f deployment/entry-sheet-validator/Dockerfile .
