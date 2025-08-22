@@ -8,19 +8,7 @@ packages = [{include = "hca_validation", from = "src"}]
 
 [tool.poetry.dependencies]
 python = "^3.10"
-linkml-runtime = "^1.9.1"
-linkml-validator = "^0.4.5"
-linkml = "^1.9.1"
-pyyaml = "^6.0"
-pandas = "^2.2.3"
-requests = "^2.32.3"
-gspread = "^6.2.0"
-psutil = "^7.0.0"
-python-dotenv = "^1.1.0"
-pydantic = "^2.11.4"
-pydantic-core = "^2.33.2"
-google-api-python-client = "^2.171.0"
-urllib3 = "^2.5.0"
+hca-validation-shared = {path = "./shared", develop = true}
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.5"

@@ -2,7 +2,7 @@
 # This Makefile provides commands for validating LinkML schemas
 
 # Variables
-SCHEMA_DIR := src/hca_validation/schema
+SCHEMA_DIR := shared/src/hca_validation/schema
 SCHEMAS := $(wildcard $(SCHEMA_DIR)/*.yaml)
 POETRY := poetry run
 # Redirect stderr to suppress warnings from LinkML tools (duplicate -V parameter warnings)
@@ -141,26 +141,38 @@ lint-schema-errors:
 .PHONY: gen-schema
 gen-schema:
 	@echo "Generating models..."
-	@$(POETRY) gen-pydantic src/hca_validation/schema/core.yaml --meta AUTO > src/hca_validation/schema/generated/core.py
+	cd shared && poetry run gen-pydantic src/hca_validation/schema/core.yaml --meta AUTO > src/hca_validation/schema/generated/core.py
 	@echo "Done"
 
-# Run validator tests
+# Run validator tests (in shared library)
 .PHONY: test-validator
 test-validator:
 	@echo "Running validator tests..."
-	@$(POETRY) pytest tests/test_validator.py -v -W ignore::DeprecationWarning
+	@$(POETRY) pytest shared/tests/test_validator.py -v -W ignore::DeprecationWarning
 
-# Run entry sheet validator tests
+# Run entry sheet validator tests (in shared library)
 .PHONY: test-entry-sheet
 test-entry-sheet:
 	@echo "Running entry sheet validator tests..."
-	@$(POETRY) pytest tests/test_entry_sheet_validator.py -v -W ignore::DeprecationWarning
+	@$(POETRY) pytest shared/tests/test_entry_sheet_validator.py -v -W ignore::DeprecationWarning
+
+# Run shared library tests
+.PHONY: test-shared
+test-shared:
+	@echo "Running shared library tests..."
+	@$(POETRY) pytest shared/tests/ -v -W ignore::DeprecationWarning
+
+# Run main project tests
+.PHONY: test-main
+test-main:
+	@echo "Running main project tests..."
+	@$(POETRY) pytest tests/ -v -W ignore::DeprecationWarning
 
 # Run all tests
 .PHONY: test-all
 test-all:
 	@echo "Running all tests..."
-	@$(POETRY) pytest tests/ -v -W ignore::DeprecationWarning
+	@$(POETRY) pytest shared/tests/ tests/ -v -W ignore::DeprecationWarning
 
 # Validate Google Sheet
 .PHONY: validate-sheet
@@ -178,7 +190,7 @@ validate-sheet-id:
 .PHONY: generate-data-dictionary
 generate-data-dictionary:
 	@echo "Generating data dictionary from core schema to standard path..."
-	@cd $(shell pwd) && $(POETRY) python -c "from hca_validation.data_dictionary.generate_dictionary import generate_dictionary; generate_dictionary()"
+	cd shared && poetry run python -c "from hca_validation.data_dictionary.generate_dictionary import generate_dictionary; generate_dictionary('src/hca_validation/schema/core.yaml', '../data_dictionaries/core_data_dictionary.json')"
 
 # Generate data dictionary from a specific schema file to a specific output file
 .PHONY: generate-data-dictionary-file
@@ -189,10 +201,10 @@ generate-data-dictionary-file:
 	fi
 	@if [ -z "$(SCHEMA_FILE)" ]; then \
 		echo "Generating data dictionary from core schema to $(OUTPUT_FILE)..."; \
-		cd $(shell pwd) && $(POETRY) python -c "from hca_validation.data_dictionary.generate_dictionary import generate_dictionary; generate_dictionary('$(SCHEMA_DIR)/core.yaml', '$(OUTPUT_FILE)')"; \
+		cd shared && poetry run python -c "from hca_validation.data_dictionary.generate_dictionary import generate_dictionary; generate_dictionary('src/hca_validation/schema/core.yaml', '../$(OUTPUT_FILE)')"; \
 	else \
 		echo "Generating data dictionary from $(SCHEMA_FILE) to $(OUTPUT_FILE)..."; \
-		cd $(shell pwd) && $(POETRY) python -c "from hca_validation.data_dictionary.generate_dictionary import generate_dictionary; generate_dictionary('$(SCHEMA_FILE)', '$(OUTPUT_FILE)')"; \
+		cd shared && poetry run python -c "from hca_validation.data_dictionary.generate_dictionary import generate_dictionary; generate_dictionary('$(SCHEMA_FILE)', '../$(OUTPUT_FILE)')"; \
 	fi
 	@echo "✓ Data dictionary generated at $(OUTPUT_FILE)"
 

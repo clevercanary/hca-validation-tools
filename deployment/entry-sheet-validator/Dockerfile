@@ -4,8 +4,9 @@ FROM --platform=linux/amd64 public.ecr.aws/lambda/python:3.10 AS builder
 # Install Poetry
 RUN pip install poetry==1.7.1
 
-# Copy Poetry configuration files
+# Copy Poetry configuration files and shared library
 COPY pyproject.toml poetry.lock* ./
+COPY shared/ ./shared/
 
 # Configure Poetry to not create a virtual environment
 RUN poetry config virtualenvs.create false
@@ -37,6 +38,8 @@ COPY --from=builder /opt/extensions/ /opt/extensions/
 
 # Copy application code
 COPY src/hca_validation/ /var/task/hca_validation/
+# Copy shared library to container
+COPY shared/src/hca_validation/ /var/task/hca_validation/
 
 # Copy config.yaml for the AWS Parameters and Secrets Extension
 COPY config.yaml /var/task/config.yaml
