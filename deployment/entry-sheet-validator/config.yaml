@@ -1,0 +1,12 @@
+# Configuration for AWS Parameters and Secrets Lambda Extension
+# This file tells the extension which secrets to fetch from AWS Secrets Manager
+# and make available to the Lambda function via HTTP API.
+#
+# The extension runs as a sidecar process and caches secrets for improved performance.
+# Secrets are accessible at: http://localhost:2773/secretsmanager/get?secretId=<secret-name>
+
+SecretManagers:
+  - secrets:
+      # Google Service Account credentials for Google Sheets API access
+      # Environment variable substitution: dev/prod based on ENVIRONMENT
+      - ${ENVIRONMENT:-dev}/hca-atlas-tracker/google-service-account

@@ -2,9 +2,9 @@
 # This Makefile provides commands for validating LinkML schemas
 
 # Variables
-SCHEMA_DIR := shared/src/hca_validation/schema
-SCHEMAS := $(wildcard $(SCHEMA_DIR)/*.yaml)
-POETRY := poetry run
+SCHEMA_DIR := src/hca_validation/schema
+SCHEMAS := $(wildcard shared/$(SCHEMA_DIR)/*.yaml)
+POETRY := cd shared && poetry run
 # Redirect stderr to suppress warnings from LinkML tools (duplicate -V parameter warnings)
 # These warnings are related to the LinkML tool implementation and not to schema issues
 SUPPRESS_WARNINGS := 2>/dev/null
@@ -72,9 +72,10 @@ help:
 validate-schema:
 	@echo "Validating all schema files..."
 	@for schema in $(SCHEMAS); do \
-		echo "Validating $$schema..."; \
-		$(POETRY) gen-yaml $$schema > /dev/null $(SUPPRESS_WARNINGS) || exit 1; \
-		echo "✓ $$schema is valid"; \
+		schema_file=$$(basename $$schema); \
+		echo "Validating $$schema_file..."; \
+		(cd shared && poetry run gen-yaml $(SCHEMA_DIR)/$$schema_file > /dev/null $(SUPPRESS_WARNINGS)) || exit 1; \
+		echo "✓ $$schema_file is valid"; \
 	done
 	@echo "All schema files are valid!"
 
@@ -148,31 +149,31 @@ gen-schema:
 .PHONY: test-validator
 test-validator:
 	@echo "Running validator tests..."
-	@$(POETRY) pytest shared/tests/test_validator.py -v -W ignore::DeprecationWarning
+	@$(POETRY) pytest tests/test_validator.py -v -W ignore::DeprecationWarning
 
 # Run entry sheet validator tests (in shared library)
 .PHONY: test-entry-sheet
 test-entry-sheet:
 	@echo "Running entry sheet validator tests..."
-	@$(POETRY) pytest shared/tests/test_entry_sheet_validator.py -v -W ignore::DeprecationWarning
+	@$(POETRY) pytest tests/test_entry_sheet_validator.py -v -W ignore::DeprecationWarning
 
 # Run shared library tests
 .PHONY: test-shared
 test-shared:
 	@echo "Running shared library tests..."
-	@$(POETRY) pytest shared/tests/ -v -W ignore::DeprecationWarning
+	@$(POETRY) pytest tests/ -v -W ignore::DeprecationWarning
 
-# Run main project tests
+# Run main project tests (integration tests)
 .PHONY: test-main
 test-main:
-	@echo "Running main project tests..."
-	@$(POETRY) pytest tests/ -v -W ignore::DeprecationWarning
+	@echo "Running integration tests..."
+	@$(POETRY) pytest ../tests/ -v -W ignore::DeprecationWarning
 
 # Run all tests
 .PHONY: test-all
 test-all:
 	@echo "Running all tests..."
-	@$(POETRY) pytest shared/tests/ tests/ -v -W ignore::DeprecationWarning
+	@$(POETRY) pytest tests/ -v -W ignore::DeprecationWarning
 
 # Validate Google Sheet
 .PHONY: validate-sheet
@@ -218,7 +219,7 @@ build-lambda-container:
 .PHONY: test-lambda-container
 test-lambda-container:
 	@echo "Running pytest smoke test against Lambda container..."
-	@$(POETRY) pytest tests/test_lambda_container_smoke.py -v
+	@cd services/entry-sheet-validator && poetry run pytest tests/test_lambda_container_smoke.py -v
 
 
 .PHONY: deploy-lambda-container

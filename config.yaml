@@ -1,3 +1,0 @@
-SecretManagers:
-  - secrets:
-    - ${ENVIRONMENT:-dev}/hca-atlas-tracker/google-service-account

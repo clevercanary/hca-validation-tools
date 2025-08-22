@@ -1,2 +1,0 @@
-study_pi,batch_condition,default_embedding,sequencing_platform,assay_ontology_term_id,reference_genome,alignment_software,intron_inclusion,sequenced_fragment,gene_annotation_version,comments,protocol_url,title
-"[""Teichmann,Sarah,A.""]","[""patient"",""seqBatch""]",umap,EFO:0008563,EFO:0009922,GRCh38,cellranger_8.0.0,yes,3 prime tag,GCF_000001405.40,Sample dataset for testing validation,https://www.biorxiv.org/content/early/2017/09/24/193219,Human Heart Cell Atlas - Test Dataset

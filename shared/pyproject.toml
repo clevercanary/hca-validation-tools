@@ -27,6 +27,11 @@ pytest-mock = "^3.14.0"
 python-dotenv = "^1.1.0"
 requests = "^2.32.3"
 
+[tool.pytest.ini_options]
+markers = [
+    "integration: marks tests as integration tests (deselect with '-m \"not integration\"')"
+]
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
