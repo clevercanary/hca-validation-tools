@@ -137,8 +137,8 @@ def generate_dictionary(schema_path=None, output_path=None):
     
     # Default to core.yaml if no schema path is provided
     if schema_path is None:
-        # Get the path to the schema directory (in original src location)
-        schema_dir = project_root / "src" / "hca_validation" / "schema"
+        # Get the path to the schema directory (in shared library)
+        schema_dir = project_root / "shared" / "src" / "hca_validation" / "schema"
         schema_path = schema_dir / "core.yaml"
     
     # Load the schema
