@@ -1,0 +1,7 @@
+# Validation Tools Ticket 125 - Docker Stub Validation
+# Current branch commit hash before rebase: 4591716734deefa3a5a190ea45e08a6748951fff
+
+# After noopdog/123-directory-structure is squash merged to main, run:
+git rebase --onto main 4591716734deefa3a5a190ea45e08a6748951fff
+
+# This will rebase the current branch onto main, starting from the commit after 4591716734deefa3a5a190ea45e08a6748951fff

@@ -7,8 +7,9 @@ package-mode = false
 
 [tool.poetry.dependencies]
 python = "^3.10"
+# AWS dependencies for S3 operations
+boto3 = "^1.34.0"
 # Minimal dependencies for Batch environment - add back as needed
-# boto3 = "^1.34.0"
 # python-dotenv = "^1.1.0"
 # hca-validation-shared = {path = "../../shared", develop = true}
 
