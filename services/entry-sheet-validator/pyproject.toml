@@ -3,6 +3,7 @@ name = "hca-entry-sheet-validator"
 version = "0.1.0"
 description = "Entry sheet validation Lambda service for HCA validation tools"
 authors = ["Your Name <your.email@example.com>"]
+package-mode = false
 # No packages - this is a Lambda function, not a Python package
 
 [tool.poetry.dependencies]
