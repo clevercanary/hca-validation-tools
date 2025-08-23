@@ -2,7 +2,7 @@
 FROM --platform=linux/amd64 public.ecr.aws/lambda/python:3.10 AS builder
 
 # Install Poetry
-RUN pip install poetry==1.7.1
+RUN pip install poetry==1.8.3
 
 # Set up the directory structure to match the expected paths
 WORKDIR /build
