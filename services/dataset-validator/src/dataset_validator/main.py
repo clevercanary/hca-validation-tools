@@ -75,8 +75,8 @@ def configure_logging():
     return logger
 
 
-# Initialize logger (will be set in main())
-logger = None
+# Module-level logger
+logger = logging.getLogger(__name__)
 
 
 def publish_validation_result(message: ValidationMessage, sns_topic_arn: str) -> bool:
@@ -211,8 +211,7 @@ def download_s3_file(bucket: str, key: str, local_path: Path) -> tuple[bool, str
 
 def main():
     """Main entry point for the dataset validator."""
-    global logger
-    logger = configure_logging()
+    configure_logging()
     
     # Initialize validation tracking variables
     start_time = datetime.now(timezone.utc)
