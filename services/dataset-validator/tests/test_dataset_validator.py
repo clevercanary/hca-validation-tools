@@ -186,68 +186,53 @@ def test_missing_sns_topic_logs_error_and_exits(caplog, env_manager, base_env_va
     assert "SNS_TOPIC_ARN=None" in caplog.text
 
 
-def test_publish_validation_result_success(caplog, mock_aws):
-    """Test successful SNS message publishing."""
-    import sys
-    sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-    
-    from dataset_validator.main import publish_validation_result, ValidationMessage, configure_logging
-    
-    # Configure logging for the test
-    configure_logging()
-    
-    # Create test validation message
-    message = ValidationMessage(
-        file_id='test-file-123',
-        status='success',
-        timestamp='2024-01-01T12:00:00Z',
-        bucket='test-bucket',
-        key='test/file.h5ad',
-        batch_job_id='job-123',
-        batch_job_name='test-job',
-        downloaded_sha256='abc123',
-        source_sha256='abc123',
-        integrity_status='valid',
-        error_message=None
-    )
-    
-    # Test publishing using the fixture's topic ARN
-    with caplog.at_level(logging.INFO, logger="dataset_validator.main"):
-        result = publish_validation_result(message, mock_aws['topic_arn'])
-    
-    # Should succeed
-    assert result is True
-    assert "Publishing validation result to SNS topic" in caplog.text
-    assert "Successfully published SNS message" in caplog.text
-    
-    # Verify message content was sent correctly
-    expected_message_data = {
-        'file_id': 'test-file-123',
-        'status': 'success',
-        'timestamp': '2024-01-01T12:00:00Z',
-        'bucket': 'test-bucket',
-        'key': 'test/file.h5ad',
-        'batch_job_id': 'job-123',
-        'batch_job_name': 'test-job',
-        'downloaded_sha256': 'abc123',
-        'source_sha256': 'abc123',
-        'integrity_status': 'valid',
-        'error_message': None
+@pytest.mark.parametrize("test_case", [
+    {
+        "name": "success",
+        "description": "Test successful SNS message publishing",
+        "message_data": {
+            'file_id': 'test-file-123',
+            'status': 'success',
+            'timestamp': '2024-01-01T12:00:00Z',
+            'bucket': 'test-bucket',
+            'key': 'test/file.h5ad',
+            'batch_job_id': 'job-123',
+            'batch_job_name': 'test-job',
+            'downloaded_sha256': 'abc123',
+            'source_sha256': 'abc123',
+            'integrity_status': 'valid',
+            'error_message': None
+        },
+        "use_valid_topic": True,
+        "expected_result": True,
+        "log_level": logging.INFO,
+        "expected_logs": [
+            "Publishing validation result to SNS topic",
+            "Successfully published SNS message"
+        ]
+    },
+    {
+        "name": "invalid_topic",
+        "description": "Test SNS publishing with invalid topic ARN",
+        "message_data": {
+            'file_id': 'test-file-123',
+            'status': 'failure',
+            'timestamp': '2024-01-01T12:00:00Z',
+            'bucket': 'test-bucket',
+            'key': 'test/file.h5ad',
+            'batch_job_id': 'job-123',
+            'error_message': 'Test error'
+        },
+        "use_valid_topic": False,
+        "expected_result": False,
+        "log_level": logging.ERROR,
+        "expected_logs": [
+            "SNS publish failed"
+        ]
     }
-    
-    # Verify the message serialization
-    message_json = message.to_json()
-    parsed_message = json.loads(message_json)
-    assert parsed_message == expected_message_data
-    
-    # Verify subject line format
-    expected_subject = "Dataset Validation Result - SUCCESS"
-    # Note: moto doesn't provide easy access to published message details,
-    # but we've verified the function completes and logs success
-
-
-def test_publish_validation_result_invalid_topic(caplog, mock_aws):
-    """Test SNS publishing with invalid topic ARN."""
+], ids=lambda x: x["name"])
+def test_publish_validation_result_scenarios(caplog, mock_aws, test_case):
+    """Parameterized test for SNS publishing scenarios."""
     import sys
     sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
     
@@ -257,25 +242,30 @@ def test_publish_validation_result_invalid_topic(caplog, mock_aws):
     configure_logging()
     
     # Create test validation message
-    message = ValidationMessage(
-        file_id='test-file-123',
-        status='failure',
-        timestamp='2024-01-01T12:00:00Z',
-        bucket='test-bucket',
-        key='test/file.h5ad',
-        batch_job_id='job-123',
-        error_message='Test error'
-    )
+    message = ValidationMessage(**test_case["message_data"])
     
-    # Test publishing to invalid topic
-    invalid_topic_arn = 'arn:aws:sns:us-east-1:123456789012:nonexistent-topic'
+    # Choose topic ARN based on test case
+    if test_case["use_valid_topic"]:
+        topic_arn = mock_aws['topic_arn']
+    else:
+        topic_arn = 'arn:aws:sns:us-east-1:123456789012:nonexistent-topic'
     
-    with caplog.at_level(logging.ERROR, logger="dataset_validator.main"):
-        result = publish_validation_result(message, invalid_topic_arn)
+    # Test publishing
+    with caplog.at_level(test_case["log_level"], logger="dataset_validator.main"):
+        result = publish_validation_result(message, topic_arn)
     
-    # Should fail
-    assert result is False
-    assert "SNS publish failed" in caplog.text
+    # Verify result
+    assert result is test_case["expected_result"]
+    
+    # Verify expected log messages
+    for expected_log in test_case["expected_logs"]:
+        assert expected_log in caplog.text
+    
+    # For success case, verify message serialization
+    if test_case["name"] == "success":
+        message_json = message.to_json()
+        parsed_message = json.loads(message_json)
+        assert parsed_message == test_case["message_data"]
 
 
 @pytest.mark.parametrize("test_case", [
