@@ -79,6 +79,45 @@ def configure_logging():
 logger = None
 
 
+def publish_validation_result(message: ValidationMessage, sns_topic_arn: str) -> bool:
+    """
+    Publish validation result to SNS topic.
+    
+    Args:
+        message: ValidationMessage containing result data
+        sns_topic_arn: ARN of the SNS topic to publish to
+        
+    Returns:
+        True if published successfully, False otherwise
+    """
+    try:
+        logger.info("Publishing validation result to SNS topic: %s", sns_topic_arn)
+        
+        # Create SNS client
+        sns_client = boto3.client('sns')
+        
+        # Publish message
+        response = sns_client.publish(
+            TopicArn=sns_topic_arn,
+            Message=message.to_json(),
+            Subject=f"Dataset Validation Result - {message.status.upper()}"
+        )
+        
+        message_id = response.get('MessageId', 'unknown')
+        logger.info("Successfully published SNS message: %s", message_id)
+        return True
+        
+    except ClientError as e:
+        error_code = e.response.get('Error', {}).get('Code', 'Unknown')
+        error_message = e.response.get('Error', {}).get('Message', str(e))
+        logger.error("SNS publish failed [%s]: %s", error_code, error_message)
+        return False
+        
+    except Exception as e:
+        logger.error("Unexpected error publishing to SNS: %s", str(e))
+        return False
+
+
 def create_work_directory(work_dir: str = "/tmp/dataset_validator") -> Path:
     """Create and return the work directory path."""
     work_path = Path(work_dir)
@@ -175,6 +214,11 @@ def main():
     global logger
     logger = configure_logging()
     
+    # Initialize validation tracking variables
+    start_time = datetime.now(timezone.utc)
+    validation_message = None
+    exit_code = 1  # Default to failure
+    
     try:
         logger.info("Dataset Validator starting")
         
@@ -199,40 +243,107 @@ def main():
             missing_vars.append(f"AWS_BATCH_JOB_ID={batch_job_id}")
         
         if missing_vars:
-            logger.error("Missing required environment variables: %s", ", ".join(missing_vars))
-            return 1
-        
-        logger.info("Processing S3 file: s3://%s/%s", bucket, key)
-        
-        # Create work directory
-        work_dir = create_work_directory()
-        logger.info("Work directory created: %s", work_dir)
-        
-        # Download file from S3
-        local_file = work_dir / Path(key).name
-        success, source_sha256 = download_s3_file(bucket, key, local_file)
-        if success:
-            logger.info("File ready for validation: %s", local_file)
+            error_msg = f"Missing required environment variables: {', '.join(missing_vars)}"
+            logger.error(error_msg)
             
-            # Verify file integrity if SHA256 metadata is available
-            if source_sha256:
-                if not verify_file_integrity(local_file, source_sha256):
-                    logger.error("File integrity verification failed - terminating")
-                    return 1
-            else:
-                logger.warning("Skipping integrity verification - no source SHA256 metadata")
-            
-            # TODO: Add actual validation logic here
-            logger.info("Validation completed successfully")
+            # Create validation message for missing env vars (minimal info available)
+            validation_message = ValidationMessage(
+                file_id=file_id or "unknown",
+                status="failure",
+                timestamp=start_time.isoformat(),
+                bucket=bucket or "unknown",
+                key=key or "unknown",
+                batch_job_id=batch_job_id or "unknown",
+                error_message=error_msg
+            )
+            exit_code = 1
         else:
-            logger.error("Failed to download file - terminating")
-            return 1
+            # Initialize validation message with basic info
+            validation_message = ValidationMessage(
+                file_id=file_id,
+                status="in_progress",
+                timestamp=start_time.isoformat(),
+                bucket=bucket,
+                key=key,
+                batch_job_id=batch_job_id,
+                batch_job_name=os.environ.get('AWS_BATCH_JOB_NAME')
+            )
+            
+            logger.info("Processing S3 file: s3://%s/%s", bucket, key)
+            
+            # Create work directory
+            work_dir = create_work_directory()
+            logger.info("Work directory created: %s", work_dir)
+            
+            # Download file from S3
+            local_file = work_dir / Path(key).name
+            success, source_sha256 = download_s3_file(bucket, key, local_file)
+            
+            if success:
+                logger.info("File ready for validation: %s", local_file)
+                
+                # Compute downloaded file SHA256
+                downloaded_sha256 = compute_sha256(local_file)
+                validation_message.downloaded_sha256 = downloaded_sha256
+                validation_message.source_sha256 = source_sha256
+                
+                # Verify file integrity if SHA256 metadata is available
+                if source_sha256:
+                    if not verify_file_integrity(local_file, source_sha256):
+                        error_msg = "File integrity verification failed"
+                        logger.error(error_msg + " - terminating")
+                        validation_message.status = "failure"
+                        validation_message.error_message = error_msg
+                        exit_code = 1
+                    else:
+                        # TODO: Add actual validation logic here
+                        logger.info("Validation completed successfully")
+                        validation_message.status = "success"
+                        exit_code = 0
+                else:
+                    logger.warning("Skipping integrity verification - no source SHA256 metadata")
+                    # TODO: Add actual validation logic here
+                    logger.info("Validation completed successfully")
+                    validation_message.status = "success"
+                    exit_code = 0
+            else:
+                error_msg = "Failed to download file"
+                logger.error(error_msg + " - terminating")
+                validation_message.status = "failure"
+                validation_message.error_message = error_msg
+                exit_code = 1
         
-        logger.info("Dataset Validator completed successfully")
-        return 0
     except Exception as e:
-        logger.error("Dataset Validator failed: %s", e)
-        return 1
+        error_msg = f"Dataset Validator failed: {e}"
+        logger.error(error_msg)
+        
+        # Update validation message if it exists, otherwise create minimal one
+        if validation_message:
+            validation_message.status = "failure"
+            validation_message.error_message = error_msg
+        else:
+            validation_message = ValidationMessage(
+                file_id="unknown",
+                status="failure",
+                timestamp=start_time.isoformat(),
+                bucket="unknown",
+                key="unknown",
+                batch_job_id="unknown",
+                error_message=error_msg
+            )
+        exit_code = 1
+    
+    finally:
+        # Always publish SNS message before exiting (if we have topic ARN)
+        if validation_message and sns_topic_arn:
+            publish_success = publish_validation_result(validation_message, sns_topic_arn)
+            if not publish_success:
+                logger.warning("SNS publishing failed, but continuing with original exit code")
+        
+        if exit_code == 0:
+            logger.info("Dataset Validator completed successfully")
+        
+        return exit_code
 
 
 if __name__ == "__main__":
