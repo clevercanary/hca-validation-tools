@@ -16,9 +16,9 @@ boto3 = "^1.34.0"
 [tool.poetry.group.dev.dependencies]
 # Testing dependencies
 pytest = "^8.3.5"
+moto = "^4.2.0"
 # Additional dev dependencies - add back as needed
 # pytest-mock = "^3.14.0"
-# moto = "^4.2.0"
 
 [build-system]
 requires = ["poetry-core"]
