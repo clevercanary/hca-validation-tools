@@ -138,6 +138,7 @@ def test_publish_validation_result_success(caplog):
         batch_job_name='test-job',
         downloaded_sha256='abc123',
         source_sha256='abc123',
+        integrity_status='valid',
         error_message=None
     )
     
@@ -161,6 +162,7 @@ def test_publish_validation_result_success(caplog):
         'batch_job_name': 'test-job',
         'downloaded_sha256': 'abc123',
         'source_sha256': 'abc123',
+        'integrity_status': 'valid',
         'error_message': None
     }
     

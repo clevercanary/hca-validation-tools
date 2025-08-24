@@ -26,13 +26,22 @@ SNS_TOPIC_ARN = 'SNS_TOPIC_ARN'
 AWS_BATCH_JOB_ID = 'AWS_BATCH_JOB_ID'
 AWS_BATCH_JOB_NAME = 'AWS_BATCH_JOB_NAME'
 
+# Status constants
+STATUS_SUCCESS = 'success'
+STATUS_FAILURE = 'failure'
+
+# Integrity status constants
+INTEGRITY_VALID = 'valid'
+INTEGRITY_INVALID = 'invalid'
+INTEGRITY_ERROR = 'error'
+
 
 @dataclass
 class ValidationMessage:
     """SNS message structure for validation results."""
     # Required fields
     file_id: str              # UUID from Tracker database
-    status: str               # "success", "download_failure", "integrity_failure", "validation_failure"
+    status: str               # "success", "failure"
     timestamp: str            # ISO format timestamp (UTC)
     bucket: str               # S3 bucket name
     key: str                  # S3 object key
@@ -42,6 +51,7 @@ class ValidationMessage:
     batch_job_name: Optional[str] = None       # Job definition name (for context)
     downloaded_sha256: Optional[str] = None    # SHA256 computed from downloaded file
     source_sha256: Optional[str] = None        # SHA256 from S3 metadata
+    integrity_status: Optional[str] = None     # "valid", "invalid", "error"
     error_message: Optional[str] = None        # Human-readable error description
 
     def to_json(self) -> str:
@@ -252,7 +262,7 @@ def create_failure_message(env_vars: dict[str, str], error: str, start_time: dat
     """Create ValidationMessage for failure cases."""
     return ValidationMessage(
         file_id=env_vars.get('file_id') or "unknown",
-        status="failure",
+        status=STATUS_FAILURE,
         timestamp=start_time.isoformat(),
         bucket=env_vars.get('bucket') or "unknown",
         key=env_vars.get('key') or "unknown",
@@ -310,7 +320,8 @@ def main() -> int:
         if not source_sha256:
             error_msg = "No source SHA256 metadata found - cannot validate file integrity"
             logger.error(error_msg + " - terminating")
-            validation_message.status = "failure"
+            validation_message.status = STATUS_FAILURE
+            validation_message.integrity_status = INTEGRITY_ERROR
             validation_message.error_message = error_msg
             exit_code = 1
             return exit_code
@@ -324,14 +335,16 @@ def main() -> int:
         if not verify_file_integrity(local_file, source_sha256):
             error_msg = "File integrity verification failed"
             logger.error(error_msg + " - terminating")
-            validation_message.status = "failure"
+            validation_message.status = STATUS_FAILURE
+            validation_message.integrity_status = INTEGRITY_INVALID
             validation_message.error_message = error_msg
             exit_code = 1
             return exit_code
         
         # TODO: Add actual validation logic here
         logger.info("Validation completed successfully")
-        validation_message.status = "success"
+        validation_message.status = STATUS_SUCCESS
+        validation_message.integrity_status = INTEGRITY_VALID
         exit_code = 0
         
     except Exception as e:
@@ -340,7 +353,7 @@ def main() -> int:
         
         # Update validation message if it exists, otherwise create minimal one
         if validation_message:
-            validation_message.status = "failure"
+            validation_message.status = STATUS_FAILURE
             validation_message.error_message = error_msg
         else:
             # Use empty dict if env_vars doesn't exist yet
