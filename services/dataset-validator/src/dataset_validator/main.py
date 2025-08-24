@@ -49,7 +49,7 @@ class ValidationMessage:
         return json.dumps(asdict(self), indent=2)
 
 
-def configure_logging():
+def configure_logging() -> logging.Logger:
     """Configure logging for CloudWatch compatibility."""
     # Get log level from environment variable (default to INFO)
     log_level = os.environ.get(LOG_LEVEL, 'INFO').upper()
@@ -76,7 +76,7 @@ def configure_logging():
 
 
 # Module-level logger
-logger = logging.getLogger(__name__)
+logger: logging.Logger = logging.getLogger(__name__)
 
 
 def publish_validation_result(message: ValidationMessage, sns_topic_arn: str) -> bool:
@@ -262,13 +262,13 @@ def create_failure_message(env_vars: dict[str, str], error: str, start_time: dat
     )
 
 
-def main():
+def main() -> int:
     """Main entry point for the dataset validator."""
     configure_logging()
     
     # Initialize validation tracking variables
     start_time = datetime.now(timezone.utc)
-    validation_message = None
+    validation_message: Optional[ValidationMessage] = None
     exit_code = 1  # Default to failure
     
     try:
