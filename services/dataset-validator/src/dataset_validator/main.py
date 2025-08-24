@@ -209,6 +209,55 @@ def download_s3_file(bucket: str, key: str, local_path: Path) -> tuple[bool, str
         return False, None
 
 
+def validate_environment() -> tuple[dict[str, str], list[str]]:
+    """
+    Validate required environment variables.
+    
+    Returns:
+        Tuple of (env_vars dict, missing_vars list)
+    """
+    env_vars = {
+        'bucket': os.environ.get(S3_BUCKET),
+        'key': os.environ.get(S3_KEY),
+        'file_id': os.environ.get(FILE_ID),
+        'sns_topic_arn': os.environ.get(SNS_TOPIC_ARN),
+        'batch_job_id': os.environ.get(AWS_BATCH_JOB_ID),
+        'batch_job_name': os.environ.get(AWS_BATCH_JOB_NAME)
+    }
+    
+    # Check required variables (batch_job_name is optional)
+    required_vars = ['bucket', 'key', 'file_id', 'sns_topic_arn', 'batch_job_id']
+    var_name_mapping = {
+        'bucket': 'S3_BUCKET',
+        'key': 'S3_KEY',
+        'file_id': 'FILE_ID',
+        'sns_topic_arn': 'SNS_TOPIC_ARN',
+        'batch_job_id': 'AWS_BATCH_JOB_ID'
+    }
+    missing_vars = []
+    
+    for var in required_vars:
+        if not env_vars[var]:
+            env_name = var_name_mapping[var]
+            missing_vars.append(f"{env_name}={env_vars[var]}")
+    
+    return env_vars, missing_vars
+
+
+def create_failure_message(env_vars: dict[str, str], error: str, start_time: datetime) -> ValidationMessage:
+    """Create ValidationMessage for failure cases."""
+    return ValidationMessage(
+        file_id=env_vars.get('file_id') or "unknown",
+        status="failure",
+        timestamp=start_time.isoformat(),
+        bucket=env_vars.get('bucket') or "unknown",
+        key=env_vars.get('key') or "unknown",
+        batch_job_id=env_vars.get('batch_job_id') or "unknown",
+        batch_job_name=env_vars.get('batch_job_name'),
+        error_message=error
+    )
+
+
 def main():
     """Main entry point for the dataset validator."""
     configure_logging()
@@ -221,62 +270,35 @@ def main():
     try:
         logger.info("Dataset Validator starting")
         
-        # Get required environment variables (for AWS Batch)
-        bucket = os.environ.get(S3_BUCKET)
-        key = os.environ.get(S3_KEY)
-        file_id = os.environ.get(FILE_ID)
-        sns_topic_arn = os.environ.get(SNS_TOPIC_ARN)
-        batch_job_id = os.environ.get(AWS_BATCH_JOB_ID)
-        
-        # Fail early if required environment variables are missing
-        missing_vars = []
-        if not bucket:
-            missing_vars.append(f"S3_BUCKET={bucket}")
-        if not key:
-            missing_vars.append(f"S3_KEY={key}")
-        if not file_id:
-            missing_vars.append(f"FILE_ID={file_id}")
-        if not sns_topic_arn:
-            missing_vars.append(f"SNS_TOPIC_ARN={sns_topic_arn}")
-        if not batch_job_id:
-            missing_vars.append(f"AWS_BATCH_JOB_ID={batch_job_id}")
+        # Validate environment variables
+        env_vars, missing_vars = validate_environment()
         
         if missing_vars:
             error_msg = f"Missing required environment variables: {', '.join(missing_vars)}"
             logger.error(error_msg)
-            
-            # Create validation message for missing env vars (minimal info available)
-            validation_message = ValidationMessage(
-                file_id=file_id or "unknown",
-                status="failure",
-                timestamp=start_time.isoformat(),
-                bucket=bucket or "unknown",
-                key=key or "unknown",
-                batch_job_id=batch_job_id or "unknown",
-                error_message=error_msg
-            )
+            validation_message = create_failure_message(env_vars, error_msg, start_time)
             exit_code = 1
         else:
             # Initialize validation message with basic info
             validation_message = ValidationMessage(
-                file_id=file_id,
+                file_id=env_vars['file_id'],
                 status="in_progress",
                 timestamp=start_time.isoformat(),
-                bucket=bucket,
-                key=key,
-                batch_job_id=batch_job_id,
-                batch_job_name=os.environ.get('AWS_BATCH_JOB_NAME')
+                bucket=env_vars['bucket'],
+                key=env_vars['key'],
+                batch_job_id=env_vars['batch_job_id'],
+                batch_job_name=env_vars['batch_job_name']
             )
             
-            logger.info("Processing S3 file: s3://%s/%s", bucket, key)
+            logger.info("Processing S3 file: s3://%s/%s", env_vars['bucket'], env_vars['key'])
             
             # Create work directory
             work_dir = create_work_directory()
             logger.info("Work directory created: %s", work_dir)
             
             # Download file from S3
-            local_file = work_dir / Path(key).name
-            success, source_sha256 = download_s3_file(bucket, key, local_file)
+            local_file = work_dir / Path(env_vars['key']).name
+            success, source_sha256 = download_s3_file(env_vars['bucket'], env_vars['key'], local_file)
             
             if success:
                 logger.info("File ready for validation: %s", local_file)
@@ -321,19 +343,14 @@ def main():
             validation_message.status = "failure"
             validation_message.error_message = error_msg
         else:
-            validation_message = ValidationMessage(
-                file_id="unknown",
-                status="failure",
-                timestamp=start_time.isoformat(),
-                bucket="unknown",
-                key="unknown",
-                batch_job_id="unknown",
-                error_message=error_msg
-            )
+            # Use empty dict if env_vars doesn't exist yet
+            empty_env_vars = {}
+            validation_message = create_failure_message(empty_env_vars, error_msg, start_time)
         exit_code = 1
     
     finally:
         # Always publish SNS message before exiting (if we have topic ARN)
+        sns_topic_arn = env_vars.get('sns_topic_arn') if 'env_vars' in locals() else None
         if validation_message and sns_topic_arn:
             publish_success = publish_validation_result(validation_message, sns_topic_arn)
             if not publish_success:
