@@ -282,60 +282,57 @@ def main() -> int:
             logger.error(error_msg)
             validation_message = create_failure_message(env_vars, error_msg, start_time)
             exit_code = 1
-        else:
-            # Initialize validation message with basic info
-            validation_message = ValidationMessage(
-                file_id=env_vars['file_id'],
-                status="in_progress",
-                timestamp=start_time.isoformat(),
-                bucket=env_vars['bucket'],
-                key=env_vars['key'],
-                batch_job_id=env_vars['batch_job_id'],
-                batch_job_name=env_vars['batch_job_name']
-            )
-            
-            logger.info("Processing S3 file: s3://%s/%s", env_vars['bucket'], env_vars['key'])
-            
-            # Create work directory
-            work_dir = create_work_directory()
-            logger.info("Work directory created: %s", work_dir)
-            
-            # Download file from S3
-            local_file = work_dir / Path(env_vars['key']).name
-            try:
-                source_sha256 = download_s3_file(env_vars['bucket'], env_vars['key'], local_file)
-                logger.info("File ready for validation: %s", local_file)
-                
-                # Compute downloaded file SHA256
-                downloaded_sha256 = compute_sha256(local_file)
-                validation_message.downloaded_sha256 = downloaded_sha256
-                validation_message.source_sha256 = source_sha256
-                
-                # Verify file integrity if SHA256 metadata is available
-                if source_sha256:
-                    if not verify_file_integrity(local_file, source_sha256):
-                        error_msg = "File integrity verification failed"
-                        logger.error(error_msg + " - terminating")
-                        validation_message.status = "failure"
-                        validation_message.error_message = error_msg
-                        exit_code = 1
-                    else:
-                        # TODO: Add actual validation logic here
-                        logger.info("Validation completed successfully")
-                        validation_message.status = "success"
-                        exit_code = 0
-                else:
-                    error_msg = "No source SHA256 metadata found - cannot validate file integrity"
-                    logger.error(error_msg + " - terminating")
-                    validation_message.status = "failure"
-                    validation_message.error_message = error_msg
-                    exit_code = 1
-            except Exception:
-                error_msg = "Failed to download file"
-                logger.error(error_msg + " - terminating")
-                validation_message.status = "failure"
-                validation_message.error_message = error_msg
-                exit_code = 1
+            return exit_code
+        
+        # Initialize validation message with basic info
+        validation_message = ValidationMessage(
+            file_id=env_vars['file_id'],
+            status="in_progress",
+            timestamp=start_time.isoformat(),
+            bucket=env_vars['bucket'],
+            key=env_vars['key'],
+            batch_job_id=env_vars['batch_job_id'],
+            batch_job_name=env_vars['batch_job_name']
+        )
+        
+        logger.info("Processing S3 file: s3://%s/%s", env_vars['bucket'], env_vars['key'])
+        
+        # Create work directory
+        work_dir = create_work_directory()
+        logger.info("Work directory created: %s", work_dir)
+        
+        # Download file from S3
+        local_file = work_dir / Path(env_vars['key']).name
+        source_sha256 = download_s3_file(env_vars['bucket'], env_vars['key'], local_file)
+        logger.info("File ready for validation: %s", local_file)
+        
+        # Check for SHA256 metadata - required for validation
+        if not source_sha256:
+            error_msg = "No source SHA256 metadata found - cannot validate file integrity"
+            logger.error(error_msg + " - terminating")
+            validation_message.status = "failure"
+            validation_message.error_message = error_msg
+            exit_code = 1
+            return exit_code
+        
+        # Compute downloaded file SHA256
+        downloaded_sha256 = compute_sha256(local_file)
+        validation_message.downloaded_sha256 = downloaded_sha256
+        validation_message.source_sha256 = source_sha256
+        
+        # Verify file integrity
+        if not verify_file_integrity(local_file, source_sha256):
+            error_msg = "File integrity verification failed"
+            logger.error(error_msg + " - terminating")
+            validation_message.status = "failure"
+            validation_message.error_message = error_msg
+            exit_code = 1
+            return exit_code
+        
+        # TODO: Add actual validation logic here
+        logger.info("Validation completed successfully")
+        validation_message.status = "success"
+        exit_code = 0
         
     except Exception as e:
         error_msg = f"Dataset Validator failed: {e}"

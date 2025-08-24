@@ -57,7 +57,7 @@ class TestDatasetValidator:
         assert "Work directory created:" in result.stdout
         assert "Processing S3 file: s3://invalid-test-bucket/invalid/test/file.h5ad" in result.stdout
         assert "S3 download failed" in result.stdout
-        assert "Failed to download file - terminating" in result.stdout
+        assert "Dataset Validator failed:" in result.stdout
 
     def test_work_directory_creation(self):
         """Test that work directory is created correctly with valid S3 config."""
@@ -327,7 +327,7 @@ def test_end_to_end_validation_download_failure(caplog):
         assert "Dataset Validator starting" in caplog.text
         assert "Processing S3 file: s3://test-bucket/datasets/nonexistent.h5ad" in caplog.text
         assert "S3 download failed" in caplog.text
-        assert "Failed to download file - terminating" in caplog.text
+        assert "Dataset Validator failed:" in caplog.text
         assert "Publishing validation result to SNS topic" in caplog.text
         assert "Successfully published SNS message" in caplog.text
         
