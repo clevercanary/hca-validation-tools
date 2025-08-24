@@ -287,7 +287,15 @@ def test_publish_validation_result_scenarios(caplog, mock_aws, test_case):
             "Publishing validation result to SNS topic",
             "Successfully published SNS message",
             "Dataset Validator completed successfully"
-        ]
+        ],
+        "expected_sns_message": {
+            "status": "success",
+            "integrity_status": "valid",
+            "file_id": "test-file-123",
+            "batch_job_id": "job-456",
+            "batch_job_name": "test-validation-job",
+            "error_message": None
+        }
     },
     {
         "name": "download_failure",
@@ -305,7 +313,14 @@ def test_publish_validation_result_scenarios(caplog, mock_aws, test_case):
             "Dataset Validator failed:",
             "Publishing validation result to SNS topic",
             "Successfully published SNS message"
-        ]
+        ],
+        "expected_sns_message": {
+            "status": "failure",
+            "integrity_status": None,
+            "file_id": "test-file-456",
+            "batch_job_id": "job-789",
+            "batch_job_name": None
+        }
     },
     {
         "name": "integrity_failure",
@@ -322,7 +337,14 @@ def test_publish_validation_result_scenarios(caplog, mock_aws, test_case):
             "File integrity verification failed - terminating",
             "Publishing validation result to SNS topic",
             "Successfully published SNS message"
-        ]
+        ],
+        "expected_sns_message": {
+            "status": "failure",
+            "integrity_status": "invalid",
+            "file_id": "test-file-789",
+            "batch_job_id": "job-101",
+            "batch_job_name": None
+        }
     }
 ], ids=lambda x: x["name"])
 def test_end_to_end_validation_scenarios(caplog, mock_aws, env_manager, test_case):
@@ -358,6 +380,60 @@ def test_end_to_end_validation_scenarios(caplog, mock_aws, env_manager, test_cas
     # Verify expected log messages
     for expected_log in test_case["expected_logs"]:
         assert expected_log in caplog.text
+    
+    # Verify SNS message content
+    _validate_sns_message(mock_aws, caplog, test_case["expected_sns_message"])
+
+
+def _get_last_sns_message(sns_backend, topic_arn):
+    """Helper function to extract and parse the last SNS message from moto backend."""
+    import json
+    
+    # Get all sent notifications for our topic
+    all_sent_notifications = sns_backend.topics[topic_arn].sent_notifications
+    assert len(all_sent_notifications) > 0, "No SNS messages were published"
+    
+    # Parse the last published message
+    last_notification = all_sent_notifications[-1]
+    
+    # Handle different moto notification formats
+    if isinstance(last_notification, dict):
+        message_content = last_notification['Message']
+    elif isinstance(last_notification, tuple):
+        # In some moto versions, notifications are stored as tuples
+        message_content = last_notification[1]  # Usually (subject, message, ...)
+    else:
+        message_content = str(last_notification)
+    
+    return json.loads(message_content)
+
+
+def _validate_sns_message(mock_aws, caplog, expected_message):
+    """Helper function to validate SNS message content using moto's internal API."""
+    import json
+    from moto.core import DEFAULT_ACCOUNT_ID
+    from moto.sns import sns_backends
+    
+    # Get the SNS backend and retrieve sent notifications
+    sns_backend = sns_backends[DEFAULT_ACCOUNT_ID]["us-east-1"]
+    topic_arn = mock_aws['topic_arn']
+    
+    # Verify at least one message was published
+    assert "Successfully published SNS message" in caplog.text
+    
+    # Get and parse the last published message
+    message = _get_last_sns_message(sns_backend, topic_arn)
+    
+    # Validate key fields that use constants - these should fail if constants change
+    assert message["status"] == expected_message["status"], f"Expected status '{expected_message['status']}', got '{message['status']}'"
+    assert message["integrity_status"] == expected_message["integrity_status"], f"Expected integrity_status '{expected_message['integrity_status']}', got '{message['integrity_status']}'"
+    assert message["file_id"] == expected_message["file_id"]
+    assert message["batch_job_id"] == expected_message["batch_job_id"]
+    assert message["batch_job_name"] == expected_message["batch_job_name"]
+    
+    # For success case, verify error_message is None
+    if expected_message.get("error_message") is not None:
+        assert message.get("error_message") == expected_message["error_message"]
 
 
 def _setup_valid_s3_file(s3_client, bucket_name: str, key: str):
