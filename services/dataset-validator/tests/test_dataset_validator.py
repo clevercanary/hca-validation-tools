@@ -278,126 +278,119 @@ def test_publish_validation_result_invalid_topic(caplog, mock_aws):
     assert "SNS publish failed" in caplog.text
 
 
-def test_end_to_end_validation_success(caplog, mock_aws, env_manager):
-    """Test complete validation workflow with mocked S3 and SNS."""
+@pytest.mark.parametrize("test_case", [
+    {
+        "name": "success",
+        "description": "Test complete validation workflow with successful validation",
+        "s3_key": "datasets/test.h5ad",
+        "file_id": "test-file-123",
+        "batch_job_id": "job-456",
+        "batch_job_name": "test-validation-job",
+        "setup_s3": lambda s3_client, bucket_name: _setup_valid_s3_file(s3_client, bucket_name, "datasets/test.h5ad"),
+        "expected_exit_code": 0,
+        "expected_logs": [
+            "Dataset Validator starting",
+            "Processing S3 file: s3://test-bucket/datasets/test.h5ad",
+            "Work directory created:",
+            "File ready for validation:",
+            "Validation completed successfully",
+            "Publishing validation result to SNS topic",
+            "Successfully published SNS message",
+            "Dataset Validator completed successfully"
+        ]
+    },
+    {
+        "name": "download_failure",
+        "description": "Test complete validation workflow with S3 download failure",
+        "s3_key": "datasets/nonexistent.h5ad",
+        "file_id": "test-file-456",
+        "batch_job_id": "job-789",
+        "batch_job_name": None,
+        "setup_s3": lambda s3_client, bucket_name: None,  # Don't upload any file
+        "expected_exit_code": 1,
+        "expected_logs": [
+            "Dataset Validator starting",
+            "Processing S3 file: s3://test-bucket/datasets/nonexistent.h5ad",
+            "S3 download failed",
+            "Dataset Validator failed:",
+            "Publishing validation result to SNS topic",
+            "Successfully published SNS message"
+        ]
+    },
+    {
+        "name": "integrity_failure",
+        "description": "Test complete validation workflow with file integrity failure",
+        "s3_key": "datasets/corrupt.h5ad",
+        "file_id": "test-file-789",
+        "batch_job_id": "job-101",
+        "batch_job_name": None,
+        "setup_s3": lambda s3_client, bucket_name: _setup_corrupt_s3_file(s3_client, bucket_name, "datasets/corrupt.h5ad"),
+        "expected_exit_code": 1,
+        "expected_logs": [
+            "Dataset Validator starting",
+            "File ready for validation:",
+            "File integrity verification failed - terminating",
+            "Publishing validation result to SNS topic",
+            "Successfully published SNS message"
+        ]
+    }
+], ids=lambda x: x["name"])
+def test_end_to_end_validation_scenarios(caplog, mock_aws, env_manager, test_case):
+    """Parameterized test for end-to-end validation scenarios."""
     import sys
     sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
     
     from dataset_validator.main import main
     
-    # Create test file content and compute its SHA256
-    test_content = b'mock dataset content for validation'
+    # Setup S3 file based on test case
+    test_case["setup_s3"](mock_aws['s3_client'], mock_aws['bucket_name'])
+    
+    # Set environment variables using fixture
+    test_env = {
+        'S3_BUCKET': mock_aws['bucket_name'],
+        'S3_KEY': test_case["s3_key"],
+        'FILE_ID': test_case["file_id"],
+        'SNS_TOPIC_ARN': mock_aws['topic_arn'],
+        'AWS_BATCH_JOB_ID': test_case["batch_job_id"]
+    }
+    if test_case["batch_job_name"]:
+        test_env['AWS_BATCH_JOB_NAME'] = test_case["batch_job_name"]
+    
+    env_manager['set'](test_env)
+    
+    # Run main function
+    with caplog.at_level(logging.INFO, logger="dataset_validator.main"):
+        result = main()
+    
+    # Verify exit code
+    assert result == test_case["expected_exit_code"]
+    
+    # Verify expected log messages
+    for expected_log in test_case["expected_logs"]:
+        assert expected_log in caplog.text
+
+
+def _setup_valid_s3_file(s3_client, bucket_name: str, key: str):
+    """Helper function to setup a valid S3 file with correct SHA256 metadata."""
     import hashlib
+    test_content = b'mock dataset content for validation'
     expected_sha256 = hashlib.sha256(test_content).hexdigest()
     
-    # Upload file with SHA256 metadata using fixture's S3 client
-    mock_aws['s3_client'].put_object(
-        Bucket=mock_aws['bucket_name'],
-        Key='datasets/test.h5ad',
+    s3_client.put_object(
+        Bucket=bucket_name,
+        Key=key,
         Body=test_content,
         Metadata={'source-sha256': expected_sha256}
     )
-    
-    # Set environment variables using fixture
-    test_env = {
-        'S3_BUCKET': mock_aws['bucket_name'],
-        'S3_KEY': 'datasets/test.h5ad',
-        'FILE_ID': 'test-file-123',
-        'SNS_TOPIC_ARN': mock_aws['topic_arn'],
-        'AWS_BATCH_JOB_ID': 'job-456',
-        'AWS_BATCH_JOB_NAME': 'test-validation-job'
-    }
-    env_manager['set'](test_env)
-    
-    # Run main function
-    with caplog.at_level(logging.INFO, logger="dataset_validator.main"):
-        result = main()
-    
-    # Should succeed
-    assert result == 0
-    
-    # Verify log messages
-    assert "Dataset Validator starting" in caplog.text
-    assert "Processing S3 file: s3://test-bucket/datasets/test.h5ad" in caplog.text
-    assert "Work directory created:" in caplog.text
-    assert "File ready for validation:" in caplog.text
-    assert "Validation completed successfully" in caplog.text
-    assert "Publishing validation result to SNS topic" in caplog.text
-    assert "Successfully published SNS message" in caplog.text
-    assert "Dataset Validator completed successfully" in caplog.text
 
 
-def test_end_to_end_validation_download_failure(caplog, mock_aws, env_manager):
-    """Test complete validation workflow with S3 download failure."""
-    import sys
-    sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-    
-    from dataset_validator.main import main
-    
-    # Don't upload any file to S3 - will cause download failure
-    
-    # Set environment variables using fixture
-    test_env = {
-        'S3_BUCKET': mock_aws['bucket_name'],
-        'S3_KEY': 'datasets/nonexistent.h5ad',
-        'FILE_ID': 'test-file-456',
-        'SNS_TOPIC_ARN': mock_aws['topic_arn'],
-        'AWS_BATCH_JOB_ID': 'job-789'
-    }
-    env_manager['set'](test_env)
-    
-    # Run main function
-    with caplog.at_level(logging.INFO, logger="dataset_validator.main"):
-        result = main()
-    
-    # Should fail
-    assert result == 1
-    
-    # Verify log messages
-    assert "Dataset Validator starting" in caplog.text
-    assert "Processing S3 file: s3://test-bucket/datasets/nonexistent.h5ad" in caplog.text
-    assert "S3 download failed" in caplog.text
-    assert "Dataset Validator failed:" in caplog.text
-    assert "Publishing validation result to SNS topic" in caplog.text
-    assert "Successfully published SNS message" in caplog.text
-
-
-def test_end_to_end_validation_integrity_failure(caplog, mock_aws, env_manager):
-    """Test complete validation workflow with file integrity failure."""
-    import sys
-    sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-    
-    from dataset_validator.main import main
-    
-    # Upload file with wrong SHA256 metadata (will cause integrity failure)
+def _setup_corrupt_s3_file(s3_client, bucket_name: str, key: str):
+    """Helper function to setup a corrupt S3 file with wrong SHA256 metadata."""
     test_content = b'mock dataset content'
-    mock_aws['s3_client'].put_object(
-        Bucket=mock_aws['bucket_name'],
-        Key='datasets/corrupt.h5ad',
+    
+    s3_client.put_object(
+        Bucket=bucket_name,
+        Key=key,
         Body=test_content,
         Metadata={'source-sha256': 'wrong_hash_value'}
     )
-    
-    # Set environment variables using fixture
-    test_env = {
-        'S3_BUCKET': mock_aws['bucket_name'],
-        'S3_KEY': 'datasets/corrupt.h5ad',
-        'FILE_ID': 'test-file-789',
-        'SNS_TOPIC_ARN': mock_aws['topic_arn'],
-        'AWS_BATCH_JOB_ID': 'job-101'
-    }
-    env_manager['set'](test_env)
-    
-    # Run main function
-    with caplog.at_level(logging.INFO, logger="dataset_validator.main"):
-        result = main()
-    
-    # Should fail
-    assert result == 1
-    
-    # Verify log messages
-    assert "Dataset Validator starting" in caplog.text
-    assert "File ready for validation:" in caplog.text
-    assert "File integrity verification failed - terminating" in caplog.text
-    assert "Publishing validation result to SNS topic" in caplog.text
-    assert "Successfully published SNS message" in caplog.text
