@@ -171,7 +171,7 @@ def verify_file_integrity(file_path: Path, expected_sha256: str) -> bool:
         return False
 
 
-def download_s3_file(bucket: str, key: str, local_path: Path) -> tuple[bool, str | None]:
+def download_s3_file(bucket: str, key: str, local_path: Path) -> str | None:
     """
     Download a file from S3 to the local work directory and extract metadata.
     
@@ -181,9 +181,13 @@ def download_s3_file(bucket: str, key: str, local_path: Path) -> tuple[bool, str
         local_path: Local file path to save the downloaded file
         
     Returns:
-        Tuple of (success: bool, source_sha256: str | None)
+        Source SHA256 from S3 metadata, or None if not available
+        
+    Raises:
+        ClientError: AWS S3 errors (permissions, missing files, etc.)
+        Exception: Other errors (network, disk space, etc.)
     """
-    logger.info(f"Starting download: s3://{bucket}/{key}")
+    logger.info("Starting download: s3://%s/%s", bucket, key)
     try:
         s3_client = boto3.client('s3')
         
@@ -193,20 +197,20 @@ def download_s3_file(bucket: str, key: str, local_path: Path) -> tuple[bool, str
         
         # Download the file
         s3_client.download_file(bucket, key, str(local_path))
-        logger.info(f"Successfully downloaded to {local_path}")
+        logger.info("Successfully downloaded to %s", local_path)
         
         if source_sha256:
-            logger.info(f"Source SHA256 from metadata: {source_sha256}")
+            logger.info("Source SHA256 from metadata: %s", source_sha256)
         else:
-            logger.warning(f"No source-sha256 metadata found for s3://{bucket}/{key}")
+            logger.warning("No source-sha256 metadata found for s3://%s/%s", bucket, key)
         
-        return True, source_sha256
+        return source_sha256
     except ClientError as e:
-        logger.error(f"S3 download failed: {e}")
-        return False, None
+        logger.error("S3 download failed: %s", e)
+        raise
     except Exception as e:
-        logger.error(f"Unexpected error downloading s3://{bucket}/{key}: {e}")
-        return False, None
+        logger.error("Unexpected error downloading s3://%s/%s: %s", bucket, key, e)
+        raise
 
 
 def validate_environment() -> tuple[dict[str, str], list[str]]:
@@ -298,9 +302,8 @@ def main():
             
             # Download file from S3
             local_file = work_dir / Path(env_vars['key']).name
-            success, source_sha256 = download_s3_file(env_vars['bucket'], env_vars['key'], local_file)
-            
-            if success:
+            try:
+                source_sha256 = download_s3_file(env_vars['bucket'], env_vars['key'], local_file)
                 logger.info("File ready for validation: %s", local_file)
                 
                 # Compute downloaded file SHA256
@@ -322,12 +325,12 @@ def main():
                         validation_message.status = "success"
                         exit_code = 0
                 else:
-                    logger.warning("Skipping integrity verification - no source SHA256 metadata")
-                    # TODO: Add actual validation logic here
-                    logger.info("Validation completed successfully")
-                    validation_message.status = "success"
-                    exit_code = 0
-            else:
+                    error_msg = "No source SHA256 metadata found - cannot validate file integrity"
+                    logger.error(error_msg + " - terminating")
+                    validation_message.status = "failure"
+                    validation_message.error_message = error_msg
+                    exit_code = 1
+            except Exception:
                 error_msg = "Failed to download file"
                 logger.error(error_msg + " - terminating")
                 validation_message.status = "failure"
