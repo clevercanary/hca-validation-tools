@@ -133,12 +133,12 @@ def generate_dictionary(schema_path=None, output_path=None):
     """
     # Get paths
     current_dir = Path(__file__).parent
-    project_root = current_dir.parent.parent.parent
+    project_root = current_dir.parent.parent.parent.parent
     
     # Default to core.yaml if no schema path is provided
     if schema_path is None:
-        # Get the path to the schema directory
-        schema_dir = current_dir.parent / "schema"
+        # Get the path to the schema directory (in shared library)
+        schema_dir = project_root / "shared" / "src" / "hca_validation" / "schema"
         schema_path = schema_dir / "core.yaml"
     
     # Load the schema

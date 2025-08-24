@@ -141,7 +141,9 @@ sheet_structure_by_entity_type = {
 }
 
 # Load environment variables from .env file if it exists
-dotenv_path = Path(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))) / '.env'
+# Find project root more reliably
+project_root = Path(__file__).resolve().parents[4]  # Go up to project root
+dotenv_path = project_root / '.env'
 if dotenv_path.exists():
     load_dotenv(dotenv_path=dotenv_path)
 

@@ -811,7 +811,7 @@ class TestIntegration:
             from dotenv import load_dotenv
             from pathlib import Path
             
-            dotenv_path = Path(os.path.dirname(os.path.dirname(__file__))) / '.env'
+            dotenv_path = Path(__file__).parent.parent.parent / '.env'
             if dotenv_path.exists():
                 load_dotenv(dotenv_path=dotenv_path)
         
@@ -840,7 +840,7 @@ class TestIntegration:
             from dotenv import load_dotenv
             from pathlib import Path
             
-            dotenv_path = Path(os.path.dirname(os.path.dirname(__file__))) / '.env'
+            dotenv_path = Path(__file__).parent.parent.parent / '.env'
             if dotenv_path.exists():
                 load_dotenv(dotenv_path=dotenv_path)
         

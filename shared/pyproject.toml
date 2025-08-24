@@ -1,16 +1,15 @@
 [tool.poetry]
-name = "hca-validation-tools"
+name = "hca-validation-shared"
 version = "0.1.0"
-description = "Tools for validating HCA (Human Cell Atlas) ingest data"
+description = "Shared data dictionary generation for HCA validation tools"
 authors = ["Your Name <your.email@example.com>"]
-readme = "README.md"
 packages = [{include = "hca_validation", from = "src"}]
 
 [tool.poetry.dependencies]
 python = "^3.10"
 linkml-runtime = "^1.9.1"
 linkml-validator = "^0.4.5"
-linkml = "^1.9.1"
+linkml = "1.9.2"
 pyyaml = "^6.0"
 pandas = "^2.2.3"
 requests = "^2.32.3"
@@ -27,6 +26,11 @@ pytest = "^8.3.5"
 pytest-mock = "^3.14.0"
 python-dotenv = "^1.1.0"
 requests = "^2.32.3"
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: marks tests as integration tests (deselect with '-m \"not integration\"')"
+]
 
 [build-system]
 requires = ["poetry-core"]

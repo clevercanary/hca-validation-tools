@@ -2,16 +2,25 @@
 FROM --platform=linux/amd64 public.ecr.aws/lambda/python:3.10 AS builder
 
 # Install Poetry
-RUN pip install poetry==1.7.1
+RUN pip install poetry==1.8.3
 
-# Copy Poetry configuration files
-COPY pyproject.toml poetry.lock* ./
+# Set up the directory structure to match the expected paths
+WORKDIR /build
+
+# Copy shared library first
+COPY shared/ ./shared/
+
+# Copy service Poetry configuration
+COPY services/entry-sheet-validator/pyproject.toml services/entry-sheet-validator/poetry.lock* ./services/entry-sheet-validator/
+
+# Change to service directory for Poetry operations
+WORKDIR /build/services/entry-sheet-validator
 
 # Configure Poetry to not create a virtual environment
 RUN poetry config virtualenvs.create false
 
 # Install dependencies (for wheel building, not runtime)
-RUN poetry install --no-dev
+RUN poetry install --only main --no-root
 
 # Export requirements and install with pip to /opt/python
 RUN poetry export --without-hashes -o /tmp/requirements.txt && \
@@ -35,11 +44,13 @@ COPY --from=builder /opt/python /opt/python
 # Copy the extension from builder stage
 COPY --from=builder /opt/extensions/ /opt/extensions/
 
-# Copy application code
-COPY src/hca_validation/ /var/task/hca_validation/
+# Copy Lambda function code
+COPY services/entry-sheet-validator/src/entry_sheet_validator_lambda/ /var/task/entry_sheet_validator_lambda/
+# Copy shared library to container
+COPY shared/src/hca_validation/ /var/task/hca_validation/
 
 # Copy config.yaml for the AWS Parameters and Secrets Extension
-COPY config.yaml /var/task/config.yaml
+COPY deployment/entry-sheet-validator/config.yaml /var/task/config.yaml
 
 # Set the Lambda handler
-CMD ["hca_validation.lambda_functions.entry_sheet_validator_lambda.handler.handler"]
+CMD ["entry_sheet_validator_lambda.handler.handler"]

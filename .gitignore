@@ -178,5 +178,5 @@ cython_debug/
 *.zip
 deployment/layers/
 deployment/test-lambda-env/
-deployment/docker-build/output/
+deployment/entry-sheet-validator/output/
 response.json
