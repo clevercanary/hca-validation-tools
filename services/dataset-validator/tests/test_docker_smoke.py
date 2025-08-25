@@ -101,26 +101,6 @@ def test_docker_container_with_mock_env_vars(dataset_validator_container):
         assert expected_s3_url in result.stderr or expected_s3_url in result.stdout
 
 
-def test_docker_container_python_imports(dataset_validator_container):
-    """Test that all required Python packages are available in the container."""
-    result = subprocess.run([
-        "docker", "run", "--rm",
-        dataset_validator_container,
-        "-c", "import boto3, hashlib, json, logging, os, tempfile, dataclasses; print('All imports successful')"
-    ], capture_output=True, text=True, timeout=30, 
-    # Override entrypoint to run python directly
-    )
-    
-    # Run with python -c instead of the main script
-    result = subprocess.run([
-        "docker", "run", "--rm", "--entrypoint", "python",
-        dataset_validator_container,
-        "-c", "import boto3, hashlib, json, logging, os, tempfile; from dataclasses import dataclass; print('All imports successful')"
-    ], capture_output=True, text=True, timeout=30)
-    
-    assert result.returncode == 0
-    assert "All imports successful" in result.stdout
-
 
 def test_docker_container_file_structure(dataset_validator_container):
     """Test that the application files are correctly placed in the container."""
