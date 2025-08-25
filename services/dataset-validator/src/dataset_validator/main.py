@@ -8,6 +8,7 @@ import hashlib
 import json
 import logging
 import os
+import shutil
 import sys
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
@@ -272,6 +273,26 @@ def create_failure_message(env_vars: dict[str, str], error: str, start_time: dat
     )
 
 
+def cleanup_files(work_dir: Optional[Path] = None) -> None:
+    """
+    Clean up work directory after validation.
+    
+    This function attempts to remove the entire work directory (including downloaded files)
+    but logs warnings if cleanup fails without affecting the validation result.
+    
+    Args:
+        work_dir: Path to the work directory to remove
+    """
+    if work_dir and work_dir.exists():
+        try:
+            shutil.rmtree(work_dir)
+            logger.info("Successfully removed work directory: %s", work_dir)
+        except Exception as e:
+            logger.warning("Failed to remove work directory %s: %s - validation result unaffected", work_dir, e)
+    else:
+        logger.info("No work directory to clean up")
+
+
 def main() -> int:
     """Main entry point for the dataset validator."""
     configure_logging()
@@ -280,6 +301,7 @@ def main() -> int:
     start_time = datetime.now(timezone.utc)
     validation_message: Optional[ValidationMessage] = None
     exit_code = 1  # Default to failure
+    work_dir: Optional[Path] = None
     
     try:
         logger.info("Dataset Validator starting")
@@ -362,6 +384,9 @@ def main() -> int:
         exit_code = 1
     
     finally:
+        # Clean up work directory (includes downloaded files)
+        cleanup_files(work_dir)
+        
         # Always publish SNS message before exiting (if we have topic ARN)
         sns_topic_arn = env_vars.get('sns_topic_arn') if 'env_vars' in locals() else None
         if validation_message and sns_topic_arn:

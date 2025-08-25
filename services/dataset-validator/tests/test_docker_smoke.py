@@ -10,10 +10,24 @@ from pathlib import Path
 @pytest.fixture(scope="module", autouse=True)
 def dataset_validator_container():
     """Build and run the dataset-validator Docker container for testing."""
-    # Teardown logic to ensure container is stopped/removed
+    image_name = "hca-dataset-validator:test"
+    
+    # Teardown logic to ensure container is stopped/removed and clean up test artifacts
     def teardown():
+        # Stop and remove any test containers
         subprocess.run(["docker", "stop", "dataset-validator-test"], capture_output=True)
         subprocess.run(["docker", "rm", "dataset-validator-test"], capture_output=True)
+        
+        # Remove any temporary containers that might have been created during tests
+        result = subprocess.run(["docker", "ps", "-a", "--filter", f"ancestor={image_name}", "-q"], 
+                              capture_output=True, text=True)
+        if result.stdout.strip():
+            container_ids = result.stdout.strip().split('\n')
+            for container_id in container_ids:
+                subprocess.run(["docker", "rm", "-f", container_id], capture_output=True)
+        
+        # Clean up any dangling volumes or networks created during testing
+        subprocess.run(["docker", "system", "prune", "-f", "--volumes"], capture_output=True)
     
     teardown()  # Clean up before starting (in case of leftovers)
     
@@ -22,14 +36,14 @@ def dataset_validator_container():
     build_result = subprocess.run([
         "docker", "build", 
         "-f", "deployment/dataset-validator/Dockerfile",
-        "-t", "hca-dataset-validator:test",
+        "-t", image_name,
         "."
     ], capture_output=True, text=True, cwd=project_root)
     
     if build_result.returncode != 0:
         pytest.fail(f"Docker build failed: {build_result.stderr}")
     
-    yield "hca-dataset-validator:test"
+    yield image_name
     teardown()
 
 
