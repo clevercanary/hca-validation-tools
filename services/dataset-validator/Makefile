@@ -9,6 +9,7 @@ help:
 	@echo "Dataset Validator Service Commands:"
 	@echo "  install     - Install dependencies"
 	@echo "  test        - Run tests"
+	@echo "  test-docker - Run Docker container smoke tests"
 	@echo "  run         - Run the dataset validator"
 	@echo "  build       - Build Docker container"
 	@echo "  clean       - Clean up artifacts"
@@ -22,6 +23,11 @@ install:
 test:
 	@echo "Running dataset-validator tests..."
 	@$(POETRY) run pytest tests/ -v
+
+.PHONY: test-docker
+test-docker:
+	@echo "Running dataset-validator Docker smoke tests..."
+	@$(POETRY) run pytest tests/test_docker_smoke.py -v
 
 .PHONY: run
 run:
