@@ -153,6 +153,14 @@ class TestDatasetValidator:
         # Prepare environment
         env = os.environ.copy()
         
+        # Add mock AWS credentials for subprocess tests
+        env.update({
+            'AWS_ACCESS_KEY_ID': 'testing',
+            'AWS_SECRET_ACCESS_KEY': 'testing',
+            'AWS_SECURITY_TOKEN': 'testing',
+            'AWS_SESSION_TOKEN': 'testing'
+        })
+        
         # Clear specified variables
         for var in test_case["clear_vars"]:
             env.pop(var, None)
