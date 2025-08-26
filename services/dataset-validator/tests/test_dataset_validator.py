@@ -15,22 +15,33 @@ from moto import mock_s3, mock_sns
 @pytest.fixture
 def mock_aws():
     """Fixture that provides mocked AWS services (S3 and SNS)."""
-    with mock_s3(), mock_sns():
-        # Create S3 client and bucket
-        s3_client = boto3.client('s3', region_name='us-east-1')
-        s3_client.create_bucket(Bucket='test-bucket')
-        
-        # Create SNS client and topic
-        sns_client = boto3.client('sns', region_name='us-east-1')
-        topic_response = sns_client.create_topic(Name='test-validation-topic')
-        topic_arn = topic_response['TopicArn']
-        
-        yield {
-            's3_client': s3_client,
-            'sns_client': sns_client,
-            'topic_arn': topic_arn,
-            'bucket_name': 'test-bucket'
-        }
+    # Set AWS_DEFAULT_REGION for consistent behavior
+    original_region = os.environ.get('AWS_DEFAULT_REGION')
+    os.environ['AWS_DEFAULT_REGION'] = 'us-east-1'
+    
+    try:
+        with mock_s3(), mock_sns():
+            # Create S3 client and bucket
+            s3_client = boto3.client('s3', region_name='us-east-1')
+            s3_client.create_bucket(Bucket='test-bucket')
+            
+            # Create SNS client and topic
+            sns_client = boto3.client('sns', region_name='us-east-1')
+            topic_response = sns_client.create_topic(Name='test-topic')
+            topic_arn = topic_response['TopicArn']
+            
+            yield {
+                's3_client': s3_client,
+                'sns_client': sns_client,
+                'topic_arn': topic_arn,
+                'bucket_name': 'test-bucket'
+            }
+    finally:
+        # Restore original region
+        if original_region is None:
+            os.environ.pop('AWS_DEFAULT_REGION', None)
+        else:
+            os.environ['AWS_DEFAULT_REGION'] = original_region
 
 
 @pytest.fixture
@@ -42,7 +53,8 @@ def base_env_vars():
         'FILE_ID': 'test-file-uuid',
         'SNS_TOPIC_ARN': 'arn:aws:sns:us-east-1:123456789012:test-topic',
         'AWS_BATCH_JOB_ID': 'test-job-id',
-        'AWS_BATCH_JOB_NAME': 'test-job'
+        'AWS_BATCH_JOB_NAME': 'test-job',
+        'AWS_DEFAULT_REGION': 'us-east-1'
     }
 
 
@@ -104,7 +116,8 @@ class TestDatasetValidator:
                 'S3_KEY': 'invalid/test/file.h5ad',
                 'FILE_ID': 'test-file-uuid',
                 'SNS_TOPIC_ARN': 'arn:aws:sns:us-east-1:123456789012:test-topic',
-                'AWS_BATCH_JOB_ID': 'test-job-id'
+                'AWS_BATCH_JOB_ID': 'test-job-id',
+                'AWS_DEFAULT_REGION': 'us-east-1'
             },
             "clear_vars": [],
             "expected_exit_code": 1,
@@ -121,10 +134,12 @@ class TestDatasetValidator:
             "description": "Test that work directory is created correctly with valid S3 config",
             "env_vars": {
                 'S3_BUCKET': 'test-bucket',
-                'S3_KEY': 'test/file.h5ad', 
+                'S3_KEY': 'test/file.h5ad',
                 'FILE_ID': 'test-file-uuid',
                 'SNS_TOPIC_ARN': 'arn:aws:sns:us-east-1:123456789012:test-topic',
-                'AWS_BATCH_JOB_ID': 'test-job-id'
+                'AWS_BATCH_JOB_ID': 'test-job-id',
+                'AWS_DEFAULT_REGION': 'us-east-1',
+                'AWS_BATCH_JOB_NAME': 'test-job'
             },
             "clear_vars": [],
             "expected_exit_code": 1,

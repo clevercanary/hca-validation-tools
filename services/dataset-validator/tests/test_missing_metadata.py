@@ -43,7 +43,8 @@ def test_end_to_end_validation_missing_sha256_metadata(caplog):
         'S3_KEY': 'datasets/no-metadata.h5ad',
         'FILE_ID': 'test-file-999',
         'SNS_TOPIC_ARN': topic_arn,
-        'AWS_BATCH_JOB_ID': 'job-999'
+        'AWS_BATCH_JOB_ID': 'job-999',
+        'AWS_DEFAULT_REGION': 'us-east-1'
     }
     
     # Save original environment

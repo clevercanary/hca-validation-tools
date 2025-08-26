@@ -26,6 +26,7 @@ FILE_ID = 'FILE_ID'
 SNS_TOPIC_ARN = 'SNS_TOPIC_ARN'
 AWS_BATCH_JOB_ID = 'AWS_BATCH_JOB_ID'
 AWS_BATCH_JOB_NAME = 'AWS_BATCH_JOB_NAME'
+AWS_DEFAULT_REGION = 'AWS_DEFAULT_REGION'
 
 # Status constants
 STATUS_SUCCESS = 'success'
@@ -105,7 +106,7 @@ def publish_validation_result(message: ValidationMessage, sns_topic_arn: str) ->
         logger.info("Publishing validation result to SNS topic: %s", sns_topic_arn)
         
         # Create SNS client
-        sns_client = boto3.client('sns')
+        sns_client = boto3.client('sns', region_name=os.environ[AWS_DEFAULT_REGION])
         
         # Publish message
         response = sns_client.publish(
@@ -200,7 +201,7 @@ def download_s3_file(bucket: str, key: str, local_path: Path) -> str | None:
     """
     logger.info("Starting download: s3://%s/%s", bucket, key)
     try:
-        s3_client = boto3.client('s3')
+        s3_client = boto3.client('s3', region_name=os.environ[AWS_DEFAULT_REGION])
         
         # Get object metadata first
         response = s3_client.head_object(Bucket=bucket, Key=key)
@@ -237,17 +238,19 @@ def validate_environment() -> tuple[dict[str, str], list[str]]:
         'file_id': os.environ.get(FILE_ID),
         'sns_topic_arn': os.environ.get(SNS_TOPIC_ARN),
         'batch_job_id': os.environ.get(AWS_BATCH_JOB_ID),
-        'batch_job_name': os.environ.get(AWS_BATCH_JOB_NAME)
+        'batch_job_name': os.environ.get(AWS_BATCH_JOB_NAME),
+        'aws_region': os.environ.get(AWS_DEFAULT_REGION)
     }
     
     # Check required variables (batch_job_name is optional)
-    required_vars = ['bucket', 'key', 'file_id', 'sns_topic_arn', 'batch_job_id']
+    required_vars = ['bucket', 'key', 'file_id', 'sns_topic_arn', 'batch_job_id', 'aws_region']
     var_name_mapping = {
         'bucket': 'S3_BUCKET',
         'key': 'S3_KEY',
         'file_id': 'FILE_ID',
         'sns_topic_arn': 'SNS_TOPIC_ARN',
-        'batch_job_id': 'AWS_BATCH_JOB_ID'
+        'batch_job_id': 'AWS_BATCH_JOB_ID',
+        'aws_region': 'AWS_DEFAULT_REGION'
     }
     missing_vars = []
     
