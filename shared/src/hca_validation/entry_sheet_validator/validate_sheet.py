@@ -723,19 +723,6 @@ def validate_google_sheet(
             # Move to the next row
             current_row_index += 1
         
-        if not row_indices:
-            error_msg = f"No data found to validate starting from {entity_type} row 6."
-            logger.warning(error_msg)
-            return make_validation_result_for_whole_sheet_error(
-                sheet_id=sheet_id,
-                entity_types=entity_types,
-                error_code="no_data",
-                error_message=error_msg,
-                spreadsheet_metadata=sheet_read_result.spreadsheet_metadata,
-                worksheet_id=sheet_info.worksheet_id,
-                entity_type=entity_type
-            )
-        
         logger.info(f"Found {len(row_indices)} {entity_type} rows to validate.")
 
         # Set the dataframe index to 1-based indices
@@ -757,6 +744,30 @@ def validate_google_sheet(
         **{f"{entity_type}_count": len(rows_df) for entity_type, rows_df in rows_to_validate_by_entity_type.items()},
         "error_count": 0
     }
+
+    # Check for sheets without rows to validate
+    entity_types_missing_rows = [entity_type for entity_type in entity_types if validation_summary[f"{entity_type}_count"] == 0]
+    if entity_types_missing_rows:
+        error_msg = f"No data found to validate starting from row 6 for entity type(s): {', '.join(entity_types_missing_rows)}"
+        logger.warning(error_msg)
+        error_worksheet_id = None
+        error_entity_type = None
+        if len(entity_types_missing_rows) == 1:
+            error_entity_type = entity_types_missing_rows[0]
+            error_worksheet_id = sheet_read_result.worksheets[entity_types.index(error_entity_type)].worksheet_id
+        error_info = SheetErrorInfo(
+            entity_type=error_entity_type,
+            worksheet_id=error_worksheet_id,
+            message=error_msg
+        )
+        validation_summary["error_count"] = 1
+        return SheetValidationResult(
+            successful=False,
+            spreadsheet_metadata=sheet_read_result.spreadsheet_metadata,
+            error_code="no_data",
+            summary=validation_summary,
+            errors=[error_info]
+        )
 
     # Initialize list of validation errors
     validation_errors = []
