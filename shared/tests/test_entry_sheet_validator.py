@@ -43,6 +43,10 @@ SAMPLE_SHEET_DATA = pd.DataFrame({
     'column1': ['', '', '', '', 'value1', 'value2'],
     'column2': ['', '', '', '', 'value3', 'value4']
 })
+# Data without rows to validate
+SAMPLE_SHEET_DATA_WITHOUT_ENTITIES = pd.DataFrame({
+    'column1': ['', '', '', ''],
+})
 # Data to test parsing of empty values and lists
 SAMPLE_SHEET_DATA_WITH_CASTS = pd.DataFrame({
     'contact_email': ['', '', '', '', "foo@example.com", '   ', 'bar@example.com'],
@@ -182,6 +186,7 @@ def _test_validation_with_mock_sheets_response(
     samples_sheet_data=None,
     expect_read_call=True,
     expected_apis_parameter=None,
+    expected_error_code='validation_error',
     additional_arguments={}
 ) -> SheetValidationResult:
     """Helper function for testing validation with service account access, for a validation function with a call signature like validate_google_sheet."""
@@ -216,8 +221,7 @@ def _test_validation_with_mock_sheets_response(
     assert validation_result.spreadsheet_metadata.last_updated_date == "2025-06-06T22:43:57.554Z"
     assert validation_result.spreadsheet_metadata.last_updated_by == "foo"
     assert validation_result.spreadsheet_metadata.last_updated_email == "foo@example.com"
-    # The mock data is in the format necessary to be parsed, but does not contain actual dataset fields, so we expect the 'validation_error' code
-    assert validation_result.error_code == 'validation_error'
+    assert validation_result.error_code == expected_error_code
     
     return validation_result
 
@@ -660,7 +664,20 @@ class TestValidateGoogleSheet:
         # Run validation
         with pytest.raises(ValueError, match="'not-a-bionetwork' is not a valid bionetwork"):
             validate_google_sheet(PUBLIC_SHEET_ID, bionetwork="not-a-bionetwork")
-
+    
+    @patch('hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account')
+    def test_sheet_without_entities(self, mock_read_service_account):
+        """Test that entity counts are still returned when an error is generated due to a sheet lacking rows to validate."""
+        result = _test_validation_with_mock_sheets_response(
+            validate_google_sheet,
+            mock_read_service_account,
+            datasets_sheet_data=SAMPLE_SHEET_DATA_WITHOUT_ENTITIES,
+            donors_sheet_data=SAMPLE_SHEET_DATA,
+            expected_error_code="no_data"
+        )
+        assert result.successful is False
+        assert result.summary == {"dataset_count": 0, "donor_count": 2, "error_count": 1}
+        
 
 class TestProcessGoogleSheet:
     """Tests for the process_google_sheet function."""
