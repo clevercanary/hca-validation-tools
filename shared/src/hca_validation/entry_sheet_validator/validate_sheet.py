@@ -367,7 +367,7 @@ def read_worksheets(
     for sheet_index, worksheet, value_range in zip(sheet_indices, worksheets, api_result["valueRanges"]):
         data = gspread.utils.fill_gaps(value_range.get("values", [[]]))
          # Convert to DataFrame
-        if len(data) >= 2:
+        if len(data) >= 1:
             logger.info(f"Successfully retrieved data from worksheet index {sheet_index}: {len(data)} rows, {len(data[0]) if data[0] else 0} columns")
             source_columns = data[0]
             source_rows_start_index = 1
