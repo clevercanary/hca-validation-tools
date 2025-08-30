@@ -30,6 +30,7 @@ from hca_validation.entry_sheet_validator.validate_sheet import (
     validate_google_sheet
 )
 from hca_validation.entry_sheet_validator.process_sheet import process_google_sheet
+from hca_validation.entry_sheet_validator.common import default_entity_types
 
 # Test sheet IDs
 PUBLIC_SHEET_ID = "1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY"  # This is a public sheet
@@ -41,6 +42,10 @@ NONEXISTENT_SHEET_ID = "1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"  # This shee
 SAMPLE_SHEET_DATA = pd.DataFrame({
     'column1': ['', '', '', '', 'value1', 'value2'],
     'column2': ['', '', '', '', 'value3', 'value4']
+})
+# Data without rows to validate
+SAMPLE_SHEET_DATA_WITHOUT_ENTITIES = pd.DataFrame({
+    'column1': ['', '', '', ''],
 })
 # Data to test parsing of empty values and lists
 SAMPLE_SHEET_DATA_WITH_CASTS = pd.DataFrame({
@@ -181,6 +186,7 @@ def _test_validation_with_mock_sheets_response(
     samples_sheet_data=None,
     expect_read_call=True,
     expected_apis_parameter=None,
+    expected_error_code='validation_error',
     additional_arguments={}
 ) -> SheetValidationResult:
     """Helper function for testing validation with service account access, for a validation function with a call signature like validate_google_sheet."""
@@ -197,12 +203,14 @@ def _test_validation_with_mock_sheets_response(
         [MagicMock() for _ in mock_spreadsheet_info.worksheets]
     )
 
+    entity_types = default_entity_types[:len(mock_spreadsheet_info.worksheets)]
+
     # Run validation
-    validation_result = validation_function(PUBLIC_SHEET_ID, bionetwork=bionetwork, **additional_arguments)
+    validation_result = validation_function(PUBLIC_SHEET_ID, bionetwork=bionetwork, entity_types=entity_types, **additional_arguments)
 
     if expect_read_call:
         # If expected, verify service account method was used
-        mock_read_service_account.assert_called_once_with(PUBLIC_SHEET_ID, ["dataset", "donor", "sample"], expected_apis_parameter)
+        mock_read_service_account.assert_called_once_with(PUBLIC_SHEET_ID, entity_types, expected_apis_parameter)
     else:
         # Otherwise, verify sheet data was not read
         mock_read_service_account.assert_not_called()
@@ -213,8 +221,7 @@ def _test_validation_with_mock_sheets_response(
     assert validation_result.spreadsheet_metadata.last_updated_date == "2025-06-06T22:43:57.554Z"
     assert validation_result.spreadsheet_metadata.last_updated_by == "foo"
     assert validation_result.spreadsheet_metadata.last_updated_email == "foo@example.com"
-    # The mock data is in the format necessary to be parsed, but does not contain actual dataset fields, so we expect the 'validation_error' code
-    assert validation_result.error_code == 'validation_error'
+    assert validation_result.error_code == expected_error_code
     
     return validation_result
 
@@ -657,7 +664,20 @@ class TestValidateGoogleSheet:
         # Run validation
         with pytest.raises(ValueError, match="'not-a-bionetwork' is not a valid bionetwork"):
             validate_google_sheet(PUBLIC_SHEET_ID, bionetwork="not-a-bionetwork")
-
+    
+    @patch('hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account')
+    def test_sheet_without_entities(self, mock_read_service_account):
+        """Test that entity counts are still returned when an error is generated due to a sheet lacking rows to validate."""
+        result = _test_validation_with_mock_sheets_response(
+            validate_google_sheet,
+            mock_read_service_account,
+            datasets_sheet_data=SAMPLE_SHEET_DATA_WITHOUT_ENTITIES,
+            donors_sheet_data=SAMPLE_SHEET_DATA,
+            expected_error_code="no_data"
+        )
+        assert result.successful is False
+        assert result.summary == {"dataset_count": 0, "donor_count": 2, "error_count": 1}
+        
 
 class TestProcessGoogleSheet:
     """Tests for the process_google_sheet function."""
@@ -699,13 +719,13 @@ class TestProcessGoogleSheet:
         )
         mock_read_service_account_a.return_value = mock_read_result
         mock_read_service_account_b.return_value = mock_read_result
-        process_google_sheet(PUBLIC_SHEET_ID)
+        process_google_sheet(PUBLIC_SHEET_ID, entity_types=["dataset", "donor"])
         # Verify that batch_update was called only for the donors worksheet, and with the values expected for the mock data
         mock_datasets_worksheet.batch_update.assert_not_called()
         mock_donors_worksheet.batch_update.assert_called_once_with(SAMPLE_SHEET_DATA_WITH_FIXES_EXPECTED_VALUE_RANGES)
         # Verify that spreadsheet was read twice
-        mock_read_service_account_a.assert_called_once_with(PUBLIC_SHEET_ID, ["dataset", "donor", "sample"], mock_apis)
-        mock_read_service_account_b.assert_called_once_with(PUBLIC_SHEET_ID, ["dataset", "donor", "sample"], mock_apis)
+        mock_read_service_account_a.assert_called_once_with(PUBLIC_SHEET_ID, ["dataset", "donor"], mock_apis)
+        mock_read_service_account_b.assert_called_once_with(PUBLIC_SHEET_ID, ["dataset", "donor"], mock_apis)
 
     @patch('hca_validation.entry_sheet_validator.process_sheet.init_apis')
     @patch('hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account')
@@ -721,11 +741,11 @@ class TestProcessGoogleSheet:
         )
         mock_read_service_account_a.return_value = mock_read_result
         mock_read_service_account_b.return_value = mock_read_result
-        process_google_sheet(PUBLIC_SHEET_ID)
+        process_google_sheet(PUBLIC_SHEET_ID, entity_types=["dataset"])
         # Verify that batch_update wasn't called
         mock_datasets_worksheet.batch_update.assert_not_called()
         # Verify that spreadsheet was only read once
-        mock_read_service_account_a.assert_called_once_with(PUBLIC_SHEET_ID, ["dataset", "donor", "sample"], mock_apis)
+        mock_read_service_account_a.assert_called_once_with(PUBLIC_SHEET_ID, ["dataset"], mock_apis)
         mock_read_service_account_b.assert_not_called()
     
     @patch('hca_validation.entry_sheet_validator.process_sheet.init_apis')
@@ -780,10 +800,10 @@ class TestProcessGoogleSheet:
         }
         mock_donors_worksheet.batch_update.side_effect = gspread.exceptions.APIError(mock_update_response)
 
-        validation_result = process_google_sheet(PUBLIC_SHEET_ID)
+        validation_result = process_google_sheet(PUBLIC_SHEET_ID, entity_types=["dataset", "donor"])
 
         # Verify that spreadsheet only ended up being read once
-        mock_read_service_account_a.assert_called_once_with(PUBLIC_SHEET_ID, ["dataset", "donor", "sample"], mock_apis)
+        mock_read_service_account_a.assert_called_once_with(PUBLIC_SHEET_ID, ["dataset", "donor"], mock_apis)
         mock_read_service_account_b.assert_not_called()
 
         # Verify that an error was reported
@@ -795,7 +815,7 @@ class TestProcessGoogleSheet:
         assert validation_result.spreadsheet_metadata is not None
         assert validation_result.spreadsheet_metadata.spreadsheet_title == "Test Sheet Title"
         assert validation_result.error_code == 'api_error'
-        assert validation_result.summary  == {"dataset_count": None, "donor_count": None, "sample_count": None, "error_count": 1}
+        assert validation_result.summary  == {"dataset_count": None, "donor_count": None, "error_count": 1}
 
 
 # Integration tests that use actual Google Sheets
