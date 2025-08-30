@@ -267,7 +267,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 if __name__ == "__main__":
     # Test with a sample event
     test_event = {
-        'sheet_id': '1dGR-CP8XQEWtUtSbaVaa28wZ204P1U83EJ03ZEtdPZA'
+        'sheet_id': '1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY'
     }
     
     result = handler(test_event, None)
