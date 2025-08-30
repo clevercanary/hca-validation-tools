@@ -57,6 +57,7 @@ help:
 	@echo "Service-Specific Commands:"
 	@echo "  cd shared && make help                           - Shared library tasks"
 	@echo "  cd services/entry-sheet-validator && make help  - Lambda service tasks"
+	@echo "  cd services/dataset-validator && make help      - Dataset validator tasks"
 	@echo ""
 	@echo "  help                   - Show this help message"
 
@@ -116,6 +117,7 @@ build-all:
 	@echo "Running full multi-service build & test chain..."
 	@$(MAKE) -C shared build
 	@$(MAKE) -C services/entry-sheet-validator build-lambda-container PROFILE=excira
+	@$(MAKE) -C services/dataset-validator build
 	@$(MAKE) test-all
 	@echo "✓ All services built and tested successfully"
 
@@ -124,4 +126,5 @@ test-all:
 	@echo "Running all tests across services..."
 	@$(MAKE) -C shared test-shared
 	@$(MAKE) -C services/entry-sheet-validator test-lambda-container
+	@$(MAKE) -C services/dataset-validator test
 	@echo "✓ All tests passed"
