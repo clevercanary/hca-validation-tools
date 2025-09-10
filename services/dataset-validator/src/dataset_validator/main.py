@@ -42,6 +42,7 @@ INTEGRITY_ERROR = 'error'
 @dataclass
 class MetadataSummary:
     """Summary of metadata from a dataset file."""
+    title: str
     assay: List[str]
     suspension_type: List[str]
     tissue: List[str]
@@ -207,6 +208,7 @@ def read_metadata(file_path: Path) -> MetadataSummary:
         
     Returns:
         MetadataSummary: A summary containing:
+            - title: Title of the individual dataset
             - assay: List of unique assay types in the dataset
             - suspension_type: List of unique suspension types
             - tissue: List of unique tissue types
@@ -224,6 +226,7 @@ def read_metadata(file_path: Path) -> MetadataSummary:
     try:
         adata = anndata.io.read_h5ad(file_path, backed="r")
         return MetadataSummary(
+            title=adata.uns["title"],
             assay=list(adata.obs["assay"].unique()),
             suspension_type=list(adata.obs["suspension_type"].unique()),
             tissue=list(adata.obs["tissue"].unique()),
