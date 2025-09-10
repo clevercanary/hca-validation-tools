@@ -195,6 +195,31 @@ def verify_file_integrity(file_path: Path, expected_sha256: str) -> bool:
 
 
 def read_metadata(file_path: Path) -> MetadataSummary:
+    """
+    Read metadata from an H5AD file and extract key biological annotations.
+    
+    This function opens an H5AD (AnnData) file in backed mode and extracts unique values
+    from key observation columns to create a metadata summary. The file is automatically
+    closed after reading to prevent resource leaks.
+    
+    Args:
+        file_path: Path to the H5AD file to read metadata from
+        
+    Returns:
+        MetadataSummary: A summary containing:
+            - assay: List of unique assay types in the dataset
+            - suspension_type: List of unique suspension types
+            - tissue: List of unique tissue types
+            - disease: List of unique disease conditions
+            - cell_count: Total number of cells/observations in the dataset
+            
+    Raises:
+        Exception: If the H5AD file cannot be read or required columns are missing
+        
+    Note:
+        The file is opened in backed mode ('r') for memory efficiency and automatically
+        closed in the finally block to ensure proper resource cleanup.
+    """
     adata = None
     try:
         adata = anndata.io.read_h5ad(file_path, backed="r")
