@@ -13,10 +13,11 @@ import sys
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 import boto3
 from botocore.exceptions import ClientError
+import anndata
 
 # Environment variable constants
 S3_BUCKET = 'S3_BUCKET'
@@ -39,6 +40,15 @@ INTEGRITY_ERROR = 'error'
 
 
 @dataclass
+class MetadataSummary:
+    """Summary of metadata from a dataset file."""
+    assay: List[str]
+    suspension_type: List[str]
+    tissue: List[str]
+    disease: List[str]
+    cell_count: int
+
+@dataclass
 class ValidationMessage:
     """SNS message structure for validation results."""
     # Required fields
@@ -50,11 +60,12 @@ class ValidationMessage:
     batch_job_id: str         # Unique AWS Batch job ID for debugging
     
     # Optional fields
-    batch_job_name: Optional[str] = None       # Job definition name (for context)
-    downloaded_sha256: Optional[str] = None    # SHA256 computed from downloaded file
-    source_sha256: Optional[str] = None        # SHA256 from S3 metadata
-    integrity_status: Optional[str] = None     # "valid", "invalid", "error"
-    error_message: Optional[str] = None        # Human-readable error description
+    batch_job_name: Optional[str] = None                 # Job definition name (for context)
+    downloaded_sha256: Optional[str] = None              # SHA256 computed from downloaded file
+    source_sha256: Optional[str] = None                  # SHA256 from S3 metadata
+    integrity_status: Optional[str] = None               # "valid", "invalid", "error"
+    metadata_summary: Optional[MetadataSummary] = None   # Metadata from the file
+    error_message: Optional[str] = None                  # Human-readable error description
 
     def to_json(self) -> str:
         """Convert to JSON string for SNS publishing."""
@@ -181,6 +192,22 @@ def verify_file_integrity(file_path: Path, expected_sha256: str) -> bool:
         logger.error("File integrity check failed - computed: %s, expected: %s", 
                     computed_sha256, expected_sha256)
         return False
+
+
+def read_metadata(file_path: Path) -> MetadataSummary:
+    adata = None
+    try:
+        adata = anndata.io.read_h5ad(file_path, backed="r")
+        return MetadataSummary(
+            assay=list(adata.obs["assay"].unique()),
+            suspension_type=list(adata.obs["suspension_type"].unique()),
+            tissue=list(adata.obs["tissue"].unique()),
+            disease=list(adata.obs["disease"].unique()),
+            cell_count=adata.n_obs
+        )
+    finally:
+        if adata is not None:
+            adata.file.close()
 
 
 def download_s3_file(bucket: str, key: str, local_path: Path) -> str | None:
@@ -366,6 +393,12 @@ def main() -> int:
             exit_code = 1
             return exit_code
         
+        # Read metadata
+        try:
+            validation_message.metadata_summary = read_metadata(local_file)
+        except Exception as e:
+            logger.error(f"Failed to read metadata: {e}")
+
         # TODO: Add actual validation logic here
         logger.info("Validation completed successfully")
         validation_message.status = STATUS_SUCCESS
