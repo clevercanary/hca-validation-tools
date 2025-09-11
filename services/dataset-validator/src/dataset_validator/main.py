@@ -428,10 +428,7 @@ def main() -> int:
             return exit_code
         
         # Read metadata
-        try:
-            validation_message.metadata_summary = read_metadata(local_file)
-        except Exception as e:
-            logger.error(f"Failed to read metadata: {e}")
+        validation_message.metadata_summary = read_metadata(local_file)
 
         # TODO: Add actual validation logic here
         logger.info("Validation completed successfully")
