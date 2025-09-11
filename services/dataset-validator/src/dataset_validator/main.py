@@ -18,6 +18,7 @@ from typing import List, Optional
 import boto3
 from botocore.exceptions import ClientError
 import anndata
+import pandas as pd
 
 # Environment variable constants
 S3_BUCKET = 'S3_BUCKET'
@@ -195,6 +196,10 @@ def verify_file_integrity(file_path: Path, expected_sha256: str) -> bool:
         return False
 
 
+def get_column_unique_values_if_present(df: pd.DataFrame, name: str):
+    return list(df[name].unique()) if name in df else []
+
+
 def read_metadata(file_path: Path) -> MetadataSummary:
     """
     Read metadata from an H5AD file and extract key biological annotations.
@@ -225,12 +230,13 @@ def read_metadata(file_path: Path) -> MetadataSummary:
     adata = None
     try:
         adata = anndata.io.read_h5ad(file_path, backed="r")
+        title = adata.uns.get("title")
         return MetadataSummary(
-            title=adata.uns["title"],
-            assay=list(adata.obs["assay"].unique()),
-            suspension_type=list(adata.obs["suspension_type"].unique()),
-            tissue=list(adata.obs["tissue"].unique()),
-            disease=list(adata.obs["disease"].unique()),
+            title=title if isinstance(title, str) else "",
+            assay=get_column_unique_values_if_present(adata.obs, "assay"),
+            suspension_type=get_column_unique_values_if_present(adata.obs, "suspension_type"),
+            tissue=get_column_unique_values_if_present(adata.obs, "tissue"),
+            disease=get_column_unique_values_if_present(adata.obs, "disease"),
             cell_count=adata.n_obs
         )
     finally:
