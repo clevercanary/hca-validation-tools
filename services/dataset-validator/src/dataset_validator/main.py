@@ -239,6 +239,9 @@ def read_metadata(file_path: Path) -> MetadataSummary:
             disease=get_column_unique_values_if_present(adata.obs, "disease"),
             cell_count=adata.n_obs
         )
+    except Exception as e:
+        logger.error(f"Error reading metadata: {e}")
+        raise
     finally:
         if adata is not None:
             adata.file.close()
