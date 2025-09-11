@@ -430,13 +430,14 @@ def main() -> int:
             exit_code = 1
             return exit_code
         
+        validation_message.integrity_status = INTEGRITY_VALID
+        
         # Read metadata
         validation_message.metadata_summary = read_metadata(local_file)
 
         # TODO: Add actual validation logic here
         logger.info("Validation completed successfully")
         validation_message.status = STATUS_SUCCESS
-        validation_message.integrity_status = INTEGRITY_VALID
         exit_code = 0
         
     except Exception as e:
