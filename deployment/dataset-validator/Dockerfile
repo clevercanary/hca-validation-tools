@@ -1,5 +1,5 @@
 # Build stage
-FROM --platform=linux/amd64 python:3.10-slim AS builder
+FROM --platform=linux/amd64 python:3.11-slim AS builder
 
 # Install Poetry
 RUN pip install poetry==1.8.3
@@ -23,7 +23,7 @@ RUN poetry install --only main --no-root
 RUN poetry export --without-hashes -o /tmp/requirements.txt
 
 # Final stage
-FROM --platform=linux/amd64 python:3.10-slim
+FROM --platform=linux/amd64 python:3.11-slim
 
 # Install runtime dependencies (if any)
 COPY --from=builder /tmp/requirements.txt /tmp/requirements.txt
