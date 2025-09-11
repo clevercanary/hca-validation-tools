@@ -392,6 +392,38 @@ def test_publish_validation_result_scenarios(caplog, mock_aws, test_case):
             "batch_job_name": None,
             "metadata_summary": None
         }
+    },
+    {
+        "name": "metadata_failure",
+        "description": "Test complete validation workflow with failure reading metadata",
+        "s3_key": "datasets/test.h5ad",
+        "file_id": "test-file-123",
+        "batch_job_id": "job-456",
+        "batch_job_name": "test-validation-job",
+        "setup_s3": lambda s3_client, bucket_name: _setup_valid_s3_file(s3_client, bucket_name, "datasets/test.h5ad"),
+        "adata": {
+            "exception": Exception("Test metadata error")
+        },
+        "expected_exit_code": 1,
+        "expected_logs": [
+            "Dataset Validator starting",
+            "Processing S3 file: s3://test-bucket/datasets/test.h5ad",
+            "Work directory created:",
+            "File ready for validation:",
+            "Error reading metadata:",
+            "Dataset Validator failed:",
+            "Publishing validation result to SNS topic",
+            "Successfully published SNS message"
+        ],
+        "expected_sns_message": {
+            "status": "failure",
+            "integrity_status": "valid",
+            "file_id": "test-file-123",
+            "batch_job_id": "job-456",
+            "batch_job_name": "test-validation-job",
+            "error_message": "Dataset Validator failed: Test metadata error",
+            "metadata_summary": None
+        }
     }
 ], ids=lambda x: x["name"])
 @patch("anndata.io.read_h5ad")
@@ -421,11 +453,14 @@ def test_end_to_end_validation_scenarios(mock_read_h5ad, caplog, mock_aws, env_m
     # Set up anndata mock
     test_adata = test_case["adata"]
     if test_adata is not None:
-        mock_adata = MagicMock()
-        mock_read_h5ad.return_value = mock_adata
-        mock_adata.obs = pd.DataFrame(test_adata["obs"])
-        mock_adata.uns = test_adata["uns"]
-        mock_adata.n_obs = mock_adata.obs.shape[0]
+        if "exception" in test_adata:
+            mock_read_h5ad.side_effect = test_adata["exception"]
+        else:
+            mock_adata = MagicMock()
+            mock_read_h5ad.return_value = mock_adata
+            mock_adata.obs = pd.DataFrame(test_adata["obs"])
+            mock_adata.uns = test_adata["uns"]
+            mock_adata.n_obs = mock_adata.obs.shape[0]
 
     # Run main function
     with caplog.at_level(logging.INFO, logger="dataset_validator.main"):
