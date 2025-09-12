@@ -240,7 +240,7 @@ def read_metadata(file_path: Path) -> MetadataSummary:
             cell_count=adata.n_obs
         )
     except Exception as e:
-        logger.error(f"Error reading metadata: {e}")
+        logger.error("Error reading metadata: %s", e)
         raise
     finally:
         if adata is not None:
