@@ -210,6 +210,65 @@ def test_missing_sns_topic_logs_error_and_exits(caplog, env_manager, base_env_va
     assert "Missing required environment variables" in caplog.text
     assert "SNS_TOPIC_ARN=None" in caplog.text
 
+@pytest.mark.parametrize("test_case", [
+    {
+        "name": "all_present",
+        "description": "Test reading metadata with all fields present",
+        "adata": {
+            "obs": {
+                "assay": ["assay-a", "assay-b", "assay-b", "assay-c", "assay-a"],
+                "suspension_type": ["suspension-type-a", "suspension-type-a", "suspension-type-a", "suspension-type-a", "suspension-type-a"],
+                "tissue": ["tissue-a", "tissue-a", "tissue-b", "tissue-a", "tissue-a"],
+                "disease": ["disease-a", "disease-b", "disease-c", "disease-d", "disease-e"]
+            },
+            "uns": {"title": "test-dataset-123"}
+        },
+        "expected_result": {
+            "title": "test-dataset-123",
+            "assay": ["assay-a", "assay-b", "assay-c"],
+            "suspension_type": ["suspension-type-a"],
+            "tissue": ["tissue-a", "tissue-b"],
+            "disease": ["disease-a", "disease-b", "disease-c", "disease-d", "disease-e"],
+            "cell_count": 5
+        }
+    },
+    {
+        "name": "all_missing",
+        "description": "Test reading metadata with all possible fields absent",
+        "adata": {
+            "obs": {},
+            "uns": {}
+        },
+        "expected_result": {
+            "title": "",
+            "assay": [],
+            "suspension_type": [],
+            "tissue": [],
+            "disease": [],
+            "cell_count": 0
+        }
+    }
+], ids=lambda x: x["name"])
+@patch("anndata.io.read_h5ad")
+def test_read_metadata_scenarios(mock_read_h5ad, test_case):
+    """Parameterized test for metadata reading scenarios."""
+    import sys
+    sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+    
+    from dataset_validator.main import read_metadata, MetadataSummary
+    
+    # Set up anndata mock
+    mock_adata = MagicMock()
+    mock_read_h5ad.return_value = mock_adata
+    mock_adata.obs = pd.DataFrame(test_case["adata"]["obs"])
+    mock_adata.uns = test_case["adata"]["uns"]
+    mock_adata.n_obs = mock_adata.obs.shape[0]
+
+    # Test reading metadata
+    metadata_summary = read_metadata(Path("test-file.h5ad"))
+
+    assert metadata_summary == MetadataSummary(**test_case["expected_result"])
+
 
 @pytest.mark.parametrize("test_case", [
     {
