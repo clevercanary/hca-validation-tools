@@ -6,10 +6,12 @@ import os
 import subprocess
 from pathlib import Path
 from typing import Dict, Any
+from unittest.mock import MagicMock, patch
 
 import boto3
 import pytest
 from moto import mock_s3, mock_sns
+import pandas as pd
 
 
 @pytest.fixture
@@ -208,6 +210,65 @@ def test_missing_sns_topic_logs_error_and_exits(caplog, env_manager, base_env_va
     assert "Missing required environment variables" in caplog.text
     assert "SNS_TOPIC_ARN=None" in caplog.text
 
+@pytest.mark.parametrize("test_case", [
+    {
+        "name": "all_present",
+        "description": "Test reading metadata with all fields present",
+        "adata": {
+            "obs": {
+                "assay": ["assay-a", "assay-b", "assay-b", "assay-c", "assay-a"],
+                "suspension_type": ["suspension-type-a", "suspension-type-a", "suspension-type-a", "suspension-type-a", "suspension-type-a"],
+                "tissue": ["tissue-a", "tissue-a", "tissue-b", "tissue-a", "tissue-a"],
+                "disease": ["disease-a", "disease-b", "disease-c", "disease-d", "disease-e"]
+            },
+            "uns": {"title": "test-dataset-123"}
+        },
+        "expected_result": {
+            "title": "test-dataset-123",
+            "assay": ["assay-a", "assay-b", "assay-c"],
+            "suspension_type": ["suspension-type-a"],
+            "tissue": ["tissue-a", "tissue-b"],
+            "disease": ["disease-a", "disease-b", "disease-c", "disease-d", "disease-e"],
+            "cell_count": 5
+        }
+    },
+    {
+        "name": "all_missing",
+        "description": "Test reading metadata with all possible fields absent",
+        "adata": {
+            "obs": {},
+            "uns": {}
+        },
+        "expected_result": {
+            "title": "",
+            "assay": [],
+            "suspension_type": [],
+            "tissue": [],
+            "disease": [],
+            "cell_count": 0
+        }
+    }
+], ids=lambda x: x["name"])
+@patch("anndata.io.read_h5ad")
+def test_read_metadata_scenarios(mock_read_h5ad, test_case):
+    """Parameterized test for metadata reading scenarios."""
+    import sys
+    sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+    
+    from dataset_validator.main import read_metadata, MetadataSummary
+    
+    # Set up anndata mock
+    mock_adata = MagicMock()
+    mock_read_h5ad.return_value = mock_adata
+    mock_adata.obs = pd.DataFrame(test_case["adata"]["obs"])
+    mock_adata.uns = test_case["adata"]["uns"]
+    mock_adata.n_obs = mock_adata.obs.shape[0]
+
+    # Test reading metadata
+    metadata_summary = read_metadata(Path("test-file.h5ad"))
+
+    assert metadata_summary == MetadataSummary(**test_case["expected_result"])
+
 
 @pytest.mark.parametrize("test_case", [
     {
@@ -224,6 +285,7 @@ def test_missing_sns_topic_logs_error_and_exits(caplog, env_manager, base_env_va
             'downloaded_sha256': 'abc123',
             'source_sha256': 'abc123',
             'integrity_status': 'valid',
+            'metadata_summary': None,
             'error_message': None
         },
         "use_valid_topic": True,
@@ -300,6 +362,15 @@ def test_publish_validation_result_scenarios(caplog, mock_aws, test_case):
         "batch_job_id": "job-456",
         "batch_job_name": "test-validation-job",
         "setup_s3": lambda s3_client, bucket_name: _setup_valid_s3_file(s3_client, bucket_name, "datasets/test.h5ad"),
+        "adata": {
+            "obs": {
+                "assay": ["assay-a", "assay-b", "assay-b", "assay-c", "assay-a"],
+                "suspension_type": ["suspension-type-a", "suspension-type-a", "suspension-type-a", "suspension-type-a", "suspension-type-a"],
+                "tissue": ["tissue-a", "tissue-a", "tissue-b", "tissue-a", "tissue-a"],
+                "disease": ["disease-a", "disease-b", "disease-c", "disease-d", "disease-e"]
+            },
+            "uns": {"title": "test-dataset-123"}
+        },
         "expected_exit_code": 0,
         "expected_logs": [
             "Dataset Validator starting",
@@ -317,7 +388,15 @@ def test_publish_validation_result_scenarios(caplog, mock_aws, test_case):
             "file_id": "test-file-123",
             "batch_job_id": "job-456",
             "batch_job_name": "test-validation-job",
-            "error_message": None
+            "error_message": None,
+            "metadata_summary": {
+                "title": "test-dataset-123",
+                "assay": ["assay-a", "assay-b", "assay-c"],
+                "suspension_type": ["suspension-type-a"],
+                "tissue": ["tissue-a", "tissue-b"],
+                "disease": ["disease-a", "disease-b", "disease-c", "disease-d", "disease-e"],
+                "cell_count": 5
+            }
         }
     },
     {
@@ -328,6 +407,7 @@ def test_publish_validation_result_scenarios(caplog, mock_aws, test_case):
         "batch_job_id": "job-789",
         "batch_job_name": None,
         "setup_s3": lambda s3_client, bucket_name: None,  # Don't upload any file
+        "adata": None,
         "expected_exit_code": 1,
         "expected_logs": [
             "Dataset Validator starting",
@@ -342,7 +422,8 @@ def test_publish_validation_result_scenarios(caplog, mock_aws, test_case):
             "integrity_status": None,
             "file_id": "test-file-456",
             "batch_job_id": "job-789",
-            "batch_job_name": None
+            "batch_job_name": None,
+            "metadata_summary": None
         }
     },
     {
@@ -353,6 +434,7 @@ def test_publish_validation_result_scenarios(caplog, mock_aws, test_case):
         "batch_job_id": "job-101",
         "batch_job_name": None,
         "setup_s3": lambda s3_client, bucket_name: _setup_corrupt_s3_file(s3_client, bucket_name, "datasets/corrupt.h5ad"),
+        "adata": None,
         "expected_exit_code": 1,
         "expected_logs": [
             "Dataset Validator starting",
@@ -366,11 +448,45 @@ def test_publish_validation_result_scenarios(caplog, mock_aws, test_case):
             "integrity_status": "invalid",
             "file_id": "test-file-789",
             "batch_job_id": "job-101",
-            "batch_job_name": None
+            "batch_job_name": None,
+            "metadata_summary": None
+        }
+    },
+    {
+        "name": "metadata_failure",
+        "description": "Test complete validation workflow with failure reading metadata",
+        "s3_key": "datasets/test.h5ad",
+        "file_id": "test-file-123",
+        "batch_job_id": "job-456",
+        "batch_job_name": "test-validation-job",
+        "setup_s3": lambda s3_client, bucket_name: _setup_valid_s3_file(s3_client, bucket_name, "datasets/test.h5ad"),
+        "adata": {
+            "exception": Exception("Test metadata error")
+        },
+        "expected_exit_code": 1,
+        "expected_logs": [
+            "Dataset Validator starting",
+            "Processing S3 file: s3://test-bucket/datasets/test.h5ad",
+            "Work directory created:",
+            "File ready for validation:",
+            "Error reading metadata:",
+            "Dataset Validator failed:",
+            "Publishing validation result to SNS topic",
+            "Successfully published SNS message"
+        ],
+        "expected_sns_message": {
+            "status": "failure",
+            "integrity_status": "valid",
+            "file_id": "test-file-123",
+            "batch_job_id": "job-456",
+            "batch_job_name": "test-validation-job",
+            "error_message": "Dataset Validator failed: Test metadata error",
+            "metadata_summary": None
         }
     }
 ], ids=lambda x: x["name"])
-def test_end_to_end_validation_scenarios(caplog, mock_aws, env_manager, test_case):
+@patch("anndata.io.read_h5ad")
+def test_end_to_end_validation_scenarios(mock_read_h5ad, caplog, mock_aws, env_manager, test_case):
     """Parameterized test for end-to-end validation scenarios."""
     import sys
     sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
@@ -393,6 +509,18 @@ def test_end_to_end_validation_scenarios(caplog, mock_aws, env_manager, test_cas
     
     env_manager['set'](test_env)
     
+    # Set up anndata mock
+    test_adata = test_case["adata"]
+    if test_adata is not None:
+        if "exception" in test_adata:
+            mock_read_h5ad.side_effect = test_adata["exception"]
+        else:
+            mock_adata = MagicMock()
+            mock_read_h5ad.return_value = mock_adata
+            mock_adata.obs = pd.DataFrame(test_adata["obs"])
+            mock_adata.uns = test_adata["uns"]
+            mock_adata.n_obs = mock_adata.obs.shape[0]
+
     # Run main function
     with caplog.at_level(logging.INFO, logger="dataset_validator.main"):
         result = main()
@@ -453,6 +581,9 @@ def _validate_sns_message(mock_aws, caplog, expected_message):
     assert message["file_id"] == expected_message["file_id"]
     assert message["batch_job_id"] == expected_message["batch_job_id"]
     assert message["batch_job_name"] == expected_message["batch_job_name"]
+
+    # Verify that metadata was read and returned as expected
+    assert message["metadata_summary"] == expected_message["metadata_summary"]
     
     # For success case, verify error_message is None
     if expected_message.get("error_message") is not None:

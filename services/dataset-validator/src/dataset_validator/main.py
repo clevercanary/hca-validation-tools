@@ -13,10 +13,12 @@ import sys
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 import boto3
 from botocore.exceptions import ClientError
+import anndata
+import pandas as pd
 
 # Environment variable constants
 S3_BUCKET = 'S3_BUCKET'
@@ -39,6 +41,16 @@ INTEGRITY_ERROR = 'error'
 
 
 @dataclass
+class MetadataSummary:
+    """Summary of metadata from a dataset file."""
+    title: str
+    assay: List[str]
+    suspension_type: List[str]
+    tissue: List[str]
+    disease: List[str]
+    cell_count: int
+
+@dataclass
 class ValidationMessage:
     """SNS message structure for validation results."""
     # Required fields
@@ -50,11 +62,12 @@ class ValidationMessage:
     batch_job_id: str         # Unique AWS Batch job ID for debugging
     
     # Optional fields
-    batch_job_name: Optional[str] = None       # Job definition name (for context)
-    downloaded_sha256: Optional[str] = None    # SHA256 computed from downloaded file
-    source_sha256: Optional[str] = None        # SHA256 from S3 metadata
-    integrity_status: Optional[str] = None     # "valid", "invalid", "error"
-    error_message: Optional[str] = None        # Human-readable error description
+    batch_job_name: Optional[str] = None                 # Job definition name (for context)
+    downloaded_sha256: Optional[str] = None              # SHA256 computed from downloaded file
+    source_sha256: Optional[str] = None                  # SHA256 from S3 metadata
+    integrity_status: Optional[str] = None               # "valid", "invalid", "error"
+    metadata_summary: Optional[MetadataSummary] = None   # Metadata from the file
+    error_message: Optional[str] = None                  # Human-readable error description
 
     def to_json(self) -> str:
         """Convert to JSON string for SNS publishing."""
@@ -181,6 +194,57 @@ def verify_file_integrity(file_path: Path, expected_sha256: str) -> bool:
         logger.error("File integrity check failed - computed: %s, expected: %s", 
                     computed_sha256, expected_sha256)
         return False
+
+
+def get_column_unique_values_if_present(df: pd.DataFrame, name: str):
+    return list(df[name].unique()) if name in df else []
+
+
+def read_metadata(file_path: Path) -> MetadataSummary:
+    """
+    Read metadata from an H5AD file and extract key biological annotations.
+    
+    This function opens an H5AD (AnnData) file in backed mode and extracts unique values
+    from key observation columns to create a metadata summary. The file is automatically
+    closed after reading to prevent resource leaks.
+    
+    Args:
+        file_path: Path to the H5AD file to read metadata from
+        
+    Returns:
+        MetadataSummary: A summary containing:
+            - title: Title of the individual dataset
+            - assay: List of unique assay types in the dataset
+            - suspension_type: List of unique suspension types
+            - tissue: List of unique tissue types
+            - disease: List of unique disease conditions
+            - cell_count: Total number of cells/observations in the dataset
+            
+    Raises:
+        Exception: If the H5AD file cannot be read or required columns are missing
+        
+    Note:
+        The file is opened in backed mode ('r') for memory efficiency and automatically
+        closed in the finally block to ensure proper resource cleanup.
+    """
+    adata = None
+    try:
+        adata = anndata.io.read_h5ad(file_path, backed="r")
+        title = adata.uns.get("title")
+        return MetadataSummary(
+            title=title if isinstance(title, str) else "",
+            assay=get_column_unique_values_if_present(adata.obs, "assay"),
+            suspension_type=get_column_unique_values_if_present(adata.obs, "suspension_type"),
+            tissue=get_column_unique_values_if_present(adata.obs, "tissue"),
+            disease=get_column_unique_values_if_present(adata.obs, "disease"),
+            cell_count=adata.n_obs
+        )
+    except Exception as e:
+        logger.error("Error reading metadata: %s", e)
+        raise
+    finally:
+        if adata is not None:
+            adata.file.close()
 
 
 def download_s3_file(bucket: str, key: str, local_path: Path) -> str | None:
@@ -366,10 +430,14 @@ def main() -> int:
             exit_code = 1
             return exit_code
         
+        validation_message.integrity_status = INTEGRITY_VALID
+        
+        # Read metadata
+        validation_message.metadata_summary = read_metadata(local_file)
+
         # TODO: Add actual validation logic here
         logger.info("Validation completed successfully")
         validation_message.status = STATUS_SUCCESS
-        validation_message.integrity_status = INTEGRITY_VALID
         exit_code = 0
         
     except Exception as e:
