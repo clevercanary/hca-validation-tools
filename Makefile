@@ -82,7 +82,7 @@ help:
 	@echo "  invoke-lambda          - Invoke the deployed Lambda function"
 	@echo ""
 	@echo "Batch (Dataset Validator):"
-	@echo "  batch-publish-container - Build, tag, and push the Batch image to ECR"
+	@echo "  batch-publish-container - Build, tag, push image to ECR, then register JD (on success)"
 	@echo "  batch-register-jd       - Register a new Job Definition revision using the pushed tag"
 	@echo "  batch-submit-job        - Submit a job to the configured Job Queue"
 	@echo ""
@@ -122,7 +122,20 @@ batch-publish-container:
 		PROFILE=$(BATCH_PROFILE) \
 		AWS_REGION=$(BATCH_AWS_REGION) \
 		AWS_ACCOUNT_ID=$(BATCH_AWS_ACCOUNT_ID) \
-		ECR_REPO=$(BATCH_ECR_REPO)
+		ECR_REPO=$(BATCH_ECR_REPO) \
+		TAG=$(TAG)
+	@$(MAKE) -C services/dataset-validator register-jd \
+		PROFILE=$(BATCH_PROFILE) \
+		AWS_REGION=$(BATCH_AWS_REGION) \
+		AWS_ACCOUNT_ID=$(BATCH_AWS_ACCOUNT_ID) \
+		ECR_REPO=$(BATCH_ECR_REPO) \
+		JOB_DEF_NAME=$(BATCH_JOB_DEF_NAME) \
+		LOG_GROUP=$(BATCH_LOG_GROUP) \
+		EXEC_ROLE_ARN=$(BATCH_EXEC_ROLE_ARN) \
+		TASK_ROLE_ARN=$(BATCH_TASK_ROLE_ARN) \
+		VCPU=$(BATCH_VCPU) \
+		MEMORY=$(BATCH_MEMORY) \
+		TAG=$(TAG)
 
 .PHONY: batch-register-jd
 batch-register-jd:
