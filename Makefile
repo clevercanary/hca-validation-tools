@@ -123,7 +123,7 @@ batch-publish-container:
 		AWS_REGION=$(BATCH_AWS_REGION) \
 		AWS_ACCOUNT_ID=$(BATCH_AWS_ACCOUNT_ID) \
 		ECR_REPO=$(BATCH_ECR_REPO) \
-		TAG=$(TAG)
+		$(if $(TAG),TAG=$(TAG))
 	@$(MAKE) -C services/dataset-validator register-jd \
 		PROFILE=$(BATCH_PROFILE) \
 		AWS_REGION=$(BATCH_AWS_REGION) \
@@ -135,7 +135,7 @@ batch-publish-container:
 		TASK_ROLE_ARN=$(BATCH_TASK_ROLE_ARN) \
 		VCPU=$(BATCH_VCPU) \
 		MEMORY=$(BATCH_MEMORY) \
-		TAG=$(TAG)
+		$(if $(TAG),TAG=$(TAG))
 
 .PHONY: batch-register-jd
 batch-register-jd:
