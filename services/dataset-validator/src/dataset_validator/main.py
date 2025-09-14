@@ -40,6 +40,20 @@ INTEGRITY_INVALID = 'invalid'
 INTEGRITY_ERROR = 'error'
 
 
+class JobContextFilter(logging.Filter):
+    """Inject AWS Batch job context into each log record."""
+    def __init__(self) -> None:
+        super().__init__()
+        # Cache values once; these are set by Batch (ID) and by submit overrides (NAME)
+        self._job_id = os.environ.get(AWS_BATCH_JOB_ID, "unknown")
+        self._job_name = os.environ.get(AWS_BATCH_JOB_NAME, "-")
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.job_id = self._job_id
+        record.job_name = self._job_name
+        return True
+
+
 @dataclass
 class MetadataSummary:
     """Summary of metadata from a dataset file."""
@@ -85,8 +99,10 @@ def configure_logging() -> logging.Logger:
     # Only add handlers if none exist (respects caplog handlers)
     if not logger.handlers:
         handler = logging.StreamHandler(sys.stdout)
+        # Enrich logs with Batch context
+        handler.addFilter(JobContextFilter())
         formatter = logging.Formatter(
-            '%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+            '%(asctime)s [%(levelname)s] job_id=%(job_id)s job_name=%(job_name)s %(name)s: %(message)s',
             datefmt='%Y-%m-%d %H:%M:%S'
         )
         handler.setFormatter(formatter)

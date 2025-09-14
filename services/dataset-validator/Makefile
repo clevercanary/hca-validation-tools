@@ -130,12 +130,14 @@ submit-job:
 		exit 1; \
 	fi
 	@echo "Submitting job to $(JOB_QUEUE) using JD $(JOB_DEF_NAME)"
-	@aws batch submit-job \
+	@job_name="$(JOB_NAME)-$$(date +%s)"; \
+	aws batch submit-job \
 		--profile $(PROFILE) \
 		--region $(AWS_REGION) \
-		--job-name $(JOB_NAME)-$$(date +%s) \
+		--job-name "$$job_name" \
 		--job-queue $(JOB_QUEUE) \
-		--job-definition $(JOB_DEF_NAME)
+		--job-definition $(JOB_DEF_NAME) \
+		--container-overrides "environment=[{name=AWS_DEFAULT_REGION,value=$(AWS_REGION)},{name=AWS_BATCH_JOB_NAME,value=$$job_name}]"
 
 
 .PHONY: clean
