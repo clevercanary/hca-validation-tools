@@ -41,12 +41,20 @@ INTEGRITY_ERROR = 'error'
 
 
 class JobContextFilter(logging.Filter):
-    """Inject AWS Batch job context into each log record."""
-    def filter(self, record: logging.LogRecord) -> bool:
-        # Read environment at log time to ensure values are present
-        record.job_id = os.environ.get(AWS_BATCH_JOB_ID, "unknown")
+    """Inject AWS Batch job context into each log record.
+
+    In AWS Batch, the container environment is immutable for the lifetime of a job.
+    We cache these values once at initialization for clarity and minimal overhead.
+    """
+    def __init__(self) -> None:
+        super().__init__()
+        self._job_id = os.environ.get(AWS_BATCH_JOB_ID, "unknown")
         # Prefer non-reserved name inside container
-        record.job_name = os.environ.get('BATCH_JOB_NAME', "-")
+        self._job_name = os.environ.get('BATCH_JOB_NAME', "-")
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.job_id = self._job_id
+        record.job_name = self._job_name
         return True
 
 
