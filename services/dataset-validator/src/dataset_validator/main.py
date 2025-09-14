@@ -42,15 +42,10 @@ INTEGRITY_ERROR = 'error'
 
 class JobContextFilter(logging.Filter):
     """Inject AWS Batch job context into each log record."""
-    def __init__(self) -> None:
-        super().__init__()
-        # Cache values once; these are set by Batch (ID) and by submit overrides (NAME)
-        self._job_id = os.environ.get(AWS_BATCH_JOB_ID, "unknown")
-        self._job_name = os.environ.get(AWS_BATCH_JOB_NAME, "-")
-
     def filter(self, record: logging.LogRecord) -> bool:
-        record.job_id = self._job_id
-        record.job_name = self._job_name
+        # Read environment at log time to ensure values are present
+        record.job_id = os.environ.get(AWS_BATCH_JOB_ID, "unknown")
+        record.job_name = os.environ.get(AWS_BATCH_JOB_NAME, "-")
         return True
 
 
