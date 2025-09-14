@@ -137,7 +137,7 @@ submit-job:
 		--job-name "$$job_name" \
 		--job-queue $(JOB_QUEUE) \
 		--job-definition $(JOB_DEF_NAME) \
-		--container-overrides "environment=[{name=AWS_DEFAULT_REGION,value=$(AWS_REGION)},{name=AWS_BATCH_JOB_NAME,value=$$job_name}]"
+		--container-overrides "environment=[{name=BATCH_JOB_NAME,value=$$job_name}]"
 
 
 .PHONY: clean
