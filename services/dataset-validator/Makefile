@@ -60,8 +60,9 @@ REMOTE_IMAGE := $(DOCKER_REGISTRY)/$(ECR_REPO):$(TAG)
 
 .PHONY: ecr-login
 ecr-login:
-	@if [ -z "$(PROFILE)" ] || [ -z "$(AWS_REGION)" ]; then \
-		echo "Error: PROFILE and AWS_REGION are required (e.g., PROFILE=excira AWS_REGION=us-east-1)"; \
+	@if [ -z "$(PROFILE)" ] || [ -z "$(AWS_REGION)" ] || [ -z "$(AWS_ACCOUNT_ID)" ]; then \
+		echo "Error: PROFILE, AWS_REGION, and AWS_ACCOUNT_ID are required"; \
+		echo "Example: make ecr-login PROFILE=excira AWS_REGION=us-east-1 AWS_ACCOUNT_ID=123456789012"; \
 		exit 1; \
 	fi
 	@aws ecr get-login-password --profile $(PROFILE) --region $(AWS_REGION) | docker login --username AWS --password-stdin $(DOCKER_REGISTRY)
@@ -100,9 +101,9 @@ JOB_NAME ?= validator-smoke
 
 .PHONY: register-jd
 register-jd:
-	@if [ -z "$(PROFILE)" ] || [ -z "$(AWS_REGION)" ] || [ -z "$(TAG)" ]; then \
-		echo "Error: PROFILE, AWS_REGION, and TAG are required"; \
-		echo "Example: make register-jd PROFILE=excira AWS_REGION=us-east-1 TAG=dev-abcdef1"; \
+	@if [ -z "$(PROFILE)" ] || [ -z "$(AWS_REGION)" ] || [ -z "$(AWS_ACCOUNT_ID)" ] || [ -z "$(TAG)" ]; then \
+		echo "Error: PROFILE, AWS_REGION, AWS_ACCOUNT_ID, and TAG are required"; \
+		echo "Example: make register-jd PROFILE=excira AWS_REGION=us-east-1 AWS_ACCOUNT_ID=123456789012 TAG=dev-abcdef1"; \
 		exit 1; \
 	fi
 	@if [ -z "$(ECR_REPO)" ] || [ -z "$(JOB_DEF_NAME)" ] || [ -z "$(LOG_GROUP)" ] || [ -z "$(EXEC_ROLE_ARN)" ] || [ -z "$(TASK_ROLE_ARN)" ] || [ -z "$(VCPU)" ] || [ -z "$(MEMORY)" ]; then \
