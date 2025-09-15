@@ -34,6 +34,33 @@ AWS_REGION       ?= $(DEV_AWS_REGION)
 LAMBDA_ROLE      ?= $(DEV_LAMBDA_ROLE)
 endif
 
+# ----- Batch environment settings (mapped from .env.make) -----
+ifeq ($(ENV),prod)
+BATCH_PROFILE        ?= $(PROD_BATCH_PROFILE)
+BATCH_AWS_REGION     ?= $(PROD_BATCH_AWS_REGION)
+BATCH_AWS_ACCOUNT_ID ?= $(PROD_BATCH_AWS_ACCOUNT_ID)
+BATCH_ECR_REPO       ?= $(PROD_BATCH_ECR_REPO)
+BATCH_JOB_DEF_NAME   ?= $(PROD_BATCH_JOB_DEF_NAME)
+BATCH_JOB_QUEUE      ?= $(PROD_BATCH_JOB_QUEUE)
+BATCH_LOG_GROUP      ?= $(PROD_BATCH_LOG_GROUP)
+BATCH_EXEC_ROLE_ARN  ?= $(PROD_BATCH_EXEC_ROLE_ARN)
+BATCH_TASK_ROLE_ARN  ?= $(PROD_BATCH_TASK_ROLE_ARN)
+BATCH_VCPU           ?= $(PROD_BATCH_VCPU)
+BATCH_MEMORY         ?= $(PROD_BATCH_MEMORY)
+else # dev
+BATCH_PROFILE        ?= $(DEV_BATCH_PROFILE)
+BATCH_AWS_REGION     ?= $(DEV_BATCH_AWS_REGION)
+BATCH_AWS_ACCOUNT_ID ?= $(DEV_BATCH_AWS_ACCOUNT_ID)
+BATCH_ECR_REPO       ?= $(DEV_BATCH_ECR_REPO)
+BATCH_JOB_DEF_NAME   ?= $(DEV_BATCH_JOB_DEF_NAME)
+BATCH_JOB_QUEUE      ?= $(DEV_BATCH_JOB_QUEUE)
+BATCH_LOG_GROUP      ?= $(DEV_BATCH_LOG_GROUP)
+BATCH_EXEC_ROLE_ARN  ?= $(DEV_BATCH_EXEC_ROLE_ARN)
+BATCH_TASK_ROLE_ARN  ?= $(DEV_BATCH_TASK_ROLE_ARN)
+BATCH_VCPU           ?= $(DEV_BATCH_VCPU)
+BATCH_MEMORY         ?= $(DEV_BATCH_MEMORY)
+endif
+
 # ECR registry and repository path
 ECR_REGISTRY := $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_REGION).amazonaws.com
 ECR_REPO     := $(ECR_REGISTRY)/$(REPO_NAME)
@@ -53,6 +80,11 @@ help:
 	@echo "  test-lambda-container  - Test the Lambda container locally"
 	@echo "  test-lambda            - Alias for test-lambda-container"
 	@echo "  invoke-lambda          - Invoke the deployed Lambda function"
+	@echo ""
+	@echo "Batch (Dataset Validator):"
+	@echo "  batch-publish-container - Build, tag, push image to ECR, then register JD (on success)"
+	@echo "  batch-register-jd       - Register a new Job Definition revision using the pushed tag"
+	@echo "  batch-submit-job        - Submit a job to the configured Job Queue"
 	@echo ""
 	@echo "Service-Specific Commands:"
 	@echo "  cd shared && make help                           - Shared library tasks"
@@ -82,6 +114,50 @@ deploy-lambda-container:
 		ECR_REGISTRY=$(ECR_REGISTRY) \
 		ECR_REPO=$(ECR_REPO) \
 		ENV=$(ENV)
+
+# ----- Batch orchestrator targets (delegate to dataset-validator service) -----
+.PHONY: batch-publish-container
+batch-publish-container:
+	@$(MAKE) -C services/dataset-validator publish-batch \
+		PROFILE=$(BATCH_PROFILE) \
+		AWS_REGION=$(BATCH_AWS_REGION) \
+		AWS_ACCOUNT_ID=$(BATCH_AWS_ACCOUNT_ID) \
+		ECR_REPO=$(BATCH_ECR_REPO) \
+		$(if $(TAG),TAG=$(TAG))
+	@$(MAKE) -C services/dataset-validator register-jd \
+		PROFILE=$(BATCH_PROFILE) \
+		AWS_REGION=$(BATCH_AWS_REGION) \
+		AWS_ACCOUNT_ID=$(BATCH_AWS_ACCOUNT_ID) \
+		ECR_REPO=$(BATCH_ECR_REPO) \
+		JOB_DEF_NAME=$(BATCH_JOB_DEF_NAME) \
+		LOG_GROUP=$(BATCH_LOG_GROUP) \
+		EXEC_ROLE_ARN=$(BATCH_EXEC_ROLE_ARN) \
+		TASK_ROLE_ARN=$(BATCH_TASK_ROLE_ARN) \
+		VCPU=$(BATCH_VCPU) \
+		MEMORY=$(BATCH_MEMORY) \
+		$(if $(TAG),TAG=$(TAG))
+
+.PHONY: batch-register-jd
+batch-register-jd:
+	@$(MAKE) -C services/dataset-validator register-jd \
+		PROFILE=$(BATCH_PROFILE) \
+		AWS_REGION=$(BATCH_AWS_REGION) \
+		AWS_ACCOUNT_ID=$(BATCH_AWS_ACCOUNT_ID) \
+		ECR_REPO=$(BATCH_ECR_REPO) \
+		JOB_DEF_NAME=$(BATCH_JOB_DEF_NAME) \
+		LOG_GROUP=$(BATCH_LOG_GROUP) \
+		EXEC_ROLE_ARN=$(BATCH_EXEC_ROLE_ARN) \
+		TASK_ROLE_ARN=$(BATCH_TASK_ROLE_ARN) \
+		VCPU=$(BATCH_VCPU) \
+		MEMORY=$(BATCH_MEMORY)
+
+.PHONY: batch-submit-job
+batch-submit-job:
+	@$(MAKE) -C services/dataset-validator submit-job \
+		PROFILE=$(BATCH_PROFILE) \
+		AWS_REGION=$(BATCH_AWS_REGION) \
+		JOB_QUEUE=$(BATCH_JOB_QUEUE) \
+		JOB_DEF_NAME=$(BATCH_JOB_DEF_NAME)
 
 # Test Lambda function locally
 .PHONY: test-lambda

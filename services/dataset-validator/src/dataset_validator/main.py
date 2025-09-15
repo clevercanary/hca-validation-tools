@@ -40,6 +40,24 @@ INTEGRITY_INVALID = 'invalid'
 INTEGRITY_ERROR = 'error'
 
 
+class JobContextFilter(logging.Filter):
+    """Inject AWS Batch job context into each log record.
+
+    In AWS Batch, the container environment is immutable for the lifetime of a job.
+    We cache these values once at initialization for clarity and minimal overhead.
+    """
+    def __init__(self) -> None:
+        super().__init__()
+        self._job_id = os.environ.get(AWS_BATCH_JOB_ID, "unknown")
+        # Prefer non-reserved name inside container
+        self._job_name = os.environ.get('BATCH_JOB_NAME', "-")
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.job_id = self._job_id
+        record.job_name = self._job_name
+        return True
+
+
 @dataclass
 class MetadataSummary:
     """Summary of metadata from a dataset file."""
@@ -85,8 +103,10 @@ def configure_logging() -> logging.Logger:
     # Only add handlers if none exist (respects caplog handlers)
     if not logger.handlers:
         handler = logging.StreamHandler(sys.stdout)
+        # Enrich logs with Batch context
+        handler.addFilter(JobContextFilter())
         formatter = logging.Formatter(
-            '%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+            '%(asctime)s [%(levelname)s] job_id=%(job_id)s job_name=%(job_name)s %(name)s: %(message)s',
             datefmt='%Y-%m-%d %H:%M:%S'
         )
         handler.setFormatter(formatter)
@@ -119,7 +139,8 @@ def publish_validation_result(message: ValidationMessage, sns_topic_arn: str) ->
         logger.info("Publishing validation result to SNS topic: %s", sns_topic_arn)
         
         # Create SNS client
-        sns_client = boto3.client('sns', region_name=os.environ[AWS_DEFAULT_REGION])
+        # Let boto3 resolve region from the environment/metadata
+        sns_client = boto3.client('sns')
         
         # Publish message
         response = sns_client.publish(
@@ -265,7 +286,8 @@ def download_s3_file(bucket: str, key: str, local_path: Path) -> str | None:
     """
     logger.info("Starting download: s3://%s/%s", bucket, key)
     try:
-        s3_client = boto3.client('s3', region_name=os.environ[AWS_DEFAULT_REGION])
+        # Let boto3 resolve region from the environment/metadata
+        s3_client = boto3.client('s3')
         
         # Get object metadata first
         response = s3_client.head_object(Bucket=bucket, Key=key)
@@ -302,19 +324,18 @@ def validate_environment() -> tuple[dict[str, str], list[str]]:
         'file_id': os.environ.get(FILE_ID),
         'sns_topic_arn': os.environ.get(SNS_TOPIC_ARN),
         'batch_job_id': os.environ.get(AWS_BATCH_JOB_ID),
-        'batch_job_name': os.environ.get(AWS_BATCH_JOB_NAME),
-        'aws_region': os.environ.get(AWS_DEFAULT_REGION)
+        # Read non-reserved job name if provided
+        'batch_job_name': os.environ.get('BATCH_JOB_NAME')
     }
     
-    # Check required variables (batch_job_name is optional)
-    required_vars = ['bucket', 'key', 'file_id', 'sns_topic_arn', 'batch_job_id', 'aws_region']
+    # Check required variables (batch_job_name is optional; region is resolved by boto3)
+    required_vars = ['bucket', 'key', 'file_id', 'sns_topic_arn', 'batch_job_id']
     var_name_mapping = {
         'bucket': 'S3_BUCKET',
         'key': 'S3_KEY',
         'file_id': 'FILE_ID',
         'sns_topic_arn': 'SNS_TOPIC_ARN',
-        'batch_job_id': 'AWS_BATCH_JOB_ID',
-        'aws_region': 'AWS_DEFAULT_REGION'
+        'batch_job_id': 'AWS_BATCH_JOB_ID'
     }
     missing_vars = []
     

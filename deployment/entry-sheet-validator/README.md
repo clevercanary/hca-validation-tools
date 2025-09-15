@@ -11,6 +11,7 @@ The HCA Entry Sheet Validator is deployed as a containerized AWS Lambda function
 ### Lambda Container
 
 The Lambda function is deployed as a container image that includes all dependencies. This approach:
+
 - Ensures consistent execution environments
 - Simplifies dependency management with Poetry
 - Properly handles C extensions (like pydantic_core)
@@ -35,6 +36,7 @@ Builds a Docker container image for the Lambda function using a multi-stage buil
 5. Cleans up the temporary directory
 
 Usage:
+
 ```bash
 make build-lambda-container
 ```
@@ -49,11 +51,13 @@ Tests the Lambda container locally by running it in Docker and invoking it with 
 4. Copies these files to the `output` directory
 
 Usage:
+
 ```bash
 make test-lambda-container
 ```
 
 After running this script, you can test the Lambda function locally with:
+
 ```bash
 cd deployment/entry-sheet-validator/output && ./run_lambda.sh
 ```
@@ -67,11 +71,10 @@ Tests the deployed API Gateway endpoint for the Lambda function:
 3. Displays the validation results returned by the Lambda function
 
 Usage:
+
 ```bash
 ./deployment/entry-sheet-validator/test_api_endpoint.sh [SHEET_ID]
 ```
-
-
 
 ## Deployment Process
 
@@ -95,21 +98,15 @@ This generates test files and provides instructions for testing the Lambda conta
 
 ### Deploying to AWS
 
-```bash
-AWS_PROFILE=excira make deploy-lambda-container AWS_ACCOUNT_ID=708377107803 AWS_REGION=us-east-1 LAMBDA_ROLE=arn:aws:iam::708377107803:role/dev-lambda-entry-sheet-validator-exec-role
-```
-
-This target:
-1. Authenticates with ECR
-2. Creates the ECR repository if it doesn't exist
-3. Tags and pushes the container image to ECR
-4. Updates the Lambda function to use the new image
+AWS_PROFILE=excira make build-lambda-container
+AWS_PROFILE=excira make deploy-lambda-container ENV=dev
+AWS_PROFILE=hca-prod-lambda-deploy make deploy-lambda-container ENV=prod
 
 ## API Request Format
 
 ```json
 {
-  "sheet_id": "YOUR_GOOGLE_SHEET_ID",
+  "sheet_id": "YOUR_GOOGLE_SHEET_ID"
 }
 ```
 
