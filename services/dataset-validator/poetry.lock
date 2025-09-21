@@ -99,6 +99,44 @@ urllib3 = {version = ">=1.25.4,<2.2.0 || >2.2.0,<3", markers = "python_version >
 crt = ["awscrt (==0.27.6)"]
 
 [[package]]
+name = "cap-anndata"
+version = "0.5.0"
+description = "Partial read/write of AnnData (h5ad) files for low-memory operations with large datasets."
+optional = false
+python-versions = ">=3.9"
+groups = ["main"]
+files = [
+    {file = "cap_anndata-0.5.0-py3-none-any.whl", hash = "sha256:2e634dcf13c4eecbacfacd76088dd149ce2eaa6a69cecda9032e1d29d2aa067f"},
+    {file = "cap_anndata-0.5.0.tar.gz", hash = "sha256:8b288c1c948e068979eede4aa87b4375e91ba68ead36598a810e8e15077f580c"},
+]
+
+[package.dependencies]
+anndata = ">=0.10.0"
+numpy = ">=1.23.5"
+pandas = ">=2.2.0"
+
+[package.extras]
+dev = ["pytest (>=8.0.0)", "setuptools (>=69.1.1,<69.2.0)"]
+
+[[package]]
+name = "cap-upload-validator"
+version = "1.2.0"
+description = "Python tool for validating H5AD AnnData files before uploading to the Cell Annotation Platform."
+optional = false
+python-versions = ">=3.9"
+groups = ["main"]
+files = [
+    {file = "cap_upload_validator-1.2.0-py3-none-any.whl", hash = "sha256:cad666d7e8b5396543f0812ab63a9e9e4a0136efc55bfe670d1caa745ce0e3f5"},
+    {file = "cap_upload_validator-1.2.0.tar.gz", hash = "sha256:cf277ab415959a71e2cff87b1ffe04b9fdef4e6457257f472086452f3496fe8c"},
+]
+
+[package.dependencies]
+cap-anndata = ">=0.5.0"
+numpy = ">=2.0.2"
+pandas = ">=2.2.3"
+scipy = ">=1.13.1"
+
+[[package]]
 name = "certifi"
 version = "2025.8.3"
 description = "Python package for providing Mozilla's CA Bundle."
@@ -1357,4 +1395,4 @@ test = ["coverage (>=7.10)", "hypothesis", "mypy", "packaging", "pytest (<8.4)",
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.11"
-content-hash = "1707aa21e46b5825d6d9abf1bd150a50db8fe14107f99f54a50931b7ef617e38"
+content-hash = "ce2012438af5a0ce394686eeef1df87c1b8288ad26257dd6d5366bdc669218b8"
