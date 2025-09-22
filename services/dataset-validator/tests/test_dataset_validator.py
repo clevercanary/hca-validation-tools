@@ -249,8 +249,9 @@ def test_missing_sns_topic_logs_error_and_exits(caplog, env_manager, base_env_va
         }
     }
 ], ids=lambda x: x["name"])
+@patch("cap_upload_validator.UploadValidator")
 @patch("anndata.io.read_h5ad")
-def test_read_metadata_scenarios(mock_read_h5ad, test_case):
+def test_read_metadata_scenarios(mock_read_h5ad, mock_upload_validator, test_case):
     """Parameterized test for metadata reading scenarios."""
     import sys
     sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
@@ -286,6 +287,7 @@ def test_read_metadata_scenarios(mock_read_h5ad, test_case):
             'source_sha256': 'abc123',
             'integrity_status': 'valid',
             'metadata_summary': None,
+            'tool_reports': None,
             'error_message': None
         },
         "use_valid_topic": True,
@@ -316,7 +318,8 @@ def test_read_metadata_scenarios(mock_read_h5ad, test_case):
         ]
     }
 ], ids=lambda x: x["name"])
-def test_publish_validation_result_scenarios(caplog, mock_aws, test_case):
+@patch("cap_upload_validator.UploadValidator")
+def test_publish_validation_result_scenarios(mock_update_validator, caplog, mock_aws, test_case):
     """Parameterized test for SNS publishing scenarios."""
     import sys
     sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
@@ -485,8 +488,9 @@ def test_publish_validation_result_scenarios(caplog, mock_aws, test_case):
         }
     }
 ], ids=lambda x: x["name"])
+@patch("cap_upload_validator.UploadValidator")
 @patch("anndata.io.read_h5ad")
-def test_end_to_end_validation_scenarios(mock_read_h5ad, caplog, mock_aws, env_manager, test_case):
+def test_end_to_end_validation_scenarios(mock_read_h5ad, mock_updload_validator, caplog, mock_aws, env_manager, test_case):
     """Parameterized test for end-to-end validation scenarios."""
     import sys
     sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
