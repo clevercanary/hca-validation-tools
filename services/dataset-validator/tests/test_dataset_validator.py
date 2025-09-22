@@ -5,13 +5,21 @@ import logging
 import os
 import subprocess
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, List
 from unittest.mock import MagicMock, patch
 
 import boto3
 import pytest
 from moto import mock_s3, mock_sns
 import pandas as pd
+from cap_upload_validator.errors import CapException, CapMultiException, AnnDataFileMissingCountMatrix
+
+
+def build_cap_multi_exception(exceptions: List[CapException]) -> CapMultiException:
+    multi_ex = CapMultiException()
+    for ex in exceptions:
+        multi_ex.append(ex)
+    return multi_ex
 
 
 @pytest.fixture
@@ -210,6 +218,7 @@ def test_missing_sns_topic_logs_error_and_exits(caplog, env_manager, base_env_va
     assert "Missing required environment variables" in caplog.text
     assert "SNS_TOPIC_ARN=None" in caplog.text
 
+
 @pytest.mark.parametrize("test_case", [
     {
         "name": "all_present",
@@ -249,9 +258,8 @@ def test_missing_sns_topic_logs_error_and_exits(caplog, env_manager, base_env_va
         }
     }
 ], ids=lambda x: x["name"])
-@patch("dataset_validator.main.UploadValidator")
 @patch("anndata.io.read_h5ad")
-def test_read_metadata_scenarios(mock_read_h5ad, mock_upload_validator, test_case):
+def test_read_metadata_scenarios(mock_read_h5ad, test_case):
     """Parameterized test for metadata reading scenarios."""
     import sys
     sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
@@ -269,6 +277,78 @@ def test_read_metadata_scenarios(mock_read_h5ad, mock_upload_validator, test_cas
     metadata_summary = read_metadata(Path("test-file.h5ad"))
 
     assert metadata_summary == MetadataSummary(**test_case["expected_result"])
+
+
+@pytest.mark.parametrize("test_case", [
+    {
+        "name": "success",
+        "description": "Test successful CAP validation",
+        "exception": None,
+        "expected_report": {
+            "valid": True,
+            "errors": []
+        }
+    },
+    {
+        "name": "cap_exception",
+        "description": "Test CapException raised by CAP validation",
+        "exception": AnnDataFileMissingCountMatrix(),
+        "expected_report": {
+            "valid": False,
+            "errors": ["Encountered an unexpected error while calling CAP validator: AnnDataFileMissingCountMatrix: DataFile Incorrect format: raw data matrix is missing in .raw.X or .X."]
+        }
+    },
+    {
+        "name": "cap_multi_exception",
+        "description": "Test CapMultiException raised by CAP validation",
+        "exception": build_cap_multi_exception([
+            CapException(), AnnDataFileMissingCountMatrix()
+        ]),
+        "expected_report": {
+            "valid": False,
+            "errors": [
+                "Useless CAP exception",
+                "DataFile Incorrect format: raw data matrix is missing in .raw.X or .X."
+            ]
+        }
+    },
+    {
+        "name": "exception",
+        "description": "Test Exception raised by CAP validation",
+        "exception": Exception("Error in CAP validator"),
+        "expected_report": {
+            "valid": False,
+            "errors": ["Encountered an unexpected error while calling CAP validator: Error in CAP validator"]
+        }
+    }
+], ids=lambda x: x["name"])
+@patch("dataset_validator.main.UploadValidator")
+def test_cap_validator_scenarios(mock_upload_validator, test_case):
+    """Parameterized test for CAP validation scenarios."""
+    import sys
+    sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+    
+    from dataset_validator.main import apply_cap_validator, ValidationToolReport
+
+    # Set up CAP validator mock
+    mock_upload_validator_instance = MagicMock()
+    mock_upload_validator.return_value = mock_upload_validator_instance
+    if test_case["exception"]:
+        mock_upload_validator_instance.validate.side_effect = test_case["exception"]
+    
+    # Test applying CAP validator
+    report = apply_cap_validator("test-file.h5ad")
+
+    mock_upload_validator.assert_called_once_with("test-file.h5ad")
+    mock_upload_validator_instance.validate.assert_called_once()
+
+    assert isinstance(report, ValidationToolReport)
+    assert isinstance(report.started_at, str)
+    assert isinstance(report.finished_at, str)
+    assert report.started_at < report.finished_at
+    assert report.valid == test_case["expected_report"]["valid"]
+    assert report.errors == test_case["expected_report"]["errors"]
+    assert report.warnings == []
 
 
 @pytest.mark.parametrize("test_case", [
