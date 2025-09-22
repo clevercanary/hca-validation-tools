@@ -19,6 +19,9 @@ import boto3
 from botocore.exceptions import ClientError
 import anndata
 import pandas as pd
+from cap_upload_validator import UploadValidator
+from cap_upload_validator.errors import CapException, CapMultiException
+
 
 # Environment variable constants
 S3_BUCKET = 'S3_BUCKET'
@@ -69,6 +72,15 @@ class MetadataSummary:
     cell_count: int
 
 @dataclass
+class ValidationToolReport:
+    """Validation report and metadata of a run of an individual validation tool."""
+    valid: bool
+    errors: List[str]
+    warnings: List[str]
+    started_at: str
+    finished_at: str
+
+@dataclass
 class ValidationMessage:
     """SNS message structure for validation results."""
     # Required fields
@@ -85,6 +97,9 @@ class ValidationMessage:
     source_sha256: Optional[str] = None                  # SHA256 from S3 metadata
     integrity_status: Optional[str] = None               # "valid", "invalid", "error"
     metadata_summary: Optional[MetadataSummary] = None   # Metadata from the file
+    tool_reports: Optional[                              # Reports for individual validation tools
+        dict[str, ValidationToolReport]
+    ] = None
     error_message: Optional[str] = None                  # Human-readable error description
 
     def to_json(self) -> str:
@@ -266,6 +281,39 @@ def read_metadata(file_path: Path) -> MetadataSummary:
     finally:
         if adata is not None:
             adata.file.close()
+
+
+def apply_cap_validator(file_path: Path) -> ValidationToolReport:
+    """
+    Apply the CAP validator to the given file and create a validation report.
+
+    Args:
+        file_path: Path of the file to validate
+    
+    Returns:
+        Validation report
+    """
+    started_at = datetime.now(timezone.utc)
+    valid = False
+    errors: List[str] = []
+    try:
+        uv = UploadValidator(str(file_path))
+        uv.validate()
+        valid = True
+    except CapMultiException as multi_ex:
+        errors.extend(e.message for e in multi_ex.ex_list)
+    except (Exception, CapException) as e:
+        message = f"Encountered an unexpected error while calling CAP validator: {e}"
+        logger.error(message)
+        errors.append(message)
+    finished_at = datetime.now(timezone.utc)
+    return ValidationToolReport(
+        valid=valid,
+        errors=errors,
+        warnings=[],
+        started_at=started_at.isoformat(),
+        finished_at=finished_at.isoformat()
+    )
 
 
 def download_s3_file(bucket: str, key: str, local_path: Path) -> str | None:
@@ -456,7 +504,14 @@ def main() -> int:
         # Read metadata
         validation_message.metadata_summary = read_metadata(local_file)
 
-        # TODO: Add actual validation logic here
+        # Call CAP validator
+        cap_validation_report = apply_cap_validator(local_file)
+
+        # Add individual validation reports to message
+        validation_message.tool_reports = {
+            "cap": cap_validation_report
+        }
+
         logger.info("Validation completed successfully")
         validation_message.status = STATUS_SUCCESS
         exit_code = 0
