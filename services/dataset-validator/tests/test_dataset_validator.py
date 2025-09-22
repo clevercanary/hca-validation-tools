@@ -249,7 +249,7 @@ def test_missing_sns_topic_logs_error_and_exits(caplog, env_manager, base_env_va
         }
     }
 ], ids=lambda x: x["name"])
-@patch("cap_upload_validator.UploadValidator")
+@patch("dataset_validator.main.UploadValidator")
 @patch("anndata.io.read_h5ad")
 def test_read_metadata_scenarios(mock_read_h5ad, mock_upload_validator, test_case):
     """Parameterized test for metadata reading scenarios."""
@@ -318,7 +318,7 @@ def test_read_metadata_scenarios(mock_read_h5ad, mock_upload_validator, test_cas
         ]
     }
 ], ids=lambda x: x["name"])
-@patch("cap_upload_validator.UploadValidator")
+@patch("dataset_validator.main.UploadValidator")
 def test_publish_validation_result_scenarios(mock_update_validator, caplog, mock_aws, test_case):
     """Parameterized test for SNS publishing scenarios."""
     import sys
@@ -399,6 +399,13 @@ def test_publish_validation_result_scenarios(mock_update_validator, caplog, mock
                 "tissue": ["tissue-a", "tissue-b"],
                 "disease": ["disease-a", "disease-b", "disease-c", "disease-d", "disease-e"],
                 "cell_count": 5
+            },
+            "tool_reports": {
+                "cap": {
+                    "valid": True,
+                    "errors": [],
+                    "warnings": []
+                }
             }
         }
     },
@@ -426,7 +433,8 @@ def test_publish_validation_result_scenarios(mock_update_validator, caplog, mock
             "file_id": "test-file-456",
             "batch_job_id": "job-789",
             "batch_job_name": None,
-            "metadata_summary": None
+            "metadata_summary": None,
+            "tool_reports": None
         }
     },
     {
@@ -452,7 +460,8 @@ def test_publish_validation_result_scenarios(mock_update_validator, caplog, mock
             "file_id": "test-file-789",
             "batch_job_id": "job-101",
             "batch_job_name": None,
-            "metadata_summary": None
+            "metadata_summary": None,
+            "tool_reports": None
         }
     },
     {
@@ -484,13 +493,68 @@ def test_publish_validation_result_scenarios(mock_update_validator, caplog, mock
             "batch_job_id": "job-456",
             "batch_job_name": "test-validation-job",
             "error_message": "Dataset Validator failed: Test metadata error",
-            "metadata_summary": None
+            "metadata_summary": None,
+            "tool_reports": None
+        }
+    },
+    {
+        "name": "cap_failure",
+        "description": "Test complete validation workflow with successful validation",
+        "s3_key": "datasets/test.h5ad",
+        "file_id": "test-file-123",
+        "batch_job_id": "job-456",
+        "batch_job_name": "test-validation-job",
+        "setup_s3": lambda s3_client, bucket_name: _setup_valid_s3_file(s3_client, bucket_name, "datasets/test.h5ad"),
+        "adata": {
+            "obs": {
+                "assay": ["assay-a", "assay-b", "assay-b", "assay-c", "assay-a"],
+                "suspension_type": ["suspension-type-a", "suspension-type-a", "suspension-type-a", "suspension-type-a", "suspension-type-a"],
+                "tissue": ["tissue-a", "tissue-a", "tissue-b", "tissue-a", "tissue-a"],
+                "disease": ["disease-a", "disease-b", "disease-c", "disease-d", "disease-e"]
+            },
+            "uns": {"title": "test-dataset-123"}
+        },
+        "cap_validator_exception": Exception("Error in CAP validator"),
+        "expected_exit_code": 0,
+        "expected_logs": [
+            "Dataset Validator starting",
+            "Processing S3 file: s3://test-bucket/datasets/test.h5ad",
+            "Work directory created:",
+            "File ready for validation:",
+            "Encountered an unexpected error while calling CAP validator:",
+            "Validation completed successfully",
+            "Publishing validation result to SNS topic",
+            "Successfully published SNS message",
+            "Dataset Validator completed successfully"
+        ],
+        "expected_sns_message": {
+            "status": "success",
+            "integrity_status": "valid",
+            "file_id": "test-file-123",
+            "batch_job_id": "job-456",
+            "batch_job_name": "test-validation-job",
+            "error_message": None,
+            "metadata_summary": {
+                "title": "test-dataset-123",
+                "assay": ["assay-a", "assay-b", "assay-c"],
+                "suspension_type": ["suspension-type-a"],
+                "tissue": ["tissue-a", "tissue-b"],
+                "disease": ["disease-a", "disease-b", "disease-c", "disease-d", "disease-e"],
+                "cell_count": 5
+            },
+            "tool_reports": {
+                "cap": {
+                    "valid": False,
+                    "errors": ["Encountered an unexpected error while calling CAP validator: Error in CAP validator"],
+                    "warnings": []
+                }
+            }
         }
     }
 ], ids=lambda x: x["name"])
-@patch("cap_upload_validator.UploadValidator")
+@patch("dataset_validator.main.UploadValidator")
 @patch("anndata.io.read_h5ad")
-def test_end_to_end_validation_scenarios(mock_read_h5ad, mock_updload_validator, caplog, mock_aws, env_manager, test_case):
+def test_end_to_end_validation_scenarios(mock_read_h5ad, mock_upload_validator, caplog, mock_aws, env_manager, test_case):
     """Parameterized test for end-to-end validation scenarios."""
     import sys
     sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
@@ -524,6 +588,12 @@ def test_end_to_end_validation_scenarios(mock_read_h5ad, mock_updload_validator,
             mock_adata.obs = pd.DataFrame(test_adata["obs"])
             mock_adata.uns = test_adata["uns"]
             mock_adata.n_obs = mock_adata.obs.shape[0]
+
+    # Set up CAP validator mock
+    if "cap_validator_exception" in test_case:
+        mock_upload_validator_instance = MagicMock()
+        mock_upload_validator.return_value = mock_upload_validator_instance
+        mock_upload_validator_instance.validate.side_effect = test_case["cap_validator_exception"]
 
     # Run main function
     with caplog.at_level(logging.INFO, logger="dataset_validator.main"):
@@ -588,6 +658,13 @@ def _validate_sns_message(mock_aws, caplog, expected_message):
 
     # Verify that metadata was read and returned as expected
     assert message["metadata_summary"] == expected_message["metadata_summary"]
+
+    # Verify that tool-specific reports are returned as expected
+    if expected_message["tool_reports"] is None:
+        assert message["tool_reports"] is None
+    else:
+        tool_reports_without_times = {tool: {k: v for k, v in report.items() if k not in {"started_at", "finished_at"}} for tool, report in message["tool_reports"].items()}
+        assert tool_reports_without_times == expected_message["tool_reports"]
     
     # For success case, verify error_message is None
     if expected_message.get("error_message") is not None:
