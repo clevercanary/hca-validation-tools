@@ -55,7 +55,7 @@ def base_env_vars():
         'FILE_ID': 'test-file-uuid',
         'SNS_TOPIC_ARN': 'arn:aws:sns:us-east-1:123456789012:test-topic',
         'AWS_BATCH_JOB_ID': 'test-job-id',
-        'AWS_BATCH_JOB_NAME': 'test-job',
+        'BATCH_JOB_NAME': 'test-job',
         'AWS_DEFAULT_REGION': 'us-east-1'
     }
 
@@ -141,7 +141,7 @@ class TestDatasetValidator:
                 'SNS_TOPIC_ARN': 'arn:aws:sns:us-east-1:123456789012:test-topic',
                 'AWS_BATCH_JOB_ID': 'test-job-id',
                 'AWS_DEFAULT_REGION': 'us-east-1',
-                'AWS_BATCH_JOB_NAME': 'test-job'
+                'BATCH_JOB_NAME': 'test-job'
             },
             "clear_vars": [],
             "expected_exit_code": 1,
@@ -509,7 +509,7 @@ def test_end_to_end_validation_scenarios(mock_read_h5ad, mock_updload_validator,
         'AWS_BATCH_JOB_ID': test_case["batch_job_id"]
     }
     if test_case["batch_job_name"]:
-        test_env['AWS_BATCH_JOB_NAME'] = test_case["batch_job_name"]
+        test_env['BATCH_JOB_NAME'] = test_case["batch_job_name"]
     
     env_manager['set'](test_env)
     
