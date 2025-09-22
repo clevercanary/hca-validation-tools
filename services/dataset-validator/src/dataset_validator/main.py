@@ -282,7 +282,6 @@ def read_metadata(file_path: Path) -> MetadataSummary:
         if adata is not None:
             adata.file.close()
 
-
 def apply_cap_validator(file_path: Path) -> ValidationToolReport:
     """
     Apply the CAP validator to the given file and create a validation report.
@@ -301,7 +300,7 @@ def apply_cap_validator(file_path: Path) -> ValidationToolReport:
         uv.validate()
         valid = True
     except CapMultiException as multi_ex:
-        errors.extend(e.message for e in multi_ex.ex_list)
+        errors.extend(str(e) for e in multi_ex.ex_list)
     except (Exception, CapException) as e:
         message = f"Encountered an unexpected error while calling CAP validator: {e}"
         logger.error(message)

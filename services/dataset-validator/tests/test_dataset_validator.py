@@ -307,8 +307,8 @@ def test_read_metadata_scenarios(mock_read_h5ad, test_case):
         "expected_report": {
             "valid": False,
             "errors": [
-                "Useless CAP exception",
-                "DataFile Incorrect format: raw data matrix is missing in .raw.X or .X."
+                "Unknown: Useless CAP exception",
+                "AnnDataFileMissingCountMatrix: DataFile Incorrect format: raw data matrix is missing in .raw.X or .X."
             ]
         }
     },
