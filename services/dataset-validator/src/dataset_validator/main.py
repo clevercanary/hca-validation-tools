@@ -232,8 +232,8 @@ def verify_file_integrity(file_path: Path, expected_sha256: str) -> bool:
         return False
 
 
-def get_column_unique_values_if_present(df: pd.DataFrame, name: str):
-    return list(df[name].unique()) if name in df else []
+def get_column_unique_values_if_present(df: pd.DataFrame, name: str, map_value=str):
+    return [map_value(v) for v in df[name].unique()] if name in df else []
 
 
 def read_metadata(file_path: Path) -> MetadataSummary:
