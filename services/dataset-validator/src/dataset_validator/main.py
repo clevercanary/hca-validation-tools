@@ -239,7 +239,7 @@ def get_column_unique_values_if_present(df: pd.DataFrame, name: str, map_value=s
     Args:
         df: Dataframe to get values from
         name: Name of the dataframe column to get values from
-        map_value: Function to apply to each value to get the value to be used in the result
+        map_value: Function to apply to each value to get the value to be used in the result (defaults to `str`)
     
     Returns:
         Unique mapped values from the specified column
