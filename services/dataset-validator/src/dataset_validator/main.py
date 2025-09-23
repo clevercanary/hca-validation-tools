@@ -233,7 +233,18 @@ def verify_file_integrity(file_path: Path, expected_sha256: str) -> bool:
 
 
 def get_column_unique_values_if_present(df: pd.DataFrame, name: str, map_value=str):
-    return [map_value(v) for v in df[name].unique()] if name in df else []
+    """
+    Get unique values after applying a mapping function to a given column of a dataframe.
+
+    Args:
+        df: Dataframe to get values from
+        name: Name of the dataframe column to get values from
+        map_value: Function to apply to each value to get the value to be used in the result
+    
+    Returns:
+        Unique mapped values from the specified column
+    """
+    return list(df[name].map(map_value).unique()) if name in df else []
 
 
 def read_metadata(file_path: Path) -> MetadataSummary:
