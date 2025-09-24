@@ -12,6 +12,7 @@ import boto3
 import pytest
 from moto import mock_s3, mock_sns
 import pandas as pd
+import numpy as np
 from cap_upload_validator.errors import CapException, CapMultiException, AnnDataFileMissingCountMatrix
 
 
@@ -255,6 +256,27 @@ def test_missing_sns_topic_logs_error_and_exits(caplog, env_manager, base_env_va
             "tissue": [],
             "disease": [],
             "cell_count": 0
+        }
+    },
+    {
+        "name": "nan",
+        "description": "Test that NAN is converted to string",
+        "adata": {
+            "obs": {
+                "assay": ["assay-a", "assay-b", np.nan],
+                "suspension_type": ["suspension-type-a", np.nan, "suspension-type-b"],
+                "tissue": [np.nan, "tissue-a", "tissue-a"],
+                "disease": ["disease-a", np.nan, np.nan]
+            },
+            "uns": {"title": "test-dataset-456"}
+        },
+        "expected_result": {
+            "title": "test-dataset-456",
+            "assay": ["assay-a", "assay-b", "nan"],
+            "suspension_type": ["suspension-type-a", "nan", "suspension-type-b"],
+            "tissue": ["nan", "tissue-a"],
+            "disease": ["disease-a", "nan"],
+            "cell_count": 3
         }
     }
 ], ids=lambda x: x["name"])
