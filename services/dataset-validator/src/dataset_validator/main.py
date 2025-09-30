@@ -10,6 +10,7 @@ import logging
 import os
 import shutil
 import sys
+import subprocess
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -24,6 +25,7 @@ from cap_upload_validator.errors import CapException, CapMultiException
 
 
 # Environment variable constants
+# Batch job variables
 S3_BUCKET = 'S3_BUCKET'
 S3_KEY = 'S3_KEY'
 LOG_LEVEL = 'LOG_LEVEL'
@@ -32,6 +34,8 @@ SNS_TOPIC_ARN = 'SNS_TOPIC_ARN'
 AWS_BATCH_JOB_ID = 'AWS_BATCH_JOB_ID'
 AWS_BATCH_JOB_NAME = 'AWS_BATCH_JOB_NAME'
 AWS_DEFAULT_REGION = 'AWS_DEFAULT_REGION'
+# Other variables
+CELLXGENE_VALIDATOR_VENV = 'CELLXGENE_VALIDATOR_VENV'
 
 # Status constants
 STATUS_SUCCESS = 'success'
@@ -293,6 +297,7 @@ def read_metadata(file_path: Path) -> MetadataSummary:
         if adata is not None:
             adata.file.close()
 
+
 def apply_cap_validator(file_path: Path) -> ValidationToolReport:
     """
     Apply the CAP validator to the given file and create a validation report.
@@ -321,6 +326,56 @@ def apply_cap_validator(file_path: Path) -> ValidationToolReport:
         valid=valid,
         errors=errors,
         warnings=[],
+        started_at=started_at.isoformat(),
+        finished_at=finished_at.isoformat()
+    )
+
+
+def apply_cellxgene_validator(file_path: Path) -> ValidationToolReport:
+    """
+    Apply the CELLxGENE validator to the given file and create a validation report.
+
+    Args:
+        file_path: Path of the file to validate
+
+    Returns:
+        Validation report
+    """
+    started_at = datetime.now(timezone.utc)
+
+    # Determine path of CELLxGENE validator installation and script
+    validator_path = Path(__file__).parent.parent.parent.parent / "cellxgene-validator"
+    validator_script_path = validator_path / "src" / "cellxgene_validator" / "main.py"
+
+    # Get CELLxGENE validator venv path from environment, if present
+    venv_path = os.environ.get(CELLXGENE_VALIDATOR_VENV)
+
+    # If environment variable is not present, get venv path via Poetry
+    if venv_path is None:
+        venv_result = subprocess.run(
+            ["poetry", "env", "info", "--path"],
+            cwd=validator_path,
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        venv_path = venv_result.stdout.strip()
+
+    # Call validator and parse output
+    validator_result = subprocess.run(
+        [f"{venv_path}/bin/python", str(validator_script_path), str(file_path)],
+        capture_output=True,
+        text=True,
+        check=True
+    )
+    validator_output = json.loads(validator_result.stdout)
+
+    finished_at = datetime.now(timezone.utc)
+
+    return ValidationToolReport(
+        valid=validator_output["valid"],
+        errors=validator_output["errors"],
+        warnings=validator_output["warnings"],
         started_at=started_at.isoformat(),
         finished_at=finished_at.isoformat()
     )
