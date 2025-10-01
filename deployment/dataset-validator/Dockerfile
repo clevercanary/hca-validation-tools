@@ -2,7 +2,7 @@
 FROM python:3.11-slim-bookworm AS builder
 
 # Install Poetry
-RUN pip install poetry==1.8.3
+RUN pip install poetry==2.1.3
 
 # Set up the directory structure to match the expected paths
 WORKDIR /build
@@ -11,10 +11,10 @@ WORKDIR /build
 COPY services/dataset-validator/pyproject.toml services/dataset-validator/poetry.lock* ./services/dataset-validator/
 COPY services/cellxgene-validator/pyproject.toml services/cellxgene-validator/poetry.lock* ./services/cellxgene-validator/
 
+RUN poetry self add poetry-plugin-export
+
 # Change to dataset validator service directory for Poetry operations
 WORKDIR /build/services/dataset-validator
-# Configure Poetry to not create a virtual environment
-RUN poetry config virtualenvs.create false
 # Install dependencies
 RUN poetry install --only main --no-root
 # Export requirements for final stage
@@ -22,10 +22,8 @@ RUN poetry export --without-hashes -o /tmp/requirements.txt
 
 # Change to CELLxGENE validator service directory for Poetry operations
 WORKDIR /build/services/cellxgene-validator
-# Configure Poetry to not create a virtual environment
-RUN poetry config virtualenvs.create false
 # Install dependencies
-RUN poetry install --only main --no-root
+RUN poetry install
 # Export requirements for final stage
 RUN poetry export --without-hashes -o /tmp/requirements_cellxgene.txt
 
