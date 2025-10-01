@@ -41,6 +41,7 @@ RUN python -m venv /opt/venvs/cellxgene-validator \
 
 # Set environment variable for venv path
 ENV CELLXGENE_VALIDATOR_VENV="/opt/venvs/cellxgene-validator"
+ENV CELLXGENE_VALIDATOR_SCRIPT="/app/cellxgene_validator/main.py"
 
 # Copy application code
 COPY services/dataset-validator/src/dataset_validator/ /app/dataset_validator/

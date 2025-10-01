@@ -36,6 +36,7 @@ AWS_BATCH_JOB_NAME = 'AWS_BATCH_JOB_NAME'
 AWS_DEFAULT_REGION = 'AWS_DEFAULT_REGION'
 # Other variables
 CELLXGENE_VALIDATOR_VENV = 'CELLXGENE_VALIDATOR_VENV'
+CELLXGENE_VALIDATOR_SCRIPT = "CELLXGENE_VALIDATOR_SCRIPT"
 
 # Status constants
 STATUS_SUCCESS = 'success'
@@ -331,6 +332,13 @@ def apply_cap_validator(file_path: Path) -> ValidationToolReport:
     )
 
 
+def get_default_cxg_validator_root_path():
+    """
+    Get the path to the root of the CELLxGENE validator installation, according to source structure
+    """
+    return Path(__file__).parent.parent.parent.parent / "cellxgene-validator"
+
+
 def apply_cellxgene_validator(file_path: Path) -> ValidationToolReport:
     """
     Apply the CELLxGENE validator to the given file and create a validation report.
@@ -343,9 +351,12 @@ def apply_cellxgene_validator(file_path: Path) -> ValidationToolReport:
     """
     started_at = datetime.now(timezone.utc)
 
-    # Determine path of CELLxGENE validator installation and script
-    validator_path = Path(__file__).parent.parent.parent.parent / "cellxgene-validator"
-    validator_script_path = validator_path / "src" / "cellxgene_validator" / "main.py"
+    # Get path of validator script from environment, if present
+    validator_script_path = os.environ.get(CELLXGENE_VALIDATOR_SCRIPT)
+
+    # If environment variable is not present, use default script path
+    if validator_script_path is None:
+        validator_script_path = get_default_cxg_validator_root_path() / "src" / "cellxgene_validator" / "main.py"
 
     # Get CELLxGENE validator venv path from environment, if present
     venv_path = os.environ.get(CELLXGENE_VALIDATOR_VENV)
@@ -354,7 +365,7 @@ def apply_cellxgene_validator(file_path: Path) -> ValidationToolReport:
     if venv_path is None:
         venv_result = subprocess.run(
             ["poetry", "env", "info", "--path"],
-            cwd=validator_path,
+            cwd=get_default_cxg_validator_root_path(),
             capture_output=True,
             text=True,
             check=True
