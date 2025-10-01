@@ -583,9 +583,13 @@ def main() -> int:
         # Call CAP validator
         cap_validation_report = apply_cap_validator(local_file)
 
+        # Call CELLxGENE validator
+        cellxgene_validation_report = apply_cellxgene_validator(local_file)
+
         # Add individual validation reports to message
         validation_message.tool_reports = {
-            "cap": cap_validation_report
+            "cap": cap_validation_report,
+            "cellxgene": cellxgene_validation_report
         }
 
         logger.info("Validation completed successfully")
