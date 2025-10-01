@@ -507,6 +507,11 @@ def test_publish_validation_result_scenarios(mock_update_validator, caplog, mock
                     "valid": True,
                     "errors": [],
                     "warnings": []
+                },
+                "cellxgene": {
+                    "valid": True,
+                    "errors": [],
+                    "warnings": []
                 }
             }
         }
@@ -649,19 +654,25 @@ def test_publish_validation_result_scenarios(mock_update_validator, caplog, mock
                     "valid": False,
                     "errors": ["Encountered an unexpected error while calling CAP validator: Error in CAP validator"],
                     "warnings": []
+                },
+                "cellxgene": {
+                    "valid": True,
+                    "errors": [],
+                    "warnings": []
                 }
             }
         }
     }
 ], ids=lambda x: x["name"])
+@patch("dataset_validator.main.apply_cellxgene_validator")
 @patch("dataset_validator.main.UploadValidator")
 @patch("anndata.io.read_h5ad")
-def test_end_to_end_validation_scenarios(mock_read_h5ad, mock_upload_validator, caplog, mock_aws, env_manager, test_case):
+def test_end_to_end_validation_scenarios(mock_read_h5ad, mock_upload_validator, mock_apply_cellxgene_validator, caplog, mock_aws, env_manager, test_case):
     """Parameterized test for end-to-end validation scenarios."""
     import sys
     sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
     
-    from dataset_validator.main import main
+    from dataset_validator.main import ValidationToolReport, main
     
     # Setup S3 file based on test case
     test_case["setup_s3"](mock_aws['s3_client'], mock_aws['bucket_name'])
@@ -696,6 +707,16 @@ def test_end_to_end_validation_scenarios(mock_read_h5ad, mock_upload_validator, 
         mock_upload_validator_instance = MagicMock()
         mock_upload_validator.return_value = mock_upload_validator_instance
         mock_upload_validator_instance.validate.side_effect = test_case["cap_validator_exception"]
+
+    # Set up CELLxGENE validator mock
+    from datetime import datetime, timezone
+    mock_apply_cellxgene_validator.return_value = ValidationToolReport(
+        valid=True,
+        errors=[],
+        warnings=[],
+        started_at=datetime.now(timezone.utc).isoformat(),
+        finished_at=datetime.now(timezone.utc).isoformat()
+    )
 
     # Run main function
     with caplog.at_level(logging.INFO, logger="dataset_validator.main"):
