@@ -339,6 +339,17 @@ def get_default_cxg_validator_root_path():
     return Path(__file__).parent.parent.parent.parent / "cellxgene-validator"
 
 
+def get_poetry_venv_path_from(project_path: Path) -> str:
+    path_result = subprocess.run(
+        ["poetry", "env", "info", "--path"],
+        cwd=project_path,
+        capture_output=True,
+        text=True,
+        check=True
+    )
+    return path_result.stdout.strip()
+
+
 def apply_cellxgene_validator(file_path: Path) -> ValidationToolReport:
     """
     Apply the CELLxGENE validator to the given file and create a validation report.
@@ -363,14 +374,7 @@ def apply_cellxgene_validator(file_path: Path) -> ValidationToolReport:
 
     # If environment variable is not present, get venv path via Poetry
     if venv_path is None:
-        venv_result = subprocess.run(
-            ["poetry", "env", "info", "--path"],
-            cwd=get_default_cxg_validator_root_path(),
-            capture_output=True,
-            text=True,
-            check=True
-        )
-        venv_path = venv_result.stdout.strip()
+        venv_path = get_poetry_venv_path_from(get_default_cxg_validator_root_path())
 
     # Call validator and parse output
     validator_result = subprocess.run(

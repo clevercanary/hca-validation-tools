@@ -7,6 +7,7 @@ import subprocess
 from pathlib import Path
 from typing import Dict, Any, List
 from unittest.mock import MagicMock, patch
+import sys
 
 import boto3
 import pytest
@@ -14,6 +15,15 @@ from moto import mock_s3, mock_sns
 import pandas as pd
 import numpy as np
 from cap_upload_validator.errors import CapException, CapMultiException, AnnDataFileMissingCountMatrix
+
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+from dataset_validator.main import get_poetry_venv_path_from
+
+
+cellxgene_validator_path_vars = {
+    'CELLXGENE_VALIDATOR_VENV': get_poetry_venv_path_from(Path(__file__).parent.parent),
+    'CELLXGENE_VALIDATOR_SCRIPT': str(Path(__file__).parent / "mock-modules" / "cellxgene_validator.py")
+}
 
 
 def build_cap_multi_exception(exceptions: List[CapException]) -> CapMultiException:
@@ -197,16 +207,12 @@ class TestDatasetValidator:
 
 def test_missing_sns_topic_logs_error_and_exits(caplog, env_manager, base_env_vars):
     """Test that missing SNS_TOPIC_ARN logs error and exits with code 1."""
-    import sys
-    sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+    from dataset_validator.main import main
     
     # Set up environment with missing SNS_TOPIC_ARN
     test_env = base_env_vars.copy()
     del test_env['SNS_TOPIC_ARN']  # Remove SNS topic to test missing variable
     env_manager['set'](test_env)
-    
-    # Import after setting environment to ensure fresh logger config
-    from dataset_validator.main import main
     
     # Capture logs from the specific logger
     with caplog.at_level(logging.ERROR, logger="dataset_validator.main"):
@@ -283,9 +289,6 @@ def test_missing_sns_topic_logs_error_and_exits(caplog, env_manager, base_env_va
 @patch("anndata.io.read_h5ad")
 def test_read_metadata_scenarios(mock_read_h5ad, test_case):
     """Parameterized test for metadata reading scenarios."""
-    import sys
-    sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-    
     from dataset_validator.main import read_metadata, MetadataSummary
     
     # Set up anndata mock
@@ -347,9 +350,6 @@ def test_read_metadata_scenarios(mock_read_h5ad, test_case):
 @patch("dataset_validator.main.UploadValidator")
 def test_cap_validator_scenarios(mock_upload_validator, test_case):
     """Parameterized test for CAP validation scenarios."""
-    import sys
-    sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-    
     from dataset_validator.main import apply_cap_validator, ValidationToolReport
 
     # Set up CAP validator mock
@@ -423,9 +423,6 @@ def test_cap_validator_scenarios(mock_upload_validator, test_case):
 @patch("dataset_validator.main.UploadValidator")
 def test_publish_validation_result_scenarios(mock_update_validator, caplog, mock_aws, test_case):
     """Parameterized test for SNS publishing scenarios."""
-    import sys
-    sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-    
     from dataset_validator.main import publish_validation_result, ValidationMessage, configure_logging
     
     # Configure logging for the test
@@ -509,9 +506,9 @@ def test_publish_validation_result_scenarios(mock_update_validator, caplog, mock
                     "warnings": []
                 },
                 "cellxgene": {
-                    "valid": True,
-                    "errors": [],
-                    "warnings": []
+                    "valid": False,
+                    "errors": ["ERROR: test"],
+                    "warnings": ["WARNING: test"]
                 }
             }
         }
@@ -656,23 +653,19 @@ def test_publish_validation_result_scenarios(mock_update_validator, caplog, mock
                     "warnings": []
                 },
                 "cellxgene": {
-                    "valid": True,
-                    "errors": [],
-                    "warnings": []
+                    "valid": False,
+                    "errors": ["ERROR: test"],
+                    "warnings": ["WARNING: test"]
                 }
             }
         }
     }
 ], ids=lambda x: x["name"])
-@patch("dataset_validator.main.apply_cellxgene_validator")
 @patch("dataset_validator.main.UploadValidator")
 @patch("anndata.io.read_h5ad")
-def test_end_to_end_validation_scenarios(mock_read_h5ad, mock_upload_validator, mock_apply_cellxgene_validator, caplog, mock_aws, env_manager, test_case):
+def test_end_to_end_validation_scenarios(mock_read_h5ad, mock_upload_validator, caplog, mock_aws, env_manager, test_case):
     """Parameterized test for end-to-end validation scenarios."""
-    import sys
-    sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-    
-    from dataset_validator.main import ValidationToolReport, main
+    from dataset_validator.main import main
     
     # Setup S3 file based on test case
     test_case["setup_s3"](mock_aws['s3_client'], mock_aws['bucket_name'])
@@ -683,7 +676,8 @@ def test_end_to_end_validation_scenarios(mock_read_h5ad, mock_upload_validator, 
         'S3_KEY': test_case["s3_key"],
         'FILE_ID': test_case["file_id"],
         'SNS_TOPIC_ARN': mock_aws['topic_arn'],
-        'AWS_BATCH_JOB_ID': test_case["batch_job_id"]
+        'AWS_BATCH_JOB_ID': test_case["batch_job_id"],
+        **cellxgene_validator_path_vars
     }
     if test_case["batch_job_name"]:
         test_env['BATCH_JOB_NAME'] = test_case["batch_job_name"]
@@ -707,16 +701,6 @@ def test_end_to_end_validation_scenarios(mock_read_h5ad, mock_upload_validator, 
         mock_upload_validator_instance = MagicMock()
         mock_upload_validator.return_value = mock_upload_validator_instance
         mock_upload_validator_instance.validate.side_effect = test_case["cap_validator_exception"]
-
-    # Set up CELLxGENE validator mock
-    from datetime import datetime, timezone
-    mock_apply_cellxgene_validator.return_value = ValidationToolReport(
-        valid=True,
-        errors=[],
-        warnings=[],
-        started_at=datetime.now(timezone.utc).isoformat(),
-        finished_at=datetime.now(timezone.utc).isoformat()
-    )
 
     # Run main function
     with caplog.at_level(logging.INFO, logger="dataset_validator.main"):
