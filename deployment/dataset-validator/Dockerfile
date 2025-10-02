@@ -34,7 +34,7 @@ FROM python:3.11-slim-bookworm
 # Install main requirements
 COPY --from=builder /tmp/requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt
-#Install CELLxGENE validator requirements
+# Install CELLxGENE validator requirements
 COPY --from=builder /tmp/requirements_cellxgene.txt /tmp/requirements_cellxgene.txt
 RUN python -m venv /opt/venvs/cellxgene-validator \
   && /opt/venvs/cellxgene-validator/bin/pip install --no-cache-dir -r /tmp/requirements_cellxgene.txt
