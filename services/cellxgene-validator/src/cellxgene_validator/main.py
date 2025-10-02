@@ -18,12 +18,7 @@ class ListHandler(logging.Handler):
         elif record.levelno == logging.WARNING:
            self.warning_list.append(self.format(record))
 
-def run_validator():
-  if len(sys.argv) < 2:
-    raise Exception("Missing command line argument for file path")
-  
-  file_path = sys.argv[1]
-
+def run_validator(file_path):
   logger = logging.getLogger("cellxgene_schema.validate")
   logger.setLevel(logging.WARNING)
   warning_messages = []
@@ -37,13 +32,14 @@ def run_validator():
      warning_messages = []
      error_messages = [f"Encountered an unexpected error while calling CELLxGENE validator: {e}"]
 
-  result = {
+  return {
      "valid": is_valid,
      "warnings": warning_messages,
      "errors": error_messages
   }
 
-  print(json.dumps(result))
-
 if __name__ == "__main__":
-  run_validator()
+  if len(sys.argv) < 2:
+    raise Exception("Missing command line argument for file path")
+  
+  print(json.dumps(run_validator(sys.argv[1])))
