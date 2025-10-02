@@ -2,7 +2,7 @@
 FROM python:3.11-slim-bookworm AS builder
 
 # Install Poetry
-RUN pip install poetry==2.1.3
+RUN pip install poetry==2.2.1
 
 # Set up the directory structure to match the expected paths
 WORKDIR /build
