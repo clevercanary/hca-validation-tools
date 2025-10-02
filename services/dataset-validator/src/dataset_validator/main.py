@@ -376,14 +376,23 @@ def apply_cellxgene_validator(file_path: Path) -> ValidationToolReport:
     if venv_path is None:
         venv_path = get_poetry_venv_path_from(get_default_cxg_validator_root_path())
 
-    # Call validator and parse output
-    validator_result = subprocess.run(
-        [f"{venv_path}/bin/python", str(validator_script_path), str(file_path)],
-        capture_output=True,
-        text=True,
-        check=True
-    )
-    validator_output = json.loads(validator_result.stdout)
+    try:
+        # Call validator and parse output
+        validator_result = subprocess.run(
+            [f"{venv_path}/bin/python", str(validator_script_path), str(file_path)],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        validator_output = json.loads(validator_result.stdout)
+    except Exception as e:
+        message = f"Encountered an unexpected error while calling CELLxGENE validator script: {e}"
+        logger.error(message)
+        validator_output = {
+            "valid": False,
+            "errors": [message],
+            "warnings": []
+        }
 
     finished_at = datetime.now(timezone.utc)
 
