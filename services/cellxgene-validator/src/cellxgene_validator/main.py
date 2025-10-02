@@ -30,7 +30,12 @@ def run_validator():
   error_messages = []
   logger.addHandler(ListHandler(warning_messages, error_messages))
 
-  is_valid, _, _ = validate(file_path)
+  try:
+    is_valid, _, _ = validate(file_path)
+  except Exception as e:
+     is_valid = False
+     warning_messages = []
+     error_messages = [f"Encountered an unexpected error while calling CELLxGENE validator: {e}"]
 
   result = {
      "valid": is_valid,
