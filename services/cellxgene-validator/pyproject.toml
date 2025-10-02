@@ -1,7 +1,7 @@
 [project]
 name = "cellxgene-validator"
 version = "0.1.0"
-requires-python = "^3.11"
+requires-python = ">=3.11"
 dependencies = [
     "cellxgene-schema (>=6.2.2,<7.0.0)"
 ]
