@@ -78,7 +78,7 @@ from cellxgene_validator.main import run_validator
 ], ids=lambda x: x["name"])
 @patch("cellxgene_validator.main.validate")
 def test_cellxgene_validator_cases(mock_validate, test_case):
-  def do_mock_validate(_):
+  def do_mock_validate(_, **__):
     logger = logging.getLogger("cellxgene_schema.validate")
     for level, message in test_case["logs"]:
       logger.log(level, message)
@@ -91,5 +91,5 @@ def test_cellxgene_validator_cases(mock_validate, test_case):
 
   result = run_validator(test_case["file_path"])
 
-  mock_validate.assert_called_once_with(test_case["file_path"])
+  mock_validate.assert_called_once_with(test_case["file_path"], ignore_labels=True)
   assert result == test_case["expected_output"]
