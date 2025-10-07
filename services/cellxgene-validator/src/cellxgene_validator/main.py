@@ -26,7 +26,7 @@ def run_validator(file_path):
   logger.addHandler(ListHandler(warning_messages, error_messages))
 
   try:
-    is_valid, _, _ = validate(file_path)
+    is_valid, _, _ = validate(file_path, ignore_labels=True)
   except Exception as e:
     is_valid = False
     warning_messages = []
