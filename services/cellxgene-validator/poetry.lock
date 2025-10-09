@@ -68,14 +68,14 @@ files = [
 
 [[package]]
 name = "cellxgene-ontology-guide"
-version = "1.7.2"
+version = "1.6.0"
 description = "Access ontology metadata used by CZ cellxgene"
 optional = false
 python-versions = "~=3.10"
 groups = ["main"]
 files = [
-    {file = "cellxgene_ontology_guide-1.7.2-py3-none-any.whl", hash = "sha256:290d47e538683171da14f311e20299c43ecd91a506e3367712a57c5df278380a"},
-    {file = "cellxgene_ontology_guide-1.7.2.tar.gz", hash = "sha256:e77a8b689a7ae05bd764e1d1b6cafbfe0f5537a1ed7ba32a530108e766654a18"},
+    {file = "cellxgene_ontology_guide-1.6.0-py3-none-any.whl", hash = "sha256:98fe6ae4225c86103999e83d06cee73ecc5e9e79d978983018fef6152f63428e"},
+    {file = "cellxgene_ontology_guide-1.6.0.tar.gz", hash = "sha256:0e1a640ba227336732d867c61c3f8114d99c44a51e85545bef33a407c1bd372c"},
 ]
 
 [package.dependencies]
@@ -87,23 +87,22 @@ test = ["coverage", "jupyter", "nbconvert", "nbformat (>=5.10.4)", "pytest"]
 
 [[package]]
 name = "cellxgene-schema"
-version = "6.2.2"
+version = "5.3.2"
 description = "Tool for applying and validating cellxgene integration schema to single cell datasets"
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "cellxgene_schema-6.2.2-py3-none-any.whl", hash = "sha256:78de48144ca103e2d4f7d71b530ec8b5f985fc3d7245588812e776c4a9324d83"},
-    {file = "cellxgene_schema-6.2.2.tar.gz", hash = "sha256:feb6d75a075c8e6f38294cf2e5f936f0c554d3e29711934c34b6a4a96eb2cc76"},
+    {file = "cellxgene_schema-5.3.2-py3-none-any.whl", hash = "sha256:6d64808b8cd8f808fb047aa11a94c1066660ecdabd268c62df28018e83a40cea"},
+    {file = "cellxgene_schema-5.3.2.tar.gz", hash = "sha256:29ca441a9aaa090666867beee9263010a36d8056cb80947738731caa7cea0b43"},
 ]
 
 [package.dependencies]
 anndata = "0.11.4"
-cellxgene-ontology-guide = "1.7.2"
+cellxgene-ontology-guide = "1.6.0"
 click = "<9"
 Cython = "<4"
 dask = {version = "2024.12.0", extras = ["array", "dataframe"]}
-duckdb = "1.3.2"
 ibis-framework = {version = ">=10.3", extras = ["duckdb"]}
 matplotlib = "<4"
 numpy = "<3"
@@ -113,7 +112,6 @@ pysam = ">=0.13.0"
 PyYAML = "<7"
 scipy = "<1.16"
 semver = "<4"
-sparse = "0.15.1"
 xxhash = "<4"
 
 [[package]]
@@ -809,37 +807,6 @@ files = [
 ]
 
 [[package]]
-name = "llvmlite"
-version = "0.45.0"
-description = "lightweight wrapper around basic LLVM functionality"
-optional = false
-python-versions = ">=3.10"
-groups = ["main"]
-files = [
-    {file = "llvmlite-0.45.0-cp310-cp310-macosx_10_15_x86_64.whl", hash = "sha256:3018e5f8547c8b05e736281d5bd23ff86b88ab94697db2beeaa6f3bce9cfc721"},
-    {file = "llvmlite-0.45.0-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:ca7b15dc4422551f1b5fb1dbd734d5e8a9416028890d31d4e23a04fbc8a975c4"},
-    {file = "llvmlite-0.45.0-cp310-cp310-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:a9c7343bec403a79248859df75c7945768de70bf547eac8c1cc8b8840e0336ba"},
-    {file = "llvmlite-0.45.0-cp310-cp310-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:56713a25bf81081fc818aa36cbffb70533b3c23291ce0efc17ac8a3b684b8be3"},
-    {file = "llvmlite-0.45.0-cp310-cp310-win_amd64.whl", hash = "sha256:849ba7de7153d8d92bc66577bb951c9baf8d9f67f2521c4f39c78718d471362e"},
-    {file = "llvmlite-0.45.0-cp311-cp311-macosx_10_15_x86_64.whl", hash = "sha256:9b1b37e00b553e9420d9a2e327e84c5ac65a5690dcacf7fc153014780d97532a"},
-    {file = "llvmlite-0.45.0-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:cd039b8da5514db2729b7c9ae7526cae8da748a540fa3ab721b50c54651d2362"},
-    {file = "llvmlite-0.45.0-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:c6815d0d3f96de34491d3dc192e11e933e3448ceff0b58572a53f39795996e01"},
-    {file = "llvmlite-0.45.0-cp311-cp311-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:ba79cc2cbdd0f61632ca8e9235fef3657a8aacd636d5775cd13807ceb8265f63"},
-    {file = "llvmlite-0.45.0-cp311-cp311-win_amd64.whl", hash = "sha256:6188da8e9e3906b167fb64bc84a05e6bf98095d982f45f323bed5def2ba7db1c"},
-    {file = "llvmlite-0.45.0-cp312-cp312-macosx_10_15_x86_64.whl", hash = "sha256:3928119253849e7c9aad4f881feb3e886370bb7ac6eccbc728b35a1be89064cc"},
-    {file = "llvmlite-0.45.0-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:a3e9b5dad694edb9e43904ede037458ee73a18b4e2f227e44fc0f808aceab824"},
-    {file = "llvmlite-0.45.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:4955635f316e3ffc0271ee7a3da586ae92cd3e70709b6cd59df641e980636d4c"},
-    {file = "llvmlite-0.45.0-cp312-cp312-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:5e7497f1b75d741e568bf4a2dfccd5c702d6b5f3d232dd4a59ed851a82e587bd"},
-    {file = "llvmlite-0.45.0-cp312-cp312-win_amd64.whl", hash = "sha256:6404f5363986efbe1c7c1afd19da495534e46180466d593ace5a5c042b2f3f94"},
-    {file = "llvmlite-0.45.0-cp313-cp313-macosx_10_15_x86_64.whl", hash = "sha256:f719f98e4f3a6292b1a6495500b2cf668d3604907499c483b326da5ce2ff9f01"},
-    {file = "llvmlite-0.45.0-cp313-cp313-macosx_12_0_arm64.whl", hash = "sha256:4ffa899f7584ef48f1037308d92cb19460a0afb834aa1fe9db9d3e52d0e81a79"},
-    {file = "llvmlite-0.45.0-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:2c12fde908967e464b265554143c030ba4dcc2b981a815582d7708a30295018e"},
-    {file = "llvmlite-0.45.0-cp313-cp313-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:83567cbbf598eb57f108222dfc3dfee065c20a2aa004391360949f2e8ff2b8b4"},
-    {file = "llvmlite-0.45.0-cp313-cp313-win_amd64.whl", hash = "sha256:f68890ceb662e874933103e91e239389ff7275c4befba8e43ccd46ae3231b89e"},
-    {file = "llvmlite-0.45.0.tar.gz", hash = "sha256:ceb0bcd20da949178bd7ab78af8de73e9f3c483ac46b5bef39f06a4862aa8336"},
-]
-
-[[package]]
 name = "locket"
 version = "1.0.0"
 description = "File-based locks for Python on Linux and Windows"
@@ -981,41 +948,6 @@ files = [
 [package.extras]
 fast = ["fastnumbers (>=2.0.0)"]
 icu = ["PyICU (>=1.0.0)"]
-
-[[package]]
-name = "numba"
-version = "0.62.1"
-description = "compiling Python code using LLVM"
-optional = false
-python-versions = ">=3.10"
-groups = ["main"]
-files = [
-    {file = "numba-0.62.1-cp310-cp310-macosx_10_15_x86_64.whl", hash = "sha256:a323df9d36a0da1ca9c592a6baaddd0176d9f417ef49a65bb81951dce69d941a"},
-    {file = "numba-0.62.1-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:e1e1f4781d3f9f7c23f16eb04e76ca10b5a3516e959634bd226fc48d5d8e7a0a"},
-    {file = "numba-0.62.1-cp310-cp310-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:14432af305ea68627a084cd702124fd5d0c1f5b8a413b05f4e14757202d1cf6c"},
-    {file = "numba-0.62.1-cp310-cp310-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:f180922adf159ae36c2fe79fb94ffaa74cf5cb3688cb72dba0a904b91e978507"},
-    {file = "numba-0.62.1-cp310-cp310-win_amd64.whl", hash = "sha256:f41834909d411b4b8d1c68f745144136f21416547009c1e860cc2098754b4ca7"},
-    {file = "numba-0.62.1-cp311-cp311-macosx_10_15_x86_64.whl", hash = "sha256:f43e24b057714e480fe44bc6031de499e7cf8150c63eb461192caa6cc8530bc8"},
-    {file = "numba-0.62.1-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:57cbddc53b9ee02830b828a8428757f5c218831ccc96490a314ef569d8342b7b"},
-    {file = "numba-0.62.1-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:604059730c637c7885386521bb1b0ddcbc91fd56131a6dcc54163d6f1804c872"},
-    {file = "numba-0.62.1-cp311-cp311-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:d6c540880170bee817011757dc9049dba5a29db0c09b4d2349295991fe3ee55f"},
-    {file = "numba-0.62.1-cp311-cp311-win_amd64.whl", hash = "sha256:03de6d691d6b6e2b76660ba0f38f37b81ece8b2cc524a62f2a0cfae2bfb6f9da"},
-    {file = "numba-0.62.1-cp312-cp312-macosx_10_15_x86_64.whl", hash = "sha256:1b743b32f8fa5fff22e19c2e906db2f0a340782caf024477b97801b918cf0494"},
-    {file = "numba-0.62.1-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:90fa21b0142bcf08ad8e32a97d25d0b84b1e921bc9423f8dda07d3652860eef6"},
-    {file = "numba-0.62.1-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:6ef84d0ac19f1bf80431347b6f4ce3c39b7ec13f48f233a48c01e2ec06ecbc59"},
-    {file = "numba-0.62.1-cp312-cp312-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:9315cc5e441300e0ca07c828a627d92a6802bcbf27c5487f31ae73783c58da53"},
-    {file = "numba-0.62.1-cp312-cp312-win_amd64.whl", hash = "sha256:44e3aa6228039992f058f5ebfcfd372c83798e9464297bdad8cc79febcf7891e"},
-    {file = "numba-0.62.1-cp313-cp313-macosx_10_15_x86_64.whl", hash = "sha256:b72489ba8411cc9fdcaa2458d8f7677751e94f0109eeb53e5becfdc818c64afb"},
-    {file = "numba-0.62.1-cp313-cp313-macosx_12_0_arm64.whl", hash = "sha256:44a1412095534a26fb5da2717bc755b57da5f3053965128fe3dc286652cc6a92"},
-    {file = "numba-0.62.1-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:8c9460b9e936c5bd2f0570e20a0a5909ee6e8b694fd958b210e3bde3a6dba2d7"},
-    {file = "numba-0.62.1-cp313-cp313-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:728f91a874192df22d74e3fd42c12900b7ce7190b1aad3574c6c61b08313e4c5"},
-    {file = "numba-0.62.1-cp313-cp313-win_amd64.whl", hash = "sha256:bbf3f88b461514287df66bc8d0307e949b09f2b6f67da92265094e8fa1282dd8"},
-    {file = "numba-0.62.1.tar.gz", hash = "sha256:7b774242aa890e34c21200a1fc62e5b5757d5286267e71103257f4e2af0d5161"},
-]
-
-[package.dependencies]
-llvmlite = "==0.45.*"
-numpy = ">=1.22,<2.4"
 
 [[package]]
 name = "numpy"
@@ -1785,29 +1717,6 @@ files = [
 ]
 
 [[package]]
-name = "sparse"
-version = "0.15.1"
-description = "Sparse n-dimensional arrays for the PyData ecosystem"
-optional = false
-python-versions = ">=3.8"
-groups = ["main"]
-files = [
-    {file = "sparse-0.15.1-py2.py3-none-any.whl", hash = "sha256:6d5a19350b0714a1425b653a67df44be330d24e86f21c09f5ad6bb4518c2a18c"},
-    {file = "sparse-0.15.1.tar.gz", hash = "sha256:973adcb88a8db8e3d8047953331e26d3f64a5657f9b46a6b859c47663c3eef99"},
-]
-
-[package.dependencies]
-numba = ">=0.49"
-numpy = ">=1.17"
-scipy = ">=0.19"
-
-[package.extras]
-all = ["matrepr", "sparse[docs,tox]"]
-docs = ["sphinx", "sphinx-rtd-theme"]
-tests = ["dask[array]", "pre-commit", "pytest (>=3.5)", "pytest-cov"]
-tox = ["sparse[tests]", "tox"]
-
-[[package]]
 name = "sqlglot"
 version = "27.19.0"
 description = "An easily customizable SQL parser and transpiler"
@@ -2016,4 +1925,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = "~=3.11"
-content-hash = "d12f1995dd4e633401f5dcfe228a798e13022817478738f61755a86f16457fe7"
+content-hash = "72102b3350126867f0a3b5659346092a19254885719a3a063acd7a5fabed8f4d"
