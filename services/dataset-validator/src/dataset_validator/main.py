@@ -156,16 +156,18 @@ class ValidationMessage:
         # Get the original value of the list that was the threshold for making the message small enough
         message_list = self._get_report_message_list(*threshold_path)
 
-        # Do a binary search to determine how much of the list can be retained
+        # Do a binary search to determine how much of the list can be retained, ensuring that the truncated message remains at a valid length
         max_valid_length = 0
         min_invalid_length = len(message_list)
         while min_invalid_length - max_valid_length > 1:
+            truncated_list_before = truncated_message._get_report_message_list(*threshold_path)
             middle_length = int((max_valid_length + min_invalid_length)/2)
             truncated_message._set_report_message_list(*threshold_path, [*message_list[:middle_length], TRUNCATED_MESSAGES_MESSAGE])
             if len(truncated_message.to_json()) < max_length:
                 max_valid_length = middle_length
             else:
                 min_invalid_length = middle_length
+                truncated_message._set_report_message_list(*threshold_path, truncated_list_before)
         
         # Return the truncated message JSON
         return truncated_message.to_json()
