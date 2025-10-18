@@ -149,7 +149,7 @@ class ValidationMessage:
                 threshold_path = p
                 break
         
-        # If the message is somehow still too big, try using the truncated message (which will have all lists truncated)
+        # If all lists have been truncated and somehow none have made the message small enough, give up and try using it anyway
         if threshold_path is None:
             return truncated_message.to_json()
         
