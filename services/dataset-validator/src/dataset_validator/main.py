@@ -133,7 +133,7 @@ class ValidationMessage:
         if self.tool_reports is None or len(full_message) < max_length:
             return full_message
         
-        # Create a list of message arrays from tool_reports, represented as (key in rool_reports, attribute in tool report object) pairs
+        # Create a list of message arrays from tool_reports, represented as (key in tool_reports, attribute in tool report object) pairs
         list_paths = [(key, message_type) for key in self.tool_reports.keys() for message_type in ["errors", "warnings"]]
         # Sort from longest to shortest list so that we won't remove shorter lists entirely before getting to a disproportionally long list that has to be truncated
         list_paths.sort(key=lambda p: self._json_length_of_report_list(*p), reverse=True)
