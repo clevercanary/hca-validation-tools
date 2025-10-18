@@ -114,7 +114,7 @@ class ValidationMessage:
 
     def to_json(self) -> str:
         """Convert to JSON string."""
-        return json.dumps(asdict(self), indent=2)
+        return json.dumps(asdict(self), separators=(',', ':'))
     
     def _get_report_message_list(self, report_key: str, message_type: str) -> List[str]:
         return getattr(self.tool_reports[report_key], message_type)
