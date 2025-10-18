@@ -4,6 +4,7 @@ Dataset Validator - AWS Batch Job
 Main entry point for dataset validation processing.
 """
 
+import copy
 import hashlib
 import json
 import logging
@@ -22,6 +23,10 @@ import anndata
 import pandas as pd
 from cap_upload_validator import UploadValidator
 from cap_upload_validator.errors import CapException, CapMultiException
+
+
+MAX_SNS_MESSAGE_LENGTH = 250_000 # Somewhat less than the actual value of 256KiB, to make room for small unforseen deviations
+TRUNCATED_MESSAGES_MESSAGE = "Messages truncated"
 
 
 # Environment variable constants
@@ -108,8 +113,62 @@ class ValidationMessage:
     error_message: Optional[str] = None                  # Human-readable error description
 
     def to_json(self) -> str:
-        """Convert to JSON string for SNS publishing."""
+        """Convert to JSON string."""
         return json.dumps(asdict(self), indent=2)
+    
+    def _get_report_message_list(self, report_key: str, message_type: str) -> List[str]:
+        return getattr(self.tool_reports[report_key], message_type)
+
+    def _set_report_message_list(self, report_key: str, message_type: str, value: List[str]):
+        setattr(self.tool_reports[report_key], message_type, value)
+
+    def _json_length_of_report_list(self, report_key: str, message_type: str) -> int:
+        return len(json.dumps(self._get_report_message_list(report_key, message_type)))
+
+    def to_length_limited_json(self, max_length=MAX_SNS_MESSAGE_LENGTH) -> str:
+        """Convert to a JSON string with message lists truncated to ensure that the JSON is below a given length."""
+
+        # If there are no reports to truncate or the full message is short enough, use the full message
+        full_message = self.to_json()
+        if self.tool_reports is None or len(full_message) < max_length:
+            return full_message
+        
+        # Create a list of message arrays from tool_reports, represented as (key in rool_reports, attribute in tool report object) pairs
+        list_paths = [(key, message_type) for key in self.tool_reports.keys() for message_type in ["errors", "warnings"]]
+        # Sort from longest to shortest list so that we won't remove shorter lists entirely before getting to a disproportionally long list that has to be truncated
+        list_paths.sort(key=lambda p: self._json_length_of_report_list(*p), reverse=True)
+
+        # Create a copy of the validation message to truncate lists in
+        truncated_message = copy.deepcopy(self)
+
+        # Truncate entire lists until the message JSON is small enough, and note which list was the last to be truncated
+        threshold_path = None
+        for p in list_paths:
+            truncated_message._set_report_message_list(*p, [TRUNCATED_MESSAGES_MESSAGE])
+            if len(truncated_message.to_json()) < max_length:
+                threshold_path = p
+                break
+        
+        # If the message is somehow still too big, try using the truncated message (which will have all lists truncated)
+        if threshold_path is None:
+            return truncated_message.to_json()
+        
+        # Get the original value of the list that was the threshold for making the message small enough
+        message_list = self._get_report_message_list(*threshold_path)
+
+        # Do a binary search to determine how much of the list can be retained
+        max_valid_length = 0
+        min_invalid_length = len(message_list)
+        while min_invalid_length - max_valid_length > 1:
+            middle_length = int((max_valid_length + min_invalid_length)/2)
+            truncated_message._set_report_message_list(*threshold_path, [*message_list[:middle_length], TRUNCATED_MESSAGES_MESSAGE])
+            if len(truncated_message.to_json()) < max_length:
+                max_valid_length = middle_length
+            else:
+                min_invalid_length = middle_length
+        
+        # Return the truncated message JSON
+        return truncated_message.to_json()
 
 
 def configure_logging() -> logging.Logger:
@@ -165,7 +224,7 @@ def publish_validation_result(message: ValidationMessage, sns_topic_arn: str) ->
         # Publish message
         response = sns_client.publish(
             TopicArn=sns_topic_arn,
-            Message=message.to_json(),
+            Message=message.to_length_limited_json(),
             Subject=f"Dataset Validation Result - {message.status.upper()}"
         )
         
