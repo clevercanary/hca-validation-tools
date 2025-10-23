@@ -1,5 +1,4 @@
 # flake8: noqa
-# HCA VERSION: organism_ontology_term_id in obs (not uns)
 import pandas as pd
 import numpy
 import anndata
