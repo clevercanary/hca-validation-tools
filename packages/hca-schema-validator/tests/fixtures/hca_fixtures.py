@@ -440,8 +440,6 @@ good_uns_mouse = {
 }
 
 good_uns_with_labels = {
-    "organism_ontology_term_id": "NCBITaxon:9606",
-    "organism": "Homo sapiens",
     "schema_version": "4.0.0",
     "schema_reference": "https://github.com/chanzuckerberg/single-cell-curation/blob/main/schema/4.0.0/schema.md",
     "citation": "Publication: <doi> Dataset Version: "
@@ -454,7 +452,6 @@ good_uns_with_labels = {
 }
 
 good_uns_with_colors = {
-    "organism_ontology_term_id": "NCBITaxon:9606",
     "title": "A title",
     "default_embedding": "X_umap",
     "X_approximate_distribution": "normal",
@@ -467,7 +464,6 @@ good_uns_with_colors = {
 visium_library_id = "Proj2023_Lung_C001"
 
 good_uns_with_visium_spatial = {
-    "organism_ontology_term_id": "NCBITaxon:9606",
     "title": "A title",
     "default_embedding": "X_umap",
     "X_approximate_distribution": "normal",
@@ -488,7 +484,6 @@ good_uns_with_visium_spatial = {
 }
 
 good_uns_with_is_single_false = {
-    "organism_ontology_term_id": "NCBITaxon:9606",
     "title": "A title",
     "default_embedding": "X_umap",
     "X_approximate_distribution": "normal",
@@ -497,7 +492,6 @@ good_uns_with_is_single_false = {
 }
 
 good_uns_with_slide_seqV2_spatial = {
-    "organism_ontology_term_id": "NCBITaxon:9606",
     "title": "A title",
     "default_embedding": "X_umap",
     "X_approximate_distribution": "normal",
