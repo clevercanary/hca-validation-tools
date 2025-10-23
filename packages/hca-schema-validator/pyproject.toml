@@ -1,0 +1,36 @@
+[tool.poetry]
+name = "hca-schema-validator"
+version = "0.1.0"
+description = "HCA schema validation for single-cell datasets"
+authors = ["Clever Canary <dave@clevercanary.com>"]
+license = "MIT"
+readme = "README.md"
+homepage = "https://github.com/clevercanary/hca-validation-tools"
+packages = [{include = "hca_schema_validator", from = "src"}]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+# Dependencies for vendored cellxgene_schema code
+anndata = ">=0.11.0,<0.12"
+cellxgene-ontology-guide = ">=1.9.0,<2.0"
+click = "<9"
+dask = {extras = ["array", "dataframe"], version = ">=2024.0.0"}
+duckdb = ">=1.3.0,<1.4"  # Pinned for ibis compatibility
+ibis-framework = {extras = ["duckdb"], version = ">=10.3"}
+numpy = "<3"
+pandas = ">2,<3"
+pyarrow = ">=19"
+pyyaml = "<7"
+scipy = "<1.16"
+sparse = ">=0.15.0,<0.16"
+semver = "<4"
+xxhash = "<4"
+matplotlib = "<4"
+pysam = ">=0.13.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

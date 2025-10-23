@@ -1,0 +1,25 @@
+{
+  "packages": {
+    "packages/hca-schema-validator": {
+      "release-type": "python",
+      "package-name": "hca-schema-validator",
+      "changelog-path": "packages/hca-schema-validator/CHANGELOG.md",
+      "extra-files": [
+        "packages/hca-schema-validator/src/hca_schema_validator/__init__.py"
+      ]
+    }
+  },
+  "changelog-sections": [
+    {"type": "feat", "section": "Features"},
+    {"type": "fix", "section": "Bug Fixes"},
+    {"type": "perf", "section": "Performance Improvements"},
+    {"type": "revert", "section": "Reverts"},
+    {"type": "docs", "section": "Documentation"},
+    {"type": "style", "section": "Styles"},
+    {"type": "chore", "section": "Miscellaneous Chores"},
+    {"type": "refactor", "section": "Code Refactoring"},
+    {"type": "test", "section": "Tests"},
+    {"type": "build", "section": "Build System"},
+    {"type": "ci", "section": "Continuous Integration"}
+  ]
+}

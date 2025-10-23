@@ -1,0 +1,15 @@
+hca-schema-validator
+Copyright (c) 2025 Human Cell Atlas
+
+This software contains vendored code from:
+
+cellxgene-schema
+Copyright (c) 2021 Chan Zuckerberg Initiative
+Licensed under the MIT License
+Source: https://github.com/chanzuckerberg/single-cell-curation
+
+The vendored code has been modified to support HCA-specific validation requirements.
+All modifications are licensed under the same MIT License as the original work.
+
+The full license text for the vendored code can be found at:
+src/hca_schema_validator/_vendored/cellxgene_schema/LICENSE
