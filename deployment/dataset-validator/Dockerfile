@@ -51,7 +51,7 @@ COPY --from=builder /tmp/requirements_hca_schema.txt /tmp/requirements_hca_schem
 RUN python -m venv /opt/venvs/hca-schema-validator \
   && /opt/venvs/hca-schema-validator/bin/pip install --no-cache-dir -r /tmp/requirements_hca_schema.txt
 
-# Set environment variable sfor CELLxGENE validator paths
+# Set environment variables for CELLxGENE validator paths
 ENV CELLXGENE_VALIDATOR_VENV="/opt/venvs/cellxgene-validator"
 ENV CELLXGENE_VALIDATOR_SCRIPT="/app/cellxgene_validator/main.py"
 # Set environment variables for HCA schema validator paths
