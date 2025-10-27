@@ -15,7 +15,7 @@ import subprocess
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Optional
+from typing import Callable, List, Optional
 
 import boto3
 from botocore.exceptions import ClientError
@@ -42,6 +42,8 @@ AWS_DEFAULT_REGION = 'AWS_DEFAULT_REGION'
 # Other variables
 CELLXGENE_VALIDATOR_VENV = 'CELLXGENE_VALIDATOR_VENV'
 CELLXGENE_VALIDATOR_SCRIPT = "CELLXGENE_VALIDATOR_SCRIPT"
+HCA_SCHEMA_VALIDATOR_VENV = 'HCA_SCHEMA_VALIDATOR_VENV'
+HCA_SCHEMA_VALIDATOR_SCRIPT = "HCA_SCHEMA_VALIDATOR_SCRIPT"
 
 # Status constants
 STATUS_SUCCESS = 'success'
@@ -400,6 +402,13 @@ def get_default_cxg_validator_root_path():
     return Path(__file__).parent.parent.parent.parent / "cellxgene-validator"
 
 
+def get_default_hcas_validator_root_path():
+    """
+    Get the path to the root of the HCA schema validator installation, according to source structure
+    """
+    return Path(__file__).parent.parent.parent.parent / "hca-schema-validator"
+
+
 def get_poetry_venv_path_from(project_path: Path) -> str:
     path_result = subprocess.run(
         ["poetry", "env", "info", "--path"],
@@ -411,31 +420,49 @@ def get_poetry_venv_path_from(project_path: Path) -> str:
     return path_result.stdout.strip()
 
 
-def apply_cellxgene_validator(file_path: Path) -> ValidationToolReport:
+def apply_external_validator(
+    file_path: Path,
+    *,
+    script_path_var: str,
+    venv_path_var: str,
+    get_default_root_path: Callable[[], Path],
+    default_package_name: str,
+    validator_name: str
+) -> ValidationToolReport:
     """
-    Apply the CELLxGENE validator to the given file and create a validation report.
+    Apply an external validator to the given file by calling a Python script via command line, and create a validation report.
 
     Args:
         file_path: Path of the file to validate
+        script_path_var: Name of environment variable to get the path of the script from
+        venv_path_var: Name of the environment variable from which to get the path of the virtual environment to call the script with
+        get_default_root_path: Function to use to get the root path of a Poetry project containing the script if the environment variables don't exist
+        default_package_name: Name of the folder in which the script is contained if the environment variables don't exist
+        validator_name: Name of the validator to use in error messages
 
     Returns:
         Validation report
+    
+    Note:
+        - The validator script should take the file path as a command-line argument, and print as output a JSON object containing a `valid` boolean, and `errors` array of strings, and a `warnings` array of strings
+        - The default Poetry project should contain the script at src/{default_package_name}/main.py
     """
+
     started_at = datetime.now(timezone.utc)
 
     # Get path of validator script from environment, if present
-    validator_script_path = os.environ.get(CELLXGENE_VALIDATOR_SCRIPT)
+    validator_script_path = os.environ.get(script_path_var)
 
     # If environment variable is not present, use default script path
     if validator_script_path is None:
-        validator_script_path = get_default_cxg_validator_root_path() / "src" / "cellxgene_validator" / "main.py"
+        validator_script_path = get_default_root_path() / "src" / default_package_name / "main.py"
 
-    # Get CELLxGENE validator venv path from environment, if present
-    venv_path = os.environ.get(CELLXGENE_VALIDATOR_VENV)
+    # Get validator venv path from environment, if present
+    venv_path = os.environ.get(venv_path_var)
 
     # If environment variable is not present, get venv path via Poetry
     if venv_path is None:
-        venv_path = get_poetry_venv_path_from(get_default_cxg_validator_root_path())
+        venv_path = get_poetry_venv_path_from(get_default_root_path())
 
     try:
         # Call validator and parse output
@@ -447,7 +474,7 @@ def apply_cellxgene_validator(file_path: Path) -> ValidationToolReport:
         )
         validator_output = json.loads(validator_result.stdout)
     except Exception as e:
-        message = f"Encountered an unexpected error while calling CELLxGENE validator script: {e}"
+        message = f"Encountered an unexpected error while calling {validator_name} script: {e}"
         logger.error(message)
         validator_output = {
             "valid": False,
@@ -463,6 +490,48 @@ def apply_cellxgene_validator(file_path: Path) -> ValidationToolReport:
         warnings=validator_output["warnings"],
         started_at=started_at.isoformat(),
         finished_at=finished_at.isoformat()
+    )
+
+
+def apply_cellxgene_validator(file_path: Path) -> ValidationToolReport:
+    """
+    Apply the CELLxGENE validator to the given file and create a validation report.
+
+    Args:
+        file_path: Path of the file to validate
+
+    Returns:
+        Validation report
+    """
+
+    return apply_external_validator(
+        file_path,
+        script_path_var=CELLXGENE_VALIDATOR_SCRIPT,
+        venv_path_var=CELLXGENE_VALIDATOR_VENV,
+        get_default_root_path=get_default_cxg_validator_root_path,
+        default_package_name="cellxgene_validator",
+        validator_name="CELLxGENE validator"
+    )
+
+
+def apply_hca_schema_validator(file_path: Path) -> ValidationToolReport:
+    """
+    Apply the HCA schema validator to the given file and create a validation report.
+
+    Args:
+        file_path: Path of the file to validate
+
+    Returns:
+        Validation report
+    """
+
+    return apply_external_validator(
+        file_path,
+        script_path_var=HCA_SCHEMA_VALIDATOR_SCRIPT,
+        venv_path_var=HCA_SCHEMA_VALIDATOR_VENV,
+        get_default_root_path=get_default_hcas_validator_root_path,
+        default_package_name="hca_schema_validator",
+        validator_name="HCA schema validator"
     )
 
 
@@ -660,10 +729,14 @@ def main() -> int:
         # Call CELLxGENE validator
         cellxgene_validation_report = apply_cellxgene_validator(local_file)
 
+        # Call HCA schema validator
+        hca_schema_validation_report = apply_hca_schema_validator(local_file)
+
         # Add individual validation reports to message
         validation_message.tool_reports = {
             "cap": cap_validation_report,
-            "cellxgene": cellxgene_validation_report
+            "cellxgene": cellxgene_validation_report,
+            "hcaSchema": hca_schema_validation_report
         }
 
         logger.info("Validation completed successfully")
