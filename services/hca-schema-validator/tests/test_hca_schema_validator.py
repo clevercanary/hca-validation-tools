@@ -77,7 +77,7 @@ from hca_schema_validator_service.main import validator_logger_name, run_validat
   }
 ], ids=lambda x: x["name"])
 @patch("hca_schema_validator_service.main.HCAValidator")
-def test_cellxgene_validator_cases(mock_hca_validator, test_case):
+def test_hca_schema_validator_cases(mock_hca_validator, test_case):
   def do_mock_validate(_, **__):
     logger = logging.getLogger(validator_logger_name)
     for level, message in test_case["logs"]:
