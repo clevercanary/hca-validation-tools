@@ -444,7 +444,7 @@ def apply_external_validator(
         Validation report
     
     Note:
-        - The validator script should take the file path as a command-line argument, and print as output a JSON object containing a `valid` boolean, and `errors` array of strings, and a `warnings` array of strings
+        - The validator script should take the file path as a command-line argument, and print as output a JSON object containing a `valid` boolean, an `errors` array of strings, and a `warnings` array of strings
         - The default Poetry project should contain the script at src/{default_package_name}/main.py
     """
 
