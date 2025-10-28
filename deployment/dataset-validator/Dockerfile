@@ -61,7 +61,7 @@ ENV HCA_SCHEMA_VALIDATOR_SCRIPT="/app/hca_schema_validator/main.py"
 # Copy application code
 COPY services/dataset-validator/src/dataset_validator/ /app/dataset_validator/
 COPY services/cellxgene-validator/src/cellxgene_validator/ /app/cellxgene_validator/
-COPY services/hca-schema-validator/src/hca_schema_validator/ /app/hca_schema_validator/
+COPY services/hca-schema-validator/src/hca_schema_validator_service/ /app/hca_schema_validator/
 
 # Set working directory
 WORKDIR /app

@@ -530,7 +530,7 @@ def apply_hca_schema_validator(file_path: Path) -> ValidationToolReport:
         script_path_var=HCA_SCHEMA_VALIDATOR_SCRIPT,
         venv_path_var=HCA_SCHEMA_VALIDATOR_VENV,
         get_default_root_path=get_default_hcas_validator_root_path,
-        default_package_name="hca_schema_validator",
+        default_package_name="hca_schema_validator_service",
         validator_name="HCA schema validator"
     )
 
