@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-from hca_schema_validator.main import validator_logger_name, run_validator
+from hca_schema_validator_service.main import validator_logger_name, run_validator
 
 @pytest.mark.parametrize("test_case", [
   {
@@ -76,20 +76,27 @@ from hca_schema_validator.main import validator_logger_name, run_validator
     }
   }
 ], ids=lambda x: x["name"])
-@patch("cellxgene_validator.main.validate")
-def test_cellxgene_validator_cases(mock_validate, test_case):
+@patch("hca_schema_validator_service.main.HCAValidator")
+def test_cellxgene_validator_cases(mock_hca_validator, test_case):
   def do_mock_validate(_, **__):
     logger = logging.getLogger(validator_logger_name)
     for level, message in test_case["logs"]:
       logger.log(level, message)
-    return (test_case["is_valid"], None, None)
+    return test_case["is_valid"]
+
+  mock_validator_instance = MagicMock()
+  mock_hca_validator.return_value = mock_validator_instance
+
+  mock_validate_adata = MagicMock()
+  mock_validator_instance.validate_adata = mock_validate_adata
 
   if test_case["error"]:
-    mock_validate.side_effect = test_case["error"]
+    mock_validate_adata.side_effect = test_case["error"]
   else:
-    mock_validate.side_effect = do_mock_validate
-
+    mock_validate_adata.side_effect = do_mock_validate
+  
   result = run_validator(test_case["file_path"])
 
-  mock_validate.assert_called_once_with(test_case["file_path"], ignore_labels=True)
+  mock_hca_validator.assert_called_once_with(ignore_labels=True)
+  mock_validate_adata.assert_called_once_with(test_case["file_path"])
   assert result == test_case["expected_output"]

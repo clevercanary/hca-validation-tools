@@ -28,9 +28,7 @@ def run_validator(file_path):
   logger.addHandler(ListHandler(warning_messages, error_messages))
 
   try:
-    validator = HCAValidator(ignore_labels=True)
-    validator.validate_adata(file_path)
-    is_valid = validator.is_valid
+    is_valid = HCAValidator(ignore_labels=True).validate_adata(file_path)
   except Exception as e:
     is_valid = False
     warning_messages = []
