@@ -1,9 +1,9 @@
 import sys
 import logging
 import json
-from cellxgene_schema.validate import validate
+from hca_schema_validator import HCAValidator
 
-validator_logger_name = "cellxgene_schema.validate"
+validator_logger_name = "hca_schema_validator._vendored.cellxgene_schema.validate"
 
 class ListHandler(logging.Handler):
   """
@@ -28,7 +28,9 @@ def run_validator(file_path):
   logger.addHandler(ListHandler(warning_messages, error_messages))
 
   try:
-    is_valid, _, _ = validate(file_path, ignore_labels=True)
+    validator = HCAValidator(ignore_labels=True)
+    validator.validate_adata(file_path)
+    is_valid = validator.is_valid
   except Exception as e:
     is_valid = False
     warning_messages = []

@@ -3,7 +3,7 @@ name = "hca-schema-validator-service"
 version = "0.1.0"
 requires-python = "~=3.11"
 dependencies = [
-    "cellxgene-schema (==5.3.2)"
+    "hca-schema-validator (>=0.2.0,<0.3.0)"
 ]
 
 [tool.poetry]
