@@ -3,6 +3,7 @@ name: Publish hca-schema-validator to PyPI
 on:
   release:
     types: [published]
+  workflow_dispatch:  # Allow manual re-publishing of latest release
 
 permissions:
   contents: read
@@ -10,11 +11,18 @@ permissions:
 
 jobs:
   publish:
-    # Only run for hca-schema-validator releases
-    if: startsWith(github.event.release.tag_name, 'hca-schema-validator-v')
+
+    # Run for hca-schema-validator releases or manual trigger
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.event.release.tag_name, 'hca-schema-validator-v')
     runs-on: ubuntu-latest
     
     steps:
+      - name: Log trigger info
+        run: |
+          echo "Event name: ${{ github.event_name }}"
+          echo "Release tag: ${{ github.event.release.tag_name }}"
+          echo "Ref: ${{ github.ref }}"
+      
       - name: Checkout code
         uses: actions/checkout@v4
       
