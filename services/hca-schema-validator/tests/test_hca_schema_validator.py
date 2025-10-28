@@ -71,7 +71,7 @@ from hca_schema_validator_service.main import validator_logger_name, run_validat
     "error": Exception("Error in validation"),
     "expected_output": {
       "valid": False,
-      "errors": ["Encountered an unexpected error while calling CELLxGENE validator: Error in validation"],
+      "errors": ["Encountered an unexpected error while calling HCA schema validator: Error in validation"],
       "warnings": []
     }
   }

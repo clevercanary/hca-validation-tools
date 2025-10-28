@@ -32,7 +32,7 @@ def run_validator(file_path):
   except Exception as e:
     is_valid = False
     warning_messages = []
-    error_messages = [f"Encountered an unexpected error while calling CELLxGENE validator: {e}"]
+    error_messages = [f"Encountered an unexpected error while calling HCA schema validator: {e}"]
 
   return {
     "valid": is_valid,
