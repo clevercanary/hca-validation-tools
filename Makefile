@@ -204,4 +204,5 @@ test-all:
 	@$(MAKE) -C services/entry-sheet-validator test-lambda-container
 	@$(MAKE) -C services/dataset-validator test
 	@$(MAKE) -C services/cellxgene-validator test
+	@$(MAKE) -C services/hca-schema-validator test
 	@echo "✓ All tests passed"
