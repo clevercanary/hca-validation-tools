@@ -20,9 +20,13 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from dataset_validator.main import get_poetry_venv_path_from
 
 
-cellxgene_validator_path_vars = {
-    'CELLXGENE_VALIDATOR_VENV': get_poetry_venv_path_from(Path(__file__).parent.parent),
-    'CELLXGENE_VALIDATOR_SCRIPT': str(Path(__file__).parent / "mock-modules" / "cellxgene_validator.py")
+dataset_validator_venv_path = get_poetry_venv_path_from(Path(__file__).parent.parent)
+mock_modules_path = Path(__file__).parent / "mock-modules"
+external_validator_path_vars = {
+    'CELLXGENE_VALIDATOR_VENV': dataset_validator_venv_path,
+    'CELLXGENE_VALIDATOR_SCRIPT': str(mock_modules_path / "cellxgene_validator.py"),
+    'HCA_SCHEMA_VALIDATOR_VENV': dataset_validator_venv_path,
+    'HCA_SCHEMA_VALIDATOR_SCRIPT': str(mock_modules_path / "hca_schema_validator.py")
 }
 
 
@@ -509,6 +513,11 @@ def test_publish_validation_result_scenarios(mock_update_validator, caplog, mock
                     "valid": False,
                     "errors": ["ERROR: test"],
                     "warnings": ["WARNING: test"]
+                },
+                "hcaSchema": {
+                    "valid": False,
+                    "errors": ["ERROR: test bar"],
+                    "warnings": ["WARNING: test bar"]
                 }
             }
         }
@@ -656,6 +665,11 @@ def test_publish_validation_result_scenarios(mock_update_validator, caplog, mock
                     "valid": False,
                     "errors": ["ERROR: test"],
                     "warnings": ["WARNING: test"]
+                },
+                "hcaSchema": {
+                    "valid": False,
+                    "errors": ["ERROR: test bar"],
+                    "warnings": ["WARNING: test bar"]
                 }
             }
         }
@@ -677,7 +691,7 @@ def test_end_to_end_validation_scenarios(mock_read_h5ad, mock_upload_validator, 
         'FILE_ID': test_case["file_id"],
         'SNS_TOPIC_ARN': mock_aws['topic_arn'],
         'AWS_BATCH_JOB_ID': test_case["batch_job_id"],
-        **cellxgene_validator_path_vars
+        **external_validator_path_vars
     }
     if test_case["batch_job_name"]:
         test_env['BATCH_JOB_NAME'] = test_case["batch_job_name"]

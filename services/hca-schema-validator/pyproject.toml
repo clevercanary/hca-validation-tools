@@ -1,0 +1,17 @@
+[project]
+name = "hca-schema-validator-service"
+version = "0.1.0"
+requires-python = "~=3.11"
+dependencies = [
+    "hca-schema-validator (>=0.2.0,<0.3.0)"
+]
+
+[tool.poetry]
+package-mode = false
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.4.2"
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"

@@ -10,6 +10,7 @@ WORKDIR /build
 # Copy services' Poetry configuration
 COPY services/dataset-validator/pyproject.toml services/dataset-validator/poetry.lock* ./services/dataset-validator/
 COPY services/cellxgene-validator/pyproject.toml services/cellxgene-validator/poetry.lock* ./services/cellxgene-validator/
+COPY services/hca-schema-validator/pyproject.toml services/hca-schema-validator/poetry.lock* ./services/hca-schema-validator/
 
 RUN poetry self add poetry-plugin-export
 
@@ -27,6 +28,13 @@ RUN poetry install
 # Export requirements for final stage
 RUN poetry export --without-hashes -o /tmp/requirements_cellxgene.txt
 
+# Change to HCA schema validator service directory for Poetry operations
+WORKDIR /build/services/hca-schema-validator
+# Install dependencies
+RUN poetry install
+# Export requirements for final stage
+RUN poetry export --without-hashes -o /tmp/requirements_hca_schema.txt
+
 # Final stage
 FROM python:3.11-slim-bookworm
 
@@ -38,14 +46,22 @@ RUN pip install --no-cache-dir -r /tmp/requirements.txt
 COPY --from=builder /tmp/requirements_cellxgene.txt /tmp/requirements_cellxgene.txt
 RUN python -m venv /opt/venvs/cellxgene-validator \
   && /opt/venvs/cellxgene-validator/bin/pip install --no-cache-dir -r /tmp/requirements_cellxgene.txt
+# Install HCA schema validator requirements
+COPY --from=builder /tmp/requirements_hca_schema.txt /tmp/requirements_hca_schema.txt
+RUN python -m venv /opt/venvs/hca-schema-validator \
+  && /opt/venvs/hca-schema-validator/bin/pip install --no-cache-dir -r /tmp/requirements_hca_schema.txt
 
-# Set environment variable for venv path
+# Set environment variables for CELLxGENE validator paths
 ENV CELLXGENE_VALIDATOR_VENV="/opt/venvs/cellxgene-validator"
 ENV CELLXGENE_VALIDATOR_SCRIPT="/app/cellxgene_validator/main.py"
+# Set environment variables for HCA schema validator paths
+ENV HCA_SCHEMA_VALIDATOR_VENV="/opt/venvs/hca-schema-validator"
+ENV HCA_SCHEMA_VALIDATOR_SCRIPT="/app/hca_schema_validator/main.py"
 
 # Copy application code
 COPY services/dataset-validator/src/dataset_validator/ /app/dataset_validator/
 COPY services/cellxgene-validator/src/cellxgene_validator/ /app/cellxgene_validator/
+COPY services/hca-schema-validator/src/hca_schema_validator_service/ /app/hca_schema_validator/
 
 # Set working directory
 WORKDIR /app
