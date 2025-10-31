@@ -241,7 +241,8 @@ def test_missing_sns_topic_logs_error_and_exits(caplog, env_manager, base_env_va
                 "tissue": ["tissue-a", "tissue-a", "tissue-b", "tissue-a", "tissue-a"],
                 "disease": ["disease-a", "disease-b", "disease-c", "disease-d", "disease-e"]
             },
-            "uns": {"title": "test-dataset-123"}
+            "uns": {"title": "test-dataset-123"},
+            "n_vars": 12
         },
         "expected_result": {
             "title": "test-dataset-123",
@@ -249,7 +250,8 @@ def test_missing_sns_topic_logs_error_and_exits(caplog, env_manager, base_env_va
             "suspension_type": ["suspension-type-a"],
             "tissue": ["tissue-a", "tissue-b"],
             "disease": ["disease-a", "disease-b", "disease-c", "disease-d", "disease-e"],
-            "cell_count": 5
+            "cell_count": 5,
+            "gene_count": 12
         }
     },
     {
@@ -257,7 +259,8 @@ def test_missing_sns_topic_logs_error_and_exits(caplog, env_manager, base_env_va
         "description": "Test reading metadata with all possible fields absent",
         "adata": {
             "obs": {},
-            "uns": {}
+            "uns": {},
+            "n_vars": 0
         },
         "expected_result": {
             "title": "",
@@ -265,7 +268,8 @@ def test_missing_sns_topic_logs_error_and_exits(caplog, env_manager, base_env_va
             "suspension_type": [],
             "tissue": [],
             "disease": [],
-            "cell_count": 0
+            "cell_count": 0,
+            "gene_count": 0
         }
     },
     {
@@ -278,7 +282,8 @@ def test_missing_sns_topic_logs_error_and_exits(caplog, env_manager, base_env_va
                 "tissue": [np.nan, "tissue-a", "tissue-a"],
                 "disease": ["disease-a", np.nan, np.nan]
             },
-            "uns": {"title": "test-dataset-456"}
+            "uns": {"title": "test-dataset-456"},
+            "n_vars": 23
         },
         "expected_result": {
             "title": "test-dataset-456",
@@ -286,7 +291,8 @@ def test_missing_sns_topic_logs_error_and_exits(caplog, env_manager, base_env_va
             "suspension_type": ["suspension-type-a", "nan", "suspension-type-b"],
             "tissue": ["nan", "tissue-a"],
             "disease": ["disease-a", "nan"],
-            "cell_count": 3
+            "cell_count": 3,
+            "gene_count": 23
         }
     }
 ], ids=lambda x: x["name"])
@@ -301,6 +307,7 @@ def test_read_metadata_scenarios(mock_read_h5ad, test_case):
     mock_adata.obs = pd.DataFrame(test_case["adata"]["obs"])
     mock_adata.uns = test_case["adata"]["uns"]
     mock_adata.n_obs = mock_adata.obs.shape[0]
+    mock_adata.n_vars = test_case["adata"]["n_vars"]
 
     # Test reading metadata
     metadata_summary = read_metadata(Path("test-file.h5ad"))
@@ -475,7 +482,8 @@ def test_publish_validation_result_scenarios(mock_update_validator, caplog, mock
                 "tissue": ["tissue-a", "tissue-a", "tissue-b", "tissue-a", "tissue-a"],
                 "disease": ["disease-a", "disease-b", "disease-c", "disease-d", "disease-e"]
             },
-            "uns": {"title": "test-dataset-123"}
+            "uns": {"title": "test-dataset-123"},
+            "n_vars": 14
         },
         "expected_exit_code": 0,
         "expected_logs": [
@@ -501,7 +509,8 @@ def test_publish_validation_result_scenarios(mock_update_validator, caplog, mock
                 "suspension_type": ["suspension-type-a"],
                 "tissue": ["tissue-a", "tissue-b"],
                 "disease": ["disease-a", "disease-b", "disease-c", "disease-d", "disease-e"],
-                "cell_count": 5
+                "cell_count": 5,
+                "gene_count": 14
             },
             "tool_reports": {
                 "cap": {
@@ -625,7 +634,8 @@ def test_publish_validation_result_scenarios(mock_update_validator, caplog, mock
                 "tissue": ["tissue-a", "tissue-a", "tissue-b", "tissue-a", "tissue-a"],
                 "disease": ["disease-a", "disease-b", "disease-c", "disease-d", "disease-e"]
             },
-            "uns": {"title": "test-dataset-123"}
+            "uns": {"title": "test-dataset-123"},
+            "n_vars": 17
         },
         "cap_validator_exception": Exception("Error in CAP validator"),
         "expected_exit_code": 0,
@@ -653,7 +663,8 @@ def test_publish_validation_result_scenarios(mock_update_validator, caplog, mock
                 "suspension_type": ["suspension-type-a"],
                 "tissue": ["tissue-a", "tissue-b"],
                 "disease": ["disease-a", "disease-b", "disease-c", "disease-d", "disease-e"],
-                "cell_count": 5
+                "cell_count": 5,
+                "gene_count": 17
             },
             "tool_reports": {
                 "cap": {
@@ -709,6 +720,7 @@ def test_end_to_end_validation_scenarios(mock_read_h5ad, mock_upload_validator, 
             mock_adata.obs = pd.DataFrame(test_adata["obs"])
             mock_adata.uns = test_adata["uns"]
             mock_adata.n_obs = mock_adata.obs.shape[0]
+            mock_adata.n_vars = test_adata["n_vars"]
 
     # Set up CAP validator mock
     if "cap_validator_exception" in test_case:

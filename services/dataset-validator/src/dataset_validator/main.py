@@ -82,6 +82,7 @@ class MetadataSummary:
     tissue: List[str]
     disease: List[str]
     cell_count: int
+    gene_count: int
 
 @dataclass
 class ValidationToolReport:
@@ -352,7 +353,8 @@ def read_metadata(file_path: Path) -> MetadataSummary:
             suspension_type=get_column_unique_values_if_present(adata.obs, "suspension_type"),
             tissue=get_column_unique_values_if_present(adata.obs, "tissue"),
             disease=get_column_unique_values_if_present(adata.obs, "disease"),
-            cell_count=adata.n_obs
+            cell_count=adata.n_obs,
+            gene_count=adata.n_vars
         )
     except Exception as e:
         logger.error("Error reading metadata: %s", e)
