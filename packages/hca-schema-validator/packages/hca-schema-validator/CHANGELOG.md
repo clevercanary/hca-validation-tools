@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/clevercanary/hca-validation-tools/compare/hca-schema-validator-v0.2.0...hca-schema-validator-v0.3.0) (2025-11-26)
+
+
+### Features
+
+* make ensembl id mismatches warnings instead of errors ([#167](https://github.com/clevercanary/hca-validation-tools/issues/167)) ([#168](https://github.com/clevercanary/hca-validation-tools/issues/168)) ([a47561e](https://github.com/clevercanary/hca-validation-tools/commit/a47561e07db0401746f811eefe1b76849c2c3c3e))
+
 ## [0.2.0](https://github.com/clevercanary/hca-validation-tools/compare/hca-schema-validator-v0.1.0...hca-schema-validator-v0.2.0) (2025-10-28)
 
 
