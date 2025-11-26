@@ -180,3 +180,6 @@ deployment/layers/
 deployment/test-lambda-env/
 deployment/entry-sheet-validator/output/
 response.json
+
+# macOS
+.DS_Store
