@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "hca-schema-validator"
-version = "0.2.0"
+version = "0.3.0"
 description = "HCA schema validation for single-cell datasets"
 authors = ["Clever Canary <dave@clevercanary.com>"]
 license = "MIT"
