@@ -461,7 +461,7 @@ class Validator:
             dataset_organism = self.adata.uns.get("organism_ontology_term_id", None)
 
             if not organism:
-                self.errors.append(
+                self.warnings.append(
                     f"Could not infer organism from feature ID '{feature_id}' in '{df_name}', "
                     f"make sure it is a valid ID."
                 )
@@ -472,7 +472,7 @@ class Validator:
             valid_gene_id = get_gene_checker(organism).is_valid_id(feature_id)
 
             if not valid_gene_id:
-                self.errors.append(f"'{feature_id}' is not a valid feature ID in '{df_name}'.")
+                self.warnings.append(f"'{feature_id}' is not a valid feature ID in '{df_name}'.")
 
             if dataset_organism is not None and organism_ontology_id is not None and valid_gene_id:
                 # If the gene id is valid, check if that organism matches the dataset's organism
@@ -482,7 +482,7 @@ class Validator:
 
         invalid_gene_organisms = list(set(invalid_gene_organisms))
         if len(invalid_gene_organisms) > 0:
-            self.errors.append(
+            self.warnings.append(
                 f"uns['organism_ontology_term_id'] is '{dataset_organism}' but feature_ids are from {invalid_gene_organisms}."
             )
 
