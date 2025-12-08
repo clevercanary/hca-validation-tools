@@ -8,7 +8,8 @@ schema_classes = {
     "dataset": {
       "DEFAULT": "Dataset",
       "adipose": "AdiposeDataset",
-      "gut": "GutDataset"
+      "gut": "GutDataset",
+      "musculoskeletal": "MusculoskeletalDataset",
     },
     "donor": {
       "DEFAULT": "Donor"

@@ -1,0 +1,26 @@
+id: https://github.com/clevercanary/hca-validation-tools/schema/bionetwork/musculoskeletal
+name: hca-validation-musculoskeletal
+title: Musculoskeletal BioNetwork Extensions
+description: Musculoskeletal network–specific refinements to the HCA dataset schema
+license: MIT
+version: 0.1.0
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  hca: https://github.com/clevercanary/hca-validation-tools/schema/
+
+default_prefix: hca
+default_range: string
+
+imports:
+  - linkml:types
+  - ../dataset
+  - ../slots
+  - ../enums
+classes:
+  MusculoskeletalDataset:
+    is_a: Dataset
+    description: Dataset with Musculoskeletal BioNetwork–specific metadata requirements.
+    slots:
+      - ambient_count_correction
+      - doublet_detection

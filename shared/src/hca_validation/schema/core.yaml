@@ -17,6 +17,7 @@ imports:
   - dataset
   - bionetwork/adipose
   - bionetwork/gut
+  - bionetwork/musculoskeletal
   - donor
   - sample
   - cell
