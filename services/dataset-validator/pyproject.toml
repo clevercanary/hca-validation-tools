@@ -13,7 +13,7 @@ boto3 = "^1.34.0"
 # python-dotenv = "^1.1.0"
 # hca-validation-shared = {path = "../../shared", develop = true}
 anndata = "^0.12.2"
-cap-upload-validator = "^1.3.0"
+cap-upload-validator = "^1.5.1"
 
 [tool.poetry.group.dev.dependencies]
 # Testing dependencies
