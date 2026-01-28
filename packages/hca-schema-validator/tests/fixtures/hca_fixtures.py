@@ -49,6 +49,21 @@ good_obs = pd.DataFrame(
             "donor_1",
             "nucleus",
             "NCBITaxon:9606",  # HCA: organism in obs
+            "sample_001",
+            "lib_001",
+            "Broad Institute",
+            "batch_001",
+            "run_001",
+            "STAR 2.7.10a",
+            "0",
+            "surgical donor",
+            "biopsy",
+            "healthy",
+            "fresh",
+            "3 prime tag",
+            "GRCh38",
+            "CL:0000066+",
+            "v101",
         ],
         [
             "CL:0000066",
@@ -63,6 +78,21 @@ good_obs = pd.DataFrame(
             "donor_1",
             "nucleus",
             "NCBITaxon:9606",  # HCA: organism in obs
+            "sample_001",
+            "lib_001",
+            "Broad Institute",
+            "batch_001",
+            "run_001",
+            "STAR 2.7.10a",
+            "0",
+            "surgical donor",
+            "biopsy",
+            "healthy",
+            "fresh",
+            "3 prime tag",
+            "GRCh38",
+            "CL:0000066+",
+            "v101",
         ],
     ],
     index=["X", "Y"],
@@ -79,6 +109,21 @@ good_obs = pd.DataFrame(
         "donor_id",
         "suspension_type",
         "organism_ontology_term_id",  # HCA: organism in obs
+        "sample_id",
+        "library_id",
+        "institute",
+        "library_preparation_batch",
+        "library_sequencing_run",
+        "alignment_software",
+        "manner_of_death",
+        "sample_source",
+        "sample_collection_method",
+        "sampled_site_condition",
+        "sample_preservation_method",
+        "sequenced_fragment",
+        "reference_genome",
+        "cell_enrichment",
+        "gene_annotation_version",
     ],
 )
 
@@ -86,6 +131,14 @@ good_obs["donor_id"] = good_obs["donor_id"].astype("category")
 good_obs["suspension_type"] = good_obs["suspension_type"].astype("category")
 good_obs["tissue_type"] = good_obs["tissue_type"].astype("category")
 good_obs["tissue_type"] = good_obs["tissue_type"].cat.add_categories(["primary cell culture", "organoid", "cell line"])
+for _col in [
+    "sample_id", "library_id", "institute", "library_preparation_batch",
+    "library_sequencing_run", "alignment_software", "manner_of_death",
+    "sample_source", "sample_collection_method", "sampled_site_condition",
+    "sample_preservation_method", "sequenced_fragment", "reference_genome",
+    "cell_enrichment", "gene_annotation_version",
+]:
+    good_obs[_col] = good_obs[_col].astype("category")
 
 # Expected obs, this is what the obs above should look like after adding the necessary columns with the validator,
 # these columns are defined in the schema
@@ -142,6 +195,21 @@ good_obs_visium = pd.DataFrame(
             "donor_1",
             "na",
             0,
+            "sample_001",
+            "lib_001",
+            "Broad Institute",
+            "batch_001",
+            "run_001",
+            "STAR 2.7.10a",
+            "0",
+            "surgical donor",
+            "biopsy",
+            "healthy",
+            "fresh",
+            "3 prime tag",
+            "GRCh38",
+            "CL:0000066+",
+            "v101",
         ],
         [
             1,
@@ -158,6 +226,21 @@ good_obs_visium = pd.DataFrame(
             "donor_1",
             "na",
             1,
+            "sample_001",
+            "lib_001",
+            "Broad Institute",
+            "batch_001",
+            "run_001",
+            "STAR 2.7.10a",
+            "0",
+            "surgical donor",
+            "biopsy",
+            "healthy",
+            "fresh",
+            "3 prime tag",
+            "GRCh38",
+            "CL:0000066+",
+            "v101",
         ],
     ],
     index=["X", "Y"],
@@ -176,6 +259,21 @@ good_obs_visium = pd.DataFrame(
         "donor_id",
         "suspension_type",
         "in_tissue",
+        "sample_id",
+        "library_id",
+        "institute",
+        "library_preparation_batch",
+        "library_sequencing_run",
+        "alignment_software",
+        "manner_of_death",
+        "sample_source",
+        "sample_collection_method",
+        "sampled_site_condition",
+        "sample_preservation_method",
+        "sequenced_fragment",
+        "reference_genome",
+        "cell_enrichment",
+        "gene_annotation_version",
     ],
 )
 
@@ -185,6 +283,14 @@ good_obs_visium["tissue_type"] = good_obs_visium["tissue_type"].astype("category
 good_obs_visium["tissue_type"] = good_obs_visium["tissue_type"].cat.add_categories(
     ["primary cell culture", "organoid", "cell line"]
 )
+for _col in [
+    "sample_id", "library_id", "institute", "library_preparation_batch",
+    "library_sequencing_run", "alignment_software", "manner_of_death",
+    "sample_source", "sample_collection_method", "sampled_site_condition",
+    "sample_preservation_method", "sequenced_fragment", "reference_genome",
+    "cell_enrichment", "gene_annotation_version",
+]:
+    good_obs_visium[_col] = good_obs_visium[_col].astype("category")
 
 # Valid spatial obs per schema
 good_obs_slide_seqv2 = pd.DataFrame(
@@ -201,6 +307,21 @@ good_obs_slide_seqv2 = pd.DataFrame(
             "HsapDv:0000003",
             "donor_1",
             "na",
+            "sample_001",
+            "lib_001",
+            "Broad Institute",
+            "batch_001",
+            "run_001",
+            "STAR 2.7.10a",
+            "0",
+            "surgical donor",
+            "biopsy",
+            "healthy",
+            "fresh",
+            "3 prime tag",
+            "GRCh38",
+            "CL:0000066+",
+            "v101",
         ],
         [
             "CL:0000066",
@@ -214,6 +335,21 @@ good_obs_slide_seqv2 = pd.DataFrame(
             "HsapDv:0000003",
             "donor_1",
             "na",
+            "sample_001",
+            "lib_001",
+            "Broad Institute",
+            "batch_001",
+            "run_001",
+            "STAR 2.7.10a",
+            "0",
+            "surgical donor",
+            "biopsy",
+            "healthy",
+            "fresh",
+            "3 prime tag",
+            "GRCh38",
+            "CL:0000066+",
+            "v101",
         ],
     ],
     index=["X", "Y"],
@@ -229,6 +365,21 @@ good_obs_slide_seqv2 = pd.DataFrame(
         "development_stage_ontology_term_id",
         "donor_id",
         "suspension_type",
+        "sample_id",
+        "library_id",
+        "institute",
+        "library_preparation_batch",
+        "library_sequencing_run",
+        "alignment_software",
+        "manner_of_death",
+        "sample_source",
+        "sample_collection_method",
+        "sampled_site_condition",
+        "sample_preservation_method",
+        "sequenced_fragment",
+        "reference_genome",
+        "cell_enrichment",
+        "gene_annotation_version",
     ],
 )
 
@@ -238,6 +389,14 @@ good_obs_slide_seqv2["tissue_type"] = good_obs_slide_seqv2["tissue_type"].astype
 good_obs_slide_seqv2["tissue_type"] = good_obs_slide_seqv2["tissue_type"].cat.add_categories(
     ["primary cell culture", "organoid", "cell line"]
 )
+for _col in [
+    "sample_id", "library_id", "institute", "library_preparation_batch",
+    "library_sequencing_run", "alignment_software", "manner_of_death",
+    "sample_source", "sample_collection_method", "sampled_site_condition",
+    "sample_preservation_method", "sequenced_fragment", "reference_genome",
+    "cell_enrichment", "gene_annotation_version",
+]:
+    good_obs_slide_seqv2[_col] = good_obs_slide_seqv2[_col].astype("category")
 
 good_obs_visium_is_single_false = pd.DataFrame(
     [
@@ -253,6 +412,21 @@ good_obs_visium_is_single_false = pd.DataFrame(
             "HsapDv:0000003",
             "donor_1",
             "na",
+            "sample_001",
+            "lib_001",
+            "Broad Institute",
+            "batch_001",
+            "run_001",
+            "STAR 2.7.10a",
+            "0",
+            "surgical donor",
+            "biopsy",
+            "healthy",
+            "fresh",
+            "3 prime tag",
+            "GRCh38",
+            "CL:0000066+",
+            "v101",
         ],
         [
             "CL:0000066",
@@ -266,6 +440,21 @@ good_obs_visium_is_single_false = pd.DataFrame(
             "HsapDv:0000003",
             "donor_1",
             "na",
+            "sample_001",
+            "lib_001",
+            "Broad Institute",
+            "batch_001",
+            "run_001",
+            "STAR 2.7.10a",
+            "0",
+            "surgical donor",
+            "biopsy",
+            "healthy",
+            "fresh",
+            "3 prime tag",
+            "GRCh38",
+            "CL:0000066+",
+            "v101",
         ],
     ],
     index=["X", "Y"],
@@ -281,6 +470,21 @@ good_obs_visium_is_single_false = pd.DataFrame(
         "development_stage_ontology_term_id",
         "donor_id",
         "suspension_type",
+        "sample_id",
+        "library_id",
+        "institute",
+        "library_preparation_batch",
+        "library_sequencing_run",
+        "alignment_software",
+        "manner_of_death",
+        "sample_source",
+        "sample_collection_method",
+        "sampled_site_condition",
+        "sample_preservation_method",
+        "sequenced_fragment",
+        "reference_genome",
+        "cell_enrichment",
+        "gene_annotation_version",
     ],
 )
 
@@ -292,6 +496,14 @@ good_obs_visium_is_single_false["tissue_type"] = good_obs_visium_is_single_false
 good_obs_visium_is_single_false["tissue_type"] = good_obs_visium_is_single_false["tissue_type"].cat.add_categories(
     ["primary cell culture", "organoid", "cell line"]
 )
+for _col in [
+    "sample_id", "library_id", "institute", "library_preparation_batch",
+    "library_sequencing_run", "alignment_software", "manner_of_death",
+    "sample_source", "sample_collection_method", "sampled_site_condition",
+    "sample_preservation_method", "sequenced_fragment", "reference_genome",
+    "cell_enrichment", "gene_annotation_version",
+]:
+    good_obs_visium_is_single_false[_col] = good_obs_visium_is_single_false[_col].astype("category")
 
 good_obs_mouse = pd.DataFrame(
     [
@@ -308,6 +520,21 @@ good_obs_mouse = pd.DataFrame(
             "donor_2",
             "na",
             "NCBITaxon:10090",  # HCA: organism in obs
+            "sample_001",
+            "lib_001",
+            "Broad Institute",
+            "batch_001",
+            "run_001",
+            "STAR 2.7.10a",
+            "0",
+            "surgical donor",
+            "biopsy",
+            "healthy",
+            "fresh",
+            "3 prime tag",
+            "GRCm39",
+            "CL:0000066+",
+            "v101",
         ],
         [
             "CL:0000192",
@@ -322,6 +549,21 @@ good_obs_mouse = pd.DataFrame(
             "donor_2",
             "na",
             "NCBITaxon:10090",  # HCA: organism in obs
+            "sample_001",
+            "lib_001",
+            "Broad Institute",
+            "batch_001",
+            "run_001",
+            "STAR 2.7.10a",
+            "0",
+            "surgical donor",
+            "biopsy",
+            "healthy",
+            "fresh",
+            "3 prime tag",
+            "GRCm39",
+            "CL:0000066+",
+            "v101",
         ],
     ],
     index=["X", "Y"],
@@ -338,6 +580,21 @@ good_obs_mouse = pd.DataFrame(
         "donor_id",
         "suspension_type",
         "organism_ontology_term_id",  # HCA: organism in obs
+        "sample_id",
+        "library_id",
+        "institute",
+        "library_preparation_batch",
+        "library_sequencing_run",
+        "alignment_software",
+        "manner_of_death",
+        "sample_source",
+        "sample_collection_method",
+        "sampled_site_condition",
+        "sample_preservation_method",
+        "sequenced_fragment",
+        "reference_genome",
+        "cell_enrichment",
+        "gene_annotation_version",
     ],
 )
 
@@ -345,6 +602,14 @@ good_obs_mouse["donor_id"] = good_obs_mouse["donor_id"].astype("category")
 good_obs_mouse["suspension_type"] = good_obs_mouse["suspension_type"].astype("category")
 good_obs_mouse["tissue_type"] = good_obs_mouse["tissue_type"].astype("category")
 good_obs_mouse["tissue_type"] = good_obs_mouse["tissue_type"].cat.add_categories(["tissue", "organoid", "cell line"])
+for _col in [
+    "sample_id", "library_id", "institute", "library_preparation_batch",
+    "library_sequencing_run", "alignment_software", "manner_of_death",
+    "sample_source", "sample_collection_method", "sampled_site_condition",
+    "sample_preservation_method", "sequenced_fragment", "reference_genome",
+    "cell_enrichment", "gene_annotation_version",
+]:
+    good_obs_mouse[_col] = good_obs_mouse[_col].astype("category")
 
 # Creating a cell line obs by copying good_obs and changing the necessary fields
 good_obs_cell_line = good_obs.copy()
@@ -428,6 +693,7 @@ good_uns = {
     "default_embedding": "X_umap",
     "X_approximate_distribution": "normal",
     "batch_condition": ["is_primary_data"],
+    "study_pi": ["Smith, Jane"],
 }
 
 # HCA: organism_ontology_term_id NOT in uns (it's in obs)
@@ -436,6 +702,7 @@ good_uns_mouse = {
     "default_embedding": "X_umap",
     "X_approximate_distribution": "normal",
     "batch_condition": ["is_primary_data"],
+    "study_pi": ["Smith, Jane"],
 }
 
 good_uns_with_labels = {
@@ -448,6 +715,7 @@ good_uns_with_labels = {
     "default_embedding": "X_umap",
     "X_approximate_distribution": "normal",
     "batch_condition": ["is_primary_data"],
+    "study_pi": ["Smith, Jane"],
 }
 
 good_uns_with_colors = {
@@ -455,6 +723,7 @@ good_uns_with_colors = {
     "default_embedding": "X_umap",
     "X_approximate_distribution": "normal",
     "batch_condition": ["is_primary_data"],
+    "study_pi": ["Smith, Jane"],
     "suspension_type_colors": numpy.array(["red", "blue"]),
     "donor_id_colors": numpy.array(["#000000", "#ffffff"]),
     "tissue_type_colors": numpy.array(["black", "pink"]),
@@ -467,6 +736,7 @@ good_uns_with_visium_spatial = {
     "default_embedding": "X_umap",
     "X_approximate_distribution": "normal",
     "batch_condition": ["is_primary_data"],
+    "study_pi": ["Smith, Jane"],
     "spatial": {
         "is_single": numpy.bool_(True),
         visium_library_id: {
@@ -487,6 +757,7 @@ good_uns_with_is_single_false = {
     "default_embedding": "X_umap",
     "X_approximate_distribution": "normal",
     "batch_condition": ["is_primary_data"],
+    "study_pi": ["Smith, Jane"],
     "spatial": {"is_single": False},
 }
 
@@ -495,6 +766,7 @@ good_uns_with_slide_seqV2_spatial = {
     "default_embedding": "X_umap",
     "X_approximate_distribution": "normal",
     "batch_condition": ["is_primary_data"],
+    "study_pi": ["Smith, Jane"],
     "spatial": {"is_single": True},
 }
 
