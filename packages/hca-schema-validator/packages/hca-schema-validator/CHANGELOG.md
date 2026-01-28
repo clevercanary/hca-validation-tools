@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/clevercanary/hca-validation-tools/compare/hca-schema-validator-v0.3.0...hca-schema-validator-v0.4.0) (2026-01-28)
+
+
+### Features
+
+* add HCA tier-1 validation fields ([#177](https://github.com/clevercanary/hca-validation-tools/issues/177)) ([2af5e2e](https://github.com/clevercanary/hca-validation-tools/commit/2af5e2e86ecb674960144d3f868ba0013111f19e))
+
 ## [0.3.0](https://github.com/clevercanary/hca-validation-tools/compare/hca-schema-validator-v0.2.0...hca-schema-validator-v0.3.0) (2025-11-26)
 
 
