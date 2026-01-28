@@ -228,7 +228,8 @@ def test_pattern_invalid_cell_enrichment():
     assert is_valid is False
     error_messages = " ".join(validator.errors)
     assert "cell_enrichment" in error_messages
-    assert "pattern" in error_messages.lower()
+    assert "not valid" in error_messages.lower()
+    assert "cell ontology" in error_messages.lower()
 
 
 def test_pattern_invalid_gene_annotation_version():
@@ -250,7 +251,8 @@ def test_pattern_invalid_gene_annotation_version():
     assert is_valid is False
     error_messages = " ".join(validator.errors)
     assert "gene_annotation_version" in error_messages
-    assert "pattern" in error_messages.lower()
+    assert "not valid" in error_messages.lower()
+    assert "gencode" in error_messages.lower()
 
 
 def test_pattern_valid_na_cell_enrichment():
@@ -289,7 +291,7 @@ def test_pattern_rejects_cell_enrichment_with_trailing_garbage():
     assert is_valid is False
     error_messages = " ".join(validator.errors)
     assert "cell_enrichment" in error_messages
-    assert "pattern" in error_messages.lower()
+    assert "not valid" in error_messages.lower()
 
 
 def test_pattern_rejects_gene_annotation_version_with_trailing_garbage():
@@ -311,7 +313,7 @@ def test_pattern_rejects_gene_annotation_version_with_trailing_garbage():
     assert is_valid is False
     error_messages = " ".join(validator.errors)
     assert "gene_annotation_version" in error_messages
-    assert "pattern" in error_messages.lower()
+    assert "not valid" in error_messages.lower()
 
 
 # ---------------------------------------------------------------------------
