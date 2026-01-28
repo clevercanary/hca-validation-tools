@@ -1,6 +1,5 @@
 """Tests for HCA Validator."""
 
-import copy
 import tempfile
 from pathlib import Path
 
@@ -257,9 +256,6 @@ def test_pattern_invalid_gene_annotation_version():
 def test_pattern_valid_na_cell_enrichment():
     """Test that 'na' is a valid value for cell_enrichment (matches pattern)."""
     import anndata
-    import numpy
-    from scipy import sparse
-    from dask.array import from_array
     from .fixtures.hca_fixtures import good_obs, good_var, good_uns, good_obsm, non_raw_X, X
 
     obs = good_obs.copy()

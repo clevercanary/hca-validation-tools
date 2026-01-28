@@ -39,8 +39,8 @@ Extend the HCA schema validator to enforce HCA-specific required fields, enum co
 
 | Field | Pattern | Examples |
 |-------|---------|----------|
-| `cell_enrichment` | `^(CL:[\d]{7}(\+\|-))\|(na)` | `CL:0000540+`, `CL:0000236-`, `na` |
-| `gene_annotation_version` | `^v(7[5-9]\|[8-9][0-9]\|10[0-9]\|11[01])\|GCF_000001405\.(2[5-9]\|3[0-9]\|40)` | `v75`, `v111`, `GCF_000001405.40` |
+| `cell_enrichment` | `^(CL:\d{7}(\+\|-)|(na))$` | `CL:0000540+`, `CL:0000236-`, `na` |
+| `gene_annotation_version` | `^(v(7[5-9]\|[8-9][0-9]\|10[0-9]\|11[01])\|GCF_000001405\.(2[5-9]\|3[0-9]\|40))$` | `v75`, `v111`, `GCF_000001405.40` |
 
 ## Implementation Gap Analysis
 
@@ -57,8 +57,8 @@ What the existing schema YAML + vendored validator already supports vs what need
 
 1. **`hca_schema_definition.yaml`** — Add all fields to the `uns.keys` and `obs.columns` sections using existing schema patterns where possible (string, enum). Use new `pattern` key for regex fields.
 
-2. **`validate.py` `_validate_list()`** (~line 909) — Add `element_type: string` branch that validates each element is a non-empty string.
+2. **`HCAValidator` in `src/hca_schema_validator/validator.py`** — Override `_validate_list()` to add an `element_type: string` branch that validates each element is a non-empty string.
 
-3. **`validate.py` `_validate_column()`** (~line 682) — Add handling for a `pattern` key in column definitions: run `re.match(pattern, value)` against all unique values in the column and report invalids.
+3. **`HCAValidator` in `src/hca_schema_validator/validator.py`** — Override `_validate_column()` to add handling for a `pattern` key in column definitions: run `re.fullmatch(pattern, value)` against all unique values in the column and report invalids.
 
 4. **Tests** — Add test cases for each new field covering valid data, missing columns, invalid enum values, and regex mismatches.
