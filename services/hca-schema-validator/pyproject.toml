@@ -3,7 +3,7 @@ name = "hca-schema-validator-service"
 version = "0.1.0"
 requires-python = "~=3.11"
 dependencies = [
-    "hca-schema-validator (>=0.3.0,<0.4.0)"
+    "hca-schema-validator (>=0.5.0,<0.6.0)"
 ]
 
 [tool.poetry]
