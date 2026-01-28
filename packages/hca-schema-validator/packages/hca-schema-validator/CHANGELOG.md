@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/clevercanary/hca-validation-tools/compare/hca-schema-validator-v0.4.0...hca-schema-validator-v0.5.0) (2026-01-28)
+
+
+### Features
+
+* human-readable pattern validation errors ([#180](https://github.com/clevercanary/hca-validation-tools/issues/180)) ([861ef0d](https://github.com/clevercanary/hca-validation-tools/commit/861ef0d65fbe486c4b48a0e05ff5b65938a4479b))
+
 ## [0.4.0](https://github.com/clevercanary/hca-validation-tools/compare/hca-schema-validator-v0.3.0...hca-schema-validator-v0.4.0) (2026-01-28)
 
 
