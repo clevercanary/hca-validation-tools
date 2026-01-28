@@ -77,11 +77,18 @@ class HCAValidator(Validator):
         super()._validate_column(column, column_name, df_name, column_def, default_error_message_suffix)
         if "pattern" in column_def:
             compiled_pattern = re.compile(column_def["pattern"])
+            description = column_def.get("pattern_description")
             for value in column.drop_duplicates():
                 if pd.isna(value):
                     continue
                 if not compiled_pattern.fullmatch(str(value)):
-                    self.errors.append(
-                        f"Column '{column_name}' in dataframe '{df_name}' contains a value "
-                        f"'{value}' that does not match the required pattern '{column_def['pattern']}'."
-                    )
+                    if description:
+                        self.errors.append(
+                            f"Column '{column_name}' in dataframe '{df_name}' contains a value "
+                            f"'{value}' which is not valid. Expected {description}."
+                        )
+                    else:
+                        self.errors.append(
+                            f"Column '{column_name}' in dataframe '{df_name}' contains a value "
+                            f"'{value}' that does not match the required pattern '{column_def['pattern']}'."
+                        )
