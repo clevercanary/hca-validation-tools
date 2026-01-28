@@ -13,5 +13,39 @@ permissions:
 jobs:
   release-please:
     runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs['packages/hca-schema-validator--release_created'] }}
     steps:
       - uses: googleapis/release-please-action@v4
+        id: release
+
+  publish-hca-schema-validator:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true' || (github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write  # Required for PyPI trusted publishing
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Poetry
+        run: |
+          curl -sSL https://install.python-poetry.org | python3 -
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Build package
+        run: |
+          cd packages/hca-schema-validator
+          poetry build
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: packages/hca-schema-validator/dist/
