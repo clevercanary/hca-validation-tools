@@ -50,6 +50,10 @@ components:
         enum:
           - count
           - normal
+      study_pi:
+        type: list
+        required: True
+        element_type: string
   var:
     type: dataframe
     required: True
@@ -837,3 +841,93 @@ components:
         add_labels:
           - type: curie
             to_column: organism
+      sample_id:
+        type: categorical
+        subtype: str
+      library_id:
+        type: categorical
+        subtype: str
+      institute:
+        type: categorical
+        subtype: str
+      library_preparation_batch:
+        type: categorical
+        subtype: str
+      library_sequencing_run:
+        type: categorical
+        subtype: str
+      alignment_software:
+        type: categorical
+        subtype: str
+      manner_of_death:
+        type: categorical
+        enum:
+          - "0"
+          - "1"
+          - "2"
+          - "3"
+          - "4"
+          - "unknown"
+          - "not applicable"
+      sample_source:
+        type: categorical
+        enum:
+          - "surgical donor"
+          - "postmortem donor"
+          - "living organ donor"
+      sample_collection_method:
+        type: categorical
+        enum:
+          - "brush"
+          - "scraping"
+          - "biopsy"
+          - "surgical resection"
+          - "blood draw"
+          - "body fluid"
+          - "other"
+      sampled_site_condition:
+        type: categorical
+        enum:
+          - "healthy"
+          - "diseased"
+          - "adjacent"
+      sample_preservation_method:
+        type: categorical
+        enum:
+          - "fresh"
+          - "ambient temperature"
+          - "cut slide"
+          - "paraffin block"
+          - "frozen at -70C"
+          - "frozen at -80C"
+          - "frozen at -150C"
+          - "frozen in liquid nitrogen"
+          - "frozen in vapor phase"
+          - "RNAlater at 4C"
+          - "RNAlater at 25C"
+          - "RNAlater at -20C"
+          - "other"
+      sequenced_fragment:
+        type: categorical
+        enum:
+          - "3 prime tag"
+          - "5 prime tag"
+          - "full length"
+          - "probe-based"
+      reference_genome:
+        type: categorical
+        enum:
+          - "GRCh38"
+          - "GRCh37"
+          - "GRCm39"
+          - "GRCm38"
+          - "GRCm37"
+          - "not applicable"
+      cell_enrichment:
+        type: categorical
+        subtype: str
+        pattern: "^(CL:[\\d]{7}(\\+|-)|(na))$"
+      gene_annotation_version:
+        type: categorical
+        subtype: str
+        pattern: "^(v(7[5-9]|[8-9][0-9]|10[0-9]|11[01])|GCF_000001405\\.(2[5-9]|3[0-9]|40))$"
