@@ -520,6 +520,114 @@ def test_publish_validation_result_scenarios(caplog, mock_aws, test_case):
 @pytest.mark.parametrize("test_case", [
     {
         "name": "success",
+        "description": "Local file mode completes validation, skips S3 and prints JSON to stdout",
+        "adata": {
+            "obs": {
+                "assay": ["assay-a"],
+                "suspension_type": ["cell"],
+                "tissue": ["lung"],
+                "disease": ["normal"]
+            },
+            "uns": {"title": "local-test"},
+            "n_vars": 10
+        },
+        "expected_exit_code": 0,
+        "expected_logs": [
+            "Local file mode: validating",
+            "Validation completed successfully",
+        ],
+        "unexpected_logs": [
+            "Starting download:",
+            "Verifying file integrity",
+            "Publishing validation result to SNS",
+        ],
+        "expected_stdout": {
+            "status": "success",
+            "integrity_status": "valid",
+            "file_id": "local",
+            "batch_job_id": "local",
+            "bucket": "local",
+            "metadata_summary": {
+                "title": "local-test",
+                "assay": ["assay-a"],
+                "suspension_type": ["cell"],
+                "tissue": ["lung"],
+                "disease": ["normal"],
+                "cell_count": 1,
+                "gene_count": 10
+            }
+        }
+    },
+    {
+        "name": "file_not_found",
+        "description": "Local file mode fails when file does not exist",
+        "adata": None,
+        "local_file_override": "/nonexistent/path.h5ad",
+        "expected_exit_code": 1,
+        "expected_logs": [
+            "Missing required environment variables",
+            "file does not exist",
+        ],
+        "unexpected_logs": [],
+        "expected_stdout": None
+    }
+], ids=lambda x: x["name"])
+@patch("anndata.io.read_h5ad")
+def test_local_file_mode(mock_read_h5ad, caplog, env_manager, tmp_path, test_case, capsys):
+    """Test LOCAL_FILE mode skips S3/integrity, prints JSON when no SNS."""
+    from dataset_validator.main import main
+
+    # Create a dummy local file (unless the test overrides the path)
+    local_file = test_case.get("local_file_override")
+    if local_file is None:
+        local_file = str(tmp_path / "test.h5ad")
+        Path(local_file).touch()
+
+    # Set only LOCAL_FILE — no S3/SNS/Batch vars
+    env_manager['set']({
+        'LOCAL_FILE': local_file,
+        **external_validator_path_vars,
+    })
+    # Ensure S3/SNS vars are not set
+    env_manager['clear'](['S3_BUCKET', 'S3_KEY', 'FILE_ID', 'SNS_TOPIC_ARN', 'AWS_BATCH_JOB_ID'])
+
+    # Set up anndata mock
+    test_adata = test_case["adata"]
+    if test_adata is not None:
+        mock_adata = MagicMock()
+        mock_read_h5ad.return_value = mock_adata
+        mock_adata.obs = pd.DataFrame(test_adata["obs"])
+        mock_adata.uns = test_adata["uns"]
+        mock_adata.n_obs = mock_adata.obs.shape[0]
+        mock_adata.n_vars = test_adata["n_vars"]
+
+    with caplog.at_level(logging.INFO, logger="dataset_validator.main"):
+        result = main()
+
+    assert result == test_case["expected_exit_code"]
+
+    for expected_log in test_case["expected_logs"]:
+        assert expected_log in caplog.text
+
+    for unexpected_log in test_case["unexpected_logs"]:
+        assert unexpected_log not in caplog.text, f"Did not expect log: {unexpected_log}"
+
+    # Verify JSON output on stdout (local mode with no SNS)
+    if test_case["expected_stdout"] is not None:
+        captured = capsys.readouterr()
+        output = json.loads(captured.out)
+        for key, expected_value in test_case["expected_stdout"].items():
+            assert output[key] == expected_value, f"Expected {key}={expected_value}, got {output[key]}"
+        # Verify tool reports are present
+        assert output["tool_reports"] is not None
+        assert "cap" in output["tool_reports"]
+        assert "cellxgene" in output["tool_reports"]
+        assert "hcaSchema" in output["tool_reports"]
+
+
+@pytest.mark.parametrize("test_case", [
+    {
+        "name": "success",
         "description": "Test complete validation workflow with successful validation",
         "s3_key": "datasets/test.h5ad",
         "file_id": "test-file-123",
