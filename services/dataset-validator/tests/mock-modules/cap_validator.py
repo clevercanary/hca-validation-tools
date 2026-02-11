@@ -1,6 +1,6 @@
 import json
 import os
-import sys
+
 
 if __name__ == "__main__":
     # Allow tests to inject an error via environment variable

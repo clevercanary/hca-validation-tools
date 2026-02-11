@@ -416,8 +416,8 @@ def apply_cap_validator(file_path: Path) -> ValidationToolReport:
             )
         validator_output = json.loads(result.stdout)
     except Exception as e:
-        message = f"Encountered an unexpected error while calling CAP validator script: {e}"
-        logger.error(message)
+        message = f"Encountered an unexpected error while calling CAP validator: {e}"
+        logger.error("%s (script: %s)", message, script_path)
         validator_output = {"valid": False, "errors": [message], "warnings": []}
 
     finished_at = datetime.now(timezone.utc)
@@ -618,7 +618,8 @@ def validate_environment() -> tuple[dict[str, str], list[str]]:
     Validate required environment variables.
 
     When LOCAL_FILE is set, S3/SNS/batch vars are optional — the validator
-    reads directly from the local path and skips SNS publishing.
+    reads directly from the local path, and SNS publishing only occurs if
+    SNS_TOPIC_ARN is explicitly provided.
 
     Returns:
         Tuple of (env_vars dict, missing_vars list)
