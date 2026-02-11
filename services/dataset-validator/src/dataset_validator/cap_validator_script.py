@@ -21,6 +21,14 @@ from cap_upload_validator.errors import CapException, CapMultiException
 
 
 def main() -> None:
+    if len(sys.argv) < 2:
+        print(json.dumps({
+            "valid": False,
+            "errors": ["Missing required file path argument."],
+            "warnings": [],
+        }))
+        sys.exit(1)
+
     file_path = sys.argv[1]
 
     valid = False

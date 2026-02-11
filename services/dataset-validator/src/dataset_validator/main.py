@@ -212,7 +212,7 @@ logger: logging.Logger = logging.getLogger(__name__)
 
 
 def log_memory_usage(label: str) -> None:
-    """Log current and peak RSS memory usage for CloudWatch observability."""
+    """Log peak RSS memory usage for CloudWatch observability."""
     ru = resource.getrusage(resource.RUSAGE_SELF)
     # macOS reports maxrss in bytes; Linux reports in kilobytes
     divisor = 1024 * 1024 if sys.platform == "darwin" else 1024
@@ -613,7 +613,7 @@ def download_s3_file(bucket: str, key: str, local_path: Path) -> str | None:
         raise
 
 
-def validate_environment() -> tuple[dict[str, str], list[str]]:
+def validate_environment() -> tuple[dict[str, str | None], list[str]]:
     """
     Validate required environment variables.
 
@@ -637,7 +637,7 @@ def validate_environment() -> tuple[dict[str, str], list[str]]:
         'batch_job_name': os.environ.get('BATCH_JOB_NAME')
     }
 
-    # In local file mode, only FILE_ID is truly required (others get defaults)
+    # In local file mode, all fields get defaults; only the file must exist
     if local_file:
         missing_vars = []
         if not os.path.isfile(local_file):
@@ -663,7 +663,7 @@ def validate_environment() -> tuple[dict[str, str], list[str]]:
     return env_vars, missing_vars
 
 
-def create_failure_message(env_vars: dict[str, str], error: str, start_time: datetime) -> ValidationMessage:
+def create_failure_message(env_vars: dict[str, str | None], error: str, start_time: datetime) -> ValidationMessage:
     """Create ValidationMessage for failure cases."""
     return ValidationMessage(
         file_id=env_vars.get('file_id') or "unknown",
