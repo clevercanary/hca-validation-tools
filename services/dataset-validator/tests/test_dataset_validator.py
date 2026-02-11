@@ -408,9 +408,11 @@ def test_cap_validator_script_scenarios(mock_upload_validator, test_case):
         mock_instance.validate.side_effect = Exception("something broke")
     # else: no exception, validate() succeeds
 
-    # Patch sys.argv for the script
+    # Patch sys.argv for the script.
+    # Note: we patch sys.stdout to capture output. The script internally redirects
+    # stdout during validation (to suppress UploadValidator prints) and restores it
+    # afterward — which restores to our patched StringIO, so the final JSON lands here.
     with patch("sys.argv", ["cap_validator_script.py", "test-file.h5ad"]):
-        # Capture the JSON output printed to stdout
         import io
         captured = io.StringIO()
         with patch("sys.stdout", captured):
@@ -753,12 +755,11 @@ def test_end_to_end_validation_scenarios(mock_read_h5ad, caplog, mock_aws, env_m
     }
     if test_case["batch_job_name"]:
         test_env['BATCH_JOB_NAME'] = test_case["batch_job_name"]
-    if test_case.get("cap_mock_error"):
-        test_env['CAP_MOCK_ERROR'] = test_case["cap_mock_error"]
-
     env_manager['set'](test_env)
-    # Ensure CAP_MOCK_ERROR is cleared when the test doesn't set it
-    if not test_case.get("cap_mock_error"):
+    # Manage CAP_MOCK_ERROR: set if specified, clear otherwise to prevent bleed between tests
+    if test_case.get("cap_mock_error"):
+        env_manager['set']({'CAP_MOCK_ERROR': test_case["cap_mock_error"]})
+    else:
         env_manager['clear'](['CAP_MOCK_ERROR'])
 
     # Set up anndata mock

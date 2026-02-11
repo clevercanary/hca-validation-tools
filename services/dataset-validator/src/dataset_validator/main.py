@@ -376,7 +376,7 @@ def read_metadata(file_path: Path) -> MetadataSummary:
             adata.file.close()
 
 
-def get_default_cap_validator_script_path():
+def get_default_cap_validator_script_path() -> Path:
     """Get the default path to the CAP validator script (co-located with main.py)."""
     return Path(__file__).parent / "cap_validator_script.py"
 
@@ -707,6 +707,7 @@ def main() -> int:
     exit_code = 1  # Default to failure
     work_dir: Optional[Path] = None
     local_mode = False
+    env_vars: dict[str, str | None] = {}
 
     try:
         logger.info("Dataset Validator starting")
@@ -828,7 +829,7 @@ def main() -> int:
         cleanup_files(work_dir)
 
         # Publish or print results
-        sns_topic_arn = env_vars.get('sns_topic_arn') if 'env_vars' in locals() else None
+        sns_topic_arn = env_vars.get('sns_topic_arn')
         if validation_message and sns_topic_arn:
             publish_success = publish_validation_result(validation_message, sns_topic_arn)
             if not publish_success:

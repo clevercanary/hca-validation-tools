@@ -44,7 +44,7 @@ def main() -> None:
         valid = True
     except CapMultiException as multi_ex:
         errors.extend(str(e) for e in multi_ex.ex_list)
-    except (Exception, CapException) as e:
+    except (CapException, Exception) as e:
         errors.append(
             f"Encountered an unexpected error while calling CAP validator: {e}"
         )
