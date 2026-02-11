@@ -404,6 +404,34 @@ class TestValidateColumn:
         pattern_errors = [e for e in v.errors if "pattern" in e.lower()]
         assert pattern_errors == []
 
+    def test_nan_in_library_id_does_not_prevent_other_errors(self):
+        """Test that a NaN in library_id doesn't stop validation of other columns."""
+        import anndata
+        import numpy
+        from scipy import sparse
+        from .fixtures.hca_fixtures import good_obs, good_var, good_uns, good_obsm
+
+        obs = good_obs.copy()
+        # Introduce NaN in library_id (must convert from categorical to object first)
+        obs["library_id"] = obs["library_id"].astype(object)
+        obs.loc["X", "library_id"] = numpy.nan
+        # Introduce a second error: invalid enum value for manner_of_death
+        obs["manner_of_death"] = obs["manner_of_death"].cat.add_categories(["invalid_value"])
+        obs["manner_of_death"] = "invalid_value"
+
+        X = sparse.csr_matrix((obs.shape[0], good_var.shape[0]), dtype=numpy.float32)
+        test_adata = anndata.AnnData(X=X, obs=obs, uns=good_uns.copy(), obsm=good_obsm.copy(), var=good_var.copy())
+        test_adata.raw = test_adata.copy()
+        test_adata.raw.var.drop("feature_is_filtered", axis=1, inplace=True)
+
+        is_valid, validator = _validate_from_fixture(test_adata)
+        assert is_valid is False
+        error_messages = " ".join(validator.errors)
+        # Both errors should be reported
+        assert "library_id" in error_messages, "Expected error about library_id NaN"
+        assert "manner_of_death" in error_messages, "Expected error about manner_of_death"
+        assert len(validator.errors) >= 2, f"Expected at least 2 errors, got {len(validator.errors)}: {validator.errors}"
+
     def test_mixed_valid_and_invalid_values(self):
         v = self._make_validator()
         col = pd.Series(["abc", "xyz", "abc"], dtype="category")
