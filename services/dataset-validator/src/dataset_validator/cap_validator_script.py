@@ -13,7 +13,6 @@ Interface contract (same as cellxgene/hca-schema validator scripts):
 
 import io
 import json
-
 import sys
 
 from cap_upload_validator import UploadValidator
