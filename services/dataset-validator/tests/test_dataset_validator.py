@@ -350,6 +350,90 @@ def test_cap_validator_scenarios(test_case, monkeypatch):
     assert report.warnings == []
 
 
+def _build_cap_multi_exception(exceptions):
+    """Helper to build a CapMultiException from a list of exceptions."""
+    from cap_upload_validator.errors import CapMultiException
+    multi_ex = CapMultiException()
+    for ex in exceptions:
+        multi_ex.append(ex)
+    return multi_ex
+
+
+@pytest.mark.parametrize("test_case", [
+    {
+        "name": "success",
+        "description": "Test cap_validator_script with successful validation",
+        "exception": None,
+        "expected_valid": True,
+        "expected_errors": []
+    },
+    {
+        "name": "cap_exception",
+        "description": "Test cap_validator_script with CapException",
+        "exception": "AnnDataFileMissingCountMatrix",
+        "expected_valid": False,
+        "expected_errors_contain": "AnnDataFileMissingCountMatrix"
+    },
+    {
+        "name": "cap_multi_exception",
+        "description": "Test cap_validator_script with CapMultiException (multiple errors)",
+        "exception": "CapMultiException",
+        "expected_valid": False,
+        "expected_error_count": 2
+    },
+    {
+        "name": "generic_exception",
+        "description": "Test cap_validator_script with unexpected Exception",
+        "exception": "Exception",
+        "expected_valid": False,
+        "expected_errors_contain": "Encountered an unexpected error"
+    }
+], ids=lambda x: x["name"])
+@patch("dataset_validator.cap_validator_script.UploadValidator")
+def test_cap_validator_script_scenarios(mock_upload_validator, test_case):
+    """Unit tests for cap_validator_script.py exception handling."""
+    from cap_upload_validator.errors import CapException, CapMultiException, AnnDataFileMissingCountMatrix
+    from dataset_validator.cap_validator_script import main
+
+    mock_instance = MagicMock()
+    mock_upload_validator.return_value = mock_instance
+
+    if test_case["exception"] == "AnnDataFileMissingCountMatrix":
+        mock_instance.validate.side_effect = AnnDataFileMissingCountMatrix()
+    elif test_case["exception"] == "CapMultiException":
+        mock_instance.validate.side_effect = _build_cap_multi_exception([
+            CapException(), AnnDataFileMissingCountMatrix()
+        ])
+    elif test_case["exception"] == "Exception":
+        mock_instance.validate.side_effect = Exception("something broke")
+    # else: no exception, validate() succeeds
+
+    # Patch sys.argv for the script
+    with patch("sys.argv", ["cap_validator_script.py", "test-file.h5ad"]):
+        # Capture the JSON output printed to stdout
+        import io
+        captured = io.StringIO()
+        with patch("sys.stdout", captured):
+            main()
+
+    output = json.loads(captured.getvalue())
+
+    assert output["valid"] == test_case["expected_valid"]
+    assert output["warnings"] == []
+
+    if "expected_errors" in test_case:
+        assert output["errors"] == test_case["expected_errors"]
+    if "expected_errors_contain" in test_case:
+        assert any(test_case["expected_errors_contain"] in e for e in output["errors"]), \
+            f"Expected error containing '{test_case['expected_errors_contain']}', got: {output['errors']}"
+    if "expected_error_count" in test_case:
+        assert len(output["errors"]) == test_case["expected_error_count"], \
+            f"Expected {test_case['expected_error_count']} errors, got {len(output['errors'])}: {output['errors']}"
+
+    mock_upload_validator.assert_called_once_with("test-file.h5ad")
+    mock_instance.validate.assert_called_once()
+
+
 @pytest.mark.parametrize("test_case", [
     {
         "name": "success",
