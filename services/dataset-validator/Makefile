@@ -106,8 +106,8 @@ register-jd:
 		echo "Example: make register-jd PROFILE=excira AWS_REGION=us-east-1 AWS_ACCOUNT_ID=123456789012 TAG=dev-abcdef1"; \
 		exit 1; \
 	fi
-	@if [ -z "$(ECR_REPO)" ] || [ -z "$(JOB_DEF_NAME)" ] || [ -z "$(LOG_GROUP)" ] || [ -z "$(EXEC_ROLE_ARN)" ] || [ -z "$(TASK_ROLE_ARN)" ] || [ -z "$(VCPU)" ] || [ -z "$(MEMORY)" ]; then \
-		echo "Error: ECR_REPO, JOB_DEF_NAME, LOG_GROUP, EXEC_ROLE_ARN, TASK_ROLE_ARN, VCPU, and MEMORY are required"; \
+	@if [ -z "$(ECR_REPO)" ] || [ -z "$(JOB_DEF_NAME)" ] || [ -z "$(LOG_GROUP)" ] || [ -z "$(EXEC_ROLE_ARN)" ] || [ -z "$(TASK_ROLE_ARN)" ] || [ -z "$(VCPU)" ] || [ -z "$(MEMORY)" ] || [ -z "$(EPHEMERAL_STORAGE)" ]; then \
+		echo "Error: ECR_REPO, JOB_DEF_NAME, LOG_GROUP, EXEC_ROLE_ARN, TASK_ROLE_ARN, VCPU, MEMORY, and EPHEMERAL_STORAGE are required"; \
 		exit 1; \
 	fi
 	@echo "Registering Job Definition $(JOB_DEF_NAME) with image $(DOCKER_REGISTRY)/$(ECR_REPO):$(TAG)"
@@ -117,7 +117,7 @@ register-jd:
 		--job-definition-name $(JOB_DEF_NAME) \
 		--type container \
 		--platform-capabilities FARGATE \
-		--container-properties "{\"image\":\"$(DOCKER_REGISTRY)/$(ECR_REPO):$(TAG)\",\"executionRoleArn\":\"$(EXEC_ROLE_ARN)\",\"jobRoleArn\":\"$(TASK_ROLE_ARN)\",\"logConfiguration\":{\"logDriver\":\"awslogs\",\"options\":{\"awslogs-group\":\"$(LOG_GROUP)\",\"awslogs-region\":\"$(AWS_REGION)\",\"awslogs-stream-prefix\":\"validator\"}},\"resourceRequirements\":[{\"type\":\"VCPU\",\"value\":\"$(VCPU)\"},{\"type\":\"MEMORY\",\"value\":\"$(MEMORY)\"}],\"networkConfiguration\":{\"assignPublicIp\":\"DISABLED\"}}"
+		--container-properties "{\"image\":\"$(DOCKER_REGISTRY)/$(ECR_REPO):$(TAG)\",\"executionRoleArn\":\"$(EXEC_ROLE_ARN)\",\"jobRoleArn\":\"$(TASK_ROLE_ARN)\",\"logConfiguration\":{\"logDriver\":\"awslogs\",\"options\":{\"awslogs-group\":\"$(LOG_GROUP)\",\"awslogs-region\":\"$(AWS_REGION)\",\"awslogs-stream-prefix\":\"validator\"}},\"resourceRequirements\":[{\"type\":\"VCPU\",\"value\":\"$(VCPU)\"},{\"type\":\"MEMORY\",\"value\":\"$(MEMORY)\"}],\"ephemeralStorage\":{\"sizeInGiB\":$(EPHEMERAL_STORAGE)},\"networkConfiguration\":{\"assignPublicIp\":\"DISABLED\"}}"
 
 .PHONY: submit-job
 submit-job:

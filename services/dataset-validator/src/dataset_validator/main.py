@@ -5,10 +5,12 @@ Main entry point for dataset validation processing.
 """
 
 import copy
+import gc
 import hashlib
 import json
 import logging
 import os
+import resource
 import shutil
 import sys
 import subprocess
@@ -21,8 +23,6 @@ import boto3
 from botocore.exceptions import ClientError
 import anndata
 import pandas as pd
-from cap_upload_validator import UploadValidator
-from cap_upload_validator.errors import CapException, CapMultiException
 
 
 MAX_SNS_MESSAGE_LENGTH = 250_000 # Somewhat less than the actual value of 256KiB, to make room for small unforseen deviations
@@ -39,11 +39,14 @@ SNS_TOPIC_ARN = 'SNS_TOPIC_ARN'
 AWS_BATCH_JOB_ID = 'AWS_BATCH_JOB_ID'
 AWS_BATCH_JOB_NAME = 'AWS_BATCH_JOB_NAME'
 AWS_DEFAULT_REGION = 'AWS_DEFAULT_REGION'
-# Other variables
+# Local file mode — bypass S3 download and integrity checks
+LOCAL_FILE = 'LOCAL_FILE'
+# Validator path variables
 CELLXGENE_VALIDATOR_VENV = 'CELLXGENE_VALIDATOR_VENV'
 CELLXGENE_VALIDATOR_SCRIPT = "CELLXGENE_VALIDATOR_SCRIPT"
 HCA_SCHEMA_VALIDATOR_VENV = 'HCA_SCHEMA_VALIDATOR_VENV'
 HCA_SCHEMA_VALIDATOR_SCRIPT = "HCA_SCHEMA_VALIDATOR_SCRIPT"
+CAP_VALIDATOR_SCRIPT = "CAP_VALIDATOR_SCRIPT"
 
 # Status constants
 STATUS_SUCCESS = 'success'
@@ -208,6 +211,15 @@ def configure_logging() -> logging.Logger:
 logger: logging.Logger = logging.getLogger(__name__)
 
 
+def log_memory_usage(label: str) -> None:
+    """Log peak RSS memory usage for CloudWatch observability."""
+    ru = resource.getrusage(resource.RUSAGE_SELF)
+    # macOS reports maxrss in bytes; Linux reports in kilobytes
+    divisor = 1024 * 1024 if sys.platform == "darwin" else 1024
+    peak_mb = ru.ru_maxrss / divisor
+    logger.info("Memory [%s]: peak RSS = %.1f MB", label, peak_mb)
+
+
 def publish_validation_result(message: ValidationMessage, sns_topic_arn: str) -> bool:
     """
     Publish validation result to SNS topic.
@@ -364,36 +376,57 @@ def read_metadata(file_path: Path) -> MetadataSummary:
             adata.file.close()
 
 
+def get_default_cap_validator_script_path() -> Path:
+    """Get the default path to the CAP validator script (co-located with main.py)."""
+    return Path(__file__).parent / "cap_validator_script.py"
+
+
 def apply_cap_validator(file_path: Path) -> ValidationToolReport:
     """
-    Apply the CAP validator to the given file and create a validation report.
+    Apply the CAP validator to the given file via a subprocess.
+
+    Running the CAP validator in a separate process ensures its peak memory
+    is reclaimed by the OS when the process exits, preventing memory pressure
+    on subsequent validators.
 
     Args:
         file_path: Path of the file to validate
-    
+
     Returns:
         Validation report
     """
     started_at = datetime.now(timezone.utc)
-    valid = False
-    errors: List[str] = []
+
+    # Determine script path from env var or default (co-located script)
+    script_path = os.environ.get(CAP_VALIDATOR_SCRIPT) or str(
+        get_default_cap_validator_script_path()
+    )
+
     try:
-        uv = UploadValidator(str(file_path))
-        uv.validate()
-        valid = True
-    except CapMultiException as multi_ex:
-        errors.extend(str(e) for e in multi_ex.ex_list)
-    except (Exception, CapException) as e:
+        result = subprocess.run(
+            [sys.executable, script_path, str(file_path)],
+            capture_output=True,
+            text=True,
+        )
+        if result.stderr:
+            logger.warning("CAP validator stderr: %s", result.stderr.strip())
+        if result.returncode != 0:
+            raise subprocess.CalledProcessError(
+                result.returncode, script_path, result.stdout, result.stderr
+            )
+        validator_output = json.loads(result.stdout)
+    except Exception as e:
         message = f"Encountered an unexpected error while calling CAP validator: {e}"
-        logger.error(message)
-        errors.append(message)
+        logger.error("%s (script: %s)", message, script_path)
+        validator_output = {"valid": False, "errors": [message], "warnings": []}
+
     finished_at = datetime.now(timezone.utc)
     return ValidationToolReport(
-        valid=valid,
-        errors=errors,
-        warnings=[],
+        valid=validator_output["valid"],
+        errors=validator_output["errors"],
+        warnings=validator_output["warnings"],
         started_at=started_at.isoformat(),
-        finished_at=finished_at.isoformat()
+        finished_at=finished_at.isoformat(),
     )
 
 
@@ -580,23 +613,37 @@ def download_s3_file(bucket: str, key: str, local_path: Path) -> str | None:
         raise
 
 
-def validate_environment() -> tuple[dict[str, str], list[str]]:
+def validate_environment() -> tuple[dict[str, str | None], list[str]]:
     """
     Validate required environment variables.
-    
+
+    When LOCAL_FILE is set, S3/SNS/batch vars are optional — the validator
+    reads directly from the local path, and SNS publishing only occurs if
+    SNS_TOPIC_ARN is explicitly provided.
+
     Returns:
         Tuple of (env_vars dict, missing_vars list)
     """
+    local_file = os.environ.get(LOCAL_FILE)
+
     env_vars = {
-        'bucket': os.environ.get(S3_BUCKET),
-        'key': os.environ.get(S3_KEY),
-        'file_id': os.environ.get(FILE_ID),
+        'local_file': local_file,
+        'bucket': os.environ.get(S3_BUCKET) or ("local" if local_file else None),
+        'key': os.environ.get(S3_KEY) or (local_file if local_file else None),
+        'file_id': os.environ.get(FILE_ID) or ("local" if local_file else None),
         'sns_topic_arn': os.environ.get(SNS_TOPIC_ARN),
-        'batch_job_id': os.environ.get(AWS_BATCH_JOB_ID),
+        'batch_job_id': os.environ.get(AWS_BATCH_JOB_ID) or ("local" if local_file else None),
         # Read non-reserved job name if provided
         'batch_job_name': os.environ.get('BATCH_JOB_NAME')
     }
-    
+
+    # In local file mode, all fields get defaults; only the file must exist
+    if local_file:
+        missing_vars = []
+        if not os.path.isfile(local_file):
+            missing_vars.append(f"LOCAL_FILE={local_file} (file does not exist)")
+        return env_vars, missing_vars
+
     # Check required variables (batch_job_name is optional; region is resolved by boto3)
     required_vars = ['bucket', 'key', 'file_id', 'sns_topic_arn', 'batch_job_id']
     var_name_mapping = {
@@ -607,16 +654,16 @@ def validate_environment() -> tuple[dict[str, str], list[str]]:
         'batch_job_id': 'AWS_BATCH_JOB_ID'
     }
     missing_vars = []
-    
+
     for var in required_vars:
         if not env_vars[var]:
             env_name = var_name_mapping[var]
             missing_vars.append(f"{env_name}={env_vars[var]}")
-    
+
     return env_vars, missing_vars
 
 
-def create_failure_message(env_vars: dict[str, str], error: str, start_time: datetime) -> ValidationMessage:
+def create_failure_message(env_vars: dict[str, str | None], error: str, start_time: datetime) -> ValidationMessage:
     """Create ValidationMessage for failure cases."""
     return ValidationMessage(
         file_id=env_vars.get('file_id') or "unknown",
@@ -653,26 +700,30 @@ def cleanup_files(work_dir: Optional[Path] = None) -> None:
 def main() -> int:
     """Main entry point for the dataset validator."""
     configure_logging()
-    
+
     # Initialize validation tracking variables
     start_time = datetime.now(timezone.utc)
     validation_message: Optional[ValidationMessage] = None
     exit_code = 1  # Default to failure
     work_dir: Optional[Path] = None
-    
+    local_mode = False
+    env_vars: dict[str, str | None] = {}
+
     try:
         logger.info("Dataset Validator starting")
-        
+        log_memory_usage("startup")
+
         # Validate environment variables
         env_vars, missing_vars = validate_environment()
-        
+        local_mode = bool(env_vars.get('local_file'))
+
         if missing_vars:
             error_msg = f"Missing required environment variables: {', '.join(missing_vars)}"
             logger.error(error_msg)
             validation_message = create_failure_message(env_vars, error_msg, start_time)
             exit_code = 1
             return exit_code
-        
+
         # Initialize validation message with basic info
         validation_message = ValidationMessage(
             file_id=env_vars['file_id'],
@@ -683,56 +734,70 @@ def main() -> int:
             batch_job_id=env_vars['batch_job_id'],
             batch_job_name=env_vars['batch_job_name']
         )
-        
-        logger.info("Processing S3 file: s3://%s/%s", env_vars['bucket'], env_vars['key'])
-        
-        # Create work directory
-        work_dir = create_work_directory()
-        logger.info("Work directory created: %s", work_dir)
-        
-        # Download file from S3
-        local_file = work_dir / Path(env_vars['key']).name
-        source_sha256 = download_s3_file(env_vars['bucket'], env_vars['key'], local_file)
-        logger.info("File ready for validation: %s", local_file)
-        
-        # Check for SHA256 metadata - required for validation
-        if not source_sha256:
-            error_msg = "No source SHA256 metadata found - cannot validate file integrity"
-            logger.error(error_msg + " - terminating")
-            validation_message.status = STATUS_FAILURE
-            validation_message.integrity_status = INTEGRITY_ERROR
-            validation_message.error_message = error_msg
-            exit_code = 1
-            return exit_code
-        
-        # Compute downloaded file SHA256
-        downloaded_sha256 = compute_sha256(local_file)
-        validation_message.downloaded_sha256 = downloaded_sha256
-        validation_message.source_sha256 = source_sha256
-        
-        # Verify file integrity
-        if not verify_file_integrity(local_file, source_sha256):
-            error_msg = "File integrity verification failed"
-            logger.error(error_msg + " - terminating")
-            validation_message.status = STATUS_FAILURE
-            validation_message.integrity_status = INTEGRITY_INVALID
-            validation_message.error_message = error_msg
-            exit_code = 1
-            return exit_code
-        
-        validation_message.integrity_status = INTEGRITY_VALID
-        
+
+        if local_mode:
+            # Local file mode — skip S3 download and integrity checks
+            local_file = Path(env_vars['local_file'])
+            logger.info("Local file mode: validating %s", local_file)
+            validation_message.integrity_status = INTEGRITY_VALID
+        else:
+            logger.info("Processing S3 file: s3://%s/%s", env_vars['bucket'], env_vars['key'])
+
+            # Create work directory
+            work_dir = create_work_directory()
+            logger.info("Work directory created: %s", work_dir)
+
+            # Download file from S3
+            local_file = work_dir / Path(env_vars['key']).name
+            source_sha256 = download_s3_file(env_vars['bucket'], env_vars['key'], local_file)
+            logger.info("File ready for validation: %s", local_file)
+            log_memory_usage("after download")
+
+            # Check for SHA256 metadata - required for validation
+            if not source_sha256:
+                error_msg = "No source SHA256 metadata found - cannot validate file integrity"
+                logger.error(error_msg + " - terminating")
+                validation_message.status = STATUS_FAILURE
+                validation_message.integrity_status = INTEGRITY_ERROR
+                validation_message.error_message = error_msg
+                exit_code = 1
+                return exit_code
+
+            # Compute downloaded file SHA256
+            downloaded_sha256 = compute_sha256(local_file)
+            validation_message.downloaded_sha256 = downloaded_sha256
+            validation_message.source_sha256 = source_sha256
+
+            # Verify file integrity
+            if not verify_file_integrity(local_file, source_sha256):
+                error_msg = "File integrity verification failed"
+                logger.error(error_msg + " - terminating")
+                validation_message.status = STATUS_FAILURE
+                validation_message.integrity_status = INTEGRITY_INVALID
+                validation_message.error_message = error_msg
+                exit_code = 1
+                return exit_code
+
+            validation_message.integrity_status = INTEGRITY_VALID
+
         # Read metadata
         validation_message.metadata_summary = read_metadata(local_file)
+        log_memory_usage("after metadata read")
+        gc.collect()
 
         # Call CAP validator
         cap_validation_report = apply_cap_validator(local_file)
+        log_memory_usage("after CAP validator")
+        gc.collect()
 
         # Call CELLxGENE validator
         cellxgene_validation_report = apply_cellxgene_validator(local_file)
+        log_memory_usage("after CELLxGENE validator")
+        gc.collect()
 
         # Call HCA schema validator
         hca_schema_validation_report = apply_hca_schema_validator(local_file)
+        log_memory_usage("after HCA schema validator")
 
         # Add individual validation reports to message
         validation_message.tool_reports = {
@@ -744,11 +809,11 @@ def main() -> int:
         logger.info("Validation completed successfully")
         validation_message.status = STATUS_SUCCESS
         exit_code = 0
-        
+
     except Exception as e:
         error_msg = f"Dataset Validator failed: {e}"
         logger.error(error_msg)
-        
+
         # Update validation message if it exists, otherwise create minimal one
         if validation_message:
             validation_message.status = STATUS_FAILURE
@@ -758,21 +823,24 @@ def main() -> int:
             empty_env_vars = {}
             validation_message = create_failure_message(empty_env_vars, error_msg, start_time)
         exit_code = 1
-    
+
     finally:
         # Clean up work directory (includes downloaded files)
         cleanup_files(work_dir)
-        
-        # Always publish SNS message before exiting (if we have topic ARN)
-        sns_topic_arn = env_vars.get('sns_topic_arn') if 'env_vars' in locals() else None
+
+        # Publish or print results
+        sns_topic_arn = env_vars.get('sns_topic_arn')
         if validation_message and sns_topic_arn:
             publish_success = publish_validation_result(validation_message, sns_topic_arn)
             if not publish_success:
                 logger.warning("SNS publishing failed, but continuing with original exit code")
-        
+        elif validation_message and local_mode:
+            # In local mode with no SNS, print results to stdout
+            print(json.dumps(asdict(validation_message), indent=2))
+
         if exit_code == 0:
             logger.info("Dataset Validator completed successfully")
-        
+
         return exit_code
 
 

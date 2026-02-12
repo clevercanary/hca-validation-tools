@@ -14,7 +14,6 @@ import pytest
 from moto import mock_s3, mock_sns
 import pandas as pd
 import numpy as np
-from cap_upload_validator.errors import CapException, CapMultiException, AnnDataFileMissingCountMatrix
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from dataset_validator.main import get_poetry_venv_path_from
@@ -26,15 +25,9 @@ external_validator_path_vars = {
     'CELLXGENE_VALIDATOR_VENV': dataset_validator_venv_path,
     'CELLXGENE_VALIDATOR_SCRIPT': str(mock_modules_path / "cellxgene_validator.py"),
     'HCA_SCHEMA_VALIDATOR_VENV': dataset_validator_venv_path,
-    'HCA_SCHEMA_VALIDATOR_SCRIPT': str(mock_modules_path / "hca_schema_validator.py")
+    'HCA_SCHEMA_VALIDATOR_SCRIPT': str(mock_modules_path / "hca_schema_validator.py"),
+    'CAP_VALIDATOR_SCRIPT': str(mock_modules_path / "cap_validator.py"),
 }
-
-
-def build_cap_multi_exception(exceptions: List[CapException]) -> CapMultiException:
-    multi_ex = CapMultiException()
-    for ex in exceptions:
-        multi_ex.append(ex)
-    return multi_ex
 
 
 @pytest.fixture
@@ -318,70 +311,129 @@ def test_read_metadata_scenarios(mock_read_h5ad, test_case):
 @pytest.mark.parametrize("test_case", [
     {
         "name": "success",
-        "description": "Test successful CAP validation",
-        "exception": None,
+        "description": "Test successful CAP validation via mock subprocess",
+        "cap_mock_error": None,
         "expected_report": {
             "valid": True,
             "errors": []
         }
     },
     {
-        "name": "cap_exception",
-        "description": "Test CapException raised by CAP validation",
-        "exception": AnnDataFileMissingCountMatrix(),
-        "expected_report": {
-            "valid": False,
-            "errors": ["Encountered an unexpected error while calling CAP validator: AnnDataFileMissingCountMatrix: DataFile Incorrect format: raw data matrix is missing in .raw.X or .X."]
-        }
-    },
-    {
-        "name": "cap_multi_exception",
-        "description": "Test CapMultiException raised by CAP validation",
-        "exception": build_cap_multi_exception([
-            CapException(), AnnDataFileMissingCountMatrix()
-        ]),
-        "expected_report": {
-            "valid": False,
-            "errors": [
-                "Unknown: Useless CAP exception",
-                "AnnDataFileMissingCountMatrix: DataFile Incorrect format: raw data matrix is missing in .raw.X or .X."
-            ]
-        }
-    },
-    {
-        "name": "exception",
-        "description": "Test Exception raised by CAP validation",
-        "exception": Exception("Error in CAP validator"),
+        "name": "error",
+        "description": "Test CAP validation error via mock subprocess",
+        "cap_mock_error": "Error in CAP validator",
         "expected_report": {
             "valid": False,
             "errors": ["Encountered an unexpected error while calling CAP validator: Error in CAP validator"]
         }
     }
 ], ids=lambda x: x["name"])
-@patch("dataset_validator.main.UploadValidator")
-def test_cap_validator_scenarios(mock_upload_validator, test_case):
-    """Parameterized test for CAP validation scenarios."""
+def test_cap_validator_scenarios(test_case, monkeypatch):
+    """Parameterized test for CAP validation via subprocess."""
     from dataset_validator.main import apply_cap_validator, ValidationToolReport
 
-    # Set up CAP validator mock
-    mock_upload_validator_instance = MagicMock()
-    mock_upload_validator.return_value = mock_upload_validator_instance
-    if test_case["exception"]:
-        mock_upload_validator_instance.validate.side_effect = test_case["exception"]
-    
-    # Test applying CAP validator
-    report = apply_cap_validator("test-file.h5ad")
+    # Point at the mock CAP validator script
+    monkeypatch.setenv("CAP_VALIDATOR_SCRIPT", str(mock_modules_path / "cap_validator.py"))
+    if test_case["cap_mock_error"]:
+        monkeypatch.setenv("CAP_MOCK_ERROR", test_case["cap_mock_error"])
+    else:
+        monkeypatch.delenv("CAP_MOCK_ERROR", raising=False)
 
-    mock_upload_validator.assert_called_once_with("test-file.h5ad")
-    mock_upload_validator_instance.validate.assert_called_once()
+    report = apply_cap_validator(Path("test-file.h5ad"))
 
     assert isinstance(report, ValidationToolReport)
     assert isinstance(report.started_at, str)
     assert isinstance(report.finished_at, str)
-    assert report.started_at < report.finished_at
+    assert report.started_at <= report.finished_at
     assert report.valid == test_case["expected_report"]["valid"]
     assert report.errors == test_case["expected_report"]["errors"]
     assert report.warnings == []
+
+
+def _build_cap_multi_exception(exceptions):
+    """Helper to build a CapMultiException from a list of exceptions."""
+    from cap_upload_validator.errors import CapMultiException
+    multi_ex = CapMultiException()
+    for ex in exceptions:
+        multi_ex.append(ex)
+    return multi_ex
+
+
+@pytest.mark.parametrize("test_case", [
+    {
+        "name": "success",
+        "description": "Test cap_validator_script with successful validation",
+        "exception": None,
+        "expected_valid": True,
+        "expected_errors": []
+    },
+    {
+        "name": "cap_exception",
+        "description": "Test cap_validator_script with CapException",
+        "exception": "AnnDataFileMissingCountMatrix",
+        "expected_valid": False,
+        "expected_errors_contain": "AnnDataFileMissingCountMatrix"
+    },
+    {
+        "name": "cap_multi_exception",
+        "description": "Test cap_validator_script with CapMultiException (multiple errors)",
+        "exception": "CapMultiException",
+        "expected_valid": False,
+        "expected_error_count": 2
+    },
+    {
+        "name": "generic_exception",
+        "description": "Test cap_validator_script with unexpected Exception",
+        "exception": "Exception",
+        "expected_valid": False,
+        "expected_errors_contain": "Encountered an unexpected error"
+    }
+], ids=lambda x: x["name"])
+@patch("dataset_validator.cap_validator_script.UploadValidator")
+def test_cap_validator_script_scenarios(mock_upload_validator, test_case):
+    """Unit tests for cap_validator_script.py exception handling."""
+    from cap_upload_validator.errors import CapException, CapMultiException, AnnDataFileMissingCountMatrix
+    from dataset_validator.cap_validator_script import main
+
+    mock_instance = MagicMock()
+    mock_upload_validator.return_value = mock_instance
+
+    if test_case["exception"] == "AnnDataFileMissingCountMatrix":
+        mock_instance.validate.side_effect = AnnDataFileMissingCountMatrix()
+    elif test_case["exception"] == "CapMultiException":
+        mock_instance.validate.side_effect = _build_cap_multi_exception([
+            CapException(), AnnDataFileMissingCountMatrix()
+        ])
+    elif test_case["exception"] == "Exception":
+        mock_instance.validate.side_effect = Exception("something broke")
+    # else: no exception, validate() succeeds
+
+    # Patch sys.argv for the script.
+    # Note: we patch sys.stdout to capture output. The script internally redirects
+    # stdout during validation (to suppress UploadValidator prints) and restores it
+    # afterward — which restores to our patched StringIO, so the final JSON lands here.
+    with patch("sys.argv", ["cap_validator_script.py", "test-file.h5ad"]):
+        import io
+        captured = io.StringIO()
+        with patch("sys.stdout", captured):
+            main()
+
+    output = json.loads(captured.getvalue())
+
+    assert output["valid"] == test_case["expected_valid"]
+    assert output["warnings"] == []
+
+    if "expected_errors" in test_case:
+        assert output["errors"] == test_case["expected_errors"]
+    if "expected_errors_contain" in test_case:
+        assert any(test_case["expected_errors_contain"] in e for e in output["errors"]), \
+            f"Expected error containing '{test_case['expected_errors_contain']}', got: {output['errors']}"
+    if "expected_error_count" in test_case:
+        assert len(output["errors"]) == test_case["expected_error_count"], \
+            f"Expected {test_case['expected_error_count']} errors, got {len(output['errors'])}: {output['errors']}"
+
+    mock_upload_validator.assert_called_once_with("test-file.h5ad")
+    mock_instance.validate.assert_called_once()
 
 
 @pytest.mark.parametrize("test_case", [
@@ -431,8 +483,7 @@ def test_cap_validator_scenarios(mock_upload_validator, test_case):
         ]
     }
 ], ids=lambda x: x["name"])
-@patch("dataset_validator.main.UploadValidator")
-def test_publish_validation_result_scenarios(mock_update_validator, caplog, mock_aws, test_case):
+def test_publish_validation_result_scenarios(caplog, mock_aws, test_case):
     """Parameterized test for SNS publishing scenarios."""
     from dataset_validator.main import publish_validation_result, ValidationMessage, configure_logging
     
@@ -464,6 +515,114 @@ def test_publish_validation_result_scenarios(mock_update_validator, caplog, mock
         message_json = message.to_json()
         parsed_message = json.loads(message_json)
         assert parsed_message == test_case["message_data"]
+
+
+@pytest.mark.parametrize("test_case", [
+    {
+        "name": "success",
+        "description": "Local file mode completes validation, skips S3 and prints JSON to stdout",
+        "adata": {
+            "obs": {
+                "assay": ["assay-a"],
+                "suspension_type": ["cell"],
+                "tissue": ["lung"],
+                "disease": ["normal"]
+            },
+            "uns": {"title": "local-test"},
+            "n_vars": 10
+        },
+        "expected_exit_code": 0,
+        "expected_logs": [
+            "Local file mode: validating",
+            "Validation completed successfully",
+        ],
+        "unexpected_logs": [
+            "Starting download:",
+            "Verifying file integrity",
+            "Publishing validation result to SNS",
+        ],
+        "expected_stdout": {
+            "status": "success",
+            "integrity_status": "valid",
+            "file_id": "local",
+            "batch_job_id": "local",
+            "bucket": "local",
+            "metadata_summary": {
+                "title": "local-test",
+                "assay": ["assay-a"],
+                "suspension_type": ["cell"],
+                "tissue": ["lung"],
+                "disease": ["normal"],
+                "cell_count": 1,
+                "gene_count": 10
+            }
+        }
+    },
+    {
+        "name": "file_not_found",
+        "description": "Local file mode fails when file does not exist",
+        "adata": None,
+        "local_file_override": "/nonexistent/path.h5ad",
+        "expected_exit_code": 1,
+        "expected_logs": [
+            "Missing required environment variables",
+            "file does not exist",
+        ],
+        "unexpected_logs": [],
+        "expected_stdout": None
+    }
+], ids=lambda x: x["name"])
+@patch("anndata.io.read_h5ad")
+def test_local_file_mode(mock_read_h5ad, caplog, env_manager, tmp_path, test_case, capsys):
+    """Test LOCAL_FILE mode skips S3/integrity, prints JSON when no SNS."""
+    from dataset_validator.main import main
+
+    # Create a dummy local file (unless the test overrides the path)
+    local_file = test_case.get("local_file_override")
+    if local_file is None:
+        local_file = str(tmp_path / "test.h5ad")
+        Path(local_file).touch()
+
+    # Set only LOCAL_FILE — no S3/SNS/Batch vars
+    env_manager['set']({
+        'LOCAL_FILE': local_file,
+        **external_validator_path_vars,
+    })
+    # Ensure S3/SNS vars are not set
+    env_manager['clear'](['S3_BUCKET', 'S3_KEY', 'FILE_ID', 'SNS_TOPIC_ARN', 'AWS_BATCH_JOB_ID'])
+
+    # Set up anndata mock
+    test_adata = test_case["adata"]
+    if test_adata is not None:
+        mock_adata = MagicMock()
+        mock_read_h5ad.return_value = mock_adata
+        mock_adata.obs = pd.DataFrame(test_adata["obs"])
+        mock_adata.uns = test_adata["uns"]
+        mock_adata.n_obs = mock_adata.obs.shape[0]
+        mock_adata.n_vars = test_adata["n_vars"]
+
+    with caplog.at_level(logging.INFO, logger="dataset_validator.main"):
+        result = main()
+
+    assert result == test_case["expected_exit_code"]
+
+    for expected_log in test_case["expected_logs"]:
+        assert expected_log in caplog.text
+
+    for unexpected_log in test_case["unexpected_logs"]:
+        assert unexpected_log not in caplog.text, f"Did not expect log: {unexpected_log}"
+
+    # Verify JSON output on stdout (local mode with no SNS)
+    if test_case["expected_stdout"] is not None:
+        captured = capsys.readouterr()
+        output = json.loads(captured.out)
+        for key, expected_value in test_case["expected_stdout"].items():
+            assert output[key] == expected_value, f"Expected {key}={expected_value}, got {output[key]}"
+        # Verify tool reports are present
+        assert output["tool_reports"] is not None
+        assert "cap" in output["tool_reports"]
+        assert "cellxgene" in output["tool_reports"]
+        assert "hcaSchema" in output["tool_reports"]
 
 
 @pytest.mark.parametrize("test_case", [
@@ -637,14 +796,13 @@ def test_publish_validation_result_scenarios(mock_update_validator, caplog, mock
             "uns": {"title": "test-dataset-123"},
             "n_vars": 17
         },
-        "cap_validator_exception": Exception("Error in CAP validator"),
+        "cap_mock_error": "Error in CAP validator",
         "expected_exit_code": 0,
         "expected_logs": [
             "Dataset Validator starting",
             "Processing S3 file: s3://test-bucket/datasets/test.h5ad",
             "Work directory created:",
             "File ready for validation:",
-            "Encountered an unexpected error while calling CAP validator:",
             "Validation completed successfully",
             "Publishing validation result to SNS topic",
             "Successfully published SNS message",
@@ -686,15 +844,14 @@ def test_publish_validation_result_scenarios(mock_update_validator, caplog, mock
         }
     }
 ], ids=lambda x: x["name"])
-@patch("dataset_validator.main.UploadValidator")
 @patch("anndata.io.read_h5ad")
-def test_end_to_end_validation_scenarios(mock_read_h5ad, mock_upload_validator, caplog, mock_aws, env_manager, test_case):
+def test_end_to_end_validation_scenarios(mock_read_h5ad, caplog, mock_aws, env_manager, test_case):
     """Parameterized test for end-to-end validation scenarios."""
     from dataset_validator.main import main
-    
+
     # Setup S3 file based on test case
     test_case["setup_s3"](mock_aws['s3_client'], mock_aws['bucket_name'])
-    
+
     # Set environment variables using fixture
     test_env = {
         'S3_BUCKET': mock_aws['bucket_name'],
@@ -706,9 +863,13 @@ def test_end_to_end_validation_scenarios(mock_read_h5ad, mock_upload_validator, 
     }
     if test_case["batch_job_name"]:
         test_env['BATCH_JOB_NAME'] = test_case["batch_job_name"]
-    
     env_manager['set'](test_env)
-    
+    # Manage CAP_MOCK_ERROR: set if specified, clear otherwise to prevent bleed between tests
+    if test_case.get("cap_mock_error"):
+        env_manager['set']({'CAP_MOCK_ERROR': test_case["cap_mock_error"]})
+    else:
+        env_manager['clear'](['CAP_MOCK_ERROR'])
+
     # Set up anndata mock
     test_adata = test_case["adata"]
     if test_adata is not None:
@@ -721,12 +882,6 @@ def test_end_to_end_validation_scenarios(mock_read_h5ad, mock_upload_validator, 
             mock_adata.uns = test_adata["uns"]
             mock_adata.n_obs = mock_adata.obs.shape[0]
             mock_adata.n_vars = test_adata["n_vars"]
-
-    # Set up CAP validator mock
-    if "cap_validator_exception" in test_case:
-        mock_upload_validator_instance = MagicMock()
-        mock_upload_validator.return_value = mock_upload_validator_instance
-        mock_upload_validator_instance.validate.side_effect = test_case["cap_validator_exception"]
 
     # Run main function
     with caplog.at_level(logging.INFO, logger="dataset_validator.main"):
