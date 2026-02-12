@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.1](https://github.com/clevercanary/hca-validation-tools/compare/hca-schema-validator-v0.5.0...hca-schema-validator-v0.5.1) (2026-02-12)
+
+
+### Bug Fixes
+
+* batch validator failing on large files ([#188](https://github.com/clevercanary/hca-validation-tools/issues/188)) ([94b19a7](https://github.com/clevercanary/hca-validation-tools/commit/94b19a7ddd9da9f8862825e8d51390042424839f))
+
 ## [0.5.0](https://github.com/clevercanary/hca-validation-tools/compare/hca-schema-validator-v0.4.0...hca-schema-validator-v0.5.0) (2026-01-28)
 
 
