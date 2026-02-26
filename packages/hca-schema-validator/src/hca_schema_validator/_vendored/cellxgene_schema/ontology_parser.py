@@ -27,7 +27,8 @@ def _load_ontology_file_with_overlay(file_name: str):
     if os.path.exists(overlay_path):
         with open(overlay_path, "rb") as f:
             dctx = zstd.ZstdDecompressor()
-            return json.load(dctx.stream_reader(f))
+            with dctx.stream_reader(f) as reader:
+                return json.load(reader)
     return _original_load_ontology_file(file_name)
 
 
