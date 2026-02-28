@@ -10,21 +10,22 @@ packages = [{include = "hca_schema_validator", from = "src"}]
 
 [tool.poetry.dependencies]
 python = "^3.10"
-# Dependencies for vendored cellxgene_schema code
-anndata = ">=0.11.0,<0.12"
-cellxgene-ontology-guide = ">=1.9.0,<2.0"
+# Dependencies aligned with cellxgene-schema 7.0.1 pins
+anndata = "==0.11.4"
+cellxgene-ontology-guide = "==1.9.0"
 click = "<9"
-dask = {extras = ["array", "dataframe"], version = ">=2024.0.0"}
-duckdb = ">=1.3.0,<1.4"  # Pinned for ibis compatibility
+dask = {extras = ["array", "dataframe"], version = "==2024.12.0"}
+duckdb = "==1.3.2"
 ibis-framework = {extras = ["duckdb"], version = ">=10.3"}
 numpy = "<3"
 pandas = ">2,<3"
 pyarrow = ">=19"
 pyyaml = "<7"
 scipy = "<1.16"
-sparse = ">=0.15.0,<0.16"
+sparse = "==0.15.1"
 semver = "<4"
 xxhash = "<4"
+zstandard = ">=0.22.0,<1"
 matplotlib = "<4"
 pysam = ">=0.13.0"
 

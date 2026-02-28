@@ -439,3 +439,37 @@ class TestValidateColumn:
         pattern_errors = [e for e in v.errors if "pattern" in e.lower()]
         assert len(pattern_errors) == 1
         assert "xyz" in pattern_errors[0]
+
+
+class TestCLOntologyOverlay:
+    """Tests that the CL ontology overlay includes newer salivary gland cell types."""
+
+    def test_new_salivary_gland_cl_terms_are_valid(self):
+        """CL terms added in Aug 2025 (post v2025-07-30) should be recognized."""
+        from hca_schema_validator._vendored.cellxgene_schema.ontology_parser import ONTOLOGY_PARSER
+
+        new_terms = {
+            "CL:4052065": "serous acinar cell of salivary gland",
+            "CL:4052066": "mucous acinar cell of salivary gland",
+            "CL:4052067": "seromucous acinar cell of salivary gland",
+            "CL:4052069": "excretory duct cell of salivary gland",
+        }
+        for term_id, expected_label in new_terms.items():
+            assert ONTOLOGY_PARSER.is_valid_term_id(term_id), f"{term_id} should be valid"
+            assert ONTOLOGY_PARSER.get_term_label(term_id) == expected_label
+
+    def test_existing_cl_terms_still_valid(self):
+        """Ensure the overlay doesn't break existing CL terms."""
+        from hca_schema_validator._vendored.cellxgene_schema.ontology_parser import ONTOLOGY_PARSER
+
+        assert ONTOLOGY_PARSER.is_valid_term_id("CL:0000000")
+        assert ONTOLOGY_PARSER.get_term_label("CL:0000000") == "cell"
+        assert ONTOLOGY_PARSER.is_valid_term_id("CL:0000540")
+        assert ONTOLOGY_PARSER.get_term_label("CL:0000540") == "neuron"
+
+    def test_non_cl_ontologies_still_work(self):
+        """Non-CL ontologies should continue using bundled package data."""
+        from hca_schema_validator._vendored.cellxgene_schema.ontology_parser import ONTOLOGY_PARSER
+
+        assert ONTOLOGY_PARSER.is_valid_term_id("EFO:0010961")
+        assert ONTOLOGY_PARSER.is_valid_term_id("UBERON:0000955")
