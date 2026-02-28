@@ -86,11 +86,11 @@ ontology data files and overlay them at runtime.
 `_vendored/cellxgene_schema/ontology_parser.py` monkey-patches two functions from
 `cellxgene_ontology_guide.supported_versions`:
 
-- `load_supported_versions()` returns our custom `ontology_info.json` (with bumped versions)
-- `load_ontology_file(file_name)` checks `ontology_data/` first, falls back to package data
-
-Only the ontologies we place in `ontology_data/` are overridden. Everything else uses
-the bundled package data unchanged.
+- `load_supported_versions()` loads upstream version data and patches only the ontology
+  versions listed in `_ONTOLOGY_VERSION_OVERRIDES` — all other ontologies and any new
+  entries added by future package releases are preserved unchanged.
+- `load_ontology_file(file_name)` checks `ontology_data/` first for a `.json.zst` file,
+  falling back to the package's bundled data.
 
 ### Current overlays
 
@@ -159,8 +159,13 @@ Prerequisites: Python 3.10+, Docker, ~1GB disk for OWL files.
 
 5. **Copy the `.json.zst` output** into `src/hca_schema_validator/ontology_data/`.
 
-6. **Update `ontology_data/ontology_info.json`** — bump the version for the ontology
-   in the `"7.0.0"` section.
+6. **Add an entry to `_ONTOLOGY_VERSION_OVERRIDES`** in `ontology_parser.py`:
+   ```python
+   _ONTOLOGY_VERSION_OVERRIDES = {
+       ("7.0.0", "CL"): "v2025-12-17",
+       ("7.0.0", "EFO"): "v3.86.0",  # new
+   }
+   ```
 
 7. **Verify and test**:
    ```bash

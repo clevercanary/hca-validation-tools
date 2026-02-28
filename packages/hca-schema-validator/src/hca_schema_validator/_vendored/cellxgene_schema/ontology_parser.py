@@ -1,3 +1,4 @@
+import copy
 import functools
 import json
 import os
@@ -16,7 +17,17 @@ from cellxgene_ontology_guide.ontology_parser import OntologyParser
 
 _ONTOLOGY_DATA_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "..", "ontology_data")
 
-_original_load_ontology_file = supported_versions.load_ontology_file.__wrapped__
+# Ontology version overrides: map of (schema_version, ontology_name) -> new version string.
+# Only the ontologies listed here are patched; everything else uses upstream data.
+_ONTOLOGY_VERSION_OVERRIDES = {
+    ("7.0.0", "CL"): "v2025-12-17",
+}
+
+_original_load_ontology_file = getattr(
+    supported_versions.load_ontology_file,
+    "__wrapped__",
+    supported_versions.load_ontology_file,
+)
 _original_load_supported_versions = supported_versions.load_supported_versions
 
 
@@ -33,16 +44,17 @@ def _load_ontology_file_with_overlay(file_name: str):
 
 
 def _load_supported_versions_with_overlay():
-    """Load ontology_info.json from our overlay directory."""
-    overlay_path = os.path.join(_ONTOLOGY_DATA_DIR, "ontology_info.json")
-    if os.path.exists(overlay_path):
-        with open(overlay_path) as f:
-            return json.load(f)
-    return _original_load_supported_versions()
+    """Load upstream supported versions and patch specific ontology versions from our overrides."""
+    data = copy.deepcopy(_original_load_supported_versions())
+    for (schema_version, ontology_name), new_version in _ONTOLOGY_VERSION_OVERRIDES.items():
+        if schema_version in data and ontology_name in data[schema_version].get("ontologies", {}):
+            data[schema_version]["ontologies"][ontology_name]["version"] = new_version
+    return data
 
 
-# Clear the original cache and apply our overrides
-supported_versions.load_ontology_file.cache_clear()
+# Clear the original cache (if present) and apply our overrides
+if hasattr(supported_versions.load_ontology_file, "cache_clear"):
+    supported_versions.load_ontology_file.cache_clear()
 supported_versions.load_ontology_file = _load_ontology_file_with_overlay
 supported_versions.load_supported_versions = _load_supported_versions_with_overlay
 
