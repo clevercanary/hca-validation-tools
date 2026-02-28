@@ -7,6 +7,8 @@ import zstandard as zstd
 from cellxgene_ontology_guide import supported_versions
 from cellxgene_ontology_guide.ontology_parser import OntologyParser
 
+from hca_schema_validator._vendored.cellxgene_schema import __schema_version__
+
 # Override CL ontology data with a newer version bundled in our ontology_data/ directory.
 # The bundled cellxgene-ontology-guide v1.9.0 ships CL v2025-07-30, which predates several
 # salivary gland cell types added in Aug 2025 (CL:4052065–4052069). We generated an updated
@@ -18,9 +20,10 @@ from cellxgene_ontology_guide.ontology_parser import OntologyParser
 _ONTOLOGY_DATA_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "..", "ontology_data")
 
 # Ontology version overrides: map of (schema_version, ontology_name) -> new version string.
+# Schema version is derived from the vendored cellxgene_schema __schema_version__.
 # Only the ontologies listed here are patched; everything else uses upstream data.
 _ONTOLOGY_VERSION_OVERRIDES = {
-    ("7.0.0", "CL"): "v2025-12-17",
+    (__schema_version__, "CL"): "v2025-12-17",
 }
 
 _original_load_ontology_file = getattr(
@@ -58,4 +61,4 @@ if hasattr(supported_versions.load_ontology_file, "cache_clear"):
 supported_versions.load_ontology_file = _load_ontology_file_with_overlay
 supported_versions.load_supported_versions = _load_supported_versions_with_overlay
 
-ONTOLOGY_PARSER = OntologyParser(schema_version="v7.0.0")
+ONTOLOGY_PARSER = OntologyParser(schema_version=f"v{__schema_version__}")
