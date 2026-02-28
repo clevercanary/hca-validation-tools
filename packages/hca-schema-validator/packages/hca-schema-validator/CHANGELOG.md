@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.0](https://github.com/clevercanary/hca-validation-tools/compare/hca-schema-validator-v0.5.0...hca-schema-validator-v0.6.0) (2026-02-28)
+
+
+### Features
+
+* bump CL ontology to v2025-12-17 for salivary gland cell types ([#191](https://github.com/clevercanary/hca-validation-tools/issues/191)) ([75bd55c](https://github.com/clevercanary/hca-validation-tools/commit/75bd55c63093af0eecf9a9ebf0c053ad64b6e582))
+
+
+### Bug Fixes
+
+* batch validator failing on large files ([#188](https://github.com/clevercanary/hca-validation-tools/issues/188)) ([94b19a7](https://github.com/clevercanary/hca-validation-tools/commit/94b19a7ddd9da9f8862825e8d51390042424839f))
+
 ## [0.5.0](https://github.com/clevercanary/hca-validation-tools/compare/hca-schema-validator-v0.4.0...hca-schema-validator-v0.5.0) (2026-01-28)
 
 
