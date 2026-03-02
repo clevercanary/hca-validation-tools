@@ -236,36 +236,56 @@ tests = ["pytest", "pytest-cov", "pytest-xdist"]
 
 [[package]]
 name = "dask"
-version = "2025.10.0"
+version = "2024.12.0"
 description = "Parallel PyData with Task Scheduling"
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "dask-2025.10.0-py3-none-any.whl", hash = "sha256:86c0a4aecbed3eae938f13a52bcc3fdc35852cce34d7d701590c15850b92506e"},
-    {file = "dask-2025.10.0.tar.gz", hash = "sha256:fd3159c319c27cea39b891c0f22d60056a33575fb4906618eab0aeeb5dcd0cbc"},
+    {file = "dask-2024.12.0-py3-none-any.whl", hash = "sha256:e038e87b9f06e7927b81ecde6cf2b49aa699bb902fec11abba5697cb48baeb8d"},
+    {file = "dask-2024.12.0.tar.gz", hash = "sha256:ffd02b06ac06b993df0b48e0ba4fe02abceb5c8b34b40bd91d63f33ec7a272a4"},
 ]
 
 [package.dependencies]
 click = ">=8.1"
 cloudpickle = ">=3.0.0"
+dask-expr = {version = ">=1.1,<1.2", optional = true, markers = "extra == \"dataframe\""}
 fsspec = ">=2021.09.0"
 importlib_metadata = {version = ">=4.13.0", markers = "python_version < \"3.12\""}
 numpy = {version = ">=1.24", optional = true, markers = "extra == \"array\""}
 packaging = ">=20.0"
 pandas = {version = ">=2.0", optional = true, markers = "extra == \"dataframe\""}
 partd = ">=1.4.0"
-pyarrow = {version = ">=14.0.1", optional = true, markers = "extra == \"dataframe\""}
 pyyaml = ">=5.3.1"
 toolz = ">=0.10.0"
 
 [package.extras]
 array = ["numpy (>=1.24)"]
 complete = ["dask[array,dataframe,diagnostics,distributed]", "lz4 (>=4.3.2)", "pyarrow (>=14.0.1)"]
-dataframe = ["dask[array]", "pandas (>=2.0)", "pyarrow (>=14.0.1)"]
+dataframe = ["dask-expr (>=1.1,<1.2)", "dask[array]", "pandas (>=2.0)"]
 diagnostics = ["bokeh (>=3.1.0)", "jinja2 (>=2.10.3)"]
-distributed = ["distributed (==2025.10.0)"]
-test = ["pandas[test]", "pre-commit", "pytest", "pytest-cov", "pytest-mock", "pytest-rerunfailures", "pytest-timeout", "pytest-xdist"]
+distributed = ["distributed (==2024.12.0)"]
+test = ["pandas[test]", "pre-commit", "pytest", "pytest-cov", "pytest-rerunfailures", "pytest-timeout", "pytest-xdist"]
+
+[[package]]
+name = "dask-expr"
+version = "1.1.20"
+description = "High Level Expressions for Dask"
+optional = false
+python-versions = ">=3.10"
+groups = ["main"]
+files = [
+    {file = "dask_expr-1.1.20-py3-none-any.whl", hash = "sha256:a10755f2bc7d7cfb060b4fc9c7e8b139a03d961c4420ebd50ea319ea906f8b80"},
+    {file = "dask_expr-1.1.20.tar.gz", hash = "sha256:c5be6243296c299e21e02aa93e863e28e6f21ab3c01b645cec3dd56e1b1eac9b"},
+]
+
+[package.dependencies]
+dask = "2024.12.0"
+pandas = ">=2"
+pyarrow = ">=14.0.1"
+
+[package.extras]
+analyze = ["crick", "distributed", "graphviz"]
 
 [[package]]
 name = "duckdb"
@@ -489,22 +509,22 @@ numpy = ">=1.21.2"
 
 [[package]]
 name = "hca-schema-validator"
-version = "0.5.0"
+version = "0.6.0"
 description = "HCA schema validation for single-cell datasets"
 optional = false
 python-versions = "<4.0,>=3.10"
 groups = ["main"]
 files = [
-    {file = "hca_schema_validator-0.5.0-py3-none-any.whl", hash = "sha256:d21d20758fdded8c666bdab87e4af0ac788515ca72fe976d1dbf16cdb9c799b6"},
-    {file = "hca_schema_validator-0.5.0.tar.gz", hash = "sha256:866e71becaef7b52bbaf04130473270dff16516ae97d86d5016de73be5334965"},
+    {file = "hca_schema_validator-0.6.0-py3-none-any.whl", hash = "sha256:ca9122d2a97989878f8ed1cae3e9f280f59fc7888182d8a51376f1e9051d1f94"},
+    {file = "hca_schema_validator-0.6.0.tar.gz", hash = "sha256:52700ccef627a9ba30f1ad17b2eafd0b9a2dbbcb31f9c2fae208fbf4b6b326da"},
 ]
 
 [package.dependencies]
-anndata = ">=0.11.0,<0.12"
-cellxgene-ontology-guide = ">=1.9.0,<2.0"
+anndata = "0.11.4"
+cellxgene-ontology-guide = "1.9.0"
 click = "<9"
-dask = {version = ">=2024.0.0", extras = ["array", "dataframe"]}
-duckdb = ">=1.3.0,<1.4"
+dask = {version = "2024.12.0", extras = ["array", "dataframe"]}
+duckdb = "1.3.2"
 ibis-framework = {version = ">=10.3", extras = ["duckdb"]}
 matplotlib = "<4"
 numpy = "<3"
@@ -514,8 +534,9 @@ pysam = ">=0.13.0"
 pyyaml = "<7"
 scipy = "<1.16"
 semver = "<4"
-sparse = ">=0.15.0,<0.16"
+sparse = "0.15.1"
 xxhash = "<4"
+zstandard = ">=0.22.0,<1"
 
 [[package]]
 name = "ibis-framework"
@@ -1686,14 +1707,14 @@ files = [
 
 [[package]]
 name = "sparse"
-version = "0.15.5"
+version = "0.15.1"
 description = "Sparse n-dimensional arrays for the PyData ecosystem"
 optional = false
 python-versions = ">=3.8"
 groups = ["main"]
 files = [
-    {file = "sparse-0.15.5-py2.py3-none-any.whl", hash = "sha256:cf608731f8564916443427bca323fe118e8c25a712ddf02dbe7673a961139706"},
-    {file = "sparse-0.15.5.tar.gz", hash = "sha256:4c76ce0c96f5cd5c31b7e79e650f0022424c2b16f05f10049e9c6381ee4be266"},
+    {file = "sparse-0.15.1-py2.py3-none-any.whl", hash = "sha256:6d5a19350b0714a1425b653a67df44be330d24e86f21c09f5ad6bb4518c2a18c"},
+    {file = "sparse-0.15.1.tar.gz", hash = "sha256:973adcb88a8db8e3d8047953331e26d3f64a5657f9b46a6b859c47663c3eef99"},
 ]
 
 [package.dependencies]
@@ -1703,7 +1724,7 @@ scipy = ">=0.19"
 
 [package.extras]
 all = ["matrepr", "sparse[docs,tox]"]
-docs = ["sphinx", "sphinx_rtd_theme"]
+docs = ["sphinx", "sphinx-rtd-theme"]
 tests = ["dask[array]", "pre-commit", "pytest (>=3.5)", "pytest-cov"]
 tox = ["sparse[tests]", "tox"]
 
@@ -2045,4 +2066,4 @@ cffi = ["cffi (>=1.17,<2.0) ; platform_python_implementation != \"PyPy\" and pyt
 [metadata]
 lock-version = "2.1"
 python-versions = "~=3.11"
-content-hash = "3925995c5c0316837987e0624bce93c654594f449ba15d0bb296c592f8ef6b63"
+content-hash = "593bd585c4d16bcd6b1837ebfe00fa2c8839151d7e7f02e27e407c4c6fa95440"
