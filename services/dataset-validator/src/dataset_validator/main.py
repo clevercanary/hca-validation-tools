@@ -27,6 +27,9 @@ import pandas as pd
 
 MAX_SNS_MESSAGE_LENGTH = 250_000 # Somewhat less than the actual value of 256KiB, to make room for small unforseen deviations
 TRUNCATED_MESSAGES_MESSAGE = "Messages truncated"
+# When truncating to fit SNS limits, error lists from higher-priority tools are preserved longer.
+# Unknown tools default to priority 0 (truncated first among errors).
+TOOL_ERROR_PRIORITY = {"cellxgene": 0, "cap": 1, "hcaSchema": 2}
 
 
 # Environment variable constants
@@ -141,8 +144,11 @@ class ValidationMessage:
         
         # Create a list of message arrays from tool_reports, represented as (key in tool_reports, attribute in tool report object) pairs
         list_paths = [(key, message_type) for key in self.tool_reports.keys() for message_type in ["errors", "warnings"]]
-        # Sort from longest to shortest list so that we won't remove shorter lists entirely before getting to a disproportionally long list that has to be truncated
-        list_paths.sort(key=lambda p: self._json_length_of_report_list(*p), reverse=True)
+        # Truncation priority: warnings first, then cellxgene errors, then cap errors, then hcaSchema errors (preserved longest)
+        list_paths.sort(key=lambda p: (
+            0 if p[1] == "warnings" else 1 + TOOL_ERROR_PRIORITY.get(p[0], 0),
+            -self._json_length_of_report_list(*p),
+        ))
 
         # Create a copy of the validation message to truncate lists in
         truncated_message = copy.deepcopy(self)
