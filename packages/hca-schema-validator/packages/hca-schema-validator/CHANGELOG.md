@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/clevercanary/hca-validation-tools/compare/hca-schema-validator-v0.6.0...hca-schema-validator-v0.7.0) (2026-03-03)
+
+
+### Features
+
+* allow empty manner_of_death for prenatal development stages ([#194](https://github.com/clevercanary/hca-validation-tools/issues/194)) ([9b885a1](https://github.com/clevercanary/hca-validation-tools/commit/9b885a1bb6afa866af7c1cfb6098e5d54b10f164))
+
 ## [0.6.0](https://github.com/clevercanary/hca-validation-tools/compare/hca-schema-validator-v0.5.0...hca-schema-validator-v0.6.0) (2026-02-28)
 
 
