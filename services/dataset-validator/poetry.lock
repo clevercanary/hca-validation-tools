@@ -120,14 +120,14 @@ dev = ["pytest (>=8.0.0)", "setuptools (>=69.1.1,<69.2.0)"]
 
 [[package]]
 name = "cap-upload-validator"
-version = "1.5.2"
+version = "1.7.0"
 description = "Python tool for validating H5AD AnnData files before uploading to the Cell Annotation Platform."
 optional = false
 python-versions = ">=3.9"
 groups = ["main"]
 files = [
-    {file = "cap_upload_validator-1.5.2-py3-none-any.whl", hash = "sha256:2c6ceb6b00714a51827d2363216f4844e44039accf0333d20354c4d0c93f370f"},
-    {file = "cap_upload_validator-1.5.2.tar.gz", hash = "sha256:a08fafe14e448b794c7ed8b2c0de7239b7895a3401d7cf623b5d0c1e4e8d088d"},
+    {file = "cap_upload_validator-1.7.0-py3-none-any.whl", hash = "sha256:c49ad0882fd5568a8d93c0ffc024edcc6e82fc2f564551e381592f1a5ffcc31e"},
+    {file = "cap_upload_validator-1.7.0.tar.gz", hash = "sha256:cdc9da65e84deecd4833e472bb126d0deed7521a34406b7c46c468a488bf9b1a"},
 ]
 
 [package.dependencies]
