@@ -370,9 +370,9 @@ def _build_cap_multi_exception(exceptions):
     {
         "name": "cap_exception",
         "description": "Test cap_validator_script with CapException",
-        "exception": "AnnDataFileMissingCountMatrix",
+        "exception": "AnnDataMissingCountMatrix",
         "expected_valid": False,
-        "expected_errors_contain": "AnnDataFileMissingCountMatrix"
+        "expected_errors_contain": "AnnDataMissingCountMatrix"
     },
     {
         "name": "cap_multi_exception",
@@ -392,17 +392,17 @@ def _build_cap_multi_exception(exceptions):
 @patch("dataset_validator.cap_validator_script.UploadValidator")
 def test_cap_validator_script_scenarios(mock_upload_validator, test_case):
     """Unit tests for cap_validator_script.py exception handling."""
-    from cap_upload_validator.errors import CapException, CapMultiException, AnnDataFileMissingCountMatrix
+    from cap_upload_validator.errors import CapException, CapMultiException, AnnDataMissingCountMatrix
     from dataset_validator.cap_validator_script import main
 
     mock_instance = MagicMock()
     mock_upload_validator.return_value = mock_instance
 
-    if test_case["exception"] == "AnnDataFileMissingCountMatrix":
-        mock_instance.validate.side_effect = AnnDataFileMissingCountMatrix()
+    if test_case["exception"] == "AnnDataMissingCountMatrix":
+        mock_instance.validate.side_effect = AnnDataMissingCountMatrix()
     elif test_case["exception"] == "CapMultiException":
         mock_instance.validate.side_effect = _build_cap_multi_exception([
-            CapException(), AnnDataFileMissingCountMatrix()
+            CapException(), AnnDataMissingCountMatrix()
         ])
     elif test_case["exception"] == "Exception":
         mock_instance.validate.side_effect = Exception("something broke")
