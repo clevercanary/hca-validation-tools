@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/clevercanary/hca-validation-tools/compare/hca-schema-validator-v0.7.0...hca-schema-validator-v0.8.0) (2026-03-17)
+
+
+### Features
+
+* allow empty string for manner_of_death regardless of development stage ([#206](https://github.com/clevercanary/hca-validation-tools/issues/206)) ([abc4fc9](https://github.com/clevercanary/hca-validation-tools/commit/abc4fc962fa76f3f6956c4a240633d8483e59ff1))
+
 ## [0.7.0](https://github.com/clevercanary/hca-validation-tools/compare/hca-schema-validator-v0.6.0...hca-schema-validator-v0.7.0) (2026-03-03)
 
 
