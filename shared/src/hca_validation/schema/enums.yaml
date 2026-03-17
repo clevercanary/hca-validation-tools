@@ -111,6 +111,8 @@ enums:
       HsapDv:0000241: {}
       HsapDv:0000242: {}
       HsapDv:0000243: {}
+      HsapDv:0000244: {}
+      HsapDv:0000245: {}
       MmusDv:0000001: {}
       MmusDv:0000002: {}
       unknown: {}
