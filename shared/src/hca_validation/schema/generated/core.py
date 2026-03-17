@@ -230,6 +230,8 @@ class DevelopmentStage(str, Enum):
     HsapDvCOLON0000241 = "HsapDv:0000241"
     HsapDvCOLON0000242 = "HsapDv:0000242"
     HsapDvCOLON0000243 = "HsapDv:0000243"
+    HsapDvCOLON0000244 = "HsapDv:0000244"
+    HsapDvCOLON0000245 = "HsapDv:0000245"
     MmusDvCOLON0000001 = "MmusDv:0000001"
     MmusDvCOLON0000002 = "MmusDv:0000002"
     unknown = "unknown"

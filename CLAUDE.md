@@ -42,7 +42,8 @@ cd services/hca-schema-validator && poetry run pytest tests/ -v
 
 ```bash
 # Lambda (Entry Sheet Validator) - ENV=dev by default, use ENV=prod for production
-make build-lambda-container
+# PROFILE=excira is required for build (fetches AWS Lambda Extension layer via AWS API)
+make build-lambda-container PROFILE=excira
 make deploy-lambda-container ENV=dev
 make invoke-lambda SHEET_ID=<google-sheet-id>
 
