@@ -227,21 +227,36 @@ def test_manner_of_death_empty_string_allowed_for_prenatal():
     assert is_valid is True, f"Validation failed with errors: {validator.errors}"
 
 
-def test_manner_of_death_empty_string_rejected_for_postnatal():
-    """Test that manner_of_death='' is rejected when development_stage is postnatal."""
+def test_manner_of_death_empty_string_allowed_for_postnatal():
+    """Test that manner_of_death='' is allowed even when development_stage is postnatal."""
     import anndata
-    import numpy
-    from scipy import sparse
-    from .fixtures.hca_fixtures import good_obs, good_var, good_uns, good_obsm
+    from .fixtures.hca_fixtures import good_obs, good_var, good_uns, good_obsm, non_raw_X, X
 
     obs = good_obs.copy()
-    # Change to a postnatal development stage (human adult stage)
-    obs["development_stage_ontology_term_id"] = "HsapDv:0000087"
+    # Change to a postnatal development stage (2-year-old stage)
+    obs["development_stage_ontology_term_id"] = "HsapDv:0000096"
     obs["manner_of_death"] = obs["manner_of_death"].cat.add_categories([""])
     obs["manner_of_death"] = ""
-    X = sparse.csr_matrix((obs.shape[0], good_var.shape[0]), dtype=numpy.float32)
-    test_adata = anndata.AnnData(X=X, obs=obs, uns=good_uns.copy(), obsm=good_obsm.copy(), var=good_var.copy())
+    test_adata = anndata.AnnData(X=X.copy(), obs=obs, uns=good_uns.copy(), obsm=good_obsm.copy(), var=good_var.copy())
     test_adata.raw = test_adata.copy()
+    test_adata.X = non_raw_X
+    test_adata.raw.var.drop("feature_is_filtered", axis=1, inplace=True)
+
+    is_valid, validator = _validate_from_fixture(test_adata)
+    assert is_valid is True, f"Validation failed with errors: {validator.errors}"
+
+
+def test_manner_of_death_invalid_value_rejected():
+    """Test that an invalid manner_of_death value is rejected."""
+    import anndata
+    from .fixtures.hca_fixtures import good_obs, good_var, good_uns, good_obsm, non_raw_X, X
+
+    obs = good_obs.copy()
+    obs["manner_of_death"] = obs["manner_of_death"].cat.add_categories(["banana"])
+    obs["manner_of_death"] = "banana"
+    test_adata = anndata.AnnData(X=X.copy(), obs=obs, uns=good_uns.copy(), obsm=good_obsm.copy(), var=good_var.copy())
+    test_adata.raw = test_adata.copy()
+    test_adata.X = non_raw_X
     test_adata.raw.var.drop("feature_is_filtered", axis=1, inplace=True)
 
     is_valid, validator = _validate_from_fixture(test_adata)

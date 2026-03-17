@@ -869,26 +869,7 @@ components:
           - "4"
           - "unknown"
           - "not applicable"
-        dependencies:
-          - # If development stage is prenatal, also allow empty string
-            rule:
-              column: development_stage_ontology_term_id
-              match_ancestors_inclusive:
-                ancestors:
-                  - HsapDv:0000045
-                  - MmusDv:0000042
-            error_message_suffix: >-
-              When development stage is prenatal, manner_of_death must be '0', '1', '2', '3', '4', 'unknown', 'not applicable', or '' (empty string for embryonic/fetal tissue).
-            type: categorical
-            enum:
-              - "0"
-              - "1"
-              - "2"
-              - "3"
-              - "4"
-              - "unknown"
-              - "not applicable"
-              - ""
+          - ""
       sample_source:
         type: categorical
         enum:
