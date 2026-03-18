@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.1](https://github.com/clevercanary/hca-validation-tools/compare/hca-schema-validator-v0.8.0...hca-schema-validator-v0.8.1) (2026-03-18)
+
+
+### Bug Fixes
+
+* initialize error state in HCAValidator.__init__ ([#211](https://github.com/clevercanary/hca-validation-tools/issues/211)) ([28c23dc](https://github.com/clevercanary/hca-validation-tools/commit/28c23dc619a300597be952448daf3953597dbfb6))
+
 ## [0.8.0](https://github.com/clevercanary/hca-validation-tools/compare/hca-schema-validator-v0.7.0...hca-schema-validator-v0.8.0) (2026-03-17)
 
 
