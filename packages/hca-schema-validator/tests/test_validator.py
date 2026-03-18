@@ -350,6 +350,23 @@ def test_pattern_valid_na_cell_enrichment():
     assert is_valid is True, f"Validation failed with errors: {validator.errors}"
 
 
+def test_pattern_valid_multi_cell_enrichment():
+    """Test that semicolon-separated cell_enrichment values are accepted."""
+    import anndata
+    from .fixtures.hca_fixtures import good_obs, good_var, good_uns, good_obsm, non_raw_X, X
+
+    obs = good_obs.copy()
+    obs["cell_enrichment"] = obs["cell_enrichment"].cat.add_categories(["CL:0000057+;CL:0000058-"])
+    obs["cell_enrichment"] = "CL:0000057+;CL:0000058-"
+    test_adata = anndata.AnnData(X=X.copy(), obs=obs, uns=good_uns.copy(), obsm=good_obsm.copy(), var=good_var.copy())
+    test_adata.raw = test_adata.copy()
+    test_adata.X = non_raw_X
+    test_adata.raw.var.drop("feature_is_filtered", axis=1, inplace=True)
+
+    is_valid, validator = _validate_from_fixture(test_adata)
+    assert is_valid is True, f"Validation failed with errors: {validator.errors}"
+
+
 def test_pattern_rejects_cell_enrichment_with_trailing_garbage():
     """Test that cell_enrichment rejects a valid prefix with trailing characters."""
     import anndata
