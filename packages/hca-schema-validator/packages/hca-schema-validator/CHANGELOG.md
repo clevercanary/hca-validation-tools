@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.0](https://github.com/clevercanary/hca-validation-tools/compare/hca-schema-validator-v0.8.1...hca-schema-validator-v0.9.0) (2026-03-18)
+
+
+### Features
+
+* allow multiple semicolon-separated cell_enrichment values ([#216](https://github.com/clevercanary/hca-validation-tools/issues/216)) ([f00ed75](https://github.com/clevercanary/hca-validation-tools/commit/f00ed7543684273cb62da19b69360c0157b96316))
+
 ## [0.8.1](https://github.com/clevercanary/hca-validation-tools/compare/hca-schema-validator-v0.8.0...hca-schema-validator-v0.8.1) (2026-03-18)
 
 
