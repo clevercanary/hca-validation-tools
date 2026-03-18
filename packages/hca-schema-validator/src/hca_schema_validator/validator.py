@@ -30,11 +30,9 @@ class HCAValidator(Validator):
             ignore_labels: If True, skip label validation
         """
         super().__init__(ignore_labels=ignore_labels)
-        # Initialize error/warning state so the exception handler in
-        # validate_adata() works even if reset() hasn't run yet.
-        self.errors = []
-        self.warnings = []
-        self.is_valid = False
+        # Initialize all validator state so the exception handler in
+        # validate_adata() works even if reset() hasn't been called yet.
+        self.reset()
     
     def _set_schema_def(self):
         """
