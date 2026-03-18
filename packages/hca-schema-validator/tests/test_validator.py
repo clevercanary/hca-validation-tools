@@ -22,6 +22,28 @@ def _validate_from_fixture(adata):
         return is_valid, validator
 
 
+def test_error_handling_before_reset(monkeypatch):
+    """Test that exceptions before reset() don't cause AttributeError.
+
+    Regression test for #210: self.errors was not initialized in __init__,
+    so an exception raised before reset() in validate_adata caused
+    AttributeError when the handler tried to append to self.errors.
+    """
+    from hca_schema_validator._vendored.cellxgene_schema import validate as validate_mod
+
+    def fake_read_h5ad(path):
+        raise RuntimeError("simulated read failure")
+
+    monkeypatch.setattr(validate_mod, "read_h5ad", fake_read_h5ad)
+
+    validator = HCAValidator()
+    is_valid = validator.validate_adata("dummy.h5ad")
+
+    assert is_valid is False
+    assert len(validator.errors) > 0
+    assert any("simulated read failure" in e for e in validator.errors)
+
+
 def test_import():
     """Test that HCAValidator can be imported."""
     assert HCAValidator is not None
