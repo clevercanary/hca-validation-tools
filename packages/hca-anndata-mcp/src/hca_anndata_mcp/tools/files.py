@@ -21,6 +21,6 @@ def locate_files(
         return {"error": f"Not a directory: {directory}"}
 
     prefix = "**/" if recursive else ""
-    h5ad = sorted(str(p) for p in path.glob(f"{prefix}*.h5ad"))
-    zarr = sorted(str(p) for p in path.glob(f"{prefix}*.zarr"))
+    h5ad = sorted(str(p.resolve()) for p in path.glob(f"{prefix}*.h5ad"))
+    zarr = sorted(str(p.resolve()) for p in path.glob(f"{prefix}*.zarr"))
     return {"h5ad": h5ad, "zarr": zarr, "total": len(h5ad) + len(zarr)}

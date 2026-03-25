@@ -181,7 +181,7 @@ New MCP tools for the write path:
 - FastMCP v2 with `show_banner=False` and `transport="stdio"` (banner corrupts JSON-RPC)
 - MCP config lives in `.mcp.json` at project root
 - Python 3.10+, Poetry for dependency management
-- Current virtualenv: `/Users/dave/Library/Caches/pypoetry/virtualenvs/hca-anndata-mcp-jz8ineMF-py3.10`
+- Virtualenv managed by Poetry; run `poetry env info -p` to see the local path
 
 ## UI Rendering Options (Context)
 

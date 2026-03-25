@@ -16,5 +16,8 @@ poetry run hca-anndata-mcp
 
 - **locate_files** — Find all .h5ad/.zarr files in a directory
 - **get_summary** — Structural overview: cell/gene counts, columns, embeddings, layers
+- **get_storage_info** — HDF5 compression, chunking, sparse format details
 - **get_descriptive_stats** — Descriptive statistics and value counts for obs/var columns
 - **view_data** — View slices of any attribute (obs, var, X, obsm, uns, etc.)
+- **plot_embedding** — UMAP/PCA scatter plots colored by obs column or gene
+- **get_cap_annotations** — Inspect CAP cell annotation metadata, marker genes, rationale

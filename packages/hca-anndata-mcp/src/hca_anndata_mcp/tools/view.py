@@ -28,7 +28,7 @@ def view_data(
     Args:
         path: Absolute path to an .h5ad or .zarr file.
         attribute: One of 'obs', 'var', 'X', 'obsm', 'varm', 'obsp', 'varp', 'layers', 'uns'.
-        key: Key within the attribute (required for obsm, varm, obsp, varp, layers, uns).
+        key: Key within the attribute. Required for obsm, varm, obsp, varp, layers. Optional for uns (omit for a summarized view).
         columns: Column names to include (for obs/var only).
         row_start: Start row index for slicing. Defaults to 0.
         row_end: End row index for slicing. Defaults to 10.

@@ -34,14 +34,13 @@ def plot_embedding(
         width: Figure width in inches.
         height: Figure height in inches.
     """
-    # Lazy imports — scanpy/matplotlib are heavy and only needed for plotting
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-    import scanpy as sc
-
     adata = None
     try:
+        # Lazy imports — scanpy/matplotlib are heavy and only needed for plotting
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        import scanpy as sc
         # Full read required — scanpy plotting needs in-memory data
         adata = ad.read_h5ad(path)
 

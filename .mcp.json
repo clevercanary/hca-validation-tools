@@ -1,8 +1,9 @@
 {
   "mcpServers": {
     "hca-anndata-mcp": {
-      "command": "/Users/dave/Library/Caches/pypoetry/virtualenvs/hca-anndata-mcp-jz8ineMF-py3.10/bin/hca-anndata-mcp",
-      "args": []
+      "command": "poetry",
+      "args": ["run", "hca-anndata-mcp"],
+      "cwd": "packages/hca-anndata-mcp"
     }
   }
 }
