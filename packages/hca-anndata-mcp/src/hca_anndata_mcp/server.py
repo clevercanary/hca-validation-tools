@@ -13,7 +13,7 @@ from hca_anndata_mcp.tools.cap import get_cap_annotations
 mcp = FastMCP(
     name="hca-anndata-mcp",
     instructions=(
-        "Explore AnnData h5ad/zarr files interactively. "
+        "Explore AnnData h5ad files interactively. "
         "Use locate_files to find files, get_summary for an overview, "
         "get_storage_info for HDF5 compression/chunk details, "
         "get_descriptive_stats for distributions, view_data to inspect raw values, "

@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "hca-anndata-mcp"
 version = "0.1.0"
-description = "MCP server for interactive exploration of AnnData h5ad/zarr files"
+description = "MCP server for interactive exploration of AnnData h5ad files"
 authors = ["Clever Canary <dave@clevercanary.com>"]
 license = "MIT"
 readme = "README.md"

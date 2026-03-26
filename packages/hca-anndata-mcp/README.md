@@ -1,6 +1,6 @@
 # hca-anndata-mcp
 
-MCP server for interactive exploration of AnnData h5ad/zarr files.
+MCP server for interactive exploration of AnnData h5ad files.
 
 ## Usage
 
@@ -14,7 +14,7 @@ poetry run hca-anndata-mcp
 
 ## Tools
 
-- **locate_files** — Find all .h5ad/.zarr files in a directory
+- **locate_files** — Find all .h5ad files in a directory
 - **get_summary** — Structural overview: cell/gene counts, columns, embeddings, layers
 - **get_storage_info** — HDF5 compression, chunking, sparse format details
 - **get_descriptive_stats** — Descriptive statistics and value counts for obs/var columns
