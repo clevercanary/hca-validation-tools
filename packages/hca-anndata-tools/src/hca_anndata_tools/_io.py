@@ -7,7 +7,7 @@ import anndata as ad
 
 
 @contextmanager
-def open_h5ad(path: str, backed: str = "r"):
+def open_h5ad(path: str, backed: str | None = "r"):
     """Open an h5ad file with automatic cleanup.
 
     Args:
