@@ -1,10 +1,9 @@
 """View raw data slices from an AnnData object."""
 
-import gc
-
-import anndata as ad
 import numpy as np
 import pandas as pd
+
+from ._io import open_h5ad
 
 _ALLOWED_ATTRIBUTES = {"obs", "var", "X", "obsm", "varm", "obsp", "varp", "layers", "uns"}
 _KEY_REQUIRED_ATTRIBUTES = {"obsm", "varm", "obsp", "varp", "layers"}
@@ -36,45 +35,38 @@ def view_data(
         col_start: Start column index for array slicing. Defaults to 0.
         col_end: End column index for array slicing. Defaults to 10.
     """
-    adata = None
     try:
         if attribute not in _ALLOWED_ATTRIBUTES:
             return {"error": f"attribute must be one of {sorted(_ALLOWED_ATTRIBUTES)}, got '{attribute}'"}
 
-        adata = ad.read_h5ad(path, backed="r")
+        with open_h5ad(path) as adata:
+            attr_obj = getattr(adata, attribute, None)
+            if attr_obj is None:
+                return {"error": f"Attribute '{attribute}' not found"}
 
-        attr_obj = getattr(adata, attribute, None)
-        if attr_obj is None:
-            return {"error": f"Attribute '{attribute}' not found"}
+            if key is None and attribute in _KEY_REQUIRED_ATTRIBUTES:
+                available = list(attr_obj.keys())
+                return {"error": f"'key' is required for {attribute}. Available keys: {available}"}
 
-        if key is None and attribute in _KEY_REQUIRED_ATTRIBUTES:
-            available = list(attr_obj.keys())
-            return {"error": f"'key' is required for {attribute}. Available keys: {available}"}
+            if key is not None:
+                if attribute in ("obs", "var"):
+                    return {"error": "Use 'columns' parameter for obs/var, not 'key'"}
+                try:
+                    attr_obj = attr_obj[key]
+                except (KeyError, IndexError):
+                    return {"error": f"Key '{key}' not found in {attribute}"}
 
-        if key is not None:
-            if attribute in ("obs", "var"):
-                return {"error": "Use 'columns' parameter for obs/var, not 'key'"}
-            try:
-                attr_obj = attr_obj[key]
-            except (KeyError, IndexError):
-                return {"error": f"Key '{key}' not found in {attribute}"}
-
-        if isinstance(attr_obj, pd.DataFrame):
-            return _view_dataframe(attr_obj, columns, row_start, row_end)
-        elif hasattr(attr_obj, "shape") and len(getattr(attr_obj, "shape", ())) >= 1:
-            return _view_array(attr_obj, row_start, row_end, col_start, col_end)
-        elif isinstance(attr_obj, dict):
-            return _view_dict(attr_obj)
-        else:
-            return {"data": str(attr_obj), "type": type(attr_obj).__name__}
+            if isinstance(attr_obj, pd.DataFrame):
+                return _view_dataframe(attr_obj, columns, row_start, row_end)
+            elif hasattr(attr_obj, "shape") and len(getattr(attr_obj, "shape", ())) >= 1:
+                return _view_array(attr_obj, row_start, row_end, col_start, col_end)
+            elif isinstance(attr_obj, dict):
+                return _view_dict(attr_obj)
+            else:
+                return {"data": str(attr_obj), "type": type(attr_obj).__name__}
 
     except Exception as e:
         return {"error": str(e)}
-    finally:
-        if adata is not None:
-            adata.file.close()
-            del adata
-            gc.collect()
 
 
 def _view_dataframe(

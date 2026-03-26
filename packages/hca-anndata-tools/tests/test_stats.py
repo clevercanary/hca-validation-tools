@@ -1,6 +1,6 @@
-"""Tests for the get_descriptive_stats tool."""
+"""Tests for the get_descriptive_stats function."""
 
-from hca_anndata_mcp.tools.stats import get_descriptive_stats
+from hca_anndata_tools.stats import get_descriptive_stats
 
 
 def test_stats_obs_all_columns(sample_h5ad):
