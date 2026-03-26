@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 
 _ALLOWED_ATTRIBUTES = {"obs", "var", "X", "obsm", "varm", "obsp", "varp", "layers", "uns"}
+_KEY_REQUIRED_ATTRIBUTES = {"obsm", "varm", "obsp", "varp", "layers"}
 
 
 def view_data(
@@ -45,6 +46,10 @@ def view_data(
         attr_obj = getattr(adata, attribute, None)
         if attr_obj is None:
             return {"error": f"Attribute '{attribute}' not found"}
+
+        if key is None and attribute in _KEY_REQUIRED_ATTRIBUTES:
+            available = list(attr_obj.keys())
+            return {"error": f"'key' is required for {attribute}. Available keys: {available}"}
 
         if key is not None:
             if attribute in ("obs", "var"):
