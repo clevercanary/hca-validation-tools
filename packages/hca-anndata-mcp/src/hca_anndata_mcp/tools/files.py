@@ -7,14 +7,14 @@ def locate_files(
     directory: str,
     recursive: bool = True,
 ) -> dict:
-    """Find all AnnData files (.h5ad and .zarr) in a directory.
+    """Find all .h5ad files in a directory.
 
     Args:
         directory: Absolute path to the directory to search.
         recursive: Whether to search subdirectories. Defaults to True.
 
     Returns:
-        A dict with 'h5ad' and 'zarr' lists of absolute file paths.
+        A dict with 'h5ad' list of absolute file paths.
     """
     path = Path(directory)
     if not path.is_dir():
@@ -22,5 +22,4 @@ def locate_files(
 
     prefix = "**/" if recursive else ""
     h5ad = sorted(str(p.resolve()) for p in path.glob(f"{prefix}*.h5ad"))
-    zarr = sorted(str(p.resolve()) for p in path.glob(f"{prefix}*.zarr"))
-    return {"h5ad": h5ad, "zarr": zarr, "total": len(h5ad) + len(zarr)}
+    return {"h5ad": h5ad, "total": len(h5ad)}

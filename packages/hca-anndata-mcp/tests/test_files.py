@@ -10,7 +10,6 @@ def test_locate_finds_h5ad(sample_dir):
     assert result["total"] == 1
     assert len(result["h5ad"]) == 1
     assert result["h5ad"][0].endswith(".h5ad")
-    assert result["zarr"] == []
 
 
 def test_locate_bad_directory():
@@ -22,4 +21,3 @@ def test_locate_empty_directory(tmp_path):
     result = locate_files(str(tmp_path))
     assert result["total"] == 0
     assert result["h5ad"] == []
-    assert result["zarr"] == []

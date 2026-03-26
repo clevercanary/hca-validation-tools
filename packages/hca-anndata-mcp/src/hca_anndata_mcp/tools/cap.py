@@ -12,6 +12,10 @@ def _make_serializable(obj):
         return int(obj)
     if isinstance(obj, (np.floating,)):
         return float(obj)
+    if isinstance(obj, (np.bool_,)):
+        return bool(obj)
+    if isinstance(obj, (np.str_, np.bytes_)):
+        return str(obj)
     if isinstance(obj, np.ndarray):
         return obj.tolist()
     if isinstance(obj, dict):
@@ -86,7 +90,7 @@ def get_cap_annotations(path: str, annotation_set: str | None = None) -> dict:
     mappings, marker genes, and rationale. Reports schema compliance.
 
     Args:
-        path: Absolute path to an .h5ad or .zarr file.
+        path: Absolute path to an .h5ad file.
         annotation_set: Specific annotation set name to inspect. If None, lists all sets found.
     """
     adata = None

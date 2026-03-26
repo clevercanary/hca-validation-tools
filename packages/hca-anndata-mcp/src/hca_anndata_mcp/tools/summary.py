@@ -27,13 +27,13 @@ def _type_name(obj) -> str:
 
 
 def get_summary(path: str) -> dict:
-    """Get a structural summary of an AnnData file (.h5ad or .zarr).
+    """Get a structural summary of an .h5ad file.
 
     Returns cell/gene counts, obs/var column names and dtypes, obsm/varm/obsp/varp keys,
     layers, uns keys, and whether raw data is present.
 
     Args:
-        path: Absolute path to an .h5ad or .zarr file.
+        path: Absolute path to an .h5ad file.
     """
     adata = None
     try:

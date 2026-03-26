@@ -19,7 +19,7 @@ def plot_embedding(
     dpi: int = 150,
     width: float = 8,
     height: float = 6,
-) -> ImageContent:
+) -> ImageContent | dict:
     """Plot a 2D embedding (UMAP, PCA, etc.) colored by an obs column or gene.
 
     Args:
@@ -35,6 +35,7 @@ def plot_embedding(
         height: Figure height in inches.
     """
     adata = None
+    plt = None
     try:
         # Lazy imports — scanpy/matplotlib are heavy and only needed for plotting
         import matplotlib
@@ -75,4 +76,5 @@ def plot_embedding(
         if adata is not None:
             del adata
             gc.collect()
-        plt.close("all")
+        if plt is not None:
+            plt.close("all")

@@ -23,7 +23,7 @@ def get_descriptive_stats(
     Optionally returns full value_counts for categorical columns.
 
     Args:
-        path: Absolute path to an .h5ad or .zarr file.
+        path: Absolute path to an .h5ad file.
         attribute: One of 'obs', 'var'. Defaults to 'obs'.
         columns: Column names to describe. If None, describes all columns.
         value_counts: If True, include full value counts for categorical columns.
