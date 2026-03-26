@@ -74,7 +74,7 @@ def _find_annotation_sets(obs_columns: list[str]) -> list[str]:
     return sorted(sets)
 
 
-def _get_unique_values(series, max_values: int = 50) -> list[str]:
+def _get_unique_values(series, max_values: int = 50) -> list:
     """Get unique values from a series, capped at max_values."""
     uniques = [_make_serializable(v) for v in series.dropna().unique().tolist()]
     if len(uniques) > max_values:

@@ -43,7 +43,8 @@ def plot_embedding(
     try:
         # Lazy imports — scanpy/matplotlib are heavy and only needed for plotting
         import matplotlib
-        matplotlib.use("Agg")
+        if matplotlib.get_backend().lower() != "agg":
+            matplotlib.use("Agg")
         import matplotlib.pyplot as plt
         import scanpy as sc
 
@@ -66,11 +67,10 @@ def plot_embedding(
             fig, ax = plt.subplots(figsize=(width, height))
             sc.pl.embedding(adata, ax=ax, **kwargs)
 
-        buf = io.BytesIO()
-        fig.savefig(buf, format="png", dpi=dpi, bbox_inches="tight")
-        buf.seek(0)
-        data = base64.standard_b64encode(buf.read()).decode("utf-8")
-        buf.close()
+        with io.BytesIO() as buf:
+            fig.savefig(buf, format="png", dpi=dpi, bbox_inches="tight")
+            buf.seek(0)
+            data = base64.standard_b64encode(buf.read()).decode("utf-8")
 
         return {"data": data, "mime_type": "image/png"}
 
