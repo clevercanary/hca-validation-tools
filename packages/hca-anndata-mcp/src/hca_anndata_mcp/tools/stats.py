@@ -40,11 +40,12 @@ def get_descriptive_stats(
         df: pd.DataFrame = getattr(adata, attribute)
 
         # Apply filter
+        filter_params = [filter_column, filter_operator, filter_value]
+        if any(p is not None for p in filter_params) and not all(p is not None for p in filter_params):
+            return {"error": "filter_column, filter_operator, and filter_value must all be provided together"}
         if filter_column is not None:
             if filter_column not in df.columns:
                 return {"error": f"Filter column '{filter_column}' not found in {attribute}"}
-            if filter_operator is None or filter_value is None:
-                return {"error": "filter_column, filter_operator, and filter_value must all be provided together"}
             df = _apply_filter(df, filter_column, filter_operator, filter_value)
             if len(df) == 0:
                 return {"error": "Filter resulted in zero rows"}
