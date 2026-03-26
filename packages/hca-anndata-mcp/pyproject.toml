@@ -1,0 +1,30 @@
+[tool.poetry]
+name = "hca-anndata-mcp"
+version = "0.1.0"
+description = "MCP server for interactive exploration of AnnData h5ad files"
+authors = ["Clever Canary <dave@clevercanary.com>"]
+license = "MIT"
+readme = "README.md"
+homepage = "https://github.com/clevercanary/hca-validation-tools"
+packages = [{include = "hca_anndata_mcp", from = "src"}]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+anndata = ">=0.10,<1"
+fastmcp = ">=2,<3"
+pandas = ">2,<3"
+numpy = "<3"
+scanpy = ">=1.10"
+matplotlib = ">=3.7"
+h5py = ">=3.8"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0"
+pytest-asyncio = ">=0.23"
+
+[tool.poetry.scripts]
+hca-anndata-mcp = "hca_anndata_mcp.main:run"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
