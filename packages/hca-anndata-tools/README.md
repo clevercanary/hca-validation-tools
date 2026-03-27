@@ -17,10 +17,10 @@ from hca_anndata_tools import get_summary, get_descriptive_stats, locate_files
 files = locate_files("/path/to/data")
 
 # Get structural overview
-summary = get_summary("my_atlas.h5ad")
+summary = get_summary("/path/to/my_atlas.h5ad")
 
 # Get column statistics
-stats = get_descriptive_stats("my_atlas.h5ad", columns=["cell_type"], value_counts=True)
+stats = get_descriptive_stats("/path/to/my_atlas.h5ad", columns=["cell_type"], value_counts=True)
 ```
 
 ## API
