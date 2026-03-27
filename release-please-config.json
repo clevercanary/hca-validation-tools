@@ -7,6 +7,14 @@
       "extra-files": [
         "packages/hca-schema-validator/src/hca_schema_validator/__init__.py"
       ]
+    },
+    "packages/hca-anndata-tools": {
+      "release-type": "python",
+      "package-name": "hca-anndata-tools",
+      "changelog-path": "packages/hca-anndata-tools/CHANGELOG.md",
+      "extra-files": [
+        "packages/hca-anndata-tools/src/hca_anndata_tools/__init__.py"
+      ]
     }
   },
   "changelog-sections": [

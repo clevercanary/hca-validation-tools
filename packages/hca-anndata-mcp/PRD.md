@@ -2,7 +2,7 @@
 
 ## Overview
 
-The hca-anndata-mcp server provides interactive, AI-assisted exploration and validation of AnnData h5ad/zarr files for the Human Cell Atlas. It is the interactive layer on top of two core libraries: a reusable data extraction library and the HCA schema validator.
+The hca-anndata-mcp server provides interactive, AI-assisted exploration and validation of AnnData h5ad files for the Human Cell Atlas. It is the interactive layer on top of two core libraries: a reusable data extraction library and the HCA schema validator.
 
 ## Architecture
 
@@ -22,7 +22,7 @@ Reusable Python library for programmatic access to AnnData file inspection, summ
 - **Site/UI** — extracts summaries and stats for static display
 
 **Capabilities:**
-- File discovery (h5ad, zarr)
+- File discovery (h5ad)
 - Structural summaries (cell/gene counts, columns, embeddings, layers)
 - HDF5 storage info (compression, chunking, sparse format)
 - Descriptive statistics and value counts
@@ -42,7 +42,7 @@ Thin MCP server layer that exposes both libraries as tools over the stdio JSON-R
 
 | Tool | Description | Status |
 |------|-------------|--------|
-| `locate_files` | Find h5ad/zarr files in a directory | Done |
+| `locate_files` | Find h5ad files in a directory | Done |
 | `get_summary` | Structural overview of an AnnData file | Done |
 | `get_storage_info` | HDF5 compression, chunking, sparse format details | Done |
 | `get_descriptive_stats` | Stats and value counts for obs/var columns | Done |
@@ -60,13 +60,9 @@ Add validation tools that use hca-schema-validator:
 - Validate CAP annotation completeness (required fields per the [cell-annotation-schema](https://github.com/cellannotation/cell-annotation-schema))
 - Surface validation errors interactively so users can inspect and fix issues in-session
 
-### Phase 2: Extract hca-anndata-tools
+### Phase 2: Extract hca-anndata-tools ✅
 
-Refactor the current tool implementations into a standalone `hca-anndata-tools` library:
-- Move data extraction logic out of the MCP tool modules
-- Publish as an internal package (or merge into shared)
-- Update the batch validator (`services/dataset-validator`) to use it
-- Provide extraction APIs for site/UI static display
+Completed. Tool implementations extracted into `packages/hca-anndata-tools/`. The MCP server now depends on the library via path dependency and registers tools directly from it. Only `plot_embedding` has a thin MCP wrapper (to convert the library's dict return to `ImageContent`).
 
 ### Phase 3: Electron Desktop App
 

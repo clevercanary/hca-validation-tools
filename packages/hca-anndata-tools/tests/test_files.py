@@ -1,8 +1,6 @@
-"""Tests for the locate_files tool."""
+"""Tests for the locate_files function."""
 
-from pathlib import Path
-
-from hca_anndata_mcp.tools.files import locate_files
+from hca_anndata_tools.files import locate_files
 
 
 def test_locate_finds_h5ad(sample_dir):

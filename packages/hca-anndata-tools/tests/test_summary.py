@@ -1,6 +1,6 @@
-"""Tests for the get_summary tool."""
+"""Tests for the get_summary function."""
 
-from hca_anndata_mcp.tools.summary import get_summary
+from hca_anndata_tools.summary import get_summary
 
 
 def test_summary_basic(sample_h5ad):

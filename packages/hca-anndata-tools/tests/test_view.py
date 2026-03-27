@@ -1,6 +1,6 @@
-"""Tests for the view_data tool."""
+"""Tests for the view_data function."""
 
-from hca_anndata_mcp.tools.view import view_data
+from hca_anndata_tools.view import view_data
 
 
 def test_view_obs(sample_h5ad):

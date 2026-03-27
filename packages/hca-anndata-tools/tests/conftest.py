@@ -1,4 +1,4 @@
-"""Shared fixtures for hca-anndata-mcp tests."""
+"""Shared fixtures for hca-anndata-tools tests."""
 
 from pathlib import Path
 

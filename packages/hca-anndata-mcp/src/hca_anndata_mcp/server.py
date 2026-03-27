@@ -2,13 +2,15 @@
 
 from fastmcp import FastMCP
 
-from hca_anndata_mcp.tools.summary import get_summary
-from hca_anndata_mcp.tools.stats import get_descriptive_stats
-from hca_anndata_mcp.tools.view import view_data
-from hca_anndata_mcp.tools.files import locate_files
-from hca_anndata_mcp.tools.storage import get_storage_info
-from hca_anndata_mcp.tools.plot import plot_embedding
-from hca_anndata_mcp.tools.cap import get_cap_annotations
+from hca_anndata_tools import (
+    get_summary,
+    get_descriptive_stats,
+    view_data,
+    locate_files,
+    get_storage_info,
+    get_cap_annotations,
+)
+from hca_anndata_mcp.tools.plot import plot_embedding_mcp
 
 mcp = FastMCP(
     name="hca-anndata-mcp",
@@ -27,5 +29,5 @@ mcp.tool()(get_storage_info)
 mcp.tool()(get_descriptive_stats)
 mcp.tool()(view_data)
 mcp.tool()(locate_files)
-mcp.tool()(plot_embedding)
+mcp.tool()(plot_embedding_mcp)
 mcp.tool()(get_cap_annotations)
