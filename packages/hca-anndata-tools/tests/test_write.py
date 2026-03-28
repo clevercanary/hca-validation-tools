@@ -155,7 +155,7 @@ def test_write_h5ad_source_file_is_basename(sample_h5ad_for_write):
     written = ad.read_h5ad(result["output_path"])
     log = json.loads(written.uns[EDIT_LOG_KEY])
     source_file = log[0]["source_file"]
-    assert "/" not in source_file
+    assert source_file == os.path.basename(source_file)
     assert source_file == "test-dataset.h5ad"
 
 
