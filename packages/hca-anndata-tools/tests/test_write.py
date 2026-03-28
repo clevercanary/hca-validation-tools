@@ -222,3 +222,42 @@ def test_write_h5ad_roundtrip_edit_log(sample_h5ad_for_write):
     log = json.loads(final.uns[EDIT_LOG_KEY])
     assert len(log) == 3
     assert [e["description"] for e in log] == ["first", "second", "third"]
+
+
+# --- validation edge cases ---
+
+
+def test_write_h5ad_missing_required_keys(sample_h5ad_for_write):
+    adata = ad.read_h5ad(str(sample_h5ad_for_write))
+    bad_entry = {"timestamp": "2026-03-27T00:00:00Z", "tool": "test"}
+    result = write_h5ad(adata, str(sample_h5ad_for_write), [bad_entry])
+
+    assert "error" in result
+    assert "missing required keys" in result["error"]
+
+
+def test_write_h5ad_corrupt_json_log(sample_h5ad_for_write):
+    adata = ad.read_h5ad(str(sample_h5ad_for_write))
+    adata.uns[EDIT_LOG_KEY] = "not valid json {{"
+    result = write_h5ad(adata, str(sample_h5ad_for_write), [_make_entry()])
+
+    assert "error" in result
+    assert "invalid JSON" in result["error"]
+
+
+def test_write_h5ad_non_list_json_log(sample_h5ad_for_write):
+    adata = ad.read_h5ad(str(sample_h5ad_for_write))
+    adata.uns[EDIT_LOG_KEY] = json.dumps({"not": "a list"})
+    result = write_h5ad(adata, str(sample_h5ad_for_write), [_make_entry()])
+
+    assert "error" in result
+    assert "expected list" in result["error"]
+
+
+def test_write_h5ad_unsupported_log_type(sample_h5ad_for_write):
+    adata = ad.read_h5ad(str(sample_h5ad_for_write))
+    adata.uns[EDIT_LOG_KEY] = 42
+    result = write_h5ad(adata, str(sample_h5ad_for_write), [_make_entry()])
+
+    assert "error" in result
+    assert "unsupported type" in result["error"]
