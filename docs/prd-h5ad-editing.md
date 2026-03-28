@@ -71,7 +71,7 @@ A list of edit entries stored in `uns['hca_edit_log']`. Each entry is a dict:
 
 - **Append-only log**: Each write appends new entries. Previous entries from the source file are preserved.
 - **Source identity**: Each entry records the source filename and its SHA-256 hash for traceability.
-- **Serialization**: `uns` values must be JSON-serializable for h5ad storage. Lists of dicts work (anndata stores them as JSON strings in HDF5).
+- **Serialization**: The edit log is stored as a JSON string in `uns` because anndata's HDF5 writer cannot reliably round-trip lists of dicts. `write_h5ad()` handles JSON encode/decode transparently.
 - **No external sidecar files**: The log lives in the h5ad so it travels with the file. If someone copies the file, they get the history.
 - **Not a replacement for git**: This tracks data-level edits to the h5ad contents, not code changes.
 - **No rollback**: To undo, re-edit from an earlier timestamped file. Every version is preserved on disk.

@@ -10,6 +10,7 @@ _TIMESTAMP_PATTERN = re.compile(r"-\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}(?=\.h5ad$
 _TIMESTAMP_FORMAT = "%Y-%m-%d-%H-%M-%S"
 EDIT_LOG_KEY = "hca_edit_log"
 _HASH_CHUNK_SIZE = 1 << 20  # 1 MB — keeps syscall count low on multi-GB files
+_REQUIRED_ENTRY_KEYS = {"timestamp", "tool", "tool_version", "operation", "description"}
 
 
 def _compute_sha256(path: str) -> str:
@@ -51,7 +52,16 @@ def generate_output_path(source_path: str, output_dir: str | None = None) -> str
     out_filename = f"{stem}-{timestamp}.h5ad"
 
     directory = output_dir if output_dir is not None else os.path.dirname(source_path)
-    return os.path.join(directory, out_filename)
+    output_path = os.path.join(directory, out_filename)
+
+    # On collision (same second), append a numeric suffix
+    counter = 1
+    while os.path.exists(output_path):
+        out_filename = f"{stem}-{timestamp}-{counter}.h5ad"
+        output_path = os.path.join(directory, out_filename)
+        counter += 1
+
+    return output_path
 
 
 def write_h5ad(
@@ -87,6 +97,12 @@ def write_h5ad(
         if output_dir is not None and not os.path.isdir(output_dir):
             return {"error": f"Output directory not found: {output_dir}"}
 
+        # Validate edit entries have required fields
+        for i, entry in enumerate(edit_entries):
+            missing = _REQUIRED_ENTRY_KEYS - entry.keys()
+            if missing:
+                return {"error": f"edit_entries[{i}] missing required keys: {sorted(missing)}"}
+
         # Compute source identity
         sha256 = _compute_sha256(source_path)
         source_filename = os.path.basename(source_path)
@@ -102,7 +118,12 @@ def write_h5ad(
         # writer cannot serialize lists of dicts natively.
         raw_log = adata.uns.get(EDIT_LOG_KEY, "[]")
         if isinstance(raw_log, str):
-            existing_log = json.loads(raw_log)
+            try:
+                existing_log = json.loads(raw_log)
+            except json.JSONDecodeError:
+                return {"error": f"Existing {EDIT_LOG_KEY} contains invalid JSON"}
+            if not isinstance(existing_log, list):
+                return {"error": f"Existing {EDIT_LOG_KEY} decoded to {type(existing_log).__name__}, expected list"}
         elif isinstance(raw_log, list):
             existing_log = raw_log
         else:
