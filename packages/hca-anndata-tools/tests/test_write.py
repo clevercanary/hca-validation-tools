@@ -75,8 +75,9 @@ def test_generate_output_path_strips_existing_timestamp(tmp_path):
     # Should have base "data" with a NEW timestamp, not double-stamped
     basename = os.path.basename(result)
     assert basename.startswith("data-")
-    # Exactly one timestamp suffix (no double-stamping)
-    assert len(re.findall(TIMESTAMP_RE, basename)) == 1
+    # Exactly one timestamp (no double-stamping) — use unanchored pattern
+    ts_pattern = r"\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}"
+    assert len(re.findall(ts_pattern, basename)) == 1
 
 
 def test_generate_output_path_format(sample_h5ad_for_write):

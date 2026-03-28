@@ -70,8 +70,9 @@ def write_h5ad(
     Args:
         adata: An in-memory AnnData object (already modified by the caller).
         source_path: Path to the original source .h5ad file on disk.
-        edit_entries: List of edit log entry dicts to append. Each should include
-            at minimum: timestamp, tool, tool_version, operation, description.
+        edit_entries: List of edit log entry dicts to append. Required keys:
+            timestamp, tool, tool_version, operation, description. Optional:
+            details (dict of operation-specific structured data).
             The source_file and source_sha256 fields are set automatically.
         output_dir: Directory for the output file. Defaults to same directory as source_path.
 
