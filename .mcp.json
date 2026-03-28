@@ -1,9 +1,0 @@
-{
-  "mcpServers": {
-    "hca-anndata-mcp": {
-      "command": "poetry",
-      "args": ["run", "hca-anndata-mcp"],
-      "cwd": "packages/hca-anndata-mcp"
-    }
-  }
-}
