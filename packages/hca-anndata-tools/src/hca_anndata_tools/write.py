@@ -52,16 +52,7 @@ def generate_output_path(source_path: str, output_dir: str | None = None) -> str
     out_filename = f"{stem}-{timestamp}.h5ad"
 
     directory = output_dir if output_dir is not None else os.path.dirname(source_path)
-    output_path = os.path.join(directory, out_filename)
-
-    # On collision (same second), append a numeric suffix
-    counter = 1
-    while os.path.exists(output_path):
-        out_filename = f"{stem}-{timestamp}-{counter}.h5ad"
-        output_path = os.path.join(directory, out_filename)
-        counter += 1
-
-    return output_path
+    return os.path.join(directory, out_filename)
 
 
 def write_h5ad(
