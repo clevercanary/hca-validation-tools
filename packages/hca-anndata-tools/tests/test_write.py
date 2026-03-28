@@ -73,14 +73,14 @@ def test_generate_output_path_strips_existing_timestamp(tmp_path):
     source.touch()
     result = generate_output_path(str(source))
     # Should have base "data" with a NEW timestamp, not double-stamped
-    basename = result.split("/")[-1]
+    basename = os.path.basename(result)
     assert basename.startswith("data-")
     assert basename.count("-20") == 1  # only one timestamp
 
 
 def test_generate_output_path_format(sample_h5ad_for_write):
     result = generate_output_path(str(sample_h5ad_for_write))
-    basename = result.split("/")[-1]
+    basename = os.path.basename(result)
     assert TIMESTAMP_RE.search(basename)
     assert basename.startswith("test-dataset-")
 

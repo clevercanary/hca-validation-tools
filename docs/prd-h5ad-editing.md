@@ -89,11 +89,11 @@ def write_h5ad(
     source_path: str,
     edit_entries: list[dict],
     output_dir: str | None = None,  # defaults to same dir as source
-) -> str:
+) -> dict:
     """
     Write adata to a new timestamped file. Appends edit_entries to uns['hca_edit_log'].
 
-    Returns the output file path.
+    Returns dict with 'output_path' on success, or 'error' on failure.
     """
 ```
 

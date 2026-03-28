@@ -41,7 +41,8 @@ def generate_output_path(source_path: str, output_dir: str | None = None) -> str
         output_dir: Directory for the output file. Defaults to same directory as source_path.
 
     Returns:
-        Absolute path string like '/dir/base-2026-03-27-13-54-26.h5ad'.
+        Path string like '/dir/base-2026-03-27-13-54-26.h5ad'. Inherits
+        absoluteness from source_path/output_dir.
     """
     filename = os.path.basename(source_path)
     base = strip_timestamp(filename)
@@ -105,7 +106,12 @@ def write_h5ad(
         elif isinstance(raw_log, list):
             existing_log = raw_log
         else:
-            existing_log = []
+            return {
+                "error": (
+                    f"Existing {EDIT_LOG_KEY} has unsupported type "
+                    f"{type(raw_log).__name__}; refusing to overwrite edit log"
+                )
+            }
         adata.uns[EDIT_LOG_KEY] = json.dumps(existing_log + stamped_entries)
 
         # Write to new timestamped path
