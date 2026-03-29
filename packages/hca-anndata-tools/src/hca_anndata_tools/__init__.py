@@ -10,6 +10,10 @@ __all__ = [
     "get_storage_info",
     "get_cap_annotations",
     "plot_embedding",
+    "write_h5ad",
+    "strip_timestamp",
+    "generate_output_path",
+    "EDIT_LOG_KEY",
 ]
 
 _LAZY_IMPORTS = {
@@ -20,6 +24,10 @@ _LAZY_IMPORTS = {
     "get_storage_info": ".storage",
     "get_cap_annotations": ".cap",
     "plot_embedding": ".plot",
+    "write_h5ad": ".write",
+    "strip_timestamp": ".write",
+    "generate_output_path": ".write",
+    "EDIT_LOG_KEY": ".write",
 }
 
 
