@@ -1,10 +1,10 @@
-"""Shared serialization utilities for converting numpy/pandas types to JSON-serializable Python types."""
+"""Shared serialization utilities for converting numpy types to JSON-serializable Python types."""
 
 import numpy as np
 
 
 def make_serializable(obj):
-    """Recursively convert numpy/pandas types to JSON-serializable Python types."""
+    """Recursively convert numpy types to JSON-serializable Python types."""
     if isinstance(obj, (np.integer,)):
         return int(obj)
     if isinstance(obj, (np.floating,)):
