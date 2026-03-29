@@ -88,7 +88,7 @@ def resolve_latest(path: str) -> str:
         return path
 
     # Timestamps are lexicographically ordered
-    return max(candidates)
+    return os.path.normpath(max(candidates))
 
 
 def _is_timestamped(path: str) -> bool:
@@ -179,7 +179,10 @@ def write_h5ad(
             and source_path != output_path
             and os.path.isfile(source_path)
         ):
-            os.remove(source_path)
+            try:
+                os.remove(source_path)
+            except OSError:
+                pass  # write succeeded; stale file is harmless
 
         return {"output_path": output_path}
 
