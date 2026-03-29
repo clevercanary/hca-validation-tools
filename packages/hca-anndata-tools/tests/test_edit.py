@@ -206,3 +206,26 @@ def test_set_uns_list_to_string_field_rejected(sample_h5ad_for_write):
 def test_set_uns_string_to_list_field_rejected(sample_h5ad_for_write):
     result = set_uns(str(sample_h5ad_for_write), "study_pi", "not a list")
     assert "error" in result
+
+
+# --- bionetwork-only fields ---
+
+
+def test_set_uns_ambient_count_correction(sample_h5ad_for_write):
+    result = set_uns(str(sample_h5ad_for_write), "ambient_count_correction", "SoupX")
+    assert "error" not in result
+    written = ad.read_h5ad(result["output_path"])
+    assert written.uns["ambient_count_correction"] == "SoupX"
+
+
+def test_set_uns_doublet_detection(sample_h5ad_for_write):
+    result = set_uns(str(sample_h5ad_for_write), "doublet_detection", "none")
+    assert "error" not in result
+    written = ad.read_h5ad(result["output_path"])
+    assert written.uns["doublet_detection"] == "none"
+
+
+def test_set_uns_bionetwork_empty_rejected(sample_h5ad_for_write):
+    result = set_uns(str(sample_h5ad_for_write), "ambient_count_correction", "")
+    assert "error" in result
+    assert "non-empty" in result["error"]

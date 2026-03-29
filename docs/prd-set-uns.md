@@ -111,7 +111,7 @@ Bundle a copy of the generated Pydantic models file (`shared/src/hca_validation/
 
 The generated `core.py` only imports `pydantic` and stdlib. No LinkML runtime needed.
 
-**Note:** `ambient_count_correction` and `doublet_detection` live on bionetwork subclasses (`AdiposeDataset`, `GutDataset`, `MusculoskeletalDataset`), not base `Dataset`. The tool should collect uns fields from the subclass matching the file's bionetwork, falling back to base `Dataset`.
+**Note:** `ambient_count_correction` and `doublet_detection` live on bionetwork subclasses (`AdiposeDataset`, `GutDataset`, `MusculoskeletalDataset`), not base `Dataset`. The tool collects uns fields from base `Dataset` and all bionetwork subclasses, marking subclass-only fields as `bionetwork_only` in the registry.
 
 ## Architecture
 
