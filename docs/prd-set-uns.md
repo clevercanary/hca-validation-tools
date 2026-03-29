@@ -54,23 +54,7 @@ Source: `shared/src/hca_validation/schema/slots.yaml`, `shared/src/hca_validatio
 - `field: str` — uns field name (must be a known HCA uns field)
 - `value: str | list[str]` — value to set
 
-**Returns:**
-```json
-{
-  "output_path": "/path/to/file-2026-03-28-14-22-11.h5ad",
-  "field": "ambient_count_correction",
-  "old_value": null,
-  "new_value": "cellbender",
-  "changed": true
-}
-```
-
-Or on error:
-```json
-{
-  "error": "Unknown uns field 'titl'. Valid fields: title, description, study_pi, ..."
-}
-```
+**Returns:** Dict with `output_path`, `editing`, `wrote`, `field`, `old_value`, `new_value` on success, or `error` on failure. See implementation for exact shape.
 
 ### Validation rules
 
@@ -79,27 +63,11 @@ Or on error:
 3. **Type mismatch** — passing a string to a list field or vice versa → error
 4. **`batch_condition`** — each value checked against `adata.obs.columns`; unknown columns → error listing valid columns
 5. **`default_embedding`** — value checked against `adata.obsm.keys()`; unknown key → error listing valid keys
-6. **Empty required field** — setting a required field to empty string/list → warning
+6. **Empty required field** — setting a required field to empty string/list → error
 
 ### `list_uns_fields(path)`
 
-A companion read-only tool that shows the current state of all HCA uns fields for a file:
-
-```json
-{
-  "fields": [
-    {"field": "title", "required": false, "current_value": "My Dataset", "type": "string"},
-    {"field": "study_pi", "required": true, "current_value": ["Smith,J"], "type": "list[string]"},
-    {"field": "ambient_count_correction", "required": true, "current_value": null, "type": "string"},
-    ...
-  ],
-  "missing_required": ["description", "ambient_count_correction", "doublet_detection"],
-  "obs_columns": ["donor_id", "cell_type", "..."],
-  "obsm_keys": ["X_umap", "X_pca"]
-}
-```
-
-This lets Claude (or the user) see what's set, what's missing, and what the valid cross-reference targets are — before making edits.
+A companion read-only tool that shows the current state of all HCA uns fields for a file — what's set, what's missing, and cross-reference targets (obs columns, obsm keys). See implementation for exact response shape.
 
 ## Example Workflow
 

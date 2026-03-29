@@ -49,6 +49,7 @@ def list_uns_fields(path: str) -> dict:
         with open_h5ad(path, backed="r") as adata:
             fields = []
             missing_required = []
+            missing_required_bionetwork = []
 
             for name, info in registry.items():
                 current = adata.uns.get(name, None)
@@ -68,7 +69,10 @@ def list_uns_fields(path: str) -> dict:
                 })
 
                 if info.required and not is_set:
-                    missing_required.append(name)
+                    if info.bionetwork_only:
+                        missing_required_bionetwork.append(name)
+                    else:
+                        missing_required.append(name)
 
             # Extra uns keys not in the HCA schema
             schema_keys = set(registry.keys()) | {EDIT_LOG_KEY}
@@ -79,6 +83,7 @@ def list_uns_fields(path: str) -> dict:
                 "fields": fields,
                 "set_count": sum(1 for f in fields if f["is_set"]),
                 "missing_required": missing_required,
+                "missing_required_bionetwork": missing_required_bionetwork,
                 "extra_uns_keys": extra_uns_keys,
                 "obs_columns": list(adata.obs.columns),
                 "obsm_keys": list(adata.obsm.keys()),
@@ -125,6 +130,17 @@ def set_uns(
             validated_value = adapter.validate_python(value)
         except ValidationError as e:
             return {"error": f"Invalid value for '{field}': {e}"}
+
+        # Reject empty values for required fields
+        if info.required:
+            if isinstance(validated_value, str) and not validated_value.strip():
+                return {"error": f"Invalid value for '{field}': must be non-empty"}
+            if isinstance(validated_value, list):
+                if not validated_value:
+                    return {"error": f"Invalid value for '{field}': list must be non-empty"}
+                bad = [v for v in validated_value if isinstance(v, str) and not v.strip()]
+                if bad:
+                    return {"error": f"Invalid value for '{field}': list elements must be non-empty"}
 
         # Open file in memory for editing
         with open_h5ad(path, backed=None) as adata:

@@ -40,6 +40,9 @@ def test_list_uns_fields_shows_missing_required(sample_h5ad_for_write):
     # description and study_pi are required but not in the test fixture
     assert "description" in result["missing_required"]
     assert "study_pi" in result["missing_required"]
+    # bionetwork-only fields are in a separate list
+    assert "ambient_count_correction" not in result["missing_required"]
+    assert "ambient_count_correction" in result["missing_required_bionetwork"]
 
 
 def test_list_uns_fields_shows_bionetwork_fields(sample_h5ad_for_write):
@@ -166,3 +169,30 @@ def test_set_uns_custom_output_dir(sample_h5ad_for_write, tmp_path):
 def test_set_uns_bad_path():
     result = set_uns("/nonexistent/file.h5ad", "title", "test")
     assert "error" in result
+
+
+# --- empty value rejection ---
+
+
+def test_set_uns_empty_string_rejected(sample_h5ad_for_write):
+    result = set_uns(str(sample_h5ad_for_write), "description", "")
+    assert "error" in result
+    assert "non-empty" in result["error"]
+
+
+def test_set_uns_whitespace_string_rejected(sample_h5ad_for_write):
+    result = set_uns(str(sample_h5ad_for_write), "description", "   ")
+    assert "error" in result
+    assert "non-empty" in result["error"]
+
+
+def test_set_uns_empty_list_rejected(sample_h5ad_for_write):
+    result = set_uns(str(sample_h5ad_for_write), "study_pi", [])
+    assert "error" in result
+    assert "non-empty" in result["error"]
+
+
+def test_set_uns_list_with_empty_element_rejected(sample_h5ad_for_write):
+    result = set_uns(str(sample_h5ad_for_write), "study_pi", ["Smith,John", ""])
+    assert "error" in result
+    assert "non-empty" in result["error"]
