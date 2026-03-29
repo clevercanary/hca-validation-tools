@@ -16,6 +16,7 @@ numpy = "<3"
 h5py = ">=3.8"
 scanpy = ">=1.10"
 matplotlib = ">=3.7"
+pydantic = ">=2,<3"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0"

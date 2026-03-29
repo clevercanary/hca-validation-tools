@@ -9,6 +9,8 @@ from hca_anndata_tools import (
     locate_files,
     get_storage_info,
     get_cap_annotations,
+    set_uns,
+    list_uns_fields,
 )
 from hca_anndata_mcp.tools.plot import plot_embedding_mcp
 
@@ -20,7 +22,9 @@ mcp = FastMCP(
         "get_storage_info for HDF5 compression/chunk details, "
         "get_descriptive_stats for distributions, view_data to inspect raw values, "
         "plot_embedding to visualize UMAP/PCA embeddings, "
-        "and get_cap_annotations to inspect CAP cell annotation metadata."
+        "get_cap_annotations to inspect CAP cell annotation metadata, "
+        "list_uns_fields to see HCA dataset metadata and what's missing, "
+        "and set_uns to update HCA dataset metadata fields with schema validation."
     ),
 )
 
@@ -31,3 +35,5 @@ mcp.tool()(view_data)
 mcp.tool()(locate_files)
 mcp.tool()(plot_embedding_mcp)
 mcp.tool()(get_cap_annotations)
+mcp.tool()(list_uns_fields)
+mcp.tool()(set_uns)
