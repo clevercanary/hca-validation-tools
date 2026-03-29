@@ -1,7 +1,6 @@
 """Tests for set_uns and list_uns_fields."""
 
 import json
-import os
 
 import anndata as ad
 
@@ -158,12 +157,10 @@ def test_set_uns_previous_value_in_details(sample_h5ad_for_write):
     assert log[0]["details"]["old_value"] == "Test Dataset"
 
 
-def test_set_uns_custom_output_dir(sample_h5ad_for_write, tmp_path):
-    out_dir = tmp_path / "custom"
-    out_dir.mkdir()
-    result = set_uns(str(sample_h5ad_for_write), "description", "test", output_dir=str(out_dir))
+def test_set_uns_output_in_same_dir(sample_h5ad_for_write):
+    result = set_uns(str(sample_h5ad_for_write), "description", "test")
     assert "error" not in result
-    assert result["output_path"].startswith(str(out_dir))
+    assert result["output_path"].startswith(str(sample_h5ad_for_write.parent))
 
 
 def test_set_uns_bad_path():

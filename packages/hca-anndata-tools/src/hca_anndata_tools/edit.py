@@ -40,8 +40,9 @@ def list_uns_fields(path: str) -> dict:
         path: Path to an .h5ad file.
 
     Returns:
-        Dict with 'fields' (list of field info), 'missing_required',
-        'extra_uns_keys', 'obs_columns', 'obsm_keys', or 'error'.
+        Dict with 'filename', 'fields' (list of field info), 'set_count',
+        'missing_required', 'missing_required_bionetwork', 'extra_uns_keys',
+        'obs_columns', 'obsm_keys', or 'error'.
     """
     try:
         registry = uns_field_registry()
@@ -97,24 +98,27 @@ def set_uns(
     path: str,
     field: str,
     value: str | list[str],
-    output_dir: str | None = None,
 ) -> dict:
     """Set a single HCA uns field with schema validation.
 
     Validates the field name and value against the HCA schema, then writes
-    the updated file via write_h5ad() with edit log tracking.
+    the updated file via write_h5ad() with edit log tracking. Output is
+    written to the same directory as the input file.
 
     Args:
         path: Path to an .h5ad file.
         field: The uns field name (e.g. 'title', 'study_pi').
         value: The value to set.
-        output_dir: Directory for output file. Defaults to same as source.
 
     Returns:
-        Dict with 'output_path', 'field', 'old_value', 'new_value' on success,
-        or 'error' on failure.
+        Dict with 'output_path', 'editing', 'wrote', 'field', 'old_value',
+        'new_value' on success, or 'error' on failure.
     """
     try:
+        # Validate path before loading (avoid reading multi-GB file just to fail)
+        if not os.path.isfile(path):
+            return {"error": f"File not found: {path}"}
+
         registry = uns_field_registry()
 
         # Validate field name
@@ -186,7 +190,7 @@ def set_uns(
                 },
             }
 
-            result = write_h5ad(adata, path, [entry], output_dir=output_dir)
+            result = write_h5ad(adata, path, [entry])
 
         if "error" in result:
             return result
