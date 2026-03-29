@@ -1,27 +1,7 @@
 """CAP (Cell Annotation Platform) schema inspection for AnnData files."""
 
-import numpy as np
-
 from ._io import open_h5ad
-
-
-def _make_serializable(obj):
-    """Convert numpy/pandas types to JSON-serializable Python types."""
-    if isinstance(obj, (np.integer,)):
-        return int(obj)
-    if isinstance(obj, (np.floating,)):
-        return float(obj)
-    if isinstance(obj, (np.bool_,)):
-        return bool(obj)
-    if isinstance(obj, (np.str_, np.bytes_)):
-        return str(obj)
-    if isinstance(obj, np.ndarray):
-        return obj.tolist()
-    if isinstance(obj, dict):
-        return {k: _make_serializable(v) for k, v in obj.items()}
-    if isinstance(obj, (list, tuple)):
-        return [_make_serializable(v) for v in obj]
-    return obj
+from ._serialize import make_serializable as _make_serializable
 
 # CAP obs column suffixes per the cell-annotation-schema spec
 _REQUIRED_SUFFIXES = [
