@@ -10,6 +10,7 @@ import anndata as ad
 from hca_anndata_tools.write import (
     EDIT_LOG_KEY,
     generate_output_path,
+    resolve_latest,
     strip_timestamp,
     write_h5ad,
 )
@@ -58,13 +59,6 @@ def test_generate_output_path_default_dir(sample_h5ad_for_write):
     result = generate_output_path(str(sample_h5ad_for_write))
     assert result.startswith(str(sample_h5ad_for_write.parent))
     assert TIMESTAMP_RE.search(result)
-
-
-def test_generate_output_path_custom_dir(sample_h5ad_for_write, tmp_path):
-    out_dir = str(tmp_path / "output")
-    os.makedirs(out_dir)
-    result = generate_output_path(str(sample_h5ad_for_write), output_dir=out_dir)
-    assert result.startswith(out_dir)
 
 
 def test_generate_output_path_strips_existing_timestamp(tmp_path):
@@ -159,17 +153,6 @@ def test_write_h5ad_source_file_is_basename(sample_h5ad_for_write):
     assert source_file == "test-dataset.h5ad"
 
 
-def test_write_h5ad_custom_output_dir(sample_h5ad_for_write, tmp_path):
-    out_dir = tmp_path / "custom_output"
-    out_dir.mkdir()
-
-    adata = ad.read_h5ad(str(sample_h5ad_for_write))
-    result = write_h5ad(adata, str(sample_h5ad_for_write), [_make_entry()], output_dir=str(out_dir))
-
-    assert "error" not in result
-    assert result["output_path"].startswith(str(out_dir))
-
-
 def test_write_h5ad_missing_source(sample_h5ad_for_write):
     adata = ad.read_h5ad(str(sample_h5ad_for_write))
     result = write_h5ad(adata, "/nonexistent/file.h5ad", [_make_entry()])
@@ -262,3 +245,77 @@ def test_write_h5ad_unsupported_log_type(sample_h5ad_for_write):
 
     assert "error" in result
     assert "unsupported type" in result["error"]
+
+
+# --- resolve_latest ---
+
+
+def test_resolve_latest_no_timestamps(sample_h5ad_for_write):
+    """Returns original when no timestamped versions exist."""
+    result = resolve_latest(str(sample_h5ad_for_write))
+    assert result == str(sample_h5ad_for_write)
+
+
+def test_resolve_latest_finds_newest(sample_h5ad_for_write):
+    """Returns the latest timestamped version."""
+    d = sample_h5ad_for_write.parent
+    stem = sample_h5ad_for_write.stem  # "test-dataset"
+    # Create fake timestamped files
+    (d / f"{stem}-2026-03-27-10-00-00.h5ad").touch()
+    (d / f"{stem}-2026-03-28-15-30-00.h5ad").touch()
+    (d / f"{stem}-2026-03-27-12-00-00.h5ad").touch()
+
+    result = resolve_latest(str(sample_h5ad_for_write))
+    assert result.endswith(f"{stem}-2026-03-28-15-30-00.h5ad")
+
+
+def test_resolve_latest_from_timestamped_path(sample_h5ad_for_write):
+    """Given a timestamped path, still finds the latest (not self)."""
+    d = sample_h5ad_for_write.parent
+    stem = sample_h5ad_for_write.stem
+    old = d / f"{stem}-2026-03-27-10-00-00.h5ad"
+    new = d / f"{stem}-2026-03-28-15-30-00.h5ad"
+    old.touch()
+    new.touch()
+
+    result = resolve_latest(str(old))
+    assert result.endswith(f"{stem}-2026-03-28-15-30-00.h5ad")
+
+
+# --- write_h5ad overwrite ---
+
+
+def test_write_h5ad_deletes_previous_timestamped(sample_h5ad_for_write):
+    """After writes, only original + one timestamped version remain."""
+    adata = ad.read_h5ad(str(sample_h5ad_for_write))
+
+    # First write: original → timestamped
+    r1 = write_h5ad(adata, str(sample_h5ad_for_write), [_make_entry(description="first")])
+    assert "error" not in r1
+    assert os.path.isfile(str(sample_h5ad_for_write))  # original still there
+
+    # Second write: timestamped → new timestamped
+    adata2 = ad.read_h5ad(r1["output_path"])
+    r2 = write_h5ad(adata2, r1["output_path"], [_make_entry(description="second")])
+    assert "error" not in r2
+    assert os.path.isfile(str(sample_h5ad_for_write))  # original still there
+    assert os.path.isfile(r2["output_path"])  # latest version exists
+
+    # Count h5ad files in directory — should be original + one timestamped
+    d = sample_h5ad_for_write.parent
+    h5ad_files = list(d.glob("*.h5ad"))
+    assert len(h5ad_files) == 2  # original + latest edit
+
+
+def test_write_h5ad_never_deletes_original(sample_h5ad_for_write):
+    """Writing from the original never deletes it."""
+    adata = ad.read_h5ad(str(sample_h5ad_for_write))
+    r1 = write_h5ad(adata, str(sample_h5ad_for_write), [_make_entry()])
+    assert "error" not in r1
+    assert os.path.isfile(str(sample_h5ad_for_write))
+
+    # Write again from original
+    adata2 = ad.read_h5ad(str(sample_h5ad_for_write))
+    r2 = write_h5ad(adata2, str(sample_h5ad_for_write), [_make_entry()])
+    assert "error" not in r2
+    assert os.path.isfile(str(sample_h5ad_for_write))
