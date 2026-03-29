@@ -12,7 +12,7 @@ from pydantic import TypeAdapter, ValidationError
 from ._io import open_h5ad
 from ._serialize import make_serializable
 from .schema.helpers import uns_field_registry
-from .write import EDIT_LOG_KEY, write_h5ad
+from .write import EDIT_LOG_KEY, resolve_latest, write_h5ad
 from . import __version__
 
 
@@ -45,6 +45,7 @@ def list_uns_fields(path: str) -> dict:
         'obs_columns', 'obsm_keys', or 'error'.
     """
     try:
+        path = resolve_latest(path)
         registry = uns_field_registry()
 
         with open_h5ad(path, backed="r") as adata:
@@ -115,6 +116,7 @@ def set_uns(
         'new_value' on success, or 'error' on failure.
     """
     try:
+        path = resolve_latest(path)
         registry = uns_field_registry()
 
         # Validate field name

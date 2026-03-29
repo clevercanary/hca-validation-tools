@@ -168,6 +168,25 @@ def test_set_uns_bad_path():
     assert "error" in result
 
 
+# --- auto-resolve latest ---
+
+
+def test_set_uns_auto_resolves_latest(sample_h5ad_for_write):
+    """Passing the original path edits the latest timestamped version."""
+    # First edit creates a timestamped copy
+    r1 = set_uns(str(sample_h5ad_for_write), "description", "first edit")
+    assert "error" not in r1
+
+    # Second edit: pass original path, should auto-resolve to the timestamped version
+    r2 = set_uns(str(sample_h5ad_for_write), "comments", "second edit")
+    assert "error" not in r2
+
+    # The second edit should have read from the first output (which has description set)
+    written = ad.read_h5ad(r2["output_path"])
+    assert written.uns["description"] == "first edit"
+    assert written.uns["comments"] == "second edit"
+
+
 # --- empty value rejection ---
 
 

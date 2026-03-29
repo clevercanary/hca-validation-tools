@@ -14,6 +14,7 @@ __all__ = [
     "strip_timestamp",
     "generate_output_path",
     "EDIT_LOG_KEY",
+    "resolve_latest",
     "set_uns",
     "list_uns_fields",
 ]
@@ -30,6 +31,7 @@ _LAZY_IMPORTS = {
     "strip_timestamp": ".write",
     "generate_output_path": ".write",
     "EDIT_LOG_KEY": ".write",
+    "resolve_latest": ".write",
     "set_uns": ".edit",
     "list_uns_fields": ".edit",
 }

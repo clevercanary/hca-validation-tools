@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import glob
 import hashlib
 import json
 import os
@@ -40,47 +41,80 @@ def strip_timestamp(filename: str) -> str:
     return _TIMESTAMP_PATTERN.sub("", filename)
 
 
-def generate_output_path(source_path: str, output_dir: str | None = None) -> str:
+def _base_stem(path: str) -> str:
+    """Extract the base stem (no timestamp, no extension) from an h5ad path."""
+    return strip_timestamp(os.path.basename(path)).removesuffix(".h5ad")
+
+
+def generate_output_path(source_path: str) -> str:
     """Generate a timestamped output path from a source h5ad path.
 
     Args:
         source_path: Path to the source .h5ad file.
-        output_dir: Directory for the output file. Defaults to same directory as source_path.
 
     Returns:
-        Path string like '/dir/base-2026-03-27-13-54-26.h5ad'. Inherits
-        absoluteness from source_path/output_dir.
+        Path string in the same directory as source_path.
     """
-    filename = os.path.basename(source_path)
-    base = strip_timestamp(filename)
-    stem = base.removesuffix(".h5ad")
+    stem = _base_stem(source_path)
     timestamp = datetime.now(timezone.utc).strftime(_TIMESTAMP_FORMAT)
-    out_filename = f"{stem}-{timestamp}.h5ad"
+    return os.path.join(os.path.dirname(source_path), f"{stem}-{timestamp}.h5ad")
 
-    directory = output_dir if output_dir is not None else os.path.dirname(source_path)
-    return os.path.join(directory, out_filename)
+
+def resolve_latest(path: str) -> str:
+    """Find the latest timestamped version of an h5ad file.
+
+    Given any version of a file (original or timestamped), scans the
+    directory for timestamped variants and returns the newest one.
+    If no timestamped versions exist, returns the original path.
+
+    Args:
+        path: Path to any version of an h5ad file.
+
+    Returns:
+        Path to the latest timestamped version, or the original if none exist.
+    """
+    directory = os.path.dirname(path) or "."
+    stem = _base_stem(path)
+
+    # Glob for timestamped variants
+    pattern = os.path.join(directory, f"{glob.escape(stem)}-*-*-*-*-*-*.h5ad")
+    candidates = [
+        f for f in glob.glob(pattern)
+        if _TIMESTAMP_PATTERN.search(os.path.basename(f))
+    ]
+
+    if not candidates:
+        return path
+
+    # Timestamps are lexicographically ordered
+    return max(candidates)
+
+
+def _is_timestamped(path: str) -> bool:
+    """Check if a path has a timestamp suffix (i.e. it's an edit, not the original)."""
+    return bool(_TIMESTAMP_PATTERN.search(os.path.basename(path)))
 
 
 def write_h5ad(
     adata: AnnData,
     source_path: str,
     edit_entries: list[dict],
-    output_dir: str | None = None,
 ) -> dict:
     """Write adata to a new timestamped file with edit log entries.
 
     Computes SHA-256 of the source file, appends edit_entries to
     adata.uns['hca_edit_log'], and writes to a new timestamped path.
-    The original source file is never modified.
+    The original (non-timestamped) file is never modified. If source_path
+    is a previous timestamped edit, it is deleted after the new file is
+    successfully written — keeping only the original + latest edit on disk.
 
     Args:
         adata: An in-memory AnnData object (already modified by the caller).
-        source_path: Path to the original source .h5ad file on disk.
+        source_path: Path to the source .h5ad file on disk.
         edit_entries: List of edit log entry dicts to append. Required keys:
             timestamp, tool, tool_version, operation, description. Optional:
             details (dict of operation-specific structured data).
             The source_file and source_sha256 fields are set automatically.
-        output_dir: Directory for the output file. Defaults to same directory as source_path.
 
     Returns:
         A dict with 'output_path' on success, or 'error' on failure.
@@ -94,9 +128,6 @@ def write_h5ad(
 
         if not edit_entries:
             return {"error": "edit_entries must not be empty — every write should document what changed"}
-
-        if output_dir is not None and not os.path.isdir(output_dir):
-            return {"error": f"Output directory not found: {output_dir}"}
 
         # Validate edit entries have required fields
         for i, entry in enumerate(edit_entries):
@@ -137,8 +168,17 @@ def write_h5ad(
         adata.uns[EDIT_LOG_KEY] = json.dumps(existing_log + stamped_entries)
 
         # Write to new timestamped path
-        output_path = generate_output_path(source_path, output_dir)
+        output_path = generate_output_path(source_path)
         adata.write_h5ad(output_path)
+
+        # Delete previous timestamped version (never the original).
+        # Skip if output == source (same-second write overwrote in place).
+        if (
+            _is_timestamped(source_path)
+            and source_path != output_path
+            and os.path.isfile(source_path)
+        ):
+            os.remove(source_path)
 
         return {"output_path": output_path}
 
