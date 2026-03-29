@@ -175,7 +175,7 @@ def set_uns(
             # Build edit log entry
             entry = {
                 "timestamp": datetime.now(timezone.utc).isoformat(),
-                "tool": "hca-anndata-mcp",
+                "tool": "hca-anndata-tools",
                 "tool_version": __version__,
                 "operation": "set_uns",
                 "description": f"Set uns['{field}']",

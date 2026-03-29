@@ -59,8 +59,7 @@ Source: `shared/src/hca_validation/schema/slots.yaml`, `shared/src/hca_validatio
 ### Validation rules
 
 1. **Unknown field** → error listing valid field names
-2. **Reserved field** (`schema_version`, etc.) → error explaining it's set by cellxgene
-3. **Type mismatch** — passing a string to a list field or vice versa → error
+2. **Type mismatch** — passing a string to a list field or vice versa → error
 4. **`batch_condition`** — each value checked against `adata.obs.columns`; unknown columns → error listing valid columns
 5. **`default_embedding`** — value checked against `adata.obsm.keys()`; unknown key → error listing valid keys
 6. **Empty required field** — setting a required field to empty string/list → error

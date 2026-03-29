@@ -196,3 +196,16 @@ def test_set_uns_list_with_empty_element_rejected(sample_h5ad_for_write):
     result = set_uns(str(sample_h5ad_for_write), "study_pi", ["Smith,John", ""])
     assert "error" in result
     assert "non-empty" in result["error"]
+
+
+# --- type mismatch ---
+
+
+def test_set_uns_list_to_string_field_rejected(sample_h5ad_for_write):
+    result = set_uns(str(sample_h5ad_for_write), "description", ["not", "a", "string"])
+    assert "error" in result
+
+
+def test_set_uns_string_to_list_field_rejected(sample_h5ad_for_write):
+    result = set_uns(str(sample_h5ad_for_write), "study_pi", "not a list")
+    assert "error" in result
