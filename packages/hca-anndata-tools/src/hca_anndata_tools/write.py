@@ -86,7 +86,7 @@ def write_h5ad(
         A dict with 'output_path' on success, or 'error' on failure.
     """
     try:
-        if not source_path.lower().endswith(".h5ad"):
+        if not source_path.endswith(".h5ad"):
             return {"error": f"Source path must be a .h5ad file, got: {source_path}"}
 
         if not os.path.isfile(source_path):
