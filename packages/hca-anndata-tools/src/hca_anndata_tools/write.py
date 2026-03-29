@@ -1,10 +1,16 @@
 """Write h5ad files with timestamped naming and edit log tracking."""
 
+from __future__ import annotations
+
 import hashlib
 import json
 import os
 import re
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from anndata import AnnData
 
 _TIMESTAMP_PATTERN = re.compile(r"-\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}(?=\.h5ad$)")
 _TIMESTAMP_FORMAT = "%Y-%m-%d-%H-%M-%S"
@@ -56,7 +62,7 @@ def generate_output_path(source_path: str, output_dir: str | None = None) -> str
 
 
 def write_h5ad(
-    adata: "anndata.AnnData",
+    adata: AnnData,
     source_path: str,
     edit_entries: list[dict],
     output_dir: str | None = None,
@@ -80,6 +86,9 @@ def write_h5ad(
         A dict with 'output_path' on success, or 'error' on failure.
     """
     try:
+        if not source_path.lower().endswith(".h5ad"):
+            return {"error": f"Source path must be a .h5ad file, got: {source_path}"}
+
         if not os.path.isfile(source_path):
             return {"error": f"Source file not found: {source_path}"}
 
