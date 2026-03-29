@@ -76,11 +76,12 @@ def resolve_latest(path: str) -> str:
     directory = os.path.dirname(path) or "."
     stem = _base_stem(path)
 
-    # Glob for timestamped variants
+    # Glob for timestamped variants, then strict regex filter on full basename
     pattern = os.path.join(directory, f"{glob.escape(stem)}-*-*-*-*-*-*.h5ad")
+    full_re = re.compile(rf"^{re.escape(stem)}-\d{{4}}-\d{{2}}-\d{{2}}-\d{{2}}-\d{{2}}-\d{{2}}\.h5ad$")
     candidates = [
         f for f in glob.glob(pattern)
-        if _TIMESTAMP_PATTERN.search(os.path.basename(f))
+        if full_re.match(os.path.basename(f))
     ]
 
     if not candidates:
