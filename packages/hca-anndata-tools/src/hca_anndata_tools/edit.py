@@ -115,10 +115,6 @@ def set_uns(
         'new_value' on success, or 'error' on failure.
     """
     try:
-        # Validate path before loading (avoid reading multi-GB file just to fail)
-        if not os.path.isfile(path):
-            return {"error": f"File not found: {path}"}
-
         registry = uns_field_registry()
 
         # Validate field name
