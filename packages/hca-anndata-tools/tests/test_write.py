@@ -247,6 +247,19 @@ def test_write_h5ad_unsupported_log_type(sample_h5ad_for_write):
     assert "unsupported type" in result["error"]
 
 
+# --- output_path override ---
+
+
+def test_write_h5ad_custom_output_path(sample_h5ad_for_write, tmp_path):
+    adata = ad.read_h5ad(str(sample_h5ad_for_write))
+    custom = str(tmp_path / "custom-name-2026-03-29-00-00-00.h5ad")
+    result = write_h5ad(adata, str(sample_h5ad_for_write), [_make_entry()], output_path=custom)
+
+    assert "error" not in result
+    assert result["output_path"] == custom
+    assert os.path.isfile(custom)
+
+
 # --- resolve_latest ---
 
 

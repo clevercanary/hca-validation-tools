@@ -11,6 +11,7 @@ from hca_anndata_tools import (
     get_cap_annotations,
     set_uns,
     list_uns_fields,
+    convert_cellxgene_to_hca,
 )
 from hca_anndata_mcp.tools.plot import plot_embedding_mcp
 
@@ -24,7 +25,8 @@ mcp = FastMCP(
         "plot_embedding to visualize UMAP/PCA embeddings, "
         "get_cap_annotations to inspect CAP cell annotation metadata, "
         "list_uns_fields to see HCA dataset metadata and what's missing, "
-        "and set_uns to update HCA dataset metadata fields with schema validation."
+        "set_uns to update HCA dataset metadata fields with schema validation, "
+        "and convert_cellxgene_to_hca to convert CellxGENE files to HCA format."
     ),
 )
 
@@ -37,3 +39,4 @@ mcp.tool()(plot_embedding_mcp)
 mcp.tool()(get_cap_annotations)
 mcp.tool()(list_uns_fields)
 mcp.tool()(set_uns)
+mcp.tool()(convert_cellxgene_to_hca)
