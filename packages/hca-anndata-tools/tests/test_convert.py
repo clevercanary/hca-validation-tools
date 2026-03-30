@@ -1,6 +1,7 @@
 """Tests for convert_cellxgene_to_hca."""
 
 import json
+import os
 import re
 
 import anndata as ad
@@ -95,7 +96,7 @@ def test_convert_label_columns_preserved(cellxgene_h5ad):
 
 def test_convert_output_named_from_title(cellxgene_h5ad):
     result = convert_cellxgene_to_hca(str(cellxgene_h5ad))
-    basename = result["output_path"].split("/")[-1]
+    basename = os.path.basename(result["output_path"])
 
     assert basename.startswith("snrna-seq-of-human-retina-test-subset-")
     assert re.search(r"\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}\.h5ad$", basename)
