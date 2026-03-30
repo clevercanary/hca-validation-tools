@@ -51,9 +51,19 @@ def convert_cellxgene_to_hca(
     """
     try:
         with open_h5ad(path, backed=None) as adata:
-            # Verify this looks like a cellxgene file
+            # Verify this is a cellxgene 6.0+ file (organism in uns, single species)
             if "schema_version" not in adata.uns:
                 return {"error": "Not a CellxGENE file — uns['schema_version'] is missing"}
+
+            schema_ver = str(adata.uns["schema_version"])
+            major = int(schema_ver.split(".")[0]) if schema_ver[0].isdigit() else 0
+            if major < 6:
+                return {
+                    "error": (
+                        f"CellxGENE schema {schema_ver} is not supported. "
+                        f"Requires 6.0+ (organism in uns, single species per dataset)."
+                    )
+                }
 
             title = adata.uns.get("title", "")
             if not title:

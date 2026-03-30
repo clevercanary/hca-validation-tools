@@ -155,14 +155,23 @@ def test_convert_rejects_non_cellxgene(sample_h5ad_for_write):
     assert "CellxGENE" in result["error"]
 
 
-def test_convert_missing_title(sample_h5ad_for_write):
+def test_convert_rejects_old_cellxgene_schema(cellxgene_h5ad):
+    """CellxGENE schema < 6.0 is rejected."""
+    adata = ad.read_h5ad(str(cellxgene_h5ad))
+    adata.uns["schema_version"] = "5.1.0"
+    old_path = cellxgene_h5ad.parent / "old-schema.h5ad"
+    adata.write_h5ad(old_path)
+
+    result = convert_cellxgene_to_hca(str(old_path))
+    assert "error" in result
+    assert "6.0+" in result["error"]
+
+
+def test_convert_missing_title(cellxgene_h5ad):
     """File without a title in uns returns an error."""
-    # sample_h5ad_for_write has uns["title"] = "Test Dataset"
-    # Remove it and write a new fixture without title
-    import anndata as _ad
-    adata = _ad.read_h5ad(str(sample_h5ad_for_write))
+    adata = ad.read_h5ad(str(cellxgene_h5ad))
     del adata.uns["title"]
-    no_title_path = sample_h5ad_for_write.parent / "no-title.h5ad"
+    no_title_path = cellxgene_h5ad.parent / "no-title.h5ad"
     adata.write_h5ad(no_title_path)
 
     result = convert_cellxgene_to_hca(str(no_title_path))
