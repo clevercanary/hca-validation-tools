@@ -13,10 +13,12 @@ __all__ = [
     "write_h5ad",
     "strip_timestamp",
     "generate_output_path",
+    "generate_timestamp",
     "EDIT_LOG_KEY",
     "resolve_latest",
     "set_uns",
     "list_uns_fields",
+    "convert_cellxgene_to_hca",
 ]
 
 _LAZY_IMPORTS = {
@@ -30,10 +32,12 @@ _LAZY_IMPORTS = {
     "write_h5ad": ".write",
     "strip_timestamp": ".write",
     "generate_output_path": ".write",
+    "generate_timestamp": ".write",
     "EDIT_LOG_KEY": ".write",
     "resolve_latest": ".write",
     "set_uns": ".edit",
     "list_uns_fields": ".edit",
+    "convert_cellxgene_to_hca": ".convert",
 }
 
 

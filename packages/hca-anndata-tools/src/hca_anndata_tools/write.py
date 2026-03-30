@@ -46,6 +46,11 @@ def _base_stem(path: str) -> str:
     return strip_timestamp(os.path.basename(path)).removesuffix(".h5ad")
 
 
+def generate_timestamp() -> str:
+    """Generate a UTC timestamp string for output filenames."""
+    return datetime.now(timezone.utc).strftime(_TIMESTAMP_FORMAT)
+
+
 def generate_output_path(source_path: str) -> str:
     """Generate a timestamped output path from a source h5ad path.
 
@@ -56,8 +61,7 @@ def generate_output_path(source_path: str) -> str:
         Path string in the same directory as source_path.
     """
     stem = _base_stem(source_path)
-    timestamp = datetime.now(timezone.utc).strftime(_TIMESTAMP_FORMAT)
-    return os.path.join(os.path.dirname(source_path), f"{stem}-{timestamp}.h5ad")
+    return os.path.join(os.path.dirname(source_path), f"{stem}-{generate_timestamp()}.h5ad")
 
 
 def resolve_latest(path: str) -> str:
@@ -100,6 +104,7 @@ def write_h5ad(
     adata: AnnData,
     source_path: str,
     edit_entries: list[dict],
+    output_path: str | None = None,
 ) -> dict:
     """Write adata to a new timestamped file with edit log entries.
 
@@ -116,6 +121,8 @@ def write_h5ad(
             timestamp, tool, tool_version, operation, description. Optional:
             details (dict of operation-specific structured data).
             The source_file and source_sha256 fields are set automatically.
+        output_path: Override the generated output path. If None, a
+            timestamped path is generated from the source filename.
 
     Returns:
         A dict with 'output_path' on success, or 'error' on failure.
@@ -168,8 +175,9 @@ def write_h5ad(
             }
         adata.uns[EDIT_LOG_KEY] = json.dumps(existing_log + stamped_entries)
 
-        # Write to new timestamped path
-        output_path = generate_output_path(source_path)
+        # Write to output path (caller-provided or auto-generated)
+        if output_path is None:
+            output_path = generate_output_path(source_path)
         adata.write_h5ad(output_path)
 
         # Delete previous timestamped version (never the original).
