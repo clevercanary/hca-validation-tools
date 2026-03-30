@@ -51,7 +51,10 @@ def convert_cellxgene_to_hca(
     """
     try:
         with open_h5ad(path, backed=None) as adata:
-            # Validate title before mutating anything
+            # Verify this looks like a cellxgene file
+            if "schema_version" not in adata.uns:
+                return {"error": "Not a CellxGENE file — uns['schema_version'] is missing"}
+
             title = adata.uns.get("title", "")
             if not title:
                 return {"error": "File has no title in uns — cannot generate output filename"}

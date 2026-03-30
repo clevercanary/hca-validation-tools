@@ -143,6 +143,18 @@ def test_convert_bad_path():
     assert "error" in result
 
 
+def test_convert_rejects_non_cellxgene(sample_h5ad_for_write):
+    """Non-cellxgene file (no schema_version in uns) is rejected."""
+    adata = ad.read_h5ad(str(sample_h5ad_for_write))
+    del adata.uns["schema_version"]
+    no_sv_path = sample_h5ad_for_write.parent / "no-schema-version.h5ad"
+    adata.write_h5ad(no_sv_path)
+
+    result = convert_cellxgene_to_hca(str(no_sv_path))
+    assert "error" in result
+    assert "CellxGENE" in result["error"]
+
+
 def test_convert_missing_title(sample_h5ad_for_write):
     """File without a title in uns returns an error."""
     # sample_h5ad_for_write has uns["title"] = "Test Dataset"
