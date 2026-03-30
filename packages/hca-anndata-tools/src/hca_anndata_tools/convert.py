@@ -46,7 +46,7 @@ def convert_cellxgene_to_hca(
         output_dir: Directory for the output file. Defaults to same as source.
 
     Returns:
-        Dict with 'output_path', 'title', 'conversions' on success,
+        Dict with 'output_path', 'source', 'title', 'conversions' on success,
         or 'error' on failure.
     """
     try:
