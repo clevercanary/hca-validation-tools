@@ -178,7 +178,7 @@ def write_h5ad(
         # Write to output path (caller-provided or auto-generated)
         if output_path is None:
             output_path = generate_output_path(source_path)
-        adata.write_h5ad(output_path)
+        adata.write_h5ad(output_path, compression="gzip")
 
         # Delete previous timestamped version (never the original).
         # Skip if output == source (same-second write overwrote in place).
