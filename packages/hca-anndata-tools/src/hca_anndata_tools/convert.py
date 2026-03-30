@@ -96,6 +96,7 @@ def convert_cellxgene_to_hca(
                     del adata.uns[key]
                     conversions.append(f"{key}: uns → obs (broadcast '{value}')")
 
+            # --- 3. Build output path from title slug ---
             slug = _slugify(title)
             timestamp = generate_timestamp()
             out_filename = f"{slug}-{timestamp}.h5ad"
