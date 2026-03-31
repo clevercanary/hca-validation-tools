@@ -15,7 +15,7 @@ from hca_anndata_tools.write import (
     write_h5ad,
 )
 
-TIMESTAMP_RE = re.compile(r"-\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}\.h5ad$")
+TIMESTAMP_RE = re.compile(r"-edit-\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}\.h5ad$")
 
 
 def _make_entry(**overrides):
@@ -35,7 +35,7 @@ def _make_entry(**overrides):
 
 
 def test_strip_timestamp_removes_suffix():
-    assert strip_timestamp("foo-2026-03-27-13-54-26.h5ad") == "foo.h5ad"
+    assert strip_timestamp("foo-edit-2026-03-27-13-54-26.h5ad") == "foo.h5ad"
 
 
 def test_strip_timestamp_no_suffix():
@@ -43,12 +43,12 @@ def test_strip_timestamp_no_suffix():
 
 
 def test_strip_timestamp_preserves_complex_basename():
-    result = strip_timestamp("AlZaim_2024_reprocessed-r1-wip-5-2026-03-27-13-54-26.h5ad")
+    result = strip_timestamp("AlZaim_2024_reprocessed-r1-wip-5-edit-2026-03-27-13-54-26.h5ad")
     assert result == "AlZaim_2024_reprocessed-r1-wip-5.h5ad"
 
 
 def test_strip_timestamp_ignores_non_h5ad():
-    name = "foo-2026-03-27-13-54-26.csv"
+    name = "foo-edit-2026-03-27-13-54-26.csv"
     assert strip_timestamp(name) == name
 
 
@@ -63,7 +63,7 @@ def test_generate_output_path_default_dir(sample_h5ad_for_write):
 
 def test_generate_output_path_strips_existing_timestamp(tmp_path):
     # Simulate a file with an existing timestamp in the name
-    source = tmp_path / "data-2026-03-27-13-54-26.h5ad"
+    source = tmp_path / "data-edit-2026-03-27-13-54-26.h5ad"
     source.touch()
     result = generate_output_path(str(source))
     # Should have base "data" with a NEW timestamp, not double-stamped
@@ -252,7 +252,7 @@ def test_write_h5ad_unsupported_log_type(sample_h5ad_for_write):
 
 def test_write_h5ad_custom_output_path(sample_h5ad_for_write, tmp_path):
     adata = ad.read_h5ad(str(sample_h5ad_for_write))
-    custom = str(tmp_path / "custom-name-2026-03-29-00-00-00.h5ad")
+    custom = str(tmp_path / "custom-name-edit-2026-03-29-00-00-00.h5ad")
     result = write_h5ad(adata, str(sample_h5ad_for_write), [_make_entry()], output_path=custom)
 
     assert "error" not in result
@@ -274,25 +274,25 @@ def test_resolve_latest_finds_newest(sample_h5ad_for_write):
     d = sample_h5ad_for_write.parent
     stem = sample_h5ad_for_write.stem  # "test-dataset"
     # Create fake timestamped files
-    (d / f"{stem}-2026-03-27-10-00-00.h5ad").touch()
-    (d / f"{stem}-2026-03-28-15-30-00.h5ad").touch()
-    (d / f"{stem}-2026-03-27-12-00-00.h5ad").touch()
+    (d / f"{stem}-edit-2026-03-27-10-00-00.h5ad").touch()
+    (d / f"{stem}-edit-2026-03-28-15-30-00.h5ad").touch()
+    (d / f"{stem}-edit-2026-03-27-12-00-00.h5ad").touch()
 
     result = resolve_latest(str(sample_h5ad_for_write))
-    assert result.endswith(f"{stem}-2026-03-28-15-30-00.h5ad")
+    assert result.endswith(f"{stem}-edit-2026-03-28-15-30-00.h5ad")
 
 
 def test_resolve_latest_from_timestamped_path(sample_h5ad_for_write):
     """Given a timestamped path, still finds the latest (not self)."""
     d = sample_h5ad_for_write.parent
     stem = sample_h5ad_for_write.stem
-    old = d / f"{stem}-2026-03-27-10-00-00.h5ad"
-    new = d / f"{stem}-2026-03-28-15-30-00.h5ad"
+    old = d / f"{stem}-edit-2026-03-27-10-00-00.h5ad"
+    new = d / f"{stem}-edit-2026-03-28-15-30-00.h5ad"
     old.touch()
     new.touch()
 
     result = resolve_latest(str(old))
-    assert result.endswith(f"{stem}-2026-03-28-15-30-00.h5ad")
+    assert result.endswith(f"{stem}-edit-2026-03-28-15-30-00.h5ad")
 
 
 # --- write_h5ad overwrite ---

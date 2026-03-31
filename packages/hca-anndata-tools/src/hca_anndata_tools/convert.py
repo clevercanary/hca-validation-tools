@@ -101,7 +101,7 @@ def convert_cellxgene_to_hca(
             # --- 3. Build output path from title slug ---
             slug = _slugify(title)
             timestamp = generate_timestamp()
-            out_filename = f"{slug}-{timestamp}.h5ad"
+            out_filename = f"{slug}-edit-{timestamp}.h5ad"
             directory = output_dir if output_dir is not None else os.path.dirname(path)
             output_path = os.path.join(directory, out_filename)
 

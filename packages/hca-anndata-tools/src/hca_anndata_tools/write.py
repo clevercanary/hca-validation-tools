@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from anndata import AnnData
 
-_TIMESTAMP_PATTERN = re.compile(r"-\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}(?=\.h5ad$)")
+_TIMESTAMP_PATTERN = re.compile(r"-edit-\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}(?=\.h5ad$)")
 _TIMESTAMP_FORMAT = "%Y-%m-%d-%H-%M-%S"
 EDIT_LOG_KEY = "hca_edit_log"
 _HASH_CHUNK_SIZE = 1 << 20  # 1 MB — keeps syscall count low on multi-GB files
@@ -33,7 +33,7 @@ def strip_timestamp(filename: str) -> str:
     """Strip an existing UTC timestamp suffix from an h5ad filename.
 
     Args:
-        filename: A filename (not a full path), e.g. 'foo-2026-03-27-13-54-26.h5ad'.
+        filename: A filename (not a full path), e.g. 'foo-edit-2026-03-27-13-54-26.h5ad'.
 
     Returns:
         The filename without the timestamp suffix, e.g. 'foo.h5ad'.
@@ -61,7 +61,7 @@ def generate_output_path(source_path: str) -> str:
         Path string in the same directory as source_path.
     """
     stem = _base_stem(source_path)
-    return os.path.join(os.path.dirname(source_path), f"{stem}-{generate_timestamp()}.h5ad")
+    return os.path.join(os.path.dirname(source_path), f"{stem}-edit-{generate_timestamp()}.h5ad")
 
 
 def resolve_latest(path: str) -> str:
@@ -81,8 +81,8 @@ def resolve_latest(path: str) -> str:
     stem = _base_stem(path)
 
     # Glob for timestamped variants, then strict regex filter on full basename
-    pattern = os.path.join(directory, f"{glob.escape(stem)}-*-*-*-*-*-*.h5ad")
-    full_re = re.compile(rf"^{re.escape(stem)}-\d{{4}}-\d{{2}}-\d{{2}}-\d{{2}}-\d{{2}}-\d{{2}}\.h5ad$")
+    pattern = os.path.join(directory, f"{glob.escape(stem)}-edit-*-*-*-*-*-*.h5ad")
+    full_re = re.compile(rf"^{re.escape(stem)}-edit-\d{{4}}-\d{{2}}-\d{{2}}-\d{{2}}-\d{{2}}-\d{{2}}\.h5ad$")
     candidates = [
         f for f in glob.glob(pattern)
         if full_re.match(os.path.basename(f))

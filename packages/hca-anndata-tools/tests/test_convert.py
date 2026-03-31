@@ -98,7 +98,7 @@ def test_convert_output_named_from_title(cellxgene_h5ad):
     result = convert_cellxgene_to_hca(str(cellxgene_h5ad))
     basename = os.path.basename(result["output_path"])
 
-    assert basename.startswith("snrna-seq-of-human-retina-test-subset-")
+    assert basename.startswith("snrna-seq-of-human-retina-test-subset-edit-")
     assert re.search(r"\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}\.h5ad$", basename)
 
 

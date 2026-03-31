@@ -19,15 +19,15 @@ When curating h5ad files for HCA submission, wranglers need to make targeted edi
 
 ```
 Input:  AlZaim_2024_reprocessed-r1-wip-5.h5ad
-Output: AlZaim_2024_reprocessed-r1-wip-5-2026-03-27-13-54-26.h5ad
+Output: AlZaim_2024_reprocessed-r1-wip-5-edit-2026-03-27-13-54-26.h5ad
 
-Input:  AlZaim_2024_reprocessed-r1-wip-5-2026-03-27-13-54-26.h5ad
-Output: AlZaim_2024_reprocessed-r1-wip-5-2026-03-27-14-22-11.h5ad
+Input:  AlZaim_2024_reprocessed-r1-wip-5-edit-2026-03-27-13-54-26.h5ad
+Output: AlZaim_2024_reprocessed-r1-wip-5-edit-2026-03-27-14-22-11.h5ad
 ```
 
 - Timestamp is **UTC** (avoids timezone encoding complexity)
-- Format: `YYYY-MM-DD-HH-MM-SS`
-- Regex to strip existing suffix: `-\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}(?=\.h5ad$)`
+- Format: `-edit-YYYY-MM-DD-HH-MM-SS`
+- Regex to strip existing suffix: `-edit-\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}(?=\.h5ad$)`
 - Base name is stable across edits — you always know the lineage
 
 ## Changelog in `uns`
@@ -102,7 +102,7 @@ def write_h5ad(
 3. Generate new UTC timestamp
 4. Populate `source_file` and `source_sha256` on each edit entry
 5. Append `edit_entries` to `adata.uns['hca_edit_log']` (create if missing)
-6. Write to `{base}-{timestamp}.h5ad`
+6. Write to `{base}-edit-{timestamp}.h5ad`
 7. Return the output path
 
 ### Edit tools (MCP layer)
