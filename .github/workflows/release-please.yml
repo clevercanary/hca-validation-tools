@@ -14,7 +14,9 @@ jobs:
   release-please:
     runs-on: ubuntu-latest
     outputs:
-      release_created: ${{ steps.release.outputs['packages/hca-schema-validator--release_created'] }}
+      hca-schema-validator-release: ${{ steps.release.outputs['packages/hca-schema-validator--release_created'] }}
+      hca-anndata-tools-release: ${{ steps.release.outputs['packages/hca-anndata-tools--release_created'] }}
+      hca-anndata-mcp-release: ${{ steps.release.outputs['packages/hca-anndata-mcp--release_created'] }}
     steps:
       - uses: googleapis/release-please-action@v4
         id: release
@@ -23,11 +25,11 @@ jobs:
     needs: release-please
     if: |
       !failure() && !cancelled() &&
-      (needs.release-please.outputs.release_created == 'true' || github.event_name == 'workflow_dispatch')
+      (needs.release-please.outputs.hca-schema-validator-release == 'true' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write  # Required for PyPI trusted publishing
+      id-token: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -51,3 +53,74 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: packages/hca-schema-validator/dist/
+
+  publish-hca-anndata-tools:
+    needs: release-please
+    if: |
+      !failure() && !cancelled() &&
+      (needs.release-please.outputs.hca-anndata-tools-release == 'true' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Poetry
+        run: |
+          curl -sSL https://install.python-poetry.org | python3 -
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Build package
+        run: |
+          cd packages/hca-anndata-tools
+          poetry build
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: packages/hca-anndata-tools/dist/
+
+  publish-hca-anndata-mcp:
+    needs: release-please
+    if: |
+      !failure() && !cancelled() &&
+      (needs.release-please.outputs.hca-anndata-mcp-release == 'true' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Poetry
+        run: |
+          curl -sSL https://install.python-poetry.org | python3 -
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Swap path dep to version pin for PyPI
+        run: |
+          cd packages/hca-anndata-mcp
+          sed -i 's|hca-anndata-tools = {path = "../hca-anndata-tools", develop = true}|hca-anndata-tools = ">=0.1.0,<1"|' pyproject.toml
+
+      - name: Build package
+        run: |
+          cd packages/hca-anndata-mcp
+          poetry build
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: packages/hca-anndata-mcp/dist/

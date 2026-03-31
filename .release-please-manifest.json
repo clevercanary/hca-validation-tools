@@ -1,4 +1,5 @@
 {
   "packages/hca-schema-validator": "0.9.0",
-  "packages/hca-anndata-tools": "0.1.0"
+  "packages/hca-anndata-tools": "0.1.0",
+  "packages/hca-anndata-mcp": "0.1.0"
 }
