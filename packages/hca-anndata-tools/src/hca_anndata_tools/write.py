@@ -33,7 +33,7 @@ def strip_timestamp(filename: str) -> str:
     """Strip an existing UTC timestamp suffix from an h5ad filename.
 
     Args:
-        filename: A filename (not a full path), e.g. 'foo-2026-03-27-13-54-26.h5ad'.
+        filename: A filename (not a full path), e.g. 'foo-edit-2026-03-27-13-54-26.h5ad'.
 
     Returns:
         The filename without the timestamp suffix, e.g. 'foo.h5ad'.
