@@ -14,9 +14,9 @@ jobs:
   release-please:
     runs-on: ubuntu-latest
     outputs:
-      hca-schema-validator-release: ${{ steps.release.outputs['packages/hca-schema-validator--release_created'] }}
-      hca-anndata-tools-release: ${{ steps.release.outputs['packages/hca-anndata-tools--release_created'] }}
-      hca-anndata-mcp-release: ${{ steps.release.outputs['packages/hca-anndata-mcp--release_created'] }}
+      hca_schema_validator_release: ${{ steps.release.outputs['packages/hca-schema-validator--release_created'] }}
+      hca_anndata_tools_release: ${{ steps.release.outputs['packages/hca-anndata-tools--release_created'] }}
+      hca_anndata_mcp_release: ${{ steps.release.outputs['packages/hca-anndata-mcp--release_created'] }}
     steps:
       - uses: googleapis/release-please-action@v4
         id: release
@@ -25,7 +25,7 @@ jobs:
     needs: release-please
     if: |
       !failure() && !cancelled() &&
-      (needs.release-please.outputs.hca-schema-validator-release == 'true' || github.event_name == 'workflow_dispatch')
+      (needs.release-please.outputs.hca_schema_validator_release == 'true' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -58,7 +58,7 @@ jobs:
     needs: release-please
     if: |
       !failure() && !cancelled() &&
-      (needs.release-please.outputs.hca-anndata-tools-release == 'true' || github.event_name == 'workflow_dispatch')
+      (needs.release-please.outputs.hca_anndata_tools_release == 'true' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -88,10 +88,10 @@ jobs:
           packages-dir: packages/hca-anndata-tools/dist/
 
   publish-hca-anndata-mcp:
-    needs: release-please
+    needs: [release-please, publish-hca-anndata-tools]
     if: |
       !failure() && !cancelled() &&
-      (needs.release-please.outputs.hca-anndata-mcp-release == 'true' || github.event_name == 'workflow_dispatch')
+      (needs.release-please.outputs.hca_anndata_mcp_release == 'true' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -114,6 +114,11 @@ jobs:
         run: |
           cd packages/hca-anndata-mcp
           sed -i 's|hca-anndata-tools = {path = "../hca-anndata-tools", develop = true}|hca-anndata-tools = ">=0.1.0,<1"|' pyproject.toml
+          if grep -q 'path = "../hca-anndata-tools"' pyproject.toml; then
+            echo "ERROR: path dependency still present after sed replacement"
+            cat pyproject.toml
+            exit 1
+          fi
 
       - name: Build package
         run: |
