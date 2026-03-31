@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.1](https://github.com/clevercanary/hca-validation-tools/compare/hca-schema-validator-v0.9.0...hca-schema-validator-v0.9.1) (2026-03-31)
+
+
+### Bug Fixes
+
+* retry raw validation when skipped due to unrelated errors ([#244](https://github.com/clevercanary/hca-validation-tools/issues/244)) ([bc8d1bf](https://github.com/clevercanary/hca-validation-tools/commit/bc8d1bf9ab2e50f0e674cf709cc64928362870e1))
+
 ## [0.9.0](https://github.com/clevercanary/hca-validation-tools/compare/hca-schema-validator-v0.8.1...hca-schema-validator-v0.9.0) (2026-03-18)
 
 
