@@ -15,6 +15,14 @@
       "extra-files": [
         "packages/hca-anndata-tools/src/hca_anndata_tools/__init__.py"
       ]
+    },
+    "packages/hca-anndata-mcp": {
+      "release-type": "python",
+      "package-name": "hca-anndata-mcp",
+      "changelog-path": "packages/hca-anndata-mcp/CHANGELOG.md",
+      "extra-files": [
+        "packages/hca-anndata-mcp/src/hca_anndata_mcp/__init__.py"
+      ]
     }
   },
   "changelog-sections": [
