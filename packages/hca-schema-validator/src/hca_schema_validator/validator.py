@@ -52,6 +52,28 @@ class HCAValidator(Validator):
             with open(schema_path) as fp:
                 self.schema_def = yaml.safe_load(fp)
 
+    def _deep_check(self):
+        """
+        The base class skips raw validation when *any* errors exist, but raw
+        validation only depends on assay_ontology_term_id. We retry it here
+        so raw-layer errors are reported in the same pass.
+        """
+        super()._deep_check()
+
+        # Match by substring to avoid brittle coupling to exact upstream wording
+        raw_skip_warnings = [
+            w for w in self.warnings
+            if "Validation of raw layer was not performed" in w
+        ]
+        if (
+            raw_skip_warnings
+            and "raw" in self.schema_def
+            and "assay_ontology_term_id" in self.adata.obs.columns
+        ):
+            for w in raw_skip_warnings:
+                self.warnings.remove(w)
+            self._validate_raw()
+
     def _validate_list(self, list_name, current_list, element_type):
         """
         Extends base list validation with support for element_type: string.

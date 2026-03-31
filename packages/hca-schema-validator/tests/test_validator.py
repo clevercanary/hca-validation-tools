@@ -536,6 +536,33 @@ class TestValidateColumn:
         assert "xyz" in pattern_errors[0]
 
 
+def test_raw_validation_runs_despite_unrelated_errors():
+    """Raw validation should run even when unrelated HCA fields are missing.
+
+    Regression test for #243: the base class skips raw validation if any
+    errors exist, but our override retries it when assay_ontology_term_id
+    is present.
+    """
+    from .fixtures.hca_fixtures import adata
+
+    # Remove an HCA-specific field to create an unrelated error
+    modified = adata.copy()
+    del modified.uns["study_pi"]
+
+    is_valid, validator = _validate_from_fixture(modified)
+    assert is_valid is False
+
+    # The "raw layer was not performed" warning should be absent
+    raw_skip_warnings = [
+        w for w in validator.warnings
+        if "Validation of raw layer was not performed" in w
+    ]
+    assert len(raw_skip_warnings) == 0, (
+        f"Raw validation was skipped despite assay_ontology_term_id being present. "
+        f"Warnings: {validator.warnings}"
+    )
+
+
 class TestCLOntologyOverlay:
     """Tests that the CL ontology overlay includes newer salivary gland cell types."""
 
