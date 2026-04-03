@@ -3,7 +3,7 @@
     "packages/hca-schema-validator": {
       "release-type": "python",
       "package-name": "hca-schema-validator",
-      "changelog-path": "packages/hca-schema-validator/CHANGELOG.md",
+      "changelog-path": "CHANGELOG.md",
       "extra-files": [
         "packages/hca-schema-validator/src/hca_schema_validator/__init__.py"
       ]
@@ -11,7 +11,7 @@
     "packages/hca-anndata-tools": {
       "release-type": "python",
       "package-name": "hca-anndata-tools",
-      "changelog-path": "packages/hca-anndata-tools/CHANGELOG.md",
+      "changelog-path": "CHANGELOG.md",
       "extra-files": [
         "packages/hca-anndata-tools/src/hca_anndata_tools/__init__.py"
       ]
@@ -19,7 +19,7 @@
     "packages/hca-anndata-mcp": {
       "release-type": "python",
       "package-name": "hca-anndata-mcp",
-      "changelog-path": "packages/hca-anndata-mcp/CHANGELOG.md",
+      "changelog-path": "CHANGELOG.md",
       "extra-files": [
         "packages/hca-anndata-mcp/src/hca_anndata_mcp/__init__.py"
       ]
