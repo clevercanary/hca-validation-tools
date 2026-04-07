@@ -7,6 +7,7 @@ license = "MIT"
 readme = "README.md"
 homepage = "https://github.com/clevercanary/hca-validation-tools"
 packages = [{include = "hca_anndata_tools", from = "src"}]
+include = ["src/hca_anndata_tools/reference_data/*.csv.gz"]
 
 [tool.poetry.dependencies]
 python = "^3.10"
