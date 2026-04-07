@@ -13,7 +13,7 @@ _SKIP_VALUES = {"unknown", "", "NA", "na", "none", "None"}
 
 def _strip_ensembl_version(eid: str) -> str:
     """Strip version suffix from Ensembl ID: ENSG00000173947.7 → ENSG00000173947."""
-    if eid.startswith("ENS") and "." in eid:
+    if eid.startswith("ENSG") and "." in eid:
         return eid.rsplit(".", 1)[0]
     return eid
 
