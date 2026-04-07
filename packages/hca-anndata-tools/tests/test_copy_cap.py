@@ -281,29 +281,6 @@ def test_copy_obs_index_reordered(cap_source, tmp_path):
     assert list(written.obs.index) == reversed_ids
 
 
-def test_copy_target_missing_base_label(cap_source, tmp_path):
-    """Target without the base annotation label column should fail."""
-    n = len(CELL_IDS)
-    rng = np.random.default_rng(99)
-    X = sp.random(n, 5, density=0.3, format="csr", dtype=np.float32, random_state=rng)
-    obs = pd.DataFrame(
-        {
-            "cell_type": pd.Categorical(rng.choice(["neuron", "astrocyte"], n)),
-            # Note: no 'author_cell_type' column
-        },
-        index=CELL_IDS,
-    )
-    var = pd.DataFrame(index=[f"GENE{i}" for i in range(5)])
-    adata = ad.AnnData(X=X, obs=obs, var=var)
-    adata.uns["title"] = "No base label"
-    path = tmp_path / "no-base-label.h5ad"
-    adata.write_h5ad(path)
-
-    result = copy_cap_annotations(str(cap_source), str(path))
-    assert "error" in result
-    assert "author_cell_type" in result["error"]
-
-
 def test_missing_file():
     result = copy_cap_annotations("/nonexistent/source.h5ad", "/nonexistent/target.h5ad")
     assert "error" in result

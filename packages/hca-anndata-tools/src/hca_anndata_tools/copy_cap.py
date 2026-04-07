@@ -165,17 +165,6 @@ def copy_cap_annotations(
                     )
                 }
 
-            # --- Validation 4: Base label columns exist in target ---
-            target_obs_columns = list(target.obs.columns)
-            for setname in annotation_sets:
-                if setname not in target_obs_columns:
-                    return {
-                        "error": (
-                            f"Target is missing base label column '{setname}' "
-                            f"in obs. Cannot copy annotation set."
-                        )
-                    }
-
             # --- Copy obs columns (aligned by index) ---
             aligned = source_obs_subset.loc[target.obs.index]
             for col in obs_cols_to_copy:
