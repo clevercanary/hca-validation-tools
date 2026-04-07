@@ -97,6 +97,13 @@ def validate_marker_genes(path: str, annotation_set: str | None = None) -> dict:
     """
     try:
         with open_h5ad(path) as adata:
+            # Only human is supported — check organism if available
+            organism = adata.uns.get("organism_ontology_term_id")
+            if organism is None and "organism_ontology_term_id" in adata.obs.columns:
+                organism = adata.obs["organism_ontology_term_id"].iloc[0]
+            if organism is not None and str(organism) != "NCBITaxon:9606":
+                return {"error": f"Only human (NCBITaxon:9606) is supported, found: {organism}"}
+
             obs_columns = list(adata.obs.columns)
             all_sets = _find_annotation_sets(obs_columns)
 
