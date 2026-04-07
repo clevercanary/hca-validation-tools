@@ -13,8 +13,8 @@ _SKIP_VALUES = {"unknown", "", "NA", "na", "none", "None"}
 
 def _strip_ensembl_version(eid: str) -> str:
     """Strip version suffix from Ensembl ID: ENSG00000173947.7 → ENSG00000173947."""
-    if eid.startswith("ENSG") and "." in eid:
-        return eid.split(".")[0]
+    if eid.startswith("ENS") and "." in eid:
+        return eid.rsplit(".", 1)[0]
     return eid
 
 
@@ -173,14 +173,25 @@ def validate_marker_genes(path: str, annotation_set: str | None = None) -> dict:
 
             total_found = len(all_unique & gene_names)
 
+            # Deduplicate top-level lists (same gene can appear in multiple sets)
+            seen = set()
+            def _dedup(items):
+                out = []
+                for item in items:
+                    key = item["marker_gene"]
+                    if key not in seen:
+                        seen.add(key)
+                        out.append(item)
+                return out
+
             return {
                 "annotation_sets_with_markers": sets_with_markers,
                 "total_unique_markers": len(all_unique),
                 "found_in_var": total_found,
                 "missing": len(all_unique) - total_found,
-                "known_renames": all_renames,
-                "missing_from_var": all_missing_from_var,
-                "not_in_gencode": all_not_in_gencode,
+                "known_renames": _dedup(all_renames),
+                "missing_from_var": _dedup(all_missing_from_var),
+                "not_in_gencode": _dedup(all_not_in_gencode),
                 "details": details,
             }
 
