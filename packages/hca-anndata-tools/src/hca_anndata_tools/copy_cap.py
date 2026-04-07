@@ -124,6 +124,10 @@ def copy_cap_annotations(
 
             source_obs_subset = source.obs[obs_cols_to_copy].copy()
             source_n_obs = source.n_obs
+            if not source.obs.index.is_unique:
+                dupes = source.obs.index[source.obs.index.duplicated()].unique().tolist()
+                shown = dupes[:5]
+                return {"error": f"Source has {len(dupes)} duplicate cell IDs (first 5): {shown}"}
             source_index = set(source.obs.index)
 
         # --- Validation 2: Target clean ---
