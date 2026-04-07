@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import os
 from datetime import datetime, timezone
 
@@ -10,7 +9,7 @@ from ._io import open_h5ad
 from ._serialize import make_serializable
 from .cap import _REQUIRED_SUFFIXES, _OPTIONAL_SUFFIXES
 from .marker_genes import validate_marker_genes
-from .write import write_h5ad, resolve_latest
+from .write import write_h5ad, resolve_latest, _compute_sha256
 from . import __version__
 
 # uns keys copied as-is (already namespaced or CAP-specific)
@@ -196,9 +195,7 @@ def copy_cap_annotations(
 
             # --- Edit log ---
             source_basename = os.path.basename(source_path)
-            source_sha256 = hashlib.sha256(
-                open(source_path, "rb").read()
-            ).hexdigest()
+            source_sha256 = _compute_sha256(source_path)
             entry = {
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "tool": "hca-anndata-tools",
