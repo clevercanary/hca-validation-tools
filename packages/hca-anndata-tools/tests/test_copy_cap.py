@@ -172,18 +172,14 @@ def test_copy_uns_direct(cap_source, hca_target):
     assert "cap_dataset_url" in written.uns
 
 
-def test_copy_uns_renamed(cap_source, hca_target):
+def test_copy_uns_cap_keys(cap_source, hca_target):
     result = copy_cap_annotations(str(cap_source), str(hca_target))
     written = ad.read_h5ad(result["output_path"])
-    # Renamed keys present
-    assert "cap_authors_list" in written.uns
-    assert "cap_hierarchy" in written.uns
-    assert "cap_description" in written.uns
-    assert "cap_publication_timestamp" in written.uns
-    assert "cap_publication_version" in written.uns
-    # Original keys NOT present
-    assert "authors_list" not in written.uns
-    assert "hierarchy" not in written.uns
+    assert "authors_list" in written.uns
+    assert "hierarchy" in written.uns
+    assert "description" in written.uns
+    assert "publication_timestamp" in written.uns
+    assert "publication_version" in written.uns
 
 
 # --- Skip demographic columns ---

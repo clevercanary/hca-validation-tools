@@ -12,24 +12,20 @@ from .marker_genes import validate_marker_genes
 from .write import write_h5ad, resolve_latest, _compute_sha256
 from . import __version__
 
-# uns keys copied as-is (already namespaced or CAP-specific)
-_UNS_COPY_DIRECT = [
+# CAP uns keys to copy (all copied as-is, no renaming)
+_UNS_COPY = [
     "cellannotation_schema_version",
     "cellannotation_metadata",
     "cap_dataset_url",
     "cap_publication_title",
     "cap_publication_description",
     "cap_publication_url",
+    "authors_list",
+    "hierarchy",
+    "description",
+    "publication_timestamp",
+    "publication_version",
 ]
-
-# uns keys renamed on copy to avoid collisions with HCA/CXG fields
-_UNS_COPY_RENAMED = {
-    "authors_list": "cap_authors_list",
-    "hierarchy": "cap_hierarchy",
-    "description": "cap_description",
-    "publication_timestamp": "cap_publication_timestamp",
-    "publication_version": "cap_publication_version",
-}
 
 # Demographic annotation sets — not real CAP annotations, just renamed CXG columns
 _SKIP_SETS = {"sex", "development_stage", "self_reported_ethnicity"}
@@ -42,7 +38,7 @@ _CELL_TYPE_ENRICHMENT = [
 ]
 
 # CAP uns keys to remove on overwrite
-_CAP_UNS_KEYS = set(_UNS_COPY_DIRECT) | set(_UNS_COPY_RENAMED.values())
+_CAP_UNS_KEYS = set(_UNS_COPY)
 
 
 def _get_real_annotation_sets(source_uns: dict) -> list[str]:
@@ -114,8 +110,7 @@ def copy_cap_annotations(
 
             # Snapshot source data we need (before closing backed file)
             cap_schema_version = str(source.uns["cellannotation_schema_version"])
-            keys_to_copy = list(_UNS_COPY_DIRECT) + list(_UNS_COPY_RENAMED.keys())
-            source_uns = {k: make_serializable(source.uns[k]) for k in keys_to_copy if k in source.uns}
+            source_uns = {k: make_serializable(source.uns[k]) for k in _UNS_COPY if k in source.uns}
 
             obs_cols_to_copy = _get_obs_columns_to_copy(annotation_sets, source_obs_columns)
             if not obs_cols_to_copy:
@@ -172,15 +167,10 @@ def copy_cap_annotations(
 
             # --- Copy uns metadata ---
             uns_keys_added = []
-            for key in _UNS_COPY_DIRECT:
+            for key in _UNS_COPY:
                 if key in source_uns:
                     target.uns[key] = source_uns[key]
                     uns_keys_added.append(key)
-
-            for src_key, tgt_key in _UNS_COPY_RENAMED.items():
-                if src_key in source_uns:
-                    target.uns[tgt_key] = source_uns[src_key]
-                    uns_keys_added.append(tgt_key)
 
             # --- Edit log ---
             source_basename = os.path.basename(source_path)
