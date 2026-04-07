@@ -11,6 +11,13 @@ from .cap import _find_annotation_sets
 _SKIP_VALUES = {"unknown", "", "NA", "na", "none", "None"}
 
 
+def _strip_ensembl_version(eid: str) -> str:
+    """Strip version suffix from Ensembl ID: ENSG00000173947.7 → ENSG00000173947."""
+    if eid.startswith("ENSG") and "." in eid:
+        return eid.split(".")[0]
+    return eid
+
+
 def _extract_marker_genes(series: pd.Series) -> set[str]:
     """Parse unique gene symbols from a marker_gene_evidence series.
 
@@ -42,7 +49,10 @@ def _get_gene_names_from_var(var: pd.DataFrame) -> tuple[set[str], dict[str, str
         if col in var.columns:
             str_values = var[col].astype(str).values
             gene_names = set(str_values)
-            eid_to_var_name = dict(zip(var.index, str_values))
+            eid_to_var_name = {
+                _strip_ensembl_version(eid): name
+                for eid, name in zip(var.index, str_values)
+            }
             return gene_names, eid_to_var_name
     # Fallback: var.index IS the gene names, no Ensembl ID mapping
     return set(var.index), {}
@@ -65,10 +75,10 @@ def _classify_missing(
                     "ensembl_id": eid,
                     "type": "known_rename",
                 }
-        # In GENCODE but not in this file's var at all
-        return {"marker_gene": gene, "in_gencode": True, "type": "probable_typo"}
+        # Valid GENCODE gene, but not measured in this file
+        return {"marker_gene": gene, "type": "missing_from_var"}
     # Not in GENCODE — probable typo
-    return {"marker_gene": gene, "in_gencode": False, "type": "probable_typo"}
+    return {"marker_gene": gene, "type": "not_in_gencode"}
 
 
 def validate_marker_genes(path: str, annotation_set: str | None = None) -> dict:
@@ -115,7 +125,8 @@ def validate_marker_genes(path: str, annotation_set: str | None = None) -> dict:
                     "found_in_var": 0,
                     "missing": 0,
                     "known_renames": [],
-                    "probable_typos": [],
+                    "missing_from_var": [],
+                    "not_in_gencode": [],
                     "details": {},
                 }
 
@@ -123,7 +134,8 @@ def validate_marker_genes(path: str, annotation_set: str | None = None) -> dict:
             _, name_to_ids = load_gencode_reference()
 
             all_renames = []
-            all_typos = []
+            all_missing_from_var = []
+            all_not_in_gencode = []
             all_unique = set()
             details = {}
 
@@ -136,22 +148,27 @@ def validate_marker_genes(path: str, annotation_set: str | None = None) -> dict:
                 missing = markers - gene_names
 
                 renames = []
-                typos = []
+                missing_from_var = []
+                not_in_gencode = []
                 for gene in sorted(missing):
                     classification = _classify_missing(gene, name_to_ids, eid_to_var_name)
                     if classification["type"] == "known_rename":
                         renames.append(classification)
+                    elif classification["type"] == "missing_from_var":
+                        missing_from_var.append(classification)
                     else:
-                        typos.append(classification)
+                        not_in_gencode.append(classification)
 
                 all_renames.extend(renames)
-                all_typos.extend(typos)
+                all_missing_from_var.extend(missing_from_var)
+                all_not_in_gencode.extend(not_in_gencode)
 
                 details[setname] = {
                     "unique_markers": len(markers),
                     "found": len(found),
                     "known_renames": renames,
-                    "probable_typos": typos,
+                    "missing_from_var": missing_from_var,
+                    "not_in_gencode": not_in_gencode,
                 }
 
             total_found = len(all_unique & gene_names)
@@ -162,7 +179,8 @@ def validate_marker_genes(path: str, annotation_set: str | None = None) -> dict:
                 "found_in_var": total_found,
                 "missing": len(all_unique) - total_found,
                 "known_renames": all_renames,
-                "probable_typos": all_typos,
+                "missing_from_var": all_missing_from_var,
+                "not_in_gencode": all_not_in_gencode,
                 "details": details,
             }
 

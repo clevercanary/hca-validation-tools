@@ -176,8 +176,13 @@ def test_rename_detected(marker_h5ad):
 
 def test_typo_detected(marker_h5ad):
     result = validate_marker_genes(str(marker_h5ad))
-    typos = result["probable_typos"]
+    typos = result["not_in_gencode"]
     assert any(t["marker_gene"] == "SCL25A5" for t in typos)
+
+
+def test_missing_from_var_key_present(marker_h5ad):
+    result = validate_marker_genes(str(marker_h5ad))
+    assert "missing_from_var" in result
 
 
 def test_all_markers_found(clean_h5ad):
@@ -207,6 +212,45 @@ def test_missing_file():
     assert "error" in result
 
 
+@pytest.fixture(scope="module")
+def versioned_h5ad(tmp_path_factory) -> Path:
+    """h5ad with versioned Ensembl IDs in var.index (e.g., ENSG*.7)."""
+    n_obs = 6
+    rng = np.random.default_rng(11)
+
+    var_index = ["ENSG00000131095.12", "ENSG00000204472.3", "ENSG00000173947.7"]
+    var_names = ["GFAP", "AIF1", "PIFO"]
+
+    X = sp.random(n_obs, len(var_index), density=0.3, format="csr", dtype=np.float32, random_state=rng)
+
+    obs = pd.DataFrame(
+        {
+            "ann": pd.Categorical(rng.choice(["a", "b"], n_obs)),
+            "ann--marker_gene_evidence": pd.Categorical(
+                rng.choice(["GFAP", "CIMAP3"], n_obs)
+            ),
+        },
+        index=[f"cell_{i}" for i in range(n_obs)],
+    )
+
+    var = pd.DataFrame(
+        {"feature_name": pd.Categorical(var_names)},
+        index=var_index,
+    )
+
+    adata = ad.AnnData(X=X, obs=obs, var=var)
+    path = tmp_path_factory.mktemp("versioned") / "versioned_test.h5ad"
+    adata.write_h5ad(path)
+    return path
+
+
+def test_rename_detected_with_versioned_ids(versioned_h5ad):
+    """Rename detection works when var.index has versioned Ensembl IDs."""
+    result = validate_marker_genes(str(versioned_h5ad))
+    renames = result["known_renames"]
+    assert any(r["marker_gene"] == "CIMAP3" and r["var_name"] == "PIFO" for r in renames)
+
+
 def test_details_per_set(marker_h5ad):
     result = validate_marker_genes(str(marker_h5ad))
     assert "test_labels" in result["details"]
@@ -214,4 +258,4 @@ def test_details_per_set(marker_h5ad):
     assert "unique_markers" in detail
     assert "found" in detail
     assert "known_renames" in detail
-    assert "probable_typos" in detail
+    assert "not_in_gencode" in detail
