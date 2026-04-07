@@ -163,7 +163,7 @@ def copy_cap_annotations(
             # --- Copy obs columns (aligned by index) ---
             aligned = source_obs_subset.loc[target.obs.index]
             for col in obs_cols_to_copy:
-                target.obs[col] = aligned[col].values
+                target.obs[col] = aligned[col]
 
             # --- Copy uns metadata ---
             uns_keys_added = []
@@ -182,8 +182,8 @@ def copy_cap_annotations(
                 "operation": "import_cap_annotations",
                 "description": f"Copied CAP annotations from {source_basename}",
                 "details": {
-                    "source_file": source_basename,
-                    "source_sha256": source_sha256,
+                    "cap_source_file": source_basename,
+                    "cap_source_sha256": source_sha256,
                     "cap_schema_version": cap_schema_version,
                     "annotation_sets": annotation_sets,
                     "obs_columns_added": obs_cols_to_copy,
