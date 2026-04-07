@@ -12,14 +12,19 @@ from .marker_genes import validate_marker_genes
 from .write import write_h5ad, resolve_latest, _compute_sha256
 from . import __version__
 
-# CAP uns keys to copy (all copied as-is, no renaming)
-_UNS_COPY = [
+# CAP uns keys copied top-level (already namespaced)
+_UNS_COPY_TOPLEVEL = [
     "cellannotation_schema_version",
     "cellannotation_metadata",
     "cap_dataset_url",
     "cap_publication_title",
     "cap_publication_description",
     "cap_publication_url",
+]
+
+# CAP uns keys collected into uns["cap_metadata"] container
+# (generic names that could collide with HCA/CXG fields)
+_UNS_CAP_METADATA = [
     "authors_list",
     "hierarchy",
     "description",
@@ -38,7 +43,7 @@ _CELL_TYPE_ENRICHMENT = [
 ]
 
 # CAP uns keys to remove on overwrite
-_CAP_UNS_KEYS = set(_UNS_COPY)
+_CAP_UNS_KEYS = set(_UNS_COPY_TOPLEVEL) | {"cap_metadata"}
 
 
 def _get_real_annotation_sets(source_uns: dict) -> list[str]:
@@ -59,9 +64,7 @@ def _get_obs_columns_to_copy(
 
     for setname in annotation_sets:
         for suffix in all_suffixes:
-            if not suffix:
-                continue
-            col = f"{setname}{suffix}"
+            col = f"{setname}{suffix}" if suffix else setname
             if col in source_obs_columns:
                 columns.append(col)
 
@@ -110,7 +113,8 @@ def copy_cap_annotations(
 
             # Snapshot source data we need (before closing backed file)
             cap_schema_version = str(source.uns["cellannotation_schema_version"])
-            source_uns = {k: make_serializable(source.uns[k]) for k in _UNS_COPY if k in source.uns}
+            all_uns_keys = _UNS_COPY_TOPLEVEL + _UNS_CAP_METADATA
+            source_uns = {k: make_serializable(source.uns[k]) for k in all_uns_keys if k in source.uns}
 
             obs_cols_to_copy = _get_obs_columns_to_copy(annotation_sets, source_obs_columns)
             if not obs_cols_to_copy:
@@ -167,10 +171,16 @@ def copy_cap_annotations(
 
             # --- Copy uns metadata ---
             uns_keys_added = []
-            for key in _UNS_COPY:
+            for key in _UNS_COPY_TOPLEVEL:
                 if key in source_uns:
                     target.uns[key] = source_uns[key]
                     uns_keys_added.append(key)
+
+            # Collect generic CAP keys into a container
+            cap_metadata = {k: source_uns[k] for k in _UNS_CAP_METADATA if k in source_uns}
+            if cap_metadata:
+                target.uns["cap_metadata"] = cap_metadata
+                uns_keys_added.append("cap_metadata")
 
             # --- Edit log ---
             source_basename = os.path.basename(source_path)

@@ -156,6 +156,28 @@ def test_copy_marker_gene_validation(cap_source, hca_target):
     assert "found_in_var" in mv
 
 
+def test_copy_base_label_column(cap_source, tmp_path):
+    """Base label column (e.g., author_cell_type) is copied from source."""
+    # Target WITHOUT author_cell_type
+    n = len(CELL_IDS)
+    rng = np.random.default_rng(99)
+    X = sp.random(n, 5, density=0.3, format="csr", dtype=np.float32, random_state=rng)
+    obs = pd.DataFrame(
+        {"cell_type": pd.Categorical(rng.choice(["neuron", "astrocyte"], n))},
+        index=CELL_IDS,
+    )
+    var = pd.DataFrame(index=[f"GENE{i}" for i in range(5)])
+    adata = ad.AnnData(X=X, obs=obs, var=var)
+    adata.uns["title"] = "No base label"
+    path = tmp_path / "no-base.h5ad"
+    adata.write_h5ad(path)
+
+    result = copy_cap_annotations(str(cap_source), str(path))
+    assert "error" not in result
+    written = ad.read_h5ad(result["output_path"])
+    assert "author_cell_type" in written.obs.columns
+
+
 def test_copy_cell_type_enrichment(cap_source, hca_target):
     result = copy_cap_annotations(str(cap_source), str(hca_target))
     written = ad.read_h5ad(result["output_path"])
@@ -172,14 +194,20 @@ def test_copy_uns_direct(cap_source, hca_target):
     assert "cap_dataset_url" in written.uns
 
 
-def test_copy_uns_cap_keys(cap_source, hca_target):
+def test_copy_uns_cap_metadata_container(cap_source, hca_target):
     result = copy_cap_annotations(str(cap_source), str(hca_target))
     written = ad.read_h5ad(result["output_path"])
-    assert "authors_list" in written.uns
-    assert "hierarchy" in written.uns
-    assert "description" in written.uns
-    assert "publication_timestamp" in written.uns
-    assert "publication_version" in written.uns
+    # Generic CAP keys go into cap_metadata container, not top-level
+    assert "cap_metadata" in written.uns
+    meta = written.uns["cap_metadata"]
+    assert meta["authors_list"] == "Test Author"
+    assert meta["description"] == "A test CAP dataset"
+    assert meta["publication_timestamp"] == "2026-01-01"
+    assert meta["publication_version"] == "1.0"
+    # NOT top-level
+    assert "authors_list" not in written.uns
+    assert "hierarchy" not in written.uns
+    assert "description" not in written.uns
 
 
 # --- Skip demographic columns ---
