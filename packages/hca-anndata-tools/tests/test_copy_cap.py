@@ -148,6 +148,14 @@ def test_copy_obs_columns_present(cap_source, hca_target):
     assert "author_cell_type--category_fullname" in written.obs.columns
 
 
+def test_copy_marker_gene_validation(cap_source, hca_target):
+    result = copy_cap_annotations(str(cap_source), str(hca_target))
+    assert "marker_gene_validation" in result
+    mv = result["marker_gene_validation"]
+    assert "total_unique_markers" in mv
+    assert "found_in_var" in mv
+
+
 def test_copy_cell_type_enrichment(cap_source, hca_target):
     result = copy_cap_annotations(str(cap_source), str(hca_target))
     written = ad.read_h5ad(result["output_path"])

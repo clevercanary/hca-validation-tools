@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from ._io import open_h5ad
 from ._serialize import make_serializable
 from .cap import _REQUIRED_SUFFIXES, _OPTIONAL_SUFFIXES
+from .marker_genes import validate_marker_genes
 from .write import write_h5ad, resolve_latest
 from . import __version__
 
@@ -203,12 +204,16 @@ def copy_cap_annotations(
         if "error" in result:
             return result
 
+        # --- Post-copy: validate marker genes ---
+        marker_validation = validate_marker_genes(result["output_path"])
+
         return {
             **result,
             "source": source_basename,
             "annotation_sets": annotation_sets,
             "obs_columns_added": obs_cols_to_copy,
             "uns_keys_added": uns_keys_added,
+            "marker_gene_validation": marker_validation,
         }
 
     except Exception as e:
