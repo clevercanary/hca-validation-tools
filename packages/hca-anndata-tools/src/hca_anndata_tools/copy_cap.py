@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 from datetime import datetime, timezone
 
@@ -93,8 +94,8 @@ def copy_cap_annotations(
         overwrite: If True, replace existing CAP data in target.
 
     Returns:
-        Dict with output_path, copied columns/keys, and warnings,
-        or 'error' on failure.
+        Dict with output_path, copied columns/keys, and marker gene
+        validation results, or 'error' on failure.
     """
     try:
         target_path = resolve_latest(target_path)
@@ -165,6 +166,17 @@ def copy_cap_annotations(
                     )
                 }
 
+            # --- Validation 4: Base label columns exist in target ---
+            target_obs_columns = list(target.obs.columns)
+            for setname in annotation_sets:
+                if setname not in target_obs_columns:
+                    return {
+                        "error": (
+                            f"Target is missing base label column '{setname}' "
+                            f"in obs. Cannot copy annotation set."
+                        )
+                    }
+
             # --- Copy obs columns (aligned by index) ---
             aligned = source_obs_subset.loc[target.obs.index]
             for col in obs_cols_to_copy:
@@ -184,6 +196,9 @@ def copy_cap_annotations(
 
             # --- Edit log ---
             source_basename = os.path.basename(source_path)
+            source_sha256 = hashlib.sha256(
+                open(source_path, "rb").read()
+            ).hexdigest()
             entry = {
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "tool": "hca-anndata-tools",
@@ -191,6 +206,8 @@ def copy_cap_annotations(
                 "operation": "import_cap_annotations",
                 "description": f"Copied CAP annotations from {source_basename}",
                 "details": {
+                    "source_file": source_basename,
+                    "source_sha256": source_sha256,
                     "cap_schema_version": cap_schema_version,
                     "annotation_sets": annotation_sets,
                     "obs_columns_added": obs_cols_to_copy,
