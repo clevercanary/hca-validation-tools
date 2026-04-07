@@ -19,6 +19,7 @@ __all__ = [
     "set_uns",
     "list_uns_fields",
     "convert_cellxgene_to_hca",
+    "validate_marker_genes",
 ]
 
 _LAZY_IMPORTS = {
@@ -38,6 +39,7 @@ _LAZY_IMPORTS = {
     "set_uns": ".edit",
     "list_uns_fields": ".edit",
     "convert_cellxgene_to_hca": ".convert",
+    "validate_marker_genes": ".marker_genes",
 }
 
 
