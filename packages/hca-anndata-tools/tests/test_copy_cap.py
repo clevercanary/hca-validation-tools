@@ -156,28 +156,6 @@ def test_copy_marker_gene_validation(cap_source, hca_target):
     assert "found_in_var" in mv
 
 
-def test_copy_base_label_column(cap_source, tmp_path):
-    """Base label column (e.g., author_cell_type) is copied from source."""
-    # Target WITHOUT author_cell_type
-    n = len(CELL_IDS)
-    rng = np.random.default_rng(99)
-    X = sp.random(n, 5, density=0.3, format="csr", dtype=np.float32, random_state=rng)
-    obs = pd.DataFrame(
-        {"cell_type": pd.Categorical(rng.choice(["neuron", "astrocyte"], n))},
-        index=CELL_IDS,
-    )
-    var = pd.DataFrame(index=[f"GENE{i}" for i in range(5)])
-    adata = ad.AnnData(X=X, obs=obs, var=var)
-    adata.uns["title"] = "No base label"
-    path = tmp_path / "no-base.h5ad"
-    adata.write_h5ad(path)
-
-    result = copy_cap_annotations(str(cap_source), str(path))
-    assert "error" not in result
-    written = ad.read_h5ad(result["output_path"])
-    assert "author_cell_type" in written.obs.columns
-
-
 def test_copy_cell_type_enrichment(cap_source, hca_target):
     result = copy_cap_annotations(str(cap_source), str(hca_target))
     written = ad.read_h5ad(result["output_path"])

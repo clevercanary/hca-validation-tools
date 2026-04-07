@@ -64,7 +64,9 @@ def _get_obs_columns_to_copy(
 
     for setname in annotation_sets:
         for suffix in all_suffixes:
-            col = f"{setname}{suffix}" if suffix else setname
+            if not suffix:
+                continue
+            col = f"{setname}{suffix}"
             if col in source_obs_columns:
                 columns.append(col)
 
