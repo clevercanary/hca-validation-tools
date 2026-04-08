@@ -272,15 +272,21 @@ def test_copy_overwrite(cap_source, hca_target_with_cap):
 
 
 def test_copy_obs_index_reordered(cap_source, tmp_path):
-    """Source and target have same cells in different order."""
+    """Source and target have same cells in different order — values align correctly."""
     reversed_ids = list(reversed(CELL_IDS))
     target = _make_hca_target(tmp_path / "reversed.h5ad", reversed_ids)
     result = copy_cap_annotations(str(cap_source), str(target))
     assert "error" not in result
 
     written = ad.read_h5ad(result["output_path"])
-    # Verify obs index is still in the target's order
     assert list(written.obs.index) == reversed_ids
+
+    # Verify annotation values align with cell IDs, not positional order
+    source = ad.read_h5ad(str(cap_source))
+    for cell_id in reversed_ids[:3]:
+        src_val = source.obs.loc[cell_id, "author_cell_type--cell_ontology_term_id"]
+        tgt_val = written.obs.loc[cell_id, "author_cell_type--cell_ontology_term_id"]
+        assert str(src_val) == str(tgt_val), f"Mismatch at {cell_id}"
 
 
 def test_missing_file():

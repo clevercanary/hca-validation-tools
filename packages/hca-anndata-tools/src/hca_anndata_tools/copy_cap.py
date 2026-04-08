@@ -102,32 +102,31 @@ def copy_cap_annotations(
 
         # --- Validation 1: Source has CAP ---
         with open_h5ad(source_path) as source:
-            source_uns_keys = list(source.uns.keys())
-            if "cellannotation_metadata" not in source_uns_keys:
+            if "cellannotation_metadata" not in source.uns:
                 return {"error": "Source has no cellannotation_metadata in uns"}
-            if "cellannotation_schema_version" not in source_uns_keys:
+            if "cellannotation_schema_version" not in source.uns:
                 return {"error": "Source has no cellannotation_schema_version in uns"}
 
-            source_obs_columns = list(source.obs.columns)
             annotation_sets = _get_real_annotation_sets(source.uns)
             if not annotation_sets:
                 return {"error": "Source has no annotation sets in cellannotation_metadata"}
+
+            if not source.obs.index.is_unique:
+                dupes = source.obs.index[source.obs.index.duplicated()].unique()[:5].tolist()
+                return {"error": f"Source has duplicate cell IDs (first 5): {dupes}"}
 
             # Snapshot source data we need (before closing backed file)
             cap_schema_version = str(source.uns["cellannotation_schema_version"])
             all_uns_keys = _UNS_COPY_TOPLEVEL + _UNS_CAP_METADATA
             source_uns = {k: make_serializable(source.uns[k]) for k in all_uns_keys if k in source.uns}
 
+            source_obs_columns = list(source.obs.columns)
             obs_cols_to_copy = _get_obs_columns_to_copy(annotation_sets, source_obs_columns)
             if not obs_cols_to_copy:
                 return {"error": "No CAP obs columns found to copy"}
 
             source_obs_subset = source.obs[obs_cols_to_copy].copy()
             source_n_obs = source.n_obs
-            if not source.obs.index.is_unique:
-                dupes = source.obs.index[source.obs.index.duplicated()].unique().tolist()
-                shown = dupes[:5]
-                return {"error": f"Source has {len(dupes)} duplicate cell IDs (first 5): {shown}"}
             source_index = set(source.obs.index)
 
         # --- Validation 2: Target clean ---
