@@ -46,8 +46,8 @@ _CELL_TYPE_ENRICHMENT = [
 _CAP_UNS_KEYS = set(_UNS_COPY_TOPLEVEL) | {"cap_metadata"}
 
 
-def _get_real_annotation_sets(source_uns: dict) -> list[str]:
-    """Get annotation sets defined in cellannotation_metadata (the real CAP sets)."""
+def _get_annotation_sets(source_uns: dict) -> list[str]:
+    """Get annotation sets defined in cellannotation_metadata."""
     meta = source_uns.get("cellannotation_metadata", {})
     if isinstance(meta, dict):
         return [s for s in meta.keys() if s not in _SKIP_SETS]
@@ -107,7 +107,7 @@ def copy_cap_annotations(
             if "cellannotation_schema_version" not in source.uns:
                 return {"error": "Source has no cellannotation_schema_version in uns"}
 
-            annotation_sets = _get_real_annotation_sets(source.uns)
+            annotation_sets = _get_annotation_sets(source.uns)
             if not annotation_sets:
                 return {"error": "Source has no annotation sets in cellannotation_metadata"}
 

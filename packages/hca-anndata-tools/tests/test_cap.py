@@ -127,8 +127,12 @@ def cap_h5ad(tmp_path_factory) -> Path:
     adata.uns["title"] = "CAP Test"
     adata.uns["cellannotation_schema_version"] = "0.2.0"
     adata.uns["cellannotation_metadata"] = {
-        "author": "test",
-        "count": np.int64(42),
+        "my_labels": {
+            "annotation_method": "manual",
+            "description": "Test annotations",
+            "author": "test",
+            "count": np.int64(42),
+        },
     }
 
     path = tmp_path_factory.mktemp("cap") / "cap_test.h5ad"
@@ -171,7 +175,7 @@ def test_cap_reports_marker_genes(cap_h5ad):
 
 def test_cap_serializes_uns_metadata(cap_h5ad):
     result = get_cap_annotations(str(cap_h5ad))
-    meta = result["cellannotation_metadata"]
+    meta = result["cellannotation_metadata"]["my_labels"]
     assert meta["author"] == "test"
     # np.int64 should have been serialized to int
     assert meta["count"] == 42
