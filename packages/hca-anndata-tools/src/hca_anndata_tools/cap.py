@@ -75,14 +75,17 @@ def get_cap_annotations(path: str, annotation_set: str | None = None) -> dict:
     try:
         with open_h5ad(path) as adata:
             obs_columns = list(adata.obs.columns)
-            annotation_sets = _find_annotation_sets(obs_columns)
+
+            # Annotation sets are defined in cellannotation_metadata
+            meta = adata.uns.get("cellannotation_metadata", {})
+            annotation_sets = sorted(meta.keys()) if isinstance(meta, dict) else []
 
             uns_keys = list(adata.uns.keys())
             uns_present = [k for k in _UNS_REQUIRED_KEYS if k in uns_keys]
             uns_missing = [k for k in _UNS_REQUIRED_KEYS if k not in uns_keys]
             uns_optional_present = [k for k in _UNS_OPTIONAL_KEYS if k in uns_keys]
 
-            has_cap = len(annotation_sets) > 0 or "cellannotation_metadata" in uns_keys
+            has_cap = "cellannotation_metadata" in uns_keys and len(annotation_sets) > 0
 
             result = {
                 "has_cap_annotations": has_cap,
@@ -109,7 +112,7 @@ def get_cap_annotations(path: str, annotation_set: str | None = None) -> dict:
                     sets_to_inspect = [annotation_set]
                 else:
                     return {"error": f"Annotation set '{annotation_set}' not found. Available: {annotation_sets}"}
-            elif len(annotation_sets) <= 3:
+            else:
                 sets_to_inspect = annotation_sets
 
             set_details = {}
