@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.9.2](https://github.com/clevercanary/hca-validation-tools/compare/hca-schema-validator-v0.9.1...hca-schema-validator-v0.9.2) (2026-04-08)
+
+
+### Bug Fixes
+
+* correct release-please changelog-path to avoid double-nesting ([#250](https://github.com/clevercanary/hca-validation-tools/issues/250)) ([0ec58b7](https://github.com/clevercanary/hca-validation-tools/commit/0ec58b77ca1651cf350d346d04b1058b4a40971b))
+* default ignore_labels=True in HCAValidator ([#268](https://github.com/clevercanary/hca-validation-tools/issues/268)) ([4cbcda1](https://github.com/clevercanary/hca-validation-tools/commit/4cbcda12e4814f31c67d1cfa71a478a5eaea7f0b))
+
 ## [0.9.1](https://github.com/clevercanary/hca-validation-tools/compare/hca-schema-validator-v0.9.0...hca-schema-validator-v0.9.1) (2026-03-31)
 
 
