@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.3.0](https://github.com/clevercanary/hca-validation-tools/compare/hca-anndata-mcp-v0.2.0...hca-anndata-mcp-v0.3.0) (2026-04-08)
+
+
+### Features
+
+* add CAP marker gene validation against var ([#259](https://github.com/clevercanary/hca-validation-tools/issues/259)) ([fcebd87](https://github.com/clevercanary/hca-validation-tools/commit/fcebd8789639e6ce67a4f9b6986c9ba6c4984257))
+* add copy_cap_annotations tool ([#261](https://github.com/clevercanary/hca-validation-tools/issues/261)) ([1a68cd0](https://github.com/clevercanary/hca-validation-tools/commit/1a68cd02db491bcc5634e7ad727d3cc8bb33cb28))
+
+
+### Bug Fixes
+
+* correct release-please changelog-path to avoid double-nesting ([#250](https://github.com/clevercanary/hca-validation-tools/issues/250)) ([0ec58b7](https://github.com/clevercanary/hca-validation-tools/commit/0ec58b77ca1651cf350d346d04b1058b4a40971b))
+
 ## [0.2.0](https://github.com/clevercanary/hca-validation-tools/compare/hca-anndata-mcp-v0.1.0...hca-anndata-mcp-v0.2.0) (2026-03-31)
 
 
