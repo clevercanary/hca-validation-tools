@@ -22,7 +22,7 @@ class HCAValidator(Validator):
     - organism and organism_ontology_term_id are in obs (not uns)
     """
     
-    def __init__(self, ignore_labels=False):
+    def __init__(self, ignore_labels=True):
         """
         Initialize HCA validator.
 
