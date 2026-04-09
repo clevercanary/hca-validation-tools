@@ -6,9 +6,15 @@ from pathlib import Path
 import pandas as pd
 import yaml
 
+from hca_schema_validator._vendored.cellxgene_schema import gencode
+from hca_schema_validator._vendored.cellxgene_schema.gencode import get_gene_checker
+from hca_schema_validator._vendored.cellxgene_schema.ontology_parser import ONTOLOGY_PARSER
 from hca_schema_validator._vendored.cellxgene_schema.validate import Validator
 from hca_schema_validator._vendored.cellxgene_schema.utils import getattr_anndata
 from . import __schema_version__ as HCA_SCHEMA_VERSION
+
+# GENCODE version info for human (loaded once)
+_GENE_INFO_PATH = Path(__file__).parent / "_vendored" / "cellxgene_schema" / "gencode_files" / "gene_info.yml"
 
 # Schema file constants
 SCHEMA_DIR = "schema_definitions"
@@ -175,6 +181,66 @@ class HCAValidator(Validator):
                     f"invalid values {bad_values}. Placeholder values are not "
                     f"allowed. Leave the value missing (NaN/None) if not known."
                 )
+
+    def _get_gencode_version_label(self) -> str:
+        """Get a human-readable GENCODE version string for the dataset's organism."""
+        organism = None
+        if hasattr(self, "adata") and self.adata is not None:
+            organism = self.adata.uns.get("organism_ontology_term_id")
+            if organism is None and "organism_ontology_term_id" in self.adata.obs.columns:
+                organism = str(self.adata.obs["organism_ontology_term_id"].iloc[0])
+
+        with open(_GENE_INFO_PATH) as f:
+            gene_info = yaml.safe_load(f)
+
+        if organism == "NCBITaxon:9606":
+            v = gene_info["human"]["version"]
+            return f"GENCODE v{v} (Ensembl 114)"
+        elif organism == "NCBITaxon:10090":
+            v = gene_info["mouse"]["version"]
+            return f"GENCODE v{v} (Ensembl 114)"
+        return "GENCODE reference (Ensembl 114)"
+
+    def _validate_feature_ids(self, column: pd.Series, df_name: str):
+        """
+        Override to improve warning messages with GENCODE version info.
+        """
+        version_label = self._get_gencode_version_label()
+        invalid_gene_organisms = []
+
+        for feature_id in column:
+            organism = gencode.get_organism_from_feature_id(feature_id)
+            organism_ontology_id = None
+            dataset_organism = self.adata.uns.get("organism_ontology_term_id", None)
+
+            if not organism:
+                self.warnings.append(
+                    f"Feature ID '{feature_id}' in '{df_name}' not found "
+                    f"in {version_label}."
+                )
+                continue
+            else:
+                organism_ontology_id = organism.value
+
+            valid_gene_id = get_gene_checker(organism).is_valid_id(feature_id)
+
+            if not valid_gene_id:
+                self.warnings.append(
+                    f"Feature ID '{feature_id}' in '{df_name}' not found "
+                    f"in {version_label}."
+                )
+
+            if dataset_organism is not None and organism_ontology_id is not None and valid_gene_id:
+                is_descendant = organism_ontology_id in ONTOLOGY_PARSER.get_term_ancestors(dataset_organism, True)
+                if not is_descendant and organism_ontology_id not in gencode.EXEMPT_ORGANISMS:
+                    invalid_gene_organisms.append(organism)
+
+        invalid_gene_organisms = list(set(invalid_gene_organisms))
+        if len(invalid_gene_organisms) > 0:
+            self.warnings.append(
+                f"uns['organism_ontology_term_id'] is '{dataset_organism}' "
+                f"but feature_ids are from {invalid_gene_organisms}."
+            )
 
     def _validate_column(self, column, column_name, df_name, column_def, default_error_message_suffix=None):
         """
