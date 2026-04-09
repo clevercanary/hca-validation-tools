@@ -7,6 +7,7 @@ import pandas as pd
 import yaml
 
 from hca_schema_validator._vendored.cellxgene_schema.validate import Validator
+from hca_schema_validator._vendored.cellxgene_schema.utils import getattr_anndata
 from . import __schema_version__ as HCA_SCHEMA_VERSION
 
 # Schema file constants
@@ -91,6 +92,89 @@ class HCAValidator(Validator):
                     self.errors.append(
                         f"Value in list '{list_name}' must not be empty or whitespace-only."
                     )
+
+    def _validate_dataframe(self, df_name):
+        """
+        Extends base dataframe validation with requirement_level support.
+
+        Columns with requirement_level: strongly_recommended are removed from
+        the schema before the base class runs (so it won't error on missing),
+        then validated separately with warnings instead of errors.
+        """
+        df_definition = self.schema_def["components"].get(df_name, {})
+        if "columns" not in df_definition:
+            return super()._validate_dataframe(df_name)
+
+        # Extract strongly_recommended columns before base class sees them
+        sr_columns = {}
+        for col_name in list(df_definition["columns"]):
+            col_def = df_definition["columns"][col_name]
+            if col_def.get("requirement_level") == "strongly_recommended":
+                sr_columns[col_name] = col_def
+                del df_definition["columns"][col_name]
+
+        # Base class validates only must columns
+        try:
+            super()._validate_dataframe(df_name)
+        finally:
+            # Restore schema def even if super() raises
+            df_definition["columns"].update(sr_columns)
+
+        # Validate strongly_recommended columns ourselves
+        df = getattr_anndata(self.adata, df_name)
+        if df is not None:
+            for col_name, col_def in sr_columns.items():
+                self._validate_strongly_recommended(df, df_name, col_name, col_def)
+
+    def _validate_strongly_recommended(self, df, df_name, col_name, col_def):
+        """Validate a strongly_recommended column: warn on missing/NaN, error on blocklist."""
+        if col_name not in df.columns:
+            self.warnings.append(
+                f"Column '{col_name}' in dataframe '{df_name}' is strongly "
+                f"recommended but missing."
+            )
+            return
+
+        column = df[col_name]
+
+        # NaN check — warn with count
+        null_mask = column.isnull()
+        if null_mask.any():
+            nan_count = int(null_mask.sum())
+            total = len(column)
+            pct = (nan_count * 100 // total) if total > 0 else 0
+            self.warnings.append(
+                f"Column '{col_name}' is strongly recommended. "
+                f"{nan_count}/{total} ({pct}%) values are NaN."
+            )
+
+        # Separator check — reject values containing list separators
+        separators = {",", ";", "|"}
+        bad_sep_values = [
+            str(v) for v in column.dropna().unique()
+            if any(sep in str(v) for sep in separators)
+        ]
+        if bad_sep_values:
+            shown = bad_sep_values[:3]
+            self.errors.append(
+                f"Column '{col_name}' in dataframe '{df_name}' contains "
+                f"values with list separators (e.g., {shown}). Each value "
+                f"must be a single identifier, not a delimited list."
+            )
+
+        # Blocklist check — error on invalid values (case-insensitive)
+        if "blocklist" in col_def:
+            blocklist = {v.lower() for v in col_def["blocklist"]}
+            bad_values = [
+                str(v) for v in column.dropna().unique()
+                if str(v).strip().lower() in blocklist
+            ]
+            if bad_values:
+                self.errors.append(
+                    f"Column '{col_name}' in dataframe '{df_name}' contains "
+                    f"invalid values {bad_values}. Placeholder values are not "
+                    f"allowed. Leave the value missing (NaN/None) if not known."
+                )
 
     def _validate_column(self, column, column_name, df_name, column_def, default_error_message_suffix=None):
         """

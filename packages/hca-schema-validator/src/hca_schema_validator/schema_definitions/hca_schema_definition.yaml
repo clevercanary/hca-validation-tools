@@ -1,3 +1,16 @@
+_definitions:
+  placeholder_blocklist: &placeholder_blocklist
+    - "unknown"
+    - "na"
+    - "n/a"
+    - "none"
+    - "not available"
+    - "not applicable"
+    - "tbd"
+    - "todo"
+    - "null"
+    - "undefined"
+
 title: HCA anndata schema version 1.0.0
 type: anndata
 # If sparsity of any expression matrix is greater than this and not csr sparse matrix, then there will be warning.
@@ -847,15 +860,21 @@ components:
       library_id:
         type: categorical
         subtype: str
+        requirement_level: strongly_recommended
+        blocklist: *placeholder_blocklist
       institute:
         type: categorical
         subtype: str
       library_preparation_batch:
         type: categorical
         subtype: str
+        requirement_level: strongly_recommended
+        blocklist: *placeholder_blocklist
       library_sequencing_run:
         type: categorical
         subtype: str
+        requirement_level: strongly_recommended
+        blocklist: *placeholder_blocklist
       alignment_software:
         type: categorical
         subtype: str
