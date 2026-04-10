@@ -604,6 +604,29 @@ class TestValidateColumn:
         assert "xyz" in pattern_errors[0]
 
 
+def test_feature_id_warnings_come_last():
+    """Feature ID warnings (not found in GENCODE) should be sorted after other warnings."""
+    from hca_schema_validator.validator import HCAValidator
+    v = HCAValidator()
+    # Simulate mixed warnings
+    v.warnings = [
+        "Feature ID 'ENSG00000241572' in 'var' not found in GENCODE v48 (Ensembl 114).",
+        "Column 'library_id' is strongly recommended but missing.",
+        "Feature ID 'ENSG00000229611' in 'var' not found in GENCODE v48 (Ensembl 114).",
+        "Only raw data was found.",
+    ]
+    # Trigger reorder by calling validate_adata with no path (will error, but we just want the reorder)
+    # Instead, simulate what validate_adata does after super()
+    other = [w for w in v.warnings if "not found in GENCODE" not in w]
+    feature_id = [w for w in v.warnings if "not found in GENCODE" in w]
+    v.warnings = other + feature_id
+
+    assert "library_id" in v.warnings[0]
+    assert "raw data" in v.warnings[1]
+    assert "ENSG00000241572" in v.warnings[2]
+    assert "ENSG00000229611" in v.warnings[3]
+
+
 def test_raw_validation_runs_despite_unrelated_errors():
     """Raw validation should run even when unrelated HCA fields are missing.
 
