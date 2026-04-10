@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.10.0](https://github.com/clevercanary/hca-validation-tools/compare/hca-schema-validator-v0.9.2...hca-schema-validator-v0.10.0) (2026-04-10)
+
+
+### Features
+
+* add requirement_level and blocklist for library fields ([#269](https://github.com/clevercanary/hca-validation-tools/issues/269)) ([28b329d](https://github.com/clevercanary/hca-validation-tools/commit/28b329d198bc74536d66d673cee7eb2f61590e30))
+
+
+### Bug Fixes
+
+* improve gene ID warning to include GENCODE version ([#272](https://github.com/clevercanary/hca-validation-tools/issues/272)) ([a31c9f2](https://github.com/clevercanary/hca-validation-tools/commit/a31c9f257effd87904a1a2013ab9fab561a9fe59))
+
 ## [0.9.2](https://github.com/clevercanary/hca-validation-tools/compare/hca-schema-validator-v0.9.1...hca-schema-validator-v0.9.2) (2026-04-08)
 
 
