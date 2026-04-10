@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.1](https://github.com/clevercanary/hca-validation-tools/compare/hca-schema-validator-v0.10.0...hca-schema-validator-v0.10.1) (2026-04-10)
+
+
+### Bug Fixes
+
+* reorder warnings so feature ID warnings come last ([#278](https://github.com/clevercanary/hca-validation-tools/issues/278)) ([71d21b1](https://github.com/clevercanary/hca-validation-tools/commit/71d21b1ed3dcc6947c8ede3882c56d8bc0382bef))
+
 ## [0.10.0](https://github.com/clevercanary/hca-validation-tools/compare/hca-schema-validator-v0.9.2...hca-schema-validator-v0.10.0) (2026-04-10)
 
 
