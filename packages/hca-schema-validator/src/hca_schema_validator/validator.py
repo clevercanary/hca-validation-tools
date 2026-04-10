@@ -61,6 +61,15 @@ class HCAValidator(Validator):
             with open(schema_path) as fp:
                 self.schema_def = yaml.safe_load(fp)
 
+    def validate_adata(self, h5ad_path=None):
+        """Override to reorder warnings — feature ID warnings come last."""
+        result = super().validate_adata(h5ad_path)
+        other, feature_id = [], []
+        for w in self.warnings:
+            (feature_id if "not found in GENCODE" in w else other).append(w)
+        self.warnings = other + feature_id
+        return result
+
     def _deep_check(self):
         """
         The base class skips raw validation when *any* errors exist, but raw
