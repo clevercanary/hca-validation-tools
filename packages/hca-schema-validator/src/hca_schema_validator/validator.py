@@ -64,8 +64,9 @@ class HCAValidator(Validator):
     def validate_adata(self, h5ad_path=None):
         """Override to reorder warnings — feature ID warnings come last."""
         result = super().validate_adata(h5ad_path)
-        other = [w for w in self.warnings if "not found in GENCODE" not in w]
-        feature_id = [w for w in self.warnings if "not found in GENCODE" in w]
+        other, feature_id = [], []
+        for w in self.warnings:
+            (feature_id if "not found in GENCODE" in w else other).append(w)
         self.warnings = other + feature_id
         return result
 
