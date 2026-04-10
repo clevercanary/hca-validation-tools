@@ -49,8 +49,20 @@ make invoke-lambda SHEET_ID=<google-sheet-id>
 
 # Batch (Dataset Validator)
 make batch-publish-container ENV=dev    # Build, tag, push to ECR, register job def
+make batch-publish-container ENV=prod   # Same for production
 make batch-submit-job ENV=dev
 ```
+
+## Updating hca-schema-validator in the Batch Service
+
+When a new version of `hca-schema-validator` is released (via release-please → PyPI):
+
+1. Bump the version pin in `services/hca-schema-validator/pyproject.toml`
+2. **Regenerate the lock file**: `cd services/hca-schema-validator && poetry lock`
+3. Commit both `pyproject.toml` and `poetry.lock` together
+4. After merge, rebuild the Docker image: `make batch-publish-container ENV=dev`
+
+Forgetting step 2 will cause the Docker build to fail with "pyproject.toml changed significantly since poetry.lock was last generated."
 
 ## Architecture
 
