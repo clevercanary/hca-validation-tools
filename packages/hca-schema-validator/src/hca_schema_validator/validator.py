@@ -13,8 +13,10 @@ from hca_schema_validator._vendored.cellxgene_schema.validate import Validator
 from hca_schema_validator._vendored.cellxgene_schema.utils import getattr_anndata
 from . import __schema_version__ as HCA_SCHEMA_VERSION
 
-# GENCODE version info for human (loaded once)
+# GENCODE version info (loaded once at module level)
 _GENE_INFO_PATH = Path(__file__).parent / "_vendored" / "cellxgene_schema" / "gencode_files" / "gene_info.yml"
+with open(_GENE_INFO_PATH) as _f:
+    _gene_info = yaml.safe_load(_f)
 
 # Schema file constants
 SCHEMA_DIR = "schema_definitions"
@@ -182,22 +184,26 @@ class HCAValidator(Validator):
                     f"allowed. Leave the value missing (NaN/None) if not known."
                 )
 
+    def _get_organism_from_obs(self) -> str | None:
+        """Get organism_ontology_term_id from obs (HCA schema stores it in obs)."""
+        if (
+            hasattr(self, "adata")
+            and self.adata is not None
+            and "organism_ontology_term_id" in self.adata.obs.columns
+            and len(self.adata.obs) > 0
+        ):
+            return str(self.adata.obs["organism_ontology_term_id"].iloc[0])
+        return None
+
     def _get_gencode_version_label(self) -> str:
         """Get a human-readable GENCODE version string for the dataset's organism."""
-        organism = None
-        if hasattr(self, "adata") and self.adata is not None:
-            organism = self.adata.uns.get("organism_ontology_term_id")
-            if organism is None and "organism_ontology_term_id" in self.adata.obs.columns:
-                organism = str(self.adata.obs["organism_ontology_term_id"].iloc[0])
-
-        with open(_GENE_INFO_PATH) as f:
-            gene_info = yaml.safe_load(f)
+        organism = self._get_organism_from_obs()
 
         if organism == "NCBITaxon:9606":
-            v = gene_info["human"]["version"]
+            v = _gene_info["human"]["version"]
             return f"GENCODE v{v} (Ensembl 114)"
         elif organism == "NCBITaxon:10090":
-            v = gene_info["mouse"]["version"]
+            v = _gene_info["mouse"]["version"]
             return f"GENCODE v{v} (Ensembl 114)"
         return "GENCODE reference (Ensembl 114)"
 
@@ -206,12 +212,12 @@ class HCAValidator(Validator):
         Override to improve warning messages with GENCODE version info.
         """
         version_label = self._get_gencode_version_label()
+        dataset_organism = self._get_organism_from_obs()
         invalid_gene_organisms = []
 
         for feature_id in column:
             organism = gencode.get_organism_from_feature_id(feature_id)
             organism_ontology_id = None
-            dataset_organism = self.adata.uns.get("organism_ontology_term_id", None)
 
             if not organism:
                 self.warnings.append(
@@ -238,7 +244,7 @@ class HCAValidator(Validator):
         invalid_gene_organisms = list(set(invalid_gene_organisms))
         if len(invalid_gene_organisms) > 0:
             self.warnings.append(
-                f"uns['organism_ontology_term_id'] is '{dataset_organism}' "
+                f"obs['organism_ontology_term_id'] is '{dataset_organism}' "
                 f"but feature_ids are from {invalid_gene_organisms}."
             )
 
