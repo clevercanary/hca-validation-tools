@@ -204,7 +204,7 @@ class HCAValidator(Validator):
             return f"GENCODE v{v} (Ensembl 114)"
         elif organism == "NCBITaxon:10090":
             v = _gene_info["mouse"]["version"]
-            return f"GENCODE v{v} (Ensembl 114)"
+            return f"GENCODE {v} (Ensembl 114)"
         return "GENCODE reference (Ensembl 114)"
 
     def _validate_feature_ids(self, column: pd.Series, df_name: str):
