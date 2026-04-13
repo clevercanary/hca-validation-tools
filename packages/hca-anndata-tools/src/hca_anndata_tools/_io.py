@@ -92,7 +92,12 @@ def read_uns_scalar(path: str, key: str) -> str | None:
 
 
 def read_obs_scalar(path: str, key: str) -> str | None:
-    """Read the first category value from a categorical obs column."""
+    """Read the first category value from a categorical obs column.
+
+    For categoricals, returns categories[0] rather than decoding codes to find
+    the actual first observed value. This is correct for our use case
+    (organism_ontology_term_id) where integrated objects have a single category.
+    """
     with h5py.File(path, "r") as f:
         obs = f.get("obs")
         if obs is None:
