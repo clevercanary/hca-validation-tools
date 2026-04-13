@@ -68,6 +68,10 @@ def read_obs_categorical_values(path: str, column: str) -> set[str]:
     separately from the per-cell 'codes' array. This reads only the
     categories, avoiding the expensive full-column materialization.
 
+    Note: returns all declared categories, which may include unused values
+    if the file was subsetted without removing unused categories. This is
+    acceptable because callers operate on full integrated objects, not subsets.
+
     Falls back to reading the full dataset for non-categorical columns.
     """
     with h5py.File(path, "r") as f:
