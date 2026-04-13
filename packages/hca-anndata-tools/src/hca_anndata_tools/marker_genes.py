@@ -2,30 +2,27 @@
 
 from __future__ import annotations
 
-import pandas as pd
-
 from ._gencode import load_gencode_reference
-from ._io import open_h5ad
+from ._io import (
+    read_obs_categorical_values,
+    read_obs_column_names,
+    read_obs_scalar,
+    read_uns_scalar,
+    read_var_gene_names,
+)
 from .cap import _find_annotation_sets
 
 _SKIP_VALUES = {"unknown", "", "NA", "na", "none", "None"}
 
 
-def _strip_ensembl_version(eid: str) -> str:
-    """Strip version suffix from Ensembl ID: ENSG00000173947.7 → ENSG00000173947."""
-    if eid.startswith("ENSG") and "." in eid:
-        return eid.rsplit(".", 1)[0]
-    return eid
-
-
-def _extract_marker_genes(series: pd.Series) -> set[str]:
-    """Parse unique gene symbols from a marker_gene_evidence series.
+def _extract_marker_genes_from_categories(categories: set[str]) -> set[str]:
+    """Parse unique gene symbols from a set of category values.
 
     Values are comma-separated gene symbols like "MARCO,CST3,FABP4,INHBA".
     Skips null, empty, and placeholder values.
     """
     genes: set[str] = set()
-    for val in series.dropna().unique():
+    for val in categories:
         val = str(val).strip()
         if val in _SKIP_VALUES:
             continue
@@ -36,28 +33,6 @@ def _extract_marker_genes(series: pd.Series) -> set[str]:
     return genes
 
 
-def _get_gene_names_from_var(var: pd.DataFrame) -> tuple[set[str], dict[str, str]]:
-    """Extract gene symbol set and ensembl_id->symbol map from var.
-
-    Handles both CellxGENE-style (feature_name) and other (gene_name) files.
-
-    Returns:
-        gene_names: Set of all gene symbols in var
-        eid_to_var_name: Dict mapping Ensembl ID (var.index) to gene symbol
-    """
-    for col in ("feature_name", "gene_name"):
-        if col in var.columns:
-            str_values = var[col].astype(str).values
-            gene_names = set(str_values)
-            eid_to_var_name = {
-                _strip_ensembl_version(eid): name
-                for eid, name in zip(var.index, str_values)
-            }
-            return gene_names, eid_to_var_name
-    # Fallback: var.index IS the gene names, no Ensembl ID mapping
-    return set(var.index), {}
-
-
 def _classify_missing(
     gene: str,
     name_to_ids: dict[str, list[str]],
@@ -65,7 +40,7 @@ def _classify_missing(
 ) -> dict:
     """Classify a missing marker gene as a known rename or probable typo."""
     if gene in name_to_ids:
-        # Valid current GENCODE symbol — check if any of its Ensembl IDs
+        # Valid current GENCODE symbol -- check if any of its Ensembl IDs
         # are in var under a different name
         for eid in name_to_ids[gene]:
             if eid in eid_to_var_name:
@@ -77,7 +52,7 @@ def _classify_missing(
                 }
         # Valid GENCODE gene, but not measured in this file
         return {"marker_gene": gene, "type": "missing_from_var"}
-    # Not in GENCODE — probable typo
+    # Not in GENCODE -- probable typo
     return {"marker_gene": gene, "type": "not_in_gencode"}
 
 
@@ -96,111 +71,111 @@ def validate_marker_genes(path: str, annotation_set: str | None = None) -> dict:
         Dict with validation results, or 'error' on failure.
     """
     try:
-        with open_h5ad(path) as adata:
-            # Only human is supported — check organism if available
-            organism = adata.uns.get("organism_ontology_term_id")
-            if organism is None and "organism_ontology_term_id" in adata.obs.columns:
-                organism = adata.obs["organism_ontology_term_id"].iloc[0]
-            if organism is not None and str(organism) != "NCBITaxon:9606":
-                return {"error": f"Only human (NCBITaxon:9606) is supported, found: {organism}"}
+        organism = read_uns_scalar(path, "organism_ontology_term_id")
+        if organism is None:
+            organism = read_obs_scalar(path, "organism_ontology_term_id")
+        if organism is not None and str(organism) != "NCBITaxon:9606":
+            return {"error": f"Only human (NCBITaxon:9606) is supported, found: {organism}"}
 
-            obs_columns = list(adata.obs.columns)
-            all_sets = _find_annotation_sets(obs_columns)
+        obs_columns = read_obs_column_names(path)
+        all_sets = _find_annotation_sets(obs_columns)
 
-            if annotation_set:
-                if annotation_set not in all_sets:
-                    return {
-                        "error": (
-                            f"Annotation set '{annotation_set}' not found. "
-                            f"Available: {all_sets}"
-                        )
-                    }
-                sets_to_check = [annotation_set]
-            else:
-                sets_to_check = all_sets
-
-            # Filter to sets that have marker_gene_evidence
-            sets_with_markers = [
-                s for s in sets_to_check
-                if f"{s}--marker_gene_evidence" in obs_columns
-            ]
-
-            if not sets_with_markers:
+        if annotation_set:
+            if annotation_set not in all_sets:
                 return {
-                    "annotation_sets_with_markers": [],
-                    "total_unique_markers": 0,
-                    "found_in_var": 0,
-                    "missing": 0,
-                    "known_renames": [],
-                    "missing_from_var": [],
-                    "not_in_gencode": [],
-                    "details": {},
+                    "error": (
+                        f"Annotation set '{annotation_set}' not found. "
+                        f"Available: {all_sets}"
+                    )
                 }
+            sets_to_check = [annotation_set]
+        else:
+            sets_to_check = all_sets
 
-            gene_names, eid_to_var_name = _get_gene_names_from_var(adata.var)
-            _, name_to_ids = load_gencode_reference()
+        # Filter to sets that have marker_gene_evidence
+        sets_with_markers = [
+            s for s in sets_to_check
+            if f"{s}--marker_gene_evidence" in obs_columns
+        ]
 
-            all_renames = []
-            all_missing_from_var = []
-            all_not_in_gencode = []
-            all_unique = set()
-            details = {}
-
-            for setname in sets_with_markers:
-                marker_col = f"{setname}--marker_gene_evidence"
-                markers = _extract_marker_genes(adata.obs[marker_col])
-                all_unique.update(markers)
-
-                found = markers & gene_names
-                missing = markers - gene_names
-
-                renames = []
-                missing_from_var = []
-                not_in_gencode = []
-                for gene in sorted(missing):
-                    classification = _classify_missing(gene, name_to_ids, eid_to_var_name)
-                    if classification["type"] == "known_rename":
-                        renames.append(classification)
-                    elif classification["type"] == "missing_from_var":
-                        missing_from_var.append(classification)
-                    else:
-                        not_in_gencode.append(classification)
-
-                all_renames.extend(renames)
-                all_missing_from_var.extend(missing_from_var)
-                all_not_in_gencode.extend(not_in_gencode)
-
-                details[setname] = {
-                    "unique_markers": len(markers),
-                    "found": len(found),
-                    "known_renames": renames,
-                    "missing_from_var": missing_from_var,
-                    "not_in_gencode": not_in_gencode,
-                }
-
-            total_found = len(all_unique & gene_names)
-
-            # Deduplicate top-level lists (same gene can appear in multiple sets)
-            seen = set()
-            def _dedup(items):
-                out = []
-                for item in items:
-                    key = item["marker_gene"]
-                    if key not in seen:
-                        seen.add(key)
-                        out.append(item)
-                return out
-
+        if not sets_with_markers:
             return {
-                "annotation_sets_with_markers": sets_with_markers,
-                "total_unique_markers": len(all_unique),
-                "found_in_var": total_found,
-                "missing": len(all_unique) - total_found,
-                "known_renames": _dedup(all_renames),
-                "missing_from_var": _dedup(all_missing_from_var),
-                "not_in_gencode": _dedup(all_not_in_gencode),
-                "details": details,
+                "annotation_sets_with_markers": [],
+                "total_unique_markers": 0,
+                "found_in_var": 0,
+                "missing": 0,
+                "known_renames": [],
+                "missing_from_var": [],
+                "not_in_gencode": [],
+                "details": {},
             }
+
+        gene_names, eid_to_var_name = read_var_gene_names(path)
+        _, name_to_ids = load_gencode_reference()
+
+        all_renames = []
+        all_missing_from_var = []
+        all_not_in_gencode = []
+        all_unique = set()
+        details = {}
+
+        for setname in sets_with_markers:
+            marker_col = f"{setname}--marker_gene_evidence"
+            # Read only the category values, not the full per-cell column
+            categories = read_obs_categorical_values(path, marker_col)
+            markers = _extract_marker_genes_from_categories(categories)
+            all_unique.update(markers)
+
+            found = markers & gene_names
+            missing = markers - gene_names
+
+            renames = []
+            missing_from_var = []
+            not_in_gencode = []
+            for gene in sorted(missing):
+                classification = _classify_missing(gene, name_to_ids, eid_to_var_name)
+                if classification["type"] == "known_rename":
+                    renames.append(classification)
+                elif classification["type"] == "missing_from_var":
+                    missing_from_var.append(classification)
+                else:
+                    not_in_gencode.append(classification)
+
+            all_renames.extend(renames)
+            all_missing_from_var.extend(missing_from_var)
+            all_not_in_gencode.extend(not_in_gencode)
+
+            details[setname] = {
+                "unique_markers": len(markers),
+                "found": len(found),
+                "known_renames": renames,
+                "missing_from_var": missing_from_var,
+                "not_in_gencode": not_in_gencode,
+            }
+
+        total_found = len(all_unique & gene_names)
+
+        # Deduplicate top-level lists (same gene can appear in multiple sets)
+        seen = set()
+        def _dedup(items):
+            out = []
+            for item in items:
+                key = item["marker_gene"]
+                if key not in seen:
+                    seen.add(key)
+                    out.append(item)
+            return out
+
+        return {
+            "annotation_sets_with_markers": sets_with_markers,
+            "total_unique_markers": len(all_unique),
+            "found_in_var": total_found,
+            "missing": len(all_unique) - total_found,
+            "known_renames": _dedup(all_renames),
+            "missing_from_var": _dedup(all_missing_from_var),
+            "not_in_gencode": _dedup(all_not_in_gencode),
+            "details": details,
+        }
 
     except Exception as e:
         return {"error": str(e)}

@@ -9,9 +9,9 @@ import pytest
 import scipy.sparse as sp
 
 from hca_anndata_tools._gencode import load_gencode_reference
+from hca_anndata_tools._io import read_var_gene_names
 from hca_anndata_tools.marker_genes import (
-    _extract_marker_genes,
-    _get_gene_names_from_var,
+    _extract_marker_genes_from_categories,
     validate_marker_genes,
 )
 
@@ -43,55 +43,66 @@ def test_gencode_duplicate_names():
 
 
 def test_extract_markers_simple():
-    series = pd.Series(["GFAP", "AIF1", "GFAP", "RBFOX3"])
-    assert _extract_marker_genes(series) == {"GFAP", "AIF1", "RBFOX3"}
+    categories = {"GFAP", "AIF1", "RBFOX3"}
+    assert _extract_marker_genes_from_categories(categories) == {"GFAP", "AIF1", "RBFOX3"}
 
 
 def test_extract_markers_comma_separated():
-    series = pd.Series(["GFAP, AIF1", "RBFOX3"])
-    assert _extract_marker_genes(series) == {"GFAP", "AIF1", "RBFOX3"}
+    categories = {"GFAP, AIF1", "RBFOX3"}
+    assert _extract_marker_genes_from_categories(categories) == {"GFAP", "AIF1", "RBFOX3"}
 
 
 def test_extract_markers_skips_unknown():
-    series = pd.Series(["GFAP", "unknown", "", None, "NA", "RBFOX3"])
-    assert _extract_marker_genes(series) == {"GFAP", "RBFOX3"}
+    categories = {"GFAP", "unknown", "", "NA", "RBFOX3"}
+    assert _extract_marker_genes_from_categories(categories) == {"GFAP", "RBFOX3"}
 
 
 def test_extract_markers_strips_whitespace():
-    series = pd.Series(["  GFAP  ", "AIF1 , RBFOX3 "])
-    assert _extract_marker_genes(series) == {"GFAP", "AIF1", "RBFOX3"}
+    categories = {"  GFAP  ", "AIF1 , RBFOX3 "}
+    assert _extract_marker_genes_from_categories(categories) == {"GFAP", "AIF1", "RBFOX3"}
 
 
-def test_extract_markers_empty_series():
-    series = pd.Series([], dtype=object)
-    assert _extract_marker_genes(series) == set()
+def test_extract_markers_empty():
+    assert _extract_marker_genes_from_categories(set()) == set()
 
 
 # -- Var gene name detection tests ---------------------------------------------
 
 
-def test_get_gene_names_feature_name():
+def test_read_var_gene_names_feature_name(tmp_path):
     var = pd.DataFrame(
         {"feature_name": ["GFAP", "AIF1"]},
         index=["ENSG00000131095", "ENSG00000204472"],
     )
-    names, eid_map = _get_gene_names_from_var(var)
+    X = sp.random(2, 2, density=0.5, format="csr", dtype=np.float32)
+    adata = ad.AnnData(X=X, var=var, obs=pd.DataFrame(index=["c0", "c1"]))
+    path = tmp_path / "feat.h5ad"
+    adata.write_h5ad(path)
+    names, eid_map = read_var_gene_names(str(path))
     assert names == {"GFAP", "AIF1"}
     assert eid_map["ENSG00000131095"] == "GFAP"
 
 
-def test_get_gene_names_gene_name_col():
+def test_read_var_gene_names_gene_name_col(tmp_path):
     var = pd.DataFrame(
         {"gene_name": ["GFAP", "AIF1"]},
         index=["ENSG00000131095", "ENSG00000204472"],
     )
-    names, eid_map = _get_gene_names_from_var(var)
+    X = sp.random(2, 2, density=0.5, format="csr", dtype=np.float32)
+    adata = ad.AnnData(X=X, var=var, obs=pd.DataFrame(index=["c0", "c1"]))
+    path = tmp_path / "gene.h5ad"
+    adata.write_h5ad(path)
+    names, eid_map = read_var_gene_names(str(path))
     assert names == {"GFAP", "AIF1"}
 
 
-def test_get_gene_names_fallback():
+def test_read_var_gene_names_fallback(tmp_path):
     var = pd.DataFrame(index=["GFAP", "AIF1"])
-    names, eid_map = _get_gene_names_from_var(var)
+    X = sp.random(2, 2, density=0.5, format="csr", dtype=np.float32)
+    adata = ad.AnnData(X=X, var=var, obs=pd.DataFrame(index=["c0", "c1"]))
+    path = tmp_path / "fallback.h5ad"
+    adata.write_h5ad(path)
+    names, eid_map = read_var_gene_names(str(path))
     assert names == {"GFAP", "AIF1"}
     assert eid_map == {}
 
