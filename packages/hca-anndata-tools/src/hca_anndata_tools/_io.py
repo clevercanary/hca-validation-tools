@@ -116,3 +116,36 @@ def read_var_gene_names(path: str) -> tuple[set[str], dict[str, str]]:
         }
 
         return gene_names, eid_to_var_name
+
+
+def verify_obs_transplant(
+    temp_path: str,
+    output_path: str,
+    columns: list[str],
+) -> str | None:
+    """Verify obs columns were transplanted correctly via full-column comparison.
+
+    Compares raw HDF5 data (categories + codes for categoricals, or full
+    dataset for non-categoricals) between temp and output for each column.
+
+    Returns:
+        None if all columns match, or an error message string on mismatch.
+    """
+    import numpy as np
+
+    with h5py.File(temp_path, "r") as f_temp, \
+         h5py.File(output_path, "r") as f_out:
+        for col in columns:
+            temp_item = f_temp["obs"][col]
+            out_item = f_out["obs"][col]
+
+            if isinstance(temp_item, h5py.Group) and "categories" in temp_item:
+                if not np.array_equal(temp_item["categories"][:], out_item["categories"][:]):
+                    return f"Verification failed: categories mismatch for column '{col}'"
+                if not np.array_equal(temp_item["codes"][:], out_item["codes"][:]):
+                    return f"Verification failed: codes mismatch for column '{col}'"
+            else:
+                if not np.array_equal(temp_item[:], out_item[:]):
+                    return f"Verification failed: data mismatch for column '{col}'"
+
+    return None
