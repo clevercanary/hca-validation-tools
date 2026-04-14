@@ -9,9 +9,9 @@ import pytest
 import scipy.sparse as sp
 
 from hca_anndata_tools._gencode import load_gencode_reference
+from hca_anndata_tools._io import read_var_gene_names
 from hca_anndata_tools.marker_genes import (
-    _extract_marker_genes,
-    _get_gene_names_from_var,
+    _extract_marker_genes_from_categories,
     validate_marker_genes,
 )
 
@@ -43,55 +43,66 @@ def test_gencode_duplicate_names():
 
 
 def test_extract_markers_simple():
-    series = pd.Series(["GFAP", "AIF1", "GFAP", "RBFOX3"])
-    assert _extract_marker_genes(series) == {"GFAP", "AIF1", "RBFOX3"}
+    categories = {"GFAP", "AIF1", "RBFOX3"}
+    assert _extract_marker_genes_from_categories(categories) == {"GFAP", "AIF1", "RBFOX3"}
 
 
 def test_extract_markers_comma_separated():
-    series = pd.Series(["GFAP, AIF1", "RBFOX3"])
-    assert _extract_marker_genes(series) == {"GFAP", "AIF1", "RBFOX3"}
+    categories = {"GFAP, AIF1", "RBFOX3"}
+    assert _extract_marker_genes_from_categories(categories) == {"GFAP", "AIF1", "RBFOX3"}
 
 
 def test_extract_markers_skips_unknown():
-    series = pd.Series(["GFAP", "unknown", "", None, "NA", "RBFOX3"])
-    assert _extract_marker_genes(series) == {"GFAP", "RBFOX3"}
+    categories = {"GFAP", "unknown", "", "NA", "RBFOX3"}
+    assert _extract_marker_genes_from_categories(categories) == {"GFAP", "RBFOX3"}
 
 
 def test_extract_markers_strips_whitespace():
-    series = pd.Series(["  GFAP  ", "AIF1 , RBFOX3 "])
-    assert _extract_marker_genes(series) == {"GFAP", "AIF1", "RBFOX3"}
+    categories = {"  GFAP  ", "AIF1 , RBFOX3 "}
+    assert _extract_marker_genes_from_categories(categories) == {"GFAP", "AIF1", "RBFOX3"}
 
 
-def test_extract_markers_empty_series():
-    series = pd.Series([], dtype=object)
-    assert _extract_marker_genes(series) == set()
+def test_extract_markers_empty():
+    assert _extract_marker_genes_from_categories(set()) == set()
 
 
 # -- Var gene name detection tests ---------------------------------------------
 
 
-def test_get_gene_names_feature_name():
+def test_read_var_gene_names_feature_name(tmp_path):
     var = pd.DataFrame(
         {"feature_name": ["GFAP", "AIF1"]},
         index=["ENSG00000131095", "ENSG00000204472"],
     )
-    names, eid_map = _get_gene_names_from_var(var)
+    X = sp.random(2, 2, density=0.5, format="csr", dtype=np.float32)
+    adata = ad.AnnData(X=X, var=var, obs=pd.DataFrame(index=["c0", "c1"]))
+    path = tmp_path / "feat.h5ad"
+    adata.write_h5ad(path)
+    names, eid_map = read_var_gene_names(str(path))
     assert names == {"GFAP", "AIF1"}
     assert eid_map["ENSG00000131095"] == "GFAP"
 
 
-def test_get_gene_names_gene_name_col():
+def test_read_var_gene_names_gene_name_col(tmp_path):
     var = pd.DataFrame(
         {"gene_name": ["GFAP", "AIF1"]},
         index=["ENSG00000131095", "ENSG00000204472"],
     )
-    names, eid_map = _get_gene_names_from_var(var)
+    X = sp.random(2, 2, density=0.5, format="csr", dtype=np.float32)
+    adata = ad.AnnData(X=X, var=var, obs=pd.DataFrame(index=["c0", "c1"]))
+    path = tmp_path / "gene.h5ad"
+    adata.write_h5ad(path)
+    names, eid_map = read_var_gene_names(str(path))
     assert names == {"GFAP", "AIF1"}
 
 
-def test_get_gene_names_fallback():
+def test_read_var_gene_names_fallback(tmp_path):
     var = pd.DataFrame(index=["GFAP", "AIF1"])
-    names, eid_map = _get_gene_names_from_var(var)
+    X = sp.random(2, 2, density=0.5, format="csr", dtype=np.float32)
+    adata = ad.AnnData(X=X, var=var, obs=pd.DataFrame(index=["c0", "c1"]))
+    path = tmp_path / "fallback.h5ad"
+    adata.write_h5ad(path)
+    names, eid_map = read_var_gene_names(str(path))
     assert names == {"GFAP", "AIF1"}
     assert eid_map == {}
 
@@ -113,6 +124,7 @@ def marker_h5ad(tmp_path_factory) -> Path:
 
     obs = pd.DataFrame(
         {
+            "organism_ontology_term_id": pd.Categorical(["NCBITaxon:9606"] * n_obs),
             "test_labels": pd.Categorical(rng.choice(["typeA", "typeB", "typeC"], n_obs)),
             "test_labels--marker_gene_evidence": pd.Categorical(
                 rng.choice(["GFAP,AIF1", "RBFOX3", "CIMAP3", "SCL25A5"], n_obs)
@@ -148,6 +160,7 @@ def clean_h5ad(tmp_path_factory) -> Path:
 
     obs = pd.DataFrame(
         {
+            "organism_ontology_term_id": pd.Categorical(["NCBITaxon:9606"] * n_obs),
             "ann": pd.Categorical(rng.choice(["a", "b"], n_obs)),
             "ann--marker_gene_evidence": pd.Categorical(
                 rng.choice(["GFAP", "AIF1,RBFOX3"], n_obs)
@@ -191,10 +204,28 @@ def test_all_markers_found(clean_h5ad):
     assert result["found_in_var"] == result["total_unique_markers"]
 
 
-def test_no_cap_annotations(sample_h5ad):
-    result = validate_marker_genes(str(sample_h5ad))
+def test_no_cap_annotations(tmp_path):
+    """File with organism but no CAP annotation columns."""
+    n_obs = 4
+    X = sp.random(n_obs, 2, density=0.5, format="csr", dtype=np.float32)
+    obs = pd.DataFrame(
+        {"organism_ontology_term_id": pd.Categorical(["NCBITaxon:9606"] * n_obs)},
+        index=[f"c{i}" for i in range(n_obs)],
+    )
+    var = pd.DataFrame({"feature_name": ["A", "B"]}, index=["ENSG1", "ENSG2"])
+    adata = ad.AnnData(X=X, obs=obs, var=var)
+    path = tmp_path / "no_cap.h5ad"
+    adata.write_h5ad(path)
+    result = validate_marker_genes(str(path))
     assert result["annotation_sets_with_markers"] == []
     assert result["total_unique_markers"] == 0
+
+
+def test_missing_organism(sample_h5ad):
+    """File without organism_ontology_term_id in obs is rejected."""
+    result = validate_marker_genes(str(sample_h5ad))
+    assert "error" in result
+    assert "organism_ontology_term_id" in result["error"]
 
 
 def test_specific_annotation_set(marker_h5ad):
@@ -225,6 +256,7 @@ def versioned_h5ad(tmp_path_factory) -> Path:
 
     obs = pd.DataFrame(
         {
+            "organism_ontology_term_id": pd.Categorical(["NCBITaxon:9606"] * n_obs),
             "ann": pd.Categorical(rng.choice(["a", "b"], n_obs)),
             "ann--marker_gene_evidence": pd.Categorical(
                 rng.choice(["GFAP", "CIMAP3"], n_obs)
