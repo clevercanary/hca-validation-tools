@@ -97,6 +97,30 @@ def test_verify_mismatch_detected(_make_pair):
     assert "codes mismatch" in result
 
 
+def test_verify_categories_mismatch(tmp_path):
+    """Different category names should be detected."""
+    n = 3
+    index = ["c0", "c1", "c2"]
+
+    temp_adata = ad.AnnData(
+        X=np.empty((n, 0), dtype=np.float32),
+        obs=pd.DataFrame({"label": pd.Categorical(["typeA", "typeB", "typeA"])}, index=index),
+    )
+    temp_path = tmp_path / "temp.h5ad"
+    temp_adata.write_h5ad(temp_path)
+
+    out_adata = ad.AnnData(
+        X=np.empty((n, 0), dtype=np.float32),
+        obs=pd.DataFrame({"label": pd.Categorical(["typeX", "typeY", "typeX"])}, index=index),
+    )
+    out_path = tmp_path / "output.h5ad"
+    out_adata.write_h5ad(out_path)
+
+    result = verify_obs_transplant(str(temp_path), str(out_path), ["label"])
+    assert result is not None
+    assert "categories mismatch" in result
+
+
 def test_verify_empty_columns(_make_pair):
     temp, output = _make_pair({}, ["c0", "c1"])
     assert verify_obs_transplant(temp, output, []) is None
