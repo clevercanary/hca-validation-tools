@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 import scipy.sparse as sp
 
-from ._io import open_h5ad, read_obs_column_names, read_obs_index, _decode_bytes
+from ._io import open_h5ad, _decode_bytes
 from ._serialize import make_serializable
 from .cap import _REQUIRED_SUFFIXES, _OPTIONAL_SUFFIXES
 from .marker_genes import validate_marker_genes
@@ -139,12 +139,27 @@ def copy_cap_annotations(
             source_uns = {k: make_serializable(source.uns[k]) for k in all_uns_keys if k in source.uns}
 
         # Read source obs via h5py (avoids slow backed-mode column access)
-        source_obs_columns = read_obs_column_names(source_path)
-        obs_cols_to_copy = _get_obs_columns_to_copy(annotation_sets, source_obs_columns)
+        with h5py.File(source_path, "r") as f:
+            obs_group = f["obs"]
+            source_obs_columns = [_decode_bytes(c) for c in obs_group.attrs["column-order"]]
+            obs_cols_to_copy = _get_obs_columns_to_copy(annotation_sets, source_obs_columns)
+
+            idx_key = _decode_bytes(obs_group.attrs.get("_index", "_index"))
+            source_index_list = [_decode_bytes(v) for v in obs_group[idx_key][:]]
+
+            source_obs_data = {}
+            for col in obs_cols_to_copy:
+                item = obs_group[col]
+                if isinstance(item, h5py.Group) and "categories" in item:
+                    categories = [_decode_bytes(v) for v in item["categories"][:]]
+                    codes = item["codes"][:]
+                    source_obs_data[col] = pd.Categorical.from_codes(codes, categories=categories)
+                else:
+                    source_obs_data[col] = [_decode_bytes(v) for v in item[:]]
+
         if not obs_cols_to_copy:
             return {"error": "No CAP obs columns found to copy"}
 
-        source_index_list = read_obs_index(source_path)
         source_n_obs = len(source_index_list)
         source_index = set(source_index_list)
         if len(source_index) != source_n_obs:
@@ -157,23 +172,21 @@ def copy_cap_annotations(
                 seen.add(x)
             return {"error": f"Source has duplicate cell IDs (first 5): {dupes}"}
 
-        # Read obs columns via h5py and reconstruct as pandas DataFrame
-        source_obs_data = {}
-        with h5py.File(source_path, "r") as f:
-            obs_group = f["obs"]
-            for col in obs_cols_to_copy:
-                item = obs_group[col]
-                if isinstance(item, h5py.Group) and "categories" in item:
-                    categories = [_decode_bytes(v) for v in item["categories"][:]]
-                    codes = item["codes"][:]
-                    source_obs_data[col] = pd.Categorical.from_codes(codes, categories=categories)
-                else:
-                    source_obs_data[col] = [_decode_bytes(v) for v in item[:]]
-
         source_obs_subset = pd.DataFrame(source_obs_data, index=source_index_list)
 
         # --- Step 2: Validate target via h5py (no AnnData load) ---
-        target_obs_columns = read_obs_column_names(target_path)
+        with h5py.File(target_path, "r") as f:
+            obs_group = f["obs"]
+            target_obs_columns = [_decode_bytes(c) for c in obs_group.attrs["column-order"]]
+            idx_key = _decode_bytes(obs_group.attrs.get("_index", "_index"))
+            target_index = [_decode_bytes(v) for v in obs_group[idx_key][:]]
+
+            uns = f.get("uns")
+            if uns and EDIT_LOG_KEY in uns:
+                raw_log = _decode_bytes(uns[EDIT_LOG_KEY][()])
+            else:
+                raw_log = "[]"
+
         existing_cap_cols = [c for c in target_obs_columns if "--" in c]
 
         if existing_cap_cols and not overwrite:
@@ -183,8 +196,6 @@ def copy_cap_annotations(
                     f"(e.g., {existing_cap_cols[0]}). Use overwrite=True to replace."
                 )
             }
-
-        target_index = read_obs_index(target_path)
         target_n_obs = len(target_index)
 
         if target_n_obs != source_n_obs:
@@ -241,13 +252,6 @@ def copy_cap_annotations(
                 "uns_keys_added": uns_keys_added,
             },
         }
-
-        with h5py.File(target_path, "r") as f:
-            uns = f.get("uns")
-            if uns and EDIT_LOG_KEY in uns:
-                raw_log = _decode_bytes(uns[EDIT_LOG_KEY][()])
-            else:
-                raw_log = "[]"
 
         log_result = build_edit_log(raw_log, [entry], target_path, target_sha256)
         if "error" in log_result:
@@ -316,6 +320,12 @@ def copy_cap_annotations(
         check_positions = [0, len(target_index) // 2, len(target_index) - 1]
         check_cell_ids = [target_index[i] for i in check_positions]
 
+        def _to_str(val) -> str:
+            """Normalize a value to string for comparison."""
+            if val is None or (isinstance(val, float) and pd.isna(val)):
+                return "<NA>"
+            return str(val)
+
         verification_error = None
         with h5py.File(output_path, "r") as f_out:
             for col in obs_cols_to_copy:
@@ -326,25 +336,24 @@ def copy_cap_annotations(
                     cats = [_decode_bytes(v) for v in item["categories"][:]]
                     codes = item["codes"]
                     for pos, cell_id in zip(check_positions, check_cell_ids):
-                        output_val = cats[codes[pos]] if codes[pos] >= 0 else None
-                        expected = source_obs_subset.at[cell_id, col]
-                        expected_str = str(expected) if not pd.isna(expected) else None
-                        if str(output_val) != str(expected_str):
+                        output_val = _to_str(cats[codes[pos]] if codes[pos] >= 0 else None)
+                        expected_val = _to_str(source_obs_subset.at[cell_id, col])
+                        if output_val != expected_val:
                             verification_error = (
                                 f"Verification failed: column '{col}', "
                                 f"cell '{cell_id}' (pos {pos}): "
-                                f"expected '{expected_str}', got '{output_val}'"
+                                f"expected '{expected_val}', got '{output_val}'"
                             )
                             break
                 else:
                     for pos, cell_id in zip(check_positions, check_cell_ids):
-                        output_val = str(_decode_bytes(item[pos]))
-                        expected = str(source_obs_subset.at[cell_id, col])
-                        if output_val != expected:
+                        output_val = _to_str(_decode_bytes(item[pos]))
+                        expected_val = _to_str(source_obs_subset.at[cell_id, col])
+                        if output_val != expected_val:
                             verification_error = (
                                 f"Verification failed: column '{col}', "
                                 f"cell '{cell_id}' (pos {pos}): "
-                                f"expected '{expected}', got '{output_val}'"
+                                f"expected '{expected_val}', got '{output_val}'"
                             )
                             break
 
