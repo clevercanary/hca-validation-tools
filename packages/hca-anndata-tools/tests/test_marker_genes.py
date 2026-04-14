@@ -222,7 +222,7 @@ def test_no_cap_annotations(tmp_path):
 
 
 def test_missing_organism(sample_h5ad):
-    """CellxGENE file without organism_ontology_term_id in obs is rejected."""
+    """File without organism_ontology_term_id in obs is rejected."""
     result = validate_marker_genes(str(sample_h5ad))
     assert "error" in result
     assert "organism_ontology_term_id" in result["error"]

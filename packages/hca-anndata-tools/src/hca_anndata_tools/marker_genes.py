@@ -57,12 +57,14 @@ def _classify_missing(
 def validate_marker_genes(path: str, annotation_set: str | None = None) -> dict:
     """Validate that CAP marker genes exist in an h5ad file's var.
 
-    Checks each marker gene symbol from CAP annotation obs columns against
-    var['feature_name']. Missing genes are classified as known GENCODE renames
-    or probable typos.
+    Expects an HCA integrated object with organism_ontology_term_id in obs.
+    Rejects non-human organisms. Checks marker gene symbols from CAP
+    annotation obs columns against var gene names (feature_name, gene_name,
+    or var index as fallback). Missing genes are classified as GENCODE
+    renames, unmeasured genes, or probable typos.
 
     Args:
-        path: Absolute path to an .h5ad file.
+        path: Absolute path to an HCA .h5ad file.
         annotation_set: Specific annotation set to validate. If None, validates all.
 
     Returns:
