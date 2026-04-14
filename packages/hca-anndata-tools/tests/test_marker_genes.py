@@ -124,6 +124,7 @@ def marker_h5ad(tmp_path_factory) -> Path:
 
     obs = pd.DataFrame(
         {
+            "organism_ontology_term_id": pd.Categorical(["NCBITaxon:9606"] * n_obs),
             "test_labels": pd.Categorical(rng.choice(["typeA", "typeB", "typeC"], n_obs)),
             "test_labels--marker_gene_evidence": pd.Categorical(
                 rng.choice(["GFAP,AIF1", "RBFOX3", "CIMAP3", "SCL25A5"], n_obs)
@@ -159,6 +160,7 @@ def clean_h5ad(tmp_path_factory) -> Path:
 
     obs = pd.DataFrame(
         {
+            "organism_ontology_term_id": pd.Categorical(["NCBITaxon:9606"] * n_obs),
             "ann": pd.Categorical(rng.choice(["a", "b"], n_obs)),
             "ann--marker_gene_evidence": pd.Categorical(
                 rng.choice(["GFAP", "AIF1,RBFOX3"], n_obs)
@@ -202,10 +204,28 @@ def test_all_markers_found(clean_h5ad):
     assert result["found_in_var"] == result["total_unique_markers"]
 
 
-def test_no_cap_annotations(sample_h5ad):
-    result = validate_marker_genes(str(sample_h5ad))
+def test_no_cap_annotations(tmp_path):
+    """File with organism but no CAP annotation columns."""
+    n_obs = 4
+    X = sp.random(n_obs, 2, density=0.5, format="csr", dtype=np.float32)
+    obs = pd.DataFrame(
+        {"organism_ontology_term_id": pd.Categorical(["NCBITaxon:9606"] * n_obs)},
+        index=[f"c{i}" for i in range(n_obs)],
+    )
+    var = pd.DataFrame({"feature_name": ["A", "B"]}, index=["ENSG1", "ENSG2"])
+    adata = ad.AnnData(X=X, obs=obs, var=var)
+    path = tmp_path / "no_cap.h5ad"
+    adata.write_h5ad(path)
+    result = validate_marker_genes(str(path))
     assert result["annotation_sets_with_markers"] == []
     assert result["total_unique_markers"] == 0
+
+
+def test_missing_organism(sample_h5ad):
+    """CellxGENE file without organism_ontology_term_id in obs is rejected."""
+    result = validate_marker_genes(str(sample_h5ad))
+    assert "error" in result
+    assert "organism_ontology_term_id" in result["error"]
 
 
 def test_specific_annotation_set(marker_h5ad):
@@ -236,6 +256,7 @@ def versioned_h5ad(tmp_path_factory) -> Path:
 
     obs = pd.DataFrame(
         {
+            "organism_ontology_term_id": pd.Categorical(["NCBITaxon:9606"] * n_obs),
             "ann": pd.Categorical(rng.choice(["a", "b"], n_obs)),
             "ann--marker_gene_evidence": pd.Categorical(
                 rng.choice(["GFAP", "CIMAP3"], n_obs)
