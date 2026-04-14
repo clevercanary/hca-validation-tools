@@ -11,7 +11,6 @@ import anndata as ad
 import h5py
 import numpy as np
 import pandas as pd
-import scipy.sparse as sp
 
 from ._io import open_h5ad, _decode_bytes
 from ._serialize import make_serializable
@@ -261,7 +260,7 @@ def copy_cap_annotations(
 
         n_obs = len(target_index)
         temp_adata = ad.AnnData(
-            X=sp.csr_matrix((n_obs, 0), dtype=np.float32),
+            X=np.empty((n_obs, 0), dtype=np.float32),
             obs=aligned_obs,
             uns=temp_uns,
         )
