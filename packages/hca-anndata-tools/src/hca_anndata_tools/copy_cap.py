@@ -12,7 +12,7 @@ import h5py
 import numpy as np
 import pandas as pd
 
-from ._io import open_h5ad, _decode_bytes
+from ._io import open_h5ad, verify_obs_transplant, _decode_bytes
 from ._serialize import make_serializable
 from .cap import _REQUIRED_SUFFIXES, _OPTIONAL_SUFFIXES
 from .marker_genes import validate_marker_genes
@@ -336,24 +336,10 @@ def copy_cap_annotations(
                     f_temp.copy(f"uns/{EDIT_LOG_KEY}", f_out["uns"])
 
             # --- Step 5: Verify transplant — full column comparison ---
-            # Compare raw HDF5 data in temp vs output for every copied column.
-            with h5py.File(temp_path, "r") as f_temp, \
-                 h5py.File(output_path, "r") as f_out:
-                for col in obs_cols_to_copy:
-                    temp_item = f_temp["obs"][col]
-                    out_item = f_out["obs"][col]
-
-                    if isinstance(temp_item, h5py.Group) and "categories" in temp_item:
-                        if not np.array_equal(temp_item["categories"][:], out_item["categories"][:]):
-                            os.remove(output_path)
-                            return {"error": f"Verification failed: categories mismatch for column '{col}'"}
-                        if not np.array_equal(temp_item["codes"][:], out_item["codes"][:]):
-                            os.remove(output_path)
-                            return {"error": f"Verification failed: codes mismatch for column '{col}'"}
-                    else:
-                        if not np.array_equal(temp_item[:], out_item[:]):
-                            os.remove(output_path)
-                            return {"error": f"Verification failed: data mismatch for column '{col}'"}
+            verify_err = verify_obs_transplant(temp_path, output_path, obs_cols_to_copy)
+            if verify_err:
+                os.remove(output_path)
+                return {"error": verify_err}
 
         # --- Step 6: Cleanup + validate marker genes ---
         cleanup_previous_version(target_path, output_path)
