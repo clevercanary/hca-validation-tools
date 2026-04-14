@@ -42,19 +42,6 @@ def _strip_ensembl_version(eid: str) -> str:
     return eid
 
 
-def _read_h5_scalar(group: h5py.Group, key: str) -> str | None:
-    """Read a scalar string from an HDF5 group, handling categorical encoding."""
-    if key not in group:
-        return None
-    item = group[key]
-    if isinstance(item, h5py.Dataset):
-        return _decode_bytes(item[()])
-    if isinstance(item, h5py.Group) and "categories" in item:
-        cats = item["categories"][:]
-        return _decode_bytes(cats[0]) if len(cats) > 0 else None
-    return None
-
-
 def read_obs_column_names(path: str) -> list[str]:
     """Read obs column names from an h5ad file via h5py (no AnnData load)."""
     with h5py.File(path, "r") as f:
@@ -80,29 +67,6 @@ def read_obs_categorical_values(path: str, column: str) -> set[str]:
             return {_decode_bytes(v) for v in item["categories"][:]}
         # Non-categorical: read full dataset
         return {_decode_bytes(v) for v in item[:]}
-
-
-def read_uns_scalar(path: str, key: str) -> str | None:
-    """Read a scalar string value from uns, or None if absent."""
-    with h5py.File(path, "r") as f:
-        uns = f.get("uns")
-        if uns is None:
-            return None
-        return _read_h5_scalar(uns, key)
-
-
-def read_obs_scalar(path: str, key: str) -> str | None:
-    """Read the first category value from a categorical obs column.
-
-    For categoricals, returns categories[0] rather than decoding codes to find
-    the actual first observed value. This is correct for our use case
-    (organism_ontology_term_id) where integrated objects have a single category.
-    """
-    with h5py.File(path, "r") as f:
-        obs = f.get("obs")
-        if obs is None:
-            return None
-        return _read_h5_scalar(obs, key)
 
 
 def read_var_gene_names(path: str) -> tuple[set[str], dict[str, str]]:

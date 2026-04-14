@@ -6,8 +6,6 @@ from ._gencode import load_gencode_reference
 from ._io import (
     read_obs_categorical_values,
     read_obs_column_names,
-    read_obs_scalar,
-    read_uns_scalar,
     read_var_gene_names,
 )
 from .cap import _find_annotation_sets
@@ -71,12 +69,6 @@ def validate_marker_genes(path: str, annotation_set: str | None = None) -> dict:
         Dict with validation results, or 'error' on failure.
     """
     try:
-        organism = read_uns_scalar(path, "organism_ontology_term_id")
-        if organism is None:
-            organism = read_obs_scalar(path, "organism_ontology_term_id")
-        if organism is not None and str(organism) != "NCBITaxon:9606":
-            return {"error": f"Only human (NCBITaxon:9606) is supported, found: {organism}"}
-
         obs_columns = read_obs_column_names(path)
         all_sets = _find_annotation_sets(obs_columns)
 
