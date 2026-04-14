@@ -316,8 +316,11 @@ def copy_cap_annotations(
         check_positions = [0, len(target_index) // 2, len(target_index) - 1]
         check_cell_ids = [target_index[i] for i in check_positions]
 
+        verification_error = None
         with h5py.File(output_path, "r") as f_out:
             for col in obs_cols_to_copy:
+                if verification_error:
+                    break
                 item = f_out["obs"][col]
                 if isinstance(item, h5py.Group) and "categories" in item:
                     cats = [_decode_bytes(v) for v in item["categories"][:]]
@@ -327,29 +330,29 @@ def copy_cap_annotations(
                         expected = source_obs_subset.at[cell_id, col]
                         expected_str = str(expected) if not pd.isna(expected) else None
                         if str(output_val) != str(expected_str):
-                            os.remove(output_path)
-                            return {
-                                "error": (
-                                    f"Verification failed: column '{col}', "
-                                    f"cell '{cell_id}' (pos {pos}): "
-                                    f"expected '{expected_str}', got '{output_val}'"
-                                )
-                            }
+                            verification_error = (
+                                f"Verification failed: column '{col}', "
+                                f"cell '{cell_id}' (pos {pos}): "
+                                f"expected '{expected_str}', got '{output_val}'"
+                            )
+                            break
                 else:
                     for pos, cell_id in zip(check_positions, check_cell_ids):
                         output_val = str(_decode_bytes(item[pos]))
                         expected = str(source_obs_subset.at[cell_id, col])
                         if output_val != expected:
-                            os.remove(output_path)
-                            return {
-                                "error": (
-                                    f"Verification failed: column '{col}', "
-                                    f"cell '{cell_id}' (pos {pos}): "
-                                    f"expected '{expected}', got '{output_val}'"
-                                )
-                            }
+                            verification_error = (
+                                f"Verification failed: column '{col}', "
+                                f"cell '{cell_id}' (pos {pos}): "
+                                f"expected '{expected}', got '{output_val}'"
+                            )
+                            break
 
         del source_obs_subset
+
+        if verification_error:
+            os.remove(output_path)
+            return {"error": verification_error}
 
         # --- Step 6: Cleanup + validate marker genes ---
         cleanup_previous_version(target_path, output_path)
