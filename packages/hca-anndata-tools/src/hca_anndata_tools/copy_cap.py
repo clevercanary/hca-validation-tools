@@ -181,21 +181,38 @@ def copy_cap_annotations(
             target_index = [_decode_bytes(v) for v in obs_group[idx_key][:]]
 
             uns = f.get("uns")
+            target_uns_keys = set(uns.keys()) if uns else set()
             if uns and EDIT_LOG_KEY in uns:
                 raw_log = _decode_bytes(uns[EDIT_LOG_KEY][()])
             else:
                 raw_log = "[]"
 
+        target_n_obs = len(target_index)
+        target_index_set = set(target_index)
+        if len(target_index_set) != target_n_obs:
+            seen, dupes = set(), []
+            for x in target_index:
+                if x in seen and x not in dupes:
+                    dupes.append(x)
+                    if len(dupes) >= 5:
+                        break
+                seen.add(x)
+            return {"error": f"Target has duplicate cell IDs (first 5): {dupes}"}
+
+        # Detect existing CAP obs columns: any column with "--" separator
         existing_cap_cols = [c for c in target_obs_columns if "--" in c]
 
-        if existing_cap_cols and not overwrite:
+        existing_cap_uns = [k for k in _CAP_UNS_KEYS if k in target_uns_keys]
+
+        if (existing_cap_cols or existing_cap_uns) and not overwrite:
             return {
                 "error": (
-                    f"Target already has {len(existing_cap_cols)} CAP columns "
-                    f"(e.g., {existing_cap_cols[0]}). Use overwrite=True to replace."
+                    f"Target already has CAP data "
+                    f"({len(existing_cap_cols)} obs columns, "
+                    f"{len(existing_cap_uns)} uns keys). "
+                    f"Use overwrite=True to replace."
                 )
             }
-        target_n_obs = len(target_index)
 
         if target_n_obs != source_n_obs:
             return {
@@ -205,7 +222,6 @@ def copy_cap_annotations(
                 )
             }
 
-        target_index_set = set(target_index)
         if source_index != target_index_set:
             missing_in_target = source_index - target_index_set
             missing_in_source = target_index_set - source_index
@@ -280,9 +296,10 @@ def copy_cap_annotations(
             with h5py.File(temp_path, "r") as f_temp, \
                  h5py.File(output_path, "a") as f_out:
 
-                # Overwrite: delete existing CAP columns and uns keys
+                f_out.require_group("uns")
+
                 deleted_cols = set()
-                if existing_cap_cols and overwrite:
+                if (existing_cap_cols or existing_cap_uns) and overwrite:
                     for col in existing_cap_cols:
                         if col in f_out["obs"]:
                             del f_out["obs"][col]
@@ -320,8 +337,13 @@ def copy_cap_annotations(
         check_cell_ids = [target_index[i] for i in check_positions]
 
         def _normalize(val):
-            if val is None or (isinstance(val, float) and pd.isna(val)):
+            if val is None:
                 return None
+            try:
+                if pd.isna(val):
+                    return None
+            except (TypeError, ValueError):
+                pass
             return str(val)
 
         verification_error = None
