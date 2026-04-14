@@ -1,7 +1,5 @@
 """Tests for extracted helper functions in _io.py and write.py."""
 
-from pathlib import Path
-
 import anndata as ad
 import h5py
 import numpy as np

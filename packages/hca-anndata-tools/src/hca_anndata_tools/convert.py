@@ -19,7 +19,6 @@ from .write import (
     EDIT_LOG_KEY,
     build_edit_log,
     generate_timestamp,
-    _compute_sha256,
 )
 from . import __version__
 
