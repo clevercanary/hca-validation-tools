@@ -115,6 +115,7 @@ def copy_cap_annotations(
         Dict with output_path, copied columns/keys, and marker gene
         validation results, or 'error' on failure.
     """
+    output_path = None
     try:
         target_path = resolve_latest(target_path)
 
@@ -398,4 +399,9 @@ def copy_cap_annotations(
         }
 
     except Exception as e:
+        if output_path and os.path.isfile(output_path):
+            try:
+                os.remove(output_path)
+            except OSError:
+                pass
         return {"error": str(e)}
