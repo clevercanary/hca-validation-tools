@@ -100,6 +100,82 @@ def _is_timestamped(path: str) -> bool:
     return bool(_TIMESTAMP_PATTERN.search(os.path.basename(path)))
 
 
+def build_edit_log(
+    existing_log_raw: str | list,
+    edit_entries: list[dict],
+    source_path: str,
+    source_sha256: str | None = None,
+) -> dict:
+    """Build an updated edit log JSON string.
+
+    Validates entries, computes SHA-256 of the source file, stamps each
+    entry with source_file and source_sha256, and appends to the existing log.
+
+    Args:
+        existing_log_raw: Current edit log value (JSON string or list).
+            Use "[]" if no log exists.
+        edit_entries: New entries to append. Required keys:
+            timestamp, tool, tool_version, operation, description.
+        source_path: Path to the source .h5ad file on disk.
+        source_sha256: Pre-computed SHA-256 hex digest. If None, computed
+            from source_path.
+
+    Returns:
+        Dict with 'json' (updated JSON string) on success, or 'error'.
+    """
+    if not edit_entries:
+        return {"error": "edit_entries must not be empty — every write should document what changed"}
+
+    for i, entry in enumerate(edit_entries):
+        missing = _REQUIRED_ENTRY_KEYS - entry.keys()
+        if missing:
+            return {"error": f"edit_entries[{i}] missing required keys: {sorted(missing)}"}
+
+    sha256 = source_sha256 if source_sha256 is not None else _compute_sha256(source_path)
+    source_filename = os.path.basename(source_path)
+
+    stamped_entries = [
+        {**entry, "source_file": source_filename, "source_sha256": sha256}
+        for entry in edit_entries
+    ]
+
+    if isinstance(existing_log_raw, str):
+        try:
+            existing_log = json.loads(existing_log_raw)
+        except json.JSONDecodeError:
+            return {"error": f"Existing {EDIT_LOG_KEY} contains invalid JSON"}
+        if not isinstance(existing_log, list):
+            return {"error": f"Existing {EDIT_LOG_KEY} decoded to {type(existing_log).__name__}, expected list"}
+    elif isinstance(existing_log_raw, list):
+        existing_log = existing_log_raw
+    else:
+        return {
+            "error": (
+                f"Existing {EDIT_LOG_KEY} has unsupported type "
+                f"{type(existing_log_raw).__name__}; refusing to overwrite edit log"
+            )
+        }
+
+    return {"json": json.dumps(existing_log + stamped_entries)}
+
+
+def cleanup_previous_version(source_path: str, output_path: str) -> None:
+    """Delete previous timestamped version if applicable.
+
+    Never deletes the original (non-timestamped) file. Skips if output
+    overwrote source in place (same-second write).
+    """
+    if (
+        _is_timestamped(source_path)
+        and source_path != output_path
+        and os.path.isfile(source_path)
+    ):
+        try:
+            os.remove(source_path)
+        except OSError:
+            pass  # write succeeded; stale file is harmless
+
+
 def write_h5ad(
     adata: AnnData,
     source_path: str,
@@ -134,63 +210,21 @@ def write_h5ad(
         if not os.path.isfile(source_path):
             return {"error": f"Source file not found: {source_path}"}
 
-        if not edit_entries:
-            return {"error": "edit_entries must not be empty — every write should document what changed"}
+        log_result = build_edit_log(
+            adata.uns.get(EDIT_LOG_KEY, "[]"),
+            edit_entries,
+            source_path,
+        )
+        if "error" in log_result:
+            return log_result
 
-        # Validate edit entries have required fields
-        for i, entry in enumerate(edit_entries):
-            missing = _REQUIRED_ENTRY_KEYS - entry.keys()
-            if missing:
-                return {"error": f"edit_entries[{i}] missing required keys: {sorted(missing)}"}
+        adata.uns[EDIT_LOG_KEY] = log_result["json"]
 
-        # Compute source identity
-        sha256 = _compute_sha256(source_path)
-        source_filename = os.path.basename(source_path)
-
-        # Build new entries with provenance fields (don't mutate caller's dicts)
-        stamped_entries = [
-            {**entry, "source_file": source_filename, "source_sha256": sha256}
-            for entry in edit_entries
-        ]
-
-        # Append to existing edit log (preserve previous entries).
-        # The log is stored as a JSON string in uns because anndata's HDF5
-        # writer cannot serialize lists of dicts natively.
-        raw_log = adata.uns.get(EDIT_LOG_KEY, "[]")
-        if isinstance(raw_log, str):
-            try:
-                existing_log = json.loads(raw_log)
-            except json.JSONDecodeError:
-                return {"error": f"Existing {EDIT_LOG_KEY} contains invalid JSON"}
-            if not isinstance(existing_log, list):
-                return {"error": f"Existing {EDIT_LOG_KEY} decoded to {type(existing_log).__name__}, expected list"}
-        elif isinstance(raw_log, list):
-            existing_log = raw_log
-        else:
-            return {
-                "error": (
-                    f"Existing {EDIT_LOG_KEY} has unsupported type "
-                    f"{type(raw_log).__name__}; refusing to overwrite edit log"
-                )
-            }
-        adata.uns[EDIT_LOG_KEY] = json.dumps(existing_log + stamped_entries)
-
-        # Write to output path (caller-provided or auto-generated)
         if output_path is None:
             output_path = generate_output_path(source_path)
         adata.write_h5ad(output_path, compression="gzip")
 
-        # Delete previous timestamped version (never the original).
-        # Skip if output == source (same-second write overwrote in place).
-        if (
-            _is_timestamped(source_path)
-            and source_path != output_path
-            and os.path.isfile(source_path)
-        ):
-            try:
-                os.remove(source_path)
-            except OSError:
-                pass  # write succeeded; stale file is harmless
+        cleanup_previous_version(source_path, output_path)
 
         return {"output_path": output_path}
 
