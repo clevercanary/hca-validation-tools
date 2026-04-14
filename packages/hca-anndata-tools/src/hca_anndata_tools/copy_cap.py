@@ -320,10 +320,9 @@ def copy_cap_annotations(
         check_positions = [0, len(target_index) // 2, len(target_index) - 1]
         check_cell_ids = [target_index[i] for i in check_positions]
 
-        def _to_str(val) -> str:
-            """Normalize a value to string for comparison."""
+        def _normalize(val):
             if val is None or (isinstance(val, float) and pd.isna(val)):
-                return "<NA>"
+                return None
             return str(val)
 
         verification_error = None
@@ -336,8 +335,8 @@ def copy_cap_annotations(
                     cats = [_decode_bytes(v) for v in item["categories"][:]]
                     codes = item["codes"]
                     for pos, cell_id in zip(check_positions, check_cell_ids):
-                        output_val = _to_str(cats[codes[pos]] if codes[pos] >= 0 else None)
-                        expected_val = _to_str(source_obs_subset.at[cell_id, col])
+                        output_val = _normalize(cats[codes[pos]] if codes[pos] >= 0 else None)
+                        expected_val = _normalize(source_obs_subset.at[cell_id, col])
                         if output_val != expected_val:
                             verification_error = (
                                 f"Verification failed: column '{col}', "
@@ -347,8 +346,8 @@ def copy_cap_annotations(
                             break
                 else:
                     for pos, cell_id in zip(check_positions, check_cell_ids):
-                        output_val = _to_str(_decode_bytes(item[pos]))
-                        expected_val = _to_str(source_obs_subset.at[cell_id, col])
+                        output_val = _normalize(_decode_bytes(item[pos]))
+                        expected_val = _normalize(source_obs_subset.at[cell_id, col])
                         if output_val != expected_val:
                             verification_error = (
                                 f"Verification failed: column '{col}', "
