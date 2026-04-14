@@ -236,6 +236,7 @@ def copy_cap_annotations(
 
         # --- Step 3: Build aligned temp AnnData ---
         aligned_obs = source_obs_subset.loc[target_index]
+        del source_obs_subset
 
         temp_uns = {}
         uns_keys_added = []
@@ -332,57 +333,25 @@ def copy_cap_annotations(
                 if EDIT_LOG_KEY in f_temp["uns"]:
                     f_temp.copy(f"uns/{EDIT_LOG_KEY}", f_out["uns"])
 
-        # --- Step 5: Verify transplant correctness ---
-        # Spot-check a few cells to catch alignment or encoding errors.
-        check_positions = [0, len(target_index) // 2, len(target_index) - 1]
-        check_cell_ids = [target_index[i] for i in check_positions]
+            # --- Step 5: Verify transplant — full column comparison ---
+            # Compare raw HDF5 data in temp vs output for every copied column.
+            with h5py.File(temp_path, "r") as f_temp, \
+                 h5py.File(output_path, "r") as f_out:
+                for col in obs_cols_to_copy:
+                    temp_item = f_temp["obs"][col]
+                    out_item = f_out["obs"][col]
 
-        def _normalize(val):
-            if val is None:
-                return None
-            try:
-                if pd.isna(val):
-                    return None
-            except (TypeError, ValueError):
-                pass
-            return str(val)
-
-        verification_error = None
-        with h5py.File(output_path, "r") as f_out:
-            for col in obs_cols_to_copy:
-                if verification_error:
-                    break
-                item = f_out["obs"][col]
-                if isinstance(item, h5py.Group) and "categories" in item:
-                    cats = [_decode_bytes(v) for v in item["categories"][:]]
-                    codes = item["codes"]
-                    for pos, cell_id in zip(check_positions, check_cell_ids):
-                        output_val = _normalize(cats[codes[pos]] if codes[pos] >= 0 else None)
-                        expected_val = _normalize(source_obs_subset.at[cell_id, col])
-                        if output_val != expected_val:
-                            verification_error = (
-                                f"Verification failed: column '{col}', "
-                                f"cell '{cell_id}' (pos {pos}): "
-                                f"expected '{expected_val}', got '{output_val}'"
-                            )
-                            break
-                else:
-                    for pos, cell_id in zip(check_positions, check_cell_ids):
-                        output_val = _normalize(_decode_bytes(item[pos]))
-                        expected_val = _normalize(source_obs_subset.at[cell_id, col])
-                        if output_val != expected_val:
-                            verification_error = (
-                                f"Verification failed: column '{col}', "
-                                f"cell '{cell_id}' (pos {pos}): "
-                                f"expected '{expected_val}', got '{output_val}'"
-                            )
-                            break
-
-        del source_obs_subset
-
-        if verification_error:
-            os.remove(output_path)
-            return {"error": verification_error}
+                    if isinstance(temp_item, h5py.Group) and "categories" in temp_item:
+                        if not np.array_equal(temp_item["categories"][:], out_item["categories"][:]):
+                            os.remove(output_path)
+                            return {"error": f"Verification failed: categories mismatch for column '{col}'"}
+                        if not np.array_equal(temp_item["codes"][:], out_item["codes"][:]):
+                            os.remove(output_path)
+                            return {"error": f"Verification failed: codes mismatch for column '{col}'"}
+                    else:
+                        if not np.array_equal(temp_item[:], out_item[:]):
+                            os.remove(output_path)
+                            return {"error": f"Verification failed: data mismatch for column '{col}'"}
 
         # --- Step 6: Cleanup + validate marker genes ---
         cleanup_previous_version(target_path, output_path)
