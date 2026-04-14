@@ -78,7 +78,7 @@ def validate_marker_genes(path: str, annotation_set: str | None = None) -> dict:
         organisms = read_obs_categorical_values(path, "organism_ontology_term_id")
         non_human = organisms - {"NCBITaxon:9606"}
         if non_human:
-            return {"error": f"Only human (NCBITaxon:9606) is supported, found: {organisms}"}
+            return {"error": f"Only human (NCBITaxon:9606) is supported, found non-human: {sorted(non_human)}"}
         all_sets = _find_annotation_sets(obs_columns)
 
         if annotation_set:
