@@ -42,6 +42,13 @@ def _strip_ensembl_version(eid: str) -> str:
     return eid
 
 
+def read_obs_index(path: str) -> list[str]:
+    """Read the obs index (cell IDs) from an h5ad file via h5py."""
+    with h5py.File(path, "r") as f:
+        idx_key = _decode_bytes(f["obs"].attrs.get("_index", "_index"))
+        return [_decode_bytes(v) for v in f["obs"][idx_key][:]]
+
+
 def read_obs_column_names(path: str) -> list[str]:
     """Read obs column names from an h5ad file via h5py (no AnnData load)."""
     with h5py.File(path, "r") as f:
