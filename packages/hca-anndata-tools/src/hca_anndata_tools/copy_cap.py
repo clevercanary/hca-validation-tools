@@ -60,6 +60,20 @@ _CELL_TYPE_ENRICHMENT = [
 _CAP_UNS_KEYS = set(_UNS_COPY_TOPLEVEL) | {"cap_metadata"}
 
 
+def _check_duplicate_ids(index: list[str], label: str) -> str | None:
+    """Return an error message if index has duplicates, else None."""
+    if len(set(index)) == len(index):
+        return None
+    seen, dupes = set(), []
+    for x in index:
+        if x in seen and x not in dupes:
+            dupes.append(x)
+            if len(dupes) >= 5:
+                break
+        seen.add(x)
+    return f"{label} has duplicate cell IDs (first 5): {dupes}"
+
+
 def _get_annotation_sets(source_uns: dict) -> list[str]:
     """Get annotation sets defined in cellannotation_metadata."""
     meta = source_uns.get("cellannotation_metadata", {})
@@ -162,15 +176,9 @@ def copy_cap_annotations(
 
         source_n_obs = len(source_index_list)
         source_index = set(source_index_list)
-        if len(source_index) != source_n_obs:
-            seen, dupes = set(), []
-            for x in source_index_list:
-                if x in seen and x not in dupes:
-                    dupes.append(x)
-                    if len(dupes) >= 5:
-                        break
-                seen.add(x)
-            return {"error": f"Source has duplicate cell IDs (first 5): {dupes}"}
+        dupe_err = _check_duplicate_ids(source_index_list, "Source")
+        if dupe_err:
+            return {"error": dupe_err}
 
         source_obs_subset = pd.DataFrame(source_obs_data, index=source_index_list)
 
@@ -190,15 +198,9 @@ def copy_cap_annotations(
 
         target_n_obs = len(target_index)
         target_index_set = set(target_index)
-        if len(target_index_set) != target_n_obs:
-            seen, dupes = set(), []
-            for x in target_index:
-                if x in seen and x not in dupes:
-                    dupes.append(x)
-                    if len(dupes) >= 5:
-                        break
-                seen.add(x)
-            return {"error": f"Target has duplicate cell IDs (first 5): {dupes}"}
+        dupe_err = _check_duplicate_ids(target_index, "Target")
+        if dupe_err:
+            return {"error": dupe_err}
 
         # Detect existing CAP obs columns: any column with "--" separator
         existing_cap_cols = [c for c in target_obs_columns if "--" in c]
