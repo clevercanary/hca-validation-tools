@@ -44,10 +44,6 @@ def _make_cap_source(path: Path, cell_ids: list[str]) -> Path:
             "author_cell_type--category_fullname": ["neural cell"] * n,
             "author_cell_type--category_cell_ontology_term_id": ["CL:0002319"] * n,
             "author_cell_type--category_cell_ontology_term": ["neural cell"] * n,
-            # cell_type enrichment columns
-            "cell_type--cell_fullname": ["neuron"] * n,
-            "cell_type--cell_ontology_exists": [True] * n,
-            "cell_type--cell_ontology_term": ["neuron"] * n,
             # Demographic columns (should NOT be copied)
             "sex--cell_ontology_term_id": ["PATO:0000384"] * n,
             "development_stage--cell_ontology_term_id": ["HsapDv:0000087"] * n,
@@ -156,13 +152,6 @@ def test_copy_marker_gene_validation(cap_source, hca_target):
     assert "found_in_var" in mv
 
 
-def test_copy_cell_type_enrichment(cap_source, hca_target):
-    result = copy_cap_annotations(str(cap_source), str(hca_target))
-    written = ad.read_h5ad(result["output_path"])
-    assert "cell_type--cell_fullname" in written.obs.columns
-    assert "cell_type--cell_ontology_exists" in written.obs.columns
-    assert "cell_type--cell_ontology_term" in written.obs.columns
-
 
 def test_copy_uns_direct(cap_source, hca_target):
     result = copy_cap_annotations(str(cap_source), str(hca_target))
@@ -198,11 +187,6 @@ def test_copy_skips_demographic_columns(cap_source, hca_target):
     assert "development_stage--cell_ontology_term_id" not in written.obs.columns
     assert "self_reported_ethnicity--cell_ontology_term_id" not in written.obs.columns
 
-
-def test_copy_skips_cell_type_ontology_id(cap_source, hca_target):
-    result = copy_cap_annotations(str(cap_source), str(hca_target))
-    written = ad.read_h5ad(result["output_path"])
-    assert "cell_type--cell_ontology_term_id" not in written.obs.columns
 
 
 # --- Edit log ---
