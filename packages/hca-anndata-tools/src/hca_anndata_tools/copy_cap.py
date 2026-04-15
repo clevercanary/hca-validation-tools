@@ -49,8 +49,9 @@ _UNS_CAP_PROVENANCE = [
 _SKIP_SETS = {"sex", "development_stage", "self_reported_ethnicity"}
 
 # Keys to detect/remove existing CAP data on overwrite
-# Top-level uns keys to detect/remove on overwrite (not provenance — handled separately)
-_CAP_UNS_KEYS = set(_UNS_SCHEMA_TOPLEVEL)
+# Top-level uns keys written by copy_cap, replaced on overwrite.
+# provenance/cap is handled separately via merge logic.
+_OVERWRITE_UNS_KEYS = set(_UNS_SCHEMA_TOPLEVEL)
 
 
 def _check_duplicate_ids(index: list[str], label: str) -> str | None:
@@ -199,7 +200,7 @@ def copy_cap_annotations(
         # Detect existing CAP obs columns: any column with "--" separator
         existing_cap_cols = [c for c in target_obs_columns if "--" in c]
 
-        existing_cap_uns = [k for k in _CAP_UNS_KEYS if k in target_uns_keys]
+        existing_cap_uns = [k for k in _OVERWRITE_UNS_KEYS if k in target_uns_keys]
         if has_provenance_cap:
             existing_cap_uns.append("provenance/cap")
 
@@ -305,7 +306,7 @@ def copy_cap_annotations(
                             del f_out["obs"][col]
                             deleted_cols.add(col)
                     for key in list(f_out["uns"].keys()):
-                        if key in _CAP_UNS_KEYS:
+                        if key in _OVERWRITE_UNS_KEYS:
                             del f_out["uns"][key]
                     # Delete provenance/cap but preserve provenance/cellxgene
                     if "provenance" in f_out["uns"] and "cap" in f_out["uns"]["provenance"]:
