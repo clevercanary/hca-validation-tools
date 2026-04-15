@@ -237,6 +237,35 @@ def test_copy_target_has_cap_fails(cap_source, hca_target_with_cap):
     assert "overwrite" in result["error"].lower()
 
 
+# --- Pipeline: convert then copy_cap preserves both provenance keys ---
+
+
+def test_copy_cap_preserves_cellxgene_provenance(cap_source, tmp_path):
+    """When target already has provenance/cellxgene, copy_cap adds provenance/cap alongside it."""
+    n = len(CELL_IDS)
+    rng = np.random.default_rng(99)
+    X = sp.random(n, 5, density=0.3, format="csr", dtype=np.float32, random_state=rng)
+    obs = pd.DataFrame(
+        {
+            "author_cell_type": pd.Categorical(rng.choice(["typeA", "typeB"], n)),
+            "organism_ontology_term_id": pd.Categorical(["NCBITaxon:9606"] * n),
+        },
+        index=CELL_IDS,
+    )
+    adata = ad.AnnData(X=X, obs=obs, var=pd.DataFrame(index=[f"G{i}" for i in range(5)]))
+    adata.uns["provenance"] = {"cellxgene": {"schema_version": "7.0.0"}}
+    adata.uns["title"] = "Test"
+    target_path = tmp_path / "with_cxg_provenance.h5ad"
+    adata.write_h5ad(target_path)
+
+    result = copy_cap_annotations(str(cap_source), str(target_path))
+    assert "error" not in result
+    written = ad.read_h5ad(result["output_path"])
+    assert "cellxgene" in written.uns["provenance"]
+    assert written.uns["provenance"]["cellxgene"]["schema_version"] == "7.0.0"
+    assert "cap" in written.uns["provenance"]
+
+
 # --- Overwrite ---
 
 

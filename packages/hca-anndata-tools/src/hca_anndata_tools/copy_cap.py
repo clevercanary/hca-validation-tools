@@ -48,8 +48,9 @@ _UNS_CAP_PROVENANCE = [
 # Demographic annotation sets — not real CAP annotations, just renamed CXG columns
 _SKIP_SETS = {"sex", "development_stage", "self_reported_ethnicity"}
 
-# Keys to check/remove on overwrite
-_CAP_UNS_KEYS = set(_UNS_SCHEMA_TOPLEVEL) | {"provenance"}
+# Keys to detect/remove existing CAP data on overwrite
+# Top-level uns keys to detect/remove on overwrite (not provenance — handled separately)
+_CAP_UNS_KEYS = set(_UNS_SCHEMA_TOPLEVEL)
 
 
 def _check_duplicate_ids(index: list[str], label: str) -> str | None:
@@ -178,6 +179,12 @@ def copy_cap_annotations(
 
             uns = f.get("uns")
             target_uns_keys = set(uns.keys()) if uns else set()
+            has_provenance_cap = (
+                uns is not None
+                and "provenance" in uns
+                and isinstance(uns["provenance"], h5py.Group)
+                and "cap" in uns["provenance"]
+            )
             if uns and EDIT_LOG_KEY in uns:
                 raw_log = _decode_bytes(uns[EDIT_LOG_KEY][()])
             else:
@@ -193,6 +200,8 @@ def copy_cap_annotations(
         existing_cap_cols = [c for c in target_obs_columns if "--" in c]
 
         existing_cap_uns = [k for k in _CAP_UNS_KEYS if k in target_uns_keys]
+        if has_provenance_cap:
+            existing_cap_uns.append("provenance/cap")
 
         if (existing_cap_cols or existing_cap_uns) and not overwrite:
             return {
@@ -298,6 +307,9 @@ def copy_cap_annotations(
                     for key in list(f_out["uns"].keys()):
                         if key in _CAP_UNS_KEYS:
                             del f_out["uns"][key]
+                    # Delete provenance/cap but preserve provenance/cellxgene
+                    if "provenance" in f_out["uns"] and "cap" in f_out["uns"]["provenance"]:
+                        del f_out["uns"]["provenance"]["cap"]
 
                 for col in obs_cols_to_copy:
                     if col in f_temp["obs"]:
@@ -312,7 +324,15 @@ def copy_cap_annotations(
                 f_out["obs"].attrs["column-order"] = current_order + new_cols
 
                 for key in uns_keys_added:
-                    if key in f_temp["uns"]:
+                    if key == "provenance":
+                        # Merge into existing provenance group, don't replace it
+                        prov_out = f_out.require_group("uns/provenance")
+                        prov_out.attrs.setdefault("encoding-type", "dict")
+                        prov_out.attrs.setdefault("encoding-version", "0.1.0")
+                        if "cap" in prov_out:
+                            del prov_out["cap"]
+                        f_temp.copy("uns/provenance/cap", prov_out, "cap")
+                    elif key in f_temp["uns"]:
                         if key in f_out["uns"]:
                             del f_out["uns"][key]
                         f_temp.copy(f"uns/{key}", f_out["uns"])
