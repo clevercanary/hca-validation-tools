@@ -608,17 +608,15 @@ def test_feature_id_warnings_come_last():
     """Feature ID warnings (not found in GENCODE) should be sorted after other warnings."""
     from hca_schema_validator.validator import HCAValidator
     v = HCAValidator()
-    # Simulate mixed warnings
+    # Simulate mixed warnings (with WARNING: prefix added by base validate_adata)
     v.warnings = [
-        "Feature ID 'ENSG00000241572' in 'var' not found in GENCODE v48 (Ensembl 114).",
-        "Column 'library_id' is strongly recommended but missing.",
-        "Feature ID 'ENSG00000229611' in 'var' not found in GENCODE v48 (Ensembl 114).",
-        "Only raw data was found.",
+        "WARNING: Feature ID 'ENSG00000241572' in 'var' not found in GENCODE v48 (Ensembl 114).",
+        "WARNING: Column 'library_id' is strongly recommended but missing.",
+        "WARNING: Feature ID 'ENSG00000229611' in 'var' not found in GENCODE v48 (Ensembl 114).",
+        "WARNING: Only raw data was found.",
     ]
-    # Trigger reorder by calling validate_adata with no path (will error, but we just want the reorder)
-    # Instead, simulate what validate_adata does after super()
-    other = [w for w in v.warnings if not w.startswith("Feature ID '")]
-    feature_id = [w for w in v.warnings if w.startswith("Feature ID '")]
+    other = [w for w in v.warnings if "Feature ID '" not in w]
+    feature_id = [w for w in v.warnings if "Feature ID '" in w]
     v.warnings = other + feature_id
 
     assert "library_id" in v.warnings[0]

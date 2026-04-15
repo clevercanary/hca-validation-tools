@@ -37,7 +37,7 @@ def run_validator(file_path):
   # Reorder warnings so feature ID warnings come last
   other, feature_id = [], []
   for w in warning_messages:
-    (feature_id if w.startswith("Feature ID '") else other).append(w)
+    (feature_id if "Feature ID '" in w else other).append(w)
   warning_messages = other + feature_id
 
   return {
