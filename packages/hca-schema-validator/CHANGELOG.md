@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.10.2](https://github.com/clevercanary/hca-validation-tools/compare/hca-schema-validator-v0.10.1...hca-schema-validator-v0.10.2) (2026-04-15)
+
+
+### Bug Fixes
+
+* change library_id back to required in HCA schema ([#298](https://github.com/clevercanary/hca-validation-tools/issues/298)) ([8df7bbe](https://github.com/clevercanary/hca-validation-tools/commit/8df7bbe4620a7b403646d6b73971e418ac9bb62f))
+* make cell_type_ontology_term_id optional ([#300](https://github.com/clevercanary/hca-validation-tools/issues/300)) ([80c8be7](https://github.com/clevercanary/hca-validation-tools/commit/80c8be7ad8eba38899959dd3cf404cb16bed19d7))
+* reorder feature ID warnings in Batch service ([#296](https://github.com/clevercanary/hca-validation-tools/issues/296)) ([70edc51](https://github.com/clevercanary/hca-validation-tools/commit/70edc513737184e1c4517cd9e439a7981e73ebb8))
+
 ## [0.10.1](https://github.com/clevercanary/hca-validation-tools/compare/hca-schema-validator-v0.10.0...hca-schema-validator-v0.10.1) (2026-04-10)
 
 
