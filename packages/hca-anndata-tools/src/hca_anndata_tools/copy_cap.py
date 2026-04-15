@@ -342,9 +342,7 @@ def copy_cap_annotations(
                         f_temp.copy(f"uns/{key}", f_out["uns"])
 
                 # Transplant edit_history into provenance
-                prov_out = f_out.require_group("uns/provenance")
-                prov_out.attrs.setdefault("encoding-type", "dict")
-                prov_out.attrs.setdefault("encoding-version", "0.1.0")
+                prov_out = ensure_provenance_group(f_out)
                 if EDIT_LOG_KEY in prov_out:
                     del prov_out[EDIT_LOG_KEY]
                 if "provenance" in f_temp["uns"] and EDIT_LOG_KEY in f_temp["uns"]["provenance"]:
