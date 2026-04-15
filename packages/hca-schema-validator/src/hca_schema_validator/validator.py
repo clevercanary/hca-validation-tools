@@ -117,31 +117,45 @@ class HCAValidator(Validator):
         Columns with requirement_level: strongly_recommended are removed from
         the schema before the base class runs (so it won't error on missing),
         then validated separately with warnings instead of errors.
+
+        Columns with requirement_level: optional are also removed before the
+        base class runs, then validated with full validation only if present.
+        Missing optional columns produce no warning or error.
         """
         df_definition = self.schema_def["components"].get(df_name, {})
         if "columns" not in df_definition:
             return super()._validate_dataframe(df_name)
 
-        # Extract strongly_recommended columns before base class sees them
+        # Extract optional and strongly_recommended columns before base class sees them
+        optional_columns = {}
         sr_columns = {}
         for col_name in list(df_definition["columns"]):
             col_def = df_definition["columns"][col_name]
-            if col_def.get("requirement_level") == "strongly_recommended":
+            level = col_def.get("requirement_level")
+            if level == "optional":
+                optional_columns[col_name] = col_def
+                del df_definition["columns"][col_name]
+            elif level == "strongly_recommended":
                 sr_columns[col_name] = col_def
                 del df_definition["columns"][col_name]
 
-        # Base class validates only must columns
+        # Base class validates only required columns
         try:
             super()._validate_dataframe(df_name)
         finally:
             # Restore schema def even if super() raises
             df_definition["columns"].update(sr_columns)
+            df_definition["columns"].update(optional_columns)
 
-        # Validate strongly_recommended columns ourselves
         df = getattr_anndata(self.adata, df_name)
         if df is not None:
+            # Validate strongly_recommended columns (warn if missing)
             for col_name, col_def in sr_columns.items():
                 self._validate_strongly_recommended(df, df_name, col_name, col_def)
+            # Validate optional columns (silent if missing, full validation if present)
+            for col_name, col_def in optional_columns.items():
+                if col_name in df.columns:
+                    self._validate_column(df[col_name], col_name, df_name, col_def)
 
     def _validate_strongly_recommended(self, df, df_name, col_name, col_def):
         """Validate a strongly_recommended column: warn on missing/NaN, error on blocklist."""

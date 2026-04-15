@@ -611,6 +611,26 @@ def test_feature_id_warnings_come_last():
     assert "ENSG00000229611" in v.warnings[3]
 
 
+def test_missing_optional_column_is_silent():
+    """Missing optional column (cell_type_ontology_term_id) produces no warning or error."""
+    import anndata
+    import numpy
+    from scipy import sparse
+    from .fixtures.hca_fixtures import good_obs, good_var, good_uns, good_obsm
+
+    obs = good_obs.copy()
+    obs.drop(columns=["cell_type_ontology_term_id"], inplace=True)
+
+    X = sparse.csr_matrix((obs.shape[0], good_var.shape[0]), dtype=numpy.float32)
+    test_adata = anndata.AnnData(X=X, obs=obs, uns=good_uns.copy(), obsm=good_obsm.copy(), var=good_var.copy())
+    test_adata.raw = test_adata.copy()
+    test_adata.raw.var.drop("feature_is_filtered", axis=1, inplace=True)
+
+    _, validator = _validate_from_fixture(test_adata)
+    all_messages = " ".join(validator.warnings + validator.errors)
+    assert "cell_type_ontology_term_id" not in all_messages
+
+
 def test_raw_validation_runs_despite_unrelated_errors():
     """Raw validation should run even when unrelated HCA fields are missing.
 
