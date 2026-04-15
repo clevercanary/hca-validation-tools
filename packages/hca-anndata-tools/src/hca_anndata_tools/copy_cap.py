@@ -50,11 +50,6 @@ _SKIP_SETS = {"sex", "development_stage", "self_reported_ethnicity"}
 
 # Keys to check/remove on overwrite
 _CAP_UNS_KEYS = set(_UNS_SCHEMA_TOPLEVEL) | {"provenance"}
-# Legacy keys from older versions (for overwrite cleanup)
-_LEGACY_CAP_UNS_KEYS = {
-    "cap_dataset_url", "cap_publication_title", "cap_publication_description",
-    "cap_publication_url", "cap_metadata",
-}
 
 
 def _check_duplicate_ids(index: list[str], label: str) -> str | None:
@@ -301,7 +296,7 @@ def copy_cap_annotations(
                             del f_out["obs"][col]
                             deleted_cols.add(col)
                     for key in list(f_out["uns"].keys()):
-                        if key in _CAP_UNS_KEYS | _LEGACY_CAP_UNS_KEYS:
+                        if key in _CAP_UNS_KEYS:
                             del f_out["uns"][key]
 
                 for col in obs_cols_to_copy:
