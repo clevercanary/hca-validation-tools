@@ -49,13 +49,6 @@ _UNS_CAP_METADATA = [
 # Demographic annotation sets — not real CAP annotations, just renamed CXG columns
 _SKIP_SETS = {"sex", "development_stage", "self_reported_ethnicity"}
 
-# cell_type enrichment columns to copy (but NOT cell_type--cell_ontology_term_id)
-_CELL_TYPE_ENRICHMENT = [
-    "cell_type--cell_fullname",
-    "cell_type--cell_ontology_exists",
-    "cell_type--cell_ontology_term",
-]
-
 # CAP uns keys to remove on overwrite
 _CAP_UNS_KEYS = set(_UNS_COPY_TOPLEVEL) | {"cap_metadata"}
 
@@ -97,11 +90,6 @@ def _get_obs_columns_to_copy(
             col = f"{setname}{suffix}"
             if col in source_obs_columns:
                 columns.append(col)
-
-    # cell_type enrichment columns (but not cell_type--cell_ontology_term_id)
-    for col in _CELL_TYPE_ENRICHMENT:
-        if col in source_obs_columns:
-            columns.append(col)
 
     return columns
 
