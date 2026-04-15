@@ -517,8 +517,6 @@ class TestValidateColumn:
 
         is_valid, validator = _validate_from_fixture(test_adata)
         assert is_valid is False
-        # library_id NaN should be a warning, not an error
-        warning_messages = " ".join(validator.warnings)
         error_messages = " ".join(validator.errors)
         assert "library_id" in error_messages, "NaN in required library_id should be an error"
 
