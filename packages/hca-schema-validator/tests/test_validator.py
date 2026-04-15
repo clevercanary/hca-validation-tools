@@ -631,6 +631,26 @@ def test_missing_optional_column_is_silent():
     assert "cell_type_ontology_term_id" not in all_messages
 
 
+def test_present_optional_column_with_invalid_value_is_error():
+    """Optional column present with invalid value still produces an error."""
+    import anndata
+    import numpy
+    from scipy import sparse
+    from .fixtures.hca_fixtures import good_obs, good_var, good_uns, good_obsm
+
+    obs = good_obs.copy()
+    obs["cell_type_ontology_term_id"] = pd.Categorical(["INVALID:9999"] * len(obs))
+
+    X = sparse.csr_matrix((obs.shape[0], good_var.shape[0]), dtype=numpy.float32)
+    test_adata = anndata.AnnData(X=X, obs=obs, uns=good_uns.copy(), obsm=good_obsm.copy(), var=good_var.copy())
+    test_adata.raw = test_adata.copy()
+    test_adata.raw.var.drop("feature_is_filtered", axis=1, inplace=True)
+
+    _, validator = _validate_from_fixture(test_adata)
+    error_messages = " ".join(validator.errors)
+    assert "cell_type_ontology_term_id" in error_messages
+
+
 def test_raw_validation_runs_despite_unrelated_errors():
     """Raw validation should run even when unrelated HCA fields are missing.
 
