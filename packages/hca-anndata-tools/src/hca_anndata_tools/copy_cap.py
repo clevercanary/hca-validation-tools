@@ -26,19 +26,18 @@ from .write import (
 )
 from . import __version__
 
-# CAP uns keys copied top-level (already namespaced)
-_UNS_COPY_TOPLEVEL = [
+# Cell-annotation-schema uns keys — stay at top level (HCA schema)
+_UNS_SCHEMA_TOPLEVEL = [
     "cellannotation_schema_version",
     "cellannotation_metadata",
+]
+
+# CAP provenance keys — collected into uns["provenance"]["cap"]
+_UNS_CAP_PROVENANCE = [
     "cap_dataset_url",
     "cap_publication_title",
     "cap_publication_description",
     "cap_publication_url",
-]
-
-# CAP uns keys collected into uns["cap_metadata"] container
-# (generic names that could collide with HCA/CXG fields)
-_UNS_CAP_METADATA = [
     "authors_list",
     "hierarchy",
     "description",
@@ -49,8 +48,10 @@ _UNS_CAP_METADATA = [
 # Demographic annotation sets — not real CAP annotations, just renamed CXG columns
 _SKIP_SETS = {"sex", "development_stage", "self_reported_ethnicity"}
 
-# CAP uns keys to remove on overwrite
-_CAP_UNS_KEYS = set(_UNS_COPY_TOPLEVEL) | {"cap_metadata"}
+# Keys to detect/remove existing CAP data on overwrite
+# Top-level uns keys written by copy_cap, replaced on overwrite.
+# provenance/cap is handled separately via merge logic.
+_OVERWRITE_UNS_KEYS = set(_UNS_SCHEMA_TOPLEVEL)
 
 
 def _check_duplicate_ids(index: list[str], label: str) -> str | None:
@@ -137,7 +138,7 @@ def copy_cap_annotations(
                 return {"error": "Source has no annotation sets in cellannotation_metadata"}
 
             cap_schema_version = str(source.uns["cellannotation_schema_version"])
-            all_uns_keys = _UNS_COPY_TOPLEVEL + _UNS_CAP_METADATA
+            all_uns_keys = _UNS_SCHEMA_TOPLEVEL + _UNS_CAP_PROVENANCE
             source_uns = {k: make_serializable(source.uns[k]) for k in all_uns_keys if k in source.uns}
 
         # Read source obs via h5py (avoids slow backed-mode column access)
@@ -179,6 +180,12 @@ def copy_cap_annotations(
 
             uns = f.get("uns")
             target_uns_keys = set(uns.keys()) if uns else set()
+            has_provenance_cap = (
+                uns is not None
+                and "provenance" in uns
+                and isinstance(uns["provenance"], h5py.Group)
+                and "cap" in uns["provenance"]
+            )
             if uns and EDIT_LOG_KEY in uns:
                 raw_log = _decode_bytes(uns[EDIT_LOG_KEY][()])
             else:
@@ -193,7 +200,9 @@ def copy_cap_annotations(
         # Detect existing CAP obs columns: any column with "--" separator
         existing_cap_cols = [c for c in target_obs_columns if "--" in c]
 
-        existing_cap_uns = [k for k in _CAP_UNS_KEYS if k in target_uns_keys]
+        existing_cap_uns = [k for k in _OVERWRITE_UNS_KEYS if k in target_uns_keys]
+        if has_provenance_cap:
+            existing_cap_uns.append("provenance/cap")
 
         if (existing_cap_cols or existing_cap_uns) and not overwrite:
             return {
@@ -230,15 +239,15 @@ def copy_cap_annotations(
 
         temp_uns = {}
         uns_keys_added = []
-        for key in _UNS_COPY_TOPLEVEL:
+        for key in _UNS_SCHEMA_TOPLEVEL:
             if key in source_uns:
                 temp_uns[key] = source_uns[key]
                 uns_keys_added.append(key)
 
-        cap_metadata = {k: source_uns[k] for k in _UNS_CAP_METADATA if k in source_uns}
-        if cap_metadata:
-            temp_uns["cap_metadata"] = cap_metadata
-            uns_keys_added.append("cap_metadata")
+        cap_provenance = {k: source_uns[k] for k in _UNS_CAP_PROVENANCE if k in source_uns}
+        if cap_provenance:
+            temp_uns["provenance"] = {"cap": cap_provenance}
+            uns_keys_added.append("provenance")
 
         source_basename = os.path.basename(source_path)
         source_sha256 = _compute_sha256(source_path)
@@ -297,8 +306,11 @@ def copy_cap_annotations(
                             del f_out["obs"][col]
                             deleted_cols.add(col)
                     for key in list(f_out["uns"].keys()):
-                        if key in _CAP_UNS_KEYS:
+                        if key in _OVERWRITE_UNS_KEYS:
                             del f_out["uns"][key]
+                    # Delete provenance/cap but preserve provenance/cellxgene
+                    if "provenance" in f_out["uns"] and "cap" in f_out["uns"]["provenance"]:
+                        del f_out["uns"]["provenance"]["cap"]
 
                 for col in obs_cols_to_copy:
                     if col in f_temp["obs"]:
@@ -313,7 +325,15 @@ def copy_cap_annotations(
                 f_out["obs"].attrs["column-order"] = current_order + new_cols
 
                 for key in uns_keys_added:
-                    if key in f_temp["uns"]:
+                    if key == "provenance":
+                        # Merge into existing provenance group, don't replace it
+                        prov_out = f_out.require_group("uns/provenance")
+                        prov_out.attrs.setdefault("encoding-type", "dict")
+                        prov_out.attrs.setdefault("encoding-version", "0.1.0")
+                        if "cap" in prov_out:
+                            del prov_out["cap"]
+                        f_temp.copy("uns/provenance/cap", prov_out, "cap")
+                    elif key in f_temp["uns"]:
                         if key in f_out["uns"]:
                             del f_out["uns"][key]
                         f_temp.copy(f"uns/{key}", f_out["uns"])

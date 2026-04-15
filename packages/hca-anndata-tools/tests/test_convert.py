@@ -41,12 +41,13 @@ def test_convert_basic(cellxgene_h5ad):
     assert "conversions" in result
 
 
-def test_convert_cellxgene_source_preserved(cellxgene_h5ad):
+def test_convert_provenance_cellxgene_preserved(cellxgene_h5ad):
     result = convert_cellxgene_to_hca(str(cellxgene_h5ad))
     written = ad.read_h5ad(result["output_path"])
 
-    assert "cellxgene_source" in written.uns
-    source = written.uns["cellxgene_source"]
+    assert "provenance" in written.uns
+    assert "cellxgene" in written.uns["provenance"]
+    source = written.uns["provenance"]["cellxgene"]
     assert source["schema_version"] == "7.1.0"
     assert "schema_reference" in source
     assert "citation" in source

@@ -153,28 +153,28 @@ def test_copy_marker_gene_validation(cap_source, hca_target):
 
 
 
-def test_copy_uns_direct(cap_source, hca_target):
+def test_copy_uns_schema_toplevel(cap_source, hca_target):
     result = copy_cap_annotations(str(cap_source), str(hca_target))
     written = ad.read_h5ad(result["output_path"])
     assert "cellannotation_schema_version" in written.uns
     assert "cellannotation_metadata" in written.uns
-    assert "cap_dataset_url" in written.uns
 
 
-def test_copy_uns_cap_metadata_container(cap_source, hca_target):
+def test_copy_uns_provenance_cap(cap_source, hca_target):
     result = copy_cap_annotations(str(cap_source), str(hca_target))
     written = ad.read_h5ad(result["output_path"])
-    # Generic CAP keys go into cap_metadata container, not top-level
-    assert "cap_metadata" in written.uns
-    meta = written.uns["cap_metadata"]
-    assert meta["authors_list"] == "Test Author"
-    assert meta["description"] == "A test CAP dataset"
-    assert meta["publication_timestamp"] == "2026-01-01"
-    assert meta["publication_version"] == "1.0"
+    assert "provenance" in written.uns
+    assert "cap" in written.uns["provenance"]
+    cap = written.uns["provenance"]["cap"]
+    assert cap["cap_dataset_url"] == "https://celltype.info/test"
+    assert cap["authors_list"] == "Test Author"
+    assert cap["description"] == "A test CAP dataset"
+    assert cap["publication_timestamp"] == "2026-01-01"
+    assert cap["publication_version"] == "1.0"
     # NOT top-level
+    assert "cap_dataset_url" not in written.uns
     assert "authors_list" not in written.uns
-    assert "hierarchy" not in written.uns
-    assert "description" not in written.uns
+    assert "cap_metadata" not in written.uns
 
 
 # --- Skip demographic columns ---
@@ -235,6 +235,35 @@ def test_copy_target_has_cap_fails(cap_source, hca_target_with_cap):
     result = copy_cap_annotations(str(cap_source), str(hca_target_with_cap))
     assert "error" in result
     assert "overwrite" in result["error"].lower()
+
+
+# --- Pipeline: convert then copy_cap preserves both provenance keys ---
+
+
+def test_copy_cap_preserves_cellxgene_provenance(cap_source, tmp_path):
+    """When target already has provenance/cellxgene, copy_cap adds provenance/cap alongside it."""
+    n = len(CELL_IDS)
+    rng = np.random.default_rng(99)
+    X = sp.random(n, 5, density=0.3, format="csr", dtype=np.float32, random_state=rng)
+    obs = pd.DataFrame(
+        {
+            "author_cell_type": pd.Categorical(rng.choice(["typeA", "typeB"], n)),
+            "organism_ontology_term_id": pd.Categorical(["NCBITaxon:9606"] * n),
+        },
+        index=CELL_IDS,
+    )
+    adata = ad.AnnData(X=X, obs=obs, var=pd.DataFrame(index=[f"G{i}" for i in range(5)]))
+    adata.uns["provenance"] = {"cellxgene": {"schema_version": "7.0.0"}}
+    adata.uns["title"] = "Test"
+    target_path = tmp_path / "with_cxg_provenance.h5ad"
+    adata.write_h5ad(target_path)
+
+    result = copy_cap_annotations(str(cap_source), str(target_path))
+    assert "error" not in result
+    written = ad.read_h5ad(result["output_path"])
+    assert "cellxgene" in written.uns["provenance"]
+    assert written.uns["provenance"]["cellxgene"]["schema_version"] == "7.0.0"
+    assert "cap" in written.uns["provenance"]
 
 
 # --- Overwrite ---

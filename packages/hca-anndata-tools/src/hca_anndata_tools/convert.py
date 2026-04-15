@@ -22,7 +22,7 @@ from .write import (
 )
 from . import __version__
 
-# CellxGENE reserved uns keys — moved to cellxgene_source, not deleted
+# CellxGENE reserved uns keys — moved to provenance/cellxgene
 _CELLXGENE_RESERVED_UNS = ["schema_version", "schema_reference", "citation"]
 
 # CellxGENE uns keys that need to be broadcast to obs
@@ -50,7 +50,7 @@ def convert_cellxgene_to_hca(
     then copies the source and transplants new data via h5py.copy().
     Avoids loading the expression matrix into memory.
 
-    Preserves cellxgene provenance in uns['cellxgene_source'], broadcasts
+    Preserves cellxgene provenance in uns['provenance']['cellxgene'], broadcasts
     organism from uns to obs, and renames the output from the dataset title.
 
     Args:
@@ -104,7 +104,7 @@ def convert_cellxgene_to_hca(
 
         if cellxgene_source:
             conversions.append(
-                f"Moved cellxgene reserved keys to uns['cellxgene_source']: "
+                f"Moved cellxgene reserved keys to uns['provenance']['cellxgene']: "
                 f"{list(cellxgene_source.keys())}"
             )
 
@@ -124,7 +124,7 @@ def convert_cellxgene_to_hca(
         # Build uns for temp file
         temp_uns = {}
         if cellxgene_source:
-            temp_uns["cellxgene_source"] = cellxgene_source
+            temp_uns["provenance"] = {"cellxgene": cellxgene_source}
 
         # Build edit log
         slug = _slugify(title)
@@ -181,11 +181,14 @@ def convert_cellxgene_to_hca(
                     if key in f_out["uns"]:
                         del f_out["uns"][key]
 
-                # Transplant cellxgene_source container from temp
-                if "cellxgene_source" in f_temp["uns"]:
-                    if "cellxgene_source" in f_out["uns"]:
-                        del f_out["uns"]["cellxgene_source"]
-                    f_temp.copy("uns/cellxgene_source", f_out["uns"])
+                # Transplant provenance/cellxgene from temp (merge, don't replace whole group)
+                if "provenance" in f_temp["uns"] and "cellxgene" in f_temp["uns"]["provenance"]:
+                    prov_out = f_out.require_group("uns/provenance")
+                    prov_out.attrs.setdefault("encoding-type", "dict")
+                    prov_out.attrs.setdefault("encoding-version", "0.1.0")
+                    if "cellxgene" in prov_out:
+                        del prov_out["cellxgene"]
+                    f_temp.copy("uns/provenance/cellxgene", prov_out, "cellxgene")
 
                 # Transplant obs columns from temp
                 obs_cols_added = list(obs_data.keys())
