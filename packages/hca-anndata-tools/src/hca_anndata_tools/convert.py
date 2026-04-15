@@ -104,7 +104,7 @@ def convert_cellxgene_to_hca(
 
         if cellxgene_source:
             conversions.append(
-                f"Moved cellxgene reserved keys to uns['cellxgene_source']: "
+                f"Moved cellxgene reserved keys to uns['provenance']['cellxgene']: "
                 f"{list(cellxgene_source.keys())}"
             )
 
@@ -124,7 +124,7 @@ def convert_cellxgene_to_hca(
         # Build uns for temp file
         temp_uns = {}
         if cellxgene_source:
-            temp_uns["cellxgene_source"] = cellxgene_source
+            temp_uns["provenance"] = {"cellxgene": cellxgene_source}
 
         # Build edit log
         slug = _slugify(title)
@@ -181,11 +181,11 @@ def convert_cellxgene_to_hca(
                     if key in f_out["uns"]:
                         del f_out["uns"][key]
 
-                # Transplant cellxgene_source container from temp
-                if "cellxgene_source" in f_temp["uns"]:
-                    if "cellxgene_source" in f_out["uns"]:
-                        del f_out["uns"]["cellxgene_source"]
-                    f_temp.copy("uns/cellxgene_source", f_out["uns"])
+                # Transplant provenance container from temp
+                if "provenance" in f_temp["uns"]:
+                    if "provenance" in f_out["uns"]:
+                        del f_out["uns"]["provenance"]
+                    f_temp.copy("uns/provenance", f_out["uns"])
 
                 # Transplant obs columns from temp
                 obs_cols_added = list(obs_data.keys())

@@ -26,19 +26,18 @@ from .write import (
 )
 from . import __version__
 
-# CAP uns keys copied top-level (already namespaced)
-_UNS_COPY_TOPLEVEL = [
+# Cell-annotation-schema uns keys — stay at top level (HCA schema)
+_UNS_SCHEMA_TOPLEVEL = [
     "cellannotation_schema_version",
     "cellannotation_metadata",
+]
+
+# CAP provenance keys — collected into uns["provenance"]["cap"]
+_UNS_CAP_PROVENANCE = [
     "cap_dataset_url",
     "cap_publication_title",
     "cap_publication_description",
     "cap_publication_url",
-]
-
-# CAP uns keys collected into uns["cap_metadata"] container
-# (generic names that could collide with HCA/CXG fields)
-_UNS_CAP_METADATA = [
     "authors_list",
     "hierarchy",
     "description",
@@ -49,8 +48,13 @@ _UNS_CAP_METADATA = [
 # Demographic annotation sets — not real CAP annotations, just renamed CXG columns
 _SKIP_SETS = {"sex", "development_stage", "self_reported_ethnicity"}
 
-# CAP uns keys to remove on overwrite
-_CAP_UNS_KEYS = set(_UNS_COPY_TOPLEVEL) | {"cap_metadata"}
+# Keys to check/remove on overwrite
+_CAP_UNS_KEYS = set(_UNS_SCHEMA_TOPLEVEL) | {"provenance"}
+# Legacy keys from older versions (for overwrite cleanup)
+_LEGACY_CAP_UNS_KEYS = {
+    "cap_dataset_url", "cap_publication_title", "cap_publication_description",
+    "cap_publication_url", "cap_metadata",
+}
 
 
 def _check_duplicate_ids(index: list[str], label: str) -> str | None:
@@ -137,7 +141,7 @@ def copy_cap_annotations(
                 return {"error": "Source has no annotation sets in cellannotation_metadata"}
 
             cap_schema_version = str(source.uns["cellannotation_schema_version"])
-            all_uns_keys = _UNS_COPY_TOPLEVEL + _UNS_CAP_METADATA
+            all_uns_keys = _UNS_SCHEMA_TOPLEVEL + _UNS_CAP_PROVENANCE
             source_uns = {k: make_serializable(source.uns[k]) for k in all_uns_keys if k in source.uns}
 
         # Read source obs via h5py (avoids slow backed-mode column access)
@@ -230,15 +234,15 @@ def copy_cap_annotations(
 
         temp_uns = {}
         uns_keys_added = []
-        for key in _UNS_COPY_TOPLEVEL:
+        for key in _UNS_SCHEMA_TOPLEVEL:
             if key in source_uns:
                 temp_uns[key] = source_uns[key]
                 uns_keys_added.append(key)
 
-        cap_metadata = {k: source_uns[k] for k in _UNS_CAP_METADATA if k in source_uns}
-        if cap_metadata:
-            temp_uns["cap_metadata"] = cap_metadata
-            uns_keys_added.append("cap_metadata")
+        cap_provenance = {k: source_uns[k] for k in _UNS_CAP_PROVENANCE if k in source_uns}
+        if cap_provenance:
+            temp_uns["provenance"] = {"cap": cap_provenance}
+            uns_keys_added.append("provenance")
 
         source_basename = os.path.basename(source_path)
         source_sha256 = _compute_sha256(source_path)
@@ -297,7 +301,7 @@ def copy_cap_annotations(
                             del f_out["obs"][col]
                             deleted_cols.add(col)
                     for key in list(f_out["uns"].keys()):
-                        if key in _CAP_UNS_KEYS:
+                        if key in _CAP_UNS_KEYS | _LEGACY_CAP_UNS_KEYS:
                             del f_out["uns"][key]
 
                 for col in obs_cols_to_copy:

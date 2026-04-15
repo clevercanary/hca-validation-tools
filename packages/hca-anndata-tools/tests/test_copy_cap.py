@@ -153,28 +153,28 @@ def test_copy_marker_gene_validation(cap_source, hca_target):
 
 
 
-def test_copy_uns_direct(cap_source, hca_target):
+def test_copy_uns_schema_toplevel(cap_source, hca_target):
     result = copy_cap_annotations(str(cap_source), str(hca_target))
     written = ad.read_h5ad(result["output_path"])
     assert "cellannotation_schema_version" in written.uns
     assert "cellannotation_metadata" in written.uns
-    assert "cap_dataset_url" in written.uns
 
 
-def test_copy_uns_cap_metadata_container(cap_source, hca_target):
+def test_copy_uns_provenance_cap(cap_source, hca_target):
     result = copy_cap_annotations(str(cap_source), str(hca_target))
     written = ad.read_h5ad(result["output_path"])
-    # Generic CAP keys go into cap_metadata container, not top-level
-    assert "cap_metadata" in written.uns
-    meta = written.uns["cap_metadata"]
-    assert meta["authors_list"] == "Test Author"
-    assert meta["description"] == "A test CAP dataset"
-    assert meta["publication_timestamp"] == "2026-01-01"
-    assert meta["publication_version"] == "1.0"
+    assert "provenance" in written.uns
+    assert "cap" in written.uns["provenance"]
+    cap = written.uns["provenance"]["cap"]
+    assert cap["cap_dataset_url"] == "https://celltype.info/test"
+    assert cap["authors_list"] == "Test Author"
+    assert cap["description"] == "A test CAP dataset"
+    assert cap["publication_timestamp"] == "2026-01-01"
+    assert cap["publication_version"] == "1.0"
     # NOT top-level
+    assert "cap_dataset_url" not in written.uns
     assert "authors_list" not in written.uns
-    assert "hierarchy" not in written.uns
-    assert "description" not in written.uns
+    assert "cap_metadata" not in written.uns
 
 
 # --- Skip demographic columns ---
