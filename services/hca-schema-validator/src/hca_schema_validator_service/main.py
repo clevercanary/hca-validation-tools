@@ -34,6 +34,12 @@ def run_validator(file_path):
     warning_messages = []
     error_messages = [f"Encountered an unexpected error while calling HCA schema validator: {e}"]
 
+  # Reorder warnings so feature ID warnings come last
+  other, feature_id = [], []
+  for w in warning_messages:
+    (feature_id if "Feature ID '" in w else other).append(w)
+  warning_messages = other + feature_id
+
   return {
     "valid": is_valid,
     "warnings": warning_messages,
