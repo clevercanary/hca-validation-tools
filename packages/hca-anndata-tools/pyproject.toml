@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "hca-anndata-tools"
-version = "0.3.0"
+version = "0.3.1"
 description = "Library for inspection, summarization, and statistics of AnnData h5ad files"
 authors = ["Clever Canary <dave@clevercanary.com>"]
 license = "MIT"
