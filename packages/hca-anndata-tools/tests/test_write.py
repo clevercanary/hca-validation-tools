@@ -101,7 +101,7 @@ def test_write_h5ad_edit_log_populated(sample_h5ad_for_write):
     result = write_h5ad(adata, str(sample_h5ad_for_write), [entry])
 
     written = ad.read_h5ad(result["output_path"])
-    log = json.loads(written.uns[EDIT_LOG_KEY])
+    log = json.loads(written.uns["provenance"][EDIT_LOG_KEY])
     assert isinstance(log, list)
     assert len(log) == 1
     assert log[0]["operation"] == "update_obs_column"
@@ -120,7 +120,7 @@ def test_write_h5ad_preserves_existing_log(sample_h5ad_for_write):
     result2 = write_h5ad(adata2, result1["output_path"], [_make_entry(description="edit 2")])
 
     written = ad.read_h5ad(result2["output_path"])
-    log = json.loads(written.uns[EDIT_LOG_KEY])
+    log = json.loads(written.uns["provenance"][EDIT_LOG_KEY])
     assert len(log) == 2
     assert log[0]["description"] == "edit 1"
     assert log[1]["description"] == "edit 2"
@@ -138,7 +138,7 @@ def test_write_h5ad_sha256_correct(sample_h5ad_for_write):
     result = write_h5ad(adata, str(sample_h5ad_for_write), [_make_entry()])
 
     written = ad.read_h5ad(result["output_path"])
-    log = json.loads(written.uns[EDIT_LOG_KEY])
+    log = json.loads(written.uns["provenance"][EDIT_LOG_KEY])
     assert log[0]["source_sha256"] == expected_sha
 
 
@@ -147,7 +147,7 @@ def test_write_h5ad_source_file_is_basename(sample_h5ad_for_write):
     result = write_h5ad(adata, str(sample_h5ad_for_write), [_make_entry()])
 
     written = ad.read_h5ad(result["output_path"])
-    log = json.loads(written.uns[EDIT_LOG_KEY])
+    log = json.loads(written.uns["provenance"][EDIT_LOG_KEY])
     source_file = log[0]["source_file"]
     assert source_file == os.path.basename(source_file)
     assert source_file == "test-dataset.h5ad"
@@ -203,7 +203,7 @@ def test_write_h5ad_roundtrip_edit_log(sample_h5ad_for_write):
 
     # Verify full chain
     final = ad.read_h5ad(r3["output_path"])
-    log = json.loads(final.uns[EDIT_LOG_KEY])
+    log = json.loads(final.uns["provenance"][EDIT_LOG_KEY])
     assert len(log) == 3
     assert [e["description"] for e in log] == ["first", "second", "third"]
 
@@ -222,7 +222,7 @@ def test_write_h5ad_missing_required_keys(sample_h5ad_for_write):
 
 def test_write_h5ad_corrupt_json_log(sample_h5ad_for_write):
     adata = ad.read_h5ad(str(sample_h5ad_for_write))
-    adata.uns[EDIT_LOG_KEY] = "not valid json {{"
+    adata.uns.setdefault("provenance", {})[EDIT_LOG_KEY] = "not valid json {{"
     result = write_h5ad(adata, str(sample_h5ad_for_write), [_make_entry()])
 
     assert "error" in result
@@ -231,7 +231,7 @@ def test_write_h5ad_corrupt_json_log(sample_h5ad_for_write):
 
 def test_write_h5ad_non_list_json_log(sample_h5ad_for_write):
     adata = ad.read_h5ad(str(sample_h5ad_for_write))
-    adata.uns[EDIT_LOG_KEY] = json.dumps({"not": "a list"})
+    adata.uns.setdefault("provenance", {})[EDIT_LOG_KEY] = json.dumps({"not": "a list"})
     result = write_h5ad(adata, str(sample_h5ad_for_write), [_make_entry()])
 
     assert "error" in result
@@ -240,7 +240,7 @@ def test_write_h5ad_non_list_json_log(sample_h5ad_for_write):
 
 def test_write_h5ad_unsupported_log_type(sample_h5ad_for_write):
     adata = ad.read_h5ad(str(sample_h5ad_for_write))
-    adata.uns[EDIT_LOG_KEY] = 42
+    adata.uns.setdefault("provenance", {})[EDIT_LOG_KEY] = 42
     result = write_h5ad(adata, str(sample_h5ad_for_write), [_make_entry()])
 
     assert "error" in result

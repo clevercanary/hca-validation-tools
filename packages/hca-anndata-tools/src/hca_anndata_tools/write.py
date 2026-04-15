@@ -15,7 +15,8 @@ if TYPE_CHECKING:
 
 _TIMESTAMP_PATTERN = re.compile(r"-edit-\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}(?=\.h5ad$)")
 _TIMESTAMP_FORMAT = "%Y-%m-%d-%H-%M-%S"
-EDIT_LOG_KEY = "hca_edit_log"
+EDIT_LOG_KEY = "edit_history"
+_LEGACY_EDIT_LOG_KEY = "hca_edit_log"
 _HASH_CHUNK_SIZE = 1 << 20  # 1 MB — keeps syscall count low on multi-GB files
 _REQUIRED_ENTRY_KEYS = {"timestamp", "tool", "tool_version", "operation", "description"}
 
@@ -185,7 +186,7 @@ def write_h5ad(
     """Write adata to a new timestamped file with edit log entries.
 
     Computes SHA-256 of the source file, appends edit_entries to
-    adata.uns['hca_edit_log'], and writes to a new timestamped path.
+    adata.uns['provenance']['edit_history'], and writes to a new timestamped path.
     The original (non-timestamped) file is never modified. If source_path
     is a previous timestamped edit, it is deleted after the new file is
     successfully written — keeping only the original + latest edit on disk.
@@ -210,15 +211,21 @@ def write_h5ad(
         if not os.path.isfile(source_path):
             return {"error": f"Source file not found: {source_path}"}
 
-        log_result = build_edit_log(
-            adata.uns.get(EDIT_LOG_KEY, "[]"),
-            edit_entries,
-            source_path,
-        )
+        # Read existing edit log from provenance, fall back to legacy location
+        provenance = adata.uns.get("provenance", {})
+        if isinstance(provenance, dict) and EDIT_LOG_KEY in provenance:
+            existing_log_raw = provenance[EDIT_LOG_KEY]
+        else:
+            existing_log_raw = adata.uns.get(_LEGACY_EDIT_LOG_KEY, "[]")
+
+        log_result = build_edit_log(existing_log_raw, edit_entries, source_path)
         if "error" in log_result:
             return log_result
 
-        adata.uns[EDIT_LOG_KEY] = log_result["json"]
+        # Write to provenance/edit_history
+        adata.uns.setdefault("provenance", {})[EDIT_LOG_KEY] = log_result["json"]
+        # Remove legacy key if present
+        adata.uns.pop(_LEGACY_EDIT_LOG_KEY, None)
 
         if output_path is None:
             output_path = generate_output_path(source_path)

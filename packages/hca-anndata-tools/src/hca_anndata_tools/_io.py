@@ -118,6 +118,14 @@ def read_var_gene_names(path: str) -> tuple[set[str], dict[str, str]]:
         return gene_names, eid_to_var_name
 
 
+def ensure_provenance_group(f: h5py.File) -> h5py.Group:
+    """Get or create the uns/provenance group with correct encoding attrs."""
+    group = f.require_group("uns/provenance")
+    group.attrs.setdefault("encoding-type", "dict")
+    group.attrs.setdefault("encoding-version", "0.1.0")
+    return group
+
+
 def verify_obs_transplant(
     temp_path: str,
     output_path: str,

@@ -13,7 +13,7 @@ import h5py
 import numpy as np
 import pandas as pd
 
-from ._io import open_h5ad, read_obs_index, verify_obs_transplant, _decode_bytes
+from ._io import open_h5ad, read_obs_index, ensure_provenance_group, verify_obs_transplant, _decode_bytes
 from ._serialize import make_serializable
 from .write import (
     EDIT_LOG_KEY,
@@ -150,7 +150,7 @@ def convert_cellxgene_to_hca(
         if "error" in log_result:
             return log_result
 
-        temp_uns[EDIT_LOG_KEY] = log_result["json"]
+        temp_uns.setdefault("provenance", {})[EDIT_LOG_KEY] = log_result["json"]
 
         temp_adata = ad.AnnData(
             X=np.empty((n_obs, 0), dtype=np.float32),
@@ -181,11 +181,10 @@ def convert_cellxgene_to_hca(
                     if key in f_out["uns"]:
                         del f_out["uns"][key]
 
+                prov_out = ensure_provenance_group(f_out)
+
                 # Transplant provenance/cellxgene from temp (merge, don't replace whole group)
                 if "provenance" in f_temp["uns"] and "cellxgene" in f_temp["uns"]["provenance"]:
-                    prov_out = f_out.require_group("uns/provenance")
-                    prov_out.attrs.setdefault("encoding-type", "dict")
-                    prov_out.attrs.setdefault("encoding-version", "0.1.0")
                     if "cellxgene" in prov_out:
                         del prov_out["cellxgene"]
                     f_temp.copy("uns/provenance/cellxgene", prov_out, "cellxgene")
@@ -203,11 +202,11 @@ def convert_cellxgene_to_hca(
                 new_cols = [c for c in obs_cols_added if c not in current_order]
                 f_out["obs"].attrs["column-order"] = current_order + new_cols
 
-                # Transplant edit log from temp
-                if EDIT_LOG_KEY in f_out["uns"]:
-                    del f_out["uns"][EDIT_LOG_KEY]
-                if EDIT_LOG_KEY in f_temp["uns"]:
-                    f_temp.copy(f"uns/{EDIT_LOG_KEY}", f_out["uns"])
+                # Transplant edit_history into provenance
+                if EDIT_LOG_KEY in prov_out:
+                    del prov_out[EDIT_LOG_KEY]
+                if "provenance" in f_temp["uns"] and EDIT_LOG_KEY in f_temp["uns"]["provenance"]:
+                    f_temp.copy(f"uns/provenance/{EDIT_LOG_KEY}", prov_out, EDIT_LOG_KEY)
 
             # --- Step 5: Verify transplant ---
             verify_err = verify_obs_transplant(temp_path, output_path, obs_cols_added)

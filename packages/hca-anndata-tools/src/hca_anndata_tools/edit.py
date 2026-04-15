@@ -12,7 +12,7 @@ from pydantic import TypeAdapter, ValidationError
 from ._io import open_h5ad
 from ._serialize import make_serializable
 from .schema.helpers import uns_field_registry
-from .write import EDIT_LOG_KEY, resolve_latest, write_h5ad
+from .write import _LEGACY_EDIT_LOG_KEY, resolve_latest, write_h5ad
 from . import __version__
 
 
@@ -77,7 +77,7 @@ def list_uns_fields(path: str) -> dict:
                         missing_required.append(name)
 
             # Extra uns keys not in the HCA schema
-            schema_keys = set(registry.keys()) | {EDIT_LOG_KEY}
+            schema_keys = set(registry.keys()) | {"provenance", _LEGACY_EDIT_LOG_KEY}
             extra_uns_keys = sorted(k for k in adata.uns.keys() if k not in schema_keys)
 
             return {

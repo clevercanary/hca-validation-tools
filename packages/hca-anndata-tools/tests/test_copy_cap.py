@@ -195,8 +195,8 @@ def test_copy_skips_demographic_columns(cap_source, hca_target):
 def test_copy_edit_log(cap_source, hca_target):
     result = copy_cap_annotations(str(cap_source), str(hca_target))
     written = ad.read_h5ad(result["output_path"])
-    assert EDIT_LOG_KEY in written.uns
-    log = json.loads(written.uns[EDIT_LOG_KEY])
+    assert EDIT_LOG_KEY in written.uns["provenance"]
+    log = json.loads(written.uns["provenance"][EDIT_LOG_KEY])
     assert len(log) >= 1
     entry = log[-1]
     assert entry["operation"] == "import_cap_annotations"
