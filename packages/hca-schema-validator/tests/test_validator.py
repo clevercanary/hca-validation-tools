@@ -617,8 +617,8 @@ def test_feature_id_warnings_come_last():
     ]
     # Trigger reorder by calling validate_adata with no path (will error, but we just want the reorder)
     # Instead, simulate what validate_adata does after super()
-    other = [w for w in v.warnings if "not found in GENCODE" not in w]
-    feature_id = [w for w in v.warnings if "not found in GENCODE" in w]
+    other = [w for w in v.warnings if not w.startswith("Feature ID '")]
+    feature_id = [w for w in v.warnings if w.startswith("Feature ID '")]
     v.warnings = other + feature_id
 
     assert "library_id" in v.warnings[0]

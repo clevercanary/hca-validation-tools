@@ -66,7 +66,7 @@ class HCAValidator(Validator):
         result = super().validate_adata(h5ad_path)
         other, feature_id = [], []
         for w in self.warnings:
-            (feature_id if "not found in GENCODE" in w else other).append(w)
+            (feature_id if w.startswith("Feature ID '") else other).append(w)
         self.warnings = other + feature_id
         return result
 
