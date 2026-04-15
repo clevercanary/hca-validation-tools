@@ -651,6 +651,37 @@ def test_present_optional_column_with_invalid_value_is_error():
     assert "cell_type_ontology_term_id" in error_messages
 
 
+def test_optional_column_emits_warning_message():
+    """Optional column with warning_message in schema emits it when column is present."""
+    import anndata
+    import numpy
+    from scipy import sparse
+    from .fixtures.hca_fixtures import good_obs, good_var, good_uns, good_obsm
+
+    obs = good_obs.copy()
+    X = sparse.csr_matrix((obs.shape[0], good_var.shape[0]), dtype=numpy.float32)
+    test_adata = anndata.AnnData(X=X, obs=obs, uns=good_uns.copy(), obsm=good_obsm.copy(), var=good_var.copy())
+    test_adata.raw = test_adata.copy()
+    test_adata.raw.var.drop("feature_is_filtered", axis=1, inplace=True)
+
+    from hca_schema_validator.validator import HCAValidator
+    v = HCAValidator()
+    v.reset()
+    v.adata = test_adata
+    v._set_schema_def()
+
+    # Inject warning_message into the optional column before validation
+    col_def = v.schema_def["components"]["obs"]["columns"]["cell_type_ontology_term_id"]
+    col_def["warning_message"] = "Test warning for optional column"
+    try:
+        v._validate_dataframe("obs")
+    finally:
+        col_def.pop("warning_message", None)
+
+    warning_messages = " ".join(v.warnings)
+    assert "Test warning for optional column" in warning_messages
+
+
 def test_raw_validation_runs_despite_unrelated_errors():
     """Raw validation should run even when unrelated HCA fields are missing.
 
