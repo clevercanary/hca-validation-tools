@@ -155,7 +155,13 @@ class HCAValidator(Validator):
             # Validate optional columns (silent if missing, full validation if present)
             for col_name, col_def in optional_columns.items():
                 if col_name in df.columns:
-                    self._validate_column(df[col_name], col_name, df_name, col_def)
+                    column = df[col_name]
+                    if "dependencies" in col_def:
+                        column = self._validate_column_dependencies(
+                            df, df_name, col_name, col_def["dependencies"]
+                        )
+                    if len(column) > 0:
+                        self._validate_column(column, col_name, df_name, col_def)
 
     def _validate_strongly_recommended(self, df, df_name, col_name, col_def):
         """Validate a strongly_recommended column: warn on missing/NaN, error on blocklist."""
