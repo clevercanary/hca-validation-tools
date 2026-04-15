@@ -161,6 +161,8 @@ class HCAValidator(Validator):
                             df, df_name, col_name, col_def["dependencies"]
                         )
                     if len(column) > 0:
+                        if "warning_message" in col_def:
+                            self.warnings.append(col_def["warning_message"])
                         self._validate_column(column, col_name, df_name, col_def)
 
     def _validate_strongly_recommended(self, df, df_name, col_name, col_def):
