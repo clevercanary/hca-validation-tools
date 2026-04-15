@@ -860,7 +860,6 @@ components:
       library_id:
         type: categorical
         subtype: str
-        requirement_level: strongly_recommended
         blocklist: *placeholder_blocklist
       institute:
         type: categorical

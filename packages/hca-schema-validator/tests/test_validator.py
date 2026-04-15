@@ -499,20 +499,16 @@ class TestValidateColumn:
         pattern_errors = [e for e in v.errors if "pattern" in e.lower()]
         assert pattern_errors == []
 
-    def test_nan_in_library_id_is_warning_not_error(self):
-        """library_id is strongly_recommended: NaN produces a warning, not an error."""
+    def test_nan_in_library_id_is_error(self):
+        """library_id is required: NaN produces an error."""
         import anndata
         import numpy
         from scipy import sparse
         from .fixtures.hca_fixtures import good_obs, good_var, good_uns, good_obsm
 
         obs = good_obs.copy()
-        # Introduce NaN in library_id (must convert from categorical to object first)
         obs["library_id"] = obs["library_id"].astype(object)
         obs.loc["X", "library_id"] = numpy.nan
-        # Introduce an error: invalid enum value for manner_of_death
-        obs["manner_of_death"] = obs["manner_of_death"].cat.add_categories(["invalid_value"])
-        obs["manner_of_death"] = "invalid_value"
 
         X = sparse.csr_matrix((obs.shape[0], good_var.shape[0]), dtype=numpy.float32)
         test_adata = anndata.AnnData(X=X, obs=obs, uns=good_uns.copy(), obsm=good_obsm.copy(), var=good_var.copy())
@@ -521,17 +517,11 @@ class TestValidateColumn:
 
         is_valid, validator = _validate_from_fixture(test_adata)
         assert is_valid is False
-        # library_id NaN should be a warning, not an error
-        warning_messages = " ".join(validator.warnings)
         error_messages = " ".join(validator.errors)
-        assert "library_id" in warning_messages, "Expected warning about library_id NaN"
-        assert "strongly recommended" in warning_messages
-        assert "library_id" not in error_messages, "library_id NaN should not be an error"
-        # manner_of_death should still be an error
-        assert "manner_of_death" in error_messages, "Expected error about manner_of_death"
+        assert "library_id" in error_messages, "NaN in required library_id should be an error"
 
-    def test_missing_strongly_recommended_is_warning(self):
-        """Missing strongly_recommended column produces warning, not error."""
+    def test_missing_library_id_is_error(self):
+        """Missing required library_id column produces an error."""
         import anndata
         import numpy
         from scipy import sparse
@@ -546,11 +536,8 @@ class TestValidateColumn:
         test_adata.raw.var.drop("feature_is_filtered", axis=1, inplace=True)
 
         _, validator = _validate_from_fixture(test_adata)
-        warning_messages = " ".join(validator.warnings)
         error_messages = " ".join(validator.errors)
-        assert "library_id" in warning_messages, "Expected warning about missing library_id"
-        assert "strongly recommended" in warning_messages
-        assert "missing column 'library_id'" not in error_messages.lower()
+        assert "library_id" in error_messages, "Missing required library_id should be an error"
 
     def test_blocklist_value_is_error(self):
         """Blocklisted placeholder values in strongly_recommended columns produce errors."""
@@ -560,8 +547,8 @@ class TestValidateColumn:
         from .fixtures.hca_fixtures import good_obs, good_var, good_uns, good_obsm
 
         obs = good_obs.copy()
-        obs["library_id"] = obs["library_id"].astype(object)
-        obs["library_id"] = "unknown"
+        obs["library_preparation_batch"] = obs["library_preparation_batch"].astype(object)
+        obs["library_preparation_batch"] = "unknown"
 
         X = sparse.csr_matrix((obs.shape[0], good_var.shape[0]), dtype=numpy.float32)
         test_adata = anndata.AnnData(X=X, obs=obs, uns=good_uns.copy(), obsm=good_obsm.copy(), var=good_var.copy())
@@ -570,9 +557,8 @@ class TestValidateColumn:
 
         _, validator = _validate_from_fixture(test_adata)
         error_messages = " ".join(validator.errors)
-        assert "library_id" in error_messages
+        assert "library_preparation_batch" in error_messages
         assert "placeholder" in error_messages.lower()
-        assert "nan" in error_messages.lower()
 
     def test_separator_in_strongly_recommended_is_error(self):
         """Values with list separators (comma, semicolon, pipe) are rejected."""
@@ -582,8 +568,8 @@ class TestValidateColumn:
         from .fixtures.hca_fixtures import good_obs, good_var, good_uns, good_obsm
 
         obs = good_obs.copy()
-        obs["library_id"] = obs["library_id"].astype(object)
-        obs["library_id"] = "batch1,batch2"
+        obs["library_preparation_batch"] = obs["library_preparation_batch"].astype(object)
+        obs["library_preparation_batch"] = "batch1,batch2"
 
         X = sparse.csr_matrix((obs.shape[0], good_var.shape[0]), dtype=numpy.float32)
         test_adata = anndata.AnnData(X=X, obs=obs, uns=good_uns.copy(), obsm=good_obsm.copy(), var=good_var.copy())
@@ -592,7 +578,7 @@ class TestValidateColumn:
 
         _, validator = _validate_from_fixture(test_adata)
         error_messages = " ".join(validator.errors)
-        assert "library_id" in error_messages
+        assert "library_preparation_batch" in error_messages
         assert "separator" in error_messages.lower()
 
     def test_mixed_valid_and_invalid_values(self):
