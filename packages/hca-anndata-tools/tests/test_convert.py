@@ -107,7 +107,7 @@ def test_convert_edit_log(cellxgene_h5ad):
     result = convert_cellxgene_to_hca(str(cellxgene_h5ad))
     written = ad.read_h5ad(result["output_path"])
 
-    log = json.loads(written.uns[EDIT_LOG_KEY])
+    log = json.loads(written.uns["provenance"][EDIT_LOG_KEY])
     assert len(log) == 1
     assert log[0]["operation"] == "import_cellxgene"
     assert "CellxGENE" in log[0]["description"]

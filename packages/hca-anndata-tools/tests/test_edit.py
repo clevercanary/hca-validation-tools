@@ -141,7 +141,7 @@ def test_set_uns_edit_log(sample_h5ad_for_write):
     assert "error" not in result
 
     written = ad.read_h5ad(result["output_path"])
-    log = json.loads(written.uns[EDIT_LOG_KEY])
+    log = json.loads(written.uns["provenance"][EDIT_LOG_KEY])
     assert len(log) == 1
     assert log[0]["operation"] == "set_uns"
     assert log[0]["details"]["field"] == "description"
@@ -153,7 +153,7 @@ def test_set_uns_previous_value_in_details(sample_h5ad_for_write):
     assert "error" not in result
 
     written = ad.read_h5ad(result["output_path"])
-    log = json.loads(written.uns[EDIT_LOG_KEY])
+    log = json.loads(written.uns["provenance"][EDIT_LOG_KEY])
     assert log[0]["details"]["old_value"] == "Test Dataset"
 
 
