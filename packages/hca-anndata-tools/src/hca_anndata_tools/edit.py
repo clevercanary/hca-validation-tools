@@ -227,12 +227,12 @@ def replace_placeholder_values(
     columns: list[str],
     placeholders: list[str] | None = None,
 ) -> dict:
-    """Replace placeholder values with NaN in obs columns.
+    """Replace placeholder values with NaN in categorical obs columns.
 
     Uses direct h5py modification on a copy — does not load the expression
-    matrix into memory. For categorical columns, sets codes to -1 for any
-    value matching the placeholders (case-insensitive). Removes unused
-    categories after replacement.
+    matrix into memory. Sets codes to -1 for any value matching the
+    placeholders (case-insensitive). Removes unused categories after
+    replacement. Only categorical columns are supported.
 
     Args:
         path: Path to an .h5ad file.
@@ -263,9 +263,14 @@ def replace_placeholder_values(
                 if isinstance(item, h5py.Group) and "categories" in item:
                     cats = [_decode_bytes(v) for v in item["categories"][:]]
                     codes = item["codes"][:]
-                    matches = {i: cats[i] for i in range(len(cats)) if cats[i].lower() in bl}
+                    matches = {}
+                    for i in range(len(cats)):
+                        if cats[i].lower() in bl:
+                            count = int((codes == i).sum())
+                            if count > 0:
+                                matches[cats[i]] = count
                     if matches:
-                        columns_fixed[col] = {v: int((codes == i).sum()) for i, v in matches.items()}
+                        columns_fixed[col] = matches
                 else:
                     return {"error": f"Column '{col}' is not categorical"}
             raw_log = read_edit_log_h5py(f)
@@ -328,7 +333,8 @@ def replace_placeholder_values(
                 grp.attrs["encoding-type"] = "categorical"
                 grp.attrs["encoding-version"] = "0.2.0"
                 grp.attrs["ordered"] = ordered
-                grp.create_dataset("categories", data=np.array(new_cats, dtype=object))
+                cat_data = np.array(new_cats, dtype=object) if new_cats else np.array([], dtype=h5py.string_dtype())
+                grp.create_dataset("categories", data=cat_data)
                 grp.create_dataset(
                     "codes", data=new_codes.astype(codes.dtype),
                     compression=codes_compression,

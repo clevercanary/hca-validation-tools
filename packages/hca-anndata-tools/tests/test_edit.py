@@ -333,6 +333,18 @@ def test_replace_placeholder_with_preexisting_nan(tmp_path):
     assert list(written.obs["test_col"].cat.categories) == ["valid"]
 
 
+def test_replace_placeholder_all_values_replaced(tmp_path):
+    """Column where every value is a placeholder results in all NaN."""
+    path = _make_placeholder_h5ad(tmp_path, ["unknown", "unknown", "na"])
+    result = replace_placeholder_values(str(path), ["test_col"])
+    assert "error" not in result
+    assert result["total_cells_affected"] == 3
+
+    written = ad.read_h5ad(result["output_path"])
+    assert written.obs["test_col"].isna().all()
+    assert len(written.obs["test_col"].cat.categories) == 0
+
+
 def test_replace_placeholder_edit_log(tmp_path):
     path = _make_placeholder_h5ad(tmp_path, ["valid", "unknown"])
     result = replace_placeholder_values(str(path), ["test_col"])
