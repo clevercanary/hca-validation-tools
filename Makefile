@@ -210,3 +210,14 @@ test-all:
 	@$(MAKE) -C services/cellxgene-validator test
 	@$(MAKE) -C services/hca-schema-validator test
 	@echo "✓ All tests passed"
+
+.PHONY: typecheck
+typecheck:
+	@echo "Running pyright (hca-anndata-tools, hca-anndata-mcp)..."
+	@cd packages/hca-anndata-mcp && poetry run pyright --project ../.. ../hca-anndata-tools/src ../hca-anndata-mcp/src
+	@echo "Running pyright (hca-schema-validator)..."
+	@cd packages/hca-schema-validator && poetry run pyright --project ../.. src
+	@echo "Running pyright (dataset-validator)..."
+	@cd services/dataset-validator && poetry run pyright --project ../../ src
+	@echo "Running pyright (hca-schema-validator service)..."
+	@cd services/hca-schema-validator && poetry run pyright --project ../../ src

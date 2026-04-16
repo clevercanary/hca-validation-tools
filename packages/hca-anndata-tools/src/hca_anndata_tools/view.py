@@ -80,7 +80,7 @@ def _view_dataframe(
         missing = [c for c in columns if c not in df.columns]
         if missing:
             return {"error": f"Columns not found: {missing}"}
-        df = df[columns]
+        df = df[columns]  # pyright: ignore[reportAssignmentType]
 
     sliced = df.iloc[row_start:row_end]
     return {

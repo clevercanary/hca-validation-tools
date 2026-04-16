@@ -65,7 +65,7 @@ def plot_embedding(
                 kwargs["palette"] = palette
 
             fig, ax = plt.subplots(figsize=(width, height))
-            sc.pl.embedding(adata, ax=ax, **kwargs)
+            sc.pl.embedding(adata, ax=ax, **kwargs)  # pyright: ignore[reportArgumentType]
 
         with io.BytesIO() as buf:
             fig.savefig(buf, format="png", dpi=dpi, bbox_inches="tight")

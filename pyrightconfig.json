@@ -1,0 +1,30 @@
+{
+  "pythonVersion": "3.10",
+  "typeCheckingMode": "basic",
+  "include": [
+    "packages/hca-anndata-tools/src",
+    "packages/hca-anndata-mcp/src",
+    "packages/hca-schema-validator/src",
+    "services/dataset-validator/src",
+    "services/hca-schema-validator/src"
+  ],
+  "exclude": [
+    "**/__pycache__",
+    "**/.*",
+    "**/_vendored/**",
+    "**/schema/generated/**",
+    "**/.venv/**",
+    "**/node_modules/**"
+  ],
+  "reportMissingImports": true,
+  "reportUnusedImport": false,
+  "reportIndexIssue": "none",
+  "reportAttributeAccessIssue": "none",
+  "reportOperatorIssue": "none",
+  "reportGeneralTypeIssues": "none",
+  "reportInvalidTypeArguments": "none",
+  "executionEnvironments": [
+    { "root": "services/dataset-validator/src", "pythonVersion": "3.11" },
+    { "root": "services/hca-schema-validator/src", "pythonVersion": "3.11" }
+  ]
+}

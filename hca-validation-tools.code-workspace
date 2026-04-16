@@ -1,0 +1,13 @@
+{
+  "folders": [
+    { "name": "repo", "path": "." },
+    { "name": "hca-anndata-tools", "path": "packages/hca-anndata-tools" },
+    { "name": "hca-anndata-mcp", "path": "packages/hca-anndata-mcp" },
+    { "name": "hca-schema-validator (package)", "path": "packages/hca-schema-validator" },
+    { "name": "dataset-validator", "path": "services/dataset-validator" },
+    { "name": "hca-schema-validator (service)", "path": "services/hca-schema-validator" }
+  ],
+  "settings": {
+    "python.terminal.activateEnvironment": false
+  }
+}

@@ -126,9 +126,13 @@ class ValidationMessage:
         return json.dumps(asdict(self), separators=(',', ':'))
     
     def _get_report_message_list(self, report_key: str, message_type: str) -> List[str]:
+        if self.tool_reports is None:
+            raise RuntimeError("tool_reports not set")
         return getattr(self.tool_reports[report_key], message_type)
 
     def _set_report_message_list(self, report_key: str, message_type: str, value: List[str]):
+        if self.tool_reports is None:
+            raise RuntimeError("tool_reports not set")
         setattr(self.tool_reports[report_key], message_type, value)
 
     def _json_length_of_report_list(self, report_key: str, message_type: str) -> int:
@@ -365,12 +369,14 @@ def read_metadata(file_path: Path) -> MetadataSummary:
     try:
         adata = anndata.io.read_h5ad(file_path, backed="r")
         title = adata.uns.get("title")
+        # anndata.obs is typed DataFrame | Dataset2D (backed vs in-memory); runtime is DataFrame here
+        obs: pd.DataFrame = adata.obs  # pyright: ignore[reportAssignmentType]
         return MetadataSummary(
             title=title if isinstance(title, str) else "",
-            assay=get_column_unique_values_if_present(adata.obs, "assay"),
-            suspension_type=get_column_unique_values_if_present(adata.obs, "suspension_type"),
-            tissue=get_column_unique_values_if_present(adata.obs, "tissue"),
-            disease=get_column_unique_values_if_present(adata.obs, "disease"),
+            assay=get_column_unique_values_if_present(obs, "assay"),
+            suspension_type=get_column_unique_values_if_present(obs, "suspension_type"),
+            tissue=get_column_unique_values_if_present(obs, "tissue"),
+            disease=get_column_unique_values_if_present(obs, "disease"),
             cell_count=adata.n_obs,
             gene_count=adata.n_vars
         )
@@ -730,32 +736,43 @@ def main() -> int:
             exit_code = 1
             return exit_code
 
+        # Required env vars are guaranteed non-None after the missing_vars check above
+        file_id = env_vars['file_id']
+        bucket = env_vars['bucket']
+        key = env_vars['key']
+        batch_job_id = env_vars['batch_job_id']
+        if file_id is None or bucket is None or key is None or batch_job_id is None:
+            raise RuntimeError("Required env vars unexpectedly None after missing_vars check")
+
         # Initialize validation message with basic info
         validation_message = ValidationMessage(
-            file_id=env_vars['file_id'],
+            file_id=file_id,
             status="in_progress",
             timestamp=start_time.isoformat(),
-            bucket=env_vars['bucket'],
-            key=env_vars['key'],
-            batch_job_id=env_vars['batch_job_id'],
+            bucket=bucket,
+            key=key,
+            batch_job_id=batch_job_id,
             batch_job_name=env_vars['batch_job_name']
         )
 
         if local_mode:
             # Local file mode — skip S3 download and integrity checks
-            local_file = Path(env_vars['local_file'])
+            local_file_path = env_vars['local_file']
+            if local_file_path is None:
+                raise RuntimeError("local_mode set but LOCAL_FILE env var is None")
+            local_file = Path(local_file_path)
             logger.info("Local file mode: validating %s", local_file)
             validation_message.integrity_status = INTEGRITY_VALID
         else:
-            logger.info("Processing S3 file: s3://%s/%s", env_vars['bucket'], env_vars['key'])
+            logger.info("Processing S3 file: s3://%s/%s", bucket, key)
 
             # Create work directory
             work_dir = create_work_directory()
             logger.info("Work directory created: %s", work_dir)
 
             # Download file from S3
-            local_file = work_dir / Path(env_vars['key']).name
-            source_sha256 = download_s3_file(env_vars['bucket'], env_vars['key'], local_file)
+            local_file = work_dir / Path(key).name
+            source_sha256 = download_s3_file(bucket, key, local_file)
             logger.info("File ready for validation: %s", local_file)
             log_memory_usage("after download")
 

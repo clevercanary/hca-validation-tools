@@ -315,7 +315,7 @@ def replace_placeholder_values(
         with h5py.File(output_path, "a") as f:
             for col in columns_fixed:
                 item = f["obs"][col]
-                cats, codes = read_categorical_data(item)
+                cats, codes = read_categorical_data(item)  # pyright: ignore[reportArgumentType]
 
                 # Preserve original settings
                 encoding_type = item.attrs["encoding-type"]

@@ -1,20 +1,26 @@
 """Internal I/O utilities for AnnData file access."""
 
+# pyright: reportArgumentType=none, reportReturnType=none
+# h5py stubs return Group | Dataset | Datatype from __getitem__; runtime is always
+# narrower (Group or Dataset). Asserting/casting at every site would add heavy
+# churn without catching real bugs — this module is the narrowing boundary.
+
 from __future__ import annotations
 
 import gc
 from contextlib import contextmanager
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 import anndata as ad
 import h5py
+import pandas as pd
 
 if TYPE_CHECKING:
     import numpy as np
 
 
 @contextmanager
-def open_h5ad(path: str, backed: str | None = "r"):
+def open_h5ad(path: str, backed: Literal["r", "r+"] | None = "r"):
     """Open an h5ad file with automatic cleanup.
 
     Args:
@@ -153,18 +159,18 @@ def write_edit_log_h5py(f: h5py.File, log_json: str) -> None:
     ds.attrs["encoding-version"] = "0.2.0"
 
 
-def read_categorical_data(item: h5py.Group) -> tuple[list[str], "np.ndarray"]:
+def read_categorical_data(item: h5py.Group) -> tuple[pd.Index, "np.ndarray"]:
     """Read categories and codes from a categorical h5py group.
 
     Args:
         item: An h5py Group with 'categories' and 'codes' datasets.
 
     Returns:
-        (categories, codes) — list of decoded category strings and numpy codes array.
+        (categories, codes) — pandas Index of decoded category strings and numpy codes array.
     """
     categories = [_decode_bytes(v) for v in item["categories"][:]]
     codes = item["codes"][:]
-    return categories, codes
+    return pd.Index(categories), codes
 
 
 def update_column_order(
