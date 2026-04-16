@@ -126,11 +126,13 @@ class ValidationMessage:
         return json.dumps(asdict(self), separators=(',', ':'))
     
     def _get_report_message_list(self, report_key: str, message_type: str) -> List[str]:
-        assert self.tool_reports is not None
+        if self.tool_reports is None:
+            raise RuntimeError("tool_reports not set")
         return getattr(self.tool_reports[report_key], message_type)
 
     def _set_report_message_list(self, report_key: str, message_type: str, value: List[str]):
-        assert self.tool_reports is not None
+        if self.tool_reports is None:
+            raise RuntimeError("tool_reports not set")
         setattr(self.tool_reports[report_key], message_type, value)
 
     def _json_length_of_report_list(self, report_key: str, message_type: str) -> int:
