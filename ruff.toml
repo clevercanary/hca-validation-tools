@@ -1,7 +1,10 @@
 target-version = "py310"
 line-length = 120
-extend-exclude = ["*/_vendored/*", "*/schema/generated/*"]
+extend-exclude = [
+    "*/_vendored/*",
+    "*/schema/generated/*",
+    "packages/hca-anndata-tools/src/hca_anndata_tools/schema/core.py",
+]
 
 [lint]
 select = ["E", "F", "I", "W"]
-ignore = ["E501"]  # line length — too many to fix at once

@@ -230,7 +230,13 @@ def test_missing_sns_topic_logs_error_and_exits(caplog, env_manager, base_env_va
         "adata": {
             "obs": {
                 "assay": ["assay-a", "assay-b", "assay-b", "assay-c", "assay-a"],
-                "suspension_type": ["suspension-type-a", "suspension-type-a", "suspension-type-a", "suspension-type-a", "suspension-type-a"],
+                "suspension_type": [
+                    "suspension-type-a",
+                    "suspension-type-a",
+                    "suspension-type-a",
+                    "suspension-type-a",
+                    "suspension-type-a",
+                ],
                 "tissue": ["tissue-a", "tissue-a", "tissue-b", "tissue-a", "tissue-a"],
                 "disease": ["disease-a", "disease-b", "disease-c", "disease-d", "disease-e"]
             },
@@ -637,7 +643,13 @@ def test_local_file_mode(mock_read_h5ad, caplog, env_manager, tmp_path, test_cas
         "adata": {
             "obs": {
                 "assay": ["assay-a", "assay-b", "assay-b", "assay-c", "assay-a"],
-                "suspension_type": ["suspension-type-a", "suspension-type-a", "suspension-type-a", "suspension-type-a", "suspension-type-a"],
+                "suspension_type": [
+                    "suspension-type-a",
+                    "suspension-type-a",
+                    "suspension-type-a",
+                    "suspension-type-a",
+                    "suspension-type-a",
+                ],
                 "tissue": ["tissue-a", "tissue-a", "tissue-b", "tissue-a", "tissue-a"],
                 "disease": ["disease-a", "disease-b", "disease-c", "disease-d", "disease-e"]
             },
@@ -725,7 +737,9 @@ def test_local_file_mode(mock_read_h5ad, caplog, env_manager, tmp_path, test_cas
         "file_id": "test-file-789",
         "batch_job_id": "job-101",
         "batch_job_name": None,
-        "setup_s3": lambda s3_client, bucket_name: _setup_corrupt_s3_file(s3_client, bucket_name, "datasets/corrupt.h5ad"),
+        "setup_s3": lambda s3_client, bucket_name: _setup_corrupt_s3_file(
+            s3_client, bucket_name, "datasets/corrupt.h5ad"
+        ),
         "adata": None,
         "expected_exit_code": 1,
         "expected_logs": [
@@ -789,7 +803,13 @@ def test_local_file_mode(mock_read_h5ad, caplog, env_manager, tmp_path, test_cas
         "adata": {
             "obs": {
                 "assay": ["assay-a", "assay-b", "assay-b", "assay-c", "assay-a"],
-                "suspension_type": ["suspension-type-a", "suspension-type-a", "suspension-type-a", "suspension-type-a", "suspension-type-a"],
+                "suspension_type": [
+                    "suspension-type-a",
+                    "suspension-type-a",
+                    "suspension-type-a",
+                    "suspension-type-a",
+                    "suspension-type-a",
+                ],
                 "tissue": ["tissue-a", "tissue-a", "tissue-b", "tissue-a", "tissue-a"],
                 "disease": ["disease-a", "disease-b", "disease-c", "disease-d", "disease-e"]
             },
@@ -938,8 +958,13 @@ def _validate_sns_message(mock_aws, caplog, expected_message):
     message = _get_last_sns_message(sns_backend, topic_arn)
     
     # Validate key fields that use constants - these should fail if constants change
-    assert message["status"] == expected_message["status"], f"Expected status '{expected_message['status']}', got '{message['status']}'"
-    assert message["integrity_status"] == expected_message["integrity_status"], f"Expected integrity_status '{expected_message['integrity_status']}', got '{message['integrity_status']}'"
+    assert message["status"] == expected_message["status"], (
+        f"Expected status '{expected_message['status']}', got '{message['status']}'"
+    )
+    assert message["integrity_status"] == expected_message["integrity_status"], (
+        f"Expected integrity_status '{expected_message['integrity_status']}', "
+        f"got '{message['integrity_status']}'"
+    )
     assert message["file_id"] == expected_message["file_id"]
     assert message["batch_job_id"] == expected_message["batch_job_id"]
     assert message["batch_job_name"] == expected_message["batch_job_name"]
@@ -951,7 +976,10 @@ def _validate_sns_message(mock_aws, caplog, expected_message):
     if expected_message["tool_reports"] is None:
         assert message["tool_reports"] is None
     else:
-        tool_reports_without_times = {tool: {k: v for k, v in report.items() if k not in {"started_at", "finished_at"}} for tool, report in message["tool_reports"].items()}
+        tool_reports_without_times = {
+            tool: {k: v for k, v in report.items() if k not in {"started_at", "finished_at"}}
+            for tool, report in message["tool_reports"].items()
+        }
         assert tool_reports_without_times == expected_message["tool_reports"]
     
     # For success case, verify error_message is None

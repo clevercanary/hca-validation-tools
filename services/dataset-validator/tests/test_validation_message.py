@@ -83,7 +83,10 @@ from dataset_validator.main import ValidationToolReport, ValidationMessage, TRUN
     },
     {
         "name": "hca_errors_prioritized_over_cellxgene_errors",
-        "description": "Small cellxgene errors truncated before large cap/hcaSchema errors, proving tool priority over length",
+        "description": (
+            "Small cellxgene errors truncated before large cap/hcaSchema errors, "
+            "proving tool priority over length"
+        ),
         "message_length": 100,
         "message_counts": {
           "cap": {
@@ -133,7 +136,11 @@ def test_length_limited_json_scenarios(test_case):
   parsed = json.loads(message_json)
   if test_case.get("expect_errors_preserved"):
     for tool_report in parsed["tool_reports"].values():
-      assert TRUNCATED_MESSAGES_MESSAGE not in tool_report["errors"], "Errors should not be truncated when warnings can be truncated instead"
+      assert TRUNCATED_MESSAGES_MESSAGE not in tool_report["errors"], (
+        "Errors should not be truncated when warnings can be truncated instead"
+      )
   if test_case.get("expect_tool_errors_preserved"):
     for tool_key in test_case["expect_tool_errors_preserved"]:
-      assert TRUNCATED_MESSAGES_MESSAGE not in parsed["tool_reports"][tool_key]["errors"], f"{tool_key} errors should not be truncated"
+      assert TRUNCATED_MESSAGES_MESSAGE not in parsed["tool_reports"][tool_key]["errors"], (
+        f"{tool_key} errors should not be truncated"
+      )

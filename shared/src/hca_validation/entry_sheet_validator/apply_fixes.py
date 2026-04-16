@@ -58,7 +58,12 @@ def get_fix_value_ranges_by_entity_type(errors: List[SheetErrorInfo], entity_typ
   return value_ranges
 
 
-def apply_fixes(validation_result: SheetValidationResult, entity_types: List[str], worksheets: List[gspread.Worksheet], sheet_id: str) -> bool:
+def apply_fixes(
+    validation_result: SheetValidationResult,
+    entity_types: List[str],
+    worksheets: List[gspread.Worksheet],
+    sheet_id: str,
+) -> bool:
   """
   Apply available fixes from the given validation result to the given gspread worksheets
   

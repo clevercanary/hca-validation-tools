@@ -201,7 +201,10 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Log memory usage after validation
         post_validation_memory = get_memory_usage()
         logger.info(f"Memory usage after validation: {post_validation_memory}")
-        logger.info(f"Validation completed with error_code: {validation_result.error_code}, http_status_code: {http_status_code}")
+        logger.info(
+            f"Validation completed with error_code: {validation_result.error_code}, "
+            f"http_status_code: {http_status_code}"
+        )
         
         # Prepare the response data
         response_data = {

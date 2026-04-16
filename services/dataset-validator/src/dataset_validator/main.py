@@ -25,7 +25,8 @@ import anndata
 import pandas as pd
 
 
-MAX_SNS_MESSAGE_LENGTH = 250_000 # Somewhat less than the actual value of 256KiB, to make room for small unforseen deviations
+# Somewhat less than the actual value of 256KiB, to make room for small unforeseen deviations
+MAX_SNS_MESSAGE_LENGTH = 250_000
 TRUNCATED_MESSAGES_MESSAGE = "Messages truncated"
 # When truncating to fit SNS limits, error lists from higher-priority tools are preserved longer.
 # Unknown tools default to priority 0 (truncated first among errors).
@@ -146,9 +147,15 @@ class ValidationMessage:
         if self.tool_reports is None or len(full_message) < max_length:
             return full_message
         
-        # Create a list of message arrays from tool_reports, represented as (key in tool_reports, attribute in tool report object) pairs
-        list_paths = [(key, message_type) for key in self.tool_reports.keys() for message_type in ["errors", "warnings"]]
-        # Truncation priority: warnings first, then cellxgene errors, then cap errors, then hcaSchema errors (preserved longest)
+        # Create a list of message arrays from tool_reports, represented as
+        # (key in tool_reports, attribute in tool report object) pairs
+        list_paths = [
+            (key, message_type)
+            for key in self.tool_reports.keys()
+            for message_type in ["errors", "warnings"]
+        ]
+        # Truncation priority: warnings first, then cellxgene errors, then cap errors,
+        # then hcaSchema errors (preserved longest)
         list_paths.sort(key=lambda p: (
             0 if p[1] == "warnings" else 1 + TOOL_ERROR_PRIORITY.get(p[0], 0),
             -self._json_length_of_report_list(*p),
@@ -165,20 +172,25 @@ class ValidationMessage:
                 threshold_path = p
                 break
         
-        # If all lists have been truncated and somehow none have made the message small enough, give up and try using it anyway
+        # If all lists have been truncated and somehow none have made the message small enough,
+        # give up and try using it anyway
         if threshold_path is None:
             return truncated_message.to_json()
         
         # Get the original value of the list that was the threshold for making the message small enough
         message_list = self._get_report_message_list(*threshold_path)
 
-        # Do a binary search to determine how much of the list can be retained, ensuring that the truncated message remains at a valid length
+        # Do a binary search to determine how much of the list can be retained,
+        # ensuring that the truncated message remains at a valid length
         max_valid_length = 0
         min_invalid_length = len(message_list)
         while min_invalid_length - max_valid_length > 1:
             truncated_list_before = truncated_message._get_report_message_list(*threshold_path)
             middle_length = int((max_valid_length + min_invalid_length)/2)
-            truncated_message._set_report_message_list(*threshold_path, [*message_list[:middle_length], TRUNCATED_MESSAGES_MESSAGE])
+            truncated_message._set_report_message_list(
+                *threshold_path,
+                [*message_list[:middle_length], TRUNCATED_MESSAGES_MESSAGE],
+            )
             if len(truncated_message.to_json()) < max_length:
                 max_valid_length = middle_length
             else:
@@ -477,21 +489,27 @@ def apply_external_validator(
     validator_name: str
 ) -> ValidationToolReport:
     """
-    Apply an external validator to the given file by calling a Python script via command line, and create a validation report.
+    Apply an external validator to the given file by calling a Python script via command line,
+    and create a validation report.
 
     Args:
         file_path: Path of the file to validate
         script_path_var: Name of environment variable to get the path of the script from
-        venv_path_var: Name of the environment variable from which to get the path of the virtual environment to call the script with
-        get_default_root_path: Function to use to get the root path of a Poetry project containing the script if the environment variables don't exist
-        default_package_name: Name of the folder in which the script is contained if the environment variables don't exist
+        venv_path_var: Name of the environment variable from which to get the path of the virtual
+            environment to call the script with
+        get_default_root_path: Function to use to get the root path of a Poetry project containing
+            the script if the environment variables don't exist
+        default_package_name: Name of the folder in which the script is contained if the
+            environment variables don't exist
         validator_name: Name of the validator to use in error messages
 
     Returns:
         Validation report
-    
+
     Note:
-        - The validator script should take the file path as a command-line argument, and print as output a JSON object containing a `valid` boolean, an `errors` array of strings, and a `warnings` array of strings
+        - The validator script should take the file path as a command-line argument, and print as
+          output a JSON object containing a `valid` boolean, an `errors` array of strings, and a
+          `warnings` array of strings
         - The default Poetry project should contain the script at src/{default_package_name}/main.py
     """
 

@@ -25,7 +25,11 @@ schema_classes = {
 }
 
 # Derive mapping from class name to entity type
-entity_types_by_class = dict((class_name, entity_type) for entity_type, network_mapping in schema_classes.items() for _, class_name in network_mapping.items())
+entity_types_by_class = dict(
+    (class_name, entity_type)
+    for entity_type, network_mapping in schema_classes.items()
+    for _, class_name in network_mapping.items()
+)
 
 
 def load_schemaview():

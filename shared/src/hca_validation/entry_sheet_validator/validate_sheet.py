@@ -232,7 +232,9 @@ def init_apis() -> ApiInstances:
         service_account_json = os.environ.get('GOOGLE_SERVICE_ACCOUNT', None)
     
     if not service_account_json:
-        error_msg = "No service account credentials found in GOOGLE_SERVICE_ACCOUNT environment variable or Secrets Extension"
+        error_msg = (
+            "No service account credentials found in GOOGLE_SERVICE_ACCOUNT environment variable or Secrets Extension"
+        )
         logger.error(error_msg)
         raise SheetReadError(error_code='auth_missing')
     
@@ -242,14 +244,26 @@ def init_apis() -> ApiInstances:
     # Check if the credentials contain unresolved secret references
     # Check for CloudFormation resolve syntax
     if service_account_json.startswith('{{resolve:'):
-        logger.error(f"Service account credentials were not resolved from Secrets Manager (CloudFormation syntax): {service_account_json[:50]}...")
-        logger.error("Check that the Lambda function has the correct permissions to access the secret and that the secret exists.")
+        logger.error(
+            f"Service account credentials were not resolved from Secrets Manager (CloudFormation syntax): "
+            f"{service_account_json[:50]}..."
+        )
+        logger.error(
+            "Check that the Lambda function has the correct permissions to access the secret and that the secret "
+            "exists."
+        )
         raise SheetReadError(error_code='auth_unresolved')
-    
+
     # Check for AWS shorthand syntax
     if service_account_json.startswith('aws:secretsmanager:'):
-        logger.error(f"Service account credentials were not resolved from Secrets Manager (AWS shorthand syntax): {service_account_json[:50]}...")
-        logger.error("Check that the Lambda function has the correct permissions to access the secret and that the secret exists.")
+        logger.error(
+            f"Service account credentials were not resolved from Secrets Manager (AWS shorthand syntax): "
+            f"{service_account_json[:50]}..."
+        )
+        logger.error(
+            "Check that the Lambda function has the correct permissions to access the secret and that the secret "
+            "exists."
+        )
         raise SheetReadError(error_code='auth_unresolved')
     
     try:
@@ -268,7 +282,10 @@ def init_apis() -> ApiInstances:
         if missing_fields:
             error_msg = f"Service account credentials missing required fields: {missing_fields}"
             logger.error(error_msg)
-            logger.error(f"Error: {error_msg}. Check that the service account JSON has the correct format and contains all required fields.")
+            logger.error(
+                f"Error: {error_msg}. Check that the service account JSON has the correct format and contains all "
+                "required fields."
+            )
             raise SheetReadError(error_code='auth_invalid_format')
         
         logger.info(f"Creating credentials object for service account: {credentials_dict.get('client_email')}")
@@ -347,10 +364,16 @@ def read_worksheets(
     all_worksheets = spreadsheet.worksheets()
     worksheets: List[gspread.Worksheet] = []
 
-    logger.info(f"Attempting to get worksheets of spreadsheet {sheet_id} at indices: {', '.join(str(i) for i in sheet_indices)}")
+    logger.info(
+        f"Attempting to get worksheets of spreadsheet {sheet_id} at indices: "
+        f"{', '.join(str(i) for i in sheet_indices)}"
+    )
     for sheet_index in sheet_indices:
         if not sheet_index < len(all_worksheets):
-            logger.error(f"Error accessing Google Sheet with service account: Worksheet index {sheet_index} not found in sheet {sheet_id}")
+            logger.error(
+                f"Error accessing Google Sheet with service account: Worksheet index {sheet_index} not found in "
+                f"sheet {sheet_id}"
+            )
             raise SheetReadError(error_code='worksheet_not_found', spreadsheet_metadata=spreadsheet_metadata)
         worksheets.append(all_worksheets[sheet_index])
     
@@ -360,15 +383,20 @@ def read_worksheets(
     
     logger.info("Retrieving worksheets data...")
 
-    api_result = spreadsheet.values_batch_get([gspread.utils.absolute_range_name(worksheet.title) for worksheet in worksheets])
+    api_result = spreadsheet.values_batch_get(
+        [gspread.utils.absolute_range_name(worksheet.title) for worksheet in worksheets]
+    )
 
     worksheets_info = []
 
     for sheet_index, worksheet, value_range in zip(sheet_indices, worksheets, api_result["valueRanges"]):
         data = gspread.utils.fill_gaps(value_range.get("values", [[]]))
-         # Convert to DataFrame
+        # Convert to DataFrame
         if len(data) >= 1:
-            logger.info(f"Successfully retrieved data from worksheet index {sheet_index}: {len(data)} rows, {len(data[0]) if data[0] else 0} columns")
+            logger.info(
+                f"Successfully retrieved data from worksheet index {sheet_index}: {len(data)} rows, "
+                f"{len(data[0]) if data[0] else 0} columns"
+            )
             source_columns = data[0]
             source_rows_start_index = 1
             df = pd.DataFrame(data[source_rows_start_index:], columns=source_columns)  # First row as header
@@ -382,21 +410,30 @@ def read_worksheets(
             )
         else:
             logger.warning(f"Sheet {sheet_id} (index {sheet_index}) appears to be empty")
-            raise SheetReadError(error_code="sheet_data_empty", spreadsheet_metadata=spreadsheet_metadata, worksheet_id=worksheet.id)
+            raise SheetReadError(
+                error_code="sheet_data_empty",
+                spreadsheet_metadata=spreadsheet_metadata,
+                worksheet_id=worksheet.id,
+            )
     
     return worksheets_info, worksheets
 
-def read_sheet_with_service_account(sheet_id: str, entity_types: List[str] = ["dataset"], apis: Optional[ApiInstances] = None) -> tuple[SpreadsheetInfo, List[gspread.Worksheet]]:
+def read_sheet_with_service_account(
+    sheet_id: str,
+    entity_types: List[str] = ["dataset"],
+    apis: Optional[ApiInstances] = None,
+) -> tuple[SpreadsheetInfo, List[gspread.Worksheet]]:
     """
     Read data from a Google Sheet using a service account for authentication.
     
     Args:
         sheet_id (str): The ID of the Google Sheet to read.
-        sheet_indices (List[int], optional): The indices of the worksheets to read. Defaults to [0].
-        
+        entity_types (List[str], optional): The entity types whose worksheets to read. Defaults to ["dataset"].
+        apis (Optional[ApiInstances], optional): Pre-built API instances to use. If None, new ones are built.
+
     Returns:
         info: SpreadsheetInfo object containing list of WorksheetInfo corresponding to
-            the list of sheet indices
+            the provided entity_types
         worksheets: List of gspread worksheets
     
     Raises:
@@ -417,7 +454,8 @@ def read_sheet_with_service_account(sheet_id: str, entity_types: List[str] = ["d
     if apis is None:
         apis = init_apis()
 
-    # Set up a variable to hold spreadsheet metadata so that it can be referenced if an unexpected type of error occurs after metadata is obtained
+    # Set up a variable to hold spreadsheet metadata so that it can be referenced if an unexpected type of error
+    # occurs after metadata is obtained
     spreadsheet_metadata = None
 
     try:
@@ -432,7 +470,10 @@ def read_sheet_with_service_account(sheet_id: str, entity_types: List[str] = ["d
 
             # Get the spreadsheet metadata from Drive
             logger.info(f"Attempting to get metadata for spreadsheet with ID: {sheet_id}")
-            file_metadata = apis.drive.files().get(fileId=sheet_id, fields="modifiedTime, lastModifyingUser(displayName, emailAddress), capabilities(canModifyContent)").execute()
+            file_metadata = apis.drive.files().get(
+                fileId=sheet_id,
+                fields="modifiedTime, lastModifyingUser(displayName, emailAddress), capabilities(canModifyContent)",
+            ).execute()
             last_updated_date = file_metadata["modifiedTime"]
             last_modifying_user = file_metadata.get("lastModifyingUser", {})
             last_updated_by = last_modifying_user.get("displayName", "unknown")
@@ -449,13 +490,18 @@ def read_sheet_with_service_account(sheet_id: str, entity_types: List[str] = ["d
             )
 
             # Get all worksheets
-            sheets_info, gspread_worksheets = read_worksheets(sheet_id, spreadsheet_metadata, spreadsheet, sheet_indices)
+            sheets_info, gspread_worksheets = read_worksheets(
+                sheet_id, spreadsheet_metadata, spreadsheet, sheet_indices
+            )
             
             return SpreadsheetInfo(spreadsheet_metadata, sheets_info), gspread_worksheets
         
         except gspread.exceptions.SpreadsheetNotFound:
             logger.error(f"Sheet {sheet_id} not found. Check if the sheet ID is correct.")
-            logger.error(f"Error accessing Google Sheet with service account: Sheet {sheet_id} not found or not accessible with provided credentials")
+            logger.error(
+                f"Error accessing Google Sheet with service account: Sheet {sheet_id} not found or not accessible "
+                "with provided credentials"
+            )
             raise SheetReadError(error_code='sheet_not_found', spreadsheet_metadata=spreadsheet_metadata)
         except PermissionError as e:
             logger.error(f"Permission denied accessing sheet {sheet_id}: {e}")
@@ -496,7 +542,8 @@ def normalize_dataframe_values(df: pd.DataFrame, schemaview: SchemaView, class_n
         slot.name: slot for slot in schemaview.class_induced_slots(class_name)
     }
 
-    # An integer should consist of an optional negative sign, followed by either a nonzero number of non-seperated digits,
+    # An integer should consist of an optional negative sign, followed by either a nonzero number of non-separated
+    # digits,
     # or 1-3 digits followed by a nonzero number of comma-separated three-digit groups
     int_re = re.compile(r"^-?(?:\d+|\d{1,3}(?:,\d{3})+)$")
     
@@ -519,8 +566,13 @@ def normalize_dataframe_values(df: pd.DataFrame, schemaview: SchemaView, class_n
             parse_value = lambda v: parse_list(v, parse_item)
 
         # Map over the column, converting whitespace-only value to None and parsing other values where applicable
-        # Use the Series constructor with a list comprehension to ensure that values are put directly into an object series and can't be cast by Pandas
-        return pd.Series([None if value.strip() == "" else parse_value(value) for value in df[name]], dtype="object", index=df.index)
+        # Use the Series constructor with a list comprehension to ensure that values are put directly into an object
+        # series and can't be cast by Pandas
+        return pd.Series(
+            [None if value.strip() == "" else parse_value(value) for value in df[name]],
+            dtype="object",
+            index=df.index,
+        )
 
     return pd.DataFrame({
         name: map_column(name)
@@ -528,7 +580,9 @@ def normalize_dataframe_values(df: pd.DataFrame, schemaview: SchemaView, class_n
         if name and name.strip() != ""
     })
 
-def make_summary_without_entities(error_count: int, entity_types: List[str] = default_entity_types) -> dict[str, int | None]:
+def make_summary_without_entities(
+    error_count: int, entity_types: List[str] = default_entity_types
+) -> dict[str, int | None]:
     return {
         **{f"{entity_type}_count": None for entity_type in entity_types},
         "error_count": error_count
@@ -558,7 +612,9 @@ def make_validation_result_for_whole_sheet_error(
         errors=[error_info]
     )
 
-def make_read_error_validation_result(sheet_id: str, entity_types: List[str], read_error: SheetReadError) -> SheetValidationResult:
+def make_read_error_validation_result(
+    sheet_id: str, entity_types: List[str], read_error: SheetReadError
+) -> SheetValidationResult:
     import logging
     logger = logging.getLogger()
 
@@ -635,7 +691,8 @@ def validate_google_sheet(
     
     Args:
         sheet_id: The ID of the Google Sheet (required)
-        entity_types: List of entity types to validate. Determines which worksheets are read and which schema is used for each.
+        entity_types: List of entity types to validate. Determines which worksheets are read and which schema is
+            used for each.
         bionetwork: Optional string identifying the biological network context.
         
     Returns:
@@ -675,7 +732,8 @@ def validate_google_sheet(
         except SheetReadError as read_error:
             return make_read_error_validation_result(sheet_id, entity_types, read_error)
     
-    # Mapping from entity type to dataframe of rows to validate, with normalized values, and an index containing the original 1-based indices of the rows
+    # Mapping from entity type to dataframe of rows to validate, with normalized values, and an index containing
+    # the original 1-based indices of the rows
     rows_to_validate_by_entity_type = {}
 
     for entity_type, sheet_info in zip(entity_types, sheet_read_result.worksheets):
@@ -746,9 +804,14 @@ def validate_google_sheet(
     }
 
     # Check for sheets without rows to validate
-    entity_types_missing_rows = [entity_type for entity_type in entity_types if validation_summary[f"{entity_type}_count"] == 0]
+    entity_types_missing_rows = [
+        entity_type for entity_type in entity_types if validation_summary[f"{entity_type}_count"] == 0
+    ]
     if entity_types_missing_rows:
-        error_msg = f"No data found to validate starting from row 6 for entity type(s): {', '.join(entity_types_missing_rows)}"
+        error_msg = (
+            f"No data found to validate starting from row 6 for entity type(s): "
+            f"{', '.join(entity_types_missing_rows)}"
+        )
         logger.warning(error_msg)
         error_worksheet_id = None
         error_entity_type = None
@@ -792,7 +855,9 @@ def validate_google_sheet(
                 sheet_info=sheet_info
             )
         # Validate references and report results
-        references_validation_error = validate_referential_integrity(rows_to_validate_by_entity_type, schemaview, class_name)
+        references_validation_error = validate_referential_integrity(
+            rows_to_validate_by_entity_type, schemaview, class_name
+        )
         if references_validation_error:
             all_valid_in_worksheet = False
             handle_validation_error(
@@ -808,7 +873,9 @@ def validate_google_sheet(
             row_dict = row.to_dict()
             
             primary_key_field = sheet_structure_by_entity_type[entity_type]["primary_key_field"]
-            row_primary_key = f"{primary_key_field}:{row_dict[primary_key_field]}" if primary_key_field in row_dict else None
+            row_primary_key = (
+                f"{primary_key_field}:{row_dict[primary_key_field]}" if primary_key_field in row_dict else None
+            )
 
             # Validate the data
             try:
@@ -846,7 +913,10 @@ def validate_google_sheet(
             all_valid = False
             logger.warning(f"Validation found errors in some of the {len(rows_to_validate)} {entity_type} rows.")
             logger.warning("Please check the schema requirements and update the data accordingly.")
-            logger.info(f"Schema location: {os.path.join(os.path.dirname(__file__), f'../../schema/{entity_type}.yaml')}")
+            logger.info(
+                f"Schema location: "
+                f"{os.path.join(os.path.dirname(__file__), f'../../schema/{entity_type}.yaml')}"
+            )
     
     # Summary
     if all_valid:
