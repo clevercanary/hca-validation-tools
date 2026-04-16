@@ -8,10 +8,8 @@ import numpy as np
 import pandas as pd
 import pytest
 import scipy.sparse as sp
-
 from hca_anndata_tools.copy_cap import copy_cap_annotations
 from hca_anndata_tools.write import EDIT_LOG_KEY
-
 
 # --- Fixtures ---
 

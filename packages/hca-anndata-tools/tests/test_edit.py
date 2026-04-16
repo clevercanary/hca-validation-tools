@@ -6,10 +6,8 @@ import anndata as ad
 import numpy as np
 import pandas as pd
 import scipy.sparse as sp
-
 from hca_anndata_tools.edit import list_uns_fields, replace_placeholder_values, set_uns
 from hca_anndata_tools.write import EDIT_LOG_KEY
-
 
 # --- list_uns_fields ---
 

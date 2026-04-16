@@ -12,27 +12,27 @@ import h5py
 import numpy as np
 import pandas as pd
 
+from . import __version__
 from ._io import (
-    open_h5ad,
+    _decode_bytes,
     ensure_provenance_group,
+    open_h5ad,
     read_categorical_data,
     read_edit_log_h5py,
     update_column_order,
     verify_obs_transplant,
-    _decode_bytes,
 )
 from ._serialize import make_serializable
-from .cap import _REQUIRED_SUFFIXES, _OPTIONAL_SUFFIXES
+from .cap import _OPTIONAL_SUFFIXES, _REQUIRED_SUFFIXES
 from .marker_genes import validate_marker_genes
 from .write import (
     EDIT_LOG_KEY,
+    _compute_sha256,
     build_edit_log,
     cleanup_previous_version,
     generate_output_path,
     resolve_latest,
-    _compute_sha256,
 )
-from . import __version__
 
 # Cell-annotation-schema uns keys — stay at top level (HCA schema)
 _UNS_SCHEMA_TOPLEVEL = [

@@ -152,7 +152,6 @@ def test_valid_adata_passes():
 
 def test_study_pi_missing():
     """Test that removing study_pi from uns produces an error."""
-    import anndata
     from .fixtures.hca_fixtures import adata
 
     modified = adata.copy()
@@ -165,7 +164,6 @@ def test_study_pi_missing():
 
 def test_study_pi_empty_list():
     """Test that an empty study_pi list produces an error."""
-    import anndata
     from .fixtures.hca_fixtures import adata
 
     modified = adata.copy()
@@ -178,7 +176,6 @@ def test_study_pi_empty_list():
 
 def test_study_pi_non_string_element():
     """Test that a non-string element in study_pi produces an error."""
-    import anndata
     from .fixtures.hca_fixtures import adata
 
     modified = adata.copy()
@@ -195,7 +192,8 @@ def test_missing_required_obs_column():
     import anndata
     import numpy
     from scipy import sparse
-    from .fixtures.hca_fixtures import good_obs, good_var, good_uns, good_obsm
+
+    from .fixtures.hca_fixtures import good_obs, good_obsm, good_uns, good_var
 
     obs = good_obs.copy()
     obs = obs.drop(columns=["sample_id"])
@@ -215,7 +213,8 @@ def test_enum_invalid_value():
     import anndata
     import numpy
     from scipy import sparse
-    from .fixtures.hca_fixtures import good_obs, good_var, good_uns, good_obsm
+
+    from .fixtures.hca_fixtures import good_obs, good_obsm, good_uns, good_var
 
     obs = good_obs.copy()
     obs["manner_of_death"] = obs["manner_of_death"].cat.add_categories(["invalid_value"])
@@ -234,7 +233,8 @@ def test_enum_invalid_value():
 def test_manner_of_death_empty_string_allowed_for_prenatal():
     """Test that manner_of_death='' is allowed when development_stage is prenatal."""
     import anndata
-    from .fixtures.hca_fixtures import good_obs, good_var, good_uns, good_obsm, non_raw_X, X
+
+    from .fixtures.hca_fixtures import X, good_obs, good_obsm, good_uns, good_var, non_raw_X
 
     obs = good_obs.copy()
     # good_obs already uses HsapDv:0000003 (Carnegie stage 01), which is prenatal
@@ -252,7 +252,8 @@ def test_manner_of_death_empty_string_allowed_for_prenatal():
 def test_manner_of_death_empty_string_allowed_for_postnatal():
     """Test that manner_of_death='' is allowed even when development_stage is postnatal."""
     import anndata
-    from .fixtures.hca_fixtures import good_obs, good_var, good_uns, good_obsm, non_raw_X, X
+
+    from .fixtures.hca_fixtures import X, good_obs, good_obsm, good_uns, good_var, non_raw_X
 
     obs = good_obs.copy()
     # Change to a postnatal development stage (2-year-old stage)
@@ -271,7 +272,8 @@ def test_manner_of_death_empty_string_allowed_for_postnatal():
 def test_manner_of_death_invalid_value_rejected():
     """Test that an invalid manner_of_death value is rejected."""
     import anndata
-    from .fixtures.hca_fixtures import good_obs, good_var, good_uns, good_obsm, non_raw_X, X
+
+    from .fixtures.hca_fixtures import X, good_obs, good_obsm, good_uns, good_var, non_raw_X
 
     obs = good_obs.copy()
     obs["manner_of_death"] = obs["manner_of_death"].cat.add_categories(["banana"])
@@ -292,7 +294,8 @@ def test_pattern_invalid_cell_enrichment():
     import anndata
     import numpy
     from scipy import sparse
-    from .fixtures.hca_fixtures import good_obs, good_var, good_uns, good_obsm
+
+    from .fixtures.hca_fixtures import good_obs, good_obsm, good_uns, good_var
 
     obs = good_obs.copy()
     obs["cell_enrichment"] = obs["cell_enrichment"].cat.add_categories(["INVALID"])
@@ -315,7 +318,8 @@ def test_pattern_invalid_gene_annotation_version():
     import anndata
     import numpy
     from scipy import sparse
-    from .fixtures.hca_fixtures import good_obs, good_var, good_uns, good_obsm
+
+    from .fixtures.hca_fixtures import good_obs, good_obsm, good_uns, good_var
 
     obs = good_obs.copy()
     obs["gene_annotation_version"] = obs["gene_annotation_version"].cat.add_categories(["v50"])
@@ -336,7 +340,8 @@ def test_pattern_invalid_gene_annotation_version():
 def test_pattern_valid_na_cell_enrichment():
     """Test that 'na' is a valid value for cell_enrichment (matches pattern)."""
     import anndata
-    from .fixtures.hca_fixtures import good_obs, good_var, good_uns, good_obsm, non_raw_X, X
+
+    from .fixtures.hca_fixtures import X, good_obs, good_obsm, good_uns, good_var, non_raw_X
 
     obs = good_obs.copy()
     obs["cell_enrichment"] = obs["cell_enrichment"].cat.add_categories(["na"])
@@ -353,7 +358,8 @@ def test_pattern_valid_na_cell_enrichment():
 def test_pattern_valid_multi_cell_enrichment():
     """Test that semicolon-separated cell_enrichment values are accepted."""
     import anndata
-    from .fixtures.hca_fixtures import good_obs, good_var, good_uns, good_obsm, non_raw_X, X
+
+    from .fixtures.hca_fixtures import X, good_obs, good_obsm, good_uns, good_var, non_raw_X
 
     obs = good_obs.copy()
     obs["cell_enrichment"] = obs["cell_enrichment"].cat.add_categories(["CL:0000057+;CL:0000058-"])
@@ -372,7 +378,8 @@ def test_pattern_rejects_cell_enrichment_with_trailing_garbage():
     import anndata
     import numpy
     from scipy import sparse
-    from .fixtures.hca_fixtures import good_obs, good_var, good_uns, good_obsm
+
+    from .fixtures.hca_fixtures import good_obs, good_obsm, good_uns, good_var
 
     obs = good_obs.copy()
     obs["cell_enrichment"] = obs["cell_enrichment"].cat.add_categories(["CL:0000066+garbage"])
@@ -394,7 +401,8 @@ def test_pattern_rejects_gene_annotation_version_with_trailing_garbage():
     import anndata
     import numpy
     from scipy import sparse
-    from .fixtures.hca_fixtures import good_obs, good_var, good_uns, good_obsm
+
+    from .fixtures.hca_fixtures import good_obs, good_obsm, good_uns, good_var
 
     obs = good_obs.copy()
     obs["gene_annotation_version"] = obs["gene_annotation_version"].cat.add_categories(["v101xyz"])
@@ -504,7 +512,8 @@ class TestValidateColumn:
         import anndata
         import numpy
         from scipy import sparse
-        from .fixtures.hca_fixtures import good_obs, good_var, good_uns, good_obsm
+
+        from .fixtures.hca_fixtures import good_obs, good_obsm, good_uns, good_var
 
         obs = good_obs.copy()
         obs["library_id"] = obs["library_id"].astype(object)
@@ -525,7 +534,8 @@ class TestValidateColumn:
         import anndata
         import numpy
         from scipy import sparse
-        from .fixtures.hca_fixtures import good_obs, good_var, good_uns, good_obsm
+
+        from .fixtures.hca_fixtures import good_obs, good_obsm, good_uns, good_var
 
         obs = good_obs.copy()
         obs.drop(columns=["library_id"], inplace=True)
@@ -544,7 +554,8 @@ class TestValidateColumn:
         import anndata
         import numpy
         from scipy import sparse
-        from .fixtures.hca_fixtures import good_obs, good_var, good_uns, good_obsm
+
+        from .fixtures.hca_fixtures import good_obs, good_obsm, good_uns, good_var
 
         obs = good_obs.copy()
         obs["library_preparation_batch"] = obs["library_preparation_batch"].astype(object)
@@ -565,7 +576,8 @@ class TestValidateColumn:
         import anndata
         import numpy
         from scipy import sparse
-        from .fixtures.hca_fixtures import good_obs, good_var, good_uns, good_obsm
+
+        from .fixtures.hca_fixtures import good_obs, good_obsm, good_uns, good_var
 
         obs = good_obs.copy()
         obs["library_preparation_batch"] = obs["library_preparation_batch"].astype(object)
@@ -616,7 +628,8 @@ def test_missing_optional_column_is_silent():
     import anndata
     import numpy
     from scipy import sparse
-    from .fixtures.hca_fixtures import good_obs, good_var, good_uns, good_obsm
+
+    from .fixtures.hca_fixtures import good_obs, good_obsm, good_uns, good_var
 
     obs = good_obs.copy()
     obs.drop(columns=["cell_type_ontology_term_id"], inplace=True)
@@ -636,7 +649,8 @@ def test_present_optional_column_with_invalid_value_is_error():
     import anndata
     import numpy
     from scipy import sparse
-    from .fixtures.hca_fixtures import good_obs, good_var, good_uns, good_obsm
+
+    from .fixtures.hca_fixtures import good_obs, good_obsm, good_uns, good_var
 
     obs = good_obs.copy()
     obs["cell_type_ontology_term_id"] = pd.Categorical(["INVALID:9999"] * len(obs))
@@ -656,7 +670,8 @@ def test_optional_column_emits_warning_message():
     import anndata
     import numpy
     from scipy import sparse
-    from .fixtures.hca_fixtures import good_obs, good_var, good_uns, good_obsm
+
+    from .fixtures.hca_fixtures import good_obs, good_obsm, good_uns, good_var
 
     obs = good_obs.copy()
     X = sparse.csr_matrix((obs.shape[0], good_var.shape[0]), dtype=numpy.float32)

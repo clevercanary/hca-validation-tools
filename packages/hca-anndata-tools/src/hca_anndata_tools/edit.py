@@ -12,18 +12,25 @@ import h5py
 import numpy as np
 from pydantic import TypeAdapter, ValidationError
 
-from ._io import open_h5ad, read_categorical_data, read_edit_log_h5py, verify_categorical_integrity, write_edit_log_h5py, _decode_bytes
+from . import __version__
+from ._io import (
+    _decode_bytes,
+    open_h5ad,
+    read_categorical_data,
+    read_edit_log_h5py,
+    verify_categorical_integrity,
+    write_edit_log_h5py,
+)
 from ._serialize import make_serializable
 from .schema.helpers import uns_field_registry
 from .write import (
+    _compute_sha256,
     build_edit_log,
     cleanup_previous_version,
     generate_output_path,
     resolve_latest,
     write_h5ad,
-    _compute_sha256,
 )
-from . import __version__
 
 # Default HCA placeholder values (case-insensitive)
 _DEFAULT_PLACEHOLDERS = [

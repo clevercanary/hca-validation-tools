@@ -9,8 +9,9 @@ import yaml
 from hca_schema_validator._vendored.cellxgene_schema import gencode
 from hca_schema_validator._vendored.cellxgene_schema.gencode import get_gene_checker
 from hca_schema_validator._vendored.cellxgene_schema.ontology_parser import ONTOLOGY_PARSER
-from hca_schema_validator._vendored.cellxgene_schema.validate import Validator
 from hca_schema_validator._vendored.cellxgene_schema.utils import getattr_anndata
+from hca_schema_validator._vendored.cellxgene_schema.validate import Validator
+
 from . import __schema_version__ as HCA_SCHEMA_VERSION
 
 # GENCODE version info (loaded once at module level)

@@ -7,6 +7,7 @@ Usage:
     poetry run python validate_file.py <path/to/file.h5ad> --with-labels
 """
 import argparse
+
 from hca_schema_validator import HCAValidator
 
 # Display constants
@@ -38,7 +39,7 @@ Examples:
     ignore_labels = not args.with_labels
     
     print(f"\n{'=' * SEPARATOR_WIDTH}")
-    print(f"HCA Schema Validator")
+    print("HCA Schema Validator")
     print(f"{'=' * SEPARATOR_WIDTH}")
     print(f"File: {h5ad_file}")
     print(f"Ignore Labels: {ignore_labels}")

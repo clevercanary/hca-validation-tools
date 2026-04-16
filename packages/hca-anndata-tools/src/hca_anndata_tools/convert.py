@@ -13,14 +13,14 @@ import h5py
 import numpy as np
 import pandas as pd
 
-from ._io import open_h5ad, read_obs_index, ensure_provenance_group, transplant_obs_columns, verify_obs_transplant
+from . import __version__
+from ._io import ensure_provenance_group, open_h5ad, read_obs_index, transplant_obs_columns, verify_obs_transplant
 from ._serialize import make_serializable
 from .write import (
     EDIT_LOG_KEY,
     build_edit_log,
     generate_timestamp,
 )
-from . import __version__
 
 # CellxGENE reserved uns keys — moved to provenance/cellxgene
 _CELLXGENE_RESERVED_UNS = ["schema_version", "schema_reference", "citation"]

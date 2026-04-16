@@ -6,7 +6,6 @@ import numpy as np
 import pandas as pd
 import pytest
 import scipy.sparse as sp
-
 from hca_anndata_tools._io import (
     read_categorical_data,
     read_obs_index,
@@ -16,7 +15,6 @@ from hca_anndata_tools._io import (
     verify_obs_transplant,
 )
 from hca_anndata_tools.write import build_edit_log, cleanup_previous_version
-
 
 # -- read_obs_index -----------------------------------------------------------
 

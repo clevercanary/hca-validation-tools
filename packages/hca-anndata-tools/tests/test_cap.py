@@ -7,9 +7,7 @@ import numpy as np
 import pandas as pd
 import pytest
 import scipy.sparse as sp
-
-from hca_anndata_tools.cap import get_cap_annotations, _make_serializable
-
+from hca_anndata_tools.cap import _make_serializable, get_cap_annotations
 
 # -- _make_serializable tests --------------------------------------------------
 
