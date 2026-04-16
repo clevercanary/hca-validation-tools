@@ -25,7 +25,7 @@ import anndata
 import pandas as pd
 
 
-# Somewhat less than the actual value of 256KiB, to make room for small unforseen deviations
+# Somewhat less than the actual value of 256KiB, to make room for small unforeseen deviations
 MAX_SNS_MESSAGE_LENGTH = 250_000
 TRUNCATED_MESSAGES_MESSAGE = "Messages truncated"
 # When truncating to fit SNS limits, error lists from higher-priority tools are preserved longer.

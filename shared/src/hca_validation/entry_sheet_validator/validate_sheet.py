@@ -541,7 +541,7 @@ def normalize_dataframe_values(df: pd.DataFrame, schemaview: SchemaView, class_n
         slot.name: slot for slot in schemaview.class_induced_slots(class_name)
     }
 
-    # An integer should consist of an optional negative sign, followed by either a nonzero number of non-seperated
+    # An integer should consist of an optional negative sign, followed by either a nonzero number of non-separated
     # digits,
     # or 1-3 digits followed by a nonzero number of comma-separated three-digit groups
     int_re = re.compile(r"^-?(?:\d+|\d{1,3}(?:,\d{3})+)$")
