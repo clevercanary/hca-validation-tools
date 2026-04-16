@@ -102,9 +102,7 @@ def read_var_gene_names(path: str) -> tuple[set[str], dict[str, str]]:
 
         item = var[name_col]
         if isinstance(item, h5py.Group) and "categories" in item:
-            # Categorical: need to decode codes -> categories
-            categories = [_decode_bytes(v) for v in item["categories"][:]]
-            codes = item["codes"][:]
+            categories, codes = read_categorical_data(item)
             names = [categories[c] if c >= 0 else "" for c in codes]
         else:
             names = [_decode_bytes(v) for v in item[:]]
@@ -145,6 +143,74 @@ def write_edit_log_h5py(f: h5py.File, log_json: str) -> None:
     if "edit_history" in prov:
         del prov["edit_history"]
     prov.create_dataset("edit_history", data=log_json)
+
+
+def read_categorical_data(item: h5py.Group) -> tuple[list[str], "np.ndarray"]:
+    """Read categories and codes from a categorical h5py group.
+
+    Args:
+        item: An h5py Group with 'categories' and 'codes' datasets.
+
+    Returns:
+        (categories, codes) — list of decoded category strings and numpy codes array.
+    """
+    categories = [_decode_bytes(v) for v in item["categories"][:]]
+    codes = item["codes"][:]
+    return categories, codes
+
+
+def update_column_order(
+    f_out: h5py.File,
+    new_columns: list[str],
+    deleted: set[str] | None = None,
+) -> None:
+    """Update the obs column-order attribute: remove deleted, append new.
+
+    Args:
+        f_out: Open h5py File in append mode.
+        new_columns: Column names to append.
+        deleted: Column names to remove (if any).
+    """
+    current = [_decode_bytes(c) for c in f_out["obs"].attrs["column-order"]]
+    if deleted:
+        current = [c for c in current if c not in deleted]
+    to_add = [c for c in new_columns if c not in current]
+    f_out["obs"].attrs["column-order"] = current + to_add
+
+
+def transplant_obs_columns(
+    f_temp: h5py.File,
+    f_out: h5py.File,
+    columns: list[str],
+    overwrite: bool = False,
+) -> set[str]:
+    """Copy obs columns from temp file to output file via h5py.copy().
+
+    Optionally deletes existing columns first (overwrite mode).
+    Updates column-order attribute.
+
+    Args:
+        f_temp: Source h5py File (read mode) with columns in obs.
+        f_out: Target h5py File (append mode).
+        columns: Column names to transplant.
+        overwrite: If True, delete existing columns before copying.
+
+    Returns:
+        Set of column names that were deleted (empty if not overwriting).
+    """
+    deleted = set()
+    if overwrite:
+        for col in columns:
+            if col in f_out["obs"]:
+                del f_out["obs"][col]
+                deleted.add(col)
+
+    for col in columns:
+        if col in f_temp["obs"]:
+            f_temp.copy(f"obs/{col}", f_out["obs"])
+
+    update_column_order(f_out, columns, deleted)
+    return deleted
 
 
 def verify_categorical_integrity(

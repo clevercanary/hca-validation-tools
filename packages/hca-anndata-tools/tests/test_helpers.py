@@ -7,7 +7,14 @@ import pandas as pd
 import pytest
 import scipy.sparse as sp
 
-from hca_anndata_tools._io import read_obs_index, verify_categorical_integrity, verify_obs_transplant
+from hca_anndata_tools._io import (
+    read_categorical_data,
+    read_obs_index,
+    transplant_obs_columns,
+    update_column_order,
+    verify_categorical_integrity,
+    verify_obs_transplant,
+)
 from hca_anndata_tools.write import build_edit_log, cleanup_previous_version
 
 
@@ -34,6 +41,74 @@ def test_read_obs_index_preserves_order(tmp_path):
     path = tmp_path / "order.h5ad"
     adata.write_h5ad(path)
     assert read_obs_index(str(path)) == ids
+
+
+# -- read_categorical_data -----------------------------------------------------
+
+
+def test_read_categorical_data(tmp_path):
+    path = tmp_path / "cat.h5ad"
+    obs = pd.DataFrame(
+        {"col": pd.Categorical(["a", "b", "a"])},
+        index=["c0", "c1", "c2"],
+    )
+    adata = ad.AnnData(X=sp.csr_matrix((3, 2), dtype=np.float32), obs=obs)
+    adata.write_h5ad(path)
+
+    with h5py.File(path, "r") as f:
+        cats, codes = read_categorical_data(f["obs"]["col"])
+        assert set(cats) == {"a", "b"}
+        assert len(codes) == 3
+
+
+# -- update_column_order ------------------------------------------------------
+
+
+def test_update_column_order_append(tmp_path):
+    path = tmp_path / "order.h5ad"
+    obs = pd.DataFrame({"a": [1], "b": [2]}, index=["c0"])
+    adata = ad.AnnData(X=sp.csr_matrix((1, 1), dtype=np.float32), obs=obs)
+    adata.write_h5ad(path)
+
+    with h5py.File(path, "a") as f:
+        update_column_order(f, ["c", "d"])
+        order = [v.decode() if isinstance(v, bytes) else v for v in f["obs"].attrs["column-order"]]
+        assert order == ["a", "b", "c", "d"]
+
+
+def test_update_column_order_with_deleted(tmp_path):
+    path = tmp_path / "order2.h5ad"
+    obs = pd.DataFrame({"a": [1], "b": [2], "c": [3]}, index=["c0"])
+    adata = ad.AnnData(X=sp.csr_matrix((1, 1), dtype=np.float32), obs=obs)
+    adata.write_h5ad(path)
+
+    with h5py.File(path, "a") as f:
+        update_column_order(f, ["d"], deleted={"b"})
+        order = [v.decode() if isinstance(v, bytes) else v for v in f["obs"].attrs["column-order"]]
+        assert "b" not in order
+        assert order == ["a", "c", "d"]
+
+
+# -- transplant_obs_columns ---------------------------------------------------
+
+
+def test_transplant_obs_columns_basic(tmp_path):
+    # Create source with extra column
+    src_path = tmp_path / "src.h5ad"
+    obs_src = pd.DataFrame({"new_col": pd.Categorical(["x", "y"])}, index=["c0", "c1"])
+    ad.AnnData(X=np.empty((2, 0), dtype=np.float32), obs=obs_src).write_h5ad(src_path)
+
+    # Create target without that column
+    tgt_path = tmp_path / "tgt.h5ad"
+    obs_tgt = pd.DataFrame({"existing": [1, 2]}, index=["c0", "c1"])
+    ad.AnnData(X=sp.csr_matrix((2, 2), dtype=np.float32), obs=obs_tgt).write_h5ad(tgt_path)
+
+    with h5py.File(src_path, "r") as f_src, h5py.File(tgt_path, "a") as f_tgt:
+        transplant_obs_columns(f_src, f_tgt, ["new_col"])
+
+    written = ad.read_h5ad(tgt_path)
+    assert "new_col" in written.obs.columns
+    assert "existing" in written.obs.columns
 
 
 # -- verify_obs_transplant ----------------------------------------------------

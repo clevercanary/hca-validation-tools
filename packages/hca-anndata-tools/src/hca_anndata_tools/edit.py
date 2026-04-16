@@ -12,7 +12,7 @@ import h5py
 import numpy as np
 from pydantic import TypeAdapter, ValidationError
 
-from ._io import open_h5ad, read_edit_log_h5py, verify_categorical_integrity, write_edit_log_h5py, _decode_bytes
+from ._io import open_h5ad, read_categorical_data, read_edit_log_h5py, verify_categorical_integrity, write_edit_log_h5py, _decode_bytes
 from ._serialize import make_serializable
 from .schema.helpers import uns_field_registry
 from .write import (
@@ -262,8 +262,7 @@ def replace_placeholder_values(
                     return {"error": f"Column '{col}' not found in obs"}
                 item = obs[col]
                 if isinstance(item, h5py.Group) and "categories" in item:
-                    cats = [_decode_bytes(v) for v in item["categories"][:]]
-                    codes = item["codes"][:]
+                    cats, codes = read_categorical_data(item)
                     placeholder_count = 0
                     matches = {}
                     for i in range(len(cats)):
@@ -309,8 +308,7 @@ def replace_placeholder_values(
         with h5py.File(output_path, "a") as f:
             for col in columns_fixed:
                 item = f["obs"][col]
-                cats = [_decode_bytes(v) for v in item["categories"][:]]
-                codes = item["codes"][:]
+                cats, codes = read_categorical_data(item)
 
                 # Preserve original settings
                 encoding_type = item.attrs["encoding-type"]
