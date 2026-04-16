@@ -8,7 +8,6 @@
     { "name": "hca-schema-validator (service)", "path": "services/hca-schema-validator" }
   ],
   "settings": {
-    "python.venvPath": "${env:HOME}/Library/Caches/pypoetry/virtualenvs",
     "python.terminal.activateEnvironment": false
   }
 }

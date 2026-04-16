@@ -22,5 +22,9 @@
   "reportAttributeAccessIssue": "none",
   "reportOperatorIssue": "none",
   "reportGeneralTypeIssues": "none",
-  "reportInvalidTypeArguments": "none"
+  "reportInvalidTypeArguments": "none",
+  "executionEnvironments": [
+    { "root": "services/dataset-validator/src", "pythonVersion": "3.11" },
+    { "root": "services/hca-schema-validator/src", "pythonVersion": "3.11" }
+  ]
 }

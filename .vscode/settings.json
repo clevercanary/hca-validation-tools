@@ -1,4 +1,3 @@
 {
-  "python.venvPath": "${env:HOME}/Library/Caches/pypoetry/virtualenvs",
   "python.terminal.activateEnvironment": false
 }
