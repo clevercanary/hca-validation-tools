@@ -15,7 +15,9 @@ import pandas as pd
 from ._io import (
     open_h5ad,
     ensure_provenance_group,
+    read_categorical_data,
     read_edit_log_h5py,
+    update_column_order,
     verify_obs_transplant,
     _decode_bytes,
 )
@@ -160,8 +162,7 @@ def copy_cap_annotations(
             for col in obs_cols_to_copy:
                 item = obs_group[col]
                 if isinstance(item, h5py.Group) and "categories" in item:
-                    categories = [_decode_bytes(v) for v in item["categories"][:]]
-                    codes = item["codes"][:]
+                    categories, codes = read_categorical_data(item)
                     source_obs_data[col] = pd.Categorical.from_codes(codes, categories=categories)
                 else:
                     source_obs_data[col] = [_decode_bytes(v) for v in item[:]]
@@ -311,21 +312,14 @@ def copy_cap_annotations(
                     for key in list(f_out["uns"].keys()):
                         if key in _OVERWRITE_UNS_KEYS:
                             del f_out["uns"][key]
-                    # Delete provenance/cap but preserve provenance/cellxgene
                     if "provenance" in f_out["uns"] and "cap" in f_out["uns"]["provenance"]:
                         del f_out["uns"]["provenance"]["cap"]
 
+                # Transplant new obs columns from temp
                 for col in obs_cols_to_copy:
                     if col in f_temp["obs"]:
                         f_temp.copy(f"obs/{col}", f_out["obs"])
-
-                # Update column-order (remove deleted, add new)
-                current_order = [
-                    _decode_bytes(c) for c in f_out["obs"].attrs["column-order"]
-                    if _decode_bytes(c) not in deleted_cols
-                ]
-                new_cols = [c for c in obs_cols_to_copy if c not in current_order]
-                f_out["obs"].attrs["column-order"] = current_order + new_cols
+                update_column_order(f_out, obs_cols_to_copy, deleted_cols)
 
                 for key in uns_keys_added:
                     if key == "provenance":

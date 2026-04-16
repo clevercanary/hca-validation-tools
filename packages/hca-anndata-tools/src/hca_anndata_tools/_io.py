@@ -1,10 +1,16 @@
 """Internal I/O utilities for AnnData file access."""
 
+from __future__ import annotations
+
 import gc
 from contextlib import contextmanager
+from typing import TYPE_CHECKING
 
 import anndata as ad
 import h5py
+
+if TYPE_CHECKING:
+    import numpy as np
 
 
 @contextmanager
@@ -102,9 +108,7 @@ def read_var_gene_names(path: str) -> tuple[set[str], dict[str, str]]:
 
         item = var[name_col]
         if isinstance(item, h5py.Group) and "categories" in item:
-            # Categorical: need to decode codes -> categories
-            categories = [_decode_bytes(v) for v in item["categories"][:]]
-            codes = item["codes"][:]
+            categories, codes = read_categorical_data(item)
             names = [categories[c] if c >= 0 else "" for c in codes]
         else:
             names = [_decode_bytes(v) for v in item[:]]
@@ -144,7 +148,86 @@ def write_edit_log_h5py(f: h5py.File, log_json: str) -> None:
     prov = ensure_provenance_group(f)
     if "edit_history" in prov:
         del prov["edit_history"]
-    prov.create_dataset("edit_history", data=log_json)
+    ds = prov.create_dataset("edit_history", data=log_json)
+    ds.attrs["encoding-type"] = "string"
+    ds.attrs["encoding-version"] = "0.2.0"
+
+
+def read_categorical_data(item: h5py.Group) -> tuple[list[str], "np.ndarray"]:
+    """Read categories and codes from a categorical h5py group.
+
+    Args:
+        item: An h5py Group with 'categories' and 'codes' datasets.
+
+    Returns:
+        (categories, codes) — list of decoded category strings and numpy codes array.
+    """
+    categories = [_decode_bytes(v) for v in item["categories"][:]]
+    codes = item["codes"][:]
+    return categories, codes
+
+
+def update_column_order(
+    f_out: h5py.File,
+    new_columns: list[str],
+    deleted: set[str] | None = None,
+) -> None:
+    """Update the obs column-order attribute: remove deleted, append new.
+
+    Columns that are both deleted and re-added preserve their original
+    position. Only columns deleted but not re-added are removed. Truly
+    new columns are appended at the end.
+
+    Args:
+        f_out: Open h5py File in append mode.
+        new_columns: Column names to append (or replace in-place).
+        deleted: Column names that were removed (if any).
+    """
+    current = [_decode_bytes(c) for c in f_out["obs"].attrs["column-order"]]
+    if deleted:
+        new_set = set(new_columns)
+        # Only remove columns that were deleted and NOT re-added
+        current = [c for c in current if c not in (deleted - new_set)]
+    to_add = [c for c in new_columns if c not in current]
+    f_out["obs"].attrs["column-order"] = current + to_add
+
+
+def transplant_obs_columns(
+    f_temp: h5py.File,
+    f_out: h5py.File,
+    columns: list[str],
+    overwrite: bool = False,
+) -> set[str]:
+    """Copy obs columns from temp file to output file via h5py.copy().
+
+    Optionally deletes existing columns first (overwrite mode).
+    Updates column-order attribute.
+
+    Args:
+        f_temp: Source h5py File (read mode) with columns in obs.
+        f_out: Target h5py File (append mode).
+        columns: Column names to transplant.
+        overwrite: If True, delete existing columns before copying.
+
+    Returns:
+        Set of column names that were deleted (empty if not overwriting).
+    """
+    deleted = set()
+    copied = []
+    for col in columns:
+        if col not in f_temp["obs"]:
+            continue
+        if col in f_out["obs"]:
+            if overwrite:
+                del f_out["obs"][col]
+                deleted.add(col)
+            else:
+                continue
+        f_temp.copy(f"obs/{col}", f_out["obs"])
+        copied.append(col)
+
+    update_column_order(f_out, copied, deleted)
+    return deleted
 
 
 def verify_categorical_integrity(

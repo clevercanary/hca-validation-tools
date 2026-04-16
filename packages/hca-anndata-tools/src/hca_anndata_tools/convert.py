@@ -13,7 +13,7 @@ import h5py
 import numpy as np
 import pandas as pd
 
-from ._io import open_h5ad, read_obs_index, ensure_provenance_group, verify_obs_transplant, _decode_bytes
+from ._io import open_h5ad, read_obs_index, ensure_provenance_group, transplant_obs_columns, verify_obs_transplant
 from ._serialize import make_serializable
 from .write import (
     EDIT_LOG_KEY,
@@ -189,18 +189,8 @@ def convert_cellxgene_to_hca(
                         del prov_out["cellxgene"]
                     f_temp.copy("uns/provenance/cellxgene", prov_out, "cellxgene")
 
-                # Transplant obs columns from temp
                 obs_cols_added = list(obs_data.keys())
-                for col in obs_cols_added:
-                    if col in f_out["obs"]:
-                        del f_out["obs"][col]
-                    if col in f_temp["obs"]:
-                        f_temp.copy(f"obs/{col}", f_out["obs"])
-
-                # Update column-order
-                current_order = [_decode_bytes(c) for c in f_out["obs"].attrs["column-order"]]
-                new_cols = [c for c in obs_cols_added if c not in current_order]
-                f_out["obs"].attrs["column-order"] = current_order + new_cols
+                transplant_obs_columns(f_temp, f_out, obs_cols_added, overwrite=True)
 
                 # Transplant edit_history into provenance
                 if EDIT_LOG_KEY in prov_out:
