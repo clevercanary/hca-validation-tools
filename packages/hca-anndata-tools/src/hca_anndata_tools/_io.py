@@ -126,6 +126,76 @@ def ensure_provenance_group(f: h5py.File) -> h5py.Group:
     return group
 
 
+def read_edit_log_h5py(f: h5py.File) -> str:
+    """Read the edit log JSON string from an open h5py File.
+
+    Returns "[]" if no edit log exists.
+    """
+    uns = f.get("uns")
+    if uns:
+        prov = uns.get("provenance")
+        if prov and isinstance(prov, h5py.Group) and "edit_history" in prov:
+            return _decode_bytes(prov["edit_history"][()])
+    return "[]"
+
+
+def write_edit_log_h5py(f: h5py.File, log_json: str) -> None:
+    """Write the edit log JSON string into an open h5py File."""
+    prov = ensure_provenance_group(f)
+    if "edit_history" in prov:
+        del prov["edit_history"]
+    prov.create_dataset("edit_history", data=log_json)
+
+
+def verify_categorical_integrity(
+    f: h5py.File,
+    columns: list[str],
+    expected_valid_counts: dict[str, int] | None = None,
+) -> str | None:
+    """Check categorical obs columns for data corruption.
+
+    Verifies: codes length matches obs count, all codes in range,
+    no codes below -1. Optionally checks that the number of non-NaN
+    values matches expected counts (catches NaN→valid corruption).
+
+    Args:
+        f: Open h5py File.
+        columns: Column names to check.
+        expected_valid_counts: If provided, {col: expected_non_nan_count}.
+
+    Returns:
+        None if all columns pass, or an error message string.
+    """
+    obs = f["obs"]
+    idx_key = _decode_bytes(obs.attrs.get("_index", "_index"))
+    n_obs = len(obs[idx_key])
+
+    for col in columns:
+        item = obs[col]
+        if not (isinstance(item, h5py.Group) and "categories" in item):
+            continue
+        cats = item["categories"][:]
+        codes = item["codes"][:]
+
+        if len(codes) != n_obs:
+            return f"Column '{col}': codes length {len(codes)} != n_obs {n_obs}"
+        if (codes < -1).any():
+            return f"Column '{col}': found codes below -1"
+        valid = codes[codes >= 0]
+        if len(valid) > 0 and len(cats) > 0 and int(valid.max()) >= len(cats):
+            return f"Column '{col}': max code {valid.max()} >= n_categories {len(cats)}"
+        if expected_valid_counts and col in expected_valid_counts:
+            actual = int((codes >= 0).sum())
+            expected = expected_valid_counts[col]
+            if actual != expected:
+                return (
+                    f"Column '{col}': expected {expected} valid values, "
+                    f"got {actual}"
+                )
+
+    return None
+
+
 def verify_obs_transplant(
     temp_path: str,
     output_path: str,

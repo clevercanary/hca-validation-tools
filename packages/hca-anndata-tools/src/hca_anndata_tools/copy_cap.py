@@ -12,13 +12,18 @@ import h5py
 import numpy as np
 import pandas as pd
 
-from ._io import open_h5ad, ensure_provenance_group, verify_obs_transplant, _decode_bytes
+from ._io import (
+    open_h5ad,
+    ensure_provenance_group,
+    read_edit_log_h5py,
+    verify_obs_transplant,
+    _decode_bytes,
+)
 from ._serialize import make_serializable
 from .cap import _REQUIRED_SUFFIXES, _OPTIONAL_SUFFIXES
 from .marker_genes import validate_marker_genes
 from .write import (
     EDIT_LOG_KEY,
-    _LEGACY_EDIT_LOG_KEY,
     build_edit_log,
     cleanup_previous_version,
     generate_output_path,
@@ -187,14 +192,7 @@ def copy_cap_annotations(
                 and isinstance(uns["provenance"], h5py.Group)
                 and "cap" in uns["provenance"]
             )
-            # Read edit log from provenance/edit_history, fall back to legacy
-            raw_log = "[]"
-            if uns:
-                prov = uns.get("provenance")
-                if prov and isinstance(prov, h5py.Group) and EDIT_LOG_KEY in prov:
-                    raw_log = _decode_bytes(prov[EDIT_LOG_KEY][()])
-                elif _LEGACY_EDIT_LOG_KEY in uns:
-                    raw_log = _decode_bytes(uns[_LEGACY_EDIT_LOG_KEY][()])
+            raw_log = read_edit_log_h5py(f)
 
         target_n_obs = len(target_index)
         target_index_set = set(target_index)
@@ -348,8 +346,6 @@ def copy_cap_annotations(
                 if "provenance" in f_temp["uns"] and EDIT_LOG_KEY in f_temp["uns"]["provenance"]:
                     f_temp.copy(f"uns/provenance/{EDIT_LOG_KEY}", prov_out, EDIT_LOG_KEY)
                 # Remove legacy key if present
-                if _LEGACY_EDIT_LOG_KEY in f_out["uns"]:
-                    del f_out["uns"][_LEGACY_EDIT_LOG_KEY]
 
             # --- Step 5: Verify transplant — full column comparison ---
             verify_err = verify_obs_transplant(temp_path, output_path, obs_cols_to_copy)
