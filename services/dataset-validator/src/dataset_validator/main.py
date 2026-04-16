@@ -741,7 +741,8 @@ def main() -> int:
         bucket = env_vars['bucket']
         key = env_vars['key']
         batch_job_id = env_vars['batch_job_id']
-        assert file_id is not None and bucket is not None and key is not None and batch_job_id is not None
+        if file_id is None or bucket is None or key is None or batch_job_id is None:
+            raise RuntimeError("Required env vars unexpectedly None after missing_vars check")
 
         # Initialize validation message with basic info
         validation_message = ValidationMessage(
@@ -757,7 +758,8 @@ def main() -> int:
         if local_mode:
             # Local file mode — skip S3 download and integrity checks
             local_file_path = env_vars['local_file']
-            assert local_file_path is not None  # local_mode implies LOCAL_FILE is set
+            if local_file_path is None:
+                raise RuntimeError("local_mode set but LOCAL_FILE env var is None")
             local_file = Path(local_file_path)
             logger.info("Local file mode: validating %s", local_file)
             validation_message.integrity_status = INTEGRITY_VALID
