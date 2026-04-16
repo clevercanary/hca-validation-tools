@@ -341,13 +341,17 @@ def replace_placeholder_values(
                 grp.attrs["encoding-version"] = encoding_version
                 grp.attrs["ordered"] = ordered
                 cat_data = np.array(new_cats, dtype=object) if new_cats else np.array([], dtype=h5py.string_dtype())
-                grp.create_dataset("categories", data=cat_data)
-                grp.create_dataset(
+                cat_ds = grp.create_dataset("categories", data=cat_data)
+                cat_ds.attrs["encoding-type"] = "string-array"
+                cat_ds.attrs["encoding-version"] = "0.2.0"
+                codes_ds = grp.create_dataset(
                     "codes", data=new_codes.astype(codes.dtype),
                     compression=codes_compression,
                     compression_opts=codes_compression_opts,
                     chunks=codes_chunks,
                 )
+                codes_ds.attrs["encoding-type"] = "array"
+                codes_ds.attrs["encoding-version"] = "0.2.0"
 
             write_edit_log_h5py(f, log_result["json"])
 

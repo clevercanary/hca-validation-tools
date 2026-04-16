@@ -93,6 +93,19 @@ def test_update_column_order_with_deleted(tmp_path):
         assert order == ["a", "c", "d"]
 
 
+def test_update_column_order_overwrite_preserves_position(tmp_path):
+    """Columns that are deleted and re-added stay in their original position."""
+    path = tmp_path / "order3.h5ad"
+    obs = pd.DataFrame({"a": [1], "b": [2], "c": [3]}, index=["c0"])
+    adata = ad.AnnData(X=sp.csr_matrix((1, 1), dtype=np.float32), obs=obs)
+    adata.write_h5ad(path)
+
+    with h5py.File(path, "a") as f:
+        update_column_order(f, ["b"], deleted={"b"})
+        order = [v.decode() if isinstance(v, bytes) else v for v in f["obs"].attrs["column-order"]]
+        assert order == ["a", "b", "c"]
+
+
 # -- transplant_obs_columns ---------------------------------------------------
 
 

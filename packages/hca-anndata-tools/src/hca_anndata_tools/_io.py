@@ -148,7 +148,9 @@ def write_edit_log_h5py(f: h5py.File, log_json: str) -> None:
     prov = ensure_provenance_group(f)
     if "edit_history" in prov:
         del prov["edit_history"]
-    prov.create_dataset("edit_history", data=log_json)
+    ds = prov.create_dataset("edit_history", data=log_json)
+    ds.attrs["encoding-type"] = "string"
+    ds.attrs["encoding-version"] = "0.2.0"
 
 
 def read_categorical_data(item: h5py.Group) -> tuple[list[str], "np.ndarray"]:
@@ -172,14 +174,20 @@ def update_column_order(
 ) -> None:
     """Update the obs column-order attribute: remove deleted, append new.
 
+    Columns that are both deleted and re-added preserve their original
+    position. Only columns deleted but not re-added are removed. Truly
+    new columns are appended at the end.
+
     Args:
         f_out: Open h5py File in append mode.
-        new_columns: Column names to append.
-        deleted: Column names to remove (if any).
+        new_columns: Column names to append (or replace in-place).
+        deleted: Column names that were removed (if any).
     """
     current = [_decode_bytes(c) for c in f_out["obs"].attrs["column-order"]]
     if deleted:
-        current = [c for c in current if c not in deleted]
+        new_set = set(new_columns)
+        # Only remove columns that were deleted and NOT re-added
+        current = [c for c in current if c not in (deleted - new_set)]
     to_add = [c for c in new_columns if c not in current]
     f_out["obs"].attrs["column-order"] = current + to_add
 
