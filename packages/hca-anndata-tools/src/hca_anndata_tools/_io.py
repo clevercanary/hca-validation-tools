@@ -166,8 +166,6 @@ def verify_categorical_integrity(
     Returns:
         None if all columns pass, or an error message string.
     """
-    import numpy as np
-
     obs = f["obs"]
     idx_key = _decode_bytes(obs.attrs.get("_index", "_index"))
     n_obs = len(obs[idx_key])
