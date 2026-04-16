@@ -313,6 +313,26 @@ def test_replace_placeholder_custom_placeholders(tmp_path):
     assert result["total_cells_affected"] == 2
 
 
+def test_replace_placeholder_with_preexisting_nan(tmp_path):
+    """Pre-existing NaN values are preserved alongside new replacements."""
+    n = 5
+    obs = pd.DataFrame(
+        {"test_col": pd.Categorical(["valid", "unknown", np.nan, "na", "valid"])},
+        index=[f"cell_{i}" for i in range(n)],
+    )
+    adata = ad.AnnData(X=sp.csr_matrix((n, 2), dtype=np.float32), obs=obs)
+    path = tmp_path / "preexisting_nan.h5ad"
+    adata.write_h5ad(path)
+
+    result = replace_placeholder_values(str(path), ["test_col"])
+    assert "error" not in result
+    assert result["total_cells_affected"] == 2
+
+    written = ad.read_h5ad(result["output_path"])
+    assert written.obs["test_col"].isna().sum() == 3
+    assert list(written.obs["test_col"].cat.categories) == ["valid"]
+
+
 def test_replace_placeholder_edit_log(tmp_path):
     path = _make_placeholder_h5ad(tmp_path, ["valid", "unknown"])
     result = replace_placeholder_values(str(path), ["test_col"])
