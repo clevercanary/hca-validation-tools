@@ -26,7 +26,10 @@ from .write import (
 from . import __version__
 
 # Default HCA placeholder values (case-insensitive)
-_DEFAULT_PLACEHOLDERS = ["unknown", "na", "n/a", "none", "not available"]
+_DEFAULT_PLACEHOLDERS = [
+    "unknown", "na", "n/a", "none", "not available",
+    "not applicable", "tbd", "todo", "null", "undefined",
+]
 
 
 def _type_display(annotation) -> str:
