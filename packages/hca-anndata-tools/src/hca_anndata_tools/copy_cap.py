@@ -5,6 +5,8 @@ from __future__ import annotations
 import os
 import shutil
 import tempfile
+from collections.abc import Mapping
+from typing import Any
 from datetime import datetime, timezone
 
 import anndata as ad
@@ -76,7 +78,7 @@ def _check_duplicate_ids(index: list[str], label: str) -> str | None:
     return f"{label} has duplicate cell IDs (first 5): {dupes}"
 
 
-def _get_annotation_sets(source_uns: dict) -> list[str]:
+def _get_annotation_sets(source_uns: Mapping[str, Any]) -> list[str]:
     """Get annotation sets defined in cellannotation_metadata."""
     meta = source_uns.get("cellannotation_metadata", {})
     if isinstance(meta, dict):
@@ -176,7 +178,7 @@ def copy_cap_annotations(
         if dupe_err:
             return {"error": dupe_err}
 
-        source_obs_subset = pd.DataFrame(source_obs_data, index=source_index_list)
+        source_obs_subset = pd.DataFrame(source_obs_data, index=source_index_list)  # pyright: ignore[reportArgumentType]
 
         # --- Step 2: Validate target via h5py (no AnnData load) ---
         with h5py.File(target_path, "r") as f:

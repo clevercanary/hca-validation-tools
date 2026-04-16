@@ -38,22 +38,21 @@ def get_descriptive_stats(
             df: pd.DataFrame = getattr(adata, attribute)
 
             # Apply filter
-            filter_params = [filter_column, filter_operator, filter_value]
-            if any(p is not None for p in filter_params) and not all(p is not None for p in filter_params):
-                return {"error": "filter_column, filter_operator, and filter_value must all be provided together"}
-            if filter_column is not None:
+            if filter_column is not None and filter_operator is not None and filter_value is not None:
                 if filter_column not in df.columns:
                     return {"error": f"Filter column '{filter_column}' not found in {attribute}"}
                 df = _apply_filter(df, filter_column, filter_operator, filter_value)
                 if len(df) == 0:
                     return {"error": "Filter resulted in zero rows"}
+            elif filter_column is not None or filter_operator is not None or filter_value is not None:
+                return {"error": "filter_column, filter_operator, and filter_value must all be provided together"}
 
             # Select columns
             if columns is not None:
                 missing = [c for c in columns if c not in df.columns]
                 if missing:
                     return {"error": f"Columns not found in {attribute}: {missing}"}
-                df = df[columns]
+                df = df[columns]  # pyright: ignore[reportAssignmentType]
 
             result = {"n_rows": len(df), "columns": {}}
 
@@ -64,7 +63,7 @@ def get_descriptive_stats(
                     result["columns"][col] = {
                         "dtype": str(series.dtype),
                         "type": "numeric",
-                        "count": int(desc["count"]),
+                        "count": int(desc["count"]),  # pyright: ignore[reportArgumentType]
                         "mean": _safe_float(desc["mean"]),
                         "std": _safe_float(desc["std"]),
                         "min": _safe_float(desc["min"]),
@@ -126,4 +125,4 @@ def _apply_filter(
     if operator not in ops:
         raise ValueError(f"Unknown operator: {operator}")
     mask = ops[operator](series, value)
-    return df[mask]
+    return df[mask]  # pyright: ignore[reportReturnType]

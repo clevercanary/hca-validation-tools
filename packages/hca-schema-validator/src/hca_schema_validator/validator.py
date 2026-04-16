@@ -164,7 +164,7 @@ class HCAValidator(Validator):
                     if len(column) > 0:
                         if "warning_message" in col_def:
                             self.warnings.append(col_def["warning_message"])
-                        self._validate_column(column, col_name, df_name, col_def)
+                        self._validate_column(column, col_name, df_name, col_def)  # pyright: ignore[reportArgumentType]
 
     def _validate_strongly_recommended(self, df, df_name, col_name, col_def):
         """Validate a strongly_recommended column: warn on missing/NaN, error on blocklist."""

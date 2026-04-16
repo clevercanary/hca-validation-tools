@@ -119,7 +119,7 @@ def convert_cellxgene_to_hca(
                 )
                 conversions.append(f"{key}: uns → obs (broadcast '{value}')")
 
-        obs = pd.DataFrame(obs_data, index=source_index)
+        obs = pd.DataFrame(obs_data, index=source_index)  # pyright: ignore[reportArgumentType]
 
         # Build uns for temp file
         temp_uns = {}

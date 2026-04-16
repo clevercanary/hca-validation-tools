@@ -1,28 +1,29 @@
 """HCA AnnData Tools — inspection, summarization, and statistics for h5ad files."""
 
-__version__ = "0.3.1"
+from typing import TYPE_CHECKING
 
-__all__ = [
-    "locate_files",
-    "get_summary",
-    "get_descriptive_stats",
-    "view_data",
-    "get_storage_info",
-    "get_cap_annotations",
-    "plot_embedding",
-    "write_h5ad",
-    "strip_timestamp",
-    "generate_output_path",
-    "generate_timestamp",
-    "EDIT_LOG_KEY",
-    "resolve_latest",
-    "set_uns",
-    "list_uns_fields",
-    "replace_placeholder_values",
-    "convert_cellxgene_to_hca",
-    "validate_marker_genes",
-    "copy_cap_annotations",
-]
+if TYPE_CHECKING:
+    from .cap import get_cap_annotations
+    from .convert import convert_cellxgene_to_hca
+    from .copy_cap import copy_cap_annotations
+    from .edit import list_uns_fields, replace_placeholder_values, set_uns
+    from .files import locate_files
+    from .marker_genes import validate_marker_genes
+    from .plot import plot_embedding
+    from .stats import get_descriptive_stats
+    from .storage import get_storage_info
+    from .summary import get_summary
+    from .view import view_data
+    from .write import (
+        EDIT_LOG_KEY,
+        generate_output_path,
+        generate_timestamp,
+        resolve_latest,
+        strip_timestamp,
+        write_h5ad,
+    )
+
+__version__ = "0.3.1"
 
 _LAZY_IMPORTS = {
     "locate_files": ".files",
@@ -45,6 +46,8 @@ _LAZY_IMPORTS = {
     "validate_marker_genes": ".marker_genes",
     "copy_cap_annotations": ".copy_cap",
 }
+
+__all__ = list(_LAZY_IMPORTS)  # pyright: ignore[reportUnsupportedDunderAll]
 
 
 def __getattr__(name: str):

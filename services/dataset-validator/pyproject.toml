@@ -21,6 +21,7 @@ pytest = "^8.3.5"
 moto = "^4.2.0"
 # Additional dev dependencies - add back as needed
 # pytest-mock = "^3.14.0"
+pyright = "^1.1.408"
 
 [build-system]
 requires = ["poetry-core"]

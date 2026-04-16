@@ -55,7 +55,7 @@ def test_read_categorical_data(tmp_path):
 
     with h5py.File(path, "r") as f:
         cats, codes = read_categorical_data(f["obs"]["col"])
-        assert cats == ["a", "b"]
+        assert list(cats) == ["a", "b"]
         assert len(codes) == 3
         # Verify codes map correctly: a=0, b=1, a=0
         assert cats[codes[0]] == "a"

@@ -31,6 +31,7 @@ pysam = ">=0.13.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0"
+pyright = "^1.1.408"
 
 [build-system]
 requires = ["poetry-core"]

@@ -29,7 +29,7 @@ def create_sample_h5ad(path: Path) -> Path:
 
     # Sparse count matrix
     rng = np.random.default_rng(42)
-    X = sp.random(n_obs, n_vars, density=0.3, format="csr", dtype=np.float32, random_state=rng)
+    X = sp.random(n_obs, n_vars, density=0.3, format="csr", dtype=np.float32, random_state=rng)  # pyright: ignore[reportCallIssue]
 
     obs = pd.DataFrame(
         {
@@ -40,7 +40,7 @@ def create_sample_h5ad(path: Path) -> Path:
             )),
             "n_counts": rng.integers(500, 5000, n_obs).astype(np.float32),
         },
-        index=[f"cell_{i}" for i in range(n_obs)],
+        index=[f"cell_{i}" for i in range(n_obs)],  # pyright: ignore[reportArgumentType]
     )
 
     var = pd.DataFrame(
@@ -48,7 +48,7 @@ def create_sample_h5ad(path: Path) -> Path:
             "gene_name": [f"GENE{i}" for i in range(n_vars)],
             "highly_variable": rng.choice([True, False], n_vars),
         },
-        index=[f"ENSG{i:011d}" for i in range(n_vars)],
+        index=[f"ENSG{i:011d}" for i in range(n_vars)],  # pyright: ignore[reportArgumentType]
     )
 
     adata = ad.AnnData(X=X, obs=obs, var=var)
@@ -85,7 +85,7 @@ def create_cellxgene_h5ad(path: Path) -> Path:
     n_obs, n_vars = 30, 15
     rng = np.random.default_rng(99)
 
-    X = sp.random(n_obs, n_vars, density=0.3, format="csr", dtype=np.float32, random_state=rng)
+    X = sp.random(n_obs, n_vars, density=0.3, format="csr", dtype=np.float32, random_state=rng)  # pyright: ignore[reportCallIssue]
 
     obs = pd.DataFrame(
         {
@@ -117,7 +117,7 @@ def create_cellxgene_h5ad(path: Path) -> Path:
             "development_stage": pd.Categorical(["human adult stage"] * n_obs),
             "observation_joinid": [f"joinid_{i}" for i in range(n_obs)],
         },
-        index=[f"AACG{i:08d}-1" for i in range(n_obs)],
+        index=[f"AACG{i:08d}-1" for i in range(n_obs)],  # pyright: ignore[reportArgumentType]
     )
 
     var = pd.DataFrame(
@@ -129,7 +129,7 @@ def create_cellxgene_h5ad(path: Path) -> Path:
             "feature_length": [1000] * n_vars,
             "feature_type": ["gene"] * n_vars,
         },
-        index=[f"ENSG{i:011d}" for i in range(n_vars)],
+        index=[f"ENSG{i:011d}" for i in range(n_vars)],  # pyright: ignore[reportArgumentType]
     )
 
     adata = ad.AnnData(X=X, obs=obs, var=var)
