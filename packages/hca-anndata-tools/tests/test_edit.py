@@ -331,6 +331,13 @@ def test_replace_placeholder_with_preexisting_nan(tmp_path):
     written = ad.read_h5ad(result["output_path"])
     assert written.obs["test_col"].isna().sum() == 3
     assert list(written.obs["test_col"].cat.categories) == ["valid"]
+    # Verify per-cell: valid, NaN, NaN, NaN, valid
+    vals = list(written.obs["test_col"])
+    assert vals[0] == "valid"
+    assert pd.isna(vals[1])  # was "unknown"
+    assert pd.isna(vals[2])  # was NaN (pre-existing)
+    assert pd.isna(vals[3])  # was "na"
+    assert vals[4] == "valid"
 
 
 def test_replace_placeholder_all_values_replaced(tmp_path):

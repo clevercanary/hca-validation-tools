@@ -325,7 +325,9 @@ def replace_placeholder_values(
                 lookup = np.full(len(cats), -1, dtype=codes.dtype)
                 for new_idx, old_idx in enumerate(used):
                     lookup[old_idx] = new_idx
-                new_codes = np.where(codes >= 0, lookup[codes], -1).astype(codes.dtype)
+                mask = codes >= 0
+                new_codes = np.full_like(codes, -1)
+                new_codes[mask] = lookup[codes[mask]]
 
                 # Rewrite the column preserving compression settings
                 del f["obs"][col]
