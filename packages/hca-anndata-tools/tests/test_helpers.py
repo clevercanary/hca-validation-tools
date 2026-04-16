@@ -57,8 +57,12 @@ def test_read_categorical_data(tmp_path):
 
     with h5py.File(path, "r") as f:
         cats, codes = read_categorical_data(f["obs"]["col"])
-        assert set(cats) == {"a", "b"}
+        assert cats == ["a", "b"]
         assert len(codes) == 3
+        # Verify codes map correctly: a=0, b=1, a=0
+        assert cats[codes[0]] == "a"
+        assert cats[codes[1]] == "b"
+        assert cats[codes[2]] == "a"
 
 
 # -- update_column_order ------------------------------------------------------
@@ -109,6 +113,12 @@ def test_transplant_obs_columns_basic(tmp_path):
     written = ad.read_h5ad(tgt_path)
     assert "new_col" in written.obs.columns
     assert "existing" in written.obs.columns
+    assert list(written.obs["new_col"]) == ["x", "y"]
+    # Verify column-order includes new column
+    with h5py.File(tgt_path, "r") as f:
+        order = [v.decode() if isinstance(v, bytes) else v for v in f["obs"].attrs["column-order"]]
+        assert "new_col" in order
+        assert "existing" in order
 
 
 # -- verify_obs_transplant ----------------------------------------------------
