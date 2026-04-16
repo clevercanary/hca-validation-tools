@@ -59,7 +59,7 @@ def test_instantiate():
 def test_inheritance():
     """Test that HCAValidator inherits from Validator."""
     from hca_schema_validator._vendored.cellxgene_schema.validate import Validator
-    
+
     validator = HCAValidator()
     assert isinstance(validator, Validator)
 
@@ -67,10 +67,10 @@ def test_inheritance():
 def test_has_validation_methods():
     """Test that HCAValidator has expected validation methods."""
     validator = HCAValidator()
-    
+
     # Public methods
     assert hasattr(validator, 'validate_adata')
-    
+
     # Protected methods (can override later)
     assert hasattr(validator, '_deep_check')
     assert hasattr(validator, '_validate_feature_ids')
@@ -80,18 +80,18 @@ def test_has_validation_methods():
 def test_validate_valid_h5ad():
     """
     Test validation of a CELLxGENE v6+ h5ad file.
-    
+
     This test verifies that HCA schema correctly rejects CELLxGENE v6+ files
     that have organism in uns instead of obs.
     """
     test_file = FIXTURES_DIR / "example_valid.h5ad"
-    
+
     if not test_file.exists():
         pytest.skip(f"Test fixture not found: {test_file}")
-    
+
     validator = HCAValidator()
     is_valid = validator.validate_adata(str(test_file))
-    
+
     # Should FAIL validation because CELLxGENE v6+ files have organism in uns,
     # but HCA schema requires it in obs
     assert is_valid is False
@@ -104,13 +104,13 @@ def test_validate_valid_h5ad():
 def test_validate_invalid_h5ad():
     """Test validation of an invalid h5ad file."""
     test_file = FIXTURES_DIR / "example_invalid_CL.h5ad"
-    
+
     if not test_file.exists():
         pytest.skip(f"Test fixture not found: {test_file}")
-    
+
     validator = HCAValidator()
     is_valid = validator.validate_adata(str(test_file))
-    
+
     # Should fail validation
     assert is_valid is False
     assert len(validator.errors) > 0

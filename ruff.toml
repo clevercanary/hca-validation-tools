@@ -3,4 +3,5 @@ line-length = 120
 exclude = ["*/_vendored/*"]
 
 [lint]
-select = ["F", "I"]
+select = ["E", "F", "I", "W"]
+ignore = ["E501"]  # line length — too many to fix at once

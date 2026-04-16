@@ -103,7 +103,7 @@ def cap_h5ad(tmp_path_factory) -> Path:
     obs = pd.DataFrame(
         {
             "my_labels": pd.Categorical(labels),
-            "my_labels--cell_fullname": [f"{l} cell" for l in labels],
+            "my_labels--cell_fullname": [f"{label} cell" for label in labels],
             "my_labels--cell_ontology_exists": rng.choice([True, False], n_obs),
             "my_labels--cell_ontology_term_id": rng.choice(
                 ["CL:0000540", "CL:0000127", "CL:0000129"], n_obs
