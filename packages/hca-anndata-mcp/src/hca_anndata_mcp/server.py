@@ -1,21 +1,21 @@
 """FastMCP server definition and tool registration."""
 
 from fastmcp import FastMCP
-
 from hca_anndata_tools import (
-    get_summary,
-    get_descriptive_stats,
-    view_data,
-    locate_files,
-    get_storage_info,
-    get_cap_annotations,
-    set_uns,
-    list_uns_fields,
     convert_cellxgene_to_hca,
-    validate_marker_genes,
     copy_cap_annotations,
+    get_cap_annotations,
+    get_descriptive_stats,
+    get_storage_info,
+    get_summary,
+    list_uns_fields,
+    locate_files,
     replace_placeholder_values,
+    set_uns,
+    validate_marker_genes,
+    view_data,
 )
+
 from hca_anndata_mcp.tools.plot import plot_embedding_mcp
 
 mcp = FastMCP(

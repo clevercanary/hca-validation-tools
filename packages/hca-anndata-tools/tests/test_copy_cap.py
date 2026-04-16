@@ -8,10 +8,8 @@ import numpy as np
 import pandas as pd
 import pytest
 import scipy.sparse as sp
-
 from hca_anndata_tools.copy_cap import copy_cap_annotations
 from hca_anndata_tools.write import EDIT_LOG_KEY
-
 
 # --- Fixtures ---
 
@@ -27,7 +25,7 @@ def _make_cap_source(path: Path, cell_ids: list[str]) -> Path:
     obs = pd.DataFrame(
         {
             "author_cell_type": pd.Categorical(labels),
-            "author_cell_type--cell_fullname": [f"{l} cell" for l in labels],
+            "author_cell_type--cell_fullname": [f"{label} cell" for label in labels],
             "author_cell_type--cell_ontology_exists": [True] * n,
             "author_cell_type--cell_ontology_term_id": pd.Categorical(
                 rng.choice(["CL:0000540", "CL:0000127"], n)

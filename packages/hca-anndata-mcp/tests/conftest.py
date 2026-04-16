@@ -3,7 +3,6 @@
 from pathlib import Path
 
 import pytest
-
 from hca_anndata_tools.testing import create_sample_h5ad
 
 

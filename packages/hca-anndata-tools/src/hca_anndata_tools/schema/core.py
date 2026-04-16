@@ -3,31 +3,11 @@
 # To refresh: copy the generated file here after regeneration.
 from __future__ import annotations
 
-import re
-import sys
-from datetime import (
-    date,
-    datetime,
-    time
-)
-from decimal import Decimal 
-from enum import Enum 
-from typing import (
-    Any,
-    ClassVar,
-    Literal,
-    Optional,
-    Union
-)
+from decimal import Decimal
+from enum import Enum
+from typing import Any, ClassVar, Optional, Union
 
-from pydantic import (
-    BaseModel,
-    ConfigDict,
-    Field,
-    RootModel,
-    field_validator
-)
-
+from pydantic import BaseModel, ConfigDict, Field, RootModel
 
 metamodel_version = "None"
 version = "0.1.0"

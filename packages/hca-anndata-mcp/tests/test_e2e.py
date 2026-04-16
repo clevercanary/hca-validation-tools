@@ -5,7 +5,6 @@ import json
 import pytest
 import pytest_asyncio
 from fastmcp.client import Client
-
 from hca_anndata_mcp.server import mcp
 
 

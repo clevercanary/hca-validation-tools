@@ -35,7 +35,7 @@ def test_summary_obsm(sample_h5ad):
 
 def test_summary_layers(sample_h5ad):
     result = get_summary(str(sample_h5ad))
-    layer_names = [l["name"] for l in result["layers"]]
+    layer_names = [layer["name"] for layer in result["layers"]]
     assert "raw_counts" in layer_names
 
 
