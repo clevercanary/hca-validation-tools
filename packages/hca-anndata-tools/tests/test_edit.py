@@ -1,10 +1,13 @@
-"""Tests for set_uns and list_uns_fields."""
+"""Tests for set_uns, list_uns_fields, and replace_placeholder_values."""
 
 import json
 
 import anndata as ad
+import numpy as np
+import pandas as pd
+import scipy.sparse as sp
 
-from hca_anndata_tools.edit import list_uns_fields, set_uns
+from hca_anndata_tools.edit import list_uns_fields, replace_placeholder_values, set_uns
 from hca_anndata_tools.write import EDIT_LOG_KEY
 
 
@@ -248,3 +251,72 @@ def test_set_uns_bionetwork_empty_rejected(sample_h5ad_for_write):
     result = set_uns(str(sample_h5ad_for_write), "ambient_count_correction", "")
     assert "error" in result
     assert "non-empty" in result["error"]
+
+
+# --- replace_placeholder_values ---
+
+
+def _make_placeholder_h5ad(tmp_path, col_values, col_name="test_col"):
+    """Create a test h5ad with a categorical column containing given values."""
+    n = len(col_values)
+    obs = pd.DataFrame(
+        {col_name: pd.Categorical(col_values)},
+        index=[f"cell_{i}" for i in range(n)],
+    )
+    adata = ad.AnnData(
+        X=sp.csr_matrix((n, 2), dtype=np.float32),
+        obs=obs,
+    )
+    path = tmp_path / "placeholders_test.h5ad"
+    adata.write_h5ad(path)
+    return path
+
+
+def test_replace_placeholder_basic(tmp_path):
+    path = _make_placeholder_h5ad(tmp_path, ["valid", "unknown", "valid", "na"])
+    result = replace_placeholder_values(str(path), ["test_col"])
+    assert "error" not in result
+    assert result["total_cells_affected"] == 2
+    assert "unknown" in result["columns_fixed"]["test_col"]
+    assert "na" in result["columns_fixed"]["test_col"]
+
+    written = ad.read_h5ad(result["output_path"])
+    assert written.obs["test_col"].isna().sum() == 2
+    assert (written.obs["test_col"].dropna() == "valid").all()
+
+
+def test_replace_placeholder_case_insensitive(tmp_path):
+    path = _make_placeholder_h5ad(tmp_path, ["valid", "Unknown", "NONE", "N/A"])
+    result = replace_placeholder_values(str(path), ["test_col"])
+    assert "error" not in result
+    assert result["total_cells_affected"] == 3
+
+
+def test_replace_placeholder_no_matches(tmp_path):
+    path = _make_placeholder_h5ad(tmp_path, ["valid1", "valid2"])
+    result = replace_placeholder_values(str(path), ["test_col"])
+    assert "error" in result
+    assert "No placeholder values" in result["error"]
+
+
+def test_replace_placeholder_missing_column(tmp_path):
+    path = _make_placeholder_h5ad(tmp_path, ["valid"])
+    result = replace_placeholder_values(str(path), ["nonexistent"])
+    assert "error" in result
+    assert "not found" in result["error"]
+
+
+def test_replace_placeholder_custom_placeholders(tmp_path):
+    path = _make_placeholder_h5ad(tmp_path, ["valid", "banned", "also_banned"])
+    result = replace_placeholder_values(str(path), ["test_col"], placeholders=["banned", "also_banned"])
+    assert "error" not in result
+    assert result["total_cells_affected"] == 2
+
+
+def test_replace_placeholder_edit_log(tmp_path):
+    path = _make_placeholder_h5ad(tmp_path, ["valid", "unknown"])
+    result = replace_placeholder_values(str(path), ["test_col"])
+    written = ad.read_h5ad(result["output_path"])
+    log = json.loads(written.uns["provenance"][EDIT_LOG_KEY])
+    assert len(log) >= 1
+    assert log[-1]["operation"] == "replace_placeholder_values"

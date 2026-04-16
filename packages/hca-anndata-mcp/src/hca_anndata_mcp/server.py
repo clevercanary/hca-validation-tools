@@ -14,6 +14,7 @@ from hca_anndata_tools import (
     convert_cellxgene_to_hca,
     validate_marker_genes,
     copy_cap_annotations,
+    replace_placeholder_values,
 )
 from hca_anndata_mcp.tools.plot import plot_embedding_mcp
 
@@ -46,3 +47,4 @@ mcp.tool()(set_uns)
 mcp.tool()(convert_cellxgene_to_hca)
 mcp.tool()(validate_marker_genes)
 mcp.tool()(copy_cap_annotations)
+mcp.tool()(replace_placeholder_values)
