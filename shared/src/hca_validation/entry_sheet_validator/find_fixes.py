@@ -20,14 +20,18 @@ sheet_value_fix_map = {
 }
 
 
-def get_fixed_value(entity_type: str, entity_induced_class: ClassDefinition, slot_name: str, value: str) -> Optional[str]:
+def get_fixed_value(
+    entity_type: str, entity_induced_class: ClassDefinition, slot_name: str, value: str
+) -> Optional[str]:
     # We only need to check `attributes`, since an induced class has nothing in `slots`
     if slot_name not in entity_induced_class.attributes:
         return None
     return sheet_value_fix_map.get((entity_type, slot_name, value))
 
 
-def add_fix_to_error_if_available(error: SheetErrorInfo, bionetwork: Optional[str], schemaview: SchemaView) -> SheetErrorInfo:
+def add_fix_to_error_if_available(
+    error: SheetErrorInfo, bionetwork: Optional[str], schemaview: SchemaView
+) -> SheetErrorInfo:
     # If the error doesn't have the required values, return it unchanged
     # Require string input value to avoid values that consist of the entire input row
     if error.entity_type is None or error.column is None or not isinstance(error.input, str):
@@ -41,7 +45,8 @@ def add_fix_to_error_if_available(error: SheetErrorInfo, bionetwork: Optional[st
 
 def add_fixes_to_errors(errors: List[SheetErrorInfo], bionetwork: Optional[str]) -> List[SheetErrorInfo]:
     """
-    Identify fixes for the given errors where possible, and return copies of the error objects with fixed values specified.
+    Identify fixes for the given errors where possible, and return copies of the error objects with fixed values
+    specified.
 
     Args:
         errors: List of error info objects

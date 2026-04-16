@@ -72,7 +72,8 @@ def transform_schema_to_data_dictionary(schemaview: SchemaView) -> Dict[str, Any
             # Create the attribute entry with the exact structure requested
             attribute = {
                 "name": slot_info.name,
-                "title": slot_info.title if slot_info.title is not None else slot_info.name,  # Use title from schema if available
+                # Use title from schema if available
+                "title": slot_info.title if slot_info.title is not None else slot_info.name,
                 "description": slot_info.description or "",
                 "range": slot_info.range if slot_info.range is not None else "string",
                 "required": slot_info.required if slot_info.required is not None else False,
