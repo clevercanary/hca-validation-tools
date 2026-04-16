@@ -1,10 +1,16 @@
 """Internal I/O utilities for AnnData file access."""
 
+from __future__ import annotations
+
 import gc
 from contextlib import contextmanager
+from typing import TYPE_CHECKING
 
 import anndata as ad
 import h5py
+
+if TYPE_CHECKING:
+    import numpy as np
 
 
 @contextmanager
