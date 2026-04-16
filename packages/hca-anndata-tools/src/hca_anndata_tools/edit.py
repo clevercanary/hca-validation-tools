@@ -313,6 +313,8 @@ def replace_placeholder_values(
                 codes = item["codes"][:]
 
                 # Preserve original settings
+                encoding_type = item.attrs["encoding-type"]
+                encoding_version = item.attrs["encoding-version"]
                 ordered = bool(item.attrs["ordered"])
                 codes_compression = item["codes"].compression
                 codes_compression_opts = item["codes"].compression_opts
@@ -337,8 +339,8 @@ def replace_placeholder_values(
                 # Rewrite the column preserving compression settings
                 del f["obs"][col]
                 grp = f["obs"].create_group(col)
-                grp.attrs["encoding-type"] = "categorical"
-                grp.attrs["encoding-version"] = "0.2.0"
+                grp.attrs["encoding-type"] = encoding_type
+                grp.attrs["encoding-version"] = encoding_version
                 grp.attrs["ordered"] = ordered
                 cat_data = np.array(new_cats, dtype=object) if new_cats else np.array([], dtype=h5py.string_dtype())
                 grp.create_dataset("categories", data=cat_data)

@@ -24,7 +24,6 @@ from .cap import _REQUIRED_SUFFIXES, _OPTIONAL_SUFFIXES
 from .marker_genes import validate_marker_genes
 from .write import (
     EDIT_LOG_KEY,
-    _LEGACY_EDIT_LOG_KEY,
     build_edit_log,
     cleanup_previous_version,
     generate_output_path,
@@ -347,8 +346,6 @@ def copy_cap_annotations(
                 if "provenance" in f_temp["uns"] and EDIT_LOG_KEY in f_temp["uns"]["provenance"]:
                     f_temp.copy(f"uns/provenance/{EDIT_LOG_KEY}", prov_out, EDIT_LOG_KEY)
                 # Remove legacy key if present
-                if _LEGACY_EDIT_LOG_KEY in f_out["uns"]:
-                    del f_out["uns"][_LEGACY_EDIT_LOG_KEY]
 
             # --- Step 5: Verify transplant — full column comparison ---
             verify_err = verify_obs_transplant(temp_path, output_path, obs_cols_to_copy)

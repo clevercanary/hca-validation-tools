@@ -211,12 +211,11 @@ def write_h5ad(
         if not os.path.isfile(source_path):
             return {"error": f"Source file not found: {source_path}"}
 
-        # Read existing edit log from provenance, fall back to legacy location
         provenance = adata.uns.get("provenance", {})
         if isinstance(provenance, dict) and EDIT_LOG_KEY in provenance:
             existing_log_raw = provenance[EDIT_LOG_KEY]
         else:
-            existing_log_raw = adata.uns.get(_LEGACY_EDIT_LOG_KEY, "[]")
+            existing_log_raw = "[]"
 
         log_result = build_edit_log(existing_log_raw, edit_entries, source_path)
         if "error" in log_result:
@@ -224,8 +223,6 @@ def write_h5ad(
 
         # Write to provenance/edit_history
         adata.uns.setdefault("provenance", {})[EDIT_LOG_KEY] = log_result["json"]
-        # Remove legacy key if present
-        adata.uns.pop(_LEGACY_EDIT_LOG_KEY, None)
 
         if output_path is None:
             output_path = generate_output_path(source_path)
