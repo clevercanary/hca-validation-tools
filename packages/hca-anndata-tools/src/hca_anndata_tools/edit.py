@@ -299,6 +299,12 @@ def replace_placeholder_values(
                 cats = [_decode_bytes(v) for v in item["categories"][:]]
                 codes = item["codes"][:]
 
+                # Preserve original settings
+                ordered = bool(item.attrs["ordered"])
+                codes_compression = item["codes"].compression
+                codes_compression_opts = item["codes"].compression_opts
+                codes_chunks = item["codes"].chunks
+
                 # Set blocked codes to -1 (NaN)
                 blocked = {i for i in range(len(cats)) if cats[i].lower() in bl}
                 for i in blocked:
@@ -312,14 +318,19 @@ def replace_placeholder_values(
                 for old_idx, new_idx in remap.items():
                     new_codes[codes == old_idx] = new_idx
 
-                # Rewrite the column
+                # Rewrite the column preserving compression settings
                 del f["obs"][col]
                 grp = f["obs"].create_group(col)
                 grp.attrs["encoding-type"] = "categorical"
                 grp.attrs["encoding-version"] = "0.2.0"
-                grp.attrs["ordered"] = False
+                grp.attrs["ordered"] = ordered
                 grp.create_dataset("categories", data=np.array(new_cats, dtype=object))
-                grp.create_dataset("codes", data=new_codes.astype(codes.dtype))
+                grp.create_dataset(
+                    "codes", data=new_codes.astype(codes.dtype),
+                    compression=codes_compression,
+                    compression_opts=codes_compression_opts,
+                    chunks=codes_chunks,
+                )
 
             write_edit_log_h5py(f, log_result["json"])
 
