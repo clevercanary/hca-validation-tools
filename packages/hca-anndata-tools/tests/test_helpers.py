@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 import scipy.sparse as sp
 
-from hca_anndata_tools._io import read_obs_index, verify_obs_transplant
+from hca_anndata_tools._io import read_obs_index, verify_categorical_integrity, verify_obs_transplant
 from hca_anndata_tools.write import build_edit_log, cleanup_previous_version
 
 
@@ -122,6 +122,68 @@ def test_verify_categories_mismatch(tmp_path):
 def test_verify_empty_columns(_make_pair):
     temp, output = _make_pair({}, ["c0", "c1"])
     assert verify_obs_transplant(temp, output, []) is None
+
+
+# -- verify_categorical_integrity ----------------------------------------------
+
+
+def _make_categorical_h5ad(tmp_path, categories, codes, name="test_col"):
+    n = len(codes)
+    obs = pd.DataFrame(
+        {name: pd.Categorical.from_codes(codes, categories=categories)},
+        index=[f"c{i}" for i in range(n)],
+    )
+    adata = ad.AnnData(X=sp.csr_matrix((n, 2), dtype=np.float32), obs=obs)
+    path = tmp_path / "cat_test.h5ad"
+    adata.write_h5ad(path)
+    return str(path)
+
+
+def test_verify_categorical_valid(tmp_path):
+    path = _make_categorical_h5ad(tmp_path, ["a", "b"], [0, 1, 0, -1])
+    with h5py.File(path, "r") as f:
+        assert verify_categorical_integrity(f, ["test_col"]) is None
+
+
+def test_verify_categorical_code_out_of_range(tmp_path):
+    path = _make_categorical_h5ad(tmp_path, ["a", "b"], [0, 1, 0])
+    with h5py.File(path, "a") as f:
+        f["obs"]["test_col"]["codes"][1] = 5
+    with h5py.File(path, "r") as f:
+        result = verify_categorical_integrity(f, ["test_col"])
+        assert result is not None
+        assert "max code" in result
+
+
+def test_verify_categorical_expected_valid_counts(tmp_path):
+    path = _make_categorical_h5ad(tmp_path, ["a", "b"], [0, 1, -1])
+    with h5py.File(path, "r") as f:
+        assert verify_categorical_integrity(f, ["test_col"], {"test_col": 2}) is None
+        result = verify_categorical_integrity(f, ["test_col"], {"test_col": 3})
+        assert result is not None
+        assert "expected 3 valid" in result
+
+
+def test_verify_catches_nan_to_valid_corruption(tmp_path):
+    """Simulate the bug where NaN codes (-1) get remapped to a valid category."""
+    # Start with: a=0, b=1, NaN=-1  → 2 valid values
+    path = _make_categorical_h5ad(tmp_path, ["a", "b"], [0, 1, -1])
+
+    # Corrupt: change the NaN (-1) to a valid code (0), simulating the bug
+    with h5py.File(path, "a") as f:
+        codes = f["obs"]["test_col"]["codes"][:]
+        codes[2] = 0  # NaN cell now points to "a"
+        f["obs"]["test_col"]["codes"][...] = codes
+
+    # The structural check passes (codes are in range)
+    with h5py.File(path, "r") as f:
+        assert verify_categorical_integrity(f, ["test_col"]) is None
+
+    # But the valid count check catches it (expected 2, got 3)
+    with h5py.File(path, "r") as f:
+        result = verify_categorical_integrity(f, ["test_col"], {"test_col": 2})
+        assert result is not None
+        assert "expected 2 valid values, got 3" in result
 
 
 # -- build_edit_log ------------------------------------------------------------

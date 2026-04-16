@@ -253,6 +253,7 @@ def replace_placeholder_values(
 
         # Scan for placeholder values and read edit log in one pass
         columns_fixed = {}
+        expected_valid_counts = {}
         with h5py.File(path, "r") as f:
             obs = f["obs"]
             obs_col_names = [_decode_bytes(c) for c in obs.attrs["column-order"]]
@@ -263,14 +264,18 @@ def replace_placeholder_values(
                 if isinstance(item, h5py.Group) and "categories" in item:
                     cats = [_decode_bytes(v) for v in item["categories"][:]]
                     codes = item["codes"][:]
+                    placeholder_count = 0
                     matches = {}
                     for i in range(len(cats)):
                         if cats[i].lower() in bl:
                             count = int((codes == i).sum())
                             if count > 0:
                                 matches[cats[i]] = count
+                                placeholder_count += count
                     if matches:
                         columns_fixed[col] = matches
+                        valid_count = int((codes >= 0).sum()) - placeholder_count
+                        expected_valid_counts[col] = valid_count
                 else:
                     return {"error": f"Column '{col}' is not categorical"}
             raw_log = read_edit_log_h5py(f)
@@ -347,7 +352,9 @@ def replace_placeholder_values(
             write_edit_log_h5py(f, log_result["json"])
 
             # Verify integrity after rewrite
-            integrity_err = verify_categorical_integrity(f, list(columns_fixed.keys()))
+            integrity_err = verify_categorical_integrity(
+                f, list(columns_fixed.keys()), expected_valid_counts
+            )
             if integrity_err:
                 raise RuntimeError(integrity_err)
 

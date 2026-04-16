@@ -147,11 +147,21 @@ def write_edit_log_h5py(f: h5py.File, log_json: str) -> None:
     prov.create_dataset("edit_history", data=log_json)
 
 
-def verify_categorical_integrity(f: h5py.File, columns: list[str]) -> str | None:
+def verify_categorical_integrity(
+    f: h5py.File,
+    columns: list[str],
+    expected_valid_counts: dict[str, int] | None = None,
+) -> str | None:
     """Check categorical obs columns for data corruption.
 
     Verifies: codes length matches obs count, all codes in range,
-    no codes below -1.
+    no codes below -1. Optionally checks that the number of non-NaN
+    values matches expected counts (catches NaN→valid corruption).
+
+    Args:
+        f: Open h5py File.
+        columns: Column names to check.
+        expected_valid_counts: If provided, {col: expected_non_nan_count}.
 
     Returns:
         None if all columns pass, or an error message string.
@@ -176,6 +186,14 @@ def verify_categorical_integrity(f: h5py.File, columns: list[str]) -> str | None
         valid = codes[codes >= 0]
         if len(valid) > 0 and len(cats) > 0 and int(valid.max()) >= len(cats):
             return f"Column '{col}': max code {valid.max()} >= n_categories {len(cats)}"
+        if expected_valid_counts and col in expected_valid_counts:
+            actual = int((codes >= 0).sum())
+            expected = expected_valid_counts[col]
+            if actual != expected:
+                return (
+                    f"Column '{col}': expected {expected} valid values, "
+                    f"got {actual}"
+                )
 
     return None
 
