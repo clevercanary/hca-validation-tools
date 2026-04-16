@@ -205,17 +205,20 @@ def transplant_obs_columns(
         Set of column names that were deleted (empty if not overwriting).
     """
     deleted = set()
-    if overwrite:
-        for col in columns:
-            if col in f_out["obs"]:
+    copied = []
+    for col in columns:
+        if col not in f_temp["obs"]:
+            continue
+        if col in f_out["obs"]:
+            if overwrite:
                 del f_out["obs"][col]
                 deleted.add(col)
+            else:
+                continue
+        f_temp.copy(f"obs/{col}", f_out["obs"])
+        copied.append(col)
 
-    for col in columns:
-        if col in f_temp["obs"]:
-            f_temp.copy(f"obs/{col}", f_out["obs"])
-
-    update_column_order(f_out, columns, deleted)
+    update_column_order(f_out, copied, deleted)
     return deleted
 
 
