@@ -17,7 +17,6 @@ from ._io import (
     ensure_provenance_group,
     read_categorical_data,
     read_edit_log_h5py,
-    transplant_obs_columns,
     update_column_order,
     verify_obs_transplant,
     _decode_bytes,
