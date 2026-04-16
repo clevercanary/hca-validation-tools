@@ -16,7 +16,6 @@ from ._io import (
     open_h5ad,
     ensure_provenance_group,
     read_edit_log_h5py,
-    write_edit_log_h5py,
     verify_obs_transplant,
     _decode_bytes,
 )

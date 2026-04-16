@@ -313,10 +313,11 @@ def replace_placeholder_values(
                 # Remove unused categories and remap codes
                 used = sorted(set(codes[codes >= 0]))
                 new_cats = [cats[i] for i in used]
-                remap = {old: new for new, old in enumerate(used)}
-                new_codes = np.full_like(codes, -1)
-                for old_idx, new_idx in remap.items():
-                    new_codes[codes == old_idx] = new_idx
+                # Vectorized remap via lookup table
+                lookup = np.full(len(cats), -1, dtype=codes.dtype)
+                for new_idx, old_idx in enumerate(used):
+                    lookup[old_idx] = new_idx
+                new_codes = np.where(codes >= 0, lookup[codes], -1).astype(codes.dtype)
 
                 # Rewrite the column preserving compression settings
                 del f["obs"][col]

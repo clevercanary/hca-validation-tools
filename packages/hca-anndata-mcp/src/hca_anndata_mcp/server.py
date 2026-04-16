@@ -31,7 +31,8 @@ mcp = FastMCP(
         "set_uns to update HCA dataset metadata fields with schema validation, "
         "convert_cellxgene_to_hca to convert CellxGENE files to HCA format, "
         "validate_marker_genes to check CAP marker genes against var, "
-        "and copy_cap_annotations to copy CAP annotations from a source into an HCA target file."
+        "copy_cap_annotations to copy CAP annotations from a source into an HCA target file, "
+        "and replace_placeholder_values to replace banned placeholder values with NaN in obs columns."
     ),
 )
 
