@@ -147,6 +147,39 @@ def write_edit_log_h5py(f: h5py.File, log_json: str) -> None:
     prov.create_dataset("edit_history", data=log_json)
 
 
+def verify_categorical_integrity(f: h5py.File, columns: list[str]) -> str | None:
+    """Check categorical obs columns for data corruption.
+
+    Verifies: codes length matches obs count, all codes in range,
+    no codes below -1.
+
+    Returns:
+        None if all columns pass, or an error message string.
+    """
+    import numpy as np
+
+    obs = f["obs"]
+    idx_key = _decode_bytes(obs.attrs.get("_index", "_index"))
+    n_obs = len(obs[idx_key])
+
+    for col in columns:
+        item = obs[col]
+        if not (isinstance(item, h5py.Group) and "categories" in item):
+            continue
+        cats = item["categories"][:]
+        codes = item["codes"][:]
+
+        if len(codes) != n_obs:
+            return f"Column '{col}': codes length {len(codes)} != n_obs {n_obs}"
+        if (codes < -1).any():
+            return f"Column '{col}': found codes below -1"
+        valid = codes[codes >= 0]
+        if len(valid) > 0 and len(cats) > 0 and int(valid.max()) >= len(cats):
+            return f"Column '{col}': max code {valid.max()} >= n_categories {len(cats)}"
+
+    return None
+
+
 def verify_obs_transplant(
     temp_path: str,
     output_path: str,

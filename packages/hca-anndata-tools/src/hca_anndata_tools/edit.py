@@ -12,7 +12,7 @@ import h5py
 import numpy as np
 from pydantic import TypeAdapter, ValidationError
 
-from ._io import open_h5ad, read_edit_log_h5py, write_edit_log_h5py, _decode_bytes
+from ._io import open_h5ad, read_edit_log_h5py, verify_categorical_integrity, write_edit_log_h5py, _decode_bytes
 from ._serialize import make_serializable
 from .schema.helpers import uns_field_registry
 from .write import (
@@ -345,6 +345,11 @@ def replace_placeholder_values(
                 )
 
             write_edit_log_h5py(f, log_result["json"])
+
+            # Verify integrity after rewrite
+            integrity_err = verify_categorical_integrity(f, list(columns_fixed.keys()))
+            if integrity_err:
+                raise RuntimeError(integrity_err)
 
         cleanup_previous_version(path, output_path)
 
