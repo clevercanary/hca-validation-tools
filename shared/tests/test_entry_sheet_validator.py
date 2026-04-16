@@ -403,7 +403,7 @@ class TestReadSheetWithServiceAccount:
         # Set credentials to a string that looks like an unresolved secret reference
         original_env = os.environ.copy()
         os.environ['GOOGLE_SERVICE_ACCOUNT'] = 'aws:secretsmanager:dev/hca-atlas-tracker/google-service-account'
-        
+
         try:
             # The function should return read error containing only 'auth_unresolved' code when credentials weren't
             # resolved
@@ -426,7 +426,7 @@ class TestReadSheetWithServiceAccount:
             "project_id": "test-project"
             # Missing required fields: private_key, client_email, token_uri
         })
-        
+
         try:
             # The function should return read error containing only 'auth_invalid_format' code when credentials are
             # missing required fields

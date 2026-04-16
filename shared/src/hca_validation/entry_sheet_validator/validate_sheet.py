@@ -391,7 +391,7 @@ def read_worksheets(
 
     for sheet_index, worksheet, value_range in zip(sheet_indices, worksheets, api_result["valueRanges"]):
         data = gspread.utils.fill_gaps(value_range.get("values", [[]]))
-         # Convert to DataFrame
+        # Convert to DataFrame
         if len(data) >= 1:
             logger.info(
                 f"Successfully retrieved data from worksheet index {sheet_index}: {len(data)} rows, "
@@ -428,11 +428,12 @@ def read_sheet_with_service_account(
     
     Args:
         sheet_id (str): The ID of the Google Sheet to read.
-        sheet_indices (List[int], optional): The indices of the worksheets to read. Defaults to [0].
-        
+        entity_types (List[str], optional): The entity types whose worksheets to read. Defaults to ["dataset"].
+        apis (Optional[ApiInstances], optional): Pre-built API instances to use. If None, new ones are built.
+
     Returns:
         info: SpreadsheetInfo object containing list of WorksheetInfo corresponding to
-            the list of sheet indices
+            the provided entity_types
         worksheets: List of gspread worksheets
     
     Raises:
