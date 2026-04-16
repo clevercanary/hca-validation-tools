@@ -42,6 +42,8 @@ cd services/hca-schema-validator && poetry run pytest tests/ -v
 
 Pyright covers `packages/hca-anndata-tools`, `packages/hca-anndata-mcp`, `packages/hca-schema-validator`, `services/dataset-validator`, and `services/hca-schema-validator`. Config is `pyrightconfig.json` at repo root. Runs one pass per venv since each has a disjoint dep set.
 
+Note: `hca-anndata-tools` doesn't declare pyright as a dev dep — its files are checked from the `hca-anndata-mcp` venv (which depends on tools, so it's a superset). This asymmetry goes away when we migrate to uv workspaces (#248) and have one shared venv.
+
 ```bash
 make typecheck
 ```
