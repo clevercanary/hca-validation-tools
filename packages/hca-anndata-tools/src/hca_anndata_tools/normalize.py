@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from ._io import open_h5ad
-from .inspect import inspect_x
+from .inspect import check_x_normalization
 from .write import make_edit_entry, resolve_latest, write_h5ad
 
 _TARGET_SUM = 1e4
@@ -39,7 +39,7 @@ def normalize_raw(path: str) -> dict:
 
         path = resolve_latest(path)
 
-        check = inspect_x(path)
+        check = check_x_normalization(path)
         if "error" in check:
             return check
         if check["has_raw_x"]:

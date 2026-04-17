@@ -1,4 +1,4 @@
-"""Inspect X to report whether it looks like raw counts or normalized data."""
+"""Check whether X contains raw counts or already-normalized data."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ def _sample_x(f: h5py.File, sample_size: int) -> np.ndarray:
     return np.asarray(x[0, :sample_size])  # pyright: ignore[reportIndexIssue]
 
 
-def inspect_x(path: str, sample_size: int = _DEFAULT_SAMPLE_SIZE) -> dict:
+def check_x_normalization(path: str, sample_size: int = _DEFAULT_SAMPLE_SIZE) -> dict:
     """Sample X and report whether it looks like raw counts or normalized data.
 
     Reads a small slice via h5py without loading the full matrix. The
