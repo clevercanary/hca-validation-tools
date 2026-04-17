@@ -1,11 +1,14 @@
 ---
 name: curate-h5ad
 description: Interactively curate an h5ad file toward HCA readiness — runs the mechanical fixes the validator and evaluator agree on, and enumerates everything still requiring wrangler input or upstream data. Sibling to /evaluate-h5ad.
+argument-hint: <absolute-path-to-h5ad-file>
 ---
 
 # Curate H5AD File
 
-Curate the h5ad file at: `{{path}}`
+Curate the h5ad file at absolute path: `$ARGUMENTS`
+
+Pass an absolute path to the `.h5ad` file. Relative paths are resolved against the MCP server's working directory, which may not match the user's.
 
 `/evaluate-h5ad` identifies problems. `/curate-h5ad` applies the safe, mechanical fixes and hands back a punch list of everything still needing a curator's decision or upstream data.
 
@@ -23,23 +26,8 @@ The target schemas are:
 
 Run in parallel:
 
-- `/evaluate-h5ad {{path}}` — produces the 8-section report (metadata, storage, embeddings, CAP, cell-type concordance, edit history, summary)
-- `hca-schema-validator` — captures errors and warnings not covered by the evaluator:
-
-  ```bash
-  cd packages/hca-schema-validator && poetry run python -u <<'EOF'
-  from hca_schema_validator import HCAValidator
-  v = HCAValidator()
-  v.validate_adata("{{path}}")
-  print("is_valid:", v.is_valid)
-  print(f"=== ERRORS ({len(v.errors)}) ===")
-  for e in v.errors: print("-", e)
-  print(f"=== WARNINGS ({len(v.warnings)}) ===")
-  # Summarize repeated warnings by shape, don't print thousands of lines.
-  EOF
-  ```
-
-Confirm X's dtype and integer-ness via `view_data` on a small slice before deciding whether `normalize_raw` applies.
+- `/evaluate-h5ad $ARGUMENTS` — produces the structured overview report (schema type, X verdict, metadata, storage, embeddings, CAP, edit history, summary). This already calls `check_schema_type` and `check_x_normalization`, so their verdicts are available for Step 2 gating without a separate tool call.
+- `validate_schema` — the HCA schema validator (`is_valid`, full `errors` and `warnings` lists). These are the authoritative blocking/advisory signals for Bucket A decisions. Feature-ID warnings are ordered last; summarize repeated shapes in the punch list rather than pasting thousands of lines verbatim.
 
 ## Step 2 — Classify every finding into one bucket
 
@@ -47,8 +35,8 @@ Confirm X's dtype and integer-ness via `view_data` on a small slice before decid
 
 Only these are in Bucket A. Nothing else.
 
-- **`convert_cellxgene_to_hca`** — when `uns['schema_version']` is present (CellxGENE 6.0+). Must run **first**: it reshapes the file into HCA layout before any other fix makes sense, and the other tools assume HCA layout. After conversion, re-run the validator + evaluator on the new file to get an accurate Bucket A/B/C list.
-- **`normalize_raw`** — when `has_raw = false` AND a sample of X is integer-valued (raw counts). Deterministic: moves X→raw.X, normalizes X with `normalize_total(target_sum=10000) + log1p`.
+- **`convert_cellxgene_to_hca`** — when `check_schema_type` reports `schema: "cellxgene"`. Must run **first**: it reshapes the file into HCA layout before any other fix makes sense, and the other tools assume HCA layout. After conversion, re-run the validator + evaluator on the new file to get an accurate Bucket A/B/C list.
+- **`normalize_raw`** — when `check_x_normalization` reports `verdict: "raw_counts"` and `has_raw_x: false`. Deterministic: moves X→raw.X, normalizes X with `normalize_total(target_sum=10000) + log1p`.
 - **`replace_placeholder_values` on `library_preparation_batch`** — only if the column actually contains placeholder values flagged by the validator.
 - **`replace_placeholder_values` on `library_sequencing_run`** — same condition.
 - **`copy_cap_annotations`** — only if the wrangler provided a CAP source file in Step 3. Copies annotation sets + `cellannotation_schema_version` + `cellannotation_metadata` from the source into the target.
