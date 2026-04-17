@@ -1,4 +1,4 @@
-"""Check whether X contains raw counts or already-normalized data."""
+"""Small verdict tools for h5ad files (X normalization, schema type)."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ import os
 import h5py
 import numpy as np
 
+from ._io import _decode_bytes
 from .write import resolve_latest
 
 _DEFAULT_SAMPLE_SIZE = 2000
@@ -120,5 +121,59 @@ def check_x_normalization(path: str, sample_size: int = _DEFAULT_SAMPLE_SIZE) ->
         if not isinstance(sample_size, int) or sample_size < 1:
             return {"error": f"sample_size must be a positive int, got {sample_size!r}"}
         return _classify_x_at_path(resolve_latest(path), sample_size)
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def _read_schema_version(f: h5py.File) -> str | None:
+    """Read and decode ``uns['schema_version']`` from an open h5py File.
+
+    Returns the stripped string, or None if absent or empty.
+    ``schema_version`` is stored as a scalar string dataset in AnnData's
+    h5ad format.
+    """
+    uns = f.get("uns")
+    if not isinstance(uns, h5py.Group) or "schema_version" not in uns:
+        return None
+    raw = uns["schema_version"][()]  # pyright: ignore[reportIndexIssue]
+    value = _decode_bytes(raw)
+    if not isinstance(value, str):
+        return None
+    value = value.strip()
+    return value or None
+
+
+def check_schema_type(path: str) -> dict:
+    """Report whether an h5ad file declares the CellxGENE or HCA schema.
+
+    Detection is conservative: the presence of a non-empty
+    ``uns['schema_version']`` is the CellxGENE signal. HCA-authored files
+    (or anything else) fall through to ``"hca"``.
+
+    Reads via h5py without loading the matrix.
+
+    Args:
+        path: Path to an .h5ad file.
+
+    Returns:
+        Dict with ``filename``, ``schema`` (``"cellxgene"`` or ``"hca"``),
+        and ``schema_version`` (string when CellxGENE, ``None`` otherwise).
+        On failure, ``error`` is returned instead.
+    """
+    try:
+        path = resolve_latest(path)
+        with h5py.File(path, "r") as f:
+            version = _read_schema_version(f)
+        if version:
+            return {
+                "filename": os.path.basename(path),
+                "schema": "cellxgene",
+                "schema_version": version,
+            }
+        return {
+            "filename": os.path.basename(path),
+            "schema": "hca",
+            "schema_version": None,
+        }
     except Exception as e:
         return {"error": str(e)}

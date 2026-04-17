@@ -2,6 +2,8 @@
 
 from fastmcp import FastMCP
 from hca_anndata_tools import (
+    check_schema_type,
+    check_x_normalization,
     compress_h5ad,
     convert_cellxgene_to_hca,
     copy_cap_annotations,
@@ -9,7 +11,6 @@ from hca_anndata_tools import (
     get_descriptive_stats,
     get_storage_info,
     get_summary,
-    check_x_normalization,
     list_uns_fields,
     locate_files,
     normalize_raw,
@@ -41,6 +42,7 @@ mcp = FastMCP(
         "normalize_raw to move raw counts from X to raw.X and normalize X "
         "(normalize_total + log1p), "
         "check_x_normalization to classify X as raw-counts / normalized / indeterminate, "
+        "check_schema_type to identify CellxGENE vs HCA layout and report the schema version, "
         "and view_edit_log to inspect the edit history recorded in a file."
     ),
 )
@@ -62,3 +64,4 @@ mcp.tool()(compress_h5ad)
 mcp.tool()(normalize_raw)
 mcp.tool()(view_edit_log)
 mcp.tool()(check_x_normalization)
+mcp.tool()(check_schema_type)
