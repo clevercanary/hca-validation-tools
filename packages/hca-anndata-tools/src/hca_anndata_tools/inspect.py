@@ -42,7 +42,8 @@ def check_x_normalization(path: str, sample_size: int = _DEFAULT_SAMPLE_SIZE) ->
         Dict with ``dtype``, ``sample_size``, ``nonzero_count``,
         ``is_integer_valued``, ``has_negative``, ``has_raw_x``,
         ``verdict``, and (when nonzero values were seen) ``nonzero_min``
-        and ``nonzero_max``. On failure, ``error`` is returned instead.
+        and ``nonzero_max``. The min/max are ``None`` if every nonzero
+        value is non-finite. On failure, ``error`` is returned instead.
 
         ``verdict`` is one of:
         - ``"raw_counts"`` — all sampled nonzero values are non-negative integers.
@@ -81,8 +82,11 @@ def check_x_normalization(path: str, sample_size: int = _DEFAULT_SAMPLE_SIZE) ->
             "verdict": verdict,
         }
         if nonzero_count > 0:
-            result["nonzero_min"] = float(nonzero.min())
-            result["nonzero_max"] = float(nonzero.max())
+            # Filter out NaN/inf before min/max — those values aren't
+            # strict-JSON-serializable and some MCP clients reject them.
+            finite = nonzero[np.isfinite(nonzero)]
+            result["nonzero_min"] = float(finite.min()) if finite.size else None
+            result["nonzero_max"] = float(finite.max()) if finite.size else None
         return result
 
     except Exception as e:

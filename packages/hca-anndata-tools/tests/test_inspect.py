@@ -97,3 +97,13 @@ def test_check_x_normalization_custom_sample_size(tmp_path):
 def test_check_x_normalization_missing_file():
     result = check_x_normalization("/nonexistent/does-not-exist.h5ad")
     assert "error" in result
+
+
+def test_check_x_normalization_filters_nan_from_min_max(tmp_path):
+    """NaN/inf in X must not leak into nonzero_min/max (breaks strict JSON)."""
+    X = sp.csr_matrix(np.array([[1.0, np.nan], [np.inf, 3.0]], dtype=np.float32))
+    path = _write_h5ad(tmp_path / "nan.h5ad", X)
+
+    result = check_x_normalization(str(path))
+    assert result["nonzero_min"] == 1.0
+    assert result["nonzero_max"] == 3.0
