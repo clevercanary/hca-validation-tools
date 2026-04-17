@@ -2,6 +2,7 @@
 
 from fastmcp import FastMCP
 from hca_anndata_tools import (
+    compress_h5ad,
     convert_cellxgene_to_hca,
     copy_cap_annotations,
     get_cap_annotations,
@@ -32,7 +33,8 @@ mcp = FastMCP(
         "convert_cellxgene_to_hca to convert CellxGENE files to HCA format, "
         "validate_marker_genes to check CAP marker genes against var, "
         "copy_cap_annotations to copy CAP annotations from a source into an HCA target file, "
-        "and replace_placeholder_values to replace banned placeholder values with NaN in obs columns."
+        "replace_placeholder_values to replace banned placeholder values with NaN in obs columns, "
+        "and compress_h5ad to rewrite a file with HDF5 gzip compression applied."
     ),
 )
 
@@ -49,3 +51,4 @@ mcp.tool()(convert_cellxgene_to_hca)
 mcp.tool()(validate_marker_genes)
 mcp.tool()(copy_cap_annotations)
 mcp.tool()(replace_placeholder_values)
+mcp.tool()(compress_h5ad)

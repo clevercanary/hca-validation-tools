@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .cap import get_cap_annotations
+    from .compress import compress_h5ad
     from .convert import convert_cellxgene_to_hca
     from .copy_cap import copy_cap_annotations
     from .edit import list_uns_fields, replace_placeholder_values, set_uns
@@ -45,6 +46,7 @@ _LAZY_IMPORTS = {
     "convert_cellxgene_to_hca": ".convert",
     "validate_marker_genes": ".marker_genes",
     "copy_cap_annotations": ".copy_cap",
+    "compress_h5ad": ".compress",
 }
 
 __all__ = list(_LAZY_IMPORTS)  # pyright: ignore[reportUnsupportedDunderAll]
