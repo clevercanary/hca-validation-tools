@@ -71,8 +71,9 @@ def test_check_x_normalization_indeterminate_when_all_zero(tmp_path):
     result = check_x_normalization(str(path))
     assert result["verdict"] == "indeterminate"
     assert result["nonzero_count"] == 0
-    assert "nonzero_min" not in result
-    assert "nonzero_max" not in result
+    # Fixed return shape: keys always present, None when indeterminate.
+    assert result["nonzero_min"] is None
+    assert result["nonzero_max"] is None
 
 
 def test_check_x_normalization_dense_x(tmp_path):
@@ -107,3 +108,28 @@ def test_check_x_normalization_filters_nan_from_min_max(tmp_path):
     result = check_x_normalization(str(path))
     assert result["nonzero_min"] == 1.0
     assert result["nonzero_max"] == 3.0
+
+
+def test_check_x_normalization_rejects_non_positive_sample_size(tmp_path):
+    rng = np.random.default_rng(5)
+    X = sp.csr_matrix(rng.integers(0, 10, size=(5, 5)).astype(np.float32))
+    path = _write_h5ad(tmp_path / "sized.h5ad", X)
+
+    for bad in (0, -1):
+        result = check_x_normalization(str(path), sample_size=bad)
+        assert "error" in result
+        assert "sample_size" in result["error"]
+
+
+def test_check_x_normalization_return_shape_is_fixed(tmp_path):
+    """All documented keys are always present on success."""
+    rng = np.random.default_rng(5)
+    X = sp.csr_matrix(rng.integers(0, 10, size=(5, 5)).astype(np.float32))
+    path = _write_h5ad(tmp_path / "shape.h5ad", X)
+
+    expected = {
+        "filename", "dtype", "sample_size", "nonzero_count",
+        "nonzero_min", "nonzero_max", "is_integer_valued",
+        "has_negative", "has_raw_x", "verdict",
+    }
+    assert set(check_x_normalization(str(path)).keys()) == expected

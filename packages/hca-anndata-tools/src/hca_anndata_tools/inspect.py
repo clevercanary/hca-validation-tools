@@ -36,14 +36,15 @@ def check_x_normalization(path: str, sample_size: int = _DEFAULT_SAMPLE_SIZE) ->
 
     Args:
         path: Path to an .h5ad file.
-        sample_size: Number of X entries to inspect (default 2000).
+        sample_size: Number of X entries to inspect (default 2000). Must be >= 1.
 
     Returns:
-        Dict with ``dtype``, ``sample_size``, ``nonzero_count``,
-        ``is_integer_valued``, ``has_negative``, ``has_raw_x``,
-        ``verdict``, and (when nonzero values were seen) ``nonzero_min``
-        and ``nonzero_max``. The min/max are ``None`` if every nonzero
-        value is non-finite. On failure, ``error`` is returned instead.
+        Dict with a fixed shape: ``filename``, ``dtype``, ``sample_size``,
+        ``nonzero_count``, ``nonzero_min``, ``nonzero_max``,
+        ``is_integer_valued``, ``has_negative``, ``has_raw_x``, ``verdict``.
+        ``nonzero_min`` and ``nonzero_max`` are ``None`` when no nonzero
+        values were seen, or when every nonzero value is non-finite. On
+        failure, ``error`` is returned instead.
 
         ``verdict`` is one of:
         - ``"raw_counts"`` — all sampled nonzero values are non-negative integers.
@@ -51,6 +52,9 @@ def check_x_normalization(path: str, sample_size: int = _DEFAULT_SAMPLE_SIZE) ->
         - ``"indeterminate"`` — sample contained no nonzero values.
     """
     try:
+        if not isinstance(sample_size, int) or sample_size < 1:
+            return {"error": f"sample_size must be a positive int, got {sample_size!r}"}
+
         path = resolve_latest(path)
         with h5py.File(path, "r") as f:
             has_raw = "raw/X" in f
@@ -71,23 +75,28 @@ def check_x_normalization(path: str, sample_size: int = _DEFAULT_SAMPLE_SIZE) ->
         else:
             verdict = "raw_counts"
 
-        result = {
+        nonzero_min: float | None = None
+        nonzero_max: float | None = None
+        if nonzero_count > 0:
+            # Filter NaN/inf before min/max — those values aren't strict
+            # JSON-serializable and some MCP clients reject them.
+            finite = nonzero[np.isfinite(nonzero)]
+            if finite.size:
+                nonzero_min = float(finite.min())
+                nonzero_max = float(finite.max())
+
+        return {
             "filename": os.path.basename(path),
             "dtype": dtype,
             "sample_size": int(sample.size),
             "nonzero_count": nonzero_count,
+            "nonzero_min": nonzero_min,
+            "nonzero_max": nonzero_max,
             "is_integer_valued": is_integer_valued,
             "has_negative": has_negative,
             "has_raw_x": has_raw,
             "verdict": verdict,
         }
-        if nonzero_count > 0:
-            # Filter out NaN/inf before min/max — those values aren't
-            # strict-JSON-serializable and some MCP clients reject them.
-            finite = nonzero[np.isfinite(nonzero)]
-            result["nonzero_min"] = float(finite.min()) if finite.size else None
-            result["nonzero_max"] = float(finite.max()) if finite.size else None
-        return result
 
     except Exception as e:
         return {"error": str(e)}
