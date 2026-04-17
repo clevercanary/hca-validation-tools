@@ -12,6 +12,7 @@ packages = [{include = "hca_anndata_mcp", from = "src"}]
 python = "^3.10"
 fastmcp = ">=2,<3"
 hca-anndata-tools = {path = "../hca-anndata-tools", develop = true}
+hca-schema-validator = {path = "../hca-schema-validator", develop = true}
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0"

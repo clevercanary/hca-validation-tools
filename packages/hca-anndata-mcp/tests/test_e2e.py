@@ -136,6 +136,23 @@ async def test_plot_embedding(client, sample_h5ad):
 
 
 @pytest.mark.asyncio
+async def test_validate_schema(client, sample_h5ad):
+    data = await _call(client, "validate_schema", {"path": str(sample_h5ad)})
+    assert isinstance(data["is_valid"], bool)
+    assert isinstance(data["errors"], list)
+    assert isinstance(data["warnings"], list)
+    assert data["error_count"] == len(data["errors"])
+    assert data["warning_count"] == len(data["warnings"])
+    assert data["filename"].endswith(".h5ad")
+
+
+@pytest.mark.asyncio
+async def test_validate_schema_missing_file(client):
+    data = await _call(client, "validate_schema", {"path": "/nonexistent/file.h5ad"})
+    assert "error" in data
+
+
+@pytest.mark.asyncio
 async def test_error_handling(client):
     """Verify errors propagate cleanly through MCP."""
     data = await _call(client, "get_summary", {"path": "/nonexistent/file.h5ad"})

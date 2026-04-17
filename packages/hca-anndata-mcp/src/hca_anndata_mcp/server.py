@@ -22,6 +22,7 @@ from hca_anndata_tools import (
 )
 
 from hca_anndata_mcp.tools.plot import plot_embedding_mcp
+from hca_anndata_mcp.tools.validate import validate_schema
 
 mcp = FastMCP(
     name="hca-anndata-mcp",
@@ -43,6 +44,7 @@ mcp = FastMCP(
         "(normalize_total + log1p), "
         "check_x_normalization to classify X as raw-counts / normalized / indeterminate, "
         "check_schema_type to identify CellxGENE vs HCA layout and report the schema version, "
+        "validate_schema to run the HCA schema validator and report is_valid / errors / warnings, "
         "and view_edit_log to inspect the edit history recorded in a file."
     ),
 )
@@ -65,3 +67,4 @@ mcp.tool()(normalize_raw)
 mcp.tool()(view_edit_log)
 mcp.tool()(check_x_normalization)
 mcp.tool()(check_schema_type)
+mcp.tool()(validate_schema)
