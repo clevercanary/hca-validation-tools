@@ -16,6 +16,7 @@ from hca_anndata_tools import (
     set_uns,
     validate_marker_genes,
     view_data,
+    view_edit_log,
 )
 
 from hca_anndata_mcp.tools.plot import plot_embedding_mcp
@@ -36,8 +37,9 @@ mcp = FastMCP(
         "copy_cap_annotations to copy CAP annotations from a source into an HCA target file, "
         "replace_placeholder_values to replace banned placeholder values with NaN in obs columns, "
         "compress_h5ad to rewrite a file with HDF5 gzip compression applied, "
-        "and normalize_raw to move raw counts from X to raw.X and normalize X "
-        "(normalize_total + log1p)."
+        "normalize_raw to move raw counts from X to raw.X and normalize X "
+        "(normalize_total + log1p), "
+        "and view_edit_log to inspect the edit history recorded in a file."
     ),
 )
 
@@ -56,3 +58,4 @@ mcp.tool()(copy_cap_annotations)
 mcp.tool()(replace_placeholder_values)
 mcp.tool()(compress_h5ad)
 mcp.tool()(normalize_raw)
+mcp.tool()(view_edit_log)

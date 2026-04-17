@@ -18,7 +18,6 @@ if TYPE_CHECKING:
 _TIMESTAMP_PATTERN = re.compile(r"-edit-\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}(?=\.h5ad$)")
 _TIMESTAMP_FORMAT = "%Y-%m-%d-%H-%M-%S"
 EDIT_LOG_KEY = "edit_history"
-_LEGACY_EDIT_LOG_KEY = "hca_edit_log"
 _HASH_CHUNK_SIZE = 1 << 20  # 1 MB — keeps syscall count low on multi-GB files
 _REQUIRED_ENTRY_KEYS = {"timestamp", "tool", "tool_version", "operation", "description"}
 

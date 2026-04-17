@@ -6,7 +6,12 @@ import anndata as ad
 import numpy as np
 import pandas as pd
 import scipy.sparse as sp
-from hca_anndata_tools.edit import list_uns_fields, replace_placeholder_values, set_uns
+from hca_anndata_tools.edit import (
+    list_uns_fields,
+    replace_placeholder_values,
+    set_uns,
+    view_edit_log,
+)
 from hca_anndata_tools.write import EDIT_LOG_KEY
 
 # --- list_uns_fields ---
@@ -357,3 +362,46 @@ def test_replace_placeholder_edit_log(tmp_path):
     log = json.loads(written.uns["provenance"][EDIT_LOG_KEY])
     assert len(log) >= 1
     assert log[-1]["operation"] == "replace_placeholder_values"
+
+
+# --- view_edit_log ---
+
+
+def test_view_edit_log_empty(sample_h5ad_for_write):
+    """Unedited file returns edit_count 0 with a message."""
+    result = view_edit_log(str(sample_h5ad_for_write))
+    assert "error" not in result
+    assert result["edit_count"] == 0
+    assert result["entries"] == []
+    assert "message" in result
+    assert result["filename"] == sample_h5ad_for_write.name
+
+
+def test_view_edit_log_after_edits(sample_h5ad_for_write):
+    """After edits, entries are returned with operation and details."""
+    set_uns(str(sample_h5ad_for_write), "description", "first")
+    set_uns(str(sample_h5ad_for_write), "title", "second")
+
+    result = view_edit_log(str(sample_h5ad_for_write))
+    assert "error" not in result
+    assert result["edit_count"] == 2
+    assert "message" not in result
+    assert [e["operation"] for e in result["entries"]] == ["set_uns", "set_uns"]
+    assert result["entries"][0]["details"]["field"] == "description"
+    assert result["entries"][1]["details"]["field"] == "title"
+    assert all("timestamp" in e for e in result["entries"])
+    assert all("source_sha256" in e for e in result["entries"])
+
+
+def test_view_edit_log_auto_resolves_latest(sample_h5ad_for_write):
+    """Passing the original path reads the latest timestamped version."""
+    set_uns(str(sample_h5ad_for_write), "description", "logged")
+    result = view_edit_log(str(sample_h5ad_for_write))
+    assert "error" not in result
+    assert result["edit_count"] == 1
+    assert result["filename"] != sample_h5ad_for_write.name  # resolved to timestamped
+
+
+def test_view_edit_log_bad_path():
+    result = view_edit_log("/nonexistent/file.h5ad")
+    assert "error" in result
