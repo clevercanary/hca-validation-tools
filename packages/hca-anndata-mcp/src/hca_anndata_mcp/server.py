@@ -11,6 +11,7 @@ from hca_anndata_tools import (
     get_summary,
     list_uns_fields,
     locate_files,
+    normalize_raw,
     replace_placeholder_values,
     set_uns,
     validate_marker_genes,
@@ -34,7 +35,9 @@ mcp = FastMCP(
         "validate_marker_genes to check CAP marker genes against var, "
         "copy_cap_annotations to copy CAP annotations from a source into an HCA target file, "
         "replace_placeholder_values to replace banned placeholder values with NaN in obs columns, "
-        "and compress_h5ad to rewrite a file with HDF5 gzip compression applied."
+        "compress_h5ad to rewrite a file with HDF5 gzip compression applied, "
+        "and normalize_raw to move raw counts from X to raw.X and normalize X "
+        "(normalize_total + log1p)."
     ),
 )
 
@@ -52,3 +55,4 @@ mcp.tool()(validate_marker_genes)
 mcp.tool()(copy_cap_annotations)
 mcp.tool()(replace_placeholder_values)
 mcp.tool()(compress_h5ad)
+mcp.tool()(normalize_raw)
