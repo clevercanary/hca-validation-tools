@@ -10,6 +10,8 @@ import re
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Literal
 
+from . import __version__
+
 if TYPE_CHECKING:
     from anndata import AnnData
 
@@ -99,6 +101,32 @@ def resolve_latest(path: str) -> str:
 def _is_timestamped(path: str) -> bool:
     """Check if a path has a timestamp suffix (i.e. it's an edit, not the original)."""
     return bool(_TIMESTAMP_PATTERN.search(os.path.basename(path)))
+
+
+def make_edit_entry(
+    operation: str,
+    description: str,
+    details: dict | None = None,
+) -> dict:
+    """Build an edit-log entry with timestamp, tool, and tool_version populated.
+
+    Args:
+        operation: Short machine-readable operation name (e.g. 'set_uns').
+        description: Human-readable description of the change.
+        details: Optional operation-specific structured data.
+
+    Returns:
+        A dict with the standard edit-log entry shape, ready to pass to
+        write_h5ad() or build_edit_log().
+    """
+    return {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "tool": "hca-anndata-tools",
+        "tool_version": __version__,
+        "operation": operation,
+        "description": description,
+        "details": details or {},
+    }
 
 
 def build_edit_log(

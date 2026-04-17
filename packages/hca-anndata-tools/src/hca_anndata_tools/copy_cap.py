@@ -7,14 +7,12 @@ import shutil
 import tempfile
 from collections.abc import Mapping
 from typing import Any
-from datetime import datetime, timezone
 
 import anndata as ad
 import h5py
 import numpy as np
 import pandas as pd
 
-from . import __version__
 from ._io import (
     _decode_bytes,
     ensure_provenance_group,
@@ -33,6 +31,7 @@ from .write import (
     build_edit_log,
     cleanup_previous_version,
     generate_output_path,
+    make_edit_entry,
     resolve_latest,
 )
 
@@ -259,13 +258,10 @@ def copy_cap_annotations(
         source_sha256 = _compute_sha256(source_path)
         target_sha256 = _compute_sha256(target_path)
 
-        entry = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "tool": "hca-anndata-tools",
-            "tool_version": __version__,
-            "operation": "import_cap_annotations",
-            "description": f"Copied CAP annotations from {source_basename}",
-            "details": {
+        entry = make_edit_entry(
+            operation="import_cap_annotations",
+            description=f"Copied CAP annotations from {source_basename}",
+            details={
                 "cap_source_file": source_basename,
                 "cap_source_sha256": source_sha256,
                 "cap_schema_version": cap_schema_version,
@@ -273,7 +269,7 @@ def copy_cap_annotations(
                 "obs_columns_added": obs_cols_to_copy,
                 "uns_keys_added": uns_keys_added,
             },
-        }
+        )
 
         log_result = build_edit_log(raw_log, [entry], target_path, target_sha256)
         if "error" in log_result:

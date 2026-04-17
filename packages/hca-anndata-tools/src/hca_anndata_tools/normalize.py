@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-
 import h5py
 import numpy as np
 
-from . import __version__
 from ._io import open_h5ad
-from .write import resolve_latest, write_h5ad
+from .write import make_edit_entry, resolve_latest, write_h5ad
 
 _TARGET_SUM = 1e4
 # Sample ~2000 X entries for the integer/sign pre-check; enough to catch
@@ -82,21 +79,18 @@ def normalize_raw(path: str) -> dict:
             sc.pp.log1p(adata)
 
             n_obs, n_vars = adata.n_obs, adata.n_vars
-            entry = {
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "tool": "hca-anndata-tools",
-                "tool_version": __version__,
-                "operation": "normalize_raw",
-                "description": (
+            entry = make_edit_entry(
+                operation="normalize_raw",
+                description=(
                     f"Moved raw counts to raw.X and normalized X with "
                     f"normalize_total(target_sum={_TARGET_SUM:g}) + log1p"
                 ),
-                "details": {
+                details={
                     "target_sum": _TARGET_SUM,
                     "n_obs": n_obs,
                     "n_vars": n_vars,
                 },
-            }
+            )
 
             result = write_h5ad(adata, path, [entry])
 
