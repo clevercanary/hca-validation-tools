@@ -1,26 +1,33 @@
 ---
 name: evaluate-h5ad
 description: Evaluate an h5ad file for HCA readiness — checks metadata, compression, embeddings, CAP annotations, and edit history.
-argument-hint: <path-to-h5ad-file>
+argument-hint: <absolute-path-to-h5ad-file>
 ---
 
 # Evaluate H5AD File
 
-Evaluate the h5ad file at: `$ARGUMENTS`
+Evaluate the h5ad file at absolute path: `$ARGUMENTS`
+
+Pass an absolute path to the `.h5ad` file. Relative paths are resolved against the MCP server's working directory, which may not match the user's, so they can silently evaluate the wrong file.
 
 Run all of the following MCP tool calls in parallel to gather data:
 
 1. **get_summary** — cell/gene counts, obs/var columns, uns keys, layers, obsm
 2. **get_storage_info** — compression, chunking, sparse format, file size
-3. **list_uns_fields** — HCA schema field completeness (required vs set vs missing)
-4. **get_cap_annotations** — CAP cell annotation sets, if present
-5. **get_descriptive_stats** with `columns: ["cell_type_ontology_term_id", "author_cell_type", "cell_type"]` and `value_counts: true` — cell type annotation distributions
+3. **check_schema_type** — report CellxGENE vs HCA layout and schema version
+4. **check_x_normalization** — classify X as raw_counts / normalized / indeterminate
+5. **list_uns_fields** — HCA schema field completeness (required vs set vs missing)
+6. **get_cap_annotations** — CAP cell annotation sets, if present
+7. **get_descriptive_stats** with `columns: ["cell_type_ontology_term_id", "author_cell_type", "cell_type"]` and `value_counts: true` — cell type annotation distributions
+8. **view_edit_log** — read `uns/provenance/edit_history` so edit history is already in hand when synthesizing the report
 
 Then synthesize the results into a report covering:
 
 ## 1. File Overview
 - Cell count, gene count, file size
-- Organism, title, schema version (from uns)
+- Organism, title
+- Schema type + version (from `check_schema_type`: CellxGENE or HCA)
+- X matrix verdict (from `check_x_normalization`: raw_counts / normalized / indeterminate, and whether raw.X is present)
 
 ## 2. HCA Metadata Readiness
 - How many required HCA uns fields are set vs missing?
@@ -51,11 +58,11 @@ Then synthesize the results into a report covering:
 - If any columns are missing, note which are absent and skip this section
 
 ## 7. Edit History
-- Call `view_edit_log` to read `uns/provenance/edit_history`
+- Use the `view_edit_log` result fetched in Step 1.
 - If entries are present: summarize recent edits (who/what/when)
 - If absent: note that no edit history exists (file hasn't been edited through hca-anndata-tools)
 
 ## 8. Summary & Recommendations
 - Overall HCA readiness: ready / needs work / not started
 - Prioritized list of what to fix, most important first
-- If the file looks like a CellxGENE dataset that hasn't been converted, suggest running convert_cellxgene_to_hca
+- If `check_schema_type` reported `cellxgene`, recommend `convert_cellxgene_to_hca` as the first fix.
