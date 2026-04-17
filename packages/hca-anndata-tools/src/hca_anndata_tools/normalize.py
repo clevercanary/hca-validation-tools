@@ -25,7 +25,7 @@ def _inspect_x_file(path: str) -> tuple[bool, np.ndarray]:
     the first row.
     """
     with h5py.File(path, "r") as f:
-        has_raw = "raw" in f
+        has_raw = "raw/X" in f
         x = f["X"]
         if isinstance(x, h5py.Group) and "data" in x:
             data = x["data"]
