@@ -21,8 +21,9 @@ def _inspect_x_file(path: str) -> tuple[bool, np.ndarray]:
     """Return (has_raw, x_sample) read directly from the h5ad via h5py.
 
     Fail-fast inspection to avoid loading multi-GB files before checking
-    preconditions. For sparse X we sample X/data; for dense X we sample
-    the first row.
+    preconditions. Samples up to _SAMPLE_SIZE values from X: for sparse,
+    the first entries of X/data; for dense, the first _SAMPLE_SIZE cells
+    of row 0.
     """
     with h5py.File(path, "r") as f:
         has_raw = "raw/X" in f
@@ -32,7 +33,7 @@ def _inspect_x_file(path: str) -> tuple[bool, np.ndarray]:
             n = min(_SAMPLE_SIZE, len(data))  # pyright: ignore[reportArgumentType]
             sample = np.asarray(data[:n])  # pyright: ignore[reportIndexIssue]
         else:
-            sample = np.asarray(x[:1]).ravel()  # pyright: ignore[reportIndexIssue]
+            sample = np.asarray(x[0, :_SAMPLE_SIZE])  # pyright: ignore[reportIndexIssue]
         return has_raw, sample
 
 
@@ -43,9 +44,13 @@ def normalize_raw(path: str) -> dict:
     library-size-normalized, log1p-transformed values in X. Uses the
     scanpy recipe `normalize_total(target_sum=1e4)` + `log1p`.
 
-    Fails if raw.X already exists, or if X contains negative or non-integer
-    values (which would indicate it's already normalized). This is an
-    explicit wrangler action — there is no force flag.
+    Fails if raw.X already exists, or if a sample of X (up to 2000 values)
+    contains negative or non-integer values (which would indicate it's
+    already normalized). The X check is a fail-fast heuristic, not a
+    full-matrix guarantee — a file that looks like raw counts in its first
+    few thousand entries but has fractional values elsewhere will pass
+    this check. This is an explicit wrangler action — there is no force
+    flag.
 
     The output is written as an edit snapshot (`<stem>-edit-<ts>.h5ad`)
     and the operation is logged in `uns['provenance']['edit_history']`.
@@ -67,9 +72,9 @@ def normalize_raw(path: str) -> dict:
             return {"error": "raw.X already exists — refusing to overwrite"}
         if sample.size > 0:
             if (sample < 0).any():
-                return {"error": "X contains negative values — not raw counts"}
+                return {"error": "X sample contains negative values — not raw counts"}
             if not np.all(np.mod(sample, 1) == 0):
-                return {"error": "X contains non-integer values — appears already normalized"}
+                return {"error": "X sample contains non-integer values — appears already normalized"}
 
         with open_h5ad(path, backed=None) as adata:
             adata.raw = adata.copy()
