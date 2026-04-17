@@ -9,6 +9,7 @@ from hca_anndata_tools import (
     get_descriptive_stats,
     get_storage_info,
     get_summary,
+    check_x_normalization,
     list_uns_fields,
     locate_files,
     normalize_raw,
@@ -39,6 +40,7 @@ mcp = FastMCP(
         "compress_h5ad to rewrite a file with HDF5 gzip compression applied, "
         "normalize_raw to move raw counts from X to raw.X and normalize X "
         "(normalize_total + log1p), "
+        "check_x_normalization to classify X as raw-counts / normalized / indeterminate, "
         "and view_edit_log to inspect the edit history recorded in a file."
     ),
 )
@@ -59,3 +61,4 @@ mcp.tool()(replace_placeholder_values)
 mcp.tool()(compress_h5ad)
 mcp.tool()(normalize_raw)
 mcp.tool()(view_edit_log)
+mcp.tool()(check_x_normalization)

@@ -2,36 +2,11 @@
 
 from __future__ import annotations
 
-import h5py
-import numpy as np
-
 from ._io import open_h5ad
+from .inspect import _DEFAULT_SAMPLE_SIZE, _classify_x_at_path
 from .write import make_edit_entry, resolve_latest, write_h5ad
 
 _TARGET_SUM = 1e4
-# Sample ~2000 X entries for the integer/sign pre-check; enough to catch
-# normalized data on real files while keeping the h5py read trivial.
-_SAMPLE_SIZE = 2000
-
-
-def _inspect_x_file(path: str) -> tuple[bool, np.ndarray]:
-    """Return (has_raw, x_sample) read directly from the h5ad via h5py.
-
-    Fail-fast inspection to avoid loading multi-GB files before checking
-    preconditions. Samples up to _SAMPLE_SIZE values from X: for sparse,
-    the first entries of X/data; for dense, the first _SAMPLE_SIZE cells
-    of row 0.
-    """
-    with h5py.File(path, "r") as f:
-        has_raw = "raw/X" in f
-        x = f["X"]
-        if isinstance(x, h5py.Group) and "data" in x:
-            data = x["data"]
-            n = min(_SAMPLE_SIZE, len(data))  # pyright: ignore[reportArgumentType]
-            sample = np.asarray(data[:n])  # pyright: ignore[reportIndexIssue]
-        else:
-            sample = np.asarray(x[0, :_SAMPLE_SIZE])  # pyright: ignore[reportIndexIssue]
-        return has_raw, sample
 
 
 def normalize_raw(path: str) -> dict:
@@ -64,14 +39,13 @@ def normalize_raw(path: str) -> dict:
 
         path = resolve_latest(path)
 
-        has_raw, sample = _inspect_x_file(path)
-        if has_raw:
+        check = _classify_x_at_path(path, _DEFAULT_SAMPLE_SIZE)
+        if check["has_raw_x"]:
             return {"error": "raw.X already exists — refusing to overwrite"}
-        if sample.size > 0:
-            if (sample < 0).any():
-                return {"error": "X sample contains negative values — not raw counts"}
-            if not np.all(np.mod(sample, 1) == 0):
-                return {"error": "X sample contains non-integer values — appears already normalized"}
+        if check["has_negative"]:
+            return {"error": "X sample contains negative values — not raw counts"}
+        if check["nonzero_count"] > 0 and not check["is_integer_valued"]:
+            return {"error": "X sample contains non-integer values — appears already normalized"}
 
         with open_h5ad(path, backed=None) as adata:
             # CXG schema forbids feature_is_filtered in raw.var.
