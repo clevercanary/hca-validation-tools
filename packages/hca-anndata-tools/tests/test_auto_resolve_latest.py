@@ -15,15 +15,25 @@ from hca_anndata_tools.summary import get_summary
 from hca_anndata_tools.view import view_data
 
 
-def _make_file(path: Path, *, n_obs: int, marker: str) -> None:
-    X = sp.csr_matrix(np.zeros((n_obs, 3), dtype=np.float32))
+def _make_file(path: Path, *, n_obs: int, marker: str, edit_only: bool) -> None:
+    obs_data = {"kind": pd.Categorical([marker] * n_obs)}
+    if edit_only:
+        # Added only to the snapshot so tools that observe these signals fail
+        # assertions when they accidentally read the original file.
+        obs_data["organism_ontology_term_id"] = pd.Categorical(["NCBITaxon:9606"] * n_obs)
     obs = pd.DataFrame(
-        {"kind": pd.Categorical([marker] * n_obs)},
+        obs_data,
         index=[f"c{i}" for i in range(n_obs)],  # pyright: ignore[reportArgumentType]
     )
     var = pd.DataFrame(index=[f"g{i}" for i in range(3)])  # pyright: ignore[reportArgumentType]
-    adata = ad.AnnData(X=X, obs=obs, var=var)
+    adata = ad.AnnData(
+        X=sp.csr_matrix(np.zeros((n_obs, 3), dtype=np.float32)),
+        obs=obs,
+        var=var,
+    )
     adata.uns["title"] = marker
+    if edit_only:
+        adata.uns["cellannotation_schema_version"] = "1.0.0"
     adata.write_h5ad(path)
 
 
@@ -31,13 +41,13 @@ def _make_file(path: Path, *, n_obs: int, marker: str) -> None:
 def original_path(tmp_path):
     """Write an original + a later timestamped edit; return the original path.
 
-    The edit has different n_obs and obs marker so tools reading the wrong
-    file will fail their assertions.
+    The edit has different n_obs, obs marker, extra uns keys, and extra obs
+    columns so every tool's output differs based on which file it reads.
     """
     original = tmp_path / "dataset.h5ad"
-    _make_file(original, n_obs=3, marker="original")
+    _make_file(original, n_obs=3, marker="original", edit_only=False)
     edit = tmp_path / "dataset-edit-2026-04-17-06-00-00.h5ad"
-    _make_file(edit, n_obs=7, marker="edit")
+    _make_file(edit, n_obs=7, marker="edit", edit_only=True)
     return original
 
 
@@ -63,14 +73,16 @@ def test_view_data_resolves_latest(original_path):
 
 
 def test_get_cap_annotations_resolves_latest(original_path):
+    # cellannotation_schema_version is set only on the snapshot.
     result = get_cap_annotations(str(original_path))
-    # title is in uns so the snapshot's uns was read.
-    assert "title" in result["uns_metadata"]["required_present"]
+    assert "cellannotation_schema_version" in result["uns_metadata"]["required_present"]
 
 
 def test_validate_marker_genes_resolves_latest(original_path):
+    # The snapshot adds organism_ontology_term_id = NCBITaxon:9606; the original
+    # lacks it entirely. Reading the original returns the "missing column" error;
+    # reading the snapshot passes the organism gate and falls through to the
+    # no-marker-sets branch.
     result = validate_marker_genes(str(original_path))
-    # The snapshot has no organism_ontology_term_id, so the tool returns a
-    # specific error from that file — confirming it read the snapshot rather
-    # than blowing up earlier on path resolution.
-    assert result.get("error") == "organism_ontology_term_id not found in obs columns"
+    assert "error" not in result
+    assert result["annotation_sets_with_markers"] == []
