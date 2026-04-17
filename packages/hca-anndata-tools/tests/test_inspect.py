@@ -86,6 +86,17 @@ def test_check_x_normalization_dense_x(tmp_path):
     assert result["verdict"] == "raw_counts"
 
 
+def test_check_x_normalization_dense_zero_rows(tmp_path):
+    """Degenerate 0-cell dense X must not raise IndexError; returns indeterminate."""
+    X = np.zeros((0, 5), dtype=np.float32)
+    path = _write_h5ad(tmp_path / "zero_rows.h5ad", X)
+
+    result = check_x_normalization(str(path))
+    assert "error" not in result
+    assert result["verdict"] == "indeterminate"
+    assert result["nonzero_count"] == 0
+
+
 def test_check_x_normalization_custom_sample_size(tmp_path):
     rng = np.random.default_rng(5)
     X = sp.csr_matrix(rng.integers(0, 10, size=(30, 20)).astype(np.float32))

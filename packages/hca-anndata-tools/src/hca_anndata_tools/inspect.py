@@ -16,13 +16,16 @@ def _sample_x(f: h5py.File, sample_size: int) -> np.ndarray:
     """Return a 1-D numpy array sample of X from an open h5py File.
 
     Sparse: first ``sample_size`` entries of X/data. Dense: first
-    ``sample_size`` entries of row 0.
+    ``sample_size`` entries of row 0. Returns an empty array if either
+    X dimension is zero (degenerate 0-cell or 0-gene file).
     """
     x = f["X"]
     if isinstance(x, h5py.Group) and "data" in x:
         data = x["data"]
         n = min(sample_size, len(data))  # pyright: ignore[reportArgumentType]
         return np.asarray(data[:n])  # pyright: ignore[reportIndexIssue]
+    if x.shape[0] == 0 or x.shape[1] == 0:  # pyright: ignore[reportAttributeAccessIssue]
+        return np.asarray([])
     return np.asarray(x[0, :sample_size])  # pyright: ignore[reportIndexIssue]
 
 
