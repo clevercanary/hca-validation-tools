@@ -36,11 +36,11 @@ def validate_schema(path: str) -> dict:
                 return {"error": f"Validator could not read {os.path.basename(path)}"}
         return {
             "filename": os.path.basename(path),
-            "is_valid": bool(v.is_valid),
+            "is_valid": v.is_valid,
             "error_count": len(v.errors),
             "warning_count": len(v.warnings),
-            "errors": list(v.errors),
-            "warnings": list(v.warnings),
+            "errors": v.errors,
+            "warnings": v.warnings,
         }
     except Exception as e:
         return {"error": str(e)}
