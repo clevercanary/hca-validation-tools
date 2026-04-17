@@ -82,6 +82,9 @@ def normalize_raw(path: str) -> dict:
             adata.raw = raw_source
             sc.pp.normalize_total(adata, target_sum=_TARGET_SUM)
             sc.pp.log1p(adata)
+            # scanpy stamps uns['log1p'] = {'base': None}; None drops on h5ad
+            # write, leaving {} which CXG rejects.
+            adata.uns.pop("log1p", None)
 
             n_obs, n_vars = adata.n_obs, adata.n_vars
             entry = make_edit_entry(

@@ -119,6 +119,15 @@ def test_normalize_raw_missing_file(tmp_path):
     assert "error" in result
 
 
+def test_normalize_raw_strips_log1p_uns_stamp(raw_counts_h5ad):
+    """scanpy's uns['log1p'] stamp roundtrips to an empty dict that CXG rejects (#327)."""
+    result = normalize_raw(str(raw_counts_h5ad))
+    assert "error" not in result
+
+    out = ad.read_h5ad(result["output_path"])
+    assert "log1p" not in out.uns
+
+
 def test_normalize_raw_strips_feature_is_filtered_from_raw_var(tmp_path):
     """raw.var must not contain feature_is_filtered per CXG schema (#326)."""
     rng = np.random.default_rng(13)
