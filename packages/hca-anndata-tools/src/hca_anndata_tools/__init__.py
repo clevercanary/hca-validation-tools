@@ -10,6 +10,7 @@ if TYPE_CHECKING:
     from .edit import list_uns_fields, replace_placeholder_values, set_uns
     from .files import locate_files
     from .marker_genes import validate_marker_genes
+    from .normalize import normalize_raw
     from .plot import plot_embedding
     from .stats import get_descriptive_stats
     from .storage import get_storage_info
@@ -47,6 +48,7 @@ _LAZY_IMPORTS = {
     "validate_marker_genes": ".marker_genes",
     "copy_cap_annotations": ".copy_cap",
     "compress_h5ad": ".compress",
+    "normalize_raw": ".normalize",
 }
 
 __all__ = list(_LAZY_IMPORTS)  # pyright: ignore[reportUnsupportedDunderAll]
