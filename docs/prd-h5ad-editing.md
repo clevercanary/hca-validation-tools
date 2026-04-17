@@ -45,9 +45,9 @@ User-provided required fields: `title` (both cellxgene and HCA), `study_pi` (HCA
 
 Cellxgene does **not** store filename, dataset_id, or file hash in `uns` — those live in their external catalog. Our edit log fills a gap that doesn't conflict with existing conventions.
 
-### Proposed structure: `uns['hca_edit_log']`
+### Structure: `uns['provenance']['edit_history']`
 
-A list of edit entries stored in `uns['hca_edit_log']`. Each entry is a dict:
+A list of edit entries serialized as JSON in `uns['provenance']['edit_history']`. Each entry is a dict:
 
 ```python
 {
@@ -91,7 +91,7 @@ def write_h5ad(
     output_dir: str | None = None,  # defaults to same dir as source
 ) -> dict:
     """
-    Write adata to a new timestamped file. Appends edit_entries to uns['hca_edit_log'].
+    Write adata to a new timestamped file. Appends edit_entries to uns['provenance']['edit_history'].
 
     Returns dict with 'output_path' on success, or 'error' on failure.
     """
@@ -101,7 +101,7 @@ def write_h5ad(
 2. Strip existing timestamp suffix from source filename
 3. Generate new UTC timestamp
 4. Populate `source_file` and `source_sha256` on each edit entry
-5. Append `edit_entries` to `adata.uns['hca_edit_log']` (create if missing)
+5. Append `edit_entries` to `adata.uns['provenance']['edit_history']` (create if missing)
 6. Write to `{base}-edit-{timestamp}.h5ad`
 7. Return the output path
 
@@ -119,7 +119,7 @@ A single tool to update values in obs columns. Covers the most common curation t
 
 ### `view_edit_log` tool
 
-Read and return `uns['hca_edit_log']` for a given file. Useful for inspecting what edits have been applied.
+Read and return `uns['provenance']['edit_history']` for a given file. Useful for inspecting what edits have been applied.
 
 ## Tickets
 

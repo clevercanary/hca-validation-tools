@@ -299,7 +299,7 @@ NOT copied (CXG fields, already in target or handled by HCA conversion):
 - Any var changes — target var is authoritative.
 
 ### Post-copy
-- Log the operation in `hca_edit_log` with:
+- Log the operation in `uns['provenance']['edit_history']` with:
   - `operation`: `import_cap_annotations`
   - `source_file`: filename of the CAP source file
   - `source_sha256`: hash of the CAP source file for provenance
