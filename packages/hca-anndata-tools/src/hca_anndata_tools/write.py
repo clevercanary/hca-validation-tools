@@ -125,7 +125,7 @@ def make_edit_entry(
         "tool_version": __version__,
         "operation": operation,
         "description": description,
-        "details": details or {},
+        "details": details if details is not None else {},
     }
 
 
