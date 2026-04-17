@@ -29,7 +29,7 @@ def _sample_x(f: h5py.File, sample_size: int) -> np.ndarray:
     return np.asarray(x[0, :sample_size])  # pyright: ignore[reportIndexIssue]
 
 
-def classify_x_at_path(path: str, sample_size: int) -> dict:
+def _classify_x_at_path(path: str, sample_size: int) -> dict:
     """Sample X at an already-resolved path and return the verdict dict.
 
     Package-internal: skips ``resolve_latest`` and input validation so
@@ -39,8 +39,16 @@ def classify_x_at_path(path: str, sample_size: int) -> dict:
     """
     with h5py.File(path, "r") as f:
         has_raw = "raw/X" in f
+        # Read dtype from HDF5 directly — an empty sample array defaults
+        # to float64 regardless of the on-disk type.
+        x = f["X"]
+        stored_dtype = (
+            x["data"].dtype  # pyright: ignore[reportAttributeAccessIssue,reportIndexIssue]
+            if isinstance(x, h5py.Group) and "data" in x
+            else x.dtype  # pyright: ignore[reportAttributeAccessIssue]
+        )
+        dtype = str(stored_dtype)
         sample = _sample_x(f, sample_size)
-        dtype = str(sample.dtype)
 
     nonzero = sample[sample != 0]
     nonzero_count = int(nonzero.size)
@@ -111,6 +119,6 @@ def check_x_normalization(path: str, sample_size: int = _DEFAULT_SAMPLE_SIZE) ->
     try:
         if not isinstance(sample_size, int) or sample_size < 1:
             return {"error": f"sample_size must be a positive int, got {sample_size!r}"}
-        return classify_x_at_path(resolve_latest(path), sample_size)
+        return _classify_x_at_path(resolve_latest(path), sample_size)
     except Exception as e:
         return {"error": str(e)}

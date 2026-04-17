@@ -95,6 +95,8 @@ def test_check_x_normalization_dense_zero_rows(tmp_path):
     assert "error" not in result
     assert result["verdict"] == "indeterminate"
     assert result["nonzero_count"] == 0
+    # dtype must reflect the on-disk type, not the empty-array fallback (float64).
+    assert result["dtype"] == "float32"
 
 
 def test_check_x_normalization_custom_sample_size(tmp_path):
