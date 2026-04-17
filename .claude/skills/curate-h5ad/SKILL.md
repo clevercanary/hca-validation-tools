@@ -40,7 +40,7 @@ Only these are in Bucket A. Nothing else.
 - **`replace_placeholder_values` on `library_preparation_batch`** — only if the column actually contains placeholder values flagged by the validator.
 - **`replace_placeholder_values` on `library_sequencing_run`** — same condition.
 - **`copy_cap_annotations`** — only if the wrangler provided a CAP source file in Step 3. Copies annotation sets + `cellannotation_schema_version` + `cellannotation_metadata` from the source into the target.
-- **`compress_h5ad`** — when `get_storage_info` shows `compression: null` on X. Pure compression, no data change.
+- **`compress_h5ad`** — when `get_storage_info` shows no HDF5 filter on X's underlying dataset (`X.data.compression` for sparse X, `X.compression` for dense X). If the file is already compressed, the tool safely returns `{skipped: true, reason: ...}` rather than rewriting. Pure compression, no data change.
 
 ### Bucket B — Needs wrangler input (todo — stop and ask)
 
