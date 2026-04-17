@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 
 from ._io import open_h5ad
+from .write import resolve_latest
 
 
 def get_descriptive_stats(
@@ -34,6 +35,7 @@ def get_descriptive_stats(
         if attribute not in ("obs", "var"):
             return {"error": f"attribute must be 'obs' or 'var', got '{attribute}'"}
 
+        path = resolve_latest(path)
         with open_h5ad(path) as adata:
             df: pd.DataFrame = getattr(adata, attribute)
 

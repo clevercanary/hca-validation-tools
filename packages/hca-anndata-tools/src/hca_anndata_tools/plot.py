@@ -4,6 +4,7 @@ import base64
 import io
 
 from ._io import open_h5ad
+from .write import resolve_latest
 
 
 def plot_embedding(
@@ -41,6 +42,7 @@ def plot_embedding(
     fig = None
     plt = None
     try:
+        path = resolve_latest(path)
         # Lazy imports — scanpy/matplotlib are heavy and only needed for plotting
         import matplotlib
         if matplotlib.get_backend().lower() != "agg":
