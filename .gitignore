@@ -1,6 +1,9 @@
 # MCP server config (machine-specific virtualenv paths)
 .mcp.json
 
+# Claude Code per-user settings (permissions, etc.)
+.claude/settings.local.json
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
