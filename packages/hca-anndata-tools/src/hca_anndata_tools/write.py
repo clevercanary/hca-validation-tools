@@ -8,7 +8,7 @@ import json
 import os
 import re
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
     from anndata import AnnData
@@ -182,6 +182,8 @@ def write_h5ad(
     source_path: str,
     edit_entries: list[dict],
     output_path: str | None = None,
+    compression: Literal["gzip", "lzf"] | None = "gzip",
+    compression_opts: int | None = None,
 ) -> dict:
     """Write adata to a new timestamped file with edit log entries.
 
@@ -200,6 +202,10 @@ def write_h5ad(
             The source_file and source_sha256 fields are set automatically.
         output_path: Override the generated output path. If None, a
             timestamped path is generated from the source filename.
+        compression: HDF5 filter for chunked datasets. Defaults to 'gzip'.
+            Passed through to anndata.AnnData.write_h5ad.
+        compression_opts: Filter options (e.g. gzip level 0-9). None uses
+            the filter's default.
 
     Returns:
         A dict with 'output_path' on success, or 'error' on failure.
@@ -221,12 +227,11 @@ def write_h5ad(
         if "error" in log_result:
             return log_result
 
-        # Write to provenance/edit_history
         adata.uns.setdefault("provenance", {})[EDIT_LOG_KEY] = log_result["json"]
 
         if output_path is None:
             output_path = generate_output_path(source_path)
-        adata.write_h5ad(output_path, compression="gzip")
+        adata.write_h5ad(output_path, compression=compression, compression_opts=compression_opts)
 
         cleanup_previous_version(source_path, output_path)
 
