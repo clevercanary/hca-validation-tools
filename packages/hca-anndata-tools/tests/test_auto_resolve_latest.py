@@ -9,6 +9,7 @@ import pytest
 import scipy.sparse as sp
 from hca_anndata_tools.cap import get_cap_annotations
 from hca_anndata_tools.marker_genes import validate_marker_genes
+from hca_anndata_tools.plot import plot_embedding
 from hca_anndata_tools.stats import get_descriptive_stats
 from hca_anndata_tools.storage import get_storage_info
 from hca_anndata_tools.summary import get_summary
@@ -34,6 +35,7 @@ def _make_file(path: Path, *, n_obs: int, marker: str, edit_only: bool) -> None:
     adata.uns["title"] = marker
     if edit_only:
         adata.uns["cellannotation_schema_version"] = "1.0.0"
+        adata.obsm["X_umap"] = np.random.default_rng(0).normal(size=(n_obs, 2)).astype(np.float32)
     adata.write_h5ad(path)
 
 
@@ -76,6 +78,15 @@ def test_get_cap_annotations_resolves_latest(original_path):
     # cellannotation_schema_version is set only on the snapshot.
     result = get_cap_annotations(str(original_path))
     assert "cellannotation_schema_version" in result["uns_metadata"]["required_present"]
+
+
+def test_plot_embedding_resolves_latest(original_path):
+    # obsm['X_umap'] exists only on the snapshot — asking for it on the original
+    # would error "embedding not found". A successful PNG result therefore
+    # proves the snapshot was read.
+    result = plot_embedding(str(original_path), color="kind", embedding="X_umap")
+    assert "error" not in result
+    assert result["mime_type"] == "image/png"
 
 
 def test_validate_marker_genes_resolves_latest(original_path):
