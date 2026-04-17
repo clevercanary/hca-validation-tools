@@ -119,6 +119,37 @@ def test_normalize_raw_missing_file(tmp_path):
     assert "error" in result
 
 
+def test_normalize_raw_strips_feature_is_filtered_from_raw_var(tmp_path):
+    """raw.var must not contain feature_is_filtered per CXG schema (#326)."""
+    rng = np.random.default_rng(13)
+    n_obs, n_vars = 30, 10
+    X = rng.integers(0, 10, size=(n_obs, n_vars)).astype(np.float32)
+    var = pd.DataFrame(
+        {
+            "feature_is_filtered": [False] * n_vars,
+            "gene_symbol": [f"G{i}" for i in range(n_vars)],
+        },
+        index=[f"ENSG{i:011d}" for i in range(n_vars)],  # pyright: ignore[reportArgumentType]
+    )
+    adata = ad.AnnData(
+        X=sp.csr_matrix(X),
+        obs=pd.DataFrame(index=[f"c{i}" for i in range(n_obs)]),  # pyright: ignore[reportArgumentType]
+        var=var,
+    )
+    path = tmp_path / "with_feature_is_filtered.h5ad"
+    adata.write_h5ad(path)
+
+    result = normalize_raw(str(path))
+    assert "error" not in result
+
+    out = ad.read_h5ad(result["output_path"])
+    assert "feature_is_filtered" not in out.raw.var.columns  # pyright: ignore[reportOptionalMemberAccess]
+    # Other var columns preserved in raw.var
+    assert "gene_symbol" in out.raw.var.columns  # pyright: ignore[reportOptionalMemberAccess]
+    # Normalized var still has feature_is_filtered
+    assert "feature_is_filtered" in out.var.columns
+
+
 def test_normalize_raw_dense_x(tmp_path):
     """Dense X with integer values should also work."""
     rng = np.random.default_rng(11)

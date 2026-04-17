@@ -74,7 +74,12 @@ def normalize_raw(path: str) -> dict:
                 return {"error": "X sample contains non-integer values — appears already normalized"}
 
         with open_h5ad(path, backed=None) as adata:
-            adata.raw = adata.copy()
+            # CXG schema forbids feature_is_filtered in raw.var.
+            raw_source = adata.copy()
+            raw_source.var = raw_source.var.drop(
+                columns=["feature_is_filtered"], errors="ignore"
+            )
+            adata.raw = raw_source
             sc.pp.normalize_total(adata, target_sum=_TARGET_SUM)
             sc.pp.log1p(adata)
 
