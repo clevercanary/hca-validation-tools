@@ -7,7 +7,12 @@ if TYPE_CHECKING:
     from .compress import compress_h5ad
     from .convert import convert_cellxgene_to_hca
     from .copy_cap import copy_cap_annotations
-    from .edit import list_uns_fields, replace_placeholder_values, set_uns
+    from .edit import (
+        list_uns_fields,
+        replace_placeholder_values,
+        set_uns,
+        view_edit_log,
+    )
     from .files import locate_files
     from .marker_genes import validate_marker_genes
     from .normalize import normalize_raw
@@ -44,6 +49,7 @@ _LAZY_IMPORTS = {
     "set_uns": ".edit",
     "list_uns_fields": ".edit",
     "replace_placeholder_values": ".edit",
+    "view_edit_log": ".edit",
     "convert_cellxgene_to_hca": ".convert",
     "validate_marker_genes": ".marker_genes",
     "copy_cap_annotations": ".copy_cap",

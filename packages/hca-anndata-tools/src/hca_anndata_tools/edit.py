@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import types
@@ -112,6 +113,35 @@ def list_uns_fields(path: str) -> dict:
                 "obs_columns": list(adata.obs.columns),
                 "obsm_keys": list(adata.obsm.keys()),
             }
+
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def view_edit_log(path: str) -> dict:
+    """Return the edit-log entries recorded in an h5ad file.
+
+    Args:
+        path: Path to an .h5ad file.
+
+    Returns:
+        Dict with 'filename', 'edit_count', 'entries' on success, or 'error'.
+        If no edits have been recorded, also includes 'message'.
+    """
+    try:
+        path = resolve_latest(path)
+
+        with h5py.File(path, "r") as f:
+            entries = json.loads(read_edit_log_h5py(f))
+
+        result = {
+            "filename": os.path.basename(path),
+            "edit_count": len(entries),
+            "entries": entries,
+        }
+        if not entries:
+            result["message"] = "No edit history found"
+        return result
 
     except Exception as e:
         return {"error": str(e)}
