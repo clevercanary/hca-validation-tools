@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from ._io import open_h5ad
-from .inspect import check_x_normalization
+from .inspect import _DEFAULT_SAMPLE_SIZE, classify_x_at_path
 from .write import make_edit_entry, resolve_latest, write_h5ad
 
 _TARGET_SUM = 1e4
@@ -39,9 +39,7 @@ def normalize_raw(path: str) -> dict:
 
         path = resolve_latest(path)
 
-        check = check_x_normalization(path)
-        if "error" in check:
-            return check
+        check = classify_x_at_path(path, _DEFAULT_SAMPLE_SIZE)
         if check["has_raw_x"]:
             return {"error": "raw.X already exists — refusing to overwrite"}
         if check["has_negative"]:
