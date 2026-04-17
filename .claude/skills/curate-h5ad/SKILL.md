@@ -27,7 +27,7 @@ The target schemas are:
 Run in parallel:
 
 - `/evaluate-h5ad $ARGUMENTS` — produces the structured overview report (schema type, X verdict, metadata, storage, embeddings, CAP, edit history, summary). This already calls `check_schema_type` and `check_x_normalization`, so their verdicts are available for Step 2 gating without a separate tool call.
-- `validate_schema` — the HCA schema validator (`is_valid`, full `errors` and `warnings` lists). These are the authoritative blocking/advisory signals for Bucket A decisions. Feature-ID warnings are ordered last; summarize repeated shapes in the punch list rather than pasting thousands of lines verbatim.
+- `validate_schema $ARGUMENTS` — the HCA schema validator (`is_valid`, full `errors` and `warnings` lists). These are the authoritative blocking/advisory signals for Bucket A decisions. Feature-ID warnings are ordered last; summarize repeated shapes in the punch list rather than pasting thousands of lines verbatim.
 
 ## Step 2 — Classify every finding into one bucket
 
@@ -79,7 +79,7 @@ Order:
 2. Content edits: `normalize_raw`, each `replace_placeholder_values`, `copy_cap_annotations` (if a source was supplied), and any `set_uns` approved in Step 3.
 3. `compress_h5ad` last.
 
-Each tool writes a new timestamped file. Subsequent calls can pass either the original path or the latest — `resolve_latest` picks up the newest variant automatically.
+Each tool writes a new timestamped file. For most subsequent calls, passing either the original path or the latest works — `resolve_latest` picks up the newest variant automatically. Two exceptions: `convert_cellxgene_to_hca` does not auto-resolve (call it with the exact path you want to convert), and `copy_cap_annotations` only auto-resolves its `target_path` (the `source_path` is used verbatim).
 
 ## Step 5 — Report
 
