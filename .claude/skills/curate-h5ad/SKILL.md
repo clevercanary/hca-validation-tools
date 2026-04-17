@@ -47,6 +47,7 @@ Confirm X's dtype and integer-ness via `view_data` on a small slice before decid
 
 Only these are in Bucket A. Nothing else.
 
+- **`convert_cellxgene_to_hca`** — when `uns['schema_version']` is present (CellxGENE 6.0+). Must run **first**: it reshapes the file into HCA layout before any other fix makes sense, and the other tools assume HCA layout. After conversion, re-run the validator + evaluator on the new file to get an accurate Bucket A/B/C list.
 - **`normalize_raw`** — when `has_raw = false` AND a sample of X is integer-valued (raw counts). Deterministic: moves X→raw.X, normalizes X with `normalize_total(target_sum=10000) + log1p`.
 - **`replace_placeholder_values` on `library_preparation_batch`** — only if the column actually contains placeholder values flagged by the validator.
 - **`replace_placeholder_values` on `library_sequencing_run`** — same condition.
@@ -86,8 +87,9 @@ If the wrangler answers any Bucket B items, promote those to Bucket A as `set_un
 
 Order:
 
-1. Content edits first: `normalize_raw`, then each `replace_placeholder_values`, then any `set_uns` approved in Step 3.
-2. `compress_h5ad` last.
+1. `convert_cellxgene_to_hca` first if applicable — then stop, re-run Steps 1–3 on the converted file before continuing (conversion changes the layout enough that the prior punch list is stale).
+2. Content edits: `normalize_raw`, each `replace_placeholder_values`, `copy_cap_annotations` (if a source was supplied), and any `set_uns` approved in Step 3.
+3. `compress_h5ad` last.
 
 Each tool writes a new timestamped file. Subsequent calls can pass either the original path or the latest — `resolve_latest` picks up the newest variant automatically.
 
