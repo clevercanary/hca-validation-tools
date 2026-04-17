@@ -24,7 +24,7 @@ Then synthesize the results into a report covering:
 
 ## 1. File Overview
 - Cell count, gene count, file size
-- Organism, title
+- Title (from `list_uns_fields`)
 - Schema type + version (from `check_schema_type`: CellxGENE or HCA)
 - X matrix verdict (from `check_x_normalization`: raw_counts / normalized / indeterminate, and whether raw.X is present)
 
