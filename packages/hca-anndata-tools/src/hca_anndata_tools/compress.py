@@ -4,14 +4,12 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime, timezone
 from typing import Literal
 
 import h5py
 
-from . import __version__
 from ._io import open_h5ad, read_edit_log_h5py, write_edit_log_h5py
-from .write import resolve_latest, write_h5ad
+from .write import make_edit_entry, resolve_latest, write_h5ad
 
 
 def _detect_x_compression(path: str) -> str | None:
@@ -74,19 +72,16 @@ def compress_h5ad(
 
         size_before = os.path.getsize(path)
 
-        entry = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "tool": "hca-anndata-tools",
-            "tool_version": __version__,
-            "operation": "compress_h5ad",
-            "description": f"Rewrote file with {compression}:{compression_level} compression",
-            "details": {
+        entry = make_edit_entry(
+            operation="compress_h5ad",
+            description=f"Rewrote file with {compression}:{compression_level} compression",
+            details={
                 "compression": compression,
                 "compression_level": compression_level,
                 "previous_compression": current_filter,
                 "size_before_bytes": size_before,
             },
-        }
+        )
 
         with open_h5ad(path, backed="r") as adata:
             result = write_h5ad(

@@ -6,20 +6,19 @@ import os
 import re
 import shutil
 import tempfile
-from datetime import datetime, timezone
 
 import anndata as ad
 import h5py
 import numpy as np
 import pandas as pd
 
-from . import __version__
 from ._io import ensure_provenance_group, open_h5ad, read_obs_index, transplant_obs_columns, verify_obs_transplant
 from ._serialize import make_serializable
 from .write import (
     EDIT_LOG_KEY,
     build_edit_log,
     generate_timestamp,
+    make_edit_entry,
 )
 
 # CellxGENE reserved uns keys — moved to provenance/cellxgene
@@ -126,25 +125,21 @@ def convert_cellxgene_to_hca(
         if cellxgene_source:
             temp_uns["provenance"] = {"cellxgene": cellxgene_source}
 
-        # Build edit log
         slug = _slugify(title)
         timestamp = generate_timestamp()
         out_filename = f"{slug}-edit-{timestamp}.h5ad"
         directory = output_dir if output_dir is not None else os.path.dirname(path)
         output_path = os.path.join(directory, out_filename)
 
-        entry = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "tool": "hca-anndata-tools",
-            "tool_version": __version__,
-            "operation": "import_cellxgene",
-            "description": f"Imported from CellxGENE Discover: {title}",
-            "details": {
+        entry = make_edit_entry(
+            operation="import_cellxgene",
+            description=f"Imported from CellxGENE Discover: {title}",
+            details={
                 "source_schema_version": cellxgene_source.get("schema_version"),
                 "source_citation": cellxgene_source.get("citation"),
                 "conversions": conversions,
             },
-        }
+        )
 
         log_result = build_edit_log("[]", [entry], path)
         if "error" in log_result:

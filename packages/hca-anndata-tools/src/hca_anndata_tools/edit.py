@@ -6,13 +6,11 @@ import os
 import shutil
 import types
 import typing
-from datetime import datetime, timezone
 
 import h5py
 import numpy as np
 from pydantic import TypeAdapter, ValidationError
 
-from . import __version__
 from ._io import (
     _decode_bytes,
     open_h5ad,
@@ -28,6 +26,7 @@ from .write import (
     build_edit_log,
     cleanup_previous_version,
     generate_output_path,
+    make_edit_entry,
     resolve_latest,
     write_h5ad,
 )
@@ -197,19 +196,15 @@ def set_uns(
             # Set the value
             adata.uns[field] = validated_value
 
-            # Build edit log entry
-            entry = {
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "tool": "hca-anndata-tools",
-                "tool_version": __version__,
-                "operation": "set_uns",
-                "description": f"Set uns['{field}']",
-                "details": {
+            entry = make_edit_entry(
+                operation="set_uns",
+                description=f"Set uns['{field}']",
+                details={
                     "field": field,
                     "old_value": old_value,
                     "new_value": make_serializable(validated_value),
                 },
-            }
+            )
 
             result = write_h5ad(adata, path, [entry])
 
@@ -292,17 +287,14 @@ def replace_placeholder_values(
         total_affected = sum(sum(v.values()) for v in columns_fixed.values())
 
         target_sha256 = _compute_sha256(path)
-        entry = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "tool": "hca-anndata-tools",
-            "tool_version": __version__,
-            "operation": "replace_placeholder_values",
-            "description": f"Replaced placeholder values with NaN in {len(columns_fixed)} columns",
-            "details": {
+        entry = make_edit_entry(
+            operation="replace_placeholder_values",
+            description=f"Replaced placeholder values with NaN in {len(columns_fixed)} columns",
+            details={
                 "columns_fixed": {col: dict(vals) for col, vals in columns_fixed.items()},
                 "total_cells_affected": total_affected,
             },
-        }
+        )
 
         log_result = build_edit_log(raw_log, [entry], path, target_sha256)
         if "error" in log_result:
