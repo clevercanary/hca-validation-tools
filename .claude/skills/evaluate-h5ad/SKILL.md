@@ -18,8 +18,7 @@ Run all of the following MCP tool calls in parallel to gather data:
 4. **check_x_normalization** — classify X as raw_counts / normalized / indeterminate
 5. **list_uns_fields** — HCA schema field completeness (required vs set vs missing)
 6. **get_cap_annotations** — CAP cell annotation sets, if present
-7. **get_descriptive_stats** with `columns: ["cell_type_ontology_term_id", "author_cell_type", "cell_type"]` and `value_counts: true` — cell type annotation distributions
-8. **view_edit_log** — read `uns/provenance/edit_history` so edit history is already in hand when synthesizing the report
+7. **view_edit_log** — read `uns/provenance/edit_history` so edit history is already in hand when synthesizing the report
 
 Then synthesize the results into a report covering:
 
@@ -50,19 +49,12 @@ Then synthesize the results into a report covering:
 - If yes: how many sets, how many cell labels, do they have ontology mappings?
 - If no: note that CAP annotations are missing
 
-## 6. Cell Type Annotation Concordance
-- Build a table mapping each `cell_type_ontology_term_id` to its `cell_type` (ontology label) and `author_cell_type` values, with cell counts
-- **Flag any mismatches** where the author cell type is semantically inconsistent with the ontology term — e.g. a vascular cell type mapped to an epithelial ontology term, or vice versa
-- Note where author types are more specific than the ontology (this is normal and fine)
-- Note where multiple author types map to the same ontology term (may indicate the ontology term is too broad)
-- If any columns are missing, note which are absent and skip this section
-
-## 7. Edit History
+## 6. Edit History
 - Use the `view_edit_log` result fetched in Step 1.
 - If entries are present: summarize recent edits (who/what/when)
 - If absent: note that no edit history exists (file hasn't been edited through hca-anndata-tools)
 
-## 8. Summary & Recommendations
+## 7. Summary & Recommendations
 - Overall HCA readiness: ready / needs work / not started
 - Prioritized list of what to fix, most important first
 - If `check_schema_type` reported `cellxgene`, recommend `convert_cellxgene_to_hca` as the first fix.
