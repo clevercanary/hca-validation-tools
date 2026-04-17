@@ -14,6 +14,7 @@ if TYPE_CHECKING:
         view_edit_log,
     )
     from .files import locate_files
+    from .inspect import inspect_x
     from .marker_genes import validate_marker_genes
     from .normalize import normalize_raw
     from .plot import plot_embedding
@@ -55,6 +56,7 @@ _LAZY_IMPORTS = {
     "copy_cap_annotations": ".copy_cap",
     "compress_h5ad": ".compress",
     "normalize_raw": ".normalize",
+    "inspect_x": ".inspect",
 }
 
 __all__ = list(_LAZY_IMPORTS)  # pyright: ignore[reportUnsupportedDunderAll]
