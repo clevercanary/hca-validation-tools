@@ -24,10 +24,11 @@ The target schemas are:
 
 ## Step 1 — Gather findings
 
-Run in parallel:
+Start with the evaluator, then gate the HCA validator on the schema it reports:
 
-- `/evaluate-h5ad $ARGUMENTS` — produces the structured overview report (schema type, X verdict, metadata, storage, embeddings, CAP, edit history, summary). This already calls `check_schema_type` and `check_x_normalization`, so their verdicts are available for Step 2 gating without a separate tool call.
-- `validate_schema $ARGUMENTS` — the HCA schema validator (`is_valid`, full `errors` and `warnings` lists). These are the authoritative blocking/advisory signals for Bucket A decisions. Feature-ID warnings are ordered last; summarize repeated shapes in the punch list rather than pasting thousands of lines verbatim.
+- Run `/evaluate-h5ad $ARGUMENTS` — produces the structured overview report (schema type, X verdict, metadata, storage, embeddings, CAP, edit history, summary). This already calls `check_schema_type` and `check_x_normalization`, so their verdicts are available for Step 2 gating without a separate tool call.
+- If the evaluator reports `schema: "hca"`, run `validate_schema $ARGUMENTS` — the HCA schema validator (`is_valid`, full `errors` and `warnings` lists). These are the authoritative blocking/advisory signals for Bucket A decisions. Feature-ID warnings are ordered last; summarize repeated shapes in the punch list rather than pasting thousands of lines verbatim.
+- If the evaluator reports `schema: "cellxgene"`, **do not** run `validate_schema` yet — the HCA validator would report a large, mostly irrelevant error list. `convert_cellxgene_to_hca` moves into Bucket A; after it runs, re-enter Step 1 on the converted file to get the accurate HCA findings.
 
 ## Step 2 — Classify every finding into one bucket
 
@@ -35,7 +36,7 @@ Run in parallel:
 
 Only these are in Bucket A. Nothing else.
 
-- **`convert_cellxgene_to_hca`** — when `check_schema_type` reports `schema: "cellxgene"`. Must run **first**: it reshapes the file into HCA layout before any other fix makes sense, and the other tools assume HCA layout. After conversion, re-run the validator + evaluator on the new file to get an accurate Bucket A/B/C list.
+- **`convert_cellxgene_to_hca`** — when `check_schema_type` reports `schema: "cellxgene"`. Must run **first**: it reshapes the file into HCA layout before any other fix makes sense, and the other tools (including `validate_schema`) assume HCA layout. After conversion, re-enter Step 1 on the converted file to get an accurate Bucket A/B/C list.
 - **`normalize_raw`** — when `check_x_normalization` reports `verdict: "raw_counts"` and `has_raw_x: false`. Deterministic: moves X→raw.X, normalizes X with `normalize_total(target_sum=10000) + log1p`.
 - **`replace_placeholder_values` on `library_preparation_batch`** — only if the column actually contains placeholder values flagged by the validator.
 - **`replace_placeholder_values` on `library_sequencing_run`** — same condition.
@@ -49,7 +50,7 @@ For each of these, write a concrete question, not a suggested answer:
 - Missing required `uns` fields (e.g. `description`) — ask for the text.
 - Missing bionetwork-required `uns` fields (e.g. `ambient_count_correction`, `doublet_detection`) — ask which value from the allowed set applies. If `predicted_doublet` / `doublet_score` columns exist, mention that as context but still ask which tool was used.
 - `default_embedding` — list the obsm keys and ask which one.
-- **No CAP annotation set present** — the file must ship with at least one CAP annotation set (see the [HCA Cell Annotation schema](https://data.humancellatlas.org/metadata/cell-annotation)). Ask the wrangler to provide a path or URL to a CAP-exported version of this file (same cells, with CAP annotation sets populated). If supplied, `copy_cap_annotations` becomes a mechanical fix for Step 4.
+- **No CAP annotation set present** — the file must ship with at least one CAP annotation set (see the [HCA Cell Annotation schema](https://data.humancellatlas.org/metadata/cell-annotation)). Ask the wrangler to provide a local path to a CAP-exported version of this file (same cells, with CAP annotation sets populated) — `copy_cap_annotations` reads the source via AnnData/h5py so a URL must be downloaded locally first. If supplied, `copy_cap_annotations` becomes a mechanical fix for Step 4.
 - Any other `uns` field the validator flags as missing.
 
 If the wrangler answers during the session, those answers become additional mechanical fixes (`set_uns ...`, `copy_cap_annotations`, ...) to run in Step 4.
