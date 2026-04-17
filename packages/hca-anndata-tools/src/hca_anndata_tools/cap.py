@@ -2,6 +2,7 @@
 
 from ._io import open_h5ad
 from ._serialize import make_serializable as _make_serializable
+from .write import resolve_latest
 
 # CAP obs column suffixes per the cell-annotation-schema spec
 _REQUIRED_SUFFIXES = [
@@ -73,6 +74,7 @@ def get_cap_annotations(path: str, annotation_set: str | None = None) -> dict:
         annotation_set: Specific annotation set name to inspect. If None, lists all sets found.
     """
     try:
+        path = resolve_latest(path)
         with open_h5ad(path) as adata:
             obs_columns = list(adata.obs.columns)
 

@@ -1,6 +1,7 @@
 """Summary overview of an AnnData object."""
 
 from ._io import open_h5ad
+from .write import resolve_latest
 
 
 def _dtype_str(arr) -> str:
@@ -34,6 +35,7 @@ def get_summary(path: str) -> dict:
         path: Absolute path to an .h5ad file.
     """
     try:
+        path = resolve_latest(path)
         with open_h5ad(path) as adata:
             return {
                 "n_obs": adata.n_obs,

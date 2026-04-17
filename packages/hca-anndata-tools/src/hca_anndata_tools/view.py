@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 
 from ._io import open_h5ad
+from .write import resolve_latest
 
 _ALLOWED_ATTRIBUTES = {"obs", "var", "X", "obsm", "varm", "obsp", "varp", "layers", "uns"}
 _KEY_REQUIRED_ATTRIBUTES = {"obsm", "varm", "obsp", "varp", "layers"}
@@ -40,6 +41,7 @@ def view_data(
         if attribute not in _ALLOWED_ATTRIBUTES:
             return {"error": f"attribute must be one of {sorted(_ALLOWED_ATTRIBUTES)}, got '{attribute}'"}
 
+        path = resolve_latest(path)
         with open_h5ad(path) as adata:
             attr_obj = getattr(adata, attribute, None)
             if attr_obj is None:

@@ -4,6 +4,8 @@ import os
 
 import h5py
 
+from .write import resolve_latest
+
 
 def _dataset_info(ds: h5py.Dataset) -> dict:
     """Extract storage info from an HDF5 dataset."""
@@ -52,6 +54,7 @@ def get_storage_info(path: str) -> dict:
         if not path.endswith(".h5ad"):
             return {"error": "Only .h5ad files supported (not zarr)"}
 
+        path = resolve_latest(path)
         file_bytes = os.path.getsize(path)
         result = {
             "file_size_bytes": file_bytes,

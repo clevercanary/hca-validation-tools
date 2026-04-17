@@ -9,6 +9,7 @@ from ._io import (
     read_var_gene_names,
 )
 from .cap import _find_annotation_sets
+from .write import resolve_latest
 
 _SKIP_VALUES = {"unknown", "", "NA", "na", "none", "None"}
 
@@ -71,6 +72,7 @@ def validate_marker_genes(path: str, annotation_set: str | None = None) -> dict:
         Dict with validation results, or 'error' on failure.
     """
     try:
+        path = resolve_latest(path)
         obs_columns = read_obs_column_names(path)
 
         if "organism_ontology_term_id" not in obs_columns:
