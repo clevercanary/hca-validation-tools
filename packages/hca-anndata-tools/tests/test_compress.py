@@ -106,10 +106,14 @@ def test_compress_h5ad_edit_log_written(uncompressed_h5ad):
         log_raw = f["uns/provenance/edit_history"][()]
     log = json.loads(log_raw.decode("utf-8") if isinstance(log_raw, bytes) else log_raw)
     assert len(log) == 1
-    assert log[0]["operation"] == "compress_h5ad"
-    assert log[0]["details"]["compression"] == "gzip"
-    assert log[0]["details"]["compression_level"] == 4
-    assert "source_sha256" in log[0]
+    entry = log[0]
+    assert entry["operation"] == "compress_h5ad"
+    assert entry["details"]["compression"] == "gzip"
+    assert entry["details"]["compression_level"] == 4
+    assert entry["details"]["size_before_bytes"] == result["size_before_bytes"]
+    assert entry["details"]["size_after_bytes"] == result["size_after_bytes"]
+    assert entry["details"]["ratio"] == result["ratio"]
+    assert "source_sha256" in entry
 
 
 def test_compress_h5ad_data_roundtrip(uncompressed_h5ad):

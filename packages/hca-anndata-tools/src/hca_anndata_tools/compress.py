@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from datetime import datetime, timezone
 from typing import Literal
@@ -9,7 +10,7 @@ from typing import Literal
 import h5py
 
 from . import __version__
-from ._io import open_h5ad
+from ._io import open_h5ad, read_edit_log_h5py, write_edit_log_h5py
 from .write import resolve_latest, write_h5ad
 
 
@@ -98,12 +99,23 @@ def compress_h5ad(
             return result
 
         size_after = os.path.getsize(result["output_path"])
+        ratio = round(size_before / size_after, 2) if size_after else None
+
+        # Backfill size_after/ratio into the edit log entry we just wrote. We
+        # can't know these until after the file is written, and we want the
+        # provenance to be self-describing rather than relying on the caller's
+        # return dict.
+        with h5py.File(result["output_path"], "a") as f:
+            log = json.loads(read_edit_log_h5py(f))
+            log[-1]["details"]["size_after_bytes"] = size_after
+            log[-1]["details"]["ratio"] = ratio
+            write_edit_log_h5py(f, json.dumps(log))
 
         return {
             "output_path": result["output_path"],
             "size_before_bytes": size_before,
             "size_after_bytes": size_after,
-            "ratio": round(size_before / size_after, 2) if size_after else None,
+            "ratio": ratio,
             "compression": f"{compression}:{compression_level}",
         }
 

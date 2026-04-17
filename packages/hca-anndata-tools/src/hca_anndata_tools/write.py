@@ -194,7 +194,9 @@ def write_h5ad(
     successfully written — keeping only the original + latest edit on disk.
 
     Args:
-        adata: An in-memory AnnData object (already modified by the caller).
+        adata: An AnnData object (already modified by the caller). In-memory
+            and backed-mode (backed='r') instances are both supported; in
+            backed mode X is streamed chunk-wise from its source file.
         source_path: Path to the source .h5ad file on disk.
         edit_entries: List of edit log entry dicts to append. Required keys:
             timestamp, tool, tool_version, operation, description. Optional:
