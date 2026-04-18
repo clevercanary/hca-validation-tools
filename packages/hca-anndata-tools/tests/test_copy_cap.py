@@ -210,16 +210,60 @@ def test_copy_cell_mismatch_fails(cap_source, tmp_path):
     )
     result = copy_cap_annotations(str(cap_source), str(different_cells))
     assert "error" in result
-    assert "mismatch" in result["error"].lower()
+    assert "overlap" in result["error"].lower()
+    assert result["matched_n_obs"] == 0
 
 
 def test_copy_cell_count_mismatch_fails(cap_source, tmp_path):
+    # 5 cells, none overlapping with source (cap_source has cell_0..cell_9),
+    # so both fractions collapse to 0 and the threshold gate trips.
     fewer_cells = _make_hca_target(
-        tmp_path / "fewer.h5ad", [f"cell_{i}" for i in range(5)]
+        tmp_path / "fewer.h5ad", [f"other_{i}" for i in range(5)]
     )
     result = copy_cap_annotations(str(cap_source), str(fewer_cells))
     assert "error" in result
-    assert "mismatch" in result["error"].lower()
+    assert "overlap" in result["error"].lower()
+
+
+def test_copy_partial_overlap_succeeds(cap_source, tmp_path):
+    # 19/20 target cells present in source → 95% of target covered;
+    # 19/20 source cells present in target (one extra in source) → 95% of source.
+    # Threshold is inclusive, so this should succeed and the missing target
+    # row should end up with NaN in the new CAP columns.
+    target_ids = [f"cell_{i}" for i in range(19)] + ["target_only"]
+    # Rebuild a cap_source with 20 cells so both fractions land at 19/20.
+    cap_20 = _make_cap_source(
+        tmp_path / "cap_20.h5ad", [f"cell_{i}" for i in range(20)]
+    )
+    target = _make_hca_target(tmp_path / "target_20.h5ad", target_ids)
+
+    result = copy_cap_annotations(str(cap_20), str(target))
+
+    assert "error" not in result
+    assert result["source_n_obs"] == 20
+    assert result["target_n_obs"] == 20
+    assert result["matched_n_obs"] == 19
+    assert result["match_fraction_of_source"] == pytest.approx(0.95)
+    assert result["match_fraction_of_target"] == pytest.approx(0.95)
+
+    written = ad.read_h5ad(result["output_path"])
+    # Target-only cell should have NaN in a copied categorical CAP column.
+    col = "author_cell_type--cell_ontology_term_id"
+    assert col in written.obs.columns
+    assert pd.isna(written.obs.loc["target_only", col])
+
+
+def test_copy_below_threshold_fails(cap_source, tmp_path):
+    # 9/10 target cells in source → target covered 90%, below 0.95.
+    target_ids = [f"cell_{i}" for i in range(9)] + ["target_only"]
+    target = _make_hca_target(tmp_path / "target_below.h5ad", target_ids)
+
+    result = copy_cap_annotations(str(cap_source), str(target))
+
+    assert "error" in result
+    assert "overlap" in result["error"].lower()
+    assert result["matched_n_obs"] == 9
+    assert result["match_fraction_of_target"] == pytest.approx(0.9)
 
 
 def test_copy_no_cap_source_fails(hca_target, tmp_path):

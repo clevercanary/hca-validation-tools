@@ -40,7 +40,7 @@ Only these are in Bucket A. Nothing else.
 - **`normalize_raw`** — when `check_x_normalization` reports `verdict: "raw_counts"` and `has_raw_x: false`. Deterministic: moves X→raw.X, normalizes X with `normalize_total(target_sum=10000) + log1p`.
 - **`replace_placeholder_values` on `library_preparation_batch`** — only if the column actually contains placeholder values flagged by the validator.
 - **`replace_placeholder_values` on `library_sequencing_run`** — same condition.
-- **`copy_cap_annotations`** — only if the wrangler provided a CAP source file in Step 3. Copies annotation sets + `cellannotation_schema_version` + `cellannotation_metadata` from the source into the target.
+- **`copy_cap_annotations`** — only if the wrangler provided a CAP source file in Step 3. Copies annotation sets + `cellannotation_schema_version` + `cellannotation_metadata` from the source into the target. Partial overlap is allowed: the source and target obs indexes only need to match at ≥95% in both directions (target-covered and source-covered); target rows absent from source get NaN in the new CAP columns. If the overlap is below 95% the tool aborts — treat that as a Bucket B item and bring it back to the wrangler (usually the CAP source is stale or wrong).
 - **`compress_h5ad`** — when `get_storage_info` shows no HDF5 filter on X's underlying dataset (`X.data.compression` for sparse X, `X.compression` for dense X). If the file is already compressed, the tool safely returns `{skipped: true, reason: ...}` rather than rewriting. Pure compression, no data change.
 
 ### Bucket B — Needs wrangler input (todo — stop and ask)
@@ -86,6 +86,7 @@ Each tool writes a new timestamped file. For most subsequent calls, passing eith
 
 - Call `view_edit_log` on the final file; list the entries added this session.
 - Re-run the validator; report error/warning deltas vs. Step 1.
+- If `copy_cap_annotations` ran, surface its cell-overlap stats as their own line: `source_n_obs`, `target_n_obs`, `matched_n_obs`, `match_fraction_of_source`, `match_fraction_of_target`. These come back in the tool result and also live in the edit-log entry's `details`.
 - Summarize:
   - **Fixed this session** — each Bucket A action that ran, with the resulting validator change.
   - **Still to do** — every Bucket B question the wrangler didn't answer, plus every Bucket C item.

@@ -62,6 +62,27 @@ _SKIP_SETS = {"sex", "development_stage", "self_reported_ethnicity"}
 # provenance/cap is handled separately via merge logic.
 _OVERWRITE_UNS_KEYS = set(_UNS_SCHEMA_TOPLEVEL)
 
+# Minimum fraction of source and target cell IDs that must be in the
+# intersection. Applied to both fractions (source-covered and target-covered).
+_MIN_OVERLAP_FRACTION = 0.95
+
+
+def _compute_overlap_stats(
+    source_index_set: set[str],
+    target_index_set: set[str],
+) -> dict[str, int | float]:
+    """Count overlap between source and target cell IDs."""
+    source_n = len(source_index_set)
+    target_n = len(target_index_set)
+    matched_n = len(source_index_set & target_index_set)
+    return {
+        "source_n_obs": source_n,
+        "target_n_obs": target_n,
+        "matched_n_obs": matched_n,
+        "match_fraction_of_source": matched_n / source_n if source_n else 0.0,
+        "match_fraction_of_target": matched_n / target_n if target_n else 0.0,
+    }
+
 
 def _check_duplicate_ids(index: list[str], label: str) -> str | None:
     """Return an error message if index has duplicates, else None."""
@@ -166,7 +187,10 @@ def copy_cap_annotations(
                     categories, codes = read_categorical_data(item)
                     source_obs_data[col] = pd.Categorical.from_codes(codes, categories=categories)
                 else:
-                    source_obs_data[col] = [_decode_bytes(v) for v in item[:]]
+                    # Wrap in Categorical so partial-overlap reindex (target rows
+                    # absent from source) injects NaN cleanly — plain object
+                    # columns with mixed str/NaN break anndata's writer.
+                    source_obs_data[col] = pd.Categorical([_decode_bytes(v) for v in item[:]])
 
         if not obs_cols_to_copy:
             return {"error": "No CAP obs columns found to copy"}
@@ -219,27 +243,23 @@ def copy_cap_annotations(
                 )
             }
 
-        if target_n_obs != source_n_obs:
+        overlap_stats = _compute_overlap_stats(source_index, target_index_set)
+        frac_source = overlap_stats["match_fraction_of_source"]
+        frac_target = overlap_stats["match_fraction_of_target"]
+        if frac_source < _MIN_OVERLAP_FRACTION or frac_target < _MIN_OVERLAP_FRACTION:
             return {
                 "error": (
-                    f"Cell count mismatch: source has {source_n_obs}, "
-                    f"target has {target_n_obs}"
-                )
-            }
-
-        if source_index != target_index_set:
-            missing_in_target = source_index - target_index_set
-            missing_in_source = target_index_set - source_index
-            return {
-                "error": (
-                    f"Cell ID mismatch: {len(missing_in_target)} IDs in source "
-                    f"not in target, {len(missing_in_source)} IDs in target not "
-                    f"in source"
-                )
+                    f"Cell ID overlap below {_MIN_OVERLAP_FRACTION:.0%}: "
+                    f"source has {source_n_obs}, target has {target_n_obs}, "
+                    f"matched {overlap_stats['matched_n_obs']} "
+                    f"(source covered {frac_source:.2%}, "
+                    f"target covered {frac_target:.2%})"
+                ),
+                **overlap_stats,
             }
 
         # --- Step 3: Build aligned temp AnnData ---
-        aligned_obs = source_obs_subset.loc[target_index]
+        aligned_obs = source_obs_subset.reindex(target_index)
         del source_obs_subset
 
         temp_uns = {}
@@ -268,6 +288,7 @@ def copy_cap_annotations(
                 "annotation_sets": annotation_sets,
                 "obs_columns_added": obs_cols_to_copy,
                 "uns_keys_added": uns_keys_added,
+                **overlap_stats,
             },
         )
 
@@ -357,6 +378,7 @@ def copy_cap_annotations(
             "obs_columns_added": obs_cols_to_copy,
             "uns_keys_added": uns_keys_added,
             "marker_gene_validation": marker_validation,
+            **overlap_stats,
         }
 
     except Exception as e:
