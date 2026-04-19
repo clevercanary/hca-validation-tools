@@ -225,15 +225,18 @@ def test_copy_cell_mismatch_fails(cap_source, tmp_path):
     assert result["matched_n_obs"] == 0
 
 
-def test_copy_cell_count_mismatch_fails(cap_source, tmp_path):
-    # 5 cells, none overlapping with source (cap_source has cell_0..cell_9),
-    # so both fractions collapse to 0 and the threshold gate trips.
-    fewer_cells = _make_hca_target(
-        tmp_path / "fewer.h5ad", [f"other_{i}" for i in range(5)]
+def test_copy_source_uncovered_fails(cap_source, tmp_path):
+    # Target is a strict subset of source (5 of source's 10 cells). Target is
+    # 100% covered but source is only 50% covered — exercises the asymmetric
+    # failure: source-fraction below threshold while target-fraction passes.
+    subset = _make_hca_target(
+        tmp_path / "subset.h5ad", [f"cell_{i}" for i in range(5)]
     )
-    result = copy_cap_annotations(str(cap_source), str(fewer_cells))
+    result = copy_cap_annotations(str(cap_source), str(subset))
     assert "error" in result
     assert "overlap" in result["error"].lower()
+    assert result["match_fraction_of_target"] == pytest.approx(1.0)
+    assert result["match_fraction_of_source"] == pytest.approx(0.5)
 
 
 def test_copy_partial_overlap_succeeds(tmp_path):
