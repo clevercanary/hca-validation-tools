@@ -236,7 +236,7 @@ def test_copy_cell_count_mismatch_fails(cap_source, tmp_path):
     assert "overlap" in result["error"].lower()
 
 
-def test_copy_partial_overlap_succeeds(cap_source, tmp_path):
+def test_copy_partial_overlap_succeeds(tmp_path):
     # 19/20 target cells present in source → 95% of target covered;
     # 19/20 source cells present in target (one extra in source) → 95% of source.
     # Threshold is inclusive, so this should succeed and the missing target
