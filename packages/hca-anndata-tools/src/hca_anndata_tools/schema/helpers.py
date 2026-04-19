@@ -9,6 +9,13 @@ from .core import AdiposeDataset, Dataset, GutDataset, MusculoskeletalDataset
 
 _BIONETWORK_CLASSES = [AdiposeDataset, GutDataset, MusculoskeletalDataset]
 
+# Fields that LinkML's Dataset model claims live in uns but that are not
+# actually uns fields per HCA Tier 1 / CELLxGENE. See issue #343. Dropping
+# them from the registry means list_uns_fields never surfaces them and
+# set_uns rejects them as unrecognized (the same path as any unknown field).
+# Remove an entry here once the LinkML source is corrected upstream.
+_SKIP_UNS_FIELDS: set[str] = {"description"}
+
 
 @dataclass(frozen=True)
 class UnsFieldInfo:
@@ -66,6 +73,8 @@ def get_uns_field_registry() -> dict[str, UnsFieldInfo]:
 
     # Base Dataset fields
     for name, fi in Dataset.model_fields.items():
+        if name in _SKIP_UNS_FIELDS:
+            continue
         if _get_ann_data_location(fi) == "uns":
             registry[name] = UnsFieldInfo(
                 name=name,
@@ -80,7 +89,7 @@ def get_uns_field_registry() -> dict[str, UnsFieldInfo]:
     # Bionetwork subclass fields (only add new ones not in base)
     for cls in _BIONETWORK_CLASSES:
         for name, fi in cls.model_fields.items():
-            if name in registry:
+            if name in registry or name in _SKIP_UNS_FIELDS:
                 continue
             if _get_ann_data_location(fi) == "uns":
                 registry[name] = UnsFieldInfo(
