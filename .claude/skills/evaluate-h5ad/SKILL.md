@@ -14,7 +14,7 @@ Run all of the following MCP tool calls in parallel to gather data:
 
 1. **get_summary** — cell/gene counts, obs/var columns, uns keys, layers, obsm
 2. **get_storage_info** — compression, chunking, sparse format, file size
-3. **check_schema_type** — report CellxGENE vs HCA layout and schema version
+3. **check_schema_type** — report CellxGENE vs HCA layout (CellxGENE carries a schema version; HCA is not versioned so skip the version for HCA files)
 4. **check_x_normalization** — classify X as raw_counts / normalized / indeterminate
 5. **list_uns_fields** — HCA schema field completeness (required vs set vs missing)
 6. **get_cap_annotations** — CAP cell annotation sets, if present
@@ -27,7 +27,7 @@ One compact block (bullets or a short table) with:
 - Final file path (resolved snapshot, not the input path if they differ)
 - Shape: `n_obs × n_vars`, file size (MB)
 - `title` from `uns`
-- Schema type + version (from `check_schema_type`)
+- Schema type (from `check_schema_type`) — include the version only when schema is CellxGENE (HCA is unversioned)
 - X verdict (from `check_x_normalization`: `raw_counts` / `normalized` / `indeterminate`) + whether `raw.X` is present
 
 ## 2. HCA metadata readiness

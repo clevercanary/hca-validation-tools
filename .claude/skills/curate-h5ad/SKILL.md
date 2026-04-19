@@ -95,7 +95,7 @@ Each tool writes a new timestamped file. For most subsequent calls, passing eith
 Re-run `view_edit_log` and the validator on the final file, then produce a structured report with these sections in order. Use markdown tables; skip any section with no content.
 
 ### Header
-One short paragraph or bullet block with: final file path, shape (`n_obs × n_vars`), `title` from `uns`, schema type + version, X verdict + `raw.X` presence, compression status, `obsm` keys present.
+One short paragraph or bullet block with: final file path, shape (`n_obs × n_vars`), `title` from `uns`, schema type (include version only when schema is CellxGENE — HCA is unversioned), X verdict + `raw.X` presence, compression status, `obsm` keys present.
 
 ### Mechanical fixes applied
 
