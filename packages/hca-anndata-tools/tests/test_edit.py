@@ -58,6 +58,12 @@ def test_list_uns_fields_filters_description(sample_h5ad_for_write):
     assert "description" not in field_names
     assert "description" not in result["missing_required"]
 
+    # set_uns must reject it via the unknown-field path so the workaround
+    # can't regress silently if the registry filter is removed.
+    set_result = set_uns(str(sample_h5ad_for_write), "description", "anything")
+    assert "error" in set_result
+    assert "not a recognized HCA uns field" in set_result["error"]
+
 
 def test_list_uns_fields_shows_bionetwork_fields(sample_h5ad_for_write):
     result = list_uns_fields(str(sample_h5ad_for_write))

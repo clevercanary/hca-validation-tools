@@ -11,9 +11,12 @@ _BIONETWORK_CLASSES = [AdiposeDataset, GutDataset, MusculoskeletalDataset]
 
 # Fields that LinkML's Dataset model claims live in uns but that are not
 # actually uns fields per HCA Tier 1 / CELLxGENE. See issue #343. Dropping
-# them from the registry means list_uns_fields never surfaces them and
-# set_uns rejects them as unrecognized (the same path as any unknown field).
-# Remove an entry here once the LinkML source is corrected upstream.
+# them from the registry means list_uns_fields treats them as unrecognized:
+# they don't appear in `fields` or `missing_required`, and set_uns rejects
+# them as unknown. They *will* appear in `extra_uns_keys` if an existing
+# file happens to carry one — that's intentional, since flagging an
+# unexpected key is better than silently blessing it. Remove an entry here
+# once the LinkML source is corrected upstream.
 _SKIP_UNS_FIELDS: set[str] = {"description"}
 
 
