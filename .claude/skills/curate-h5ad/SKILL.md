@@ -45,12 +45,20 @@ Only these are in Bucket A. Nothing else.
 
 ### Bucket B — Needs wrangler input (todo — stop and ask)
 
-For each of these, write a concrete question, not a suggested answer:
+Split these into two classes so the wrangler sees which items actually block validation vs. which are recommended-but-optional. Ground the split in `list_uns_fields` output: `required: true` fields that are unset are blocking; `required: false` fields that are unset are recommended at most.
+
+For each item, write a concrete question — not a suggested answer.
+
+**B1 — Blocking (validator errors or unset `required: true` fields)**
 
 - Missing required `uns` fields (e.g. `study_pi`) — ask for the value(s).
-- `default_embedding` — list the obsm keys and ask which one.
 - **No CAP annotation set present** — the file must ship with at least one CAP annotation set (see the [HCA Cell Annotation schema](https://data.humancellatlas.org/metadata/cell-annotation)). Ask the wrangler to provide a local path to a CAP-exported version of this file (same cells, with CAP annotation sets populated) — `copy_cap_annotations` reads the source via AnnData/h5py so a URL must be downloaded locally first. If supplied, `copy_cap_annotations` becomes a mechanical fix for Step 4.
 - Any other `uns` field the validator flags as missing.
+
+**B2 — Recommended (optional fields the wrangler may want to set)**
+
+- `default_embedding` — list the obsm keys and ask which one. Optional per schema, but a file shipped without it will display in CELLxGENE Explorer with no default scatter. Must name a 2D embedding to actually plot; 30D latents (e.g. `X_scVI`) are valid per schema but won't display. If only one 2D embedding exists, surface that — the wrangler will almost certainly pick it.
+- Any other field where `list_uns_fields` reports `required: false` and `is_set: false` — mention only if there's a reason the wrangler might care; otherwise omit.
 
 If the wrangler answers during the session, those answers become additional mechanical fixes (`set_uns ...`, `copy_cap_annotations`, ...) to run in Step 4.
 
@@ -68,9 +76,9 @@ Report these but don't attempt to fix:
 
 ## Step 3 — Present the punch list
 
-Show three sections: **A (will run)**, **B (needs your answer)**, **C (still to do, out of scope)**. Then stop and wait for explicit approval before running anything.
+Show these sections: **A (will run)**, **B1 (blocking — needs your answer)**, **B2 (recommended — optional)**, **C (still to do, out of scope)**. Then stop and wait for explicit approval before running anything.
 
-If the wrangler answers any Bucket B items, promote those to Bucket A as `set_uns` calls.
+If the wrangler answers any Bucket B items (B1 or B2), promote those to Bucket A as `set_uns` calls.
 
 ## Step 4 — Run the mechanical fixes
 
@@ -84,9 +92,66 @@ Each tool writes a new timestamped file. For most subsequent calls, passing eith
 
 ## Step 5 — Report
 
-- Call `view_edit_log` on the final file; list the entries added this session.
-- Re-run the validator; report error/warning deltas vs. Step 1.
-- If `copy_cap_annotations` ran, surface its cell-overlap stats as their own line: `source_n_obs`, `target_n_obs`, `matched_n_obs`, `match_fraction_of_source`, `match_fraction_of_target`. These come back in the tool result and also live in the edit-log entry's `details`.
-- Summarize:
-  - **Fixed this session** — each Bucket A action that ran, with the resulting validator change.
-  - **Still to do** — every Bucket B question the wrangler didn't answer, plus every Bucket C item.
+Re-run `view_edit_log` and the validator on the final file, then produce a structured report with these sections in order. Use markdown tables; skip any section with no content.
+
+### Header
+One short paragraph or bullet block with: final file path, shape (`n_obs × n_vars`), `title` from `uns`, schema type + version, X verdict + `raw.X` presence, compression status, `obsm` keys present.
+
+### Mechanical fixes applied
+
+| # | Operation | Effect |
+|---|---|---|
+| 1 | `normalize_raw` | e.g. "Moved raw counts → raw.X; normalized X with `normalize_total(target_sum=10000)` + log1p" |
+| 2 | `replace_placeholder_values` (`library_preparation_batch`) | e.g. "N cells: `'unknown'` → NaN" |
+| 3 | `copy_cap_annotations` | name the CAP source file |
+| 4 | `compress_h5ad` | e.g. "Skipped — already gzipped" or "Rewrote X with gzip level 4" |
+
+Only include the rows for tools that actually ran this session.
+
+### Validator delta
+
+|  | Before | After |
+|---|---|---|
+| Errors | N | M |
+| Non-feature-ID warnings | N | M |
+| CAP zero-observation warnings | N | M |
+| Named warnings resolved | — | e.g. "raw.X absent", "`unknown` placeholder in `library_preparation_batch`" |
+
+Count **CAP "zero observations" warnings** (text: `contains a category '...' with zero observations`) separately from other warnings. These are *expected* after `copy_cap_annotations`: CAP declares a closed vocabulary per annotation set that spans all lineages, and a per-lineage file only realizes a subset — unused vocabulary terms are intentional schema information, not a defect. Report the count and move on; don't prune them. The validator's `--add-labels` remediation note comes from vendored CellxGENE code and does not apply to HCA.
+
+Also list the specific error/warning kinds that disappeared or newly appeared, one line each.
+
+### CAP overlap (only if `copy_cap_annotations` ran this session, or a prior `import_cap_annotations` entry is in the edit log)
+
+Pull from the latest `import_cap_annotations` entry's `details`:
+
+| Metric | Value |
+|---|---|
+| CAP source file | `cap_source_file` |
+| `source_n_obs` | … |
+| `target_n_obs` | … |
+| `matched_n_obs` | … |
+| `match_fraction_of_source` | as % |
+| `match_fraction_of_target` | as % |
+
+### Still to do
+
+**Bucket B1 — blocking (validator errors or unset `required: true` fields)**
+
+| Field | Question |
+|---|---|
+| `ambient_count_correction` | which value from the allowed set? |
+
+**Bucket B2 — recommended (optional)**
+
+| Field | Question |
+|---|---|
+| `default_embedding` | `X_umap` (only 2D option) — confirm? |
+
+**Bucket C — upstream / curator**
+
+| Issue | Detail |
+|---|---|
+| `library_id` NaN (validator error) | Needs real values from source |
+
+Only surface items that are still open — don't re-list anything resolved this session. Omit any of the three sub-tables that have no entries.
