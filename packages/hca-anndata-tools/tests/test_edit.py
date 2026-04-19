@@ -44,9 +44,21 @@ def test_list_uns_fields_shows_missing_required(sample_h5ad_for_write):
     result = list_uns_fields(str(sample_h5ad_for_write))
     # study_pi is required but not in the test fixture
     assert "study_pi" in result["missing_required"]
-    # bionetwork-only fields are in a separate list
-    assert "ambient_count_correction" not in result["missing_required"]
-    assert "ambient_count_correction" in result["missing_required_bionetwork"]
+
+
+def test_ambient_and_doublet_are_not_uns_fields(sample_h5ad_for_write):
+    # Issue #348: these were uns fields before; they now live in obs. Guard
+    # against a regression that would resurface them in the uns registry or
+    # allow set_uns to write them.
+    result = list_uns_fields(str(sample_h5ad_for_write))
+    field_names = [f["name"] for f in result["fields"]]
+    for name in ("ambient_count_correction", "doublet_detection"):
+        assert name not in field_names
+        assert name not in result["missing_required"]
+        assert name not in result["missing_required_bionetwork"]
+        set_result = set_uns(str(sample_h5ad_for_write), name, "anything")
+        assert "error" in set_result
+        assert "not a recognized HCA uns field" in set_result["error"]
 
 
 def test_list_uns_fields_filters_description(sample_h5ad_for_write):
@@ -63,15 +75,6 @@ def test_list_uns_fields_filters_description(sample_h5ad_for_write):
     set_result = set_uns(str(sample_h5ad_for_write), "description", "anything")
     assert "error" in set_result
     assert "not a recognized HCA uns field" in set_result["error"]
-
-
-def test_list_uns_fields_shows_bionetwork_fields(sample_h5ad_for_write):
-    result = list_uns_fields(str(sample_h5ad_for_write))
-    field_names = [f["name"] for f in result["fields"]]
-    assert "ambient_count_correction" in field_names
-    assert "doublet_detection" in field_names
-    acc = next(f for f in result["fields"] if f["name"] == "ambient_count_correction")
-    assert acc["bionetwork_only"] is True
 
 
 def test_list_uns_fields_extra_keys(sample_h5ad_for_write):
@@ -210,21 +213,6 @@ def test_set_uns_auto_resolves_latest(sample_h5ad_for_write):
 
 # --- empty value rejection ---
 
-# ambient_count_correction is the only required str uns field without a
-# Literal enum constraint, so it's the one field that exercises set_uns's
-# required+str+empty code path (enum-typed fields fail Pydantic type
-# validation before reaching the non-empty check).
-def test_set_uns_empty_string_rejected(sample_h5ad_for_write):
-    result = set_uns(str(sample_h5ad_for_write), "ambient_count_correction", "")
-    assert "error" in result
-    assert "non-empty" in result["error"]
-
-
-def test_set_uns_whitespace_string_rejected(sample_h5ad_for_write):
-    result = set_uns(str(sample_h5ad_for_write), "ambient_count_correction", "   ")
-    assert "error" in result
-    assert "non-empty" in result["error"]
-
 
 def test_set_uns_empty_list_rejected(sample_h5ad_for_write):
     result = set_uns(str(sample_h5ad_for_write), "study_pi", [])
@@ -249,29 +237,6 @@ def test_set_uns_list_to_string_field_rejected(sample_h5ad_for_write):
 def test_set_uns_string_to_list_field_rejected(sample_h5ad_for_write):
     result = set_uns(str(sample_h5ad_for_write), "study_pi", "not a list")
     assert "error" in result
-
-
-# --- bionetwork-only fields ---
-
-
-def test_set_uns_ambient_count_correction(sample_h5ad_for_write):
-    result = set_uns(str(sample_h5ad_for_write), "ambient_count_correction", "SoupX")
-    assert "error" not in result
-    written = ad.read_h5ad(result["output_path"])
-    assert written.uns["ambient_count_correction"] == "SoupX"
-
-
-def test_set_uns_doublet_detection(sample_h5ad_for_write):
-    result = set_uns(str(sample_h5ad_for_write), "doublet_detection", "none")
-    assert "error" not in result
-    written = ad.read_h5ad(result["output_path"])
-    assert written.uns["doublet_detection"] == "none"
-
-
-def test_set_uns_bionetwork_empty_rejected(sample_h5ad_for_write):
-    result = set_uns(str(sample_h5ad_for_write), "ambient_count_correction", "")
-    assert "error" in result
-    assert "non-empty" in result["error"]
 
 
 # --- replace_placeholder_values ---
