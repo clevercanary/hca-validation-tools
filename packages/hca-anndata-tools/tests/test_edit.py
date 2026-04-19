@@ -46,6 +46,21 @@ def test_list_uns_fields_shows_missing_required(sample_h5ad_for_write):
     assert "study_pi" in result["missing_required"]
 
 
+def test_ambient_and_doublet_are_not_uns_fields(sample_h5ad_for_write):
+    # Issue #348: these were uns fields before; they now live in obs. Guard
+    # against a regression that would resurface them in the uns registry or
+    # allow set_uns to write them.
+    result = list_uns_fields(str(sample_h5ad_for_write))
+    field_names = [f["name"] for f in result["fields"]]
+    for name in ("ambient_count_correction", "doublet_detection"):
+        assert name not in field_names
+        assert name not in result["missing_required"]
+        assert name not in result["missing_required_bionetwork"]
+        set_result = set_uns(str(sample_h5ad_for_write), name, "anything")
+        assert "error" in set_result
+        assert "not a recognized HCA uns field" in set_result["error"]
+
+
 def test_list_uns_fields_filters_description(sample_h5ad_for_write):
     # Issue #343: LinkML's Dataset model marks `description` as a required uns
     # field, but it isn't one per HCA Tier 1 / CELLxGENE. helpers._SKIP_UNS_FIELDS
