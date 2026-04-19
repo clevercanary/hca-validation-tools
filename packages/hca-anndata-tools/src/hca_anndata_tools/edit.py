@@ -185,10 +185,12 @@ def set_uns(
         except ValidationError as e:
             return {"error": f"Invalid value for '{field}': {e}"}
 
-        # Reject empty values for required fields. The str branch is defensive —
-        # no current required uns field is a plain str (they all have Literal
-        # enums, so empty values fail Pydantic validation above). Kept for when
-        # a future plain-str required uns field is added.
+        # Reject empty values for required fields. The str branch is defensive:
+        # no current required uns str field is an unconstrained plain str —
+        # they're all Literal enums, so empty values already fail Pydantic
+        # validation above. Required list-typed fields (e.g. study_pi) are
+        # exercised by the list branch below. Kept for a future plain-str
+        # required uns field.
         if info.required:
             if isinstance(validated_value, str) and not validated_value.strip():
                 return {"error": f"Invalid value for '{field}': must be non-empty"}
