@@ -204,7 +204,10 @@ def test_set_uns_auto_resolves_latest(sample_h5ad_for_write):
 
 # --- empty value rejection ---
 
-
+# ambient_count_correction is the only required str uns field without a
+# Literal enum constraint, so it's the one field that exercises set_uns's
+# required+str+empty code path (enum-typed fields fail Pydantic type
+# validation before reaching the non-empty check).
 def test_set_uns_empty_string_rejected(sample_h5ad_for_write):
     result = set_uns(str(sample_h5ad_for_write), "ambient_count_correction", "")
     assert "error" in result
