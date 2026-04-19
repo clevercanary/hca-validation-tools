@@ -42,12 +42,27 @@ def test_list_uns_fields_shows_batch_condition(sample_h5ad_for_write):
 
 def test_list_uns_fields_shows_missing_required(sample_h5ad_for_write):
     result = list_uns_fields(str(sample_h5ad_for_write))
-    # description and study_pi are required but not in the test fixture
-    assert "description" in result["missing_required"]
+    # study_pi is required but not in the test fixture
     assert "study_pi" in result["missing_required"]
     # bionetwork-only fields are in a separate list
     assert "ambient_count_correction" not in result["missing_required"]
     assert "ambient_count_correction" in result["missing_required_bionetwork"]
+
+
+def test_list_uns_fields_filters_description(sample_h5ad_for_write):
+    # Issue #343: LinkML's Dataset model marks `description` as a required uns
+    # field, but it isn't one per HCA Tier 1 / CELLxGENE. helpers._SKIP_UNS_FIELDS
+    # drops it from the registry so it's never surfaced as missing or settable.
+    result = list_uns_fields(str(sample_h5ad_for_write))
+    field_names = [f["name"] for f in result["fields"]]
+    assert "description" not in field_names
+    assert "description" not in result["missing_required"]
+
+    # set_uns must reject it via the unknown-field path so the workaround
+    # can't regress silently if the registry filter is removed.
+    set_result = set_uns(str(sample_h5ad_for_write), "description", "anything")
+    assert "error" in set_result
+    assert "not a recognized HCA uns field" in set_result["error"]
 
 
 def test_list_uns_fields_shows_bionetwork_fields(sample_h5ad_for_write):
@@ -82,12 +97,12 @@ def test_list_uns_fields_bad_path():
 
 
 def test_set_uns_string_field(sample_h5ad_for_write):
-    result = set_uns(str(sample_h5ad_for_write), "description", "A test dataset")
+    result = set_uns(str(sample_h5ad_for_write), "title", "A test dataset")
     assert "error" not in result
     assert "output_path" in result
 
     written = ad.read_h5ad(result["output_path"])
-    assert written.uns["description"] == "A test dataset"
+    assert written.uns["title"] == "A test dataset"
 
 
 def test_set_uns_list_field(sample_h5ad_for_write):
@@ -143,14 +158,14 @@ def test_set_uns_default_embedding_invalid(sample_h5ad_for_write):
 
 
 def test_set_uns_edit_log(sample_h5ad_for_write):
-    result = set_uns(str(sample_h5ad_for_write), "description", "Logged edit")
+    result = set_uns(str(sample_h5ad_for_write), "comments", "Logged edit")
     assert "error" not in result
 
     written = ad.read_h5ad(result["output_path"])
     log = json.loads(written.uns["provenance"][EDIT_LOG_KEY])
     assert len(log) == 1
     assert log[0]["operation"] == "set_uns"
-    assert log[0]["details"]["field"] == "description"
+    assert log[0]["details"]["field"] == "comments"
     assert log[0]["details"]["new_value"] == "Logged edit"
 
 
@@ -164,7 +179,7 @@ def test_set_uns_previous_value_in_details(sample_h5ad_for_write):
 
 
 def test_set_uns_output_in_same_dir(sample_h5ad_for_write):
-    result = set_uns(str(sample_h5ad_for_write), "description", "test")
+    result = set_uns(str(sample_h5ad_for_write), "comments", "test")
     assert "error" not in result
     assert result["output_path"].startswith(str(sample_h5ad_for_write.parent))
 
@@ -180,30 +195,33 @@ def test_set_uns_bad_path():
 def test_set_uns_auto_resolves_latest(sample_h5ad_for_write):
     """Passing the original path edits the latest timestamped version."""
     # First edit creates a timestamped copy
-    r1 = set_uns(str(sample_h5ad_for_write), "description", "first edit")
+    r1 = set_uns(str(sample_h5ad_for_write), "title", "first edit")
     assert "error" not in r1
 
     # Second edit: pass original path, should auto-resolve to the timestamped version
     r2 = set_uns(str(sample_h5ad_for_write), "comments", "second edit")
     assert "error" not in r2
 
-    # The second edit should have read from the first output (which has description set)
+    # The second edit should have read from the first output (which has title updated)
     written = ad.read_h5ad(r2["output_path"])
-    assert written.uns["description"] == "first edit"
+    assert written.uns["title"] == "first edit"
     assert written.uns["comments"] == "second edit"
 
 
 # --- empty value rejection ---
 
-
+# ambient_count_correction is the only required str uns field without a
+# Literal enum constraint, so it's the one field that exercises set_uns's
+# required+str+empty code path (enum-typed fields fail Pydantic type
+# validation before reaching the non-empty check).
 def test_set_uns_empty_string_rejected(sample_h5ad_for_write):
-    result = set_uns(str(sample_h5ad_for_write), "description", "")
+    result = set_uns(str(sample_h5ad_for_write), "ambient_count_correction", "")
     assert "error" in result
     assert "non-empty" in result["error"]
 
 
 def test_set_uns_whitespace_string_rejected(sample_h5ad_for_write):
-    result = set_uns(str(sample_h5ad_for_write), "description", "   ")
+    result = set_uns(str(sample_h5ad_for_write), "ambient_count_correction", "   ")
     assert "error" in result
     assert "non-empty" in result["error"]
 
@@ -224,7 +242,7 @@ def test_set_uns_list_with_empty_element_rejected(sample_h5ad_for_write):
 
 
 def test_set_uns_list_to_string_field_rejected(sample_h5ad_for_write):
-    result = set_uns(str(sample_h5ad_for_write), "description", ["not", "a", "string"])
+    result = set_uns(str(sample_h5ad_for_write), "title", ["not", "a", "string"])
     assert "error" in result
 
 
@@ -379,7 +397,7 @@ def test_view_edit_log_empty(sample_h5ad_for_write):
 
 def test_view_edit_log_after_edits(sample_h5ad_for_write):
     """After edits, entries are returned with operation and details."""
-    set_uns(str(sample_h5ad_for_write), "description", "first")
+    set_uns(str(sample_h5ad_for_write), "comments", "first")
     set_uns(str(sample_h5ad_for_write), "title", "second")
 
     result = view_edit_log(str(sample_h5ad_for_write))
@@ -387,7 +405,7 @@ def test_view_edit_log_after_edits(sample_h5ad_for_write):
     assert result["edit_count"] == 2
     assert "message" not in result
     assert [e["operation"] for e in result["entries"]] == ["set_uns", "set_uns"]
-    assert result["entries"][0]["details"]["field"] == "description"
+    assert result["entries"][0]["details"]["field"] == "comments"
     assert result["entries"][1]["details"]["field"] == "title"
     assert all("timestamp" in e for e in result["entries"])
     assert all("source_sha256" in e for e in result["entries"])
@@ -395,7 +413,7 @@ def test_view_edit_log_after_edits(sample_h5ad_for_write):
 
 def test_view_edit_log_auto_resolves_latest(sample_h5ad_for_write):
     """Passing the original path reads the latest timestamped version."""
-    set_uns(str(sample_h5ad_for_write), "description", "logged")
+    set_uns(str(sample_h5ad_for_write), "comments", "logged")
     result = view_edit_log(str(sample_h5ad_for_write))
     assert "error" not in result
     assert result["edit_count"] == 1
