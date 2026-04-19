@@ -183,14 +183,20 @@ def copy_cap_annotations(
             source_obs_data = {}
             for col in obs_cols_to_copy:
                 item = obs_group[col]
-                if isinstance(item, h5py.Group) and "categories" in item:
-                    categories, codes = read_categorical_data(item)
-                    source_obs_data[col] = pd.Categorical.from_codes(codes, categories=categories)
-                else:
-                    # Wrap in Categorical so partial-overlap reindex (target rows
-                    # absent from source) injects NaN cleanly — plain object
-                    # columns with mixed str/NaN break anndata's writer.
-                    source_obs_data[col] = pd.Categorical([_decode_bytes(v) for v in item[:]])
+                # CAP serializes all annotation columns as categorical. Enforce
+                # that contract — non-categorical columns would either force a
+                # dtype coercion on copy (schema drift) or break the writer on
+                # the NaN rows that partial-overlap introduces.
+                if not (isinstance(item, h5py.Group) and "categories" in item):
+                    return {
+                        "error": (
+                            f"CAP source column '{col}' is not categorical. "
+                            "CAP is expected to serialize all annotation columns "
+                            "as categorical; please report upstream."
+                        )
+                    }
+                categories, codes = read_categorical_data(item)
+                source_obs_data[col] = pd.Categorical.from_codes(codes, categories=categories)
 
         if not obs_cols_to_copy:
             return {"error": "No CAP obs columns found to copy"}

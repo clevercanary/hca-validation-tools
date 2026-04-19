@@ -22,31 +22,42 @@ def _make_cap_source(path: Path, cell_ids: list[str]) -> Path:
     X = sp.random(n, 5, density=0.3, format="csr", dtype=np.float32, random_state=rng)
 
     labels = rng.choice(["typeA", "typeB"], n)
+    # CAP serializes all annotation columns as categorical — mirror that here.
     obs = pd.DataFrame(
         {
             "author_cell_type": pd.Categorical(labels),
-            "author_cell_type--cell_fullname": [f"{label} cell" for label in labels],
-            "author_cell_type--cell_ontology_exists": [True] * n,
+            "author_cell_type--cell_fullname": pd.Categorical(
+                [f"{label} cell" for label in labels]
+            ),
+            "author_cell_type--cell_ontology_exists": pd.Categorical(["True"] * n),
             "author_cell_type--cell_ontology_term_id": pd.Categorical(
                 rng.choice(["CL:0000540", "CL:0000127"], n)
             ),
             "author_cell_type--cell_ontology_term": pd.Categorical(
                 rng.choice(["neuron", "astrocyte"], n)
             ),
-            "author_cell_type--rationale": ["morphology"] * n,
+            "author_cell_type--rationale": pd.Categorical(["morphology"] * n),
             "author_cell_type--marker_gene_evidence": pd.Categorical(
                 rng.choice(["GFAP", "AIF1"], n)
             ),
-            "author_cell_type--canonical_marker_genes": ["unknown"] * n,
-            "author_cell_type--synonyms": ["unknown"] * n,
-            "author_cell_type--category_fullname": ["neural cell"] * n,
-            "author_cell_type--category_cell_ontology_term_id": ["CL:0002319"] * n,
-            "author_cell_type--category_cell_ontology_term": ["neural cell"] * n,
+            "author_cell_type--canonical_marker_genes": pd.Categorical(["unknown"] * n),
+            "author_cell_type--synonyms": pd.Categorical(["unknown"] * n),
+            "author_cell_type--category_fullname": pd.Categorical(["neural cell"] * n),
+            "author_cell_type--category_cell_ontology_term_id": pd.Categorical(
+                ["CL:0002319"] * n
+            ),
+            "author_cell_type--category_cell_ontology_term": pd.Categorical(
+                ["neural cell"] * n
+            ),
             # Demographic columns (should NOT be copied)
-            "sex--cell_ontology_term_id": ["PATO:0000384"] * n,
-            "development_stage--cell_ontology_term_id": ["HsapDv:0000087"] * n,
-            "self_reported_ethnicity--cell_ontology_term_id": ["HANCESTRO:0005"] * n,
-            "cell_type--cell_ontology_term_id": ["CL:0000540"] * n,
+            "sex--cell_ontology_term_id": pd.Categorical(["PATO:0000384"] * n),
+            "development_stage--cell_ontology_term_id": pd.Categorical(
+                ["HsapDv:0000087"] * n
+            ),
+            "self_reported_ethnicity--cell_ontology_term_id": pd.Categorical(
+                ["HANCESTRO:0005"] * n
+            ),
+            "cell_type--cell_ontology_term_id": pd.Categorical(["CL:0000540"] * n),
         },
         index=cell_ids,
     )
@@ -251,6 +262,36 @@ def test_copy_partial_overlap_succeeds(cap_source, tmp_path):
     col = "author_cell_type--cell_ontology_term_id"
     assert col in written.obs.columns
     assert pd.isna(written.obs.loc["target_only", col])
+
+
+def test_copy_preserves_column_dtype(cap_source, hca_target):
+    # Every copied CAP obs column must remain categorical (CAP's serialization
+    # contract). The copy must not coerce dtypes.
+    result = copy_cap_annotations(str(cap_source), str(hca_target))
+    assert "error" not in result
+    written = ad.read_h5ad(result["output_path"])
+    for col in result["obs_columns_added"]:
+        assert isinstance(written.obs[col].dtype, pd.CategoricalDtype), (
+            f"{col} dtype changed to {written.obs[col].dtype}"
+        )
+
+
+@pytest.mark.filterwarnings("ignore::anndata._warnings.OldFormatWarning")
+def test_copy_rejects_non_categorical_source_column(cap_source, hca_target):
+    # Rewrite one CAP column in the source as a plain string dataset (via h5py,
+    # bypassing anndata's auto-coercion to categorical) to simulate a source
+    # that violates CAP's categorical-everywhere serialization contract.
+    import h5py
+    col = "author_cell_type--rationale"
+    with h5py.File(cap_source, "a") as f:
+        del f["obs"][col]
+        f["obs"].create_dataset(col, data=np.array(["morphology"] * len(CELL_IDS), dtype="S"))
+
+    result = copy_cap_annotations(str(cap_source), str(hca_target))
+
+    assert "error" in result
+    assert "not categorical" in result["error"].lower()
+    assert col in result["error"]
 
 
 def test_copy_below_threshold_fails(cap_source, tmp_path):
