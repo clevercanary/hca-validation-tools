@@ -47,8 +47,7 @@ Only these are in Bucket A. Nothing else.
 
 For each of these, write a concrete question, not a suggested answer:
 
-- Missing required `uns` fields (e.g. `description`) — ask for the text.
-- Missing bionetwork-required `uns` fields (e.g. `ambient_count_correction`, `doublet_detection`) — ask which value from the allowed set applies. If `predicted_doublet` / `doublet_score` columns exist, mention that as context but still ask which tool was used.
+- Missing required `uns` fields (e.g. `study_pi`) — ask for the value(s).
 - `default_embedding` — list the obsm keys and ask which one.
 - **No CAP annotation set present** — the file must ship with at least one CAP annotation set (see the [HCA Cell Annotation schema](https://data.humancellatlas.org/metadata/cell-annotation)). Ask the wrangler to provide a local path to a CAP-exported version of this file (same cells, with CAP annotation sets populated) — `copy_cap_annotations` reads the source via AnnData/h5py so a URL must be downloaded locally first. If supplied, `copy_cap_annotations` becomes a mechanical fix for Step 4.
 - Any other `uns` field the validator flags as missing.
@@ -60,6 +59,7 @@ If the wrangler answers during the session, those answers become additional mech
 Report these but don't attempt to fix:
 
 - High NaN rates on non-allowed columns (e.g. `library_id`) — needs real values from source.
+- Sparse or missing `ambient_count_correction` / `doublet_detection` obs columns — per-cell values must come from the upstream source (each source dataset's processing record). Do not broadcast a single value. Report fill rate and move on.
 - Delimited-list values in single-identifier columns (e.g. `library_preparation_batch` containing `"lib1; lib2; lib3"`) — needs per-cell resolution, not placeholder replacement.
 - Gene IDs missing from the current GENCODE — needs annotation-version decision.
 - Inconsistent `author_cell_type` variants — needs a curator mapping.

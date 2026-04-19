@@ -35,7 +35,7 @@ slots:
       - value: "soupx"
       - value: "cellbender"
     annotations:
-      annDataLocation: uns
+      annDataLocation: obs
 
   doublet_detection:
     title: Doublet Detection
@@ -46,8 +46,9 @@ slots:
       - value: "none"
       - value: "doublet_finder"
       - value: "manual"
+      - value: "doublet_finder;manual"
     annotations:
-      annDataLocation: uns
+      annDataLocation: obs
 
   dataset_id:
     title: Dataset ID

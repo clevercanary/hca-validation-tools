@@ -385,15 +385,16 @@ class AdiposeDataset(Dataset):
     linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'https://github.com/clevercanary/hca-validation-tools/schema/bionetwork/adipose'})
 
     ambient_count_correction: str = Field(default=..., title="Ambient Count Correction", description="""Method used to correct ambient RNA contamination in single-cell data.""", json_schema_extra = { "linkml_meta": {'alias': 'ambient_count_correction',
-         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'uns'}},
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'domain_of': ['AdiposeDataset', 'GutDataset', 'MusculoskeletalDataset'],
          'examples': [{'value': 'none'}, {'value': 'soupx'}, {'value': 'cellbender'}]} })
     doublet_detection: str = Field(default=..., title="Doublet Detection", description="""Was doublet detection software used during CELLxGENE processing? If so, which software?""", json_schema_extra = { "linkml_meta": {'alias': 'doublet_detection',
-         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'uns'}},
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'domain_of': ['AdiposeDataset', 'GutDataset', 'MusculoskeletalDataset'],
          'examples': [{'value': 'none'},
                       {'value': 'doublet_finder'},
-                      {'value': 'manual'}]} })
+                      {'value': 'manual'},
+                      {'value': 'doublet_finder;manual'}]} })
     alignment_software: str = Field(default=..., title="Alignment Software", description="""Protocol used for alignment analysis, please specify which version was used e.g. cell ranger 2.0, 2.1.1 etc.""", json_schema_extra = { "linkml_meta": {'alias': 'alignment_software',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'comments': ['Affects which cells are filtered per dataset, and which reads '
@@ -527,15 +528,16 @@ class GutDataset(Dataset):
     linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'https://github.com/clevercanary/hca-validation-tools/schema/bionetwork/gut'})
 
     ambient_count_correction: str = Field(default=..., title="Ambient Count Correction", description="""Method used to correct ambient RNA contamination in single-cell data.""", json_schema_extra = { "linkml_meta": {'alias': 'ambient_count_correction',
-         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'uns'}},
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'domain_of': ['AdiposeDataset', 'GutDataset', 'MusculoskeletalDataset'],
          'examples': [{'value': 'none'}, {'value': 'soupx'}, {'value': 'cellbender'}]} })
     doublet_detection: str = Field(default=..., title="Doublet Detection", description="""Was doublet detection software used during CELLxGENE processing? If so, which software?""", json_schema_extra = { "linkml_meta": {'alias': 'doublet_detection',
-         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'uns'}},
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'domain_of': ['AdiposeDataset', 'GutDataset', 'MusculoskeletalDataset'],
          'examples': [{'value': 'none'},
                       {'value': 'doublet_finder'},
-                      {'value': 'manual'}]} })
+                      {'value': 'manual'},
+                      {'value': 'doublet_finder;manual'}]} })
     alignment_software: str = Field(default=..., title="Alignment Software", description="""Protocol used for alignment analysis, please specify which version was used e.g. cell ranger 2.0, 2.1.1 etc.""", json_schema_extra = { "linkml_meta": {'alias': 'alignment_software',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'comments': ['Affects which cells are filtered per dataset, and which reads '
@@ -1422,15 +1424,16 @@ class MusculoskeletalDataset(Dataset):
     linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'https://github.com/clevercanary/hca-validation-tools/schema/bionetwork/musculoskeletal'})
 
     ambient_count_correction: str = Field(default=..., title="Ambient Count Correction", description="""Method used to correct ambient RNA contamination in single-cell data.""", json_schema_extra = { "linkml_meta": {'alias': 'ambient_count_correction',
-         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'uns'}},
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'domain_of': ['AdiposeDataset', 'GutDataset', 'MusculoskeletalDataset'],
          'examples': [{'value': 'none'}, {'value': 'soupx'}, {'value': 'cellbender'}]} })
     doublet_detection: str = Field(default=..., title="Doublet Detection", description="""Was doublet detection software used during CELLxGENE processing? If so, which software?""", json_schema_extra = { "linkml_meta": {'alias': 'doublet_detection',
-         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'uns'}},
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'domain_of': ['AdiposeDataset', 'GutDataset', 'MusculoskeletalDataset'],
          'examples': [{'value': 'none'},
                       {'value': 'doublet_finder'},
-                      {'value': 'manual'}]} })
+                      {'value': 'manual'},
+                      {'value': 'doublet_finder;manual'}]} })
     alignment_software: str = Field(default=..., title="Alignment Software", description="""Protocol used for alignment analysis, please specify which version was used e.g. cell ranger 2.0, 2.1.1 etc.""", json_schema_extra = { "linkml_meta": {'alias': 'alignment_software',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'comments': ['Affects which cells are filtered per dataset, and which reads '
