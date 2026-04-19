@@ -209,7 +209,13 @@ def test_copy_edit_log(cap_source, hca_target):
     assert len(log) >= 1
     entry = log[-1]
     assert entry["operation"] == "import_cap_annotations"
-    assert "author_cell_type" in entry["details"]["annotation_sets"]
+    details = entry["details"]
+    assert "author_cell_type" in details["annotation_sets"]
+    assert details["source_n_obs"] == len(CELL_IDS)
+    assert details["target_n_obs"] == len(CELL_IDS)
+    assert details["matched_n_obs"] == len(CELL_IDS)
+    assert details["match_fraction_of_source"] == pytest.approx(1.0)
+    assert details["match_fraction_of_target"] == pytest.approx(1.0)
 
 
 # --- Failure cases ---
