@@ -14,12 +14,17 @@ from hca_schema_validator._vendored.cellxgene_schema.write_labels import AnnData
 _SCHEMA_PATH = Path(__file__).parent / "schema_definitions" / "hca_schema_definition.yaml"
 _ORGANISM_COL = "organism_ontology_term_id"
 _FORBIDDEN_UNS_KEYS = ("schema_version", "schema_reference")
+_NON_REQUIRED_LEVELS = {"optional", "strongly_recommended"}
+# Human GENCODE 48 has ~79k genes + 92 ERCC. Bound large enough to cache
+# several GENCODE vintages of deprecated IDs without leaking unboundedly
+# in long-running processes (e.g. the MCP server).
+_ORGANISM_CACHE_SIZE = 200_000
 
 
 _SUPPORTED_ORGANISMS = (SupportedOrganisms.HOMO_SAPIENS, SupportedOrganisms.ERCC)
 
 
-@functools.lru_cache(maxsize=None)
+@functools.lru_cache(maxsize=_ORGANISM_CACHE_SIZE)
 def _organism_for_feature(feature_id: str):
     # HCA supports human genes + ERCC spike-ins only. Probe these two tables
     # directly instead of scanning all 16 organisms the vendored base knows
@@ -46,7 +51,14 @@ class HCALabeler(AnnDataLabelAppender):
                 continue
             component = self.schema_def.get("components", {}).get(component_name, {})
             for col_name, col_def in component.get("columns", {}).items():
-                if "add_labels" in col_def and col_name not in df.columns:
+                if "add_labels" not in col_def or col_name in df.columns:
+                    continue
+                # Honor the schema's requirement_level: only default-required
+                # columns trigger preflight failure. Optional / strongly-
+                # recommended columns missing here just mean we skip labeling
+                # for that field — see _add_column below.
+                level = str(col_def.get("requirement_level", "")).lower()
+                if level not in _NON_REQUIRED_LEVELS:
                     issues.append(f"Missing required column '{col_name}' in {component_name}")
         for key in _FORBIDDEN_UNS_KEYS:
             if key in self.adata.uns:
@@ -56,6 +68,17 @@ class HCALabeler(AnnDataLabelAppender):
                 )
         if issues:
             raise ValueError("HCALabeler preflight failed:\n  - " + "\n  - ".join(issues))
+
+    def _add_column(self, component: str, column: str, column_definition: dict) -> None:
+        # Skip silently when the source column isn't on the target dataframe.
+        # Preflight has already rejected missing required columns, so this
+        # only fires for optional / strongly-recommended ones (e.g. the
+        # HCA schema marks cell_type_ontology_term_id optional).
+        if column != "index":
+            df = getattr_anndata(self.adata, component)
+            if df is None or column not in df.columns:
+                return
+        super()._add_column(component, column, column_definition)
 
     def _map_by_organism(
         self,

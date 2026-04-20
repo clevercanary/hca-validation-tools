@@ -109,10 +109,19 @@ def test_observation_joinid_written(labeled, base_adata):
     assert labeled.obs["observation_joinid"].notna().all()
 
 
-def test_preflight_fails_on_missing_ontology_term_id_column(base_adata, tmp_path):
-    del base_adata.obs["cell_type_ontology_term_id"]
-    with pytest.raises(ValueError, match="cell_type_ontology_term_id"):
+def test_preflight_fails_on_missing_required_ontology_term_id_column(base_adata, tmp_path):
+    del base_adata.obs["organism_ontology_term_id"]
+    with pytest.raises(ValueError, match="organism_ontology_term_id"):
         _label(base_adata, tmp_path)
+
+
+def test_optional_cell_type_column_missing_is_skipped(base_adata, tmp_path):
+    # cell_type_ontology_term_id is marked requirement_level: optional in the
+    # HCA schema; labeler should succeed without writing obs['cell_type'].
+    del base_adata.obs["cell_type_ontology_term_id"]
+    labeled = _label(base_adata, tmp_path)
+    assert "cell_type" not in labeled.obs.columns
+    assert "tissue" in labeled.obs.columns  # other labels still written
 
 
 def test_preflight_fails_when_cellxgene_schema_keys_present(base_adata, tmp_path):
