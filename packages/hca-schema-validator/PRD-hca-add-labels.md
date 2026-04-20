@@ -91,17 +91,6 @@ The labeler overwrites the fields listed in R3 unconditionally. No bookkeeping, 
 
 Any UX around surfacing overwrites (showing the wrangler "these columns are about to change") is the caller's job. `/curate-h5ad` already knows the file state and the labeler's controlled field list (from this PRD), so it can render the diff on its own before invoking the labeler.
 
-### R7. Preflight validation
-
-Before any labeling work, `write_labels` runs a preflight that raises a single `ValueError` (aggregating all issues) if any of the following hold:
-
-- A **required** obs column referenced by an `add_labels` directive in the HCA schema is missing — e.g. `obs['organism_ontology_term_id']` isn't present. Columns whose `requirement_level` is `optional` or `strongly_recommended` (currently just `cell_type_ontology_term_id`) are allowed to be absent; the labeler skips the corresponding derived field instead of failing.
-- `uns['schema_version']` is present — signals the file has already been processed by `cellxgene-schema add-labels`; running HCALabeler on top would produce a mess.
-- `uns['schema_reference']` is present — same reason.
-- `obs['organism_ontology_term_id']` contains any value other than `NCBITaxon:9606` — HCALabeler supports only human (see R1 rationale). Adding another organism is a deliberate code change.
-
-The labeler does not validate or modify `uns['organism_ontology_term_id']` or `uns['organism']` (label-form) — those keys are producer-owned. Similarly, the labeler does not scrub stale CELLxGENE keys beyond refusing to run; that cleanup belongs in upstream tooling or a separate utility.
-
 ### R6. Entry points and package boundaries
 
 The labeler lives entirely in `hca-schema-validator`. `hca-anndata-tools` is not modified. The MCP server (which depends on both packages) provides the edit-snapshot + provenance-logging wrapper.
@@ -123,6 +112,17 @@ No CLI. Invocation is via the MCP `label_h5ad` tool (interactive curation) or di
 
 Rationale: keeps the validator package free of any dep on `hca-anndata-tools` (which would be a reverse layering). All user-visible labeling happens through the MCP tool, which owns the edit-log + snapshot conventions.
 
+### R7. Preflight validation
+
+Before any labeling work, `write_labels` runs a preflight that raises a single `ValueError` (aggregating all issues) if any of the following hold:
+
+- A **required** obs column referenced by an `add_labels` directive in the HCA schema is missing — e.g. `obs['organism_ontology_term_id']` isn't present. Columns whose `requirement_level` is `optional` or `strongly_recommended` (currently just `cell_type_ontology_term_id`) are allowed to be absent; the labeler skips the corresponding derived field instead of failing.
+- `uns['schema_version']` is present — signals the file has already been processed by `cellxgene-schema add-labels`; running HCALabeler on top would produce a mess.
+- `uns['schema_reference']` is present — same reason.
+- `obs['organism_ontology_term_id']` contains any value other than `NCBITaxon:9606` — HCALabeler supports only human (see R1 rationale). Adding another organism is a deliberate code change.
+
+The labeler does not validate or modify `uns['organism_ontology_term_id']` or `uns['organism']` (label-form) — those keys are producer-owned. Similarly, the labeler does not scrub stale CELLxGENE keys beyond refusing to run; that cleanup belongs in upstream tooling or a separate utility.
+
 ## Design
 
 ### Patch, do not modify
@@ -131,12 +131,14 @@ The vendored CELLxGENE code lives at `packages/hca-schema-validator/src/hca_sche
 
 Implementation strategy — subclass `AnnDataLabelAppender` from a **new** module outside `_vendored/` and override only what needs HCA behavior:
 
-| Override | Reason |
+| Override / new | Reason |
 |---|---|
 | `__init__` | Load `hca_schema_definition.yaml` instead of CELLxGENE's schema definition. |
 | `_get_mapping_dict_feature_id` | Wrap the GENCODE lookup so unknown-organism IDs yield NaN instead of raising. |
 | `_get_mapping_dict_feature_reference` / `_biotype` / `_length` / `_type` | Same NaN-on-unknown behavior. |
+| `_add_column` | Silently skip when the source column is absent from the target dataframe (handles optional `_ontology_term_id` columns like `cell_type`). Preflight catches required-missing before we get here. |
 | `write_labels` | Skip the CELLxGENE-only `uns['schema_version']`, `uns['schema_reference']`, `uns['organism']` writes. Run `_preflight` first, then apply labels and the `observation_joinid` write (R2). No uns writes. |
+| `_preflight` (new method) | Aggregated precondition check; see R7. |
 
 The vendored code stays byte-identical. Future upstream bumps pull cleanly.
 

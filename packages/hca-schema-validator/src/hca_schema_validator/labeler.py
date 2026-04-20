@@ -1,4 +1,4 @@
-"""HCA labeler: NaN-tolerant AnnDataLabelAppender with HCA-flavored uns handling."""
+"""HCA labeler: NaN-tolerant AnnDataLabelAppender with HCA preflight checks."""
 
 import functools
 from pathlib import Path
