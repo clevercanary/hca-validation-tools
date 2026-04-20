@@ -54,16 +54,28 @@ def test_unknown_ensembl_yields_nan(base_adata, tmp_path):
     base_adata.raw = raw
 
     labeled = _label(base_adata, tmp_path)
+    raw_var = labeled.raw.to_adata().var
 
     for col in ("feature_name", "feature_reference", "feature_biotype", "feature_length", "feature_type"):
-        assert pd.isna(labeled.var.loc[fake_id, col]), f"{col} should be NaN for unknown ID"
+        assert pd.isna(labeled.var.loc[fake_id, col]), f"var.{col} should be NaN for unknown ID"
+        assert pd.isna(raw_var.loc[fake_id, col]), f"raw.var.{col} should be NaN for unknown ID"
     assert labeled.var.loc["ENSG00000141510", "feature_name"] == "TP53"
+    assert raw_var.loc["ENSG00000141510", "feature_name"] == "TP53"
 
 
 def test_obs_labels_populated_from_term_id(labeled):
-    for col in ("tissue", "cell_type", "assay", "disease"):
-        assert col in labeled.obs.columns
-        assert labeled.obs[col].notna().all()
+    for col in (
+        "tissue",
+        "cell_type",
+        "assay",
+        "disease",
+        "sex",
+        "organism",
+        "development_stage",
+        "self_reported_ethnicity",
+    ):
+        assert col in labeled.obs.columns, f"{col} should be added by labeler"
+        assert labeled.obs[col].notna().all(), f"{col} should be fully populated"
 
 
 def test_existing_obs_label_overwritten(base_adata, tmp_path):
@@ -95,6 +107,18 @@ def test_observation_joinid_written(labeled, base_adata):
     assert "observation_joinid" in labeled.obs.columns
     assert len(labeled.obs["observation_joinid"]) == base_adata.n_obs
     assert labeled.obs["observation_joinid"].notna().all()
+
+
+def test_preflight_fails_on_missing_ontology_term_id_column(base_adata, tmp_path):
+    del base_adata.obs["cell_type_ontology_term_id"]
+    with pytest.raises(ValueError, match="cell_type_ontology_term_id"):
+        _label(base_adata, tmp_path)
+
+
+def test_preflight_fails_when_cellxgene_schema_keys_present(base_adata, tmp_path):
+    base_adata.uns["schema_version"] = "5.0.0"
+    with pytest.raises(ValueError, match="schema_version"):
+        _label(base_adata, tmp_path)
 
 
 def test_producer_columns_preserved(base_adata, tmp_path):
