@@ -13,8 +13,8 @@ from hca_schema_validator._vendored.cellxgene_schema.write_labels import AnnData
 
 _SCHEMA_PATH = Path(__file__).parent / "schema_definitions" / "hca_schema_definition.yaml"
 _ORGANISM_COL = "organism_ontology_term_id"
+_OBSERVATION_JOINID_COL = "observation_joinid"
 _HUMAN_TAXON = "NCBITaxon:9606"
-_FORBIDDEN_UNS_KEYS = ("schema_version", "schema_reference")
 _NON_REQUIRED_LEVELS = {"optional", "strongly_recommended"}
 # Human GENCODE 48 has ~79k genes + 92 ERCC. Bound large enough to cache
 # several GENCODE vintages of deprecated IDs without leaking unboundedly
@@ -61,7 +61,8 @@ class HCALabeler(AnnDataLabelAppender):
                 level = str(col_def.get("requirement_level", "")).lower()
                 if level not in _NON_REQUIRED_LEVELS:
                     issues.append(f"Missing required column '{col_name}' in {component_name}")
-        for key in _FORBIDDEN_UNS_KEYS:
+        reserved_uns_keys = self.schema_def.get("components", {}).get("uns", {}).get("reserved_columns", [])
+        for key in reserved_uns_keys:
             if key in self.adata.uns:
                 issues.append(
                     f"uns['{key}'] must not be present on input "
@@ -128,6 +129,6 @@ class HCALabeler(AnnDataLabelAppender):
         self._add_labels()
         self._remove_categories_with_zero_values()
 
-        self.adata.obs["observation_joinid"] = get_hash_digest_column(self.adata.obs)
+        self.adata.obs[_OBSERVATION_JOINID_COL] = get_hash_digest_column(self.adata.obs)
 
         self.adata.write_h5ad(output_path, compression="gzip")

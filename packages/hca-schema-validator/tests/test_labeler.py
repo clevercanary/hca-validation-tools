@@ -30,6 +30,20 @@ def _label(adata, tmp_path):
     return anndata.read_h5ad(str(out_path))
 
 
+def _replace_first_feature_id(adata, new_id):
+    """Swap the first var/raw.var index entry for `new_id` and return it.
+
+    Both indexes are updated together so they stay aligned (otherwise the
+    labeler's raw.var mirror would target a different gene).
+    """
+    new_ids = [new_id] + list(adata.var.index[1:])
+    adata.var.index = pd.Index(new_ids)
+    raw = adata.raw.to_adata()
+    raw.var.index = pd.Index(new_ids)
+    adata.raw = raw
+    return new_id
+
+
 def test_feature_name_populated_from_ensembl(labeled):
     expected = {
         "ENSG00000127603": "MACF1",
@@ -45,13 +59,7 @@ def test_feature_name_populated_from_ensembl(labeled):
 
 
 def test_unknown_ensembl_yields_nan(base_adata, tmp_path):
-    known_ids = list(base_adata.var.index)
-    fake_id = "ENSG99999999999"
-    new_ids = [fake_id] + known_ids[1:]
-    base_adata.var.index = pd.Index(new_ids)
-    raw = base_adata.raw.to_adata()
-    raw.var.index = pd.Index(new_ids)
-    base_adata.raw = raw
+    fake_id = _replace_first_feature_id(base_adata, "ENSG99999999999")
 
     labeled = _label(base_adata, tmp_path)
     raw_var = labeled.raw.to_adata().var
@@ -127,13 +135,7 @@ def test_preflight_fails_when_cellxgene_schema_keys_present(base_adata, tmp_path
 
 
 def test_ercc_spike_in_labeled(base_adata, tmp_path):
-    known_ids = list(base_adata.var.index)
-    ercc_id = "ERCC-00002"
-    new_ids = [ercc_id] + known_ids[1:]
-    base_adata.var.index = pd.Index(new_ids)
-    raw = base_adata.raw.to_adata()
-    raw.var.index = pd.Index(new_ids)
-    base_adata.raw = raw
+    ercc_id = _replace_first_feature_id(base_adata, "ERCC-00002")
 
     labeled = _label(base_adata, tmp_path)
 
