@@ -16,6 +16,11 @@ _ORGANISM_COL = "organism_ontology_term_id"
 _OBSERVATION_JOINID_COL = "observation_joinid"
 _HUMAN_TAXON = "NCBITaxon:9606"
 _NON_REQUIRED_LEVELS = {"optional", "strongly_recommended"}
+# Keys that signal the input has already been through cellxgene-schema
+# add-labels. `citation` (also in the schema's reserved_columns list) is
+# added at Discover publish, not by add-labels, so we don't reject on it
+# — narrower check matches the intent of R7.
+_POST_ADDLABELS_UNS_KEYS = ("schema_version", "schema_reference")
 # Human GENCODE 48 has ~79k genes + 92 ERCC. Bound large enough to cache
 # several GENCODE vintages of deprecated IDs without leaking unboundedly
 # in long-running processes (e.g. the MCP server).
@@ -61,8 +66,7 @@ class HCALabeler(AnnDataLabelAppender):
                 level = str(col_def.get("requirement_level", "")).lower()
                 if level not in _NON_REQUIRED_LEVELS:
                     issues.append(f"Missing required column '{col_name}' in {component_name}")
-        reserved_uns_keys = self.schema_def.get("components", {}).get("uns", {}).get("reserved_columns", [])
-        for key in reserved_uns_keys:
+        for key in _POST_ADDLABELS_UNS_KEYS:
             if key in self.adata.uns:
                 issues.append(
                     f"uns['{key}'] must not be present on input "
