@@ -64,7 +64,9 @@ CELLxGENE's vendored `cellxgene-schema add-labels` almost does what we need but:
   - Read `obs['<field>_ontology_term_id']` (required input).
   - Write the human-readable label to `obs['<field>']` via `ONTOLOGY_PARSER`.
 - If `obs['<field>']` already exists: **overwrite** unconditionally.
-- If `obs['<field>_ontology_term_id']` is missing entirely, preflight raises `ValueError` (see R7). HCA files are expected to carry all required ontology term ID inputs; a missing column means the file is malformed, not something to silently skip.
+- If `obs['<field>_ontology_term_id']` is missing entirely, behavior depends on the field's `requirement_level` in `hca_schema_definition.yaml`:
+  - **Default (required):** preflight raises `ValueError` (see R7) — the file is malformed.
+  - **`optional` or `strongly_recommended`:** the labeler skips that field silently. The derived `obs['<field>']` column is not written. Currently only `cell_type_ontology_term_id` is marked optional.
 - Write `obs['observation_joinid']` — a per-cell hash used for dataset deduplication at Discover ingest. Computed via `cellxgene_schema.utils.get_hash_digest_column(adata.obs)` from the vendored module (same source CELLxGENE uses). Overwrites if already present.
 
 ### R3. Scope: derived fields only
@@ -73,15 +75,15 @@ The labeler touches **only** the columns it derives:
 - `var['feature_name']`, `var['feature_reference']`, `var['feature_biotype']`, `var['feature_length']`, `var['feature_type']` (and their `raw.var` mirrors)
 - `obs['tissue']`, `obs['cell_type']`, `obs['assay']`, `obs['disease']`, `obs['sex']`, `obs['organism']`, `obs['development_stage']`, `obs['self_reported_ethnicity']`
 - `obs['observation_joinid']`
-- `uns['organism_ontology_term_id']` (under R4)
 
-All other columns (producer `gene_symbol`, `*_ontology_term` drift variants, custom author fields, etc.) are left untouched. Decisions about those columns belong outside this tool.
+All other columns and all `uns` keys are left untouched. The labeler does not write to `uns` at all. Decisions about extra/drift columns belong outside this tool.
 
 ### R4. uns handling
 
-- If `obs['organism_ontology_term_id']` is present and single-valued, also write the same value to `uns['organism_ontology_term_id']` (HCA canonical is obs; uns duplicate makes CELLxGENE-v7 tooling happy without harming HCA validation).
-- Do **not** write `uns['schema_version']`, `uns['schema_reference']`, or `uns['organism']` (the label-form).
-- Edit-log / provenance is **not** the labeler's responsibility — the MCP wrapper (R6) handles that when the labeler is invoked through the `label_h5ad` tool.
+The labeler does **not** write to `uns` at all. It does not mirror organism from obs to uns, does not add CELLxGENE schema keys, and does not maintain any provenance entries.
+
+- Edit-log / provenance is the MCP wrapper's responsibility (R6), triggered by `label_h5ad` — not the labeler's.
+- If the caller needs `uns['organism_ontology_term_id']` populated for CELLxGENE-v7 tooling, the caller sets it before or after invoking the labeler. HCA canonical location is `obs`.
 
 ### R5. Overwrite behavior
 
@@ -93,13 +95,12 @@ Any UX around surfacing overwrites (showing the wrangler "these columns are abou
 
 Before any labeling work, `write_labels` runs a preflight that raises a single `ValueError` (aggregating all issues) if any of the following hold:
 
-- An obs column referenced by an `add_labels` directive in the HCA schema is missing — e.g. `obs['cell_type_ontology_term_id']` isn't present.
+- A **required** obs column referenced by an `add_labels` directive in the HCA schema is missing — e.g. `obs['organism_ontology_term_id']` isn't present. Columns whose `requirement_level` is `optional` or `strongly_recommended` (currently just `cell_type_ontology_term_id`) are allowed to be absent; the labeler skips the corresponding derived field instead of failing.
 - `uns['schema_version']` is present — signals the file has already been processed by `cellxgene-schema add-labels`; running HCALabeler on top would produce a mess.
 - `uns['schema_reference']` is present — same reason.
+- `obs['organism_ontology_term_id']` contains any value other than `NCBITaxon:9606` — HCALabeler supports only human (see R1 rationale). Adding another organism is a deliberate code change.
 
-`uns['organism_ontology_term_id']` may be present or absent — this labeler writes it itself when `obs['organism_ontology_term_id']` is single-valued, and we expect HCA files to carry organism in obs either way. The label-form `uns['organism']` is not checked.
-
-The labeler does not scrub stale CELLxGENE keys beyond refusing to run; that cleanup belongs in upstream tooling or a separate utility.
+The labeler does not validate or modify `uns['organism_ontology_term_id']` or `uns['organism']` (label-form) — those keys are producer-owned. Similarly, the labeler does not scrub stale CELLxGENE keys beyond refusing to run; that cleanup belongs in upstream tooling or a separate utility.
 
 ### R6. Entry points and package boundaries
 
@@ -135,7 +136,7 @@ Implementation strategy — subclass `AnnDataLabelAppender` from a **new** modul
 | `__init__` | Load `hca_schema_definition.yaml` instead of CELLxGENE's schema definition. |
 | `_get_mapping_dict_feature_id` | Wrap the GENCODE lookup so unknown-organism IDs yield NaN instead of raising. |
 | `_get_mapping_dict_feature_reference` / `_biotype` / `_length` / `_type` | Same NaN-on-unknown behavior. |
-| `write_labels` | Skip the CELLxGENE-only `uns['schema_version']`, `uns['schema_reference']`, `uns['organism']` writes. Add the `uns['organism_ontology_term_id']` write (R4) and `observation_joinid` write (R2). |
+| `write_labels` | Skip the CELLxGENE-only `uns['schema_version']`, `uns['schema_reference']`, `uns['organism']` writes. Run `_preflight` first, then apply labels and the `observation_joinid` write (R2). No uns writes. |
 
 The vendored code stays byte-identical. Future upstream bumps pull cleanly.
 
@@ -148,9 +149,10 @@ Use `hca_schema_definition.yaml` as-is. It already contains `add_labels` directi
 | Input state | Behavior |
 |---|---|
 | Ensembl ID in `var.index` not in GENCODE | All five `feature_*` columns NaN for that row. |
-| `obs['<field>_ontology_term_id']` absent | Preflight raises `ValueError` (R7); nothing is written. |
+| `obs['<field>_ontology_term_id']` absent (required field) | Preflight raises `ValueError` (R7); nothing is written. |
+| `obs['cell_type_ontology_term_id']` absent (optional field) | `obs['cell_type']` is not added; other labels are written normally. |
 | `uns['schema_version']` or `uns['schema_reference']` already set | Preflight raises `ValueError` (R7); nothing is written. |
-| `obs['organism_ontology_term_id']` has >1 unique value | Do not write to `uns`; continue. |
+| `obs['organism_ontology_term_id']` contains any non-human value | Preflight raises `ValueError` (R7); nothing is written. |
 | `var['feature_is_filtered']` absent | Do not generate. Existing `feature_is_filtered` validator catches this as a downstream error. |
 | `raw.var` absent | Skip raw-var labeling. Label only `var`. |
 | Existing `var['feature_name']` populated | Overwrite. |
@@ -166,7 +168,7 @@ Running the HCA labeler on gut-v1 myeloid (post-curate) produces a file where:
 - `var['feature_name']` is populated for 34,505 / 35,574 rows and NaN for the 1,069 deprecated IDs.
 - `obs` labels (`tissue`, `cell_type`, `assay`, `disease`, `sex`, `organism`, `development_stage`, `self_reported_ethnicity`) are populated from their `_ontology_term_id` inputs, overwriting the producer-drifted versions.
 - `obs['observation_joinid']` is present.
-- `uns['organism_ontology_term_id']` is set. The labeler refuses to run on inputs that already have `uns['schema_version']` or `uns['schema_reference']`, so those keys never appear on output. The label-form `uns['organism']` is not checked — HCA inputs are expected not to have it, but if one does it passes through untouched.
+- `uns` is unchanged by the labeler. The labeler refuses to run on inputs that carry `uns['schema_version']` or `uns['schema_reference']` (preflight), but if those pass and any other `uns` keys exist on input they pass through untouched. The caller (or a subsequent tool) is responsible for any desired `uns['organism_ontology_term_id']` duplication for CELLxGENE-v7 tooling.
 - Producer `*_ontology_term` drift columns and custom columns like `gene_symbol` are untouched (the labeler does not drop them; that decision lives in `/curate-h5ad`).
 - `hca-schema-validator` introduces no new errors from labeling. The two pre-existing errors (`library_id` NaN, `library_preparation_batch` delimited lists) remain — they are independent Bucket C items unrelated to labeling.
 - CAP marker validation finds 54 / 56 markers in `var['feature_name']` (matching what we observed in yesterday's scratch experiment).

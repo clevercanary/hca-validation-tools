@@ -13,6 +13,7 @@ from hca_schema_validator._vendored.cellxgene_schema.write_labels import AnnData
 
 _SCHEMA_PATH = Path(__file__).parent / "schema_definitions" / "hca_schema_definition.yaml"
 _ORGANISM_COL = "organism_ontology_term_id"
+_HUMAN_TAXON = "NCBITaxon:9606"
 _FORBIDDEN_UNS_KEYS = ("schema_version", "schema_reference")
 _NON_REQUIRED_LEVELS = {"optional", "strongly_recommended"}
 # Human GENCODE 48 has ~79k genes + 92 ERCC. Bound large enough to cache
@@ -66,6 +67,15 @@ class HCALabeler(AnnDataLabelAppender):
                     f"uns['{key}'] must not be present on input "
                     "(file appears to have been processed by cellxgene-schema add-labels already)"
                 )
+        if _ORGANISM_COL in self.adata.obs.columns:
+            non_human = sorted(
+                v for v in self.adata.obs[_ORGANISM_COL].dropna().unique() if v != _HUMAN_TAXON
+            )
+            if non_human:
+                issues.append(
+                    f"obs['{_ORGANISM_COL}'] contains non-human values {non_human}; "
+                    f"HCALabeler supports only {_HUMAN_TAXON}"
+                )
         if issues:
             raise ValueError("HCALabeler preflight failed:\n  - " + "\n  - ".join(issues))
 
@@ -117,12 +127,6 @@ class HCALabeler(AnnDataLabelAppender):
 
         self._add_labels()
         self._remove_categories_with_zero_values()
-
-        organism_col = self.adata.obs.get(_ORGANISM_COL)
-        if organism_col is not None:
-            vals = organism_col.dropna().unique()
-            if len(vals) == 1:
-                self.adata.uns[_ORGANISM_COL] = str(vals[0])
 
         self.adata.obs["observation_joinid"] = get_hash_digest_column(self.adata.obs)
 

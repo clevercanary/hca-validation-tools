@@ -84,17 +84,13 @@ def test_existing_obs_label_overwritten(base_adata, tmp_path):
     assert "STALE_VALUE" not in labeled.obs["tissue"].astype(str).unique()
 
 
-def test_organism_copied_to_uns_when_single_valued(labeled):
-    assert labeled.uns.get("organism_ontology_term_id") == "NCBITaxon:9606"
-
-
-def test_organism_not_copied_when_multivalued(base_adata, tmp_path):
+def test_preflight_fails_on_non_human_organism(base_adata, tmp_path):
     base_adata.obs["organism_ontology_term_id"] = base_adata.obs["organism_ontology_term_id"].astype(str)
     first_label = base_adata.obs.index[0]
     base_adata.obs.loc[first_label, "organism_ontology_term_id"] = "NCBITaxon:10090"
 
-    labeled = _label(base_adata, tmp_path)
-    assert "organism_ontology_term_id" not in labeled.uns
+    with pytest.raises(ValueError, match="NCBITaxon:10090"):
+        _label(base_adata, tmp_path)
 
 
 def test_cellxgene_only_uns_keys_absent(labeled):
