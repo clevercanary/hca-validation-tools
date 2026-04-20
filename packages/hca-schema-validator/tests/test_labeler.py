@@ -121,6 +121,24 @@ def test_preflight_fails_when_cellxgene_schema_keys_present(base_adata, tmp_path
         _label(base_adata, tmp_path)
 
 
+def test_ercc_spike_in_labeled(base_adata, tmp_path):
+    known_ids = list(base_adata.var.index)
+    ercc_id = "ERCC-00002"
+    new_ids = [ercc_id] + known_ids[1:]
+    base_adata.var.index = pd.Index(new_ids)
+    raw = base_adata.raw.to_adata()
+    raw.var.index = pd.Index(new_ids)
+    base_adata.raw = raw
+
+    labeled = _label(base_adata, tmp_path)
+
+    row = labeled.var.loc[ercc_id]
+    assert row["feature_biotype"] == "spike-in"
+    assert row["feature_reference"] == "NCBITaxon:32630"
+    assert row["feature_type"] == "synthetic"
+    assert "spike-in control" in str(row["feature_name"])
+
+
 def test_producer_columns_preserved(base_adata, tmp_path):
     base_adata.obs["author_cell_type"] = "custom_label"
     base_adata.var["gene_symbol"] = "CUSTOM_SYMBOL"

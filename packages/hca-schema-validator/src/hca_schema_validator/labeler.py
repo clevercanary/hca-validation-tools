@@ -16,14 +16,20 @@ _ORGANISM_COL = "organism_ontology_term_id"
 _FORBIDDEN_UNS_KEYS = ("schema_version", "schema_reference")
 
 
+_SUPPORTED_ORGANISMS = (SupportedOrganisms.HOMO_SAPIENS, SupportedOrganisms.ERCC)
+
+
 @functools.lru_cache(maxsize=None)
 def _organism_for_feature(feature_id: str):
-    # HCA is human-only. Probe HOMO_SAPIENS directly instead of scanning all
-    # supported organisms — the base's get_organism_from_feature_id loads
-    # every GENCODE table in turn, which wastes memory and time on files
-    # with deprecated IDs. Any new organism = code change.
-    human = SupportedOrganisms.HOMO_SAPIENS
-    return human if get_gene_checker(human).is_valid_id(feature_id) else None
+    # HCA supports human genes + ERCC spike-ins only. Probe these two tables
+    # directly instead of scanning all 16 organisms the vendored base knows
+    # about — that base loads every GENCODE table in turn, which is wasted
+    # memory/time on files with deprecated IDs. Adding a new organism is a
+    # code change.
+    for organism in _SUPPORTED_ORGANISMS:
+        if get_gene_checker(organism).is_valid_id(feature_id):
+            return organism
+    return None
 
 
 class HCALabeler(AnnDataLabelAppender):
@@ -75,10 +81,13 @@ class HCALabeler(AnnDataLabelAppender):
         return self._map_by_organism(ids, lambda i, o: get_gene_checker(o).get_length(i))
 
     def _get_mapping_dict_feature_biotype(self, ids):
-        # Base uses the ERCC prefix only and never touches organism, but we
-        # still NaN unknown-organism IDs so all five feature_* columns stay
-        # in sync — same rows NaN everywhere.
-        return self._map_by_organism(ids, lambda i, _o: "spike-in" if i.startswith("ERCC") else "gene")
+        # Use organism == ERCC rather than the base's ID-prefix check, so
+        # anything in the ERCC table is "spike-in" regardless of its literal
+        # ID shape. Unknown-organism IDs still NaN (via _map_by_organism) so
+        # all five feature_* columns stay in sync — same rows NaN everywhere.
+        return self._map_by_organism(
+            ids, lambda _i, o: "spike-in" if o == SupportedOrganisms.ERCC else "gene"
+        )
 
     def write_labels(self, output_path: str) -> None:
         self._preflight()
