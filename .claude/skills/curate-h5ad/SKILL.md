@@ -98,8 +98,10 @@ Each tool writes a new timestamped file. For most subsequent calls, passing eith
 
 Re-run `view_edit_log` on the final file, then produce a structured report with these sections in order. Also re-run `validate_schema` — but only if `check_schema_type` reports `hca` on the final file. If the file is still CellxGENE (e.g. conversion wasn't approved), skip the validator rerun and note why under "Validator delta" instead of pasting a misleading error list. Use markdown tables; skip any section with no content.
 
+For the Provenance line below, re-run `get_summary` on the final file to fetch its obs columns, then run `get_descriptive_stats` with `columns` set to the intersection of `["donor_id", "sample_id", "library_id", "dataset_id"]` and the final file's obs column names (extract `name` from each `{name, dtype}` object in `get_summary.obs_columns` — it's a list of objects, not plain strings). The intersection avoids erroring on absent columns.
+
 ### Header
-One short paragraph or bullet block with: final file path, shape (`n_obs × n_vars`), `title` from `uns`, schema type (include version only when schema is CellxGENE — HCA is unversioned), X verdict + `raw.X` presence, compression status, `obsm` keys present.
+One short paragraph or bullet block with: final file path, shape (`n_obs × n_vars`), `title` from `uns`, schema type (include version only when schema is CellxGENE — HCA is unversioned), X verdict + `raw.X` presence, compression status, `obsm` keys present. Add a **Provenance** line: `N donors · M samples · K libraries · D source datasets` — pulled from `get_descriptive_stats.columns[<col>].unique` for each column (the stats are nested under a `columns` dict keyed by column name). Omit any metric whose column is absent OR whose column is present but unpopulated (`columns[<col>].unique == 0`, equivalently `columns[<col>].n_nan == n_rows`) so an all-NaN column doesn't render as "0 libraries". `dataset_id` is not a schema field (optional integrator convention); absent is normal.
 
 ### Mechanical fixes applied
 
