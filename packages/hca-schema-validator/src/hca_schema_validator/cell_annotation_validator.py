@@ -70,7 +70,7 @@ class HCACellAnnotationValidator:
         self.warnings = []
 
         try:
-            adata = ad.io.read_h5ad(h5ad_path, backed="r")
+            adata = ad.read_h5ad(h5ad_path, backed="r")
         except Exception as e:
             self._error(f"Unable to read h5ad file: {e}")
             return False
@@ -83,7 +83,10 @@ class HCACellAnnotationValidator:
                 for set_name in sets:
                     self._check_set_columns(set_name, obs_columns)
         finally:
-            adata.file.close()
+            # Guard against an unexpected non-backed return so a missing
+            # `.file` attribute doesn't mask earlier validation errors.
+            if getattr(adata, "file", None) is not None:
+                adata.file.close()
 
         return not self.errors
 

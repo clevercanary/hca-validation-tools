@@ -117,15 +117,22 @@ def test_hca_cell_annotation_validator_cases(mock_validator_class, test_case):
 )
 def test_subprocess_script_imports_cleanly(script_path, tmp_path):
     """Invoking the script by path (as the dataset-validator does) must not
-    fail at import time. Catches relative-import regressions introduced by
-    refactors that assume a package context."""
+    fail at import time. Catches relative-import regressions and other
+    early-execution failures (ModuleNotFoundError, SyntaxError, etc.) that
+    the mock-based dataset-validator tests skip.
+
+    We can't assert returncode == 0 here because HCAValidator.validate_adata
+    calls sys.exit(1) on a missing file — a pre-existing behavior unrelated
+    to the module-load path we care about. Instead, assert no Python
+    traceback appears in stderr; any unhandled exception during import or
+    early execution would produce one."""
     result = subprocess.run(
         [sys.executable, str(script_path), str(tmp_path / "nonexistent.h5ad")],
         capture_output=True,
         text=True,
     )
-    assert "ImportError" not in result.stderr, (
-        f"{script_path.name} failed at import time: {result.stderr}"
+    assert "Traceback" not in result.stderr, (
+        f"{script_path.name} failed at import or early execution: {result.stderr}"
     )
 
 
