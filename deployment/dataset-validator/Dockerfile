@@ -57,6 +57,8 @@ ENV CELLXGENE_VALIDATOR_SCRIPT="/app/cellxgene_validator/main.py"
 # Set environment variables for HCA schema validator paths
 ENV HCA_SCHEMA_VALIDATOR_VENV="/opt/venvs/hca-schema-validator"
 ENV HCA_SCHEMA_VALIDATOR_SCRIPT="/app/hca_schema_validator/main.py"
+# HCA cell annotation validator runs in the HCA schema validator venv (same package)
+ENV HCA_CELL_ANNOTATION_VALIDATOR_SCRIPT="/app/hca_schema_validator/cell_annotation.py"
 # CAP validator script runs in the main venv (no separate venv needed)
 ENV CAP_VALIDATOR_SCRIPT="/app/dataset_validator/cap_validator_script.py"
 

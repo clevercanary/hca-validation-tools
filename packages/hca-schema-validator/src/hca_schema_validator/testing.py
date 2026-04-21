@@ -71,3 +71,43 @@ def create_labelable_h5ad(path: Path) -> Path:
     adata.raw = adata.copy()
     adata.write_h5ad(path)
     return path
+
+
+# CAP-required per-set obs column suffixes the cell-annotation validator checks.
+_CAP_COLUMN_SUFFIXES = (
+    "cell_fullname",
+    "cell_ontology_exists",
+    "cell_ontology_term_id",
+    "cell_ontology_term",
+    "rationale",
+    "marker_gene_evidence",
+)
+
+
+def create_cap_annotated_h5ad(
+    path: Path,
+    set_name: str = "author_annotation",
+    schema_version: str = "0.2.0",
+) -> Path:
+    """Create a small h5ad with a valid CAP annotation set.
+
+    Builds on :func:`create_labelable_h5ad` and overlays the CAP structures
+    (``obs`` columns with the ``<set>--<col>`` prefix + ``uns`` metadata) that
+    :class:`HCACellAnnotationValidator` expects. Returns ``path``.
+
+    Tests can mutate the written file to exercise specific failure modes.
+    """
+    create_labelable_h5ad(path)
+    adata = ad.read_h5ad(path)
+
+    n_obs = adata.n_obs
+    for suffix in _CAP_COLUMN_SUFFIXES:
+        adata.obs[f"{set_name}--{suffix}"] = pd.Categorical(["value"] * n_obs)
+
+    adata.uns["cellannotation_schema_version"] = schema_version
+    adata.uns["cellannotation_metadata"] = {
+        set_name: {"title": f"{set_name} title"}
+    }
+
+    adata.write_h5ad(path)
+    return path
