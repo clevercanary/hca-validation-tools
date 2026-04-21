@@ -143,10 +143,12 @@ Pull from the latest `import_cap_annotations` entry's `details`:
 
 Source the numbers from the `copy_cap_annotations` tool result's `marker_gene_validation` field if it ran this session. If only a prior `import_cap_annotations` entry exists, call `validate_marker_genes` on the final file to get fresh numbers — a marker list that matched against `var.index` before `label_h5ad` populated `var['feature_name']` will look very different now.
 
+Marker symbols are resolved against the target's var gene-name source: `var['feature_name']` is preferred, else `var['gene_name']`, else `var.index` (the Ensembl IDs) as a last resort. Post-`label_h5ad` files always have `feature_name`; files that skipped labeling fall back to whatever the producer shipped.
+
 | Metric | Value |
 |---|---|
 | Total unique markers | … |
-| Found in `var['feature_name']` | … |
+| Found in var gene-name source | … |
 | Missing | … |
 
 For each missing marker, list it with its classification — `not_in_gencode` (marker symbol doesn't resolve to any GENCODE entry — typo, glob pattern, or deprecated rename), `missing_from_var` (valid symbol but not present in this file's gene set), or a known rename surfaced by the tool:
