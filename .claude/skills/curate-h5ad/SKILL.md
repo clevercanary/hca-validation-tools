@@ -151,13 +151,13 @@ Marker symbols are resolved against the target's var gene-name source: `var['fea
 | Found in var gene-name source | … |
 | Missing | … |
 
-For each missing marker, list it with its classification — `not_in_gencode` (marker symbol doesn't resolve to any GENCODE entry — typo, glob pattern, or deprecated rename), `missing_from_var` (valid symbol but not present in this file's gene set), or a known rename surfaced by the tool:
+For each missing marker, list it with its classification exactly as returned by the tool — `not_in_gencode` (marker symbol doesn't resolve to any GENCODE entry — typo, glob pattern, or deprecated rename), `missing_from_var` (valid symbol but not present in this file's gene set), or `known_rename` (submitted marker is a deprecated symbol; the tool provides the current target in `var_name`, plus `ensembl_id` when available):
 
-| Marker | Classification |
-|---|---|
-| … | … |
+| Marker | Classification | Var name | Ensembl ID |
+|---|---|---|---|
+| … | … | … | … |
 
-If all markers hit, say so in one line instead of an empty table. Any `not_in_gencode` entries point at CAP-side fixes (ask the CAP curator); `missing_from_var` points at target-side gaps (different gene set than the one CAP was authored against).
+Leave `Var name` / `Ensembl ID` blank for `not_in_gencode` and `missing_from_var` rows — those fields are only populated on `known_rename`. If all markers hit, say so in one line instead of an empty table. `not_in_gencode` entries point at CAP-side fixes (ask the CAP curator); `missing_from_var` points at target-side gaps (different gene set than the one CAP was authored against); `known_rename` entries should report the rename target from `var_name` so the mismatch is explicit.
 
 ### Still to do
 
