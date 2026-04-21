@@ -118,7 +118,7 @@ class HCACellAnnotationValidator:
             self._error(NO_SETS_ERROR)
             return []
 
-        valid_sets: List[str] = []
+        annotation_sets: List[str] = []
         for set_name, set_meta in metadata.items():
             if not isinstance(set_meta, dict):
                 self._error(
@@ -132,8 +132,8 @@ class HCACellAnnotationValidator:
                     f"uns['cellannotation_metadata']['{set_name}'] is missing "
                     f"required keys: {missing_keys}."
                 )
-            valid_sets.append(set_name)
-        return valid_sets
+            annotation_sets.append(set_name)
+        return annotation_sets
 
     def _check_set_columns(self, set_name: str, obs_columns: set) -> None:
         for suffix in _REQUIRED_OBS_SUFFIXES:

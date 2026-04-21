@@ -54,8 +54,12 @@ def run_with_captured_logs(
       is_valid = validate(file_path)
     except Exception as e:
       is_valid = False
-      warning_messages = []
-      error_messages = [f"{unexpected_error_prefix}: {e}"]
+      # Clear in place so the ListHandler's references stay consistent with
+      # the locals we return — rebinding would leave the handler pointing at
+      # the partially-filled originals.
+      warning_messages.clear()
+      error_messages.clear()
+      error_messages.append(f"{unexpected_error_prefix}: {e}")
   finally:
     logger.removeHandler(handler)
 
