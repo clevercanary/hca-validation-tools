@@ -34,7 +34,7 @@ Start with the evaluator, then gate the HCA validator on the schema it reports:
 
 ### Bucket A — Mechanical (safe to run after approval)
 
-Only these are in Bucket A. Nothing else.
+Only these are in Bucket A. Nothing else. A row belongs in A only when its preconditions are **already satisfied** at punch-list time — don't pre-list rows whose inputs depend on an unanswered B question (e.g. `set_uns('default_embedding', …)` belongs in B2 until the wrangler picks a value, then gets promoted to A per Step 3).
 
 - **`convert_cellxgene_to_hca`** — when `check_schema_type` reports `schema: "cellxgene"`. Must run **first**: it reshapes the file into HCA layout before any other fix makes sense, and the other tools (including `validate_schema`) assume HCA layout. After conversion, re-enter Step 1 on the converted file to get an accurate Bucket A/B/C list.
 - **`normalize_raw`** — when `check_x_normalization` reports `verdict: "raw_counts"` and `has_raw_x: false`. Deterministic: moves X→raw.X, normalizes X with `normalize_total(target_sum=10000) + log1p`.
@@ -45,14 +45,23 @@ Only these are in Bucket A. Nothing else.
 
 ### Bucket B — Needs wrangler input (todo — stop and ask)
 
-For each of these, write a concrete question, not a suggested answer:
+Split these into two classes so the wrangler sees which items actually block validation vs. which are recommended-but-optional. The primary blocking signal is `validate_schema` — any error it reports (on `obs`, `var`, or `uns`) blocks. Use `list_uns_fields` as a secondary signal for missing `uns` fields specifically: `required: true` fields that are unset are blocking; `required: false` fields that are unset are recommended at most.
+
+For each item, write a concrete question. For **B1** items, do not include a suggested answer — ask only for the missing required value. For **B2** items, if there's an obvious single valid option (e.g. only one 2D embedding exists), you may phrase it as a confirmation question ("`X_umap` — confirm?") rather than silently deciding.
+
+**B1 — Blocking (validator errors or unset `required: true` fields)**
 
 - Missing required `uns` fields (e.g. `study_pi`) — ask for the value(s).
-- `default_embedding` — list the obsm keys and ask which one.
 - **No CAP annotation set present** — the file must ship with at least one CAP annotation set (see the [HCA Cell Annotation schema](https://data.humancellatlas.org/metadata/cell-annotation)). Ask the wrangler to provide a local path to a CAP-exported version of this file (same cells, with CAP annotation sets populated) — `copy_cap_annotations` reads the source via AnnData/h5py so a URL must be downloaded locally first. If supplied, `copy_cap_annotations` becomes a mechanical fix for Step 4.
 - Any other `uns` field the validator flags as missing.
 
-If the wrangler answers during the session, those answers become additional mechanical fixes (`set_uns ...`, `copy_cap_annotations`, ...) to run in Step 4.
+**B2 — Recommended (optional fields the wrangler may want to set)**
+
+Only the fields explicitly named below belong in B2. Do **not** scan `list_uns_fields` for other unset optional fields and invent questions about them — a field being optional-and-unset is not itself a reason to ask. The skill's scope is the explicit tool list (`convert_cellxgene_to_hca`, `normalize_raw`, `replace_placeholder_values`, `copy_cap_annotations`, `set_uns` on the named fields here, `compress_h5ad`); everything else is the wrangler's call, unprompted.
+
+- `default_embedding` — list the obsm keys and ask which one. Optional per schema, but a file shipped without it will display in CELLxGENE Explorer with no default scatter. Must name a 2D embedding to actually plot; 30D latents (e.g. `X_scVI`) are valid per schema but won't display. If only one 2D embedding exists, surface that — the wrangler will almost certainly pick it.
+
+If the wrangler answers a B2 item during the session, that answer becomes a `set_uns` mechanical fix (promoted to Bucket A) for Step 4.
 
 ### Bucket C — Upstream / curator judgment (out of scope for this skill)
 
@@ -68,9 +77,9 @@ Report these but don't attempt to fix:
 
 ## Step 3 — Present the punch list
 
-Show three sections: **A (will run)**, **B (needs your answer)**, **C (still to do, out of scope)**. Then stop and wait for explicit approval before running anything.
+Show these sections: **A (will run)**, **B1 (blocking — needs your answer)**, **B2 (recommended — optional)**, **C (still to do, out of scope)**. Then stop and wait for explicit approval before running anything.
 
-If the wrangler answers any Bucket B items, promote those to Bucket A as `set_uns` calls.
+If the wrangler answers any Bucket B items (B1 or B2), promote those to Bucket A as the appropriate mechanical action: `set_uns` for answered `uns` values (e.g. `default_embedding`, `study_pi`), `copy_cap_annotations` when the answer is a CAP source file path.
 
 ## Step 4 — Run the mechanical fixes
 
@@ -84,9 +93,66 @@ Each tool writes a new timestamped file. For most subsequent calls, passing eith
 
 ## Step 5 — Report
 
-- Call `view_edit_log` on the final file; list the entries added this session.
-- Re-run the validator; report error/warning deltas vs. Step 1.
-- If `copy_cap_annotations` ran, surface its cell-overlap stats as their own line: `source_n_obs`, `target_n_obs`, `matched_n_obs`, `match_fraction_of_source`, `match_fraction_of_target`. These come back in the tool result and also live in the edit-log entry's `details`.
-- Summarize:
-  - **Fixed this session** — each Bucket A action that ran, with the resulting validator change.
-  - **Still to do** — every Bucket B question the wrangler didn't answer, plus every Bucket C item.
+Re-run `view_edit_log` on the final file, then produce a structured report with these sections in order. Also re-run `validate_schema` — but only if `check_schema_type` reports `hca` on the final file. If the file is still CellxGENE (e.g. conversion wasn't approved), skip the validator rerun and note why under "Validator delta" instead of pasting a misleading error list. Use markdown tables; skip any section with no content.
+
+### Header
+One short paragraph or bullet block with: final file path, shape (`n_obs × n_vars`), `title` from `uns`, schema type (include version only when schema is CellxGENE — HCA is unversioned), X verdict + `raw.X` presence, compression status, `obsm` keys present.
+
+### Mechanical fixes applied
+
+| # | Operation | Effect |
+|---|---|---|
+| 1 | `normalize_raw` | e.g. "Moved raw counts → raw.X; normalized X with `normalize_total(target_sum=10000)` + log1p" |
+| 2 | `replace_placeholder_values` (`library_preparation_batch`) | e.g. "N cells: `'unknown'` → NaN" |
+| 3 | `copy_cap_annotations` | name the CAP source file |
+| 4 | `compress_h5ad` | e.g. "Skipped — already gzipped" or "Rewrote X with gzip level 4" |
+
+Only include the rows for tools that actually ran this session.
+
+### Validator delta
+
+|  | Before | After |
+|---|---|---|
+| Errors | N | M |
+| Non-feature-ID warnings | N | M |
+| CAP zero-observation warnings | N | M |
+| Named warnings resolved | — | e.g. "raw.X absent", "`unknown` placeholder in `library_preparation_batch`" |
+
+Count **CAP "zero observations" warnings** (text: `contains a category '...' with zero observations`) separately from other warnings. These are *expected* after `copy_cap_annotations`: CAP declares a closed vocabulary per annotation set that spans all lineages, and a per-lineage file only realizes a subset — unused vocabulary terms are intentional schema information, not a defect. Report the count and move on; don't prune them. The validator's `--add-labels` remediation note comes from vendored CellxGENE code and does not apply to HCA.
+
+Also list the specific error/warning kinds that disappeared or newly appeared, one line each.
+
+### CAP overlap (only if `copy_cap_annotations` ran this session, or a prior `import_cap_annotations` entry is in the edit log)
+
+Pull from the latest `import_cap_annotations` entry's `details`:
+
+| Metric | Value |
+|---|---|
+| CAP source file | `cap_source_file` |
+| `source_n_obs` | … |
+| `target_n_obs` | … |
+| `matched_n_obs` | … |
+| `match_fraction_of_source` | as % |
+| `match_fraction_of_target` | as % |
+
+### Still to do
+
+**Bucket B1 — blocking (validator errors or unset `required: true` fields)**
+
+| Field | Question |
+|---|---|
+| `study_pi` | who are the PI(s)? e.g. `["Teichmann,Sarah,A."]` |
+
+**Bucket B2 — recommended (optional)**
+
+| Field | Question |
+|---|---|
+| `default_embedding` | `X_umap` (only 2D option) — confirm? |
+
+**Bucket C — upstream / curator**
+
+| Issue | Detail |
+|---|---|
+| `library_id` NaN (validator error) | Needs real values from source |
+
+Only surface items that are still open — don't re-list anything resolved this session. Omit any of the three sub-tables that have no entries.
