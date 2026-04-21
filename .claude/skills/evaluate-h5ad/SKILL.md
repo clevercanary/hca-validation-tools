@@ -24,7 +24,7 @@ Then synthesize the results into a report with these sections in order. Use mark
 
 ## 1. File overview
 One compact block (bullets or a short table) with:
-- Final file path (resolved snapshot, not the input path if they differ)
+- Input path (`$ARGUMENTS`). If the tools auto-resolved to a newer snapshot, add the resolved basename on a second line — read it from any tool that returns a `filename` field (e.g. `check_schema_type.filename`). Skip the second line when input and resolved agree.
 - Shape: `n_obs × n_vars`, file size (MB)
 - `title` from `uns`
 - Schema type (from `check_schema_type`) — include the version only when schema is CellxGENE (HCA is unversioned)
@@ -42,10 +42,16 @@ If nothing is missing, say so in a single line instead of an empty table.
 
 ## 3. Storage & compression
 
+Render one row per dataset that `get_storage_info` actually returns — the shape depends on the matrix format:
+
+- **Dense X**: one row, `X` (no `data`/`indices`/`indptr` sub-datasets).
+- **Sparse X** (csr/csc): three rows — `X.data`, `X.indices`, `X.indptr`.
+- Same pattern for `raw/X` when present.
+- Include a row for each populated `layers/<name>` if any.
+
 | Dataset | Codec | Level | Chunks |
 |---|---|---|---|
-| X.data | gzip / — | 4 / — | … |
-| raw/X.data | gzip / — | 4 / — | … |
+| … | gzip / — | 4 / — | … |
 
 Flag any uncompressed dataset in a >100 MB file as an issue.
 
