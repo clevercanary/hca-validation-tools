@@ -3,7 +3,10 @@ import sys
 
 from hca_schema_validator import HCAValidator
 
-from ._log_capture import ListHandler, run_with_captured_logs
+try:
+  from ._log_capture import ListHandler, run_with_captured_logs
+except ImportError:  # direct script execution (e.g. `python main.py <file>`)
+  from _log_capture import ListHandler, run_with_captured_logs  # type: ignore[no-redef]
 
 __all__ = ["ListHandler", "run_validator", "validator_logger_name"]
 

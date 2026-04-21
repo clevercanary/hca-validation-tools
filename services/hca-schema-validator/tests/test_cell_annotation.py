@@ -1,11 +1,17 @@
+import json
 import logging
+import subprocess
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+SRC_DIR = Path(__file__).parent.parent / "src"
+CELL_ANNOTATION_SCRIPT = SRC_DIR / "hca_schema_validator_service" / "cell_annotation.py"
+MAIN_SCRIPT = SRC_DIR / "hca_schema_validator_service" / "main.py"
+
+sys.path.insert(0, str(SRC_DIR))
 from hca_schema_validator_service.cell_annotation import (
     run_validator,
     validator_logger_name,
@@ -102,3 +108,41 @@ def test_hca_cell_annotation_validator_cases(mock_validator_class, test_case):
     mock_validator_class.assert_called_once_with()
     mock_validate_adata.assert_called_once_with(test_case["file_path"])
     assert result == test_case["expected_output"]
+
+
+@pytest.mark.parametrize(
+    "script_path",
+    [MAIN_SCRIPT, CELL_ANNOTATION_SCRIPT],
+    ids=["main", "cell_annotation"],
+)
+def test_subprocess_script_imports_cleanly(script_path, tmp_path):
+    """Invoking the script by path (as the dataset-validator does) must not
+    fail at import time. Catches relative-import regressions introduced by
+    refactors that assume a package context."""
+    result = subprocess.run(
+        [sys.executable, str(script_path), str(tmp_path / "nonexistent.h5ad")],
+        capture_output=True,
+        text=True,
+    )
+    assert "ImportError" not in result.stderr, (
+        f"{script_path.name} failed at import time: {result.stderr}"
+    )
+
+
+def test_cell_annotation_subprocess_returns_json(tmp_path):
+    """End-to-end: cell_annotation.py invoked by path returns a well-formed
+    failure report when the input file doesn't exist (HCACellAnnotationValidator
+    catches the read error and returns valid=False). This exercises the real
+    import + logger-capture path, which test_local_file_mode in the
+    dataset-validator tests skips by using a mock script."""
+    result = subprocess.run(
+        [sys.executable, str(CELL_ANNOTATION_SCRIPT), str(tmp_path / "nonexistent.h5ad")],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, (
+        f"stdout={result.stdout!r} stderr={result.stderr!r}"
+    )
+    output = json.loads(result.stdout)
+    assert output["valid"] is False
+    assert any("Unable to read h5ad file" in e for e in output["errors"])

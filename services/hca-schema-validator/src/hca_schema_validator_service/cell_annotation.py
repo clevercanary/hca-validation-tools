@@ -3,7 +3,10 @@ import sys
 
 from hca_schema_validator import HCACellAnnotationValidator
 
-from ._log_capture import run_with_captured_logs
+try:
+  from ._log_capture import run_with_captured_logs
+except ImportError:  # direct script execution (e.g. `python cell_annotation.py <file>`)
+  from _log_capture import run_with_captured_logs  # type: ignore[no-redef]
 
 validator_logger_name = "hca_schema_validator.cell_annotation_validator"
 

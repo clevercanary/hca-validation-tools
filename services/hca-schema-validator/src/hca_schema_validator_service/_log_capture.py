@@ -46,14 +46,18 @@ def run_with_captured_logs(
   logger.setLevel(logging.WARNING)
   warning_messages: List[str] = []
   error_messages: List[str] = []
-  logger.addHandler(ListHandler(warning_messages, error_messages))
+  handler = ListHandler(warning_messages, error_messages)
+  logger.addHandler(handler)
 
   try:
-    is_valid = validate(file_path)
-  except Exception as e:
-    is_valid = False
-    warning_messages = []
-    error_messages = [f"{unexpected_error_prefix}: {e}"]
+    try:
+      is_valid = validate(file_path)
+    except Exception as e:
+      is_valid = False
+      warning_messages = []
+      error_messages = [f"{unexpected_error_prefix}: {e}"]
+  finally:
+    logger.removeHandler(handler)
 
   if postprocess_warnings is not None:
     warning_messages = postprocess_warnings(warning_messages)
