@@ -66,12 +66,10 @@ def label_h5ad(path: str) -> dict:
             pre_obs_label_cols = {
                 c for c in HCA_DERIVED_OBS_LABELS if c in adata.obs.columns
             }
-            # Source presence — not derived-column presence — is what determines
-            # whether the labeler actually wrote a given label column. cell_type
-            # is optional per schema; if the producer shipped bare `cell_type`
-            # without `cell_type_ontology_term_id`, the labeler leaves the
-            # producer column untouched, so it's neither "written" nor
-            # "overwritten" by this run.
+            # cell_type_ontology_term_id is optional per schema — a producer
+            # `cell_type` column without a source means the labeler skips the
+            # write, so we track source presence to avoid reporting phantom
+            # writes/overwrites.
             labels_with_source = {
                 c for c in HCA_DERIVED_OBS_LABELS
                 if f"{c}_ontology_term_id" in adata.obs.columns

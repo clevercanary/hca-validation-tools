@@ -63,6 +63,7 @@ class HCALabeler(AnnDataLabelAppender):
         super().__init__(adata)
         with open(_SCHEMA_PATH) as f:
             self.schema_def = yaml.safe_load(f)
+        self._preflight_done = False
 
     def _preflight(self) -> None:
         issues: List[str] = []
@@ -149,8 +150,16 @@ class HCALabeler(AnnDataLabelAppender):
         ``label_h5ad`` wrapper) can distinguish an input-rejected failure
         from a runtime labeling error — both raise ``ValueError`` from
         ``label()``, but only preflight is recoverable by fixing inputs.
+
+        Idempotent — ``label()`` calls this internally, so a caller that
+        already invoked ``preflight()`` doesn't pay the cost twice (the
+        organism-column scan is O(n_obs)). Instantiate a fresh
+        ``HCALabeler`` to re-run after mutating ``adata``.
         """
+        if self._preflight_done:
+            return
         self._preflight()
+        self._preflight_done = True
 
     def label(self):
         """Run preflight, apply labels, write observation_joinid. Return mutated adata.

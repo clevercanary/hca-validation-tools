@@ -153,6 +153,9 @@ def test_label_h5ad_distinguishes_runtime_error_from_preflight(tmp_path, monkeyp
         # Simulate a mid-run lookup failure post-preflight.
         raise ValueError("Add labels error: Unable to get label for 'CL:9999999'")
 
+    # Patches AnnDataLabelAppender._add_labels (inherited from the vendored
+    # cellxgene-schema write_labels module). If that method is renamed
+    # upstream, this attribute-string lookup triggers a grep hit.
     monkeypatch.setattr(label_mod.HCALabeler, "_add_labels", _raise_runtime)
 
     result = label_h5ad(str(path))
