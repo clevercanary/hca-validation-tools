@@ -47,7 +47,7 @@ Only these are in Bucket A. Nothing else. A row belongs in A only when its preco
 
 Split these into two classes so the wrangler sees which items actually block validation vs. which are recommended-but-optional. The primary blocking signal is `validate_schema` — any error it reports (on `obs`, `var`, or `uns`) blocks. Use `list_uns_fields` as a secondary signal for missing `uns` fields specifically: `required: true` fields that are unset are blocking; `required: false` fields that are unset are recommended at most.
 
-For each item, write a concrete question — not a suggested answer.
+For each item, write a concrete question. For **B1** items, do not include a suggested answer — ask only for the missing required value. For **B2** items, if there's an obvious single valid option (e.g. only one 2D embedding exists), you may phrase it as a confirmation question ("`X_umap` — confirm?") rather than silently deciding.
 
 **B1 — Blocking (validator errors or unset `required: true` fields)**
 
@@ -79,7 +79,7 @@ Report these but don't attempt to fix:
 
 Show these sections: **A (will run)**, **B1 (blocking — needs your answer)**, **B2 (recommended — optional)**, **C (still to do, out of scope)**. Then stop and wait for explicit approval before running anything.
 
-If the wrangler answers any Bucket B items (B1 or B2), promote those to Bucket A as `set_uns` calls.
+If the wrangler answers any Bucket B items (B1 or B2), promote those to Bucket A as the appropriate mechanical action: `set_uns` for answered `uns` values (e.g. `default_embedding`, `study_pi`), `copy_cap_annotations` when the answer is a CAP source file path.
 
 ## Step 4 — Run the mechanical fixes
 
@@ -93,7 +93,7 @@ Each tool writes a new timestamped file. For most subsequent calls, passing eith
 
 ## Step 5 — Report
 
-Re-run `view_edit_log` and the validator on the final file, then produce a structured report with these sections in order. Use markdown tables; skip any section with no content.
+Re-run `view_edit_log` on the final file, then produce a structured report with these sections in order. Also re-run `validate_schema` — but only if `check_schema_type` reports `hca` on the final file. If the file is still CellxGENE (e.g. conversion wasn't approved), skip the validator rerun and note why under "Validator delta" instead of pasting a misleading error list. Use markdown tables; skip any section with no content.
 
 ### Header
 One short paragraph or bullet block with: final file path, shape (`n_obs × n_vars`), `title` from `uns`, schema type (include version only when schema is CellxGENE — HCA is unversioned), X verdict + `raw.X` presence, compression status, `obsm` keys present.

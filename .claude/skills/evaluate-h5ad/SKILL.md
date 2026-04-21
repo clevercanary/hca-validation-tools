@@ -46,7 +46,7 @@ Render one row per dataset that `get_storage_info` actually returns — the shap
 
 - **Dense X**: one row, `X` (no `data`/`indices`/`indptr` sub-datasets).
 - **Sparse X** (csr/csc): three rows — `X.data`, `X.indices`, `X.indptr`.
-- Same pattern for `raw/X` when present.
+- Same pattern for `raw/X` when present — note that `get_storage_info` returns this under the result key `raw_X` (underscore), but label the rendered rows as `raw/X` / `raw/X.data` / etc. to match the HDF5 path.
 - Include a row for each populated `layers/<name>` if any.
 
 | Dataset | Codec | Level | Chunks |
