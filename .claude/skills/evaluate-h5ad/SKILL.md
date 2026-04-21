@@ -29,6 +29,7 @@ One compact block (bullets or a short table) with:
 - `title` from `uns`
 - Schema type (from `check_schema_type`) — include the version only when schema is CellxGENE (HCA is unversioned)
 - X verdict (from `check_x_normalization`: `raw_counts` / `normalized` / `indeterminate`) + whether `raw.X` is present
+- Labels: is `feature_name` in `var_columns`? which of the derived HCA obs labels (`tissue`, `cell_type`, `assay`, `disease`, `sex`, `organism`, `development_stage`, `self_reported_ethnicity`) appear in `obs_columns`? Also note whether any `label_h5ad` entry exists in the edit log. If derived label columns are present but no `label_h5ad` entry is logged and their `*_ontology_term_id` counterparts also exist, flag as "possible producer drift — values may disagree with `_ontology_term_id`" (don't quantify drift here; `/curate-h5ad` handles that when `label_h5ad` runs)
 
 ## 2. HCA metadata readiness
 
@@ -79,3 +80,4 @@ Summarize entries as a table: `timestamp`, `operation`, one-line `description`. 
 - One-line readiness verdict: ready / needs work / not started.
 - Prioritized list of next actions, most important first.
 - If `check_schema_type` reported `cellxgene`, the first action is `convert_cellxgene_to_hca`.
+- If the file is HCA-layout and has no `label_h5ad` edit-log entry, recommend running `/curate-h5ad` so `label_h5ad` populates `var['feature_name']` and regenerates the obs ontology labels before CAP handoff or marker-gene validation.

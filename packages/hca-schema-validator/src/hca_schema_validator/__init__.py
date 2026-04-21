@@ -6,7 +6,7 @@ __schema_version__ = "1.0.0"  # HCA schema version (independent from CELLxGENE)
 __schema_reference_url__ = "https://data.humancellatlas.org/metadata"  # Static URL, no version in path
 
 # Import after constants are defined
-from .labeler import HCALabeler
+from .labeler import HCA_DERIVED_OBS_LABELS, HCALabeler
 from .validator import HCAValidator
 
-__all__ = ["HCAValidator", "HCALabeler"]
+__all__ = ["HCAValidator", "HCALabeler", "HCA_DERIVED_OBS_LABELS"]

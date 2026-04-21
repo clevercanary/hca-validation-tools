@@ -152,3 +152,34 @@ def test_producer_columns_preserved(base_adata, tmp_path):
     labeled = _label(base_adata, tmp_path)
     assert (labeled.obs["author_cell_type"].astype(str) == "custom_label").all()
     assert (labeled.var["gene_symbol"].astype(str) == "CUSTOM_SYMBOL").all()
+
+
+def test_label_returns_mutated_adata_without_file_write(base_adata):
+    result = HCALabeler(base_adata).label()
+    # Same object back, mutated in place — enables the MCP wrapper to hand
+    # the result to hca_anndata_tools.write.write_h5ad instead of having the
+    # labeler own the write.
+    assert result is base_adata
+    assert "feature_name" in base_adata.var.columns
+    assert "observation_joinid" in base_adata.obs.columns
+    assert "tissue" in base_adata.obs.columns
+
+
+def test_hca_derived_obs_labels_matches_schema(base_adata):
+    """Guard against drift between the hand-maintained tuple and the schema YAML.
+
+    HCA_DERIVED_OBS_LABELS is exported for downstream callers (e.g. the MCP
+    label_h5ad wrapper) that need to reason about which columns the labeler
+    writes without reloading the YAML. It must stay in sync with the obs
+    add_labels directives in hca_schema_definition.yaml.
+    """
+    from hca_schema_validator import HCA_DERIVED_OBS_LABELS
+
+    obs_def = HCALabeler(base_adata).schema_def["components"]["obs"]["columns"]
+    schema_derived = {
+        label["to_column"]
+        for col_def in obs_def.values()
+        for label in col_def.get("add_labels", [])
+        if label.get("type") == "curie"
+    }
+    assert set(HCA_DERIVED_OBS_LABELS) == schema_derived
