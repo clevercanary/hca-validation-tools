@@ -16,10 +16,10 @@ scope for this module.
 from __future__ import annotations
 
 import logging
-import re
 from typing import List
 
 import anndata as ad
+import semver
 
 
 logger = logging.getLogger(__name__)
@@ -39,11 +39,10 @@ _REQUIRED_OBS_SUFFIXES = (
 # CAP per-set metadata keys required in uns['cellannotation_metadata'][<set>].
 _REQUIRED_SET_METADATA_KEYS = ("title",)
 
-_SEMVER_PATTERN = re.compile(r"^\d+\.\d+\.\d+(?:[-+].+)?$")
-
 NO_SETS_ERROR = (
     "No CAP annotation sets present. At least one annotation set conforming "
-    "to the HCA Cell Annotation schema is required."
+    "to the HCA Cell Annotation schema is required. "
+    "See https://data.humancellatlas.org/metadata/cell-annotation for details."
 )
 
 
@@ -76,9 +75,12 @@ class HCACellAnnotationValidator:
             return False
 
         try:
-            self._check_schema_version(adata.uns)
+            # Check for annotation sets first. If none are present, NO_SETS_ERROR
+            # is the one actionable message — don't add schema-version noise that
+            # a contributor with no CAP attached can't meaningfully fix.
             sets = self._check_metadata(adata.uns)
             if sets:
+                self._check_schema_version(adata.uns)
                 obs_columns = set(adata.obs.columns)
                 for set_name in sets:
                     self._check_set_columns(set_name, obs_columns)
@@ -98,7 +100,15 @@ class HCACellAnnotationValidator:
             )
             return
         value = uns["cellannotation_schema_version"]
-        if not isinstance(value, str) or not _SEMVER_PATTERN.match(value):
+        if not isinstance(value, str):
+            self._error(
+                f"uns['cellannotation_schema_version'] must be a semver string "
+                f"(e.g. '0.1.0'); got {value!r}."
+            )
+            return
+        try:
+            semver.Version.parse(value)
+        except ValueError:
             self._error(
                 f"uns['cellannotation_schema_version'] must be a semver string "
                 f"(e.g. '0.1.0'); got {value!r}."
