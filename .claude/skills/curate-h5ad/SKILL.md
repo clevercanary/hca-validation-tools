@@ -139,6 +139,26 @@ Pull from the latest `import_cap_annotations` entry's `details`:
 | `match_fraction_of_source` | as % |
 | `match_fraction_of_target` | as % |
 
+### CAP marker validation (only if `copy_cap_annotations` ran this session, or a prior `import_cap_annotations` entry is in the edit log)
+
+Source the numbers from the `copy_cap_annotations` tool result's `marker_gene_validation` field if it ran this session. If only a prior `import_cap_annotations` entry exists, call `validate_marker_genes` on the final file to get fresh numbers — a marker list that matched against `var.index` before `label_h5ad` populated `var['feature_name']` will look very different now.
+
+Marker symbols are resolved against the target's var gene-name source: `var['feature_name']` is preferred, else `var['gene_name']`, else `var.index` (the Ensembl IDs) as a last resort. Post-`label_h5ad` files always have `feature_name`; files that skipped labeling fall back to whatever the producer shipped.
+
+| Metric | Value |
+|---|---|
+| Total unique markers | … |
+| Found in var gene-name source | … |
+| Missing | … |
+
+For each missing marker, list it with its classification exactly as returned by the tool — `not_in_gencode` (marker symbol doesn't resolve to any GENCODE entry — typo, glob pattern, or deprecated rename), `missing_from_var` (valid symbol but not present in this file's gene set), or `known_rename` (submitted marker is a deprecated symbol; the tool provides the current target in `var_name`, plus `ensembl_id` when available):
+
+| Marker | Classification | Var name | Ensembl ID |
+|---|---|---|---|
+| … | … | … | … |
+
+Leave `Var name` / `Ensembl ID` blank for `not_in_gencode` and `missing_from_var` rows — those fields are only populated on `known_rename`. If all markers hit, say so in one line instead of an empty table. `not_in_gencode` entries point at CAP-side fixes (ask the CAP curator); `missing_from_var` points at target-side gaps (different gene set than the one CAP was authored against); `known_rename` entries should report the rename target from `var_name` so the mismatch is explicit.
+
 ### Still to do
 
 **Bucket B1 — blocking (validator errors or unset `required: true` fields)**

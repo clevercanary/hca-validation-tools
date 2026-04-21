@@ -20,6 +20,8 @@ Run all of the following MCP tool calls in parallel to gather data:
 6. **get_cap_annotations** — CAP cell annotation sets, if present
 7. **view_edit_log** — read `uns/provenance/edit_history` so edit history is already in hand when synthesizing the report
 
+Then, only if `get_cap_annotations` reports `has_cap_annotations: true`, call **validate_marker_genes** — CAP marker-gene coverage against the target's var gene-name source (`var['feature_name']` preferred, else `var['gene_name']`, else `var.index`). The `has_cap_annotations` gate already implies HCA-layout, so the tool has what it needs; skipping on non-CAP files avoids a redundant call.
+
 Then synthesize the results into a report with these sections in order. Use markdown tables wherever multiple items share the same shape; keep prose tight.
 
 ## 1. File overview
@@ -72,6 +74,20 @@ Flag any uncompressed dataset in a >100 MB file as an issue.
 | `matched_n_obs` | … |
 | `match_fraction_of_source` | as % |
 | `match_fraction_of_target` | as % |
+
+- If `validate_marker_genes` ran (CAP present), render its result. If the tool returned `{error: ...}` (e.g. `organism_ontology_term_id` missing or non-human), report the error as a single line and skip the tables below.
+
+| Metric | Value |
+|---|---|
+| Total unique markers | … |
+| Found in var gene-name source | … |
+| Missing | … |
+
+| Marker | Classification | Var name | Ensembl ID |
+|---|---|---|---|
+| … | … | … | … |
+
+See `/curate-h5ad` Step 5 for classification meanings (`not_in_gencode` / `missing_from_var` / `known_rename`), the `feature_name` → `gene_name` → `var.index` fallback order, and where each miss kind points for remediation.
 
 ## 6. Edit history
 Summarize entries as a table: `timestamp`, `operation`, one-line `description`. If absent, note that the file hasn't been edited through `hca-anndata-tools`.
