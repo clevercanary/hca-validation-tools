@@ -19,7 +19,8 @@ Run all of the following MCP tool calls in parallel to gather data:
 5. **list_uns_fields** — HCA schema field completeness (required vs set vs missing)
 6. **get_cap_annotations** — CAP cell annotation sets, if present
 7. **view_edit_log** — read `uns/provenance/edit_history` so edit history is already in hand when synthesizing the report
-8. **validate_marker_genes** — CAP marker-gene coverage against `var['feature_name']` (falls back to `var.index` when `feature_name` isn't populated). The tool errors on CellxGENE-layout or non-human files and returns an empty result on HCA files without CAP marker lists — both cases are ignored by the Section 5 renderer, which only surfaces this check when `has_cap_annotations: true`. Catches cases where CAP was imported before `label_h5ad` populated `feature_name`, or where the target's gene set has drifted since CAP was authored.
+
+Then, only if `get_cap_annotations` reports `has_cap_annotations: true`, call **validate_marker_genes** — CAP marker-gene coverage against `var['feature_name']` (falls back to `var.index`). Skipping on non-CAP files avoids an unnecessary O(n_obs) organism scan and a guaranteed error on CellxGENE-layout inputs.
 
 Then synthesize the results into a report with these sections in order. Use markdown tables wherever multiple items share the same shape; keep prose tight.
 
@@ -74,7 +75,7 @@ Flag any uncompressed dataset in a >100 MB file as an issue.
 | `match_fraction_of_source` | as % |
 | `match_fraction_of_target` | as % |
 
-- If CAP annotations are present, render the `validate_marker_genes` result (ordered total → found → missing). Include a second table listing each missing marker with its classification — `not_in_gencode`, `missing_from_var`, or a known rename:
+- If `validate_marker_genes` ran (CAP present), render its result:
 
 | Metric | Value |
 |---|---|
@@ -86,7 +87,7 @@ Flag any uncompressed dataset in a >100 MB file as an issue.
 |---|---|
 | … | … |
 
-If all markers hit, say so in one line instead of rendering the second table. `not_in_gencode` misses point at the CAP source (typo / glob / deprecated rename); `missing_from_var` misses point at the target's gene set.
+See `/curate-h5ad` Step 5 for classification meanings (`not_in_gencode` / `missing_from_var` / known rename) and where each kind points for remediation.
 
 ## 6. Edit history
 Summarize entries as a table: `timestamp`, `operation`, one-line `description`. If absent, note that the file hasn't been edited through `hca-anndata-tools`.
