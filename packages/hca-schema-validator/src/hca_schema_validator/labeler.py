@@ -16,6 +16,21 @@ _ORGANISM_COL = "organism_ontology_term_id"
 _OBSERVATION_JOINID_COL = "observation_joinid"
 _HUMAN_TAXON = "NCBITaxon:9606"
 _NON_REQUIRED_LEVELS = {"optional", "strongly_recommended"}
+# Derived obs label columns the HCA labeler writes from `<field>_ontology_term_id`.
+# Exported for callers (e.g. the MCP `label_h5ad` wrapper) that need to report
+# which of these columns pre-existed (overwrites) vs. got freshly populated.
+# `cell_type` is included — it is written only when `cell_type_ontology_term_id`
+# is present (optional per schema), so callers must check `obs.columns` anyway.
+HCA_DERIVED_OBS_LABELS = (
+    "tissue",
+    "cell_type",
+    "assay",
+    "disease",
+    "sex",
+    "organism",
+    "development_stage",
+    "self_reported_ethnicity",
+)
 # Keys that signal the input has already been through cellxgene-schema
 # add-labels. `citation` (also in the schema's reserved_columns list) is
 # added at Discover publish, not by add-labels, so we don't reject on it
@@ -48,6 +63,7 @@ class HCALabeler(AnnDataLabelAppender):
         super().__init__(adata)
         with open(_SCHEMA_PATH) as f:
             self.schema_def = yaml.safe_load(f)
+        self._preflight_done = False
 
     def _preflight(self) -> None:
         issues: List[str] = []
@@ -127,12 +143,41 @@ class HCALabeler(AnnDataLabelAppender):
             ids, lambda _i, o: "spike-in" if o == SupportedOrganisms.ERCC else "gene"
         )
 
-    def write_labels(self, output_path: str) -> None:
+    def preflight(self) -> None:
+        """Raise ``ValueError`` if the input fails HCA preflight checks.
+
+        Exposes the preflight phase publicly so callers (e.g. the MCP
+        ``label_h5ad`` wrapper) can distinguish an input-rejected failure
+        from a runtime labeling error — both raise ``ValueError`` from
+        ``label()``, but only preflight is recoverable by fixing inputs.
+
+        Idempotent — ``label()`` calls this internally, so a caller that
+        already invoked ``preflight()`` doesn't pay the cost twice (the
+        organism-column scan is O(n_obs)). Instantiate a fresh
+        ``HCALabeler`` to re-run after mutating ``adata``.
+        """
+        if self._preflight_done:
+            return
         self._preflight()
+        self._preflight_done = True
+
+    def label(self):
+        """Run preflight, apply labels, write observation_joinid. Return mutated adata.
+
+        In-memory equivalent of ``write_labels`` without the file write — lets
+        callers drive the output themselves (e.g. the MCP ``label_h5ad``
+        wrapper writes via ``hca_anndata_tools.write.write_h5ad`` so the
+        edit-log snapshot convention matches every other edit tool).
+        """
+        self.preflight()
 
         self._add_labels()
         self._remove_categories_with_zero_values()
 
         self.adata.obs[_OBSERVATION_JOINID_COL] = get_hash_digest_column(self.adata.obs)
 
+        return self.adata
+
+    def write_labels(self, output_path: str) -> None:
+        self.label()
         self.adata.write_h5ad(output_path, compression="gzip")

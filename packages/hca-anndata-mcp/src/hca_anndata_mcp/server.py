@@ -21,6 +21,7 @@ from hca_anndata_tools import (
     view_edit_log,
 )
 
+from hca_anndata_mcp.tools.label import label_h5ad
 from hca_anndata_mcp.tools.plot import plot_embedding_mcp
 from hca_anndata_mcp.tools.validate import validate_schema
 
@@ -45,6 +46,9 @@ mcp = FastMCP(
         "check_x_normalization to classify X as raw-counts / normalized / indeterminate, "
         "check_schema_type to identify CellxGENE vs HCA layout and report the schema version, "
         "validate_schema to run the HCA schema validator and report is_valid / errors / warnings, "
+        "label_h5ad to populate var['feature_name'] (+ feature_reference/biotype/length/type) and "
+        "obs ontology labels (tissue, cell_type, ...) from *_ontology_term_id columns — run before "
+        "copy_cap_annotations so marker-gene validation has canonical gene symbols to match against, "
         "and view_edit_log to inspect the edit history recorded in a file."
     ),
 )
@@ -68,3 +72,4 @@ mcp.tool()(view_edit_log)
 mcp.tool()(check_x_normalization)
 mcp.tool()(check_schema_type)
 mcp.tool()(validate_schema)
+mcp.tool()(label_h5ad)

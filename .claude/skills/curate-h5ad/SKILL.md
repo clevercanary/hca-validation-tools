@@ -40,6 +40,7 @@ Only these are in Bucket A. Nothing else. A row belongs in A only when its preco
 - **`normalize_raw`** — when `check_x_normalization` reports `verdict: "raw_counts"` and `has_raw_x: false`. Deterministic: moves X→raw.X, normalizes X with `normalize_total(target_sum=10000) + log1p`.
 - **`replace_placeholder_values` on `library_preparation_batch`** — only if the column actually contains placeholder values flagged by the validator.
 - **`replace_placeholder_values` on `library_sequencing_run`** — same condition.
+- **`label_h5ad`** — always eligible once the file is in HCA layout (and any prior Bucket A items have run). Populates `var['feature_name']` + `feature_reference` / `feature_biotype` / `feature_length` / `feature_type` from Ensembl IDs via vendored GENCODE (mirrored to `raw.var` when present), writes the eight obs ontology labels (`tissue`, `cell_type`, `assay`, `disease`, `sex`, `organism`, `development_stage`, `self_reported_ethnicity`) from their `_ontology_term_id` counterparts, and writes `obs['observation_joinid']`. **Unconditionally overwrites** any producer-provided values in those controlled columns — call it out in the report so the wrangler sees what changed. Unknown Ensembl IDs yield NaN across the five `feature_*` columns for that row (not an error). Preflight refuses to run when the file carries `uns['schema_version']` / `uns['schema_reference']` or any non-human `obs['organism_ontology_term_id']` — those go to Bucket C below.
 - **`copy_cap_annotations`** — only if the wrangler provided a CAP source file in Step 3. Copies annotation sets + `cellannotation_schema_version` + `cellannotation_metadata` from the source into the target. Partial overlap is allowed: the source and target obs indexes only need to match at ≥95% in both directions (target-covered and source-covered); target rows absent from source get NaN in the new CAP columns. If the overlap is below 95% the tool aborts — treat that as a Bucket B item and bring it back to the wrangler (usually the CAP source is stale or wrong).
 - **`compress_h5ad`** — when `get_storage_info` shows no HDF5 filter on X's underlying dataset (`X.data.compression` for sparse X, `X.compression` for dense X). If the file is already compressed, the tool safely returns `{skipped: true, reason: ...}` rather than rewriting. Pure compression, no data change.
 
@@ -57,7 +58,7 @@ For each item, write a concrete question. For **B1** items, do not include a sug
 
 **B2 — Recommended (optional fields the wrangler may want to set)**
 
-Only the fields explicitly named below belong in B2. Do **not** scan `list_uns_fields` for other unset optional fields and invent questions about them — a field being optional-and-unset is not itself a reason to ask. The skill's scope is the explicit tool list (`convert_cellxgene_to_hca`, `normalize_raw`, `replace_placeholder_values`, `copy_cap_annotations`, `set_uns` on the named fields here, `compress_h5ad`); everything else is the wrangler's call, unprompted.
+Only the fields explicitly named below belong in B2. Do **not** scan `list_uns_fields` for other unset optional fields and invent questions about them — a field being optional-and-unset is not itself a reason to ask. The skill's scope is the explicit tool list (`convert_cellxgene_to_hca`, `normalize_raw`, `replace_placeholder_values`, `label_h5ad`, `copy_cap_annotations`, `set_uns` on the named fields here, `compress_h5ad`); everything else is the wrangler's call, unprompted.
 
 - `default_embedding` — list the obsm keys and ask which one. Optional per schema, but a file shipped without it will display in CELLxGENE Explorer with no default scatter. Must name a 2D embedding to actually plot; 30D latents (e.g. `X_scVI`) are valid per schema but won't display. If only one 2D embedding exists, surface that — the wrangler will almost certainly pick it.
 
@@ -74,6 +75,8 @@ Report these but don't attempt to fix:
 - Inconsistent `author_cell_type` variants — needs a curator mapping.
 - (CAP annotations are handled in Bucket B above — the wrangler provides a CAP source file and `copy_cap_annotations` runs mechanically.)
 - Cells whose labels don't match the atlas focus (e.g. non-myeloid labels in a myeloid atlas) — needs a curator decision on keep/drop.
+- File carries `uns['schema_version']` or `uns['schema_reference']` — signals it has already been through `cellxgene-schema add-labels`. `label_h5ad` refuses to run; upstream needs to re-emit without those keys. Do not strip them here.
+- Any `obs['organism_ontology_term_id']` value other than `NCBITaxon:9606` — `label_h5ad` is human-only. Supporting another organism is a code change, not a curation fix.
 
 ## Step 3 — Present the punch list
 
@@ -86,7 +89,7 @@ If the wrangler answers any Bucket B items (B1 or B2), promote those to Bucket A
 Order:
 
 1. `convert_cellxgene_to_hca` first if applicable — then stop, re-run Steps 1–3 on the converted file before continuing (conversion changes the layout enough that the prior punch list is stale).
-2. Content edits: `normalize_raw`, each `replace_placeholder_values`, `copy_cap_annotations` (if a source was supplied), and any `set_uns` approved in Step 3.
+2. Content edits, in this order: `normalize_raw`, each `replace_placeholder_values`, `label_h5ad`, `copy_cap_annotations` (if a source was supplied), and any `set_uns` approved in Step 3. `label_h5ad` must run **before** `copy_cap_annotations` — `copy_cap_annotations` calls `validate_marker_genes`, which reads `var['feature_name']`; running the labeler first gives marker-gene validation canonical gene symbols to match against.
 3. `compress_h5ad` last.
 
 Each tool writes a new timestamped file. For most subsequent calls, passing either the original path or the latest works — `resolve_latest` picks up the newest variant automatically. Two exceptions: `convert_cellxgene_to_hca` does not auto-resolve (call it with the exact path you want to convert), and `copy_cap_annotations` only auto-resolves its `target_path` (the `source_path` is used verbatim).
@@ -104,8 +107,9 @@ One short paragraph or bullet block with: final file path, shape (`n_obs × n_va
 |---|---|---|
 | 1 | `normalize_raw` | e.g. "Moved raw counts → raw.X; normalized X with `normalize_total(target_sum=10000)` + log1p" |
 | 2 | `replace_placeholder_values` (`library_preparation_batch`) | e.g. "N cells: `'unknown'` → NaN" |
-| 3 | `copy_cap_annotations` | name the CAP source file |
-| 4 | `compress_h5ad` | e.g. "Skipped — already gzipped" or "Rewrote X with gzip level 4" |
+| 3 | `label_h5ad` | e.g. "Populated `var['feature_name']` for 34,505/35,574 rows (1,069 NaN); wrote 8 obs ontology labels; overwrote pre-existing `tissue`, `disease`". Fill the overwrite clause from the tool result's `obs_label_cols_overwritten` / `var_feature_name_overwritten`; omit the clause when both are empty. |
+| 4 | `copy_cap_annotations` | name the CAP source file |
+| 5 | `compress_h5ad` | e.g. "Skipped — already gzipped" or "Rewrote X with gzip level 4" |
 
 Only include the rows for tools that actually ran this session.
 
