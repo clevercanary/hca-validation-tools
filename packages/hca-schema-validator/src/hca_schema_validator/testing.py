@@ -46,8 +46,7 @@ def create_labelable_h5ad(path: Path) -> Path:
     n_obs = 4
     n_vars = len(_ENSEMBL_IDS)
 
-    rng = np.random.default_rng(0)
-    X = sparse.random(n_obs, n_vars, density=0.5, format="csr", dtype=np.float32, random_state=rng)  # pyright: ignore[reportCallIssue]
+    X = sparse.random(n_obs, n_vars, density=0.5, format="csr", dtype=np.float32, random_state=0)  # pyright: ignore[reportCallIssue]
 
     obs = pd.DataFrame(
         {
