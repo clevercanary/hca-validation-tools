@@ -45,7 +45,7 @@ Only these are in Bucket A. Nothing else. A row belongs in A only when its preco
 
 ### Bucket B — Needs wrangler input (todo — stop and ask)
 
-Split these into two classes so the wrangler sees which items actually block validation vs. which are recommended-but-optional. Ground the split in `list_uns_fields` output: `required: true` fields that are unset are blocking; `required: false` fields that are unset are recommended at most.
+Split these into two classes so the wrangler sees which items actually block validation vs. which are recommended-but-optional. The primary blocking signal is `validate_schema` — any error it reports (on `obs`, `var`, or `uns`) blocks. Use `list_uns_fields` as a secondary signal for missing `uns` fields specifically: `required: true` fields that are unset are blocking; `required: false` fields that are unset are recommended at most.
 
 For each item, write a concrete question — not a suggested answer.
 
@@ -57,7 +57,7 @@ For each item, write a concrete question — not a suggested answer.
 
 **B2 — Recommended (optional fields the wrangler may want to set)**
 
-Only the fields explicitly named below belong in B2. Do **not** scan `list_uns_fields` for other unset optional fields and invent questions about them — a field being optional-and-unset is not itself a reason to ask. The skill's scope is the explicit tool list (`convert_cellxgene_to_hca`, `normalize_raw`, `replace_placeholder_values`, `copy_cap_annotations`, `compress_h5ad`) plus the named fields here; everything else is the wrangler's call, unprompted.
+Only the fields explicitly named below belong in B2. Do **not** scan `list_uns_fields` for other unset optional fields and invent questions about them — a field being optional-and-unset is not itself a reason to ask. The skill's scope is the explicit tool list (`convert_cellxgene_to_hca`, `normalize_raw`, `replace_placeholder_values`, `copy_cap_annotations`, `set_uns` on the named fields here, `compress_h5ad`); everything else is the wrangler's call, unprompted.
 
 - `default_embedding` — list the obsm keys and ask which one. Optional per schema, but a file shipped without it will display in CELLxGENE Explorer with no default scatter. Must name a 2D embedding to actually plot; 30D latents (e.g. `X_scVI`) are valid per schema but won't display. If only one 2D embedding exists, surface that — the wrangler will almost certainly pick it.
 
@@ -141,7 +141,7 @@ Pull from the latest `import_cap_annotations` entry's `details`:
 
 | Field | Question |
 |---|---|
-| `ambient_count_correction` | which value from the allowed set? |
+| `study_pi` | who are the PI(s)? e.g. `["Teichmann,Sarah,A."]` |
 
 **Bucket B2 — recommended (optional)**
 
