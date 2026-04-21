@@ -139,6 +139,24 @@ Pull from the latest `import_cap_annotations` entry's `details`:
 | `match_fraction_of_source` | as % |
 | `match_fraction_of_target` | as % |
 
+### CAP marker validation (only if `copy_cap_annotations` ran this session, or a prior `import_cap_annotations` entry is in the edit log)
+
+Source the numbers from the `copy_cap_annotations` tool result's `marker_gene_validation` field if it ran this session. If only a prior `import_cap_annotations` entry exists, call `validate_marker_genes` on the final file to get fresh numbers — a marker list that matched against `var.index` before `label_h5ad` populated `var['feature_name']` will look very different now.
+
+| Metric | Value |
+|---|---|
+| Total unique markers | … |
+| Found in `var['feature_name']` | … |
+| Missing | … |
+
+For each missing marker, list it with its classification — `not_in_gencode` (marker symbol doesn't resolve to any GENCODE entry — typo, glob pattern, or deprecated rename), `missing_from_var` (valid symbol but not present in this file's gene set), or a known rename surfaced by the tool:
+
+| Marker | Classification |
+|---|---|
+| … | … |
+
+If all markers hit, say so in one line instead of an empty table. Any `not_in_gencode` entries point at CAP-side fixes (ask the CAP curator); `missing_from_var` points at target-side gaps (different gene set than the one CAP was authored against).
+
 ### Still to do
 
 **Bucket B1 — blocking (validator errors or unset `required: true` fields)**
