@@ -22,7 +22,7 @@ Run all of the following MCP tool calls in parallel to gather data:
 
 Then, only if `get_cap_annotations` reports `has_cap_annotations: true`, call **validate_marker_genes** — CAP marker-gene coverage against the target's var gene-name source (`var['feature_name']` preferred, else `var['gene_name']`, else `var.index`). The `has_cap_annotations` gate already implies HCA-layout, so the tool has what it needs; skipping on non-CAP files avoids a redundant call.
 
-Also run **get_descriptive_stats** for provenance cardinality: pass `columns` as the intersection of `["donor_id", "sample_id", "library_id", "dataset_id"]` with `get_summary.obs_columns` (so the call doesn't error on absent columns). Used only for the Provenance bullet in Section 1.
+After **get_summary** returns, also run **get_descriptive_stats** for provenance cardinality. Build `columns` by extracting `name` fields from `get_summary.obs_columns` (which is a list of `{name, dtype}` objects, not plain strings) and intersecting those names with `["donor_id", "sample_id", "library_id", "dataset_id"]`, so the call doesn't error on absent columns. Depends on `get_summary`, so this step is sequential, not part of the parallel batch. Used only for the Provenance bullet in Section 1.
 
 Then synthesize the results into a report with these sections in order. Use markdown tables wherever multiple items share the same shape; keep prose tight.
 
@@ -33,7 +33,7 @@ One compact block (bullets or a short table) with:
 - `title` from `uns`
 - Schema type (from `check_schema_type`) — include the version only when schema is CellxGENE (HCA is unversioned)
 - X verdict (from `check_x_normalization`: `raw_counts` / `normalized` / `indeterminate`) + whether `raw.X` is present
-- Provenance: pull the `unique` count for each of `donor_id` / `sample_id` / `library_id` / `dataset_id` from `get_descriptive_stats` and render as `N donors · M samples · K libraries · D source datasets`. Omit any metric whose column is absent. `dataset_id` is not a schema field — it's an optional integrator convention (e.g. gut-v1 adds it); when absent, the study identifier is usually encoded in the obs index barcode prefix but don't try to parse it here.
+- Provenance: pull the `unique` count for each of `donor_id` / `sample_id` / `library_id` / `dataset_id` from `get_descriptive_stats` and render as `N donors · M samples · K libraries · D source datasets`. Omit any metric whose column is absent OR whose column is present but unpopulated (i.e. `unique == 0`, equivalently `n_nan == n_rows`) — `get_descriptive_stats.unique` drops NaNs, so an all-NaN column would otherwise render as "0 libraries" / "0 source datasets". `dataset_id` is not a schema field — it's an optional integrator convention (e.g. gut-v1 adds it); when absent, the study identifier is usually encoded in the obs index barcode prefix but don't try to parse it here.
 - Labels: is `feature_name` in `var_columns`? which of the derived HCA obs labels (`tissue`, `cell_type`, `assay`, `disease`, `sex`, `organism`, `development_stage`, `self_reported_ethnicity`) appear in `obs_columns`? Also note whether any `label_h5ad` entry exists in the edit log. If derived label columns are present but no `label_h5ad` entry is logged and their `*_ontology_term_id` counterparts also exist, flag as "possible producer drift — values may disagree with `_ontology_term_id`" (don't quantify drift here; `/curate-h5ad` handles that when `label_h5ad` runs)
 
 ## 2. HCA metadata readiness
