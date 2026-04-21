@@ -156,7 +156,7 @@ class ValidationMessage:
             for message_type in ["errors", "warnings"]
         ]
         # Truncation priority: warnings first, then cellxgene errors, then cap errors,
-        # then hcaSchema errors (preserved longest)
+        # then hcaSchema errors, then hcaCellAnnotation errors (preserved longest)
         list_paths.sort(key=lambda p: (
             0 if p[1] == "warnings" else 1 + TOOL_ERROR_PRIORITY.get(p[0], 0),
             -self._json_length_of_report_list(*p),
