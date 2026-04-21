@@ -141,6 +141,27 @@ def test_label_h5ad_preflight_rejects_missing_required_obs_col(tmp_path):
     assert "preflight" in result["error"]
 
 
+def test_label_h5ad_distinguishes_runtime_error_from_preflight(tmp_path, monkeypatch):
+    """Non-preflight ValueError from `_add_labels` must be reported as a
+    labeling failure, not as a preflight failure (CP review on PR #355).
+    """
+    import hca_anndata_mcp.tools.label as label_mod
+
+    path = create_labelable_h5ad(tmp_path / "runtime.h5ad")
+
+    def _raise_runtime(self):
+        # Simulate a mid-run lookup failure post-preflight.
+        raise ValueError("Add labels error: Unable to get label for 'CL:9999999'")
+
+    monkeypatch.setattr(label_mod.HCALabeler, "_add_labels", _raise_runtime)
+
+    result = label_h5ad(str(path))
+    assert "error" in result
+    assert "preflight" not in result["error"], result["error"]
+    assert "labeling" in result["error"]
+    assert "CL:9999999" in result["error"]
+
+
 def test_label_h5ad_missing_file():
     result = label_h5ad("/nonexistent/file.h5ad")
     assert "error" in result

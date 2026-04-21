@@ -78,10 +78,19 @@ def label_h5ad(path: str) -> dict:
             }
             raw_var_mirrored = adata.raw is not None
 
+            labeler = HCALabeler(adata)
             try:
-                HCALabeler(adata).label()
+                labeler.preflight()
             except ValueError as ve:
                 return {"error": f"label_h5ad preflight failed: {ve}"}
+            try:
+                labeler.label()
+            except ValueError as ve:
+                # Post-preflight ValueErrors (e.g. ontology term lookup misses
+                # inside `_add_labels`) aren't recoverable by fixing inputs —
+                # distinct from the preflight case above so the wrangler can
+                # tell which one fired.
+                return {"error": f"label_h5ad failed during labeling: {ve}"}
 
             feature_name_nan = int(adata.var[_FEATURE_NAME_COL].isna().sum())
             feature_name_labeled = n_vars - feature_name_nan

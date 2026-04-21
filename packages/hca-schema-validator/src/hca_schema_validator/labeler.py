@@ -142,6 +142,16 @@ class HCALabeler(AnnDataLabelAppender):
             ids, lambda _i, o: "spike-in" if o == SupportedOrganisms.ERCC else "gene"
         )
 
+    def preflight(self) -> None:
+        """Raise ``ValueError`` if the input fails HCA preflight checks.
+
+        Exposes the preflight phase publicly so callers (e.g. the MCP
+        ``label_h5ad`` wrapper) can distinguish an input-rejected failure
+        from a runtime labeling error — both raise ``ValueError`` from
+        ``label()``, but only preflight is recoverable by fixing inputs.
+        """
+        self._preflight()
+
     def label(self):
         """Run preflight, apply labels, write observation_joinid. Return mutated adata.
 
@@ -150,7 +160,7 @@ class HCALabeler(AnnDataLabelAppender):
         wrapper writes via ``hca_anndata_tools.write.write_h5ad`` so the
         edit-log snapshot convention matches every other edit tool).
         """
-        self._preflight()
+        self.preflight()
 
         self._add_labels()
         self._remove_categories_with_zero_values()
