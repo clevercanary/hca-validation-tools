@@ -83,6 +83,28 @@ def test_label_h5ad_reports_overwrites(tmp_path):
     assert "STALE_SYMBOL" not in labeled.var["feature_name"].astype(str).unique()
 
 
+def test_label_h5ad_does_not_claim_overwrite_for_skipped_optional_label(tmp_path):
+    """Producer ships `cell_type` but no `cell_type_ontology_term_id` → the
+    labeler skips writing (optional field, no source), so we must not report
+    `cell_type` as either written or overwritten.
+    """
+    path = create_labelable_h5ad(tmp_path / "optional.h5ad")
+    adata = ad.read_h5ad(path)
+    # Remove the source column, keep a pre-existing producer label column.
+    del adata.obs["cell_type_ontology_term_id"]
+    adata.obs["cell_type"] = "PRODUCER_CELL_TYPE"
+    adata.write_h5ad(path)
+
+    result = label_h5ad(str(path))
+
+    assert "error" not in result, result
+    assert "cell_type" not in result["obs_labels_written"]
+    assert "cell_type" not in result["obs_label_cols_overwritten"]
+    # Producer column is preserved untouched.
+    labeled = ad.read_h5ad(result["output_path"])
+    assert (labeled.obs["cell_type"].astype(str) == "PRODUCER_CELL_TYPE").all()
+
+
 def test_label_h5ad_preflight_rejects_schema_version(tmp_path):
     path = create_labelable_h5ad(tmp_path / "cxg.h5ad")
     adata = ad.read_h5ad(path)

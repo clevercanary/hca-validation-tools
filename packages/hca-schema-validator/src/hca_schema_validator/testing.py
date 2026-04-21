@@ -35,8 +35,8 @@ def create_labelable_h5ad(path: Path) -> Path:
 
     Writes the file to ``path`` and returns it. Exposes:
 
-    - ``obs`` with the eight ``*_ontology_term_id`` columns the labeler
-      reads, plus ``organism_ontology_term_id`` set to human.
+    - ``obs`` with the required ``*_ontology_term_id`` columns the labeler
+      reads, including ``organism_ontology_term_id`` set to human.
     - ``var`` with GENCODE-resolvable Ensembl IDs on the index.
     - ``raw`` populated from a copy of ``X`` so raw.var mirroring fires.
 

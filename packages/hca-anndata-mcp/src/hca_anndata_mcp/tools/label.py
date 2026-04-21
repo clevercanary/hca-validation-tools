@@ -63,9 +63,19 @@ def label_h5ad(path: str) -> dict:
             n_vars = int(adata.n_vars)
 
             pre_feature_name_set = _FEATURE_NAME_COL in adata.var.columns
-            pre_obs_label_cols = sorted(
+            pre_obs_label_cols = {
                 c for c in HCA_DERIVED_OBS_LABELS if c in adata.obs.columns
-            )
+            }
+            # Source presence — not derived-column presence — is what determines
+            # whether the labeler actually wrote a given label column. cell_type
+            # is optional per schema; if the producer shipped bare `cell_type`
+            # without `cell_type_ontology_term_id`, the labeler leaves the
+            # producer column untouched, so it's neither "written" nor
+            # "overwritten" by this run.
+            labels_with_source = {
+                c for c in HCA_DERIVED_OBS_LABELS
+                if f"{c}_ontology_term_id" in adata.obs.columns
+            }
             raw_var_mirrored = adata.raw is not None
 
             try:
@@ -75,9 +85,8 @@ def label_h5ad(path: str) -> dict:
 
             feature_name_nan = int(adata.var[_FEATURE_NAME_COL].isna().sum())
             feature_name_labeled = n_vars - feature_name_nan
-            obs_labels_written = sorted(
-                c for c in HCA_DERIVED_OBS_LABELS if c in adata.obs.columns
-            )
+            obs_labels_written = sorted(labels_with_source)
+            obs_label_cols_overwritten = sorted(pre_obs_label_cols & labels_with_source)
 
             entry = make_edit_entry(
                 operation="label_h5ad",
@@ -93,7 +102,7 @@ def label_h5ad(path: str) -> dict:
                     "feature_name_nan": feature_name_nan,
                     "raw_var_mirrored": raw_var_mirrored,
                     "obs_labels_written": obs_labels_written,
-                    "obs_label_cols_overwritten": pre_obs_label_cols,
+                    "obs_label_cols_overwritten": obs_label_cols_overwritten,
                     "var_feature_name_overwritten": pre_feature_name_set,
                     "observation_joinid_written": True,
                 },
@@ -111,7 +120,7 @@ def label_h5ad(path: str) -> dict:
             "feature_name_labeled": feature_name_labeled,
             "feature_name_nan": feature_name_nan,
             "obs_labels_written": obs_labels_written,
-            "obs_label_cols_overwritten": pre_obs_label_cols,
+            "obs_label_cols_overwritten": obs_label_cols_overwritten,
             "var_feature_name_overwritten": pre_feature_name_set,
         }
     except Exception as e:
