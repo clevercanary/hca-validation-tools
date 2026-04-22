@@ -1,3 +1,3 @@
 """HCA AnnData MCP Server — interactive exploration of h5ad files."""
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"

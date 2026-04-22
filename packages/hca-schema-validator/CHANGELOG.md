@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.11.0](https://github.com/clevercanary/hca-validation-tools/compare/hca-schema-validator-v0.10.2...hca-schema-validator-v0.11.0) (2026-04-22)
+
+
+### Features
+
+* add HCALabeler for post-curate label generation ([#353](https://github.com/clevercanary/hca-validation-tools/issues/353)) ([06c7399](https://github.com/clevercanary/hca-validation-tools/commit/06c7399d76495ab6bda05131e37317e82328ebdc))
+* add label_h5ad MCP tool and wire into /curate-h5ad ([#355](https://github.com/clevercanary/hca-validation-tools/issues/355)) ([2fdc6e6](https://github.com/clevercanary/hca-validation-tools/commit/2fdc6e693e9c02b2b7c14455a241c64e45e4e0f0))
+* HCA Cell Annotation validator — Phase 1 (structural checks) ([#366](https://github.com/clevercanary/hca-validation-tools/issues/366)) ([872107f](https://github.com/clevercanary/hca-validation-tools/commit/872107fb98fbe365ebab318ae0ca0bf358902bd5))
+
+
+### Miscellaneous Chores
+
+* add pyright type checker ([#316](https://github.com/clevercanary/hca-validation-tools/issues/316)) ([7814796](https://github.com/clevercanary/hca-validation-tools/commit/78147967a207ffa067fdb79319099c17b5a8ac81))
+* add ruff linter, fix unused imports and import sorting ([#312](https://github.com/clevercanary/hca-validation-tools/issues/312)) ([da1fc17](https://github.com/clevercanary/hca-validation-tools/commit/da1fc17f4e760bf904414e4443c9b68acbb43172))
+
 ## [0.10.2](https://github.com/clevercanary/hca-validation-tools/compare/hca-schema-validator-v0.10.1...hca-schema-validator-v0.10.2) (2026-04-15)
 
 
