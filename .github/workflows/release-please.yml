@@ -89,9 +89,15 @@ jobs:
 
   publish-hca-anndata-mcp:
     needs: [release-please, publish-hca-anndata-tools, publish-hca-schema-validator]
+    # Use always() + explicit result checks so mcp still publishes when
+    # sibling publish jobs are intentionally skipped (e.g. only mcp is in
+    # this release). !failure() alone is unreliable: GitHub Actions can
+    # propagate skipped-dep state to downstream jobs.
     if: |
-      !failure() && !cancelled() &&
-      (needs.release-please.outputs.hca_anndata_mcp_release == 'true' || github.event_name == 'workflow_dispatch')
+      always() && !cancelled() &&
+      (needs.release-please.outputs.hca_anndata_mcp_release == 'true' || github.event_name == 'workflow_dispatch') &&
+      (needs.publish-hca-anndata-tools.result == 'success' || needs.publish-hca-anndata-tools.result == 'skipped') &&
+      (needs.publish-hca-schema-validator.result == 'success' || needs.publish-hca-schema-validator.result == 'skipped')
     runs-on: ubuntu-latest
     permissions:
       contents: read
