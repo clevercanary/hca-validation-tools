@@ -106,6 +106,35 @@ from dataset_validator.main import ValidationToolReport, ValidationMessage, TRUN
         "expected_max_length": 250000,
         "expect_tool_errors_preserved": ["hcaSchema", "cap"]
     },
+    {
+        "name": "hca_cell_annotation_errors_preserved_longest",
+        "description": (
+            "hcaCellAnnotation errors should be preserved longest — "
+            "truncated only after cellxgene, cap, and hcaSchema errors"
+        ),
+        "message_length": 100,
+        "message_counts": {
+          "cap": {
+            "errors": 1200,
+            "warnings": 5
+          },
+          "cellxgene": {
+            "errors": 1200,
+            "warnings": 5
+          },
+          "hcaSchema": {
+            "errors": 1200,
+            "warnings": 5
+          },
+          "hcaCellAnnotation": {
+            "errors": 50,
+            "warnings": 5
+          }
+        },
+        "expected_min_length": 249800,
+        "expected_max_length": 250000,
+        "expect_tool_errors_preserved": ["hcaCellAnnotation"]
+    },
 ], ids=lambda x: x["name"])
 def test_length_limited_json_scenarios(test_case):
   timestamp = "2025-10-18T04:42:04.963Z"

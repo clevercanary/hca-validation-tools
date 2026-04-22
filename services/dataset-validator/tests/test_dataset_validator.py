@@ -26,6 +26,7 @@ external_validator_path_vars = {
     'CELLXGENE_VALIDATOR_SCRIPT': str(mock_modules_path / "cellxgene_validator.py"),
     'HCA_SCHEMA_VALIDATOR_VENV': dataset_validator_venv_path,
     'HCA_SCHEMA_VALIDATOR_SCRIPT': str(mock_modules_path / "hca_schema_validator.py"),
+    'HCA_CELL_ANNOTATION_VALIDATOR_SCRIPT': str(mock_modules_path / "hca_cell_annotation_validator.py"),
     'CAP_VALIDATOR_SCRIPT': str(mock_modules_path / "cap_validator.py"),
 }
 
@@ -629,6 +630,7 @@ def test_local_file_mode(mock_read_h5ad, caplog, env_manager, tmp_path, test_cas
         assert "cap" in output["tool_reports"]
         assert "cellxgene" in output["tool_reports"]
         assert "hcaSchema" in output["tool_reports"]
+        assert "hcaCellAnnotation" in output["tool_reports"]
 
 
 @pytest.mark.parametrize("test_case", [
@@ -698,6 +700,11 @@ def test_local_file_mode(mock_read_h5ad, caplog, env_manager, tmp_path, test_cas
                     "valid": False,
                     "errors": ["ERROR: test bar"],
                     "warnings": ["WARNING: test bar"]
+                },
+                "hcaCellAnnotation": {
+                    "valid": False,
+                    "errors": ["ERROR: test baz"],
+                    "warnings": ["WARNING: test baz"]
                 }
             }
         }
@@ -859,6 +866,11 @@ def test_local_file_mode(mock_read_h5ad, caplog, env_manager, tmp_path, test_cas
                     "valid": False,
                     "errors": ["ERROR: test bar"],
                     "warnings": ["WARNING: test bar"]
+                },
+                "hcaCellAnnotation": {
+                    "valid": False,
+                    "errors": ["ERROR: test baz"],
+                    "warnings": ["WARNING: test baz"]
                 }
             }
         }

@@ -30,7 +30,7 @@ MAX_SNS_MESSAGE_LENGTH = 250_000
 TRUNCATED_MESSAGES_MESSAGE = "Messages truncated"
 # When truncating to fit SNS limits, error lists from higher-priority tools are preserved longer.
 # Unknown tools default to priority 0 (truncated first among errors).
-TOOL_ERROR_PRIORITY = {"cellxgene": 0, "cap": 1, "hcaSchema": 2}
+TOOL_ERROR_PRIORITY = {"cellxgene": 0, "cap": 1, "hcaSchema": 2, "hcaCellAnnotation": 3}
 
 
 # Environment variable constants
@@ -50,6 +50,7 @@ CELLXGENE_VALIDATOR_VENV = 'CELLXGENE_VALIDATOR_VENV'
 CELLXGENE_VALIDATOR_SCRIPT = "CELLXGENE_VALIDATOR_SCRIPT"
 HCA_SCHEMA_VALIDATOR_VENV = 'HCA_SCHEMA_VALIDATOR_VENV'
 HCA_SCHEMA_VALIDATOR_SCRIPT = "HCA_SCHEMA_VALIDATOR_SCRIPT"
+HCA_CELL_ANNOTATION_VALIDATOR_SCRIPT = "HCA_CELL_ANNOTATION_VALIDATOR_SCRIPT"
 CAP_VALIDATOR_SCRIPT = "CAP_VALIDATOR_SCRIPT"
 
 # Status constants
@@ -155,7 +156,7 @@ class ValidationMessage:
             for message_type in ["errors", "warnings"]
         ]
         # Truncation priority: warnings first, then cellxgene errors, then cap errors,
-        # then hcaSchema errors (preserved longest)
+        # then hcaSchema errors, then hcaCellAnnotation errors (preserved longest)
         list_paths.sort(key=lambda p: (
             0 if p[1] == "warnings" else 1 + TOOL_ERROR_PRIORITY.get(p[0], 0),
             -self._json_length_of_report_list(*p),
@@ -486,7 +487,8 @@ def apply_external_validator(
     venv_path_var: str,
     get_default_root_path: Callable[[], Path],
     default_package_name: str,
-    validator_name: str
+    validator_name: str,
+    default_script_name: str = "main.py"
 ) -> ValidationToolReport:
     """
     Apply an external validator to the given file by calling a Python script via command line,
@@ -502,6 +504,8 @@ def apply_external_validator(
         default_package_name: Name of the folder in which the script is contained if the
             environment variables don't exist
         validator_name: Name of the validator to use in error messages
+        default_script_name: Filename of the script inside the default package directory
+            (defaults to "main.py"; override when one venv hosts multiple entry scripts)
 
     Returns:
         Validation report
@@ -510,7 +514,7 @@ def apply_external_validator(
         - The validator script should take the file path as a command-line argument, and print as
           output a JSON object containing a `valid` boolean, an `errors` array of strings, and a
           `warnings` array of strings
-        - The default Poetry project should contain the script at src/{default_package_name}/main.py
+        - The default Poetry project should contain the script at src/{default_package_name}/{default_script_name}
     """
 
     started_at = datetime.now(timezone.utc)
@@ -520,7 +524,7 @@ def apply_external_validator(
 
     # If environment variable is not present, use default script path
     if validator_script_path is None:
-        validator_script_path = get_default_root_path() / "src" / default_package_name / "main.py"
+        validator_script_path = get_default_root_path() / "src" / default_package_name / default_script_name
 
     # Get validator venv path from environment, if present
     venv_path = os.environ.get(venv_path_var)
@@ -597,6 +601,27 @@ def apply_hca_schema_validator(file_path: Path) -> ValidationToolReport:
         get_default_root_path=get_default_hcas_validator_root_path,
         default_package_name="hca_schema_validator_service",
         validator_name="HCA schema validator"
+    )
+
+
+def apply_hca_cell_annotation_validator(file_path: Path) -> ValidationToolReport:
+    """
+    Apply the HCA cell annotation validator to the given file.
+
+    Shares the hca-schema-validator venv (same package); only the script path
+    differs. When HCA_CELL_ANNOTATION_VALIDATOR_SCRIPT is unset, the default
+    resolves to the cell_annotation.py module co-located with main.py in the
+    hca-schema-validator service.
+    """
+
+    return apply_external_validator(
+        file_path,
+        script_path_var=HCA_CELL_ANNOTATION_VALIDATOR_SCRIPT,
+        venv_path_var=HCA_SCHEMA_VALIDATOR_VENV,
+        get_default_root_path=get_default_hcas_validator_root_path,
+        default_package_name="hca_schema_validator_service",
+        default_script_name="cell_annotation.py",
+        validator_name="HCA cell annotation validator"
     )
 
 
@@ -839,12 +864,18 @@ def main() -> int:
         # Call HCA schema validator
         hca_schema_validation_report = apply_hca_schema_validator(local_file)
         log_memory_usage("after HCA schema validator")
+        gc.collect()
+
+        # Call HCA cell annotation validator (reuses the HCA schema validator venv)
+        hca_cell_annotation_validation_report = apply_hca_cell_annotation_validator(local_file)
+        log_memory_usage("after HCA cell annotation validator")
 
         # Add individual validation reports to message
         validation_message.tool_reports = {
             "cap": cap_validation_report,
             "cellxgene": cellxgene_validation_report,
-            "hcaSchema": hca_schema_validation_report
+            "hcaSchema": hca_schema_validation_report,
+            "hcaCellAnnotation": hca_cell_annotation_validation_report
         }
 
         logger.info("Validation completed successfully")
