@@ -110,11 +110,12 @@ jobs:
           curl -sSL https://install.python-poetry.org | python3 -
           echo "$HOME/.local/bin" >> $GITHUB_PATH
 
-      - name: Swap path dep to version pin for PyPI
+      - name: Swap path deps to version pins for PyPI
         run: |
           cd packages/hca-anndata-mcp
           sed -i 's|hca-anndata-tools = {path = "../hca-anndata-tools", develop = true}|hca-anndata-tools = ">=0.1.0,<1"|' pyproject.toml
-          if grep -q 'path = "../hca-anndata-tools"' pyproject.toml; then
+          sed -i 's|hca-schema-validator = {path = "../hca-schema-validator", develop = true}|hca-schema-validator = ">=0.10.0,<1"|' pyproject.toml
+          if grep -q 'path = "../hca-anndata-tools"' pyproject.toml || grep -q 'path = "../hca-schema-validator"' pyproject.toml; then
             echo "ERROR: path dependency still present after sed replacement"
             cat pyproject.toml
             exit 1
