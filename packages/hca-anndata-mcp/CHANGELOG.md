@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/clevercanary/hca-validation-tools/compare/hca-anndata-mcp-v0.4.0...hca-anndata-mcp-v0.4.1) (2026-04-22)
+
+
+### Bug Fixes
+
+* rewrite hca-schema-validator path dep for hca-anndata-mcp publish ([#367](https://github.com/clevercanary/hca-validation-tools/issues/367)) ([38d0225](https://github.com/clevercanary/hca-validation-tools/commit/38d022597216edfb31d5dd06f2b76438161d6e0d))
+
 ## [0.4.0](https://github.com/clevercanary/hca-validation-tools/compare/hca-anndata-mcp-v0.3.0...hca-anndata-mcp-v0.4.0) (2026-04-22)
 
 
