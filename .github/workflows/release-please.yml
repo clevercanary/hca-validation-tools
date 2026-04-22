@@ -113,8 +113,11 @@ jobs:
       - name: Swap path deps to version pins for PyPI
         run: |
           cd packages/hca-anndata-mcp
-          sed -i 's|hca-anndata-tools = {path = "../hca-anndata-tools", develop = true}|hca-anndata-tools = ">=0.1.0,<1"|' pyproject.toml
-          sed -i 's|hca-schema-validator = {path = "../hca-schema-validator", develop = true}|hca-schema-validator = ">=0.10.0,<1"|' pyproject.toml
+          # Match by dependency key so whitespace / key-order changes in the
+          # {path = ..., develop = true} dict don't silently turn the sed
+          # into a no-op. Guard below catches multi-line dicts.
+          sed -i -E 's|^hca-anndata-tools\s*=.*$|hca-anndata-tools = ">=0.1.0,<1"|' pyproject.toml
+          sed -i -E 's|^hca-schema-validator\s*=.*$|hca-schema-validator = ">=0.10.0,<1"|' pyproject.toml
           if grep -q 'path = "../hca-anndata-tools"' pyproject.toml || grep -q 'path = "../hca-schema-validator"' pyproject.toml; then
             echo "ERROR: path dependency still present after sed replacement"
             cat pyproject.toml
