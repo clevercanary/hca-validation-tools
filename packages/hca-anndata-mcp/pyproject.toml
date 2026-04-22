@@ -11,6 +11,9 @@ packages = [{include = "hca_anndata_mcp", from = "src"}]
 [tool.poetry.dependencies]
 python = "^3.10"
 fastmcp = ">=2,<3"
+# Path deps below are rewritten to PyPI version pins at publish time by
+# .github/workflows/release-please.yml. Keep both entries covered by the
+# sed rewrite there if you add or rename sibling packages.
 hca-anndata-tools = {path = "../hca-anndata-tools", develop = true}
 hca-schema-validator = {path = "../hca-schema-validator", develop = true}
 

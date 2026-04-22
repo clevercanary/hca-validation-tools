@@ -25,7 +25,7 @@ jobs:
     needs: release-please
     if: |
       !failure() && !cancelled() &&
-      (needs.release-please.outputs.hca_schema_validator_release == 'true' || github.event_name == 'workflow_dispatch')
+      (needs['release-please'].outputs.hca_schema_validator_release == 'true' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -58,7 +58,7 @@ jobs:
     needs: release-please
     if: |
       !failure() && !cancelled() &&
-      (needs.release-please.outputs.hca_anndata_tools_release == 'true' || github.event_name == 'workflow_dispatch')
+      (needs['release-please'].outputs.hca_anndata_tools_release == 'true' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -88,10 +88,16 @@ jobs:
           packages-dir: packages/hca-anndata-tools/dist/
 
   publish-hca-anndata-mcp:
-    needs: [release-please, publish-hca-anndata-tools]
+    needs: [release-please, publish-hca-anndata-tools, publish-hca-schema-validator]
+    # Use always() + explicit result checks so mcp still publishes when
+    # sibling publish jobs are intentionally skipped (e.g. only mcp is in
+    # this release). !failure() alone is unreliable: GitHub Actions can
+    # propagate skipped-dep state to downstream jobs.
     if: |
-      !failure() && !cancelled() &&
-      (needs.release-please.outputs.hca_anndata_mcp_release == 'true' || github.event_name == 'workflow_dispatch')
+      always() && !cancelled() &&
+      (needs['release-please'].outputs.hca_anndata_mcp_release == 'true' || github.event_name == 'workflow_dispatch') &&
+      (needs['publish-hca-anndata-tools'].result == 'success' || needs['publish-hca-anndata-tools'].result == 'skipped') &&
+      (needs['publish-hca-schema-validator'].result == 'success' || needs['publish-hca-schema-validator'].result == 'skipped')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -110,11 +116,16 @@ jobs:
           curl -sSL https://install.python-poetry.org | python3 -
           echo "$HOME/.local/bin" >> $GITHUB_PATH
 
-      - name: Swap path dep to version pin for PyPI
+      - name: Swap path deps to version pins for PyPI
         run: |
           cd packages/hca-anndata-mcp
-          sed -i 's|hca-anndata-tools = {path = "../hca-anndata-tools", develop = true}|hca-anndata-tools = ">=0.1.0,<1"|' pyproject.toml
-          if grep -q 'path = "../hca-anndata-tools"' pyproject.toml; then
+          # Match by dependency key so whitespace / key-order changes in the
+          # {path = ..., develop = true} dict don't silently turn the sed
+          # into a no-op. POSIX [[:space:]] class (GNU sed -E doesn't treat
+          # \s as whitespace). Guard below catches multi-line dicts.
+          sed -i -E 's|^[[:space:]]*hca-anndata-tools[[:space:]]*=.*$|hca-anndata-tools = ">=0.1.0,<1"|' pyproject.toml
+          sed -i -E 's|^[[:space:]]*hca-schema-validator[[:space:]]*=.*$|hca-schema-validator = ">=0.10.0,<1"|' pyproject.toml
+          if grep -Eq 'path[[:space:]]*=[[:space:]]*"\.\./hca-anndata-tools"' pyproject.toml || grep -Eq 'path[[:space:]]*=[[:space:]]*"\.\./hca-schema-validator"' pyproject.toml; then
             echo "ERROR: path dependency still present after sed replacement"
             cat pyproject.toml
             exit 1
