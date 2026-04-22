@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.4.0](https://github.com/clevercanary/hca-validation-tools/compare/hca-anndata-tools-v0.3.1...hca-anndata-tools-v0.4.0) (2026-04-22)
+
+
+### Features
+
+* add check_schema_type tool to identify CellxGENE vs HCA layout ([#338](https://github.com/clevercanary/hca-validation-tools/issues/338)) ([5d3ae7b](https://github.com/clevercanary/hca-validation-tools/commit/5d3ae7b473fad13704a9fd32959b6ab7c62536d9))
+* add check_x_normalization tool to classify X as raw-counts vs normalized ([#337](https://github.com/clevercanary/hca-validation-tools/issues/337)) ([940af43](https://github.com/clevercanary/hca-validation-tools/commit/940af43e96147fd534d583164c9bbbf4470ea34f))
+* add compress_h5ad tool ([#319](https://github.com/clevercanary/hca-validation-tools/issues/319)) ([df0c223](https://github.com/clevercanary/hca-validation-tools/commit/df0c2233f039f2cd8ad033eb62b2d9c4497544fb))
+* add normalize_raw tool for files with raw counts in X ([#321](https://github.com/clevercanary/hca-validation-tools/issues/321)) ([0d70dd9](https://github.com/clevercanary/hca-validation-tools/commit/0d70dd9b5044b17c238e78bf396bbb3659085bdd))
+* add replace_placeholder_values tool ([#305](https://github.com/clevercanary/hca-validation-tools/issues/305)) ([b326d1b](https://github.com/clevercanary/hca-validation-tools/commit/b326d1be0b800b4c439f79304a92190392117669))
+* add view_edit_log tool to inspect h5ad edit history ([#330](https://github.com/clevercanary/hca-validation-tools/issues/330)) ([3bd1580](https://github.com/clevercanary/hca-validation-tools/commit/3bd15801fb207d6415001cf07eb56be77f73e864))
+* allow partial obs overlap in copy_cap_annotations ([#345](https://github.com/clevercanary/hca-validation-tools/issues/345)) ([f6a863c](https://github.com/clevercanary/hca-validation-tools/commit/f6a863c2ea79f18a78c4ce0cf78421cc45100f50))
+* move ambient_count_correction and doublet_detection from uns to obs ([#349](https://github.com/clevercanary/hca-validation-tools/issues/349)) ([90b2b0b](https://github.com/clevercanary/hca-validation-tools/commit/90b2b0bea36500f7bb9a54961fd3dfc3f74c9cf9))
+
+
+### Bug Fixes
+
+* auto-resolve latest edit snapshot in all read-only tools ([#340](https://github.com/clevercanary/hca-validation-tools/issues/340)) ([9d441ce](https://github.com/clevercanary/hca-validation-tools/commit/9d441ce9d767479feda34e94845f0520476c7215))
+* drop scanpy's empty uns['log1p'] stamp in normalize_raw ([#329](https://github.com/clevercanary/hca-validation-tools/issues/329)) ([c3a1d90](https://github.com/clevercanary/hca-validation-tools/commit/c3a1d90335dcfd7ff82df707f1f89821eddab511))
+* filter description from uns field registry (workaround for [#343](https://github.com/clevercanary/hca-validation-tools/issues/343)) ([#347](https://github.com/clevercanary/hca-validation-tools/issues/347)) ([037731f](https://github.com/clevercanary/hca-validation-tools/commit/037731f68b36cc96b401b7405ca7c594b2e954ba))
+* strip feature_is_filtered from raw.var in normalize_raw ([#328](https://github.com/clevercanary/hca-validation-tools/issues/328)) ([57dd4ba](https://github.com/clevercanary/hca-validation-tools/commit/57dd4bafa4a50221b6470a1bb2fabe7e64bb81bf))
+
+
+### Miscellaneous Chores
+
+* add pyright type checker ([#316](https://github.com/clevercanary/hca-validation-tools/issues/316)) ([7814796](https://github.com/clevercanary/hca-validation-tools/commit/78147967a207ffa067fdb79319099c17b5a8ac81))
+* add ruff linter, fix unused imports and import sorting ([#312](https://github.com/clevercanary/hca-validation-tools/issues/312)) ([da1fc17](https://github.com/clevercanary/hca-validation-tools/commit/da1fc17f4e760bf904414e4443c9b68acbb43172))
+* fix E501 (line-too-long) violations and enable rule ([#317](https://github.com/clevercanary/hca-validation-tools/issues/317)) ([77447d3](https://github.com/clevercanary/hca-validation-tools/commit/77447d31d5898fdfd9e0d53cbad5a39bc9a34919))
+
+
+### Code Refactoring
+
+* extract reusable primitives into _io.py ([#310](https://github.com/clevercanary/hca-validation-tools/issues/310)) ([d0a5b29](https://github.com/clevercanary/hca-validation-tools/commit/d0a5b29e24a0f05233d7776773dce7495dc42c62))
+* shared factory for edit-log entries ([#325](https://github.com/clevercanary/hca-validation-tools/issues/325)) ([f91c78e](https://github.com/clevercanary/hca-validation-tools/commit/f91c78e93a33c952df2879f9273c542c1e5da6f4))
+
 ## [0.3.1](https://github.com/clevercanary/hca-validation-tools/compare/hca-anndata-tools-v0.3.0...hca-anndata-tools-v0.3.1) (2026-04-15)
 
 
