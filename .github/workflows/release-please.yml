@@ -88,7 +88,7 @@ jobs:
           packages-dir: packages/hca-anndata-tools/dist/
 
   publish-hca-anndata-mcp:
-    needs: [release-please, publish-hca-anndata-tools]
+    needs: [release-please, publish-hca-anndata-tools, publish-hca-schema-validator]
     if: |
       !failure() && !cancelled() &&
       (needs.release-please.outputs.hca_anndata_mcp_release == 'true' || github.event_name == 'workflow_dispatch')
