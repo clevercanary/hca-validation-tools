@@ -131,15 +131,20 @@ class HCALabeler(AnnDataLabelAppender):
             raise ValueError("HCALabeler preflight failed:\n  - " + "\n  - ".join(issues))
 
     @staticmethod
-    def _reserved_collisions(df, component_name: str, add_labels_def: list) -> List[str]:
+    def _reserved_collisions(df, component_name: str, add_labels_def: List[Dict]) -> List[str]:
         """Return one error string per ``add_labels`` target already on ``df``.
 
         Mirrors the vendored validator's reserved-column wording so curators
         see the same message whether they hit the validator or the labeler.
+
+        DataFrame components only — caller (`_preflight`) iterates obs/var/
+        raw.var. Schema directives that target a uns key (``to_key``) would
+        need a different membership check and are intentionally out of
+        scope; the HCA schema doesn't use them.
         """
         issues: List[str] = []
         for label_def in add_labels_def:
-            target = label_def.get("to_column") or label_def.get("to_key")
+            target = label_def.get("to_column")
             if target is not None and target in df.columns:
                 issues.append(
                     f"Add labels error: Column '{target}' is a reserved column name "
