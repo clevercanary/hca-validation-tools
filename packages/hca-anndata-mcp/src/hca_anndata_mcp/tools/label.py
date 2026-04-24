@@ -35,11 +35,11 @@ def label_h5ad(path: str) -> dict:
     when any of the following is true:
 
     * any controlled output column is already present: the eight ``obs``
-      ontology label columns, the five ``var`` ``feature_*`` columns
-      (``feature_name``, ``feature_reference``, ``feature_biotype``,
-      ``feature_length``, ``feature_type``), or their ``raw.var`` mirrors
-      when ``raw`` is present (the labeler will not silently overwrite
-      producer text — drop the column upstream)
+      ontology label columns, ``obs['observation_joinid']``, the five
+      ``var`` ``feature_*`` columns (``feature_name``, ``feature_reference``,
+      ``feature_biotype``, ``feature_length``, ``feature_type``), or their
+      ``raw.var`` mirrors when ``raw`` is present (the labeler will not
+      silently overwrite producer values — drop the column upstream)
     * the file carries ``uns['schema_version']`` / ``uns['schema_reference']``
       (signals a CellxGENE-labeled file)
     * a required ``<field>_ontology_term_id`` column is missing

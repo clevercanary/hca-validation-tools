@@ -98,6 +98,20 @@ class HCALabeler(AnnDataLabelAppender):
             for key_def in component.get("keys", {}).values():
                 if "add_labels" in key_def:
                     issues.extend(self._reserved_collisions(df, component_name, key_def["add_labels"]))
+            # Component-level reserved_columns (e.g. obs['observation_joinid'])
+            # are written by `label()` outside the schema's add_labels machinery,
+            # so they need their own collision check. Wording omits the "Add
+            # labels error:" prefix to match cellxgene-schema's split between
+            # add_labels-target and reserved_columns errors. uns is excluded
+            # here — its `citation` reserved key is added by Discover post-
+            # publish, not by the labeler, so we don't reject on it (see
+            # _POST_ADDLABELS_UNS_KEYS for the narrower uns check).
+            for reserved in component.get("reserved_columns", []):
+                if reserved in df.columns:
+                    issues.append(
+                        f"Column '{reserved}' is a reserved column name "
+                        f"of '{component_name}'. Remove it from h5ad and try again."
+                    )
         for key in _POST_ADDLABELS_UNS_KEYS:
             if key in self.adata.uns:
                 issues.append(

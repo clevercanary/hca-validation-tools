@@ -118,6 +118,23 @@ def test_preflight_fails_on_pre_populated_feature_name(base_adata, tmp_path):
     assert "reserved column name" in str(excinfo.value)
 
 
+def test_preflight_fails_on_pre_populated_observation_joinid(base_adata, tmp_path):
+    # `observation_joinid` is a component-level reserved column (not driven by
+    # an add_labels directive) that label() writes from a hash digest. Without
+    # this check the labeler would silently overwrite a producer-supplied
+    # value. Wording omits the "Add labels error:" prefix to match cellxgene-
+    # schema's reserved_columns wording.
+    base_adata.obs["observation_joinid"] = "STALE_HASH"
+    with pytest.raises(ValueError) as excinfo:
+        _label(base_adata, tmp_path)
+    msg = str(excinfo.value)
+    assert (
+        "Column 'observation_joinid' is a reserved column name "
+        "of 'obs'. Remove it from h5ad and try again."
+    ) in msg
+    assert "Add labels error:" not in msg.split("observation_joinid")[0].rsplit("\n", 1)[-1]
+
+
 def test_preflight_fails_on_pre_populated_feature_star_in_raw_var(base_adata, tmp_path):
     # Reserved-column policy covers all five `feature_*` targets in both var
     # and raw.var, not just `feature_name`. Spot-check raw.var with one of
