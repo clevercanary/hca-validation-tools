@@ -22,14 +22,14 @@ def label_h5ad(path: str) -> dict:
 
     The labeler populates these controlled columns:
 
-    * ``var['feature_name', 'feature_reference', 'feature_biotype',
-      'feature_length', 'feature_type']`` (and the ``raw.var`` mirror when
-      ``raw`` is present)
-    * ``obs`` ontology labels listed in
-      :data:`hca_schema_validator.HCA_DERIVED_OBS_LABELS`
-      (populated from each ``<field>_ontology_term_id``; ``cell_type`` only
-      when its term_id column is present — optional per schema)
-    * ``obs['observation_joinid']``
+    * the five var feature_* columns — feature_name, feature_reference,
+      feature_biotype, feature_length, feature_type — and their raw.var
+      mirrors when raw is present
+    * the eight obs ontology label columns listed in
+      :data:`hca_schema_validator.HCA_DERIVED_OBS_LABELS`, populated from
+      each <field>_ontology_term_id (cell_type only when its term_id column
+      is present — optional per schema)
+    * obs observation_joinid (a per-row hash digest)
 
     Refuses to run (preflight ``ValueError`` surfaced as ``{"error": ...}``)
     when any of the following is true:
