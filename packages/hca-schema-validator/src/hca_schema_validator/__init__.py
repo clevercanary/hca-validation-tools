@@ -8,11 +8,12 @@ __schema_reference_url__ = "https://data.humancellatlas.org/metadata"  # Static 
 # Import after constants are defined
 from .cell_annotation_validator import HCACellAnnotationValidator
 from .labeler import HCA_DERIVED_OBS_LABELS, HCALabeler
-from .validator import HCAValidator
+from .validator import HCAValidator, check_cosmetic_labels
 
 __all__ = [
     "HCAValidator",
     "HCACellAnnotationValidator",
     "HCALabeler",
     "HCA_DERIVED_OBS_LABELS",
+    "check_cosmetic_labels",
 ]
