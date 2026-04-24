@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.12.0](https://github.com/clevercanary/hca-validation-tools/compare/hca-schema-validator-v0.11.0...hca-schema-validator-v0.12.0) (2026-04-24)
+
+
+### Features
+
+* HCALabeler reserved-column preflight ([#375](https://github.com/clevercanary/hca-validation-tools/issues/375)) ([ad9de18](https://github.com/clevercanary/hca-validation-tools/commit/ad9de18e68df3716b5f6e444aef4437bd17c2aa9))
+* validate producer cosmetic obs columns vs ontology_term_id ([#378](https://github.com/clevercanary/hca-validation-tools/issues/378)) ([6e575eb](https://github.com/clevercanary/hca-validation-tools/commit/6e575eb711d96e81bdff4a59f070cd57efa2de4c))
+
 ## [0.11.0](https://github.com/clevercanary/hca-validation-tools/compare/hca-schema-validator-v0.10.2...hca-schema-validator-v0.11.0) (2026-04-22)
 
 
