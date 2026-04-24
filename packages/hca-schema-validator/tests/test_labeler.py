@@ -86,10 +86,102 @@ def test_obs_labels_populated_from_term_id(labeled):
         assert labeled.obs[col].notna().all(), f"{col} should be fully populated"
 
 
-def test_existing_obs_label_overwritten(base_adata, tmp_path):
+def test_preflight_fails_on_pre_populated_obs_label(base_adata, tmp_path):
+    # Reserved-column policy: the labeler refuses to overwrite a pre-existing
+    # controlled label column. Curators must drop the column upstream so we
+    # never silently lose their text — see issue #374.
     base_adata.obs["tissue"] = "STALE_VALUE"
-    labeled = _label(base_adata, tmp_path)
-    assert "STALE_VALUE" not in labeled.obs["tissue"].astype(str).unique()
+    with pytest.raises(ValueError) as excinfo:
+        _label(base_adata, tmp_path)
+    assert (
+        "Add labels error: Column 'tissue' is a reserved column name "
+        "of 'obs'. Remove it from h5ad and try again."
+    ) in str(excinfo.value)
+
+
+def test_preflight_fails_on_pre_populated_label_without_source(base_adata, tmp_path):
+    # Reserved check is source-agnostic: even if the source ontology_term_id
+    # column is absent (so the labeler wouldn't actually write the column),
+    # a pre-existing reserved name still fails preflight. Single rule for the
+    # curator: "delete the column."
+    del base_adata.obs["cell_type_ontology_term_id"]
+    base_adata.obs["cell_type"] = "STALE_VALUE"
+    with pytest.raises(ValueError, match="reserved column name"):
+        _label(base_adata, tmp_path)
+
+
+def test_preflight_fails_on_pre_populated_feature_name(base_adata, tmp_path):
+    base_adata.var["feature_name"] = "STALE_SYMBOL"
+    with pytest.raises(ValueError) as excinfo:
+        _label(base_adata, tmp_path)
+    assert "feature_name" in str(excinfo.value)
+    assert "reserved column name" in str(excinfo.value)
+
+
+def test_preflight_fails_on_pre_populated_observation_joinid(base_adata, tmp_path):
+    # `observation_joinid` is a component-level reserved column (not driven by
+    # an add_labels directive) that label() writes from a hash digest. Without
+    # this check the labeler would silently overwrite a producer-supplied
+    # value. Wording omits the "Add labels error:" prefix to match cellxgene-
+    # schema's reserved_columns wording.
+    base_adata.obs["observation_joinid"] = "STALE_HASH"
+    with pytest.raises(ValueError) as excinfo:
+        _label(base_adata, tmp_path)
+    msg = str(excinfo.value)
+    assert (
+        "Column 'observation_joinid' is a reserved column name "
+        "of 'obs'. Remove it from h5ad and try again."
+    ) in msg
+    assert "Add labels error:" not in msg.split("observation_joinid")[0].rsplit("\n", 1)[-1]
+
+
+def test_preflight_fails_on_pre_populated_feature_star_in_raw_var(base_adata, tmp_path):
+    # Reserved-column policy covers all five `feature_*` targets in both var
+    # and raw.var, not just `feature_name`. Spot-check raw.var with one of
+    # the other four columns so the broader policy doesn't drift.
+    raw = base_adata.raw.to_adata()
+    raw.var["feature_reference"] = "STALE_REF"
+    base_adata.raw = raw
+    with pytest.raises(ValueError) as excinfo:
+        _label(base_adata, tmp_path)
+    msg = str(excinfo.value)
+    assert "feature_reference" in msg
+    assert "raw.var" in msg
+
+
+def test_preflight_reports_all_collisions_in_one_error(base_adata, tmp_path):
+    # All-or-nothing: every collision must surface in a single ValueError so
+    # the curator can fix them in one pass instead of trial-and-error.
+    base_adata.obs["tissue"] = "X"
+    base_adata.obs["assay"] = "Y"
+    base_adata.var["feature_name"] = "Z"
+    with pytest.raises(ValueError) as excinfo:
+        _label(base_adata, tmp_path)
+    msg = str(excinfo.value)
+    assert "'tissue'" in msg
+    assert "'assay'" in msg
+    assert "'feature_name'" in msg
+
+
+def test_add_labels_direct_call_runs_preflight(base_adata):
+    # Bypass guard: callers reaching the inherited mutation point directly
+    # (e.g. via super() or a private-API call) must still hit preflight.
+    base_adata.obs["tissue"] = "STALE_VALUE"
+    labeler = HCALabeler(base_adata)
+    with pytest.raises(ValueError, match="reserved column name"):
+        labeler._add_labels()
+
+
+def test_super_write_labels_runs_preflight(base_adata, tmp_path):
+    # Bypass guard: skipping HCALabeler.write_labels and going through the
+    # base class write_labels must still trip preflight via _add_labels.
+    from hca_schema_validator._vendored.cellxgene_schema.write_labels import AnnDataLabelAppender
+
+    base_adata.obs["tissue"] = "STALE_VALUE"
+    labeler = HCALabeler(base_adata)
+    out_path = tmp_path / "labeled.h5ad"
+    with pytest.raises(ValueError, match="reserved column name"):
+        AnnDataLabelAppender.write_labels(labeler, str(out_path))
 
 
 def test_preflight_fails_on_non_human_organism(base_adata, tmp_path):

@@ -62,10 +62,11 @@ def test_label_h5ad_writes_edit_log_entry(labelable_path):
     }
 
 
-def test_label_h5ad_reports_overwrites(tmp_path):
-    # Pre-populate obs["tissue"] and var["feature_name"] before labeling to
-    # confirm the wrapper surfaces the overwrite in both the return value
-    # and the edit-log entry.
+def test_label_h5ad_preflight_rejects_pre_populated_label_columns(tmp_path):
+    # Reserved-column policy (issue #374): pre-populated controlled label
+    # columns must fail preflight rather than be silently overwritten. The
+    # wrapper must surface every collision in a single error so the curator
+    # can fix them in one upstream pass.
     path = create_labelable_h5ad(tmp_path / "drifted.h5ad")
     adata = ad.read_h5ad(path)
     adata.obs["tissue"] = "STALE_LABEL"
@@ -74,35 +75,29 @@ def test_label_h5ad_reports_overwrites(tmp_path):
 
     result = label_h5ad(str(path))
 
-    assert "error" not in result, result
-    assert result["var_feature_name_overwritten"] is True
-    assert "tissue" in result["obs_label_cols_overwritten"]
-
-    labeled = ad.read_h5ad(result["output_path"])
-    assert "STALE_LABEL" not in labeled.obs["tissue"].astype(str).unique()
-    assert "STALE_SYMBOL" not in labeled.var["feature_name"].astype(str).unique()
+    assert "error" in result
+    assert "preflight" in result["error"]
+    assert "tissue" in result["error"]
+    assert "feature_name" in result["error"]
 
 
-def test_label_h5ad_does_not_claim_overwrite_for_skipped_optional_label(tmp_path):
-    """Producer ships `cell_type` but no `cell_type_ontology_term_id` → the
-    labeler skips writing (optional field, no source), so we must not report
-    `cell_type` as either written or overwritten.
+def test_label_h5ad_preflight_rejects_label_without_source(tmp_path):
+    """Producer ships `cell_type` but no `cell_type_ontology_term_id`. Even
+    though the labeler wouldn't write `cell_type` (no source), the reserved-
+    column rule still applies — single rule for the curator: "delete the
+    column."
     """
     path = create_labelable_h5ad(tmp_path / "optional.h5ad")
     adata = ad.read_h5ad(path)
-    # Remove the source column, keep a pre-existing producer label column.
     del adata.obs["cell_type_ontology_term_id"]
     adata.obs["cell_type"] = "PRODUCER_CELL_TYPE"
     adata.write_h5ad(path)
 
     result = label_h5ad(str(path))
 
-    assert "error" not in result, result
-    assert "cell_type" not in result["obs_labels_written"]
-    assert "cell_type" not in result["obs_label_cols_overwritten"]
-    # Producer column is preserved untouched.
-    labeled = ad.read_h5ad(result["output_path"])
-    assert (labeled.obs["cell_type"].astype(str) == "PRODUCER_CELL_TYPE").all()
+    assert "error" in result
+    assert "preflight" in result["error"]
+    assert "cell_type" in result["error"]
 
 
 def test_label_h5ad_preflight_rejects_schema_version(tmp_path):

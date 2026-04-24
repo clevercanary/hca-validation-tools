@@ -20,22 +20,32 @@ def label_h5ad(path: str) -> dict:
     Running the labeler first means marker-gene validation has the HCA
     canonical gene symbols to match against.
 
-    The labeler unconditionally overwrites the controlled columns it writes:
+    The labeler populates these controlled columns:
 
-    * ``var['feature_name', 'feature_reference', 'feature_biotype',
-      'feature_length', 'feature_type']`` (and the ``raw.var`` mirror when
-      ``raw`` is present)
-    * ``obs`` ontology labels listed in
-      :data:`hca_schema_validator.HCA_DERIVED_OBS_LABELS`
-      (populated from each ``<field>_ontology_term_id``; ``cell_type`` only
-      when its term_id column is present — optional per schema)
-    * ``obs['observation_joinid']``
+    * the five var feature_* columns — feature_name, feature_reference,
+      feature_biotype, feature_length, feature_type — and their raw.var
+      mirrors when raw is present
+    * the eight obs ontology label columns listed in
+      :data:`hca_schema_validator.HCA_DERIVED_OBS_LABELS`, populated from
+      each <field>_ontology_term_id (cell_type only when its term_id column
+      is present — optional per schema)
+    * obs observation_joinid (a per-row hash digest)
 
     Refuses to run (preflight ``ValueError`` surfaced as ``{"error": ...}``)
-    if the file carries ``uns['schema_version']`` / ``uns['schema_reference']``
-    (signals a CellxGENE-labeled file), is missing a required
-    ``<field>_ontology_term_id`` column, or contains any
-    ``obs['organism_ontology_term_id']`` other than ``NCBITaxon:9606``.
+    when any of the following is true:
+
+    * any controlled output column is already present: the eight ``obs``
+      ontology label columns, ``obs['observation_joinid']``, the five
+      ``var`` ``feature_*`` columns (``feature_name``, ``feature_reference``,
+      ``feature_biotype``, ``feature_length``, ``feature_type``), or their
+      ``raw.var`` mirrors when ``raw`` is present (the labeler will not
+      silently overwrite producer values — drop the column upstream)
+    * the file carries ``uns['schema_version']`` / ``uns['schema_reference']``
+      (signals a CellxGENE-labeled file)
+    * a required ``<field>_ontology_term_id`` column is missing
+    * any ``obs['organism_ontology_term_id']`` is other than
+      ``NCBITaxon:9606``
+
     Unknown Ensembl IDs are not an error — they yield ``NaN`` across the
     five ``feature_*`` columns for that row.
 
@@ -47,6 +57,10 @@ def label_h5ad(path: str) -> dict:
         On success: dict with ``output_path``, ``n_obs``, ``n_vars``,
         ``feature_name_labeled``, ``feature_name_nan``, ``obs_labels_written``,
         ``obs_label_cols_overwritten``, ``var_feature_name_overwritten``.
+        ``obs_label_cols_overwritten`` is always ``[]`` and
+        ``var_feature_name_overwritten`` is always ``False`` on success
+        (preflight rejects the file otherwise) — retained for caller
+        compatibility.
         On failure: ``{"error": ...}``.
     """
     try:

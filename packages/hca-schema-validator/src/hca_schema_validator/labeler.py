@@ -17,10 +17,11 @@ _OBSERVATION_JOINID_COL = "observation_joinid"
 _HUMAN_TAXON = "NCBITaxon:9606"
 _NON_REQUIRED_LEVELS = {"optional", "strongly_recommended"}
 # Derived obs label columns the HCA labeler writes from `<field>_ontology_term_id`.
-# Exported for callers (e.g. the MCP `label_h5ad` wrapper) that need to report
-# which of these columns pre-existed (overwrites) vs. got freshly populated.
-# `cell_type` is included — it is written only when `cell_type_ontology_term_id`
-# is present (optional per schema), so callers must check `obs.columns` anyway.
+# Exported for callers (e.g. the MCP `label_h5ad` wrapper) that summarize which
+# columns will be populated. Preflight rejects any of these that are already
+# present on input, so callers no longer need to track pre-existing values for
+# overwrite reporting. `cell_type` is included — it is written only when
+# `cell_type_ontology_term_id` is present (optional per schema).
 HCA_DERIVED_OBS_LABELS = (
     "tissue",
     "cell_type",
@@ -73,15 +74,44 @@ class HCALabeler(AnnDataLabelAppender):
                 continue
             component = self.schema_def.get("components", {}).get(component_name, {})
             for col_name, col_def in component.get("columns", {}).items():
-                if "add_labels" not in col_def or col_name in df.columns:
+                if "add_labels" not in col_def:
                     continue
-                # Honor the schema's requirement_level: only default-required
-                # columns trigger preflight failure. Optional / strongly-
-                # recommended columns missing here just mean we skip labeling
-                # for that field — see _add_column below.
-                level = str(col_def.get("requirement_level", "")).lower()
-                if level not in _NON_REQUIRED_LEVELS:
-                    issues.append(f"Missing required column '{col_name}' in {component_name}")
+                # Reserved-column check fires regardless of source presence:
+                # if a target label column already exists, the labeler refuses
+                # to run rather than risk silent overwrite. Matches cellxgene-
+                # schema's `Validator(ignore_labels=False)` behavior.
+                issues.extend(self._reserved_collisions(df, component_name, col_def["add_labels"]))
+                # Required-source check: source column missing on a default-
+                # required field is a hard fail. Optional / strongly-recommended
+                # source columns missing just mean we skip writing that field
+                # (see _add_column below).
+                if col_name not in df.columns:
+                    level = str(col_def.get("requirement_level", "")).lower()
+                    if level not in _NON_REQUIRED_LEVELS:
+                        issues.append(f"Missing required column '{col_name}' in {component_name}")
+            # Index- and key-driven labels (var.index → feature_name etc.)
+            # always have a "source" present, so the labeler will always write
+            # them; reject if their target columns/keys already exist.
+            index_def = component.get("index")
+            if isinstance(index_def, dict) and "add_labels" in index_def:
+                issues.extend(self._reserved_collisions(df, component_name, index_def["add_labels"]))
+            for key_def in component.get("keys", {}).values():
+                if "add_labels" in key_def:
+                    issues.extend(self._reserved_collisions(df, component_name, key_def["add_labels"]))
+            # Component-level reserved_columns (e.g. obs['observation_joinid'])
+            # are written by `label()` outside the schema's add_labels machinery,
+            # so they need their own collision check. Wording omits the "Add
+            # labels error:" prefix to match cellxgene-schema's split between
+            # add_labels-target and reserved_columns errors. uns is excluded
+            # here — its `citation` reserved key is added by Discover post-
+            # publish, not by the labeler, so we don't reject on it (see
+            # _POST_ADDLABELS_UNS_KEYS for the narrower uns check).
+            for reserved in component.get("reserved_columns", []):
+                if reserved in df.columns:
+                    issues.append(
+                        f"Column '{reserved}' is a reserved column name "
+                        f"of '{component_name}'. Remove it from h5ad and try again."
+                    )
         for key in _POST_ADDLABELS_UNS_KEYS:
             if key in self.adata.uns:
                 issues.append(
@@ -99,6 +129,36 @@ class HCALabeler(AnnDataLabelAppender):
                 )
         if issues:
             raise ValueError("HCALabeler preflight failed:\n  - " + "\n  - ".join(issues))
+
+    @staticmethod
+    def _reserved_collisions(df, component_name: str, add_labels_def: List[Dict]) -> List[str]:
+        """Return one error string per ``add_labels`` target already on ``df``.
+
+        Mirrors the vendored validator's reserved-column wording so curators
+        see the same message whether they hit the validator or the labeler.
+
+        DataFrame components only — caller (`_preflight`) iterates obs/var/
+        raw.var. Schema directives that target a uns key (``to_key``) would
+        need a different membership check and are intentionally out of
+        scope; the HCA schema doesn't use them.
+        """
+        issues: List[str] = []
+        for label_def in add_labels_def:
+            target = label_def.get("to_column")
+            if target is not None and target in df.columns:
+                issues.append(
+                    f"Add labels error: Column '{target}' is a reserved column name "
+                    f"of '{component_name}'. Remove it from h5ad and try again."
+                )
+        return issues
+
+    def _add_labels(self):
+        # Defensive gate: callers reaching the inherited mutation point
+        # directly (e.g. ``super().write_labels(...)`` or a private-API call)
+        # bypass the public ``label()`` flow. Re-running preflight is cheap
+        # because it's idempotent — the public path still pays only once.
+        self.preflight()
+        super()._add_labels()
 
     def _add_column(self, component: str, column: str, column_definition: dict) -> None:
         # Skip silently when the source column isn't on the target dataframe.
