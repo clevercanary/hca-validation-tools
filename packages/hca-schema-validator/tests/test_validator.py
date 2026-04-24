@@ -279,6 +279,27 @@ def test_cosmetic_check_sentinel_values_match():
     assert errors == []
 
 
+def test_cosmetic_check_sentinel_values_mismatch_errors():
+    # Guards against a regression where sentinel term IDs ('unknown', 'na')
+    # are silently treated as unresolvable. self_reported_ethnicity declares
+    # its 'unknown' exception only inside a dependencies block, so this
+    # exercises the union-with-dependencies path in _collect_curie_exceptions.
+    from .fixtures.hca_fixtures import adata
+
+    modified = adata.copy()
+    modified.obs["self_reported_ethnicity"] = "PRODUCER_LABEL"
+    modified.obs["self_reported_ethnicity_ontology_term_id"] = "unknown"
+    _, validator = _validate_from_fixture(modified)
+    warnings, errors = _cosmetic_check_messages(validator)
+    assert len(warnings) == 1
+    assert any(
+        "self_reported_ethnicity_ontology_term_id" in e
+        and "'PRODUCER_LABEL'" in e
+        and "'unknown'" in e
+        for e in errors
+    ), errors
+
+
 def test_cosmetic_check_fires_with_ignore_labels_false():
     from .fixtures.hca_fixtures import adata
 

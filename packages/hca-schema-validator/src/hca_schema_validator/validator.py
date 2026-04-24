@@ -367,14 +367,21 @@ def check_cosmetic_labels(adata, schema_def=None):
         )
         if source_col not in obs.columns:
             continue
-        exceptions = set(
-            obs_components.get(source_col, {})
-            .get("curie_constraints", {})
-            .get("exceptions", [])
-        )
+        exceptions = _collect_curie_exceptions(obs_components.get(source_col, {}))
         errors.extend(_compare_cosmetic_to_term_ids(obs, cosmetic_col, source_col, exceptions))
 
     return warnings, errors
+
+
+def _collect_curie_exceptions(source_def):
+    # `exceptions` (e.g. 'unknown', 'na') can live at the top-level
+    # `curie_constraints` and/or inside per-rule `dependencies` blocks.
+    # Union both so sentinel-vs-mismatch errors fire for any column that
+    # only declares its sentinels conditionally.
+    exceptions = set(source_def.get("curie_constraints", {}).get("exceptions", []))
+    for dep in source_def.get("dependencies", []):
+        exceptions.update(dep.get("curie_constraints", {}).get("exceptions", []))
+    return exceptions
 
 
 @functools.lru_cache(maxsize=1)
