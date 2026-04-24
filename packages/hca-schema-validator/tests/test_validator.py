@@ -150,6 +150,173 @@ def test_valid_adata_passes():
     assert is_valid is True, f"Validation failed with errors: {validator.errors}"
 
 
+def _cosmetic_check_messages(validator):
+    """Filter validator messages to those produced by the cosmetic-label check (#377)."""
+    warnings = [w for w in validator.warnings if "should not be populated by producers" in w]
+    errors = [e for e in validator.errors if "Either delete the cosmetic column" in e or "Either add the term ID" in e]
+    return warnings, errors
+
+
+def test_cosmetic_check_silent_when_columns_absent():
+    from .fixtures.hca_fixtures import adata
+
+    _, validator = _validate_from_fixture(adata)
+    warnings, errors = _cosmetic_check_messages(validator)
+    assert warnings == []
+    assert errors == []
+
+
+def test_cosmetic_check_warning_only_when_values_match():
+    from .fixtures.hca_fixtures import adata
+
+    modified = adata.copy()
+    modified.obs["tissue"] = "lung"  # canonical label for UBERON:0002048
+    _, validator = _validate_from_fixture(modified)
+    warnings, errors = _cosmetic_check_messages(validator)
+    assert len(warnings) == 1
+    assert "obs['tissue']" in warnings[0]
+    assert errors == []
+
+
+def test_cosmetic_check_error_on_mismatch():
+    from .fixtures.hca_fixtures import adata
+
+    modified = adata.copy()
+    modified.obs["tissue"] = "WRONG_LABEL"
+    _, validator = _validate_from_fixture(modified)
+    warnings, errors = _cosmetic_check_messages(validator)
+    assert len(warnings) == 1
+    assert any(
+        "'WRONG_LABEL'" in e and "UBERON:0002048" in e and "'lung'" in e
+        for e in errors
+    ), errors
+
+
+def test_cosmetic_check_aggregates_across_columns():
+    from .fixtures.hca_fixtures import adata
+
+    modified = adata.copy()
+    modified.obs["tissue"] = "WRONG_TISSUE"
+    modified.obs["assay"] = "WRONG_ASSAY"
+    _, validator = _validate_from_fixture(modified)
+    warnings, errors = _cosmetic_check_messages(validator)
+    assert len(warnings) == 2
+    assert sum("'WRONG_TISSUE'" in e for e in errors) == 1
+    assert sum("'WRONG_ASSAY'" in e for e in errors) == 1
+
+
+def test_cosmetic_check_handles_optional_cell_type_with_source_present():
+    # cell_type is the only optional column in HCA_DERIVED_OBS_LABELS — verify
+    # it gets the same warning + mismatch-error treatment as the required
+    # columns when the source cell_type_ontology_term_id is present.
+    from .fixtures.hca_fixtures import adata
+
+    modified = adata.copy()
+    modified.obs["cell_type"] = "WRONG_CELL_TYPE"
+    _, validator = _validate_from_fixture(modified)
+    warnings, errors = _cosmetic_check_messages(validator)
+    assert any("obs['cell_type']" in w for w in warnings)
+    assert any(
+        "'WRONG_CELL_TYPE'" in e and "CL:0000066" in e and "'epithelial cell'" in e
+        for e in errors
+    ), errors
+
+
+def test_cosmetic_check_warning_only_when_source_column_absent():
+    from .fixtures.hca_fixtures import adata
+
+    modified = adata.copy()
+    modified.obs["cell_type"] = "PRODUCER_CELL_TYPE"
+    del modified.obs["cell_type_ontology_term_id"]  # cell_type is optional, can be removed
+    _, validator = _validate_from_fixture(modified)
+    warnings, errors = _cosmetic_check_messages(validator)
+    assert len(warnings) == 1
+    assert "obs['cell_type']" in warnings[0]
+    assert errors == []  # no source → no row-level check
+
+
+def test_cosmetic_check_error_on_value_with_nan_term_id():
+    from .fixtures.hca_fixtures import adata
+
+    modified = adata.copy()
+    modified.obs["cell_type"] = pd.Series(["PRODUCER_LABEL", "PRODUCER_LABEL"], index=modified.obs.index)
+    # Source column exists but one row has NaN.
+    modified.obs["cell_type_ontology_term_id"] = modified.obs["cell_type_ontology_term_id"].astype(object)
+    modified.obs.loc[modified.obs.index[0], "cell_type_ontology_term_id"] = np.nan
+    _, validator = _validate_from_fixture(modified)
+    warnings, errors = _cosmetic_check_messages(validator)
+    assert len(warnings) == 1
+    assert any(
+        "have NaN in cell_type_ontology_term_id" in e and "1 rows labeled 'PRODUCER_LABEL'" in e
+        for e in errors
+    ), errors
+
+
+def test_cosmetic_check_skips_unresolvable_term_ids():
+    from .fixtures.hca_fixtures import adata
+
+    modified = adata.copy()
+    modified.obs["tissue"] = "anything"
+    modified.obs["tissue_ontology_term_id"] = modified.obs["tissue_ontology_term_id"].astype(object)
+    modified.obs.loc[:, "tissue_ontology_term_id"] = "UBERON:9999999"  # nonexistent
+    _, validator = _validate_from_fixture(modified)
+    warnings, errors = _cosmetic_check_messages(validator)
+    assert len(warnings) == 1
+    # No mismatch error — unresolvable IDs are silently skipped here (the
+    # curie validator surfaces the bad ID via its own pathway).
+    assert errors == []
+
+
+def test_cosmetic_check_sentinel_values_match():
+    from .fixtures.hca_fixtures import adata
+
+    modified = adata.copy()
+    modified.obs["self_reported_ethnicity"] = "unknown"
+    modified.obs["self_reported_ethnicity_ontology_term_id"] = "unknown"
+    _, validator = _validate_from_fixture(modified)
+    warnings, errors = _cosmetic_check_messages(validator)
+    assert len(warnings) == 1
+    assert errors == []
+
+
+def test_cosmetic_check_sentinel_values_mismatch_errors():
+    # Guards against a regression where sentinel term IDs ('unknown', 'na')
+    # are silently treated as unresolvable. self_reported_ethnicity declares
+    # its 'unknown' exception only inside a dependencies block, so this
+    # exercises the union-with-dependencies path in _collect_curie_exceptions.
+    from .fixtures.hca_fixtures import adata
+
+    modified = adata.copy()
+    modified.obs["self_reported_ethnicity"] = "PRODUCER_LABEL"
+    modified.obs["self_reported_ethnicity_ontology_term_id"] = "unknown"
+    _, validator = _validate_from_fixture(modified)
+    warnings, errors = _cosmetic_check_messages(validator)
+    assert len(warnings) == 1
+    assert any(
+        "self_reported_ethnicity_ontology_term_id" in e
+        and "'PRODUCER_LABEL'" in e
+        and "'unknown'" in e
+        for e in errors
+    ), errors
+
+
+def test_cosmetic_check_fires_with_ignore_labels_false():
+    from .fixtures.hca_fixtures import adata
+
+    modified = adata.copy()
+    modified.obs["tissue"] = "WRONG"
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir) / "test.h5ad"
+        modified.write_h5ad(str(tmp_path))
+        validator = HCAValidator(ignore_labels=False)
+        validator.validate_adata(str(tmp_path))
+
+    warnings, errors = _cosmetic_check_messages(validator)
+    assert len(warnings) == 1
+    assert any("'WRONG'" in e for e in errors)
+
+
 def test_study_pi_missing():
     """Test that removing study_pi from uns produces an error."""
     from .fixtures.hca_fixtures import adata

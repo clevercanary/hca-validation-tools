@@ -1,5 +1,6 @@
 """HCA Validator - extends cellxgene Validator with HCA-specific rules."""
 
+import functools
 import re
 from pathlib import Path
 
@@ -13,6 +14,7 @@ from hca_schema_validator._vendored.cellxgene_schema.utils import getattr_anndat
 from hca_schema_validator._vendored.cellxgene_schema.validate import Validator
 
 from . import __schema_version__ as HCA_SCHEMA_VERSION
+from .labeler import HCA_DERIVED_OBS_LABELS
 
 # GENCODE version info (loaded once at module level)
 _GENE_INFO_PATH = Path(__file__).parent / "_vendored" / "cellxgene_schema" / "gencode_files" / "gene_info.yml"
@@ -71,6 +73,11 @@ class HCAValidator(Validator):
         self.warnings = other + feature_id
         return result
 
+    def _check_cosmetic_label_columns(self):
+        warnings, errors = check_cosmetic_labels(self.adata, self.schema_def)
+        self.warnings.extend(warnings)
+        self.errors.extend(errors)
+
     def _deep_check(self):
         """
         The base class skips raw validation when *any* errors exist, but raw
@@ -92,6 +99,8 @@ class HCAValidator(Validator):
             for w in raw_skip_warnings:
                 self.warnings.remove(w)
             self._validate_raw()
+
+        self._check_cosmetic_label_columns()
 
     def _validate_list(self, list_name, current_list, element_type):
         """
@@ -305,3 +314,125 @@ class HCAValidator(Validator):
                             f"Column '{column_name}' in dataframe '{df_name}' contains a value "
                             f"'{value}' that does not match the required pattern '{column_def['pattern']}'."
                         )
+
+
+def check_cosmetic_labels(adata, schema_def=None):
+    """Run the producer-cosmetic-column check and return (warnings, errors).
+
+    The HCA labeler populates the eight controlled obs label columns from their
+    `*_ontology_term_id` counterparts. Producers shouldn't ship the cosmetic
+    columns at all; if they do, every populated row needs a term ID and the
+    cosmetic value must agree with the canonical ontology label.
+
+    Per-column rules (each fires independently and aggregates):
+
+    * column present → warning ("delete the column")
+    * column present + source present → row-level checks:
+        - cosmetic value, source NaN → error ("add term ID, delete the label,
+          or delete the column")
+        - both populated, file label != canonical → error ("delete the column
+          or fix the term ID")
+        - unresolvable term ID → silently skipped (the curie validator flags
+          bad IDs through its own pathway)
+
+    Args:
+        adata: An AnnData object.
+        schema_def: Loaded HCA schema definition dict. If omitted, the bundled
+            HCA schema is loaded — pass an explicit value when reusing this
+            check from a context that already has the schema in hand.
+
+    Returns:
+        ``(warnings, errors)`` — two lists of strings, ready for the caller to
+        append to its own report. Issue #377.
+    """
+    if schema_def is None:
+        schema_def = _load_default_schema_def()
+
+    warnings: list[str] = []
+    errors: list[str] = []
+
+    obs = getattr_anndata(adata, "obs")
+    if obs is None:
+        return warnings, errors
+
+    obs_components = schema_def.get("components", {}).get("obs", {}).get("columns", {})
+    for cosmetic_col in HCA_DERIVED_OBS_LABELS:
+        if cosmetic_col not in obs.columns:
+            continue
+        source_col = f"{cosmetic_col}_ontology_term_id"
+        warnings.append(
+            f"obs['{cosmetic_col}'] should not be populated by producers — "
+            f"the HCA labeler populates this column from {source_col}. "
+            f"Delete the column."
+        )
+        if source_col not in obs.columns:
+            continue
+        exceptions = _collect_curie_exceptions(obs_components.get(source_col, {}))
+        errors.extend(_compare_cosmetic_to_term_ids(obs, cosmetic_col, source_col, exceptions))
+
+    return warnings, errors
+
+
+def _collect_curie_exceptions(source_def):
+    # `exceptions` (e.g. 'unknown', 'na') can live at the top-level
+    # `curie_constraints` and/or inside per-rule `dependencies` blocks.
+    # Union both so sentinel-vs-mismatch errors fire for any column that
+    # only declares its sentinels conditionally.
+    exceptions = set(source_def.get("curie_constraints", {}).get("exceptions", []))
+    for dep in source_def.get("dependencies", []):
+        exceptions.update(dep.get("curie_constraints", {}).get("exceptions", []))
+    return exceptions
+
+
+@functools.lru_cache(maxsize=1)
+def _load_default_schema_def():
+    schema_path = Path(__file__).parent / SCHEMA_DIR / SCHEMA_FILENAME
+    with open(schema_path) as fp:
+        return yaml.safe_load(fp)
+
+
+def _compare_cosmetic_to_term_ids(obs, cosmetic_col, source_col, exceptions):
+    pair_counts = (
+        obs[[source_col, cosmetic_col]]
+        .astype(object)
+        .groupby([source_col, cosmetic_col], dropna=False)
+        .size()
+    )
+    canonical_cache: dict[str, str | None] = {}
+    errors: list[str] = []
+    for (term_id, file_label), n in pair_counts.items():
+        file_label_str = None if pd.isna(file_label) else str(file_label)
+        if pd.isna(term_id):
+            if file_label_str is not None:
+                errors.append(
+                    f"obs['{cosmetic_col}']: {n} rows labeled '{file_label_str}' "
+                    f"have NaN in {source_col}. Either add the term ID, "
+                    f"delete the label, or delete the cosmetic column."
+                )
+            continue
+        if file_label_str is None:
+            continue
+        term_id_str = str(term_id)
+        if term_id_str not in canonical_cache:
+            canonical_cache[term_id_str] = _lookup_canonical_label(term_id_str, exceptions)
+        canonical = canonical_cache[term_id_str]
+        if canonical is None or canonical == file_label_str:
+            continue
+        errors.append(
+            f"obs['{cosmetic_col}']: {n} rows labeled '{file_label_str}' but "
+            f"{source_col} is '{term_id_str}' (canonical label: '{canonical}'). "
+            f"Either delete the cosmetic column, or fix {source_col} so it "
+            f"matches the label."
+        )
+    return errors
+
+
+def _lookup_canonical_label(term_id, exceptions):
+    # Sentinels (e.g. 'unknown', 'na') are their own canonical label
+    # — matches cellxgene labeler behavior.
+    if term_id in exceptions:
+        return term_id
+    try:
+        return ONTOLOGY_PARSER.get_term_label(term_id)
+    except (KeyError, ValueError):
+        return None
