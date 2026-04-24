@@ -118,6 +118,20 @@ def test_preflight_fails_on_pre_populated_feature_name(base_adata, tmp_path):
     assert "reserved column name" in str(excinfo.value)
 
 
+def test_preflight_fails_on_pre_populated_feature_star_in_raw_var(base_adata, tmp_path):
+    # Reserved-column policy covers all five `feature_*` targets in both var
+    # and raw.var, not just `feature_name`. Spot-check raw.var with one of
+    # the other four columns so the broader policy doesn't drift.
+    raw = base_adata.raw.to_adata()
+    raw.var["feature_reference"] = "STALE_REF"
+    base_adata.raw = raw
+    with pytest.raises(ValueError) as excinfo:
+        _label(base_adata, tmp_path)
+    msg = str(excinfo.value)
+    assert "feature_reference" in msg
+    assert "raw.var" in msg
+
+
 def test_preflight_reports_all_collisions_in_one_error(base_adata, tmp_path):
     # All-or-nothing: every collision must surface in a single ValueError so
     # the curator can fix them in one pass instead of trial-and-error.

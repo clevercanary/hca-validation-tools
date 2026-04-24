@@ -34,9 +34,12 @@ def label_h5ad(path: str) -> dict:
     Refuses to run (preflight ``ValueError`` surfaced as ``{"error": ...}``)
     when any of the following is true:
 
-    * any of the controlled ``obs`` label columns or ``var['feature_name']``
-      is already present (the labeler will not silently overwrite producer
-      text — drop the column upstream so the labeler can populate it cleanly)
+    * any controlled output column is already present: the eight ``obs``
+      ontology label columns, the five ``var`` ``feature_*`` columns
+      (``feature_name``, ``feature_reference``, ``feature_biotype``,
+      ``feature_length``, ``feature_type``), or their ``raw.var`` mirrors
+      when ``raw`` is present (the labeler will not silently overwrite
+      producer text — drop the column upstream)
     * the file carries ``uns['schema_version']`` / ``uns['schema_reference']``
       (signals a CellxGENE-labeled file)
     * a required ``<field>_ontology_term_id`` column is missing
