@@ -691,10 +691,13 @@ def test_local_file_mode(mock_read_h5ad, caplog, env_manager, tmp_path, test_cas
                     "errors": [],
                     "warnings": []
                 },
+                # cellxgene is stubbed in main.py (apply_cellxgene_validator
+                # is no longer called) — see #382. Expected output reflects
+                # the empty stub, not the mock script's "ERROR: test" output.
                 "cellxgene": {
-                    "valid": False,
-                    "errors": ["ERROR: test"],
-                    "warnings": ["WARNING: test"]
+                    "valid": True,
+                    "errors": [],
+                    "warnings": []
                 },
                 "hcaSchema": {
                     "valid": False,
@@ -857,10 +860,11 @@ def test_local_file_mode(mock_read_h5ad, caplog, env_manager, tmp_path, test_cas
                     "errors": ["Encountered an unexpected error while calling CAP validator: Error in CAP validator"],
                     "warnings": []
                 },
+                # cellxgene stubbed in main.py — see #382.
                 "cellxgene": {
-                    "valid": False,
-                    "errors": ["ERROR: test"],
-                    "warnings": ["WARNING: test"]
+                    "valid": True,
+                    "errors": [],
+                    "warnings": []
                 },
                 "hcaSchema": {
                     "valid": False,
