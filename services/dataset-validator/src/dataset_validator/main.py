@@ -27,10 +27,18 @@ import pandas as pd
 
 # Somewhat less than the actual value of 256KiB, to make room for small unforeseen deviations
 MAX_SNS_MESSAGE_LENGTH = 250_000
-TRUNCATED_MESSAGES_MESSAGE = "Messages truncated"
+# Prefix for the truncation placeholder string. The full marker also embeds
+# the retained-vs-total counts so curators see how many messages were dropped
+# even when binary-search collapses to zero retained — see _truncated_marker.
+TRUNCATED_MESSAGES_PREFIX = "Messages truncated"
 # When truncating to fit SNS limits, error lists from higher-priority tools are preserved longer.
 # Unknown tools default to priority 0 (truncated first among errors).
 TOOL_ERROR_PRIORITY = {"cellxgene": 0, "cap": 1, "hcaSchema": 2, "hcaCellAnnotation": 3}
+
+
+def _truncated_marker(retained: int, total: int) -> str:
+    """Format the truncation placeholder so the curator sees the original count."""
+    return f"{TRUNCATED_MESSAGES_PREFIX} ({retained} of {total} shown)"
 
 
 # Environment variable constants
@@ -147,13 +155,16 @@ class ValidationMessage:
         full_message = self.to_json()
         if self.tool_reports is None or len(full_message) < max_length:
             return full_message
-        
-        # Create a list of message arrays from tool_reports, represented as
-        # (key in tool_reports, attribute in tool report object) pairs
+
+        # Create a list of (tool_key, message_type) pairs to consider for truncation.
+        # Empty lists are excluded so they keep their `[]` serialization — stamping
+        # them with a placeholder would inflate warningCount/errorCount and trip
+        # false PartiallyValidIcon indicators in the tracker UI (#382).
         list_paths = [
             (key, message_type)
             for key in self.tool_reports.keys()
             for message_type in ["errors", "warnings"]
+            if self._get_report_message_list(key, message_type)
         ]
         # Truncation priority: warnings first, then cellxgene errors, then cap errors,
         # then hcaSchema errors, then hcaCellAnnotation errors (preserved longest)
@@ -168,16 +179,17 @@ class ValidationMessage:
         # Truncate entire lists until the message JSON is small enough, and note which list was the last to be truncated
         threshold_path = None
         for p in list_paths:
-            truncated_message._set_report_message_list(*p, [TRUNCATED_MESSAGES_MESSAGE])
+            original_total = len(self._get_report_message_list(*p))
+            truncated_message._set_report_message_list(*p, [_truncated_marker(0, original_total)])
             if len(truncated_message.to_json()) < max_length:
                 threshold_path = p
                 break
-        
+
         # If all lists have been truncated and somehow none have made the message small enough,
         # give up and try using it anyway
         if threshold_path is None:
             return truncated_message.to_json()
-        
+
         # Get the original value of the list that was the threshold for making the message small enough
         message_list = self._get_report_message_list(*threshold_path)
 
@@ -190,14 +202,14 @@ class ValidationMessage:
             middle_length = int((max_valid_length + min_invalid_length)/2)
             truncated_message._set_report_message_list(
                 *threshold_path,
-                [*message_list[:middle_length], TRUNCATED_MESSAGES_MESSAGE],
+                [*message_list[:middle_length], _truncated_marker(middle_length, len(message_list))],
             )
             if len(truncated_message.to_json()) < max_length:
                 max_valid_length = middle_length
             else:
                 min_invalid_length = middle_length
                 truncated_message._set_report_message_list(*threshold_path, truncated_list_before)
-        
+
         # Return the truncated message JSON
         return truncated_message.to_json()
 
@@ -566,6 +578,12 @@ def apply_cellxgene_validator(file_path: Path) -> ValidationToolReport:
     """
     Apply the CELLxGENE validator to the given file and create a validation report.
 
+    .. note::
+       Currently unreferenced — the batch flow stubs the cellxgene slot
+       rather than running this validator, since the tracker UI hides
+       cellxgene results. See #382. Kept so the integration can be
+       re-enabled without rewriting the wiring.
+
     Args:
         file_path: Path of the file to validate
 
@@ -856,10 +874,17 @@ def main() -> int:
         log_memory_usage("after CAP validator")
         gc.collect()
 
-        # Call CELLxGENE validator
-        cellxgene_validation_report = apply_cellxgene_validator(local_file)
-        log_memory_usage("after CELLxGENE validator")
-        gc.collect()
+        # cellxgene-schema is intentionally not run: the tracker UI hides
+        # the cellxgene tab unconditionally (see shouldShowValidator), so its
+        # results are dead-letter and crowd out visible warnings under SNS
+        # truncation. We send a stub report so the SNS payload schema (which
+        # requires the cellxgene field) stays satisfied. Re-enable by wiring
+        # apply_cellxgene_validator back in. See #382.
+        now_iso = datetime.now(timezone.utc).isoformat()
+        cellxgene_validation_report = ValidationToolReport(
+            valid=True, errors=[], warnings=[],
+            started_at=now_iso, finished_at=now_iso,
+        )
 
         # Call HCA schema validator
         hca_schema_validation_report = apply_hca_schema_validator(local_file)
