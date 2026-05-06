@@ -206,22 +206,40 @@ class TestDatasetValidator:
 def test_missing_sns_topic_logs_error_and_exits(caplog, env_manager, base_env_vars):
     """Test that missing SNS_TOPIC_ARN logs error and exits with code 1."""
     from dataset_validator.main import main
-    
+
     # Set up environment with missing SNS_TOPIC_ARN
     test_env = base_env_vars.copy()
     del test_env['SNS_TOPIC_ARN']  # Remove SNS topic to test missing variable
     env_manager['set'](test_env)
-    
+
     # Capture logs from the specific logger
     with caplog.at_level(logging.ERROR, logger="dataset_validator.main"):
         result = main()
-    
+
     # Should exit with code 1
     assert result == 1
-    
+
     # Should log the missing environment variable error
     assert "Missing required environment variables" in caplog.text
     assert "SNS_TOPIC_ARN=None" in caplog.text
+
+
+def test_missing_bucket_skips_s3_claim_check(caplog, env_manager, base_env_vars):
+    """When env validation fails before resolving a bucket, no S3 write is attempted."""
+    from dataset_validator.main import main
+
+    test_env = base_env_vars.copy()
+    del test_env['S3_BUCKET']
+    env_manager['set'](test_env)
+    env_manager['clear'](['S3_BUCKET'])
+
+    with caplog.at_level(logging.INFO, logger="dataset_validator.main"):
+        result = main()
+
+    assert result == 1
+    assert "Missing required environment variables" in caplog.text
+    # The S3 claim-check write must be skipped — there's no actionable bucket.
+    assert "S3 claim check write" not in caplog.text
 
 
 @pytest.mark.parametrize("test_case", [
@@ -524,6 +542,119 @@ def test_publish_validation_result_scenarios(caplog, mock_aws, test_case):
         assert parsed_message == test_case["message_data"]
 
 
+def _build_message(**overrides) -> "object":
+    """Helper to build a ValidationMessage for claim-check tests."""
+    from dataset_validator.main import ValidationMessage
+    base = {
+        'file_id': 'test-file-uuid',
+        'status': 'success',
+        'timestamp': '2024-01-01T12:00:00Z',
+        'bucket': 'test-bucket',
+        'key': 'datasets/test.h5ad',
+        'batch_job_id': 'job-abc',
+        'batch_job_name': 'test-job',
+        'downloaded_sha256': 'abc123',
+        'source_sha256': 'abc123',
+        'integrity_status': 'valid',
+        'metadata_summary': None,
+        'tool_reports': None,
+        'error_message': None,
+    }
+    base.update(overrides)
+    return ValidationMessage(**base)
+
+
+def test_write_validation_results_to_s3_success(caplog, mock_aws):
+    """Successful claim-check write places a JSON object at the expected key."""
+    from dataset_validator.main import write_validation_results_to_s3, configure_logging
+    configure_logging()
+
+    message = _build_message(file_id='file-1', batch_job_id='job-1')
+
+    with caplog.at_level(logging.INFO, logger="dataset_validator.main"):
+        result = write_validation_results_to_s3(
+            message, mock_aws['bucket_name'], 'file-1', 'job-1'
+        )
+
+    assert result is True
+    assert "S3 claim check write succeeded for file file-1" in caplog.text
+
+    obj = mock_aws['s3_client'].get_object(
+        Bucket=mock_aws['bucket_name'],
+        Key='validation-metadata/file-1/job-1.json',
+    )
+    body = obj['Body'].read().decode('utf-8')
+    assert json.loads(body) == json.loads(message.to_json())
+    assert obj['ContentType'] == 'application/json'
+
+
+def test_write_validation_results_to_s3_failure(caplog, mock_aws):
+    """Write to a nonexistent bucket logs the error and returns False without raising."""
+    from dataset_validator.main import write_validation_results_to_s3, configure_logging
+    configure_logging()
+
+    message = _build_message(file_id='file-2', batch_job_id='job-2')
+
+    with caplog.at_level(logging.ERROR, logger="dataset_validator.main"):
+        result = write_validation_results_to_s3(
+            message, 'nonexistent-bucket', 'file-2', 'job-2'
+        )
+
+    assert result is False
+    assert "S3 claim check write failed for file file-2" in caplog.text
+
+
+def test_write_validation_results_to_s3_writes_full_untruncated_json(mock_aws):
+    """The body written to S3 is the full to_json() output, not the SNS-truncated form."""
+    from dataset_validator.main import (
+        write_validation_results_to_s3,
+        ValidationToolReport,
+        MAX_SNS_MESSAGE_LENGTH,
+    )
+
+    # Build a message whose SNS-bound JSON would be truncated.
+    huge_errors = [f"error-{i}" for i in range(20000)]
+    tool_reports = {
+        "cap": ValidationToolReport(
+            valid=False, errors=huge_errors, warnings=[],
+            started_at='2024-01-01T12:00:00Z', finished_at='2024-01-01T12:00:01Z',
+        ),
+        "cellxgene": ValidationToolReport(
+            valid=True, errors=[], warnings=[],
+            started_at='2024-01-01T12:00:00Z', finished_at='2024-01-01T12:00:01Z',
+        ),
+        "hcaSchema": ValidationToolReport(
+            valid=True, errors=[], warnings=[],
+            started_at='2024-01-01T12:00:00Z', finished_at='2024-01-01T12:00:01Z',
+        ),
+        "hcaCellAnnotation": ValidationToolReport(
+            valid=True, errors=[], warnings=[],
+            started_at='2024-01-01T12:00:00Z', finished_at='2024-01-01T12:00:01Z',
+        ),
+    }
+    message = _build_message(
+        file_id='file-3', batch_job_id='job-3', tool_reports=tool_reports
+    )
+
+    # Sanity: this message must actually trigger SNS truncation, otherwise
+    # the test wouldn't be meaningfully exercising the claim-check use case.
+    full_json = message.to_json()
+    truncated_json = message.to_length_limited_json()
+    assert len(full_json) > MAX_SNS_MESSAGE_LENGTH
+    assert truncated_json != full_json
+
+    assert write_validation_results_to_s3(
+        message, mock_aws['bucket_name'], 'file-3', 'job-3'
+    ) is True
+
+    obj = mock_aws['s3_client'].get_object(
+        Bucket=mock_aws['bucket_name'],
+        Key='validation-metadata/file-3/job-3.json',
+    )
+    body = obj['Body'].read().decode('utf-8')
+    assert body == full_json
+
+
 @pytest.mark.parametrize("test_case", [
     {
         "name": "success",
@@ -547,6 +678,7 @@ def test_publish_validation_result_scenarios(caplog, mock_aws, test_case):
             "Starting download:",
             "Verifying file integrity",
             "Publishing validation result to SNS",
+            "S3 claim check write",
         ],
         "expected_stdout": {
             "status": "success",
@@ -922,16 +1054,31 @@ def test_end_to_end_validation_scenarios(mock_read_h5ad, caplog, mock_aws, env_m
     # Run main function
     with caplog.at_level(logging.INFO, logger="dataset_validator.main"):
         result = main()
-    
+
     # Verify exit code
     assert result == test_case["expected_exit_code"]
-    
+
     # Verify expected log messages
     for expected_log in test_case["expected_logs"]:
         assert expected_log in caplog.text
-    
+
     # Verify SNS message content
     _validate_sns_message(mock_aws, caplog, test_case["expected_sns_message"])
+
+    # Verify the S3 claim-check object was written for this run, regardless of
+    # whether the validation itself succeeded or failed — failures still get
+    # recorded so the tracker can read the full result if SNS was truncated.
+    expected_key = (
+        f"validation-metadata/{test_case['file_id']}/{test_case['batch_job_id']}.json"
+    )
+    claim_obj = mock_aws['s3_client'].get_object(
+        Bucket=mock_aws['bucket_name'], Key=expected_key
+    )
+    claim_body = json.loads(claim_obj['Body'].read().decode('utf-8'))
+    assert claim_body['file_id'] == test_case['expected_sns_message']['file_id']
+    assert claim_body['batch_job_id'] == test_case['expected_sns_message']['batch_job_id']
+    assert claim_body['status'] == test_case['expected_sns_message']['status']
+    assert "S3 claim check write succeeded" in caplog.text
 
 
 def _get_last_sns_message(sns_backend, topic_arn):

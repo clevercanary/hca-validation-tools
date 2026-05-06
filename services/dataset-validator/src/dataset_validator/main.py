@@ -27,6 +27,9 @@ import pandas as pd
 
 # Somewhat less than the actual value of 256KiB, to make room for small unforeseen deviations
 MAX_SNS_MESSAGE_LENGTH = 250_000
+# S3 prefix under which full validation results are written as a "claim check"
+# the tracker can fall back to when the SNS message has been truncated.
+S3_VALIDATION_METADATA_PREFIX = "validation-metadata"
 # Prefix for the truncation placeholder string. The full marker also embeds
 # the retained-vs-total counts so curators see how many messages were dropped
 # even when binary-search collapses to zero retained — see _truncated_marker.
@@ -292,6 +295,45 @@ def publish_validation_result(message: ValidationMessage, sns_topic_arn: str) ->
         
     except Exception as e:
         logger.error("Unexpected error publishing to SNS: %s", str(e))
+        return False
+
+
+def write_validation_results_to_s3(
+    message: ValidationMessage,
+    bucket: str,
+    file_id: str,
+    batch_job_id: str,
+) -> bool:
+    """
+    Write the full validation message JSON to S3 as a claim check.
+
+    The tracker reads this object when the inline SNS message has been
+    truncated to fit the SNS 256 KiB limit. Failures here are logged but
+    never raise — the SNS publish is the authoritative pipeline step.
+
+    Args:
+        message: ValidationMessage to serialize (untruncated)
+        bucket: S3 bucket (reuses the data bucket the input file came from)
+        file_id: Tracker file UUID, used in the key
+        batch_job_id: AWS Batch job ID, used in the key so each run gets a
+            distinct object
+
+    Returns:
+        True if the write succeeded, False otherwise.
+    """
+    key = f"{S3_VALIDATION_METADATA_PREFIX}/{file_id}/{batch_job_id}.json"
+    try:
+        s3_client = boto3.client('s3')
+        s3_client.put_object(
+            Bucket=bucket,
+            Key=key,
+            Body=message.to_json().encode('utf-8'),
+            ContentType='application/json',
+        )
+        logger.info("S3 claim check write succeeded for file %s", file_id)
+        return True
+    except Exception as e:
+        logger.error("S3 claim check write failed for file %s: %s", file_id, e)
         return False
 
 
@@ -924,6 +966,23 @@ def main() -> int:
     finally:
         # Clean up work directory (includes downloaded files)
         cleanup_files(work_dir)
+
+        # Attempt to write full results to S3 as a claim check before SNS.
+        # Skipped in local mode (no real bucket) and when env validation
+        # never resolved a real bucket/file_id/batch_job_id (early-exit path).
+        s3_bucket = env_vars.get('bucket')
+        s3_file_id = env_vars.get('file_id')
+        s3_batch_job_id = env_vars.get('batch_job_id')
+        if (
+            validation_message
+            and not local_mode
+            and s3_bucket and s3_bucket != "unknown"
+            and s3_file_id and s3_file_id != "unknown"
+            and s3_batch_job_id and s3_batch_job_id != "unknown"
+        ):
+            write_validation_results_to_s3(
+                validation_message, s3_bucket, s3_file_id, s3_batch_job_id
+            )
 
         # Publish or print results
         sns_topic_arn = env_vars.get('sns_topic_arn')
