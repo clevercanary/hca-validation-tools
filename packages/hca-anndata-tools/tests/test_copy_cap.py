@@ -14,12 +14,19 @@ from hca_anndata_tools.write import EDIT_LOG_KEY
 # --- Fixtures ---
 
 
-def _make_cap_source(path: Path, cell_ids: list[str]) -> Path:
+def _make_cap_source(
+    path: Path,
+    cell_ids: list[str],
+    var_ids: list[str] | None = None,
+) -> Path:
     """Create an h5ad with CAP annotations."""
     n = len(cell_ids)
     rng = np.random.default_rng(42)
+    if var_ids is None:
+        var_ids = [f"GENE{i}" for i in range(5)]
+    n_vars = len(var_ids)
 
-    X = sp.random(n, 5, density=0.3, format="csr", dtype=np.float32, random_state=rng)
+    X = sp.random(n, n_vars, density=0.3, format="csr", dtype=np.float32, random_state=rng)
 
     labels = rng.choice(["typeA", "typeB"], n)
     # CAP serializes all annotation columns as categorical — mirror that here.
@@ -62,7 +69,7 @@ def _make_cap_source(path: Path, cell_ids: list[str]) -> Path:
         index=cell_ids,
     )
 
-    var = pd.DataFrame(index=[f"GENE{i}" for i in range(5)])
+    var = pd.DataFrame(index=var_ids)
     adata = ad.AnnData(X=X, obs=obs, var=var)
 
     adata.uns["title"] = "CAP Test Dataset"
@@ -87,12 +94,19 @@ def _make_cap_source(path: Path, cell_ids: list[str]) -> Path:
     return path
 
 
-def _make_hca_target(path: Path, cell_ids: list[str]) -> Path:
+def _make_hca_target(
+    path: Path,
+    cell_ids: list[str],
+    var_ids: list[str] | None = None,
+) -> Path:
     """Create a minimal HCA-converted h5ad with same cells, no CAP columns."""
     n = len(cell_ids)
     rng = np.random.default_rng(7)
+    if var_ids is None:
+        var_ids = [f"GENE{i}" for i in range(5)]
+    n_vars = len(var_ids)
 
-    X = sp.random(n, 5, density=0.3, format="csr", dtype=np.float32, random_state=rng)
+    X = sp.random(n, n_vars, density=0.3, format="csr", dtype=np.float32, random_state=rng)
 
     obs = pd.DataFrame(
         {
@@ -103,7 +117,7 @@ def _make_hca_target(path: Path, cell_ids: list[str]) -> Path:
         index=cell_ids,
     )
 
-    var = pd.DataFrame(index=[f"GENE{i}" for i in range(5)])
+    var = pd.DataFrame(index=var_ids)
     adata = ad.AnnData(X=X, obs=obs, var=var)
     adata.uns["title"] = "HCA Test Dataset"
 
@@ -216,6 +230,77 @@ def test_copy_edit_log(cap_source, hca_target):
     assert details["matched_n_obs"] == len(CELL_IDS)
     assert details["match_fraction_of_source"] == pytest.approx(1.0)
     assert details["match_fraction_of_target"] == pytest.approx(1.0)
+    assert details["source_n_vars"] == 5
+    assert details["target_n_vars"] == 5
+    assert details["matched_n_vars"] == 5
+    assert details["match_fraction_of_source_vars"] == pytest.approx(1.0)
+    assert details["match_fraction_of_target_vars"] == pytest.approx(1.0)
+
+
+# --- Var-axis overlap ---
+
+
+def test_var_overlap_source_superset(tmp_path):
+    # Source has GENE0..GENE6 (7), target has GENE0..GENE4 (5). Target ⊂ source.
+    cap = _make_cap_source(
+        tmp_path / "cap_var_super.h5ad",
+        CELL_IDS,
+        var_ids=[f"GENE{i}" for i in range(7)],
+    )
+    target = _make_hca_target(
+        tmp_path / "target_var_sub.h5ad",
+        CELL_IDS,
+        var_ids=[f"GENE{i}" for i in range(5)],
+    )
+    result = copy_cap_annotations(str(cap), str(target))
+    assert "error" not in result
+    assert result["source_n_vars"] == 7
+    assert result["target_n_vars"] == 5
+    assert result["matched_n_vars"] == 5
+    assert result["match_fraction_of_source_vars"] == pytest.approx(5 / 7)
+    assert result["match_fraction_of_target_vars"] == pytest.approx(1.0)
+
+
+def test_var_overlap_target_superset(tmp_path):
+    # Source has GENE0..GENE4 (5), target has GENE0..GENE6 (7). Source ⊂ target.
+    cap = _make_cap_source(
+        tmp_path / "cap_var_sub.h5ad",
+        CELL_IDS,
+        var_ids=[f"GENE{i}" for i in range(5)],
+    )
+    target = _make_hca_target(
+        tmp_path / "target_var_super.h5ad",
+        CELL_IDS,
+        var_ids=[f"GENE{i}" for i in range(7)],
+    )
+    result = copy_cap_annotations(str(cap), str(target))
+    assert "error" not in result
+    assert result["source_n_vars"] == 5
+    assert result["target_n_vars"] == 7
+    assert result["matched_n_vars"] == 5
+    assert result["match_fraction_of_source_vars"] == pytest.approx(1.0)
+    assert result["match_fraction_of_target_vars"] == pytest.approx(5 / 7)
+
+
+def test_var_overlap_disjoint(tmp_path):
+    # No shared genes — copy should still succeed (no gene-overlap floor).
+    cap = _make_cap_source(
+        tmp_path / "cap_var_disjoint.h5ad",
+        CELL_IDS,
+        var_ids=[f"GENE{i}" for i in range(5)],
+    )
+    target = _make_hca_target(
+        tmp_path / "target_var_disjoint.h5ad",
+        CELL_IDS,
+        var_ids=[f"OTHER{i}" for i in range(5)],
+    )
+    result = copy_cap_annotations(str(cap), str(target))
+    assert "error" not in result
+    assert result["source_n_vars"] == 5
+    assert result["target_n_vars"] == 5
+    assert result["matched_n_vars"] == 0
+    assert result["match_fraction_of_source_vars"] == pytest.approx(0.0)
+    assert result["match_fraction_of_target_vars"] == pytest.approx(0.0)
 
 
 # --- Failure cases ---

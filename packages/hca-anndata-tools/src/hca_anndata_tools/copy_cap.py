@@ -84,6 +84,27 @@ def _compute_overlap_stats(
     }
 
 
+def _compute_var_overlap_stats(
+    source_var_set: set[str],
+    target_var_set: set[str],
+) -> dict[str, int | float]:
+    """Count overlap between source and target var (gene) IDs.
+
+    Key names use a `_vars` suffix for symmetry with the `_obs` cell-axis
+    fields, while preserving the existing unsuffixed cell-axis keys.
+    """
+    source_n = len(source_var_set)
+    target_n = len(target_var_set)
+    matched_n = len(source_var_set & target_var_set)
+    return {
+        "source_n_vars": source_n,
+        "target_n_vars": target_n,
+        "matched_n_vars": matched_n,
+        "match_fraction_of_source_vars": matched_n / source_n if source_n else 0.0,
+        "match_fraction_of_target_vars": matched_n / target_n if target_n else 0.0,
+    }
+
+
 def _check_duplicate_ids(index: list[str], label: str) -> str | None:
     """Return an error message if index has duplicates, else None."""
     if len(set(index)) == len(index):
@@ -180,6 +201,10 @@ def copy_cap_annotations(
             idx_key = _decode_bytes(obs_group.attrs.get("_index", "_index"))
             source_index_list = [_decode_bytes(v) for v in obs_group[idx_key][:]]
 
+            var_group = f["var"]
+            var_idx_key = _decode_bytes(var_group.attrs.get("_index", "_index"))
+            source_var_set = {_decode_bytes(v) for v in var_group[var_idx_key][:]}
+
             source_obs_data = {}
             for col in obs_cols_to_copy:
                 item = obs_group[col]
@@ -216,6 +241,10 @@ def copy_cap_annotations(
             idx_key = _decode_bytes(obs_group.attrs.get("_index", "_index"))
             target_index = [_decode_bytes(v) for v in obs_group[idx_key][:]]
 
+            var_group = f["var"]
+            var_idx_key = _decode_bytes(var_group.attrs.get("_index", "_index"))
+            target_var_set = {_decode_bytes(v) for v in var_group[var_idx_key][:]}
+
             uns = f.get("uns")
             target_uns_keys = set(uns.keys()) if uns else set()
             has_provenance_cap = (
@@ -250,6 +279,7 @@ def copy_cap_annotations(
             }
 
         overlap_stats = _compute_overlap_stats(source_index, target_index_set)
+        var_overlap_stats = _compute_var_overlap_stats(source_var_set, target_var_set)
         frac_source = overlap_stats["match_fraction_of_source"]
         frac_target = overlap_stats["match_fraction_of_target"]
         if frac_source < _MIN_OVERLAP_FRACTION or frac_target < _MIN_OVERLAP_FRACTION:
@@ -295,6 +325,7 @@ def copy_cap_annotations(
                 "obs_columns_added": obs_cols_to_copy,
                 "uns_keys_added": uns_keys_added,
                 **overlap_stats,
+                **var_overlap_stats,
             },
         )
 
@@ -385,6 +416,7 @@ def copy_cap_annotations(
             "uns_keys_added": uns_keys_added,
             "marker_gene_validation": marker_validation,
             **overlap_stats,
+            **var_overlap_stats,
         }
 
     except Exception as e:
