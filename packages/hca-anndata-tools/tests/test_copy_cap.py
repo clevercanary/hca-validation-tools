@@ -260,8 +260,8 @@ def test_var_overlap_cap_superset(tmp_path):
     assert genes["n_cap"] == 7
     assert genes["n_hca"] == 5
     assert genes["n_matched"] == 5
-    assert genes["missing_from_hca"] == {"n": 2, "pct": 28.6}
-    assert genes["missing_from_cap"] == {"n": 0, "pct": 0.0}
+    assert genes["missing_from_hca"] == {"n": 2, "pct": pytest.approx(28.6)}
+    assert genes["missing_from_cap"] == {"n": 0, "pct": pytest.approx(0.0)}
 
 
 def test_var_overlap_hca_superset(tmp_path):
@@ -282,8 +282,8 @@ def test_var_overlap_hca_superset(tmp_path):
     assert genes["n_cap"] == 5
     assert genes["n_hca"] == 7
     assert genes["n_matched"] == 5
-    assert genes["missing_from_hca"] == {"n": 0, "pct": 0.0}
-    assert genes["missing_from_cap"] == {"n": 2, "pct": 28.6}
+    assert genes["missing_from_hca"] == {"n": 0, "pct": pytest.approx(0.0)}
+    assert genes["missing_from_cap"] == {"n": 2, "pct": pytest.approx(28.6)}
 
 
 def test_var_overlap_disjoint(tmp_path):
@@ -306,6 +306,21 @@ def test_var_overlap_disjoint(tmp_path):
     assert genes["n_matched"] == 0
     assert genes["missing_from_hca"] == {"n": 5, "pct": pytest.approx(100.0)}
     assert genes["missing_from_cap"] == {"n": 5, "pct": pytest.approx(100.0)}
+
+
+@pytest.mark.filterwarnings("ignore:Variable names are not unique:UserWarning")
+def test_var_overlap_rejects_duplicate_var_ids(cap_source, tmp_path):
+    # Sets silently dedupe — guard against it by reading var as a list and
+    # explicitly rejecting duplicates so n_vars stays accurate.
+    target = _make_hca_target(
+        tmp_path / "target_dup.h5ad",
+        CELL_IDS,
+        var_ids=["GENE0", "GENE1", "GENE1", "GENE2", "GENE3"],
+    )
+    result = copy_cap_annotations(str(cap_source), str(target))
+    assert "error" in result
+    assert "duplicate" in result["error"].lower()
+    assert "Target genes" in result["error"]
 
 
 # --- Failure cases ---

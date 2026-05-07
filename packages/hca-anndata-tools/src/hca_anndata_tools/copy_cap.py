@@ -107,7 +107,7 @@ def _check_duplicate_ids(index: list[str], label: str) -> str | None:
             if len(dupes) >= 5:
                 break
         seen.add(x)
-    return f"{label} has duplicate cell IDs (first 5): {dupes}"
+    return f"{label} has duplicate IDs (first 5): {dupes}"
 
 
 def _get_annotation_sets(source_uns: Mapping[str, Any]) -> list[str]:
@@ -194,7 +194,7 @@ def copy_cap_annotations(
 
             var_group = f["var"]
             var_idx_key = _decode_bytes(var_group.attrs.get("_index", "_index"))
-            source_var_set = {_decode_bytes(v) for v in var_group[var_idx_key][:]}
+            source_var_list = [_decode_bytes(v) for v in var_group[var_idx_key][:]]
 
             source_obs_data = {}
             for col in obs_cols_to_copy:
@@ -218,9 +218,10 @@ def copy_cap_annotations(
             return {"error": "No CAP obs columns found to copy"}
 
         source_index = set(source_index_list)
-        dupe_err = _check_duplicate_ids(source_index_list, "Source")
+        dupe_err = _check_duplicate_ids(source_index_list, "Source") or _check_duplicate_ids(source_var_list, "Source genes")
         if dupe_err:
             return {"error": dupe_err}
+        source_var_set = set(source_var_list)
 
         source_obs_subset = pd.DataFrame(source_obs_data, index=source_index_list)  # pyright: ignore[reportArgumentType]
 
@@ -233,7 +234,7 @@ def copy_cap_annotations(
 
             var_group = f["var"]
             var_idx_key = _decode_bytes(var_group.attrs.get("_index", "_index"))
-            target_var_set = {_decode_bytes(v) for v in var_group[var_idx_key][:]}
+            target_var_list = [_decode_bytes(v) for v in var_group[var_idx_key][:]]
 
             uns = f.get("uns")
             target_uns_keys = set(uns.keys()) if uns else set()
@@ -246,9 +247,10 @@ def copy_cap_annotations(
             raw_log = read_edit_log_h5py(f)
 
         target_index_set = set(target_index)
-        dupe_err = _check_duplicate_ids(target_index, "Target")
+        dupe_err = _check_duplicate_ids(target_index, "Target") or _check_duplicate_ids(target_var_list, "Target genes")
         if dupe_err:
             return {"error": dupe_err}
+        target_var_set = set(target_var_list)
 
         # Detect existing CAP obs columns: any column with "--" separator
         existing_cap_cols = [c for c in target_obs_columns if "--" in c]
@@ -269,18 +271,22 @@ def copy_cap_annotations(
 
         cell_stats = _compute_axis_overlap(source_index, target_index_set)
         gene_stats = _compute_axis_overlap(source_var_set, target_var_set)
-        missing_from_hca_pct = cell_stats["missing_from_hca"]["pct"]
-        missing_from_cap_pct = cell_stats["missing_from_cap"]["pct"]
-        if missing_from_hca_pct > _MAX_MISSING_PCT or missing_from_cap_pct > _MAX_MISSING_PCT:
+        # Compare on raw fractions, not the 1-dp-rounded `pct` in cell_stats —
+        # otherwise 5.04% rounds to 5.0 and slips past the gate.
+        n_cap = cell_stats["n_cap"]
+        n_hca = cell_stats["n_hca"]
+        raw_missing_from_hca_pct = 100.0 * cell_stats["missing_from_hca"]["n"] / n_cap if n_cap else 0.0
+        raw_missing_from_cap_pct = 100.0 * cell_stats["missing_from_cap"]["n"] / n_hca if n_hca else 0.0
+        if raw_missing_from_hca_pct > _MAX_MISSING_PCT or raw_missing_from_cap_pct > _MAX_MISSING_PCT:
             return {
                 "error": (
                     f"Cell ID mismatch over {_MAX_MISSING_PCT:.0f}%: "
-                    f"CAP has {cell_stats['n_cap']}, HCA has {cell_stats['n_hca']}, "
+                    f"CAP has {n_cap}, HCA has {n_hca}, "
                     f"matched {cell_stats['n_matched']} "
                     f"({cell_stats['missing_from_hca']['n']} missing from HCA "
-                    f"= {missing_from_hca_pct:.1f}% of CAP; "
+                    f"= {raw_missing_from_hca_pct:.1f}% of CAP; "
                     f"{cell_stats['missing_from_cap']['n']} missing from CAP "
-                    f"= {missing_from_cap_pct:.1f}% of HCA)"
+                    f"= {raw_missing_from_cap_pct:.1f}% of HCA)"
                 ),
                 "cells": cell_stats,
             }
