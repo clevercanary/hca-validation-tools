@@ -62,25 +62,37 @@ _SKIP_SETS = {"sex", "development_stage", "self_reported_ethnicity"}
 # provenance/cap is handled separately via merge logic.
 _OVERWRITE_UNS_KEYS = set(_UNS_SCHEMA_TOPLEVEL)
 
-# Minimum fraction of source and target cell IDs that must be in the
-# intersection. Applied to both fractions (source-covered and target-covered).
-_MIN_OVERLAP_FRACTION = 0.95
+# Maximum percent (0–100) of cells on either side that may be absent from the
+# other. Applied to both `missing_from_hca.pct` and `missing_from_cap.pct`.
+_MAX_MISSING_PCT = 5.0
 
 
-def _compute_overlap_stats(
-    source_index_set: set[str],
-    target_index_set: set[str],
-) -> dict[str, int | float]:
-    """Count overlap between source and target cell IDs."""
-    source_n = len(source_index_set)
-    target_n = len(target_index_set)
-    matched_n = len(source_index_set & target_index_set)
+def _compute_axis_overlap(cap_ids: set[str], hca_ids: set[str]) -> dict:
+    """Compare CAP and HCA ID sets along one axis (cells or genes).
+
+    Percentages are 0–100, computed as a share of the side the missing IDs
+    came from: `missing_from_hca.pct = 100 * missing_from_hca.n / n_cap`,
+    and symmetrically for `missing_from_cap`. Rounded to one decimal place
+    for readability — exact ratios can be recomputed from the integer
+    counts if a consumer needs them.
+    """
+    n_cap = len(cap_ids)
+    n_hca = len(hca_ids)
+    n_matched = len(cap_ids & hca_ids)
+    n_missing_from_hca = n_cap - n_matched
+    n_missing_from_cap = n_hca - n_matched
     return {
-        "source_n_obs": source_n,
-        "target_n_obs": target_n,
-        "matched_n_obs": matched_n,
-        "match_fraction_of_source": matched_n / source_n if source_n else 0.0,
-        "match_fraction_of_target": matched_n / target_n if target_n else 0.0,
+        "n_cap": n_cap,
+        "n_hca": n_hca,
+        "n_matched": n_matched,
+        "missing_from_hca": {
+            "n": n_missing_from_hca,
+            "pct": round(100.0 * n_missing_from_hca / n_cap, 1) if n_cap else 0.0,
+        },
+        "missing_from_cap": {
+            "n": n_missing_from_cap,
+            "pct": round(100.0 * n_missing_from_cap / n_hca, 1) if n_hca else 0.0,
+        },
     }
 
 
@@ -95,7 +107,7 @@ def _check_duplicate_ids(index: list[str], label: str) -> str | None:
             if len(dupes) >= 5:
                 break
         seen.add(x)
-    return f"{label} has duplicate cell IDs (first 5): {dupes}"
+    return f"{label} have duplicate IDs (first 5): {dupes}"
 
 
 def _get_annotation_sets(source_uns: Mapping[str, Any]) -> list[str]:
@@ -180,6 +192,10 @@ def copy_cap_annotations(
             idx_key = _decode_bytes(obs_group.attrs.get("_index", "_index"))
             source_index_list = [_decode_bytes(v) for v in obs_group[idx_key][:]]
 
+            var_group = f["var"]
+            var_idx_key = _decode_bytes(var_group.attrs.get("_index", "_index"))
+            source_var_list = [_decode_bytes(v) for v in var_group[var_idx_key][:]]
+
             source_obs_data = {}
             for col in obs_cols_to_copy:
                 item = obs_group[col]
@@ -201,11 +217,11 @@ def copy_cap_annotations(
         if not obs_cols_to_copy:
             return {"error": "No CAP obs columns found to copy"}
 
-        source_n_obs = len(source_index_list)
         source_index = set(source_index_list)
-        dupe_err = _check_duplicate_ids(source_index_list, "Source")
+        dupe_err = _check_duplicate_ids(source_index_list, "CAP cells") or _check_duplicate_ids(source_var_list, "CAP genes")
         if dupe_err:
             return {"error": dupe_err}
+        source_var_set = set(source_var_list)
 
         source_obs_subset = pd.DataFrame(source_obs_data, index=source_index_list)  # pyright: ignore[reportArgumentType]
 
@@ -215,6 +231,10 @@ def copy_cap_annotations(
             target_obs_columns = [_decode_bytes(c) for c in obs_group.attrs["column-order"]]
             idx_key = _decode_bytes(obs_group.attrs.get("_index", "_index"))
             target_index = [_decode_bytes(v) for v in obs_group[idx_key][:]]
+
+            var_group = f["var"]
+            var_idx_key = _decode_bytes(var_group.attrs.get("_index", "_index"))
+            target_var_list = [_decode_bytes(v) for v in var_group[var_idx_key][:]]
 
             uns = f.get("uns")
             target_uns_keys = set(uns.keys()) if uns else set()
@@ -226,11 +246,11 @@ def copy_cap_annotations(
             )
             raw_log = read_edit_log_h5py(f)
 
-        target_n_obs = len(target_index)
         target_index_set = set(target_index)
-        dupe_err = _check_duplicate_ids(target_index, "Target")
+        dupe_err = _check_duplicate_ids(target_index, "HCA cells") or _check_duplicate_ids(target_var_list, "HCA genes")
         if dupe_err:
             return {"error": dupe_err}
+        target_var_set = set(target_var_list)
 
         # Detect existing CAP obs columns: any column with "--" separator
         existing_cap_cols = [c for c in target_obs_columns if "--" in c]
@@ -249,19 +269,26 @@ def copy_cap_annotations(
                 )
             }
 
-        overlap_stats = _compute_overlap_stats(source_index, target_index_set)
-        frac_source = overlap_stats["match_fraction_of_source"]
-        frac_target = overlap_stats["match_fraction_of_target"]
-        if frac_source < _MIN_OVERLAP_FRACTION or frac_target < _MIN_OVERLAP_FRACTION:
+        cell_stats = _compute_axis_overlap(source_index, target_index_set)
+        gene_stats = _compute_axis_overlap(source_var_set, target_var_set)
+        # Compare on raw fractions, not the 1-dp-rounded `pct` in cell_stats —
+        # otherwise 5.04% rounds to 5.0 and slips past the gate.
+        n_cap = cell_stats["n_cap"]
+        n_hca = cell_stats["n_hca"]
+        raw_missing_from_hca_pct = 100.0 * cell_stats["missing_from_hca"]["n"] / n_cap if n_cap else 0.0
+        raw_missing_from_cap_pct = 100.0 * cell_stats["missing_from_cap"]["n"] / n_hca if n_hca else 0.0
+        if raw_missing_from_hca_pct > _MAX_MISSING_PCT or raw_missing_from_cap_pct > _MAX_MISSING_PCT:
             return {
                 "error": (
-                    f"Cell ID overlap below {_MIN_OVERLAP_FRACTION:.0%}: "
-                    f"source has {source_n_obs}, target has {target_n_obs}, "
-                    f"matched {overlap_stats['matched_n_obs']} "
-                    f"(source covered {frac_source:.2%}, "
-                    f"target covered {frac_target:.2%})"
+                    f"Cell ID mismatch over {_MAX_MISSING_PCT:.0f}%: "
+                    f"CAP has {n_cap}, HCA has {n_hca}, "
+                    f"matched {cell_stats['n_matched']} "
+                    f"({cell_stats['missing_from_hca']['n']} missing from HCA "
+                    f"= {raw_missing_from_hca_pct:.1f}% of CAP; "
+                    f"{cell_stats['missing_from_cap']['n']} missing from CAP "
+                    f"= {raw_missing_from_cap_pct:.1f}% of HCA)"
                 ),
-                **overlap_stats,
+                "cells": cell_stats,
             }
 
         # --- Step 3: Build aligned temp AnnData ---
@@ -294,7 +321,8 @@ def copy_cap_annotations(
                 "annotation_sets": annotation_sets,
                 "obs_columns_added": obs_cols_to_copy,
                 "uns_keys_added": uns_keys_added,
-                **overlap_stats,
+                "cells": cell_stats,
+                "genes": gene_stats,
             },
         )
 
@@ -384,7 +412,8 @@ def copy_cap_annotations(
             "obs_columns_added": obs_cols_to_copy,
             "uns_keys_added": uns_keys_added,
             "marker_gene_validation": marker_validation,
-            **overlap_stats,
+            "cells": cell_stats,
+            "genes": gene_stats,
         }
 
     except Exception as e:

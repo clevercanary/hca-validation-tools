@@ -41,7 +41,7 @@ Only these are in Bucket A. Nothing else. A row belongs in A only when its preco
 - **`replace_placeholder_values` on `library_preparation_batch`** — only if the column actually contains placeholder values flagged by the validator.
 - **`replace_placeholder_values` on `library_sequencing_run`** — same condition.
 - **`label_h5ad`** — eligible once the file is in HCA layout and prior Bucket A items have run. Populates `var['feature_name']` + `feature_reference` / `feature_biotype` / `feature_length` / `feature_type` from Ensembl IDs via vendored GENCODE (mirrored to `raw.var` when present), writes the eight obs ontology labels (`tissue`, `cell_type`, `assay`, `disease`, `sex`, `organism`, `development_stage`, `self_reported_ethnicity`) from their `_ontology_term_id` counterparts, and writes `obs['observation_joinid']`. Unknown Ensembl IDs yield NaN across the five `feature_*` columns for that row (not an error). Preflight refuses to run if any controlled label column is pre-populated, if `uns['schema_version']` / `uns['schema_reference']` are present, or if any non-human `obs['organism_ontology_term_id']` is present — all of those go to Bucket C below.
-- **`copy_cap_annotations`** — only if the wrangler provided a CAP source file in Step 3. Copies annotation sets + `cellannotation_schema_version` + `cellannotation_metadata` from the source into the target. Partial overlap is allowed: the source and target obs indexes only need to match at ≥95% in both directions (target-covered and source-covered); target rows absent from source get NaN in the new CAP columns. If the overlap is below 95% the tool aborts — treat that as a Bucket B item and bring it back to the wrangler (usually the CAP source is stale or wrong).
+- **`copy_cap_annotations`** — only if the wrangler provided a CAP source file in Step 3. Copies annotation sets + `cellannotation_schema_version` + `cellannotation_metadata` from the source into the target. Partial overlap is allowed: ≤5% of cells may be missing on either side (i.e. `cells.missing_from_hca.pct` and `cells.missing_from_cap.pct` must both be ≤5); HCA rows absent from CAP get NaN in the new CAP columns. If either side exceeds 5% missing the tool aborts — treat that as a Bucket B item and bring it back to the wrangler (usually the CAP source is stale or wrong). Gene-axis overlap is recorded but does not gate the copy: a CAP source with extra genes is fine.
 - **`compress_h5ad`** — when `get_storage_info` shows no HDF5 filter on X's underlying dataset (`X.data.compression` for sparse X, `X.compression` for dense X). If the file is already compressed, the tool safely returns `{skipped: true, reason: ...}` rather than rewriting. Pure compression, no data change.
 
 ### Bucket B — Needs wrangler input (todo — stop and ask)
@@ -99,10 +99,10 @@ Each tool writes a new timestamped file. For most subsequent calls, passing eith
 
 Re-run `view_edit_log` on the final file, then produce a structured report with these sections in order. Also re-run `validate_schema` — but only if `check_schema_type` reports `hca` on the final file. If the file is still CellxGENE (e.g. conversion wasn't approved), skip the validator rerun and note why under "Validator delta" instead of pasting a misleading error list. Use markdown tables; skip any section with no content.
 
-For the Provenance line below, re-run `get_summary` on the final file to fetch its obs columns, then run `get_descriptive_stats` with `columns` set to the intersection of `["donor_id", "sample_id", "library_id", "dataset_id"]` and the final file's obs column names (extract `name` from each `{name, dtype}` object in `get_summary.obs_columns` — it's a list of objects, not plain strings). The intersection avoids erroring on absent columns.
+For the Provenance line below, re-run `get_summary` on the final file to fetch its obs columns, then run `get_descriptive_stats` with `columns` set to the intersection of `["donor_id", "sample_id", "library_id"]` and the final file's obs column names (extract `name` from each `{name, dtype}` object in `get_summary.obs_columns`).
 
 ### Header
-One short paragraph or bullet block with: final file path, shape (`n_obs × n_vars`), `title` from `uns`, schema type (include version only when schema is CellxGENE — HCA is unversioned), X verdict + `raw.X` presence, compression status, `obsm` keys present. Add a **Provenance** line: `N donors · M samples · K libraries · D source datasets` — pulled from `get_descriptive_stats.columns[<col>].unique` for each column (the stats are nested under a `columns` dict keyed by column name). Omit any metric whose column is absent OR whose column is present but unpopulated (`columns[<col>].unique == 0`, equivalently `columns[<col>].n_nan == n_rows`) so an all-NaN column doesn't render as "0 libraries". `dataset_id` is not a schema field (optional integrator convention); absent is normal.
+One short paragraph or bullet block with: final file path, shape (`n_obs × n_vars`), `title` from `uns`, schema type (include version only when schema is CellxGENE — HCA is unversioned), X verdict + `raw.X` presence, compression status, `obsm` keys present. Add a **Provenance** line: `N donors · M samples · K libraries` from `get_descriptive_stats.columns[<col>].unique` for each column. Skip any metric whose column wasn't returned or whose `unique` is 0.
 
 ### Mechanical fixes applied
 
@@ -136,11 +136,16 @@ Pull from the latest `import_cap_annotations` entry's `details`:
 | Metric | Value |
 |---|---|
 | CAP source file | `cap_source_file` |
-| `source_n_obs` | … |
-| `target_n_obs` | … |
-| `matched_n_obs` | … |
-| `match_fraction_of_source` | as % |
-| `match_fraction_of_target` | as % |
+| `cells.n_cap` | … |
+| `cells.n_hca` | … |
+| `cells.n_matched` | … |
+| `cells.missing_from_hca` | `n` (`pct`% of CAP) |
+| `cells.missing_from_cap` | `n` (`pct`% of HCA) |
+| `genes.n_cap` | … |
+| `genes.n_hca` | … |
+| `genes.n_matched` | … |
+| `genes.missing_from_hca` | `n` (`pct`% of CAP) |
+| `genes.missing_from_cap` | `n` (`pct`% of HCA) |
 
 ### CAP marker validation (only if `copy_cap_annotations` ran this session, or a prior `import_cap_annotations` entry is in the edit log)
 
@@ -183,3 +188,7 @@ Leave `Var name` / `Ensembl ID` blank for `not_in_gencode` and `missing_from_var
 | `library_id` NaN (validator error) | Needs real values from source |
 
 Only surface items that are still open — don't re-list anything resolved this session. Omit any of the three sub-tables that have no entries.
+
+## Save the report
+
+After rendering the full session report on screen, use the Write tool to save the same markdown to a file alongside the h5ad. Path: same directory as the input file, basename of the input minus the `.h5ad` extension, then `-curation-report-<YYYY-MM-DD>.md` (use today's date). Example: `/foo/bar/myeloid.h5ad` → `/foo/bar/myeloid-curation-report-2026-05-07.md`. Overwrite if it already exists. After saving, confirm the path back to the user as a single line.
