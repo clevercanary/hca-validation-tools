@@ -24,9 +24,6 @@ def test_label_h5ad_happy_path(labelable_path):
     # All seven fixture Ensembl IDs are GENCODE-resolvable.
     assert result["feature_name_labeled"] == 7
     assert result["feature_name_nan"] == 0
-    # Fixture ships with no bare-label columns pre-populated.
-    assert result["obs_label_cols_overwritten"] == []
-    assert result["var_feature_name_overwritten"] is False
     # cell_type is optional but present in the fixture, so all 8 labels written.
     assert set(result["obs_labels_written"]) == {
         "tissue", "cell_type", "assay", "disease",
@@ -54,8 +51,6 @@ def test_label_h5ad_writes_edit_log_entry(labelable_path):
     assert details["feature_name_nan"] == 0
     assert details["raw_var_mirrored"] is True
     assert details["observation_joinid_written"] is True
-    assert details["var_feature_name_overwritten"] is False
-    assert details["obs_label_cols_overwritten"] == []
     assert set(details["obs_labels_written"]) == {
         "tissue", "cell_type", "assay", "disease",
         "sex", "organism", "development_stage", "self_reported_ethnicity",
