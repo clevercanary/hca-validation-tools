@@ -188,3 +188,7 @@ Leave `Var name` / `Ensembl ID` blank for `not_in_gencode` and `missing_from_var
 | `library_id` NaN (validator error) | Needs real values from source |
 
 Only surface items that are still open — don't re-list anything resolved this session. Omit any of the three sub-tables that have no entries.
+
+## Save the report
+
+After rendering the full session report on screen, use the Write tool to save the same markdown to a file alongside the h5ad. Path: same directory as the input file, basename of the input minus the `.h5ad` extension, then `-curation-report-<YYYY-MM-DD>.md` (use today's date). Example: `/foo/bar/myeloid.h5ad` → `/foo/bar/myeloid-curation-report-2026-05-07.md`. Overwrite if it already exists. After saving, confirm the path back to the user as a single line.

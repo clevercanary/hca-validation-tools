@@ -105,3 +105,7 @@ Summarize entries as a table: `timestamp`, `operation`, one-line `description`. 
 - Prioritized list of next actions, most important first.
 - If `check_schema_type` reported `cellxgene`, the first action is `convert_cellxgene_to_hca`.
 - If the file is HCA-layout and has no `label_h5ad` edit-log entry, recommend running `/curate-h5ad` so `label_h5ad` populates `var['feature_name']` and regenerates the obs ontology labels before CAP handoff or marker-gene validation.
+
+## Save the report
+
+After rendering the full report on screen, use the Write tool to save the same markdown to a file alongside the h5ad. Path: same directory as the input file, basename of the input minus the `.h5ad` extension, then `-evaluation-<YYYY-MM-DD>.md` (use today's date). Example: `/foo/bar/myeloid.h5ad` → `/foo/bar/myeloid-evaluation-2026-05-07.md`. Overwrite if it already exists. After saving, confirm the path back to the user as a single line.
