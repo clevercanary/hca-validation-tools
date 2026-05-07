@@ -6,8 +6,6 @@ from hca_anndata_tools._io import open_h5ad
 from hca_anndata_tools.write import make_edit_entry, resolve_latest, write_h5ad
 from hca_schema_validator import HCA_DERIVED_OBS_LABELS, HCALabeler
 
-_FEATURE_NAME_COL = "feature_name"
-
 
 def label_h5ad(path: str) -> dict:
     """Populate derived HCA labels in var (feature_*) and obs from `_ontology_term_id` columns.
@@ -55,12 +53,7 @@ def label_h5ad(path: str) -> dict:
 
     Returns:
         On success: dict with ``output_path``, ``n_obs``, ``n_vars``,
-        ``feature_name_labeled``, ``feature_name_nan``, ``obs_labels_written``,
-        ``obs_label_cols_overwritten``, ``var_feature_name_overwritten``.
-        ``obs_label_cols_overwritten`` is always ``[]`` and
-        ``var_feature_name_overwritten`` is always ``False`` on success
-        (preflight rejects the file otherwise) — retained for caller
-        compatibility.
+        ``feature_name_labeled``, ``feature_name_nan``, ``obs_labels_written``.
         On failure: ``{"error": ...}``.
     """
     try:
@@ -76,14 +69,10 @@ def label_h5ad(path: str) -> dict:
             n_obs = int(adata.n_obs)
             n_vars = int(adata.n_vars)
 
-            pre_feature_name_set = _FEATURE_NAME_COL in adata.var.columns
-            pre_obs_label_cols = {
-                c for c in HCA_DERIVED_OBS_LABELS if c in adata.obs.columns
-            }
             # cell_type_ontology_term_id is optional per schema — a producer
             # `cell_type` column without a source means the labeler skips the
             # write, so we track source presence to avoid reporting phantom
-            # writes/overwrites.
+            # writes.
             labels_with_source = {
                 c for c in HCA_DERIVED_OBS_LABELS
                 if f"{c}_ontology_term_id" in adata.obs.columns
@@ -104,10 +93,9 @@ def label_h5ad(path: str) -> dict:
                 # tell which one fired.
                 return {"error": f"label_h5ad failed during labeling: {ve}"}
 
-            feature_name_nan = int(adata.var[_FEATURE_NAME_COL].isna().sum())
+            feature_name_nan = int(adata.var["feature_name"].isna().sum())
             feature_name_labeled = n_vars - feature_name_nan
             obs_labels_written = sorted(labels_with_source)
-            obs_label_cols_overwritten = sorted(pre_obs_label_cols & labels_with_source)
 
             entry = make_edit_entry(
                 operation="label_h5ad",
@@ -123,8 +111,6 @@ def label_h5ad(path: str) -> dict:
                     "feature_name_nan": feature_name_nan,
                     "raw_var_mirrored": raw_var_mirrored,
                     "obs_labels_written": obs_labels_written,
-                    "obs_label_cols_overwritten": obs_label_cols_overwritten,
-                    "var_feature_name_overwritten": pre_feature_name_set,
                     "observation_joinid_written": True,
                 },
             )
@@ -141,8 +127,6 @@ def label_h5ad(path: str) -> dict:
             "feature_name_labeled": feature_name_labeled,
             "feature_name_nan": feature_name_nan,
             "obs_labels_written": obs_labels_written,
-            "obs_label_cols_overwritten": obs_label_cols_overwritten,
-            "var_feature_name_overwritten": pre_feature_name_set,
         }
     except Exception as e:
         return {"error": str(e)}
