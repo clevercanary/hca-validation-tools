@@ -114,7 +114,14 @@ See `/curate-h5ad` Step 5 for classification meanings (`not_in_gencode` / `missi
 Then list each error and warning verbatim, one per line. If `error_count` and `warning_count` are both 0, replace the list with a single "No structural cell-annotation issues" line. This is what the dataset-validator service runs at upload time under the `hcaCellAnnotation` key — catching issues here means fewer red-dot surprises in the tracker.
 
 ## 6. Edit history
-Summarize entries as a table: `timestamp`, `operation`, one-line `description`. If absent, note that the file hasn't been edited through `hca-anndata-tools`.
+
+Render every entry returned by `view_edit_log` as a table, oldest first:
+
+| # | Timestamp (UTC) | Operation | Description |
+|---|---|---|---|
+| 1 | 2026-04-21 04:19:10 | `normalize_raw` | Moved raw counts to raw.X and normalized X with normalize_total(target_sum=10000) + log1p |
+
+Format the timestamp as `YYYY-MM-DD HH:MM:SS` (drop the `T` and the fractional seconds and timezone — entries are always UTC). Use the entry's `description` field verbatim. If the file has no edit log, say "No edit history — file hasn't been edited through `hca-anndata-tools`."
 
 ## 7. Summary & recommendations
 - One-line readiness verdict: ready / needs work / not started.
