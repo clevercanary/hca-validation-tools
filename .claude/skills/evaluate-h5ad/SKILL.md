@@ -67,7 +67,7 @@ Flag any uncompressed dataset in a >100 MB file as an issue.
 
 ## 5. CAP annotations
 - Are CAP annotation sets present? If yes, name them and give the cell-label count per set. If no, state that CAP is missing.
-- If `view_edit_log` contains any `import_cap_annotations` entries, render the latest entry's overlap stats as a table (this shows how faithfully CAP aligns to the current cells):
+- If `view_edit_log` contains any `import_cap_annotations` entries, render the latest entry's overlap stats as a table (shows how the CAP source and the current HCA file align on both cells and genes — `n_cap` / `n_hca` are the totals on each side, `n_matched` is the intersection, and the `missing_from_*` rows are the asymmetric gaps with their percent denominators noted):
 
 | Metric | Value |
 |---|---|
