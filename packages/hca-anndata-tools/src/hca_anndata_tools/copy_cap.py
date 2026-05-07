@@ -72,7 +72,9 @@ def _compute_axis_overlap(cap_ids: set[str], hca_ids: set[str]) -> dict:
 
     Percentages are 0–100, computed as a share of the side the missing IDs
     came from: `missing_from_hca.pct = 100 * missing_from_hca.n / n_cap`,
-    and symmetrically for `missing_from_cap`.
+    and symmetrically for `missing_from_cap`. Rounded to one decimal place
+    for readability — exact ratios can be recomputed from the integer
+    counts if a consumer needs them.
     """
     n_cap = len(cap_ids)
     n_hca = len(hca_ids)
@@ -85,11 +87,11 @@ def _compute_axis_overlap(cap_ids: set[str], hca_ids: set[str]) -> dict:
         "n_matched": n_matched,
         "missing_from_hca": {
             "n": n_missing_from_hca,
-            "pct": 100.0 * n_missing_from_hca / n_cap if n_cap else 0.0,
+            "pct": round(100.0 * n_missing_from_hca / n_cap, 1) if n_cap else 0.0,
         },
         "missing_from_cap": {
             "n": n_missing_from_cap,
-            "pct": 100.0 * n_missing_from_cap / n_hca if n_hca else 0.0,
+            "pct": round(100.0 * n_missing_from_cap / n_hca, 1) if n_hca else 0.0,
         },
     }
 
@@ -276,9 +278,9 @@ def copy_cap_annotations(
                     f"CAP has {cell_stats['n_cap']}, HCA has {cell_stats['n_hca']}, "
                     f"matched {cell_stats['n_matched']} "
                     f"({cell_stats['missing_from_hca']['n']} missing from HCA "
-                    f"= {missing_from_hca_pct:.2f}% of CAP; "
+                    f"= {missing_from_hca_pct:.1f}% of CAP; "
                     f"{cell_stats['missing_from_cap']['n']} missing from CAP "
-                    f"= {missing_from_cap_pct:.2f}% of HCA)"
+                    f"= {missing_from_cap_pct:.1f}% of HCA)"
                 ),
                 "cells": cell_stats,
             }

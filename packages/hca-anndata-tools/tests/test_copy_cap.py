@@ -260,8 +260,8 @@ def test_var_overlap_cap_superset(tmp_path):
     assert genes["n_cap"] == 7
     assert genes["n_hca"] == 5
     assert genes["n_matched"] == 5
-    assert genes["missing_from_hca"] == {"n": 2, "pct": pytest.approx(100.0 * 2 / 7)}
-    assert genes["missing_from_cap"] == {"n": 0, "pct": pytest.approx(0.0)}
+    assert genes["missing_from_hca"] == {"n": 2, "pct": 28.6}
+    assert genes["missing_from_cap"] == {"n": 0, "pct": 0.0}
 
 
 def test_var_overlap_hca_superset(tmp_path):
@@ -282,8 +282,8 @@ def test_var_overlap_hca_superset(tmp_path):
     assert genes["n_cap"] == 5
     assert genes["n_hca"] == 7
     assert genes["n_matched"] == 5
-    assert genes["missing_from_hca"] == {"n": 0, "pct": pytest.approx(0.0)}
-    assert genes["missing_from_cap"] == {"n": 2, "pct": pytest.approx(100.0 * 2 / 7)}
+    assert genes["missing_from_hca"] == {"n": 0, "pct": 0.0}
+    assert genes["missing_from_cap"] == {"n": 2, "pct": 28.6}
 
 
 def test_var_overlap_disjoint(tmp_path):
