@@ -101,6 +101,12 @@ Re-run `view_edit_log` on the final file, then produce a structured report with 
 
 For the Provenance line below, re-run `get_summary` on the final file to fetch its obs columns, then run `get_descriptive_stats` with `columns` set to the intersection of `["donor_id", "sample_id", "library_id"]` and the final file's obs column names (extract `name` from each `{name, dtype}` object in `get_summary.obs_columns`).
 
+### Summary
+
+Two or three sentences distilling the session: which Bucket A operations actually ran, the validator delta in one phrase (e.g. "errors went 4 → 2; remaining errors are Bucket C upstream-data issues"), and a one-clause hand-off (e.g. "Bucket B1 awaiting wrangler input on `study_pi`"). Tight prose paragraph, no nested headings.
+
+Then add an **Outstanding issues** bullet list pulled from Buckets B1, B2, and C (one line per item, prefix each line with the bucket label, e.g. `- B1: study_pi unset (validator error)`). This is the up-front highlight for someone reading the saved markdown cold. The full detail with action questions lives in the *Still to do* section near the bottom — keep this list tight: one line per item, no inline tables. If all three buckets are empty, replace the bullet list with a single line: "Outstanding issues: none."
+
 ### Header
 One short paragraph or bullet block with: final file path, shape (`n_obs × n_vars`), `title` from `uns`, schema type (include version only when schema is CellxGENE — HCA is unversioned), X verdict + `raw.X` presence, compression status, `obsm` keys present. Add a **Provenance** line: `N donors · M samples · K libraries` from `get_descriptive_stats.columns[<col>].unique` for each column. Skip any metric whose column wasn't returned or whose `unique` is 0.
 
@@ -188,6 +194,16 @@ Leave `Var name` / `Ensembl ID` blank for `not_in_gencode` and `missing_from_var
 | `library_id` NaN (validator error) | Needs real values from source |
 
 Only surface items that are still open — don't re-list anything resolved this session. Omit any of the three sub-tables that have no entries.
+
+### Edit history
+
+Render every entry returned by the `view_edit_log` call from the top of Step 5 as a table, oldest first:
+
+| # | Timestamp (UTC) | Operation | Description |
+|---|---|---|---|
+| 1 | 2026-04-21 04:19:10 | `normalize_raw` | Moved raw counts to raw.X and normalized X with normalize_total(target_sum=10000) + log1p |
+
+Format the timestamp as `YYYY-MM-DD HH:MM:SS` (drop the `T` and the fractional seconds and timezone — entries are always UTC). Use the entry's `description` field verbatim. If the file has no edit log (no `uns/provenance/edit_history`), say "No edit history — file hasn't been edited through `hca-anndata-tools`."
 
 ## Save the report
 
