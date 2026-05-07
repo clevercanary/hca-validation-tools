@@ -72,11 +72,16 @@ Flag any uncompressed dataset in a >100 MB file as an issue.
 | Metric | Value |
 |---|---|
 | CAP source file | `cap_source_file` |
-| `source_n_obs` | … |
-| `target_n_obs` | … |
-| `matched_n_obs` | … |
-| `match_fraction_of_source` | as % |
-| `match_fraction_of_target` | as % |
+| `cells.n_cap` | … |
+| `cells.n_hca` | … |
+| `cells.n_matched` | … |
+| `cells.missing_from_hca` | `n` (`pct`% of CAP) |
+| `cells.missing_from_cap` | `n` (`pct`% of HCA) |
+| `genes.n_cap` | … |
+| `genes.n_hca` | … |
+| `genes.n_matched` | … |
+| `genes.missing_from_hca` | `n` (`pct`% of CAP) |
+| `genes.missing_from_cap` | `n` (`pct`% of HCA) |
 
 - If `validate_marker_genes` ran (CAP present), render its result. If the tool returned `{error: ...}` (e.g. `organism_ontology_term_id` missing or non-human), report the error as a single line and skip the tables below.
 

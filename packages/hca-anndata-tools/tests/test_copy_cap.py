@@ -225,23 +225,25 @@ def test_copy_edit_log(cap_source, hca_target):
     assert entry["operation"] == "import_cap_annotations"
     details = entry["details"]
     assert "author_cell_type" in details["annotation_sets"]
-    assert details["source_n_obs"] == len(CELL_IDS)
-    assert details["target_n_obs"] == len(CELL_IDS)
-    assert details["matched_n_obs"] == len(CELL_IDS)
-    assert details["match_fraction_of_source"] == pytest.approx(1.0)
-    assert details["match_fraction_of_target"] == pytest.approx(1.0)
-    assert details["source_n_vars"] == 5
-    assert details["target_n_vars"] == 5
-    assert details["matched_n_vars"] == 5
-    assert details["match_fraction_of_source_vars"] == pytest.approx(1.0)
-    assert details["match_fraction_of_target_vars"] == pytest.approx(1.0)
+    cells = details["cells"]
+    assert cells["n_cap"] == len(CELL_IDS)
+    assert cells["n_hca"] == len(CELL_IDS)
+    assert cells["n_matched"] == len(CELL_IDS)
+    assert cells["missing_from_hca"] == {"n": 0, "pct": pytest.approx(0.0)}
+    assert cells["missing_from_cap"] == {"n": 0, "pct": pytest.approx(0.0)}
+    genes = details["genes"]
+    assert genes["n_cap"] == 5
+    assert genes["n_hca"] == 5
+    assert genes["n_matched"] == 5
+    assert genes["missing_from_hca"] == {"n": 0, "pct": pytest.approx(0.0)}
+    assert genes["missing_from_cap"] == {"n": 0, "pct": pytest.approx(0.0)}
 
 
 # --- Var-axis overlap ---
 
 
-def test_var_overlap_source_superset(tmp_path):
-    # Source has GENE0..GENE6 (7), target has GENE0..GENE4 (5). Target ⊂ source.
+def test_var_overlap_cap_superset(tmp_path):
+    # CAP has GENE0..GENE6 (7), HCA has GENE0..GENE4 (5). HCA ⊂ CAP.
     cap = _make_cap_source(
         tmp_path / "cap_var_super.h5ad",
         CELL_IDS,
@@ -254,15 +256,16 @@ def test_var_overlap_source_superset(tmp_path):
     )
     result = copy_cap_annotations(str(cap), str(target))
     assert "error" not in result
-    assert result["source_n_vars"] == 7
-    assert result["target_n_vars"] == 5
-    assert result["matched_n_vars"] == 5
-    assert result["match_fraction_of_source_vars"] == pytest.approx(5 / 7)
-    assert result["match_fraction_of_target_vars"] == pytest.approx(1.0)
+    genes = result["genes"]
+    assert genes["n_cap"] == 7
+    assert genes["n_hca"] == 5
+    assert genes["n_matched"] == 5
+    assert genes["missing_from_hca"] == {"n": 2, "pct": pytest.approx(100.0 * 2 / 7)}
+    assert genes["missing_from_cap"] == {"n": 0, "pct": pytest.approx(0.0)}
 
 
-def test_var_overlap_target_superset(tmp_path):
-    # Source has GENE0..GENE4 (5), target has GENE0..GENE6 (7). Source ⊂ target.
+def test_var_overlap_hca_superset(tmp_path):
+    # CAP has GENE0..GENE4 (5), HCA has GENE0..GENE6 (7). CAP ⊂ HCA.
     cap = _make_cap_source(
         tmp_path / "cap_var_sub.h5ad",
         CELL_IDS,
@@ -275,11 +278,12 @@ def test_var_overlap_target_superset(tmp_path):
     )
     result = copy_cap_annotations(str(cap), str(target))
     assert "error" not in result
-    assert result["source_n_vars"] == 5
-    assert result["target_n_vars"] == 7
-    assert result["matched_n_vars"] == 5
-    assert result["match_fraction_of_source_vars"] == pytest.approx(1.0)
-    assert result["match_fraction_of_target_vars"] == pytest.approx(5 / 7)
+    genes = result["genes"]
+    assert genes["n_cap"] == 5
+    assert genes["n_hca"] == 7
+    assert genes["n_matched"] == 5
+    assert genes["missing_from_hca"] == {"n": 0, "pct": pytest.approx(0.0)}
+    assert genes["missing_from_cap"] == {"n": 2, "pct": pytest.approx(100.0 * 2 / 7)}
 
 
 def test_var_overlap_disjoint(tmp_path):
@@ -296,11 +300,12 @@ def test_var_overlap_disjoint(tmp_path):
     )
     result = copy_cap_annotations(str(cap), str(target))
     assert "error" not in result
-    assert result["source_n_vars"] == 5
-    assert result["target_n_vars"] == 5
-    assert result["matched_n_vars"] == 0
-    assert result["match_fraction_of_source_vars"] == pytest.approx(0.0)
-    assert result["match_fraction_of_target_vars"] == pytest.approx(0.0)
+    genes = result["genes"]
+    assert genes["n_cap"] == 5
+    assert genes["n_hca"] == 5
+    assert genes["n_matched"] == 0
+    assert genes["missing_from_hca"] == {"n": 5, "pct": pytest.approx(100.0)}
+    assert genes["missing_from_cap"] == {"n": 5, "pct": pytest.approx(100.0)}
 
 
 # --- Failure cases ---
@@ -312,31 +317,30 @@ def test_copy_cell_mismatch_fails(cap_source, tmp_path):
     )
     result = copy_cap_annotations(str(cap_source), str(different_cells))
     assert "error" in result
-    assert "overlap" in result["error"].lower()
-    assert result["matched_n_obs"] == 0
+    assert "mismatch" in result["error"].lower()
+    assert result["cells"]["n_matched"] == 0
 
 
-def test_copy_source_uncovered_fails(cap_source, tmp_path):
-    # Target is a strict subset of source (5 of source's 10 cells). Target is
-    # 100% covered but source is only 50% covered — exercises the asymmetric
-    # failure: source-fraction below threshold while target-fraction passes.
+def test_copy_cap_uncovered_fails(cap_source, tmp_path):
+    # HCA is a strict subset of CAP (5 of CAP's 10 cells). HCA is fully covered,
+    # but half of CAP is missing from HCA — exercises the asymmetric failure
+    # where missing_from_hca exceeds the threshold while missing_from_cap is 0.
     subset = _make_hca_target(
         tmp_path / "subset.h5ad", [f"cell_{i}" for i in range(5)]
     )
     result = copy_cap_annotations(str(cap_source), str(subset))
     assert "error" in result
-    assert "overlap" in result["error"].lower()
-    assert result["match_fraction_of_target"] == pytest.approx(1.0)
-    assert result["match_fraction_of_source"] == pytest.approx(0.5)
+    assert "mismatch" in result["error"].lower()
+    assert result["cells"]["missing_from_cap"] == {"n": 0, "pct": pytest.approx(0.0)}
+    assert result["cells"]["missing_from_hca"] == {"n": 5, "pct": pytest.approx(50.0)}
 
 
 def test_copy_partial_overlap_succeeds(tmp_path):
-    # 19/20 target cells present in source → 95% of target covered;
-    # 19/20 source cells present in target (one extra in source) → 95% of source.
-    # Threshold is inclusive, so this should succeed and the missing target
-    # row should end up with NaN in the new CAP columns.
+    # 19/20 HCA cells present in CAP → 5% missing from CAP;
+    # 19/20 CAP cells present in HCA → 5% missing from HCA.
+    # Threshold is inclusive, so this should succeed and the HCA-only row
+    # should end up with NaN in the new CAP columns.
     target_ids = [f"cell_{i}" for i in range(19)] + ["target_only"]
-    # Rebuild a cap_source with 20 cells so both fractions land at 19/20.
     cap_20 = _make_cap_source(
         tmp_path / "cap_20.h5ad", [f"cell_{i}" for i in range(20)]
     )
@@ -345,14 +349,15 @@ def test_copy_partial_overlap_succeeds(tmp_path):
     result = copy_cap_annotations(str(cap_20), str(target))
 
     assert "error" not in result
-    assert result["source_n_obs"] == 20
-    assert result["target_n_obs"] == 20
-    assert result["matched_n_obs"] == 19
-    assert result["match_fraction_of_source"] == pytest.approx(0.95)
-    assert result["match_fraction_of_target"] == pytest.approx(0.95)
+    cells = result["cells"]
+    assert cells["n_cap"] == 20
+    assert cells["n_hca"] == 20
+    assert cells["n_matched"] == 19
+    assert cells["missing_from_hca"] == {"n": 1, "pct": pytest.approx(5.0)}
+    assert cells["missing_from_cap"] == {"n": 1, "pct": pytest.approx(5.0)}
 
     written = ad.read_h5ad(result["output_path"])
-    # Target-only cell should have NaN in a copied categorical CAP column.
+    # HCA-only cell should have NaN in a copied categorical CAP column.
     col = "author_cell_type--cell_ontology_term_id"
     assert col in written.obs.columns
     assert pd.isna(written.obs.loc["target_only", col])
@@ -389,16 +394,16 @@ def test_copy_rejects_non_categorical_source_column(cap_source, hca_target):
 
 
 def test_copy_below_threshold_fails(cap_source, tmp_path):
-    # 9/10 target cells in source → target covered 90%, below 0.95.
+    # 9/10 HCA cells in CAP → 10% missing from CAP, above the 5% ceiling.
     target_ids = [f"cell_{i}" for i in range(9)] + ["target_only"]
     target = _make_hca_target(tmp_path / "target_below.h5ad", target_ids)
 
     result = copy_cap_annotations(str(cap_source), str(target))
 
     assert "error" in result
-    assert "overlap" in result["error"].lower()
-    assert result["matched_n_obs"] == 9
-    assert result["match_fraction_of_target"] == pytest.approx(0.9)
+    assert "mismatch" in result["error"].lower()
+    assert result["cells"]["n_matched"] == 9
+    assert result["cells"]["missing_from_cap"] == {"n": 1, "pct": pytest.approx(10.0)}
 
 
 def test_copy_no_cap_source_fails(hca_target, tmp_path):

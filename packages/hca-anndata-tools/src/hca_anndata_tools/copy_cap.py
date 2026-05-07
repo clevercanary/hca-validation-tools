@@ -62,46 +62,35 @@ _SKIP_SETS = {"sex", "development_stage", "self_reported_ethnicity"}
 # provenance/cap is handled separately via merge logic.
 _OVERWRITE_UNS_KEYS = set(_UNS_SCHEMA_TOPLEVEL)
 
-# Minimum fraction of source and target cell IDs that must be in the
-# intersection. Applied to both fractions (source-covered and target-covered).
-_MIN_OVERLAP_FRACTION = 0.95
+# Maximum percent (0–100) of cells on either side that may be absent from the
+# other. Applied to both `missing_from_hca.pct` and `missing_from_cap.pct`.
+_MAX_MISSING_PCT = 5.0
 
 
-def _compute_overlap_stats(
-    source_index_set: set[str],
-    target_index_set: set[str],
-) -> dict[str, int | float]:
-    """Count overlap between source and target cell IDs."""
-    source_n = len(source_index_set)
-    target_n = len(target_index_set)
-    matched_n = len(source_index_set & target_index_set)
-    return {
-        "source_n_obs": source_n,
-        "target_n_obs": target_n,
-        "matched_n_obs": matched_n,
-        "match_fraction_of_source": matched_n / source_n if source_n else 0.0,
-        "match_fraction_of_target": matched_n / target_n if target_n else 0.0,
-    }
+def _compute_axis_overlap(cap_ids: set[str], hca_ids: set[str]) -> dict:
+    """Compare CAP and HCA ID sets along one axis (cells or genes).
 
-
-def _compute_var_overlap_stats(
-    source_var_set: set[str],
-    target_var_set: set[str],
-) -> dict[str, int | float]:
-    """Count overlap between source and target var (gene) IDs.
-
-    Key names use a `_vars` suffix for symmetry with the `_obs` cell-axis
-    fields, while preserving the existing unsuffixed cell-axis keys.
+    Percentages are 0–100, computed as a share of the side the missing IDs
+    came from: `missing_from_hca.pct = 100 * missing_from_hca.n / n_cap`,
+    and symmetrically for `missing_from_cap`.
     """
-    source_n = len(source_var_set)
-    target_n = len(target_var_set)
-    matched_n = len(source_var_set & target_var_set)
+    n_cap = len(cap_ids)
+    n_hca = len(hca_ids)
+    n_matched = len(cap_ids & hca_ids)
+    n_missing_from_hca = n_cap - n_matched
+    n_missing_from_cap = n_hca - n_matched
     return {
-        "source_n_vars": source_n,
-        "target_n_vars": target_n,
-        "matched_n_vars": matched_n,
-        "match_fraction_of_source_vars": matched_n / source_n if source_n else 0.0,
-        "match_fraction_of_target_vars": matched_n / target_n if target_n else 0.0,
+        "n_cap": n_cap,
+        "n_hca": n_hca,
+        "n_matched": n_matched,
+        "missing_from_hca": {
+            "n": n_missing_from_hca,
+            "pct": 100.0 * n_missing_from_hca / n_cap if n_cap else 0.0,
+        },
+        "missing_from_cap": {
+            "n": n_missing_from_cap,
+            "pct": 100.0 * n_missing_from_cap / n_hca if n_hca else 0.0,
+        },
     }
 
 
@@ -226,7 +215,6 @@ def copy_cap_annotations(
         if not obs_cols_to_copy:
             return {"error": "No CAP obs columns found to copy"}
 
-        source_n_obs = len(source_index_list)
         source_index = set(source_index_list)
         dupe_err = _check_duplicate_ids(source_index_list, "Source")
         if dupe_err:
@@ -255,7 +243,6 @@ def copy_cap_annotations(
             )
             raw_log = read_edit_log_h5py(f)
 
-        target_n_obs = len(target_index)
         target_index_set = set(target_index)
         dupe_err = _check_duplicate_ids(target_index, "Target")
         if dupe_err:
@@ -278,20 +265,22 @@ def copy_cap_annotations(
                 )
             }
 
-        overlap_stats = _compute_overlap_stats(source_index, target_index_set)
-        var_overlap_stats = _compute_var_overlap_stats(source_var_set, target_var_set)
-        frac_source = overlap_stats["match_fraction_of_source"]
-        frac_target = overlap_stats["match_fraction_of_target"]
-        if frac_source < _MIN_OVERLAP_FRACTION or frac_target < _MIN_OVERLAP_FRACTION:
+        cell_stats = _compute_axis_overlap(source_index, target_index_set)
+        gene_stats = _compute_axis_overlap(source_var_set, target_var_set)
+        missing_from_hca_pct = cell_stats["missing_from_hca"]["pct"]
+        missing_from_cap_pct = cell_stats["missing_from_cap"]["pct"]
+        if missing_from_hca_pct > _MAX_MISSING_PCT or missing_from_cap_pct > _MAX_MISSING_PCT:
             return {
                 "error": (
-                    f"Cell ID overlap below {_MIN_OVERLAP_FRACTION:.0%}: "
-                    f"source has {source_n_obs}, target has {target_n_obs}, "
-                    f"matched {overlap_stats['matched_n_obs']} "
-                    f"(source covered {frac_source:.2%}, "
-                    f"target covered {frac_target:.2%})"
+                    f"Cell ID mismatch over {_MAX_MISSING_PCT:.0f}%: "
+                    f"CAP has {cell_stats['n_cap']}, HCA has {cell_stats['n_hca']}, "
+                    f"matched {cell_stats['n_matched']} "
+                    f"({cell_stats['missing_from_hca']['n']} missing from HCA "
+                    f"= {missing_from_hca_pct:.2f}% of CAP; "
+                    f"{cell_stats['missing_from_cap']['n']} missing from CAP "
+                    f"= {missing_from_cap_pct:.2f}% of HCA)"
                 ),
-                **overlap_stats,
+                "cells": cell_stats,
             }
 
         # --- Step 3: Build aligned temp AnnData ---
@@ -324,8 +313,8 @@ def copy_cap_annotations(
                 "annotation_sets": annotation_sets,
                 "obs_columns_added": obs_cols_to_copy,
                 "uns_keys_added": uns_keys_added,
-                **overlap_stats,
-                **var_overlap_stats,
+                "cells": cell_stats,
+                "genes": gene_stats,
             },
         )
 
@@ -415,8 +404,8 @@ def copy_cap_annotations(
             "obs_columns_added": obs_cols_to_copy,
             "uns_keys_added": uns_keys_added,
             "marker_gene_validation": marker_validation,
-            **overlap_stats,
-            **var_overlap_stats,
+            "cells": cell_stats,
+            "genes": gene_stats,
         }
 
     except Exception as e:

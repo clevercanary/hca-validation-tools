@@ -136,11 +136,16 @@ Pull from the latest `import_cap_annotations` entry's `details`:
 | Metric | Value |
 |---|---|
 | CAP source file | `cap_source_file` |
-| `source_n_obs` | … |
-| `target_n_obs` | … |
-| `matched_n_obs` | … |
-| `match_fraction_of_source` | as % |
-| `match_fraction_of_target` | as % |
+| `cells.n_cap` | … |
+| `cells.n_hca` | … |
+| `cells.n_matched` | … |
+| `cells.missing_from_hca` | `n` (`pct`% of CAP) |
+| `cells.missing_from_cap` | `n` (`pct`% of HCA) |
+| `genes.n_cap` | … |
+| `genes.n_hca` | … |
+| `genes.n_matched` | … |
+| `genes.missing_from_hca` | `n` (`pct`% of CAP) |
+| `genes.missing_from_cap` | `n` (`pct`% of HCA) |
 
 ### CAP marker validation (only if `copy_cap_annotations` ran this session, or a prior `import_cap_annotations` entry is in the edit log)
 
