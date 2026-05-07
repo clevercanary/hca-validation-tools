@@ -107,7 +107,7 @@ def _check_duplicate_ids(index: list[str], label: str) -> str | None:
             if len(dupes) >= 5:
                 break
         seen.add(x)
-    return f"{label} has duplicate IDs (first 5): {dupes}"
+    return f"{label} have duplicate IDs (first 5): {dupes}"
 
 
 def _get_annotation_sets(source_uns: Mapping[str, Any]) -> list[str]:
@@ -218,7 +218,7 @@ def copy_cap_annotations(
             return {"error": "No CAP obs columns found to copy"}
 
         source_index = set(source_index_list)
-        dupe_err = _check_duplicate_ids(source_index_list, "Source") or _check_duplicate_ids(source_var_list, "Source genes")
+        dupe_err = _check_duplicate_ids(source_index_list, "CAP cells") or _check_duplicate_ids(source_var_list, "CAP genes")
         if dupe_err:
             return {"error": dupe_err}
         source_var_set = set(source_var_list)
@@ -247,7 +247,7 @@ def copy_cap_annotations(
             raw_log = read_edit_log_h5py(f)
 
         target_index_set = set(target_index)
-        dupe_err = _check_duplicate_ids(target_index, "Target") or _check_duplicate_ids(target_var_list, "Target genes")
+        dupe_err = _check_duplicate_ids(target_index, "HCA cells") or _check_duplicate_ids(target_var_list, "HCA genes")
         if dupe_err:
             return {"error": dupe_err}
         target_var_set = set(target_var_list)

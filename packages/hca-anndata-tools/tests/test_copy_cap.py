@@ -320,7 +320,7 @@ def test_var_overlap_rejects_duplicate_var_ids(cap_source, tmp_path):
     result = copy_cap_annotations(str(cap_source), str(target))
     assert "error" in result
     assert "duplicate" in result["error"].lower()
-    assert "Target genes" in result["error"]
+    assert "HCA genes" in result["error"]
 
 
 # --- Failure cases ---
