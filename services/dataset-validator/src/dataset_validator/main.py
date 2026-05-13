@@ -48,10 +48,6 @@ S3_KEY = 'S3_KEY'
 LOG_LEVEL = 'LOG_LEVEL'
 FILE_ID = 'FILE_ID'
 SNS_TOPIC_ARN = 'SNS_TOPIC_ARN'
-# Optional: when set, the validator writes the full results JSON as a
-# claim-check object to this bucket before publishing SNS. Missing or
-# write-failure → log + skip; SNS publish still runs as today (graceful
-# fallback consistent with the tracker side, hca-atlas-tracker#1254 / #1255).
 VALIDATION_RESULTS_BUCKET = 'VALIDATION_RESULTS_BUCKET'
 AWS_BATCH_JOB_ID = 'AWS_BATCH_JOB_ID'
 AWS_BATCH_JOB_NAME = 'AWS_BATCH_JOB_NAME'
@@ -74,6 +70,9 @@ STATUS_FAILURE = 'failure'
 INTEGRITY_VALID = 'valid'
 INTEGRITY_INVALID = 'invalid'
 INTEGRITY_ERROR = 'error'
+
+# Cross-repo claim-check contract: tracker reads from this same key shape.
+VALIDATION_METADATA_KEY_PREFIX = 'validation-metadata'
 
 
 class JobContextFilter(logging.Filter):
@@ -264,13 +263,10 @@ def write_validation_result_to_s3(message: ValidationMessage, bucket: str) -> bo
     """
     Write the full (un-truncated) validation result JSON to S3 as a claim-check
     object. The tracker fetches this object instead of trusting the size-limited
-    SNS payload — see the claim-check PRD in hca-atlas-tracker.
+    SNS payload.
 
-    Failure (boto3 ClientError, network glitch, anything else) is logged and
-    swallowed. The caller proceeds to publish the inline SNS message regardless,
-    so a write failure here degrades the system to inline-only mode rather than
-    failing the validation job. Same graceful-fallback semantics as the tracker
-    side (hca-atlas-tracker#1254 / #1255).
+    Failure is logged and swallowed; the caller publishes the inline SNS message
+    regardless, degrading to inline-only mode rather than failing the job.
 
     Args:
         message: ValidationMessage with the full results to persist.
@@ -280,7 +276,7 @@ def write_validation_result_to_s3(message: ValidationMessage, bucket: str) -> bo
         True on success, False on any failure (informational only — the caller
         continues either way).
     """
-    key = f"validation-metadata/{message.file_id}/{message.batch_job_id}.json"
+    key = f"{VALIDATION_METADATA_KEY_PREFIX}/{message.file_id}/{message.batch_job_id}.json"
     try:
         # Let boto3 resolve region from the environment/metadata
         s3_client = boto3.client('s3')
@@ -977,10 +973,6 @@ def main() -> int:
         # Clean up work directory (includes downloaded files)
         cleanup_files(work_dir)
 
-        # Optional claim-check write to S3. When VALIDATION_RESULTS_BUCKET is
-        # unset or the write fails, fall through to inline-only SNS — the
-        # tracker side falls back correspondingly (hca-atlas-tracker#1254 /
-        # #1255).
         validation_results_bucket = os.environ.get(VALIDATION_RESULTS_BUCKET)
         if validation_message and validation_results_bucket:
             write_validation_result_to_s3(validation_message, validation_results_bucket)

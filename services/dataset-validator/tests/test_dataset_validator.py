@@ -581,12 +581,11 @@ def test_write_validation_result_to_s3_scenarios(caplog, mock_aws, test_case):
         assert expected_log in caplog.text
 
     if test_case["verify_object"]:
-        expected_key = f"validation-metadata/{message.file_id}/{message.batch_job_id}.json"
+        from dataset_validator.main import VALIDATION_METADATA_KEY_PREFIX
+        expected_key = f"{VALIDATION_METADATA_KEY_PREFIX}/{message.file_id}/{message.batch_job_id}.json"
         response = mock_aws["s3_client"].get_object(Bucket=bucket, Key=expected_key)
         body = response["Body"].read().decode("utf-8")
-        # The S3 object holds the full (un-truncated) JSON.
         assert json.loads(body) == json.loads(message.to_json())
-        # Content-Type is set so any downstream tooling that inspects HEAD knows the shape.
         assert response.get("ContentType") == "application/json"
 
 
