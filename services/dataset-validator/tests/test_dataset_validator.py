@@ -661,7 +661,8 @@ def test_write_validation_result_to_s3_skips_placeholder_ids(
     assert result is False
     assert "Skipping S3 claim check write: placeholder identifiers" in caplog.text
 
-    # Nothing was written — the canonical "unknown/unknown" key must not exist.
+    # Nothing was written: the key built from the placeholder-bearing message
+    # (e.g. "unknown/real-job" or "real-file/unknown") must not exist in S3.
     from botocore.exceptions import ClientError
     from dataset_validator.main import VALIDATION_METADATA_KEY_PREFIX
     with pytest.raises(ClientError):
@@ -1153,26 +1154,39 @@ def test_main_wires_claim_check_and_falls_back_gracefully(
             )
 
 
+@pytest.mark.parametrize("set_real_ids", [
+    pytest.param(False, id="default_placeholder_ids"),
+    pytest.param(True, id="real_ids_from_env"),
+])
 @patch("anndata.io.read_h5ad")
 def test_local_mode_skips_claim_check_write(
-    mock_read_h5ad, caplog, mock_aws, env_manager, tmp_path, capsys
+    mock_read_h5ad, caplog, mock_aws, env_manager, tmp_path, capsys, set_real_ids
 ):
     """Local mode must not write to S3 even when VALIDATION_RESULTS_BUCKET
-    is set — file_id/batch_job_id default to "local" and would collide on
-    a shared key."""
+    is set — whether IDs default to the "local" placeholder OR are
+    explicitly provided via FILE_ID / AWS_BATCH_JOB_ID. Local runs are
+    documented as skipping all S3 interactions."""
     from dataset_validator.main import main, VALIDATION_METADATA_KEY_PREFIX
 
     local_file = str(tmp_path / "test.h5ad")
     Path(local_file).touch()
 
-    env_manager["set"]({
+    env_to_set = {
         "LOCAL_FILE": local_file,
         "VALIDATION_RESULTS_BUCKET": mock_aws["bucket_name"],
         **external_validator_path_vars,
-    })
-    env_manager["clear"](
-        ["S3_BUCKET", "S3_KEY", "FILE_ID", "SNS_TOPIC_ARN", "AWS_BATCH_JOB_ID"]
-    )
+    }
+    real_file_id = "real-local-file-id"
+    real_batch_job_id = "real-local-batch-job-id"
+    if set_real_ids:
+        env_to_set["FILE_ID"] = real_file_id
+        env_to_set["AWS_BATCH_JOB_ID"] = real_batch_job_id
+
+    env_manager["set"](env_to_set)
+    vars_to_clear = ["S3_BUCKET", "S3_KEY", "SNS_TOPIC_ARN"]
+    if not set_real_ids:
+        vars_to_clear += ["FILE_ID", "AWS_BATCH_JOB_ID"]
+    env_manager["clear"](vars_to_clear)
 
     mock_adata = MagicMock()
     mock_read_h5ad.return_value = mock_adata
@@ -1188,14 +1202,20 @@ def test_local_mode_skips_claim_check_write(
         exit_code = main()
 
     assert exit_code == 0
-    assert "S3 claim check write succeeded" not in caplog.text
-    assert "Skipping S3 claim check write: placeholder identifiers" in caplog.text
+    # main()'s `not local_mode` gate skips the call entirely in both
+    # variants, so neither the success log nor the in-function placeholder
+    # log fires.
+    assert "S3 claim check write" not in caplog.text
+    assert "Skipping S3 claim check write" not in caplog.text
+
     from botocore.exceptions import ClientError
-    with pytest.raises(ClientError):
-        mock_aws["s3_client"].get_object(
-            Bucket=mock_aws["bucket_name"],
-            Key=f"{VALIDATION_METADATA_KEY_PREFIX}/local/local.json",
-        )
+    candidate_keys = [
+        f"{VALIDATION_METADATA_KEY_PREFIX}/local/local.json",
+        f"{VALIDATION_METADATA_KEY_PREFIX}/{real_file_id}/{real_batch_job_id}.json",
+    ]
+    for key in candidate_keys:
+        with pytest.raises(ClientError):
+            mock_aws["s3_client"].get_object(Bucket=mock_aws["bucket_name"], Key=key)
     capsys.readouterr()  # drain stdout JSON dump
 
 

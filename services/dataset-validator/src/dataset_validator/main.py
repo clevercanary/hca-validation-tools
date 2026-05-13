@@ -989,8 +989,12 @@ def main() -> int:
         # Clean up work directory (includes downloaded files)
         cleanup_files(work_dir)
 
+        # Skip claim-check writes for local runs even when FILE_ID /
+        # AWS_BATCH_JOB_ID are explicitly set — local mode is documented as
+        # not interacting with S3. The in-function placeholder guard catches
+        # the default-ID case; this skips the real-ID case too.
         validation_results_bucket = os.environ.get(VALIDATION_RESULTS_BUCKET)
-        if validation_message and validation_results_bucket:
+        if validation_message and validation_results_bucket and not local_mode:
             write_validation_result_to_s3(validation_message, validation_results_bucket)
 
         # Publish or print results
