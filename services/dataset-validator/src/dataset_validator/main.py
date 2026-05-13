@@ -48,6 +48,11 @@ S3_KEY = 'S3_KEY'
 LOG_LEVEL = 'LOG_LEVEL'
 FILE_ID = 'FILE_ID'
 SNS_TOPIC_ARN = 'SNS_TOPIC_ARN'
+# Optional: when set, the validator writes the full results JSON as a
+# claim-check object to this bucket before publishing SNS. Missing or
+# write-failure → log + skip; SNS publish still runs as today (graceful
+# fallback consistent with the tracker side, hca-atlas-tracker#1254 / #1255).
+VALIDATION_RESULTS_BUCKET = 'VALIDATION_RESULTS_BUCKET'
 AWS_BATCH_JOB_ID = 'AWS_BATCH_JOB_ID'
 AWS_BATCH_JOB_NAME = 'AWS_BATCH_JOB_NAME'
 AWS_DEFAULT_REGION = 'AWS_DEFAULT_REGION'
@@ -253,6 +258,53 @@ def log_memory_usage(label: str) -> None:
     divisor = 1024 * 1024 if sys.platform == "darwin" else 1024
     peak_mb = ru.ru_maxrss / divisor
     logger.info("Memory [%s]: peak RSS = %.1f MB", label, peak_mb)
+
+
+def write_validation_result_to_s3(message: ValidationMessage, bucket: str) -> bool:
+    """
+    Write the full (un-truncated) validation result JSON to S3 as a claim-check
+    object. The tracker fetches this object instead of trusting the size-limited
+    SNS payload — see the claim-check PRD in hca-atlas-tracker.
+
+    Failure (boto3 ClientError, network glitch, anything else) is logged and
+    swallowed. The caller proceeds to publish the inline SNS message regardless,
+    so a write failure here degrades the system to inline-only mode rather than
+    failing the validation job. Same graceful-fallback semantics as the tracker
+    side (hca-atlas-tracker#1254 / #1255).
+
+    Args:
+        message: ValidationMessage with the full results to persist.
+        bucket: Destination S3 bucket (from VALIDATION_RESULTS_BUCKET env).
+
+    Returns:
+        True on success, False on any failure (informational only — the caller
+        continues either way).
+    """
+    key = f"validation-metadata/{message.file_id}/{message.batch_job_id}.json"
+    try:
+        # Let boto3 resolve region from the environment/metadata
+        s3_client = boto3.client('s3')
+        s3_client.put_object(
+            Bucket=bucket,
+            Key=key,
+            Body=message.to_json().encode('utf-8'),
+            ContentType='application/json',
+        )
+        logger.info("S3 claim check write succeeded for file %s", message.file_id)
+        return True
+    except ClientError as e:
+        error_code = e.response.get('Error', {}).get('Code', 'Unknown')
+        error_message = e.response.get('Error', {}).get('Message', str(e))
+        logger.error(
+            "S3 claim check write failed for file %s [%s]: %s",
+            message.file_id, error_code, error_message,
+        )
+        return False
+    except Exception as e:
+        logger.error(
+            "S3 claim check write failed for file %s: %s", message.file_id, str(e),
+        )
+        return False
 
 
 def publish_validation_result(message: ValidationMessage, sns_topic_arn: str) -> bool:
@@ -924,6 +976,14 @@ def main() -> int:
     finally:
         # Clean up work directory (includes downloaded files)
         cleanup_files(work_dir)
+
+        # Optional claim-check write to S3. When VALIDATION_RESULTS_BUCKET is
+        # unset or the write fails, fall through to inline-only SNS — the
+        # tracker side falls back correspondingly (hca-atlas-tracker#1254 /
+        # #1255).
+        validation_results_bucket = os.environ.get(VALIDATION_RESULTS_BUCKET)
+        if validation_message and validation_results_bucket:
+            write_validation_result_to_s3(validation_message, validation_results_bucket)
 
         # Publish or print results
         sns_topic_arn = env_vars.get('sns_topic_arn')

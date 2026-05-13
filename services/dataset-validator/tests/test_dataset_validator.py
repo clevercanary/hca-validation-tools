@@ -527,6 +527,72 @@ def test_publish_validation_result_scenarios(caplog, mock_aws, test_case):
 @pytest.mark.parametrize("test_case", [
     {
         "name": "success",
+        "description": "S3 claim-check write succeeds and stores the full message body",
+        "use_valid_bucket": True,
+        "expected_result": True,
+        "log_level": logging.INFO,
+        "expected_logs": ["S3 claim check write succeeded for file test-file-123"],
+        "verify_object": True,
+    },
+    {
+        "name": "missing_bucket",
+        "description": "S3 claim-check write fails when the bucket does not exist; SNS publish must still proceed",
+        "use_valid_bucket": False,
+        "expected_result": False,
+        "log_level": logging.ERROR,
+        "expected_logs": ["S3 claim check write failed for file test-file-123"],
+        "verify_object": False,
+    },
+], ids=lambda x: x["name"])
+def test_write_validation_result_to_s3_scenarios(caplog, mock_aws, test_case):
+    """Parameterized test for claim-check S3 write scenarios."""
+    from dataset_validator.main import (
+        write_validation_result_to_s3,
+        ValidationMessage,
+        configure_logging,
+    )
+
+    configure_logging()
+
+    message = ValidationMessage(
+        file_id="test-file-123",
+        status="success",
+        timestamp="2024-01-01T12:00:00Z",
+        bucket="test-bucket",
+        key="test/file.h5ad",
+        batch_job_id="job-123",
+        batch_job_name="test-job",
+        downloaded_sha256="abc123",
+        source_sha256="abc123",
+        integrity_status="valid",
+    )
+
+    bucket = (
+        mock_aws["bucket_name"]
+        if test_case["use_valid_bucket"]
+        else "nonexistent-claim-check-bucket"
+    )
+
+    with caplog.at_level(test_case["log_level"], logger="dataset_validator.main"):
+        result = write_validation_result_to_s3(message, bucket)
+
+    assert result is test_case["expected_result"]
+    for expected_log in test_case["expected_logs"]:
+        assert expected_log in caplog.text
+
+    if test_case["verify_object"]:
+        expected_key = f"validation-metadata/{message.file_id}/{message.batch_job_id}.json"
+        response = mock_aws["s3_client"].get_object(Bucket=bucket, Key=expected_key)
+        body = response["Body"].read().decode("utf-8")
+        # The S3 object holds the full (un-truncated) JSON.
+        assert json.loads(body) == json.loads(message.to_json())
+        # Content-Type is set so any downstream tooling that inspects HEAD knows the shape.
+        assert response.get("ContentType") == "application/json"
+
+
+@pytest.mark.parametrize("test_case", [
+    {
+        "name": "success",
         "description": "Local file mode completes validation, skips S3 and prints JSON to stdout",
         "adata": {
             "obs": {
