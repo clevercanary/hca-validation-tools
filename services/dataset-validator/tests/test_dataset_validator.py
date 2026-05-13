@@ -624,6 +624,53 @@ def test_write_validation_result_to_s3_swallows_non_client_error(caplog):
     assert "simulated network failure" in caplog.text
 
 
+@pytest.mark.parametrize("placeholder_field", ["file_id", "batch_job_id"])
+def test_write_validation_result_to_s3_skips_placeholder_ids(
+    caplog, mock_aws, placeholder_field
+):
+    """Refuse to write when file_id or batch_job_id is a placeholder
+    ("unknown" from env-validation failures, "local" from local mode) —
+    multiple jobs would collide on the same key."""
+    from dataset_validator.main import (
+        write_validation_result_to_s3,
+        ValidationMessage,
+        configure_logging,
+    )
+
+    configure_logging()
+
+    fields = {
+        "file_id": "real-file",
+        "batch_job_id": "real-job",
+    }
+    fields[placeholder_field] = "unknown"
+
+    message = ValidationMessage(
+        file_id=fields["file_id"],
+        status="failure",
+        timestamp="2024-01-01T12:00:00Z",
+        bucket="unknown",
+        key="unknown",
+        batch_job_id=fields["batch_job_id"],
+        batch_job_name=None,
+    )
+
+    with caplog.at_level(logging.INFO, logger="dataset_validator.main"):
+        result = write_validation_result_to_s3(message, mock_aws["bucket_name"])
+
+    assert result is False
+    assert "Skipping S3 claim check write: placeholder identifiers" in caplog.text
+
+    # Nothing was written — the canonical "unknown/unknown" key must not exist.
+    from botocore.exceptions import ClientError
+    from dataset_validator.main import VALIDATION_METADATA_KEY_PREFIX
+    with pytest.raises(ClientError):
+        mock_aws["s3_client"].get_object(
+            Bucket=mock_aws["bucket_name"],
+            Key=f"{VALIDATION_METADATA_KEY_PREFIX}/{message.file_id}/{message.batch_job_id}.json",
+        )
+
+
 @pytest.mark.parametrize("test_case", [
     {
         "name": "success",
@@ -1141,7 +1188,8 @@ def test_local_mode_skips_claim_check_write(
         exit_code = main()
 
     assert exit_code == 0
-    assert "S3 claim check write" not in caplog.text
+    assert "S3 claim check write succeeded" not in caplog.text
+    assert "Skipping S3 claim check write: placeholder identifiers" in caplog.text
     from botocore.exceptions import ClientError
     with pytest.raises(ClientError):
         mock_aws["s3_client"].get_object(
