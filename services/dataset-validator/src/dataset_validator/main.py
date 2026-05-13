@@ -973,8 +973,10 @@ def main() -> int:
         # Clean up work directory (includes downloaded files)
         cleanup_files(work_dir)
 
+        # Local mode uses placeholder file_id/batch_job_id ("local"); writing
+        # those would collide on a shared key and overwrite real results.
         validation_results_bucket = os.environ.get(VALIDATION_RESULTS_BUCKET)
-        if validation_message and validation_results_bucket:
+        if validation_message and validation_results_bucket and not local_mode:
             write_validation_result_to_s3(validation_message, validation_results_bucket)
 
         # Publish or print results

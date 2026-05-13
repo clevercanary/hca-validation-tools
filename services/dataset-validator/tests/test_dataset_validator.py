@@ -589,6 +589,41 @@ def test_write_validation_result_to_s3_scenarios(caplog, mock_aws, test_case):
         assert response.get("ContentType") == "application/json"
 
 
+def test_write_validation_result_to_s3_swallows_non_client_error(caplog):
+    """Non-ClientError exceptions (network glitch, etc.) must not propagate."""
+    from dataset_validator.main import (
+        write_validation_result_to_s3,
+        ValidationMessage,
+        configure_logging,
+    )
+
+    configure_logging()
+
+    message = ValidationMessage(
+        file_id="test-file-999",
+        status="success",
+        timestamp="2024-01-01T12:00:00Z",
+        bucket="test-bucket",
+        key="test/file.h5ad",
+        batch_job_id="job-999",
+        batch_job_name="test-job",
+        downloaded_sha256="abc",
+        source_sha256="abc",
+        integrity_status="valid",
+    )
+
+    fake_s3 = MagicMock()
+    fake_s3.put_object.side_effect = ConnectionError("simulated network failure")
+
+    with patch("dataset_validator.main.boto3.client", return_value=fake_s3):
+        with caplog.at_level(logging.ERROR, logger="dataset_validator.main"):
+            result = write_validation_result_to_s3(message, "any-bucket")
+
+    assert result is False
+    assert "S3 claim check write failed for file test-file-999" in caplog.text
+    assert "simulated network failure" in caplog.text
+
+
 @pytest.mark.parametrize("test_case", [
     {
         "name": "success",
@@ -997,6 +1032,123 @@ def test_end_to_end_validation_scenarios(mock_read_h5ad, caplog, mock_aws, env_m
     
     # Verify SNS message content
     _validate_sns_message(mock_aws, caplog, test_case["expected_sns_message"])
+
+
+@pytest.mark.parametrize("test_case", [
+    {
+        "name": "valid_bucket_writes_and_publishes",
+        "description": "main() writes claim-check to S3 AND publishes SNS",
+        "claim_check_bucket": "test-bucket",  # same as mock_aws bucket
+        "expect_s3_write": True,
+        "expect_claim_check_log": "S3 claim check write succeeded",
+    },
+    {
+        "name": "write_failure_still_publishes",
+        "description": "main() with a bad VALIDATION_RESULTS_BUCKET still publishes SNS (graceful fallback)",
+        "claim_check_bucket": "nonexistent-claim-check-bucket",
+        "expect_s3_write": False,
+        "expect_claim_check_log": "S3 claim check write failed",
+    },
+], ids=lambda x: x["name"])
+@patch("anndata.io.read_h5ad")
+def test_main_wires_claim_check_and_falls_back_gracefully(
+    mock_read_h5ad, caplog, mock_aws, env_manager, test_case
+):
+    """End-to-end: VALIDATION_RESULTS_BUCKET triggers the write in main()'s
+    finally block, and a write failure does NOT block SNS publish."""
+    from dataset_validator.main import main, VALIDATION_METADATA_KEY_PREFIX
+
+    s3_key = "datasets/test.h5ad"
+    file_id = "test-file-claimcheck"
+    batch_job_id = "job-claimcheck"
+    _setup_valid_s3_file(mock_aws["s3_client"], mock_aws["bucket_name"], s3_key)
+
+    env_manager["set"]({
+        "S3_BUCKET": mock_aws["bucket_name"],
+        "S3_KEY": s3_key,
+        "FILE_ID": file_id,
+        "SNS_TOPIC_ARN": mock_aws["topic_arn"],
+        "AWS_BATCH_JOB_ID": batch_job_id,
+        "BATCH_JOB_NAME": "claim-check-test",
+        "VALIDATION_RESULTS_BUCKET": test_case["claim_check_bucket"],
+        **external_validator_path_vars,
+    })
+    env_manager["clear"](["CAP_MOCK_ERROR"])
+
+    mock_adata = MagicMock()
+    mock_read_h5ad.return_value = mock_adata
+    mock_adata.obs = pd.DataFrame({
+        "assay": ["a"], "suspension_type": ["s"],
+        "tissue": ["t"], "disease": ["d"],
+    })
+    mock_adata.uns = {"title": "test"}
+    mock_adata.n_obs = 1
+    mock_adata.n_vars = 1
+
+    with caplog.at_level(logging.INFO, logger="dataset_validator.main"):
+        exit_code = main()
+
+    assert exit_code == 0
+    assert test_case["expect_claim_check_log"] in caplog.text
+    assert "Successfully published SNS message" in caplog.text
+
+    expected_key = f"{VALIDATION_METADATA_KEY_PREFIX}/{file_id}/{batch_job_id}.json"
+    if test_case["expect_s3_write"]:
+        response = mock_aws["s3_client"].get_object(
+            Bucket=mock_aws["bucket_name"], Key=expected_key
+        )
+        assert json.loads(response["Body"].read())["file_id"] == file_id
+    else:
+        from botocore.exceptions import ClientError
+        with pytest.raises(ClientError):
+            mock_aws["s3_client"].get_object(
+                Bucket=mock_aws["bucket_name"], Key=expected_key
+            )
+
+
+@patch("anndata.io.read_h5ad")
+def test_local_mode_skips_claim_check_write(
+    mock_read_h5ad, caplog, mock_aws, env_manager, tmp_path, capsys
+):
+    """Local mode must not write to S3 even when VALIDATION_RESULTS_BUCKET
+    is set — file_id/batch_job_id default to "local" and would collide on
+    a shared key."""
+    from dataset_validator.main import main, VALIDATION_METADATA_KEY_PREFIX
+
+    local_file = str(tmp_path / "test.h5ad")
+    Path(local_file).touch()
+
+    env_manager["set"]({
+        "LOCAL_FILE": local_file,
+        "VALIDATION_RESULTS_BUCKET": mock_aws["bucket_name"],
+        **external_validator_path_vars,
+    })
+    env_manager["clear"](
+        ["S3_BUCKET", "S3_KEY", "FILE_ID", "SNS_TOPIC_ARN", "AWS_BATCH_JOB_ID"]
+    )
+
+    mock_adata = MagicMock()
+    mock_read_h5ad.return_value = mock_adata
+    mock_adata.obs = pd.DataFrame({
+        "assay": ["a"], "suspension_type": ["s"],
+        "tissue": ["t"], "disease": ["d"],
+    })
+    mock_adata.uns = {"title": "test"}
+    mock_adata.n_obs = 1
+    mock_adata.n_vars = 1
+
+    with caplog.at_level(logging.INFO, logger="dataset_validator.main"):
+        exit_code = main()
+
+    assert exit_code == 0
+    assert "S3 claim check write" not in caplog.text
+    from botocore.exceptions import ClientError
+    with pytest.raises(ClientError):
+        mock_aws["s3_client"].get_object(
+            Bucket=mock_aws["bucket_name"],
+            Key=f"{VALIDATION_METADATA_KEY_PREFIX}/local/local.json",
+        )
+    capsys.readouterr()  # drain stdout JSON dump
 
 
 def _get_last_sns_message(sns_backend, topic_arn):
