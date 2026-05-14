@@ -308,9 +308,10 @@ def write_validation_results_to_s3(
     """
     Write the full validation message JSON to S3 as a claim check.
 
-    The tracker reads this object when the inline SNS message has been
-    truncated to fit the SNS 256 KiB limit. Failures here are logged but
-    never raise — the SNS publish is the authoritative pipeline step.
+    The tracker reads this object when possible to avoid using an inline
+    SNS message that may have been truncated to fit the SNS 256 KiB limit.
+    Failures here are logged but never raise — the SNS publish is the
+    authoritative pipeline step.
 
     Args:
         message: ValidationMessage to serialize (untruncated)
