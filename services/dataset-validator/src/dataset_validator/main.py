@@ -48,6 +48,7 @@ def _truncated_marker(retained: int, total: int) -> str:
 # Batch job variables
 S3_BUCKET = 'S3_BUCKET'
 S3_KEY = 'S3_KEY'
+VALIDATION_RESULTS_BUCKET = 'VALIDATION_RESULTS_BUCKET'
 LOG_LEVEL = 'LOG_LEVEL'
 FILE_ID = 'FILE_ID'
 SNS_TOPIC_ARN = 'SNS_TOPIC_ARN'
@@ -745,6 +746,7 @@ def validate_environment() -> tuple[dict[str, str | None], list[str]]:
         'local_file': local_file,
         'bucket': os.environ.get(S3_BUCKET) or ("local" if local_file else None),
         'key': os.environ.get(S3_KEY) or (local_file if local_file else None),
+        'validation_results_bucket': os.environ.get(VALIDATION_RESULTS_BUCKET),
         'file_id': os.environ.get(FILE_ID) or ("local" if local_file else None),
         'sns_topic_arn': os.environ.get(SNS_TOPIC_ARN),
         'batch_job_id': os.environ.get(AWS_BATCH_JOB_ID) or ("local" if local_file else None),
@@ -970,7 +972,7 @@ def main() -> int:
         # Attempt to write full results to S3 as a claim check before SNS.
         # Skipped in local mode (no real bucket) and when env validation
         # never resolved a real bucket/file_id/batch_job_id (early-exit path).
-        s3_bucket = env_vars.get('bucket')
+        s3_bucket = env_vars.get('validation_results_bucket')
         s3_file_id = env_vars.get('file_id')
         s3_batch_job_id = env_vars.get('batch_job_id')
         if (
