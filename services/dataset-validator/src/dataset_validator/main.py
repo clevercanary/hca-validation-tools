@@ -28,7 +28,7 @@ import pandas as pd
 # Somewhat less than the actual value of 256KiB, to make room for small unforeseen deviations
 MAX_SNS_MESSAGE_LENGTH = 250_000
 # S3 prefix under which full validation results are written as a "claim check"
-# the tracker can fall back to when the SNS message has been truncated.
+# the tracker can read from to avoid using a truncated SNS message.
 S3_VALIDATION_METADATA_PREFIX = "validation-metadata"
 # Prefix for the truncation placeholder string. The full marker also embeds
 # the retained-vs-total counts so curators see how many messages were dropped
