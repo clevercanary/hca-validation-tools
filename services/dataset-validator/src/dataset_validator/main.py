@@ -976,13 +976,7 @@ def main() -> int:
         s3_bucket = env_vars.get('validation_results_bucket')
         s3_file_id = env_vars.get('file_id')
         s3_batch_job_id = env_vars.get('batch_job_id')
-        if (
-            validation_message
-            and not local_mode
-            and s3_bucket and s3_bucket != "unknown"
-            and s3_file_id and s3_file_id != "unknown"
-            and s3_batch_job_id and s3_batch_job_id != "unknown"
-        ):
+        if validation_message and not local_mode and s3_bucket and s3_file_id and s3_batch_job_id:
             write_validation_results_to_s3(
                 validation_message, s3_bucket, s3_file_id, s3_batch_job_id
             )
