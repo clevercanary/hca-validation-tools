@@ -40,20 +40,22 @@ def mock_aws():
     
     try:
         with mock_s3(), mock_sns():
-            # Create S3 client and bucket
+            # Create S3 client and buckets
             s3_client = boto3.client('s3', region_name='us-east-1')
             s3_client.create_bucket(Bucket='test-bucket')
-            
+            s3_client.create_bucket(Bucket='test-results-bucket')
+
             # Create SNS client and topic
             sns_client = boto3.client('sns', region_name='us-east-1')
             topic_response = sns_client.create_topic(Name='test-topic')
             topic_arn = topic_response['TopicArn']
-            
+
             yield {
                 's3_client': s3_client,
                 'sns_client': sns_client,
                 'topic_arn': topic_arn,
-                'bucket_name': 'test-bucket'
+                'bucket_name': 'test-bucket',
+                'validation_results_bucket_name': 'test-results-bucket',
             }
     finally:
         # Restore original region
@@ -1024,6 +1026,7 @@ def test_end_to_end_validation_scenarios(mock_read_h5ad, caplog, mock_aws, env_m
     test_env = {
         'S3_BUCKET': mock_aws['bucket_name'],
         'S3_KEY': test_case["s3_key"],
+        'VALIDATION_RESULTS_BUCKET': mock_aws['validation_results_bucket_name'],
         'FILE_ID': test_case["file_id"],
         'SNS_TOPIC_ARN': mock_aws['topic_arn'],
         'AWS_BATCH_JOB_ID': test_case["batch_job_id"],
@@ -1072,13 +1075,55 @@ def test_end_to_end_validation_scenarios(mock_read_h5ad, caplog, mock_aws, env_m
         f"validation-metadata/{test_case['file_id']}/{test_case['batch_job_id']}.json"
     )
     claim_obj = mock_aws['s3_client'].get_object(
-        Bucket=mock_aws['bucket_name'], Key=expected_key
+        Bucket=mock_aws['validation_results_bucket_name'], Key=expected_key
     )
     claim_body = json.loads(claim_obj['Body'].read().decode('utf-8'))
     assert claim_body['file_id'] == test_case['expected_sns_message']['file_id']
     assert claim_body['batch_job_id'] == test_case['expected_sns_message']['batch_job_id']
     assert claim_body['status'] == test_case['expected_sns_message']['status']
     assert "S3 claim check write succeeded" in caplog.text
+
+
+@patch("anndata.io.read_h5ad")
+def test_unset_validation_results_bucket_skips_s3_claim_check(
+    mock_read_h5ad, caplog, mock_aws, env_manager
+):
+    """VALIDATION_RESULTS_BUCKET is optional: when unset, validation still
+    completes successfully but no S3 claim-check write is attempted."""
+    from dataset_validator.main import main
+
+    s3_key = "datasets/test.h5ad"
+    _setup_valid_s3_file(mock_aws['s3_client'], mock_aws['bucket_name'], s3_key)
+
+    env_manager['set']({
+        'S3_BUCKET': mock_aws['bucket_name'],
+        'S3_KEY': s3_key,
+        'FILE_ID': 'test-file-no-results-bucket',
+        'SNS_TOPIC_ARN': mock_aws['topic_arn'],
+        'AWS_BATCH_JOB_ID': 'job-no-results-bucket',
+        **external_validator_path_vars,
+    })
+    env_manager['clear'](['VALIDATION_RESULTS_BUCKET', 'CAP_MOCK_ERROR'])
+
+    mock_adata = MagicMock()
+    mock_read_h5ad.return_value = mock_adata
+    mock_adata.obs = pd.DataFrame({
+        "assay": ["assay-a"],
+        "suspension_type": ["cell"],
+        "tissue": ["lung"],
+        "disease": ["normal"],
+    })
+    mock_adata.uns = {"title": "test"}
+    mock_adata.n_obs = 1
+    mock_adata.n_vars = 10
+
+    with caplog.at_level(logging.INFO, logger="dataset_validator.main"):
+        result = main()
+
+    assert result == 0
+    assert "Validation completed successfully" in caplog.text
+    # Claim-check write must be skipped entirely — no success or failure log.
+    assert "S3 claim check write" not in caplog.text
 
 
 def _get_last_sns_message(sns_backend, topic_arn):
