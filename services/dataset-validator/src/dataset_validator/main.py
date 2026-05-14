@@ -981,8 +981,8 @@ def main() -> int:
         # (tool_reports populated). Crash-failure messages without tool_reports
         # are small, fit inline in SNS, and don't benefit from claim-check;
         # writing one with placeholder IDs ("local"/"unknown") would also
-        # collide on a shared key. Local mode never writes — runs print to
-        # stdout instead.
+        # collide on a shared key. Local mode skips the claim-check write
+        # regardless of whether SNS is configured.
         validation_results_bucket = os.environ.get(VALIDATION_RESULTS_BUCKET)
         if (
             validation_message
