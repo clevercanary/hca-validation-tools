@@ -624,9 +624,10 @@ def test_write_validation_result_to_s3_swallows_non_client_error(caplog):
     assert "simulated network failure" in caplog.text
 
 
+@pytest.mark.parametrize("placeholder_value", ["unknown", "local"])
 @pytest.mark.parametrize("placeholder_field", ["file_id", "batch_job_id"])
 def test_write_validation_result_to_s3_skips_placeholder_ids(
-    caplog, mock_aws, placeholder_field
+    caplog, mock_aws, placeholder_field, placeholder_value
 ):
     """Refuse to write when file_id or batch_job_id is a placeholder
     ("unknown" from env-validation failures, "local" from local mode) —
@@ -643,7 +644,7 @@ def test_write_validation_result_to_s3_skips_placeholder_ids(
         "file_id": "real-file",
         "batch_job_id": "real-job",
     }
-    fields[placeholder_field] = "unknown"
+    fields[placeholder_field] = placeholder_value
 
     message = ValidationMessage(
         file_id=fields["file_id"],
