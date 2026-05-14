@@ -74,12 +74,6 @@ INTEGRITY_ERROR = 'error'
 # Cross-repo claim-check contract: tracker reads from this same key shape.
 VALIDATION_METADATA_KEY_PREFIX = 'validation-metadata'
 
-# Placeholder identifiers that must NOT appear in a claim-check key — they
-# come from local mode (validate_environment) or env-validation failures
-# (create_failure_message) and would cause unrelated jobs to overwrite a
-# shared key.
-CLAIM_CHECK_PLACEHOLDER_IDS = frozenset({'local', 'unknown'})
-
 
 class JobContextFilter(logging.Filter):
     """Inject AWS Batch job context into each log record.
@@ -271,6 +265,10 @@ def write_validation_result_to_s3(message: ValidationMessage, bucket: str) -> bo
     object. The tracker fetches this object instead of trusting the size-limited
     SNS payload.
 
+    The caller is responsible for ensuring this is only invoked for messages
+    representing a completed validation (tool_reports populated) with real
+    identifiers — the function trusts those inputs.
+
     Failure is logged and swallowed; the caller publishes the inline SNS message
     regardless, degrading to inline-only mode rather than failing the job.
 
@@ -279,19 +277,9 @@ def write_validation_result_to_s3(message: ValidationMessage, bucket: str) -> bo
         bucket: Destination S3 bucket (from VALIDATION_RESULTS_BUCKET env).
 
     Returns:
-        True on success, False on any failure or skip (informational only —
-        the caller continues either way).
+        True on success, False on any failure (informational only — the caller
+        continues either way).
     """
-    if (
-        message.file_id in CLAIM_CHECK_PLACEHOLDER_IDS
-        or message.batch_job_id in CLAIM_CHECK_PLACEHOLDER_IDS
-    ):
-        logger.info(
-            "Skipping S3 claim check write: placeholder identifiers "
-            "(file_id=%s, batch_job_id=%s)",
-            message.file_id, message.batch_job_id,
-        )
-        return False
     key = f"{VALIDATION_METADATA_KEY_PREFIX}/{message.file_id}/{message.batch_job_id}.json"
     try:
         # Let boto3 resolve region from the environment/metadata
@@ -989,12 +977,19 @@ def main() -> int:
         # Clean up work directory (includes downloaded files)
         cleanup_files(work_dir)
 
-        # Skip claim-check writes for local runs even when FILE_ID /
-        # AWS_BATCH_JOB_ID are explicitly set — local mode is documented as
-        # not interacting with S3. The in-function placeholder guard catches
-        # the default-ID case; this skips the real-ID case too.
+        # Claim-check only when the validation process actually completed
+        # (tool_reports populated). Crash-failure messages without tool_reports
+        # are small, fit inline in SNS, and don't benefit from claim-check;
+        # writing one with placeholder IDs ("local"/"unknown") would also
+        # collide on a shared key. Local mode never writes — runs print to
+        # stdout instead.
         validation_results_bucket = os.environ.get(VALIDATION_RESULTS_BUCKET)
-        if validation_message and validation_results_bucket and not local_mode:
+        if (
+            validation_message
+            and validation_message.tool_reports is not None
+            and validation_results_bucket
+            and not local_mode
+        ):
             write_validation_result_to_s3(validation_message, validation_results_bucket)
 
         # Publish or print results

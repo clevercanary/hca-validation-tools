@@ -624,53 +624,6 @@ def test_write_validation_result_to_s3_swallows_non_client_error(caplog):
     assert "simulated network failure" in caplog.text
 
 
-@pytest.mark.parametrize("placeholder_value", ["unknown", "local"])
-@pytest.mark.parametrize("placeholder_field", ["file_id", "batch_job_id"])
-def test_write_validation_result_to_s3_skips_placeholder_ids(
-    caplog, mock_aws, placeholder_field, placeholder_value
-):
-    """Refuse to write when file_id or batch_job_id is a placeholder
-    ("unknown" from env-validation failures, "local" from local mode) —
-    multiple jobs would collide on the same key."""
-    from dataset_validator.main import (
-        write_validation_result_to_s3,
-        ValidationMessage,
-        configure_logging,
-    )
-
-    configure_logging()
-
-    fields = {
-        "file_id": "real-file",
-        "batch_job_id": "real-job",
-    }
-    fields[placeholder_field] = placeholder_value
-
-    message = ValidationMessage(
-        file_id=fields["file_id"],
-        status="failure",
-        timestamp="2024-01-01T12:00:00Z",
-        bucket="unknown",
-        key="unknown",
-        batch_job_id=fields["batch_job_id"],
-        batch_job_name=None,
-    )
-
-    with caplog.at_level(logging.INFO, logger="dataset_validator.main"):
-        result = write_validation_result_to_s3(message, mock_aws["bucket_name"])
-
-    assert result is False
-    assert "Skipping S3 claim check write: placeholder identifiers" in caplog.text
-
-    # Nothing was written: the key built from the placeholder-bearing message
-    # (e.g. "unknown/real-job" or "real-file/unknown") must not exist in S3.
-    from botocore.exceptions import ClientError
-    from dataset_validator.main import VALIDATION_METADATA_KEY_PREFIX
-    with pytest.raises(ClientError):
-        mock_aws["s3_client"].get_object(
-            Bucket=mock_aws["bucket_name"],
-            Key=f"{VALIDATION_METADATA_KEY_PREFIX}/{message.file_id}/{message.batch_job_id}.json",
-        )
 
 
 @pytest.mark.parametrize("test_case", [
@@ -1153,6 +1106,46 @@ def test_main_wires_claim_check_and_falls_back_gracefully(
             mock_aws["s3_client"].get_object(
                 Bucket=mock_aws["bucket_name"], Key=expected_key
             )
+
+
+def test_main_skips_claim_check_when_validation_crashed(caplog, mock_aws, env_manager):
+    """When the process crashes before the validators run (e.g. S3 download
+    fails), the resulting message has tool_reports=None and is small enough
+    to fit inline in SNS. The claim-check write should be skipped — it
+    would add no value and require placeholder data we don't have."""
+    from dataset_validator.main import main, VALIDATION_METADATA_KEY_PREFIX
+
+    file_id = "test-file-crash"
+    batch_job_id = "job-crash"
+
+    env_manager["set"]({
+        "S3_BUCKET": mock_aws["bucket_name"],
+        "S3_KEY": "datasets/does-not-exist.h5ad",  # forces download failure
+        "FILE_ID": file_id,
+        "SNS_TOPIC_ARN": mock_aws["topic_arn"],
+        "AWS_BATCH_JOB_ID": batch_job_id,
+        "BATCH_JOB_NAME": "crash-test",
+        "VALIDATION_RESULTS_BUCKET": mock_aws["bucket_name"],
+        **external_validator_path_vars,
+    })
+    env_manager["clear"](["CAP_MOCK_ERROR"])
+
+    with caplog.at_level(logging.INFO, logger="dataset_validator.main"):
+        exit_code = main()
+
+    assert exit_code == 1
+    assert "S3 download failed" in caplog.text
+    # SNS message still published (graceful crash path).
+    assert "Successfully published SNS message" in caplog.text
+    # No claim-check write attempted.
+    assert "S3 claim check write" not in caplog.text
+
+    from botocore.exceptions import ClientError
+    with pytest.raises(ClientError):
+        mock_aws["s3_client"].get_object(
+            Bucket=mock_aws["bucket_name"],
+            Key=f"{VALIDATION_METADATA_KEY_PREFIX}/{file_id}/{batch_job_id}.json",
+        )
 
 
 @pytest.mark.parametrize("set_real_ids", [
