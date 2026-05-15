@@ -847,6 +847,7 @@ def main() -> int:
         bucket = env_vars['bucket']
         key = env_vars['key']
         batch_job_id = env_vars['batch_job_id']
+        # TODO: this check is redundant; see issue 399
         if file_id is None or bucket is None or key is None or batch_job_id is None:
             raise RuntimeError("Required env vars unexpectedly None after missing_vars check")
 
