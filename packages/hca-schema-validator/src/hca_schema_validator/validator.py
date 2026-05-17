@@ -134,18 +134,18 @@ class HCAValidator(Validator):
         Missing optional columns produce no warning or error.
 
         For obs, the base class's per-column sanity loop is restricted to
-        schema-defined columns by temporarily filtering ``self.adata.obs``
-        before delegating. Curator-added extras (e.g. ``barcode``,
-        ``original_cell_type``) and HCA fields whose only definition is in
-        the LinkML entity schemas are skipped, preventing zero-observation
-        warnings and other type checks from amplifying on columns the h5ad
-        validator has no rules for. The original obs is restored in
-        ``finally``.
+        schema-defined columns. Curator-added extras (e.g. ``barcode``,
+        ``original_cell_type``) and HCA fields defined only in the LinkML
+        entity schemas are skipped, preventing zero-observation warnings
+        and other type checks from amplifying on columns the h5ad validator
+        has no rules for.
         """
         df_definition = self.schema_def["components"].get(df_name, {})
         if "columns" not in df_definition:
             return super()._validate_dataframe(df_name)
 
+        # Capture the full schema column set before requirement_level
+        # extraction below strips optional / strongly_recommended entries.
         schema_columns = set(df_definition["columns"].keys())
 
         # Extract optional and strongly_recommended columns before base class sees them
@@ -161,14 +161,14 @@ class HCAValidator(Validator):
                 sr_columns[col_name] = col_def
                 del df_definition["columns"][col_name]
 
-        # For obs, replace the dataframe with a schema-columns-only view so
-        # the vendored per-column sanity loop ignores curator extras /
-        # non-schema fields. ``original_obs`` doubles as the "did we mutate?"
-        # sentinel and the saved value for restoration in ``finally``.
+        # For obs, filter to schema columns so the vendored per-column
+        # sanity loop ignores curator extras. ``original_obs`` is both the
+        # restore value and the "did we mutate?" sentinel; only set when
+        # the obs actually has non-schema columns to drop.
         original_obs = None
         if df_name == "obs":
             current_obs = getattr_anndata(self.adata, "obs")
-            if current_obs is not None and not set(current_obs.columns).issubset(schema_columns):
+            if current_obs is not None and set(current_obs.columns) - schema_columns:
                 original_obs = current_obs
 
         # Base class validates only required columns
