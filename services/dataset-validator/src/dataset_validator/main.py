@@ -27,6 +27,9 @@ import pandas as pd
 
 # Somewhat less than the actual value of 256KiB, to make room for small unforeseen deviations
 MAX_SNS_MESSAGE_LENGTH = 250_000
+# S3 prefix under which full validation results are written as a "claim check"
+# the tracker can read from to avoid using a truncated SNS message.
+S3_VALIDATION_METADATA_PREFIX = "validation-metadata"
 # Prefix for the truncation placeholder string. The full marker also embeds
 # the retained-vs-total counts so curators see how many messages were dropped
 # even when binary-search collapses to zero retained — see _truncated_marker.
@@ -45,6 +48,7 @@ def _truncated_marker(retained: int, total: int) -> str:
 # Batch job variables
 S3_BUCKET = 'S3_BUCKET'
 S3_KEY = 'S3_KEY'
+VALIDATION_RESULTS_BUCKET = 'VALIDATION_RESULTS_BUCKET'
 LOG_LEVEL = 'LOG_LEVEL'
 FILE_ID = 'FILE_ID'
 SNS_TOPIC_ARN = 'SNS_TOPIC_ARN'
@@ -292,6 +296,46 @@ def publish_validation_result(message: ValidationMessage, sns_topic_arn: str) ->
         
     except Exception as e:
         logger.error("Unexpected error publishing to SNS: %s", str(e))
+        return False
+
+
+def write_validation_results_to_s3(
+    message: ValidationMessage,
+    bucket: str,
+    file_id: str,
+    batch_job_id: str,
+) -> bool:
+    """
+    Write the full validation message JSON to S3 as a claim check.
+
+    The tracker reads this object when possible to avoid using an inline
+    SNS message that may have been truncated to fit the SNS 256 KiB limit.
+    Failures here are logged but never raise — the SNS publish is the
+    authoritative pipeline step.
+
+    Args:
+        message: ValidationMessage to serialize (untruncated)
+        bucket: S3 bucket (reuses the data bucket the input file came from)
+        file_id: Tracker file UUID, used in the key
+        batch_job_id: AWS Batch job ID, used in the key so each run gets a
+            distinct object
+
+    Returns:
+        True if the write succeeded, False otherwise.
+    """
+    key = f"{S3_VALIDATION_METADATA_PREFIX}/{file_id}/{batch_job_id}.json"
+    try:
+        s3_client = boto3.client('s3')
+        s3_client.put_object(
+            Bucket=bucket,
+            Key=key,
+            Body=message.to_json().encode('utf-8'),
+            ContentType='application/json',
+        )
+        logger.info("S3 claim check write succeeded for file %s", file_id)
+        return True
+    except Exception as e:
+        logger.error("S3 claim check write failed for file %s: %s", file_id, e)
         return False
 
 
@@ -703,6 +747,7 @@ def validate_environment() -> tuple[dict[str, str | None], list[str]]:
         'local_file': local_file,
         'bucket': os.environ.get(S3_BUCKET) or ("local" if local_file else None),
         'key': os.environ.get(S3_KEY) or (local_file if local_file else None),
+        'validation_results_bucket': os.environ.get(VALIDATION_RESULTS_BUCKET),
         'file_id': os.environ.get(FILE_ID) or ("local" if local_file else None),
         'sns_topic_arn': os.environ.get(SNS_TOPIC_ARN),
         'batch_job_id': os.environ.get(AWS_BATCH_JOB_ID) or ("local" if local_file else None),
@@ -802,6 +847,7 @@ def main() -> int:
         bucket = env_vars['bucket']
         key = env_vars['key']
         batch_job_id = env_vars['batch_job_id']
+        # TODO: this check is redundant; see issue 399
         if file_id is None or bucket is None or key is None or batch_job_id is None:
             raise RuntimeError("Required env vars unexpectedly None after missing_vars check")
 
@@ -924,6 +970,17 @@ def main() -> int:
     finally:
         # Clean up work directory (includes downloaded files)
         cleanup_files(work_dir)
+
+        # Attempt to write full results to S3 as a claim check before SNS.
+        # Skipped in local mode (no real bucket) and when env validation
+        # never resolved a real bucket/file_id/batch_job_id (early-exit path).
+        s3_bucket = env_vars.get('validation_results_bucket')
+        s3_file_id = env_vars.get('file_id')
+        s3_batch_job_id = env_vars.get('batch_job_id')
+        if validation_message and not local_mode and s3_bucket and s3_file_id and s3_batch_job_id:
+            write_validation_results_to_s3(
+                validation_message, s3_bucket, s3_file_id, s3_batch_job_id
+            )
 
         # Publish or print results
         sns_topic_arn = env_vars.get('sns_topic_arn')
