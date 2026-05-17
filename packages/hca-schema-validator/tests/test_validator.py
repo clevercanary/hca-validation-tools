@@ -891,6 +891,60 @@ def test_raw_validation_runs_despite_unrelated_errors():
     )
 
 
+def test_non_schema_obs_column_with_unused_categories_is_skipped():
+    """Non-schema obs columns are excluded from the vendored per-column sanity
+    loop. A curator-extra column with many unused Categorical levels would
+    otherwise generate one warning per unused level (#400).
+    """
+    from .fixtures.hca_fixtures import adata
+
+    modified = adata.copy()
+    # Curator-added column carrying unused Categorical levels. If the gating
+    # is not in effect the vendored loop emits one "zero observations"
+    # warning per unused category; with #400 the column is skipped entirely.
+    modified.obs["barcode"] = pd.Categorical(
+        ["AAAA"] * modified.n_obs,
+        categories=["AAAA"] + [f"UNUSED_{i}" for i in range(100)],
+    )
+
+    _, validator = _validate_from_fixture(modified)
+
+    barcode_messages = [
+        m for m in (validator.warnings + validator.errors) if "barcode" in m
+    ]
+    assert barcode_messages == [], (
+        f"Expected no validator messages about non-schema 'barcode' column; got: {barcode_messages}"
+    )
+
+
+def test_schema_obs_column_with_unused_categories_still_warns():
+    """Schema-defined obs columns are still subject to the vendored per-column
+    sanity loop. Regression check that #400 didn't accidentally suppress
+    warnings on legitimate schema columns.
+    """
+    from .fixtures.hca_fixtures import adata
+
+    modified = adata.copy()
+    # sample_id is a schema-defined obs column. Replace it with a Categorical
+    # carrying a real value plus several unused levels.
+    real_values = list(modified.obs["sample_id"])
+    modified.obs["sample_id"] = pd.Categorical(
+        real_values,
+        categories=list(set(real_values)) + [f"UNUSED_SAMPLE_{i}" for i in range(3)],
+    )
+
+    _, validator = _validate_from_fixture(modified)
+
+    sample_id_zero_obs = [
+        w for w in validator.warnings
+        if "sample_id" in w and "zero observations" in w
+    ]
+    assert len(sample_id_zero_obs) >= 1, (
+        f"Expected at least one zero-observation warning for schema column 'sample_id'; "
+        f"got warnings: {validator.warnings}"
+    )
+
+
 class TestCLOntologyOverlay:
     """Tests that the CL ontology overlay includes newer salivary gland cell types."""
 
