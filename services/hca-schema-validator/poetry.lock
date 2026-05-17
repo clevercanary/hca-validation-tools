@@ -509,14 +509,14 @@ numpy = ">=1.21.2"
 
 [[package]]
 name = "hca-schema-validator"
-version = "0.12.0"
+version = "0.12.1"
 description = "HCA schema validation for single-cell datasets"
 optional = false
 python-versions = "<4.0,>=3.10"
 groups = ["main"]
 files = [
-    {file = "hca_schema_validator-0.12.0-py3-none-any.whl", hash = "sha256:e26db3996c899a3d057098fe99766c3ed85397ea1542c4d6fa3a6485a6b82942"},
-    {file = "hca_schema_validator-0.12.0.tar.gz", hash = "sha256:3d358db9f59beec972edd8d2c3c167e659980a578caefa8b1565c2b4d6d90fd2"},
+    {file = "hca_schema_validator-0.12.1-py3-none-any.whl", hash = "sha256:e2856e256808a54222c3c0f9c3976f335fe3ce9048f045febf634fde2a0eb883"},
+    {file = "hca_schema_validator-0.12.1.tar.gz", hash = "sha256:7993d7cf74b0648cfbd8e654cf042440ad4ee517453358d7355457ab2e7f003e"},
 ]
 
 [package.dependencies]
@@ -2099,4 +2099,4 @@ cffi = ["cffi (>=1.17,<2.0) ; platform_python_implementation != \"PyPy\" and pyt
 [metadata]
 lock-version = "2.1"
 python-versions = "~=3.11"
-content-hash = "86cc191057923822994acbb7cd2cc429dccb97ead9a47c0f795f4ccf379e5904"
+content-hash = "4671dc1492d55e87076b4458a1b717467cf335e3584420ac2cc343b424649fd7"
