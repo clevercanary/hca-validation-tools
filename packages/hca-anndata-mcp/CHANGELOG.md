@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.1](https://github.com/clevercanary/hca-validation-tools/compare/hca-anndata-mcp-v0.5.0...hca-anndata-mcp-v0.5.1) (2026-05-17)
+
+
+### Miscellaneous Chores
+
+* **mcp/label:** drop vestigial obs_label_cols_overwritten / var_feature_name_overwritten ([#395](https://github.com/clevercanary/hca-validation-tools/issues/395)) ([4b869cd](https://github.com/clevercanary/hca-validation-tools/commit/4b869cd5f7c56baf9afb32b64cba2eeb0b7702e9))
+
 ## [0.5.0](https://github.com/clevercanary/hca-validation-tools/compare/hca-anndata-mcp-v0.4.1...hca-anndata-mcp-v0.5.0) (2026-04-24)
 
 

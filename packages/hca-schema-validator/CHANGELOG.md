@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.1](https://github.com/clevercanary/hca-validation-tools/compare/hca-schema-validator-v0.12.0...hca-schema-validator-v0.12.1) (2026-05-17)
+
+
+### Bug Fixes
+
+* **hca-schema-validator:** gate _validate_dataframe per-column sanity loop to schema-defined obs columns ([#400](https://github.com/clevercanary/hca-validation-tools/issues/400)) ([#402](https://github.com/clevercanary/hca-validation-tools/issues/402)) ([134c5ac](https://github.com/clevercanary/hca-validation-tools/commit/134c5ac7c6ddb80ffc7320c315d3b53c3d5e651b))
+
 ## [0.12.0](https://github.com/clevercanary/hca-validation-tools/compare/hca-schema-validator-v0.11.0...hca-schema-validator-v0.12.0) (2026-04-24)
 
 
