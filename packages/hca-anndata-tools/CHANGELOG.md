@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/clevercanary/hca-validation-tools/compare/hca-anndata-tools-v0.4.0...hca-anndata-tools-v0.5.0) (2026-05-17)
+
+
+### Features
+
+* copy_cap_annotations overlap stats — gene axis + CAP/HCA reshape; persist skill reports ([#391](https://github.com/clevercanary/hca-validation-tools/issues/391)) ([18aeeac](https://github.com/clevercanary/hca-validation-tools/commit/18aeeac1a2aa7b6a7997c721b75fe3e338075a00))
+
 ## [0.4.0](https://github.com/clevercanary/hca-validation-tools/compare/hca-anndata-tools-v0.3.1...hca-anndata-tools-v0.4.0) (2026-04-22)
 
 
