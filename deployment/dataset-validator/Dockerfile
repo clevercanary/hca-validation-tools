@@ -66,6 +66,9 @@ ENV HCA_SCHEMA_VALIDATOR_SCRIPT="/app/hca_schema_validator/main.py"
 ENV HCA_CELL_ANNOTATION_VALIDATOR_SCRIPT="/app/hca_schema_validator/cell_annotation.py"
 # CAP validator script runs in the main venv (no separate venv needed)
 ENV CAP_VALIDATOR_SCRIPT="/app/dataset_validator/cap_validator_script.py"
+# Put /app on sys.path so `import hca_validation.*` resolves (the entrypoint
+# script sets sys.path[0] to its own directory, not /app).
+ENV PYTHONPATH="/app"
 
 # Copy application code
 COPY services/dataset-validator/src/dataset_validator/ /app/dataset_validator/
