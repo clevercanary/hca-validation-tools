@@ -3,7 +3,6 @@ import time
 import pytest
 import subprocess
 import tempfile
-import json
 from pathlib import Path
 
 
@@ -109,7 +108,67 @@ def test_docker_container_file_structure(dataset_validator_container):
         dataset_validator_container,
         "-la", "/app/dataset_validator/"
     ], capture_output=True, text=True, timeout=30)
-    
+
     assert result.returncode == 0
     assert "main.py" in result.stdout
     assert "__init__.py" in result.stdout or "__pycache__" in result.stdout
+
+
+def test_docker_metadata_coverage_schema_loads(dataset_validator_container):
+    """Verify the metadata_coverage module + LinkML schema YAMLs resolve inside
+    the container. Catches gaps the unit tests miss because they run in the dev
+    venv: missing schema/*.yaml files in /app/hca_validation/, missing
+    linkml_runtime in the main venv, etc.
+    """
+    result = subprocess.run([
+        "docker", "run", "--rm", "--entrypoint", "python",
+        dataset_validator_container,
+        "-c",
+        "from hca_validation.metadata_coverage import compute_metadata_coverage, SCHEMA_NAME; "
+        "from hca_validation.schema_utils import load_schemaview, coverage_classes; "
+        "sv = load_schemaview(); "
+        "print(f'{SCHEMA_NAME}|{sv.schema.version}|{\",\".join(coverage_classes(sv))}')"
+    ], capture_output=True, text=True, timeout=30)
+
+    assert result.returncode == 0, f"stderr: {result.stderr}"
+    schema_name, version, classes = result.stdout.strip().split("|")
+    assert schema_name == "tier_1"
+    assert version  # version pulled from LinkML schema
+    assert set(classes.split(",")) >= {"Dataset", "Donor", "Sample"}
+
+
+def test_docker_subprocess_validator_imports_resolve(dataset_validator_container):
+    """The HCA schema validator runs in a separate venv invoked as a script
+    subprocess by the dataset-validator. Its top-level `from hca_schema_validator
+    import HCAValidator` must resolve to the installed PyPI package, NOT to a
+    sibling /app/hca_schema_validator/ wrapper dir.
+
+    Regression guard for two PYTHONPATH bugs we hit on dev:
+      1. PYTHONPATH=/app exposing /app/hca_schema_validator/ as the package.
+      2. PYTHONPATH ending in `:` adding cwd (/app) to sys.path implicitly.
+
+    Invokes the validator as a script (mirrors production: `subprocess.run(
+    [venv/bin/python, /app/hca_schema_validator/main.py, file])`). Uses a
+    deliberately-invalid file so the validator's expected error path runs
+    quickly and the JSON output proves the imports resolved cleanly.
+    """
+    # Invoke with no args. The script raises `Exception("Missing command line
+    # argument for file path")` AFTER its top-level imports complete — so that
+    # specific error message in stderr proves the imports resolved correctly.
+    # If the imports were broken (the PYTHONPATH bug), stderr would contain
+    # `ImportError` from line 4 (`from hca_schema_validator import HCAValidator`)
+    # and the missing-arg check would never run.
+    result = subprocess.run([
+        "docker", "run", "--rm",
+        "--entrypoint", "/opt/venvs/hca-schema-validator/bin/python",
+        dataset_validator_container,
+        "/app/hca_schema_validator/main.py"
+    ], capture_output=True, text=True, timeout=30)
+
+    assert result.returncode != 0  # script raises on missing argv
+    assert "ImportError" not in result.stderr, (
+        f"schema validator subprocess could not import its own package: {result.stderr}"
+    )
+    assert "Missing command line argument" in result.stderr, (
+        f"expected post-import argv check; got: {result.stderr}"
+    )

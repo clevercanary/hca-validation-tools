@@ -480,6 +480,7 @@ def test_cap_validator_script_scenarios(mock_upload_validator, test_case):
             'integrity_status': 'valid',
             'metadata_summary': None,
             'tool_reports': None,
+            'metadata_coverage': None,
             'error_message': None
         },
         "use_valid_topic": True,

@@ -10,4 +10,8 @@ from .schema_utils import (
     get_class_entity_type,
     get_class_identifier_name,
     get_class_foreign_keys,
+    get_slot_anndata_location,
+    is_deprecated_slot,
+    coverage_classes,
+    iter_coverage_slots,
 )

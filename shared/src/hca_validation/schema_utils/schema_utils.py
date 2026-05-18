@@ -1,7 +1,8 @@
 import os
-from typing import List, Optional
+from typing import Iterator, List, Optional, Tuple
+import jsonasobj2
 from linkml_runtime import SchemaView
-from linkml_runtime.linkml_model.meta import ClassDefinition
+from linkml_runtime.linkml_model.meta import SlotDefinition
 
 # Map entity types and bionetworks to their corresponding class names
 schema_classes = {
@@ -61,6 +62,67 @@ def get_class_identifier_name(schemaview: SchemaView, class_name: str) -> str:
         if slot.identifier:
             return slot.name
     raise ValueError(f"No identifier slot found for class {class_name}")
+
+
+def get_slot_anndata_location(slot: SlotDefinition) -> Optional[str]:
+    if not slot.annotations:
+        return None
+    for name, info in jsonasobj2.items(slot.annotations):
+        if name == "annDataLocation":
+            return info.value
+    return None
+
+
+def is_deprecated_slot(schemaview: SchemaView, slot: SlotDefinition) -> bool:
+    parent = slot.is_a
+    while parent is not None:
+        if parent == "deprecated_slot":
+            return True
+        parent = schemaview.get_slot(parent).is_a
+    return False
+
+
+def coverage_classes(schemaview: SchemaView) -> List[str]:
+    """DEFAULT LinkML class names eligible for metadata coverage reporting.
+
+    Returns the canonical (non-bionetwork-specific) class for each entity type
+    when that class has at least one coverage-eligible slot. Cell currently has
+    no slots and so is excluded in v0.
+
+    Bionetwork-specific variants (AdiposeDataset, GutSample, etc.) are intentionally
+    excluded: the validator emits coverage at the generic entity grain (donor,
+    sample, dataset) regardless of bionetwork.
+    """
+    eligible = []
+    for entity_type, network_mapping in schema_classes.items():
+        class_name = network_mapping["DEFAULT"]
+        if any(True for _ in iter_coverage_slots(schemaview, class_name)):
+            eligible.append(class_name)
+    return eligible
+
+
+def iter_coverage_slots(
+    schemaview: SchemaView, class_name: str
+) -> Iterator[Tuple[str, str]]:
+    """Yield (slot_name, annDataLocation) for slots of `class_name` that participate
+    in coverage reporting at entity grain.
+
+    Excludes: identifier slots (routed to obs grain separately), foreign-key slots
+    (their information is captured by obs-grain identifier coverage), deprecated
+    slots, and slots without an annDataLocation annotation.
+    """
+    fk_slot_names = {name for name, _ in get_class_foreign_keys(schemaview, class_name)}
+    for slot in schemaview.class_induced_slots(class_name):
+        if slot.identifier:
+            continue
+        if slot.name in fk_slot_names:
+            continue
+        if is_deprecated_slot(schemaview, slot):
+            continue
+        location = get_slot_anndata_location(slot)
+        if location is None:
+            continue
+        yield slot.name, location
 
 
 def get_class_foreign_keys(schemaview: SchemaView, class_name: str):
