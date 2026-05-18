@@ -66,20 +66,28 @@ ENV HCA_SCHEMA_VALIDATOR_SCRIPT="/app/hca_schema_validator/main.py"
 ENV HCA_CELL_ANNOTATION_VALIDATOR_SCRIPT="/app/hca_schema_validator/cell_annotation.py"
 # CAP validator script runs in the main venv (no separate venv needed)
 ENV CAP_VALIDATOR_SCRIPT="/app/dataset_validator/cap_validator_script.py"
-# Put /app on sys.path so `import hca_validation.*` resolves (the entrypoint
-# script sets sys.path[0] to its own directory, not /app). Compose with any
-# inherited PYTHONPATH rather than overwriting; ARG declares the variable so
-# BuildKit's static analyzer doesn't flag it as undefined.
-ARG PYTHONPATH=""
-ENV PYTHONPATH="/app:${PYTHONPATH}"
+# Make `import hca_validation.*` resolvable for the main entrypoint. Use a
+# dedicated import root (/opt/python) rather than exposing /app — subprocess
+# validators inherit PYTHONPATH and exposing /app would shadow their installed
+# packages with the matching sibling dirs (e.g. /app/hca_schema_validator/
+# would shadow the PyPI hca_schema_validator package).
+#
+# Note: no `${PYTHONPATH}` suffix to avoid leaving a trailing colon when the
+# inherited value is empty (the usual case). Python 3 expands empty PYTHONPATH
+# entries to cwd at startup, which would silently re-add /app to sys.path.
+# Dockerfile ENV substitution is build-time only anyway, so the "compose with
+# inherited value" pattern can't solve runtime composition — `docker run -e`
+# always overrides ENV entirely.
+ENV PYTHONPATH="/opt/python"
 
 # Copy application code
 COPY services/dataset-validator/src/dataset_validator/ /app/dataset_validator/
 COPY services/cellxgene-validator/src/cellxgene_validator/ /app/cellxgene_validator/
 COPY services/hca-schema-validator/src/hca_schema_validator_service/ /app/hca_schema_validator/
-# Copy shared library source so `import hca_validation.*` resolves at runtime
-# (the editable path dep is metadata-only in the final image).
-COPY shared/src/hca_validation/ /app/hca_validation/
+# Copy shared library source to a dedicated import root (referenced by
+# PYTHONPATH above). Keeping this out of /app avoids shadowing subprocess
+# validators' installed packages.
+COPY shared/src/hca_validation/ /opt/python/hca_validation/
 
 # Set working directory
 WORKDIR /app
