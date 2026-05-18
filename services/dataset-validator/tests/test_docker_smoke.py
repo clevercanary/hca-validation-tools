@@ -109,7 +109,30 @@ def test_docker_container_file_structure(dataset_validator_container):
         dataset_validator_container,
         "-la", "/app/dataset_validator/"
     ], capture_output=True, text=True, timeout=30)
-    
+
     assert result.returncode == 0
     assert "main.py" in result.stdout
     assert "__init__.py" in result.stdout or "__pycache__" in result.stdout
+
+
+def test_docker_metadata_coverage_schema_loads(dataset_validator_container):
+    """Verify the metadata_coverage module + LinkML schema YAMLs resolve inside
+    the container. Catches gaps the unit tests miss because they run in the dev
+    venv: missing schema/*.yaml files in /app/hca_validation/, missing
+    linkml_runtime in the main venv, etc.
+    """
+    result = subprocess.run([
+        "docker", "run", "--rm", "--entrypoint", "python",
+        dataset_validator_container,
+        "-c",
+        "from hca_validation.metadata_coverage import compute_metadata_coverage, SCHEMA_NAME; "
+        "from hca_validation.schema_utils import load_schemaview, coverage_classes; "
+        "sv = load_schemaview(); "
+        "print(f'{SCHEMA_NAME}|{sv.schema.version}|{\",\".join(coverage_classes(sv))}')"
+    ], capture_output=True, text=True, timeout=30)
+
+    assert result.returncode == 0, f"stderr: {result.stderr}"
+    schema_name, version, classes = result.stdout.strip().split("|")
+    assert schema_name == "tier_1"
+    assert version  # version pulled from LinkML schema
+    assert set(classes.split(",")) >= {"Dataset", "Donor", "Sample"}
