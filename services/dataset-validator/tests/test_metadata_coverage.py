@@ -163,11 +163,6 @@ class TestDatasetClassSlots:
             "issues": {"missing": 1},
         }
 
-    def test_uns_slot_empty_string_treated_as_missing(self, schemaview):
-        obs = pd.DataFrame({"donor_id": ["D1"], "sample_id": ["S1"]})
-        result = compute_metadata_coverage(make_adata(obs, {"description": ""}), schemaview)
-        assert field_entry(result, "dataset", "description")["complete"] == 0
-
     def test_dataset_obs_slot_complete_when_consistent(self, schemaview):
         # gene_annotation_version is annDataLocation=obs but owned by the Dataset class.
         obs = pd.DataFrame({
@@ -250,6 +245,46 @@ class TestFieldCoverageEnumeration:
         all_pairs = {(e["entity_class"], e["field"]) for e in result["field_coverage"]}
         assert ("donor", "dataset_id") not in all_pairs
         assert ("sample", "dataset_id") not in all_pairs
+
+    def test_bionetwork_variants_do_not_duplicate_canonical_entries(self, schemaview):
+        # AdiposeDataset, GutSample, etc. exist in the LinkML schema but must
+        # not leak into coverage — otherwise their slots would appear as a
+        # second copy of "dataset"/"sample" entries (same entity_class, same
+        # field). Pin uniqueness as the contract.
+        obs = pd.DataFrame({"donor_id": ["D1"], "sample_id": ["S1"]})
+        result = compute_metadata_coverage(make_adata(obs), schemaview)
+        pairs = [(e["entity_class"], e["field"]) for e in result["field_coverage"]]
+        assert len(pairs) == len(set(pairs)), f"duplicate entries: {pairs}"
+        # entity_class values are the canonical lowercase HCA grains only.
+        assert {e["entity_class"] for e in result["field_coverage"]} <= {
+            "obs", "dataset", "donor", "sample"
+        }
+
+    def test_cell_entity_class_absent_in_v0(self, schemaview):
+        # The Cell LinkML class has no slots in v0, so no entity_class == "cell"
+        # entries should appear and entities["cell"] should not be emitted.
+        # If someone adds a Cell slot, this test fires and forces a wire-format
+        # review (cell.record_count denominator, etc.).
+        obs = pd.DataFrame({"donor_id": ["D1"], "sample_id": ["S1"]})
+        result = compute_metadata_coverage(make_adata(obs), schemaview)
+        assert "cell" not in result["entities"]
+        assert all(e["entity_class"] != "cell" for e in result["field_coverage"])
+
+    def test_library_slots_emit_at_sample_grain(self, schemaview):
+        # PRD-documented v0 contract: library_* slots are declared on the Sample
+        # LinkML class so they report at sample grain. Pinning to lock the
+        # behavior until a Library class is introduced and the wire format
+        # mechanically grows an entity_class == "library".
+        obs = pd.DataFrame({"donor_id": ["D1"], "sample_id": ["S1"]})
+        result = compute_metadata_coverage(make_adata(obs), schemaview)
+        for slot in (
+            "library_id",
+            "library_preparation_batch",
+            "library_sequencing_run",
+            "library_id_repository",
+        ):
+            entry = field_entry(result, "sample", slot)
+            assert entry["entity_class"] == "sample", entry
 
 
 class TestEmptyStringSentinels:
