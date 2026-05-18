@@ -219,15 +219,21 @@ def _bucket_groups(grouped: Any, slot_name: str) -> Tuple[int, int, int]:
 
 
 def _is_value_populated(value: Any) -> bool:
+    """Whether a uns-grain value counts as populated for coverage purposes.
+
+    Recurses through list/tuple/array-like containers so that string-list
+    fields (e.g. `study_pi`, `batch_condition`) treat [""], ["   "], or any
+    list of whitespace-only strings as missing — at least one element must be
+    a non-empty/non-whitespace value.
+    """
     if value is None:
         return False
-    if isinstance(value, str) and value.strip() == "":
-        return False
-    try:
-        if hasattr(value, "__len__") and len(value) == 0:
-            return False
-    except TypeError:
-        pass
+    if isinstance(value, str):
+        return value.strip() != ""
+    # Iterable but not a string: list, tuple, numpy array, pandas Series, etc.
+    # Treat as populated iff at least one element is itself populated.
+    if hasattr(value, "__iter__"):
+        return any(_is_value_populated(v) for v in value)
     return True
 
 

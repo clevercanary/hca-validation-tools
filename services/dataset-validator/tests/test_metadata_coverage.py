@@ -307,6 +307,29 @@ class TestEmptyStringSentinels:
         assert entry["complete"] == 0
         assert entry["issues"] == {"missing": 1}
 
+    def test_uns_list_of_empty_strings_is_missing(self, schemaview):
+        # study_pi and batch_condition are multivalued uns fields. A list with
+        # only empty / whitespace elements should count as missing, not complete.
+        import numpy as np
+        obs = pd.DataFrame({"donor_id": ["D1"], "sample_id": ["S1"]})
+        for empty_list in ([""], ["   "], ["", "  "], np.array([""], dtype=object), []):
+            result = compute_metadata_coverage(
+                make_adata(obs, {"study_pi": empty_list}), schemaview
+            )
+            entry = field_entry(result, "dataset", "study_pi")
+            assert entry["complete"] == 0, f"input: {empty_list!r}"
+            assert entry["issues"] == {"missing": 1}, f"input: {empty_list!r}"
+
+    def test_uns_list_with_one_populated_element_is_complete(self, schemaview):
+        # If any element of the list is a real value, the slot is populated.
+        obs = pd.DataFrame({"donor_id": ["D1"], "sample_id": ["S1"]})
+        result = compute_metadata_coverage(
+            make_adata(obs, {"study_pi": ["", "Smith, John"]}), schemaview
+        )
+        entry = field_entry(result, "dataset", "study_pi")
+        assert entry["complete"] == 1
+        assert entry["issues"] == {}
+
 
 class TestMissingIdentifierColumn:
     """When the schema's identifier column is absent from obs entirely, coverage
