@@ -59,10 +59,14 @@ def compute_metadata_coverage(adata: Any, schemaview: SchemaView) -> Dict[str, A
         record_count = _entity_record_count(entity_class, identifier, obs)
         entities[entity_class] = {"record_count": record_count}
 
+        # Emit the obs-grain identifier entry for any identifier the schema places
+        # in obs, regardless of whether the column is present. A missing column is
+        # the canonical "identifier not populated anywhere" signal and must not be
+        # silently dropped — otherwise downstream can't distinguish it from drift.
         if (
             identifier is not None
             and get_slot_anndata_location(identifier) == "obs"
-            and identifier_name in obs.columns
+            and identifier_name is not None
         ):
             field_coverage.append(_obs_identifier_entry(identifier_name, obs))
 
@@ -76,15 +80,13 @@ def compute_metadata_coverage(adata: Any, schemaview: SchemaView) -> Dict[str, A
             if location == "uns":
                 field_coverage.append(_uns_entry(entity_class, slot_name, uns))
             elif location == "obs":
-                entry = _obs_entry(
+                field_coverage.append(_obs_entry(
                     entity_class=entity_class,
                     slot_name=slot_name,
                     obs=obs,
                     grouped=grouped,
                     record_count=record_count,
-                )
-                if entry is not None:
-                    field_coverage.append(entry)
+                ))
 
     _assert_invariant(entities, field_coverage)
 
@@ -133,6 +135,8 @@ def _entity_record_count(
 
 
 def _obs_identifier_entry(slot_name: str, obs: pd.DataFrame) -> Dict[str, Any]:
+    if slot_name not in obs.columns:
+        return _entry("obs", slot_name, complete=0, missing=len(obs))
     complete = int(obs[slot_name].notna().sum())
     return _entry("obs", slot_name, complete, missing=len(obs) - complete)
 
@@ -150,20 +154,19 @@ def _obs_entry(
     obs: pd.DataFrame,
     grouped: Optional[Any],
     record_count: int,
-) -> Optional[Dict[str, Any]]:
+) -> Dict[str, Any]:
+    # Always emit an entry. Skipping any (entity_class, slot) looks like schema
+    # drift to the tracker; emit `complete=0, missing=record_count` so the
+    # invariant holds (when record_count is 0, both sides are 0).
     if slot_name not in obs.columns:
-        return _entry(
-            entity_class,
-            slot_name,
-            complete=0,
-            missing=record_count if record_count else 0,
-        )
+        return _entry(entity_class, slot_name, complete=0, missing=record_count)
 
     if entity_class == "dataset":
         complete, inconsistent, missing = _bucket_single_group(obs[slot_name])
+    elif grouped is None:
+        # Identifier column missing → record_count == 0; emit 0/0.
+        return _entry(entity_class, slot_name, complete=0, missing=record_count)
     else:
-        if grouped is None:
-            return None
         complete, inconsistent, missing = _bucket_groups(grouped, slot_name)
 
     return _entry(

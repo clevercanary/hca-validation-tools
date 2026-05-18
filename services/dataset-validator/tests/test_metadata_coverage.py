@@ -250,3 +250,36 @@ class TestFieldCoverageEnumeration:
         all_pairs = {(e["entity_class"], e["field"]) for e in result["field_coverage"]}
         assert ("donor", "dataset_id") not in all_pairs
         assert ("sample", "dataset_id") not in all_pairs
+
+
+class TestMissingIdentifierColumn:
+    """When the schema's identifier column is absent from obs entirely, coverage
+    must still emit entries — otherwise downstream can't distinguish 'column
+    missing' from schema drift.
+    """
+
+    def test_obs_identifier_entry_emitted_when_column_absent(self, schemaview):
+        # No donor_id column at all; obs has 3 cells.
+        obs = pd.DataFrame({"sample_id": ["S1", "S1", "S2"]})
+        result = compute_metadata_coverage(make_adata(obs), schemaview)
+        entry = field_entry(result, "obs", "donor_id")
+        assert entry == {
+            "entity_class": "obs",
+            "field": "donor_id",
+            "complete": 0,
+            "issues": {"missing": 3},
+        }
+
+    def test_donor_slots_still_emitted_when_donor_id_column_absent(self, schemaview):
+        # No donor_id column → donor.record_count = 0 → donor slots emit as 0/0
+        # rather than being silently dropped.
+        obs = pd.DataFrame({"sample_id": ["S1"], "manner_of_death": ["1"]})
+        result = compute_metadata_coverage(make_adata(obs), schemaview)
+        assert result["entities"]["donor"]["record_count"] == 0
+        entry = field_entry(result, "donor", "manner_of_death")
+        assert entry == {
+            "entity_class": "donor",
+            "field": "manner_of_death",
+            "complete": 0,
+            "issues": {},
+        }
