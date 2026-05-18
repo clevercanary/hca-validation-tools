@@ -217,12 +217,12 @@ class TestInvariant:
             expected = result["entities"][entry["entity_class"]]["record_count"]
             assert entry["complete"] + sum(entry["issues"].values()) == expected, entry
 
-    def test_violation_raises_assertion_error(self):
+    def test_violation_raises(self):
         entities = {"donor": {"record_count": 10}}
         bad: List[Dict[str, Any]] = [
             {"entity_class": "donor", "field": "x", "complete": 5, "issues": {"missing": 4}}
         ]
-        with pytest.raises(AssertionError, match="invariant violated"):
+        with pytest.raises(RuntimeError, match="invariant violated"):
             _assert_invariant(entities, bad)
 
 
@@ -281,6 +281,24 @@ class TestEmptyStringSentinels:
         entry = field_entry(result, "donor", "manner_of_death")
         assert entry["complete"] == 1  # D1
         assert entry["issues"] == {"missing": 1}  # D2
+
+    def test_empty_string_in_categorical_identifier_treated_as_missing(self, schemaview):
+        # Real h5ad files often store donor_id / sample_id as pd.Categorical for
+        # memory efficiency on millions of rows. Empty string as a category must
+        # normalize to NA the same way it does for object-dtype columns.
+        obs = pd.DataFrame({
+            "donor_id":  pd.Categorical(["D1", "D1", "", "  ", "D2"]),
+            "sample_id": pd.Categorical(["S1", "S1", "S2", "S2", "S3"]),
+        })
+        result = compute_metadata_coverage(make_adata(obs), schemaview)
+        assert result["entities"]["donor"]["record_count"] == 2
+        entry = field_entry(result, "obs", "donor_id")
+        assert entry == {
+            "entity_class": "obs",
+            "field": "donor_id",
+            "complete": 3,
+            "issues": {"missing": 2},
+        }
 
     def test_empty_string_uns_slot_is_missing(self, schemaview):
         obs = pd.DataFrame({"donor_id": ["D1"], "sample_id": ["S1"]})

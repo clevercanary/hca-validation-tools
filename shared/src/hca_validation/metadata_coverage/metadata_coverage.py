@@ -146,7 +146,7 @@ def _obs_identifier_entry(slot_name: str, obs: pd.DataFrame) -> Dict[str, Any]:
 
 
 def _uns_entry(entity_class: str, slot_name: str, uns: Any) -> Dict[str, Any]:
-    value = uns.get(slot_name) if hasattr(uns, "get") else None
+    value = uns.get(slot_name)
     complete = 1 if _is_value_populated(value) else 0
     return _entry(entity_class, slot_name, complete, missing=1 - complete)
 
@@ -240,7 +240,8 @@ def _assert_invariant(
         expected = entities[entity_class]["record_count"]
         actual = entry["complete"] + sum(entry["issues"].values())
         if actual != expected:
-            raise AssertionError(
+            # RuntimeError (not AssertionError) so `python -O` can't strip the check.
+            raise RuntimeError(
                 "metadata_coverage invariant violated for "
                 f"({entity_class}, {entry['field']}): "
                 f"complete + issues = {actual}, expected {expected}"
