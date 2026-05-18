@@ -252,6 +252,44 @@ class TestFieldCoverageEnumeration:
         assert ("sample", "dataset_id") not in all_pairs
 
 
+class TestEmptyStringSentinels:
+    """h5ad files in the wild sometimes use "" or whitespace as a missing
+    sentinel because pandas categorical/object columns can't always carry NaN.
+    Coverage must treat these as missing, not as populated values.
+    """
+
+    def test_empty_string_donor_id_does_not_inflate_donor_count(self, schemaview):
+        obs = pd.DataFrame({
+            "donor_id":  ["D1", "D1", "", "  ", "D2"],
+            "sample_id": ["S1", "S1", "S2", "S2", "S3"],
+        })
+        result = compute_metadata_coverage(make_adata(obs), schemaview)
+        # Two real donors (D1, D2), not four.
+        assert result["entities"]["donor"]["record_count"] == 2
+        # Two cells had unusable donor_id — counted at obs grain.
+        donor_id_entry = field_entry(result, "obs", "donor_id")
+        assert donor_id_entry["complete"] == 3
+        assert donor_id_entry["issues"] == {"missing": 2}
+
+    def test_empty_string_entity_property_is_missing_not_complete(self, schemaview):
+        obs = pd.DataFrame({
+            "donor_id":  ["D1", "D1", "D2", "D2"],
+            "sample_id": ["S1", "S1", "S2", "S2"],
+            "manner_of_death": ["1", "1", "", "  "],  # D2 has no real value
+        })
+        result = compute_metadata_coverage(make_adata(obs), schemaview)
+        entry = field_entry(result, "donor", "manner_of_death")
+        assert entry["complete"] == 1  # D1
+        assert entry["issues"] == {"missing": 1}  # D2
+
+    def test_empty_string_uns_slot_is_missing(self, schemaview):
+        obs = pd.DataFrame({"donor_id": ["D1"], "sample_id": ["S1"]})
+        result = compute_metadata_coverage(make_adata(obs, {"description": "   "}), schemaview)
+        entry = field_entry(result, "dataset", "description")
+        assert entry["complete"] == 0
+        assert entry["issues"] == {"missing": 1}
+
+
 class TestMissingIdentifierColumn:
     """When the schema's identifier column is absent from obs entirely, coverage
     must still emit entries — otherwise downstream can't distinguish 'column

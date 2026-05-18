@@ -46,7 +46,11 @@ def compute_metadata_coverage(adata: Any, schemaview: SchemaView) -> Dict[str, A
     schemaview
         LinkML SchemaView for the HCA core schema.
     """
-    obs: pd.DataFrame = adata.obs
+    # Normalize empty / whitespace-only strings to NA. h5ad uploaders sometimes
+    # use "" as a missing-value sentinel — without this, "" would inflate
+    # entity record_counts (every "" cell becomes a phantom donor) and inflate
+    # `complete` counts on entity-property slots.
+    obs: pd.DataFrame = adata.obs.replace(r"^\s*$", pd.NA, regex=True)
     uns = adata.uns
 
     entities: Dict[str, Dict[str, int]] = {"obs": {"record_count": int(len(obs))}}
@@ -217,7 +221,7 @@ def _bucket_groups(grouped: Any, slot_name: str) -> Tuple[int, int, int]:
 def _is_value_populated(value: Any) -> bool:
     if value is None:
         return False
-    if isinstance(value, str) and value == "":
+    if isinstance(value, str) and value.strip() == "":
         return False
     try:
         if hasattr(value, "__len__") and len(value) == 0:
