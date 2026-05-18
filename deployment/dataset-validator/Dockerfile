@@ -67,8 +67,11 @@ ENV HCA_CELL_ANNOTATION_VALIDATOR_SCRIPT="/app/hca_schema_validator/cell_annotat
 # CAP validator script runs in the main venv (no separate venv needed)
 ENV CAP_VALIDATOR_SCRIPT="/app/dataset_validator/cap_validator_script.py"
 # Put /app on sys.path so `import hca_validation.*` resolves (the entrypoint
-# script sets sys.path[0] to its own directory, not /app).
-ENV PYTHONPATH="/app"
+# script sets sys.path[0] to its own directory, not /app). Compose with any
+# inherited PYTHONPATH rather than overwriting; ARG declares the variable so
+# BuildKit's static analyzer doesn't flag it as undefined.
+ARG PYTHONPATH=""
+ENV PYTHONPATH="/app:${PYTHONPATH}"
 
 # Copy application code
 COPY services/dataset-validator/src/dataset_validator/ /app/dataset_validator/

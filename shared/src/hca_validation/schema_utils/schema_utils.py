@@ -2,7 +2,7 @@ import os
 from typing import Iterator, List, Optional, Tuple
 import jsonasobj2
 from linkml_runtime import SchemaView
-from linkml_runtime.linkml_model.meta import ClassDefinition, SlotDefinition
+from linkml_runtime.linkml_model.meta import SlotDefinition
 
 # Map entity types and bionetworks to their corresponding class names
 schema_classes = {
