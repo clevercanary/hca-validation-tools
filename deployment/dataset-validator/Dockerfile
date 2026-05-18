@@ -7,6 +7,9 @@ RUN pip install poetry==2.2.1
 # Set up the directory structure to match the expected paths
 WORKDIR /build
 
+# Copy shared library (path dep of dataset-validator)
+COPY shared/ ./shared/
+
 # Copy services' Poetry configuration
 COPY services/dataset-validator/pyproject.toml services/dataset-validator/poetry.lock* ./services/dataset-validator/
 COPY services/cellxgene-validator/pyproject.toml services/cellxgene-validator/poetry.lock* ./services/cellxgene-validator/
@@ -18,8 +21,10 @@ RUN poetry self add poetry-plugin-export
 WORKDIR /build/services/dataset-validator
 # Install dependencies
 RUN poetry install --only main --no-root
-# Export requirements for final stage
-RUN poetry export --without-hashes -o /tmp/requirements.txt
+# Export requirements for final stage. Drop the editable hca-validation-shared
+# path entry — the final stage receives the source via a direct COPY instead.
+RUN poetry export --without-hashes -o /tmp/requirements.txt && \
+    sed -i '/^-e file:.*shared/d' /tmp/requirements.txt
 
 # Change to CELLxGENE validator service directory for Poetry operations
 WORKDIR /build/services/cellxgene-validator
@@ -66,6 +71,9 @@ ENV CAP_VALIDATOR_SCRIPT="/app/dataset_validator/cap_validator_script.py"
 COPY services/dataset-validator/src/dataset_validator/ /app/dataset_validator/
 COPY services/cellxgene-validator/src/cellxgene_validator/ /app/cellxgene_validator/
 COPY services/hca-schema-validator/src/hca_schema_validator_service/ /app/hca_schema_validator/
+# Copy shared library source so `import hca_validation.*` resolves at runtime
+# (the editable path dep is metadata-only in the final image).
+COPY shared/src/hca_validation/ /app/hca_validation/
 
 # Set working directory
 WORKDIR /app

@@ -5,6 +5,7 @@ Main entry point for dataset validation processing.
 """
 
 import copy
+import functools
 import gc
 import hashlib
 import json
@@ -17,12 +18,15 @@ import subprocess
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, Tuple
 
 import boto3
 from botocore.exceptions import ClientError
 import anndata
 import pandas as pd
+
+from hca_validation.metadata_coverage import compute_metadata_coverage
+from hca_validation.schema_utils import load_schemaview
 
 
 # Somewhat less than the actual value of 256KiB, to make room for small unforeseen deviations
@@ -133,6 +137,7 @@ class ValidationMessage:
     tool_reports: Optional[                              # Reports for individual validation tools
         dict[str, ValidationToolReport]
     ] = None
+    metadata_coverage: Optional[dict] = None             # Per-field completeness summary (#405)
     error_message: Optional[str] = None                  # Human-readable error description
 
     def to_json(self) -> str:
@@ -437,21 +442,56 @@ def read_metadata(file_path: Path) -> MetadataSummary:
     adata = None
     try:
         adata = anndata.io.read_h5ad(file_path, backed="r")
-        title = adata.uns.get("title")
-        # anndata.obs is typed DataFrame | Dataset2D (backed vs in-memory); runtime is DataFrame here
-        obs: pd.DataFrame = adata.obs  # pyright: ignore[reportAssignmentType]
-        return MetadataSummary(
-            title=title if isinstance(title, str) else "",
-            assay=get_column_unique_values_if_present(obs, "assay"),
-            suspension_type=get_column_unique_values_if_present(obs, "suspension_type"),
-            tissue=get_column_unique_values_if_present(obs, "tissue"),
-            disease=get_column_unique_values_if_present(obs, "disease"),
-            cell_count=adata.n_obs,
-            gene_count=adata.n_vars
-        )
+        return _extract_metadata_summary(adata)
     except Exception as e:
         logger.error("Error reading metadata: %s", e)
         raise
+    finally:
+        if adata is not None:
+            adata.file.close()
+
+
+def _extract_metadata_summary(adata) -> MetadataSummary:
+    title = adata.uns.get("title")
+    # anndata.obs is typed DataFrame | Dataset2D (backed vs in-memory); runtime is DataFrame here
+    obs: pd.DataFrame = adata.obs  # pyright: ignore[reportAssignmentType]
+    return MetadataSummary(
+        title=title if isinstance(title, str) else "",
+        assay=get_column_unique_values_if_present(obs, "assay"),
+        suspension_type=get_column_unique_values_if_present(obs, "suspension_type"),
+        tissue=get_column_unique_values_if_present(obs, "tissue"),
+        disease=get_column_unique_values_if_present(obs, "disease"),
+        cell_count=adata.n_obs,
+        gene_count=adata.n_vars,
+    )
+
+
+@functools.cache
+def _get_schemaview():
+    return load_schemaview()
+
+
+def read_file_metadata(file_path: Path) -> Tuple[MetadataSummary, Optional[dict]]:
+    """Open an h5ad once and return (metadata_summary, metadata_coverage).
+
+    Coverage failures are non-fatal — they're returned as None so the
+    caller can still publish a summary. Reading the file at all is fatal
+    (raised through), since downstream validators depend on it.
+    """
+    adata = None
+    try:
+        try:
+            adata = anndata.io.read_h5ad(file_path, backed="r")
+            summary = _extract_metadata_summary(adata)
+        except Exception as e:
+            logger.error("Error reading metadata: %s", e)
+            raise
+        try:
+            coverage = compute_metadata_coverage(adata, _get_schemaview())
+        except Exception as e:
+            logger.warning("metadata_coverage computation failed: %s", e)
+            coverage = None
+        return summary, coverage
     finally:
         if adata is not None:
             adata.file.close()
@@ -910,8 +950,10 @@ def main() -> int:
 
             validation_message.integrity_status = INTEGRITY_VALID
 
-        # Read metadata
-        validation_message.metadata_summary = read_metadata(local_file)
+        # Read metadata summary + per-field coverage (#405) in one h5ad open.
+        validation_message.metadata_summary, validation_message.metadata_coverage = (
+            read_file_metadata(local_file)
+        )
         log_memory_usage("after metadata read")
         gc.collect()
 
