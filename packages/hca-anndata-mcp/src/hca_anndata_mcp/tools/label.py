@@ -23,7 +23,7 @@ def label_h5ad(path: str) -> dict:
     * the five var feature_* columns — feature_name, feature_reference,
       feature_biotype, feature_length, feature_type — and their raw.var
       mirrors when raw is present
-    * the eight obs ontology label columns listed in
+    * the seven obs ontology label columns listed in
       :data:`hca_schema_validator.HCA_DERIVED_OBS_LABELS`, populated from
       each <field>_ontology_term_id (cell_type only when its term_id column
       is present — optional per schema)
@@ -32,7 +32,7 @@ def label_h5ad(path: str) -> dict:
     Refuses to run (preflight ``ValueError`` surfaced as ``{"error": ...}``)
     when any of the following is true:
 
-    * any controlled output column is already present: the eight ``obs``
+    * any controlled output column is already present: the seven ``obs``
       ontology label columns, ``obs['observation_joinid']``, the five
       ``var`` ``feature_*`` columns (``feature_name``, ``feature_reference``,
       ``feature_biotype``, ``feature_length``, ``feature_type``), or their

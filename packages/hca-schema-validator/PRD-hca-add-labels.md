@@ -34,7 +34,7 @@ CELLxGENE's vendored `cellxgene-schema add-labels` almost does what we need but:
 ## Goals
 
 1. Populate `var['feature_name']` + `feature_reference` / `feature_biotype` / `feature_length` / `feature_type` from the Ensembl IDs in `var.index`, using the GENCODE tables already vendored in `hca-schema-validator`.
-2. Populate obs labels (`tissue`, `cell_type`, `assay`, `disease`, `sex`, `organism`, `development_stage`, `self_reported_ethnicity`) from their `_ontology_term_id` counterparts. Stale or drifted pre-existing values MUST be replaced.
+2. Populate obs labels (`tissue`, `cell_type`, `assay`, `disease`, `sex`, `organism`, `development_stage`) from their `_ontology_term_id` counterparts. Stale or drifted pre-existing values MUST be replaced.
 3. Tolerate Ensembl IDs that GENCODE does not recognize — set the derived columns to NaN for those rows and continue.
 4. Run as a minimal **patch over** the vendored CELLxGENE labeler. Do not edit the vendored code; subclass `AnnDataLabelAppender` from outside `_vendored/`.
 5. Produce an HCA-clean file: do not inject CELLxGENE-only `uns` keys (`schema_version`, `schema_reference`).
@@ -60,7 +60,7 @@ CELLxGENE's vendored `cellxgene-schema add-labels` almost does what we need but:
 
 ### R2. obs labeling
 
-- For each labeled field in the HCA schema (`cell_type`, `assay`, `disease`, `organism`, `sex`, `development_stage`, `self_reported_ethnicity`, `tissue`):
+- For each labeled field in the HCA schema (`cell_type`, `assay`, `disease`, `organism`, `sex`, `development_stage`, `tissue`):
   - Read `obs['<field>_ontology_term_id']` (required input).
   - Write the human-readable label to `obs['<field>']` via `ONTOLOGY_PARSER`.
 - If `obs['<field>']` already exists: **overwrite** unconditionally.
@@ -73,7 +73,7 @@ CELLxGENE's vendored `cellxgene-schema add-labels` almost does what we need but:
 
 The labeler touches **only** the columns it derives:
 - `var['feature_name']`, `var['feature_reference']`, `var['feature_biotype']`, `var['feature_length']`, `var['feature_type']` (and their `raw.var` mirrors)
-- `obs['tissue']`, `obs['cell_type']`, `obs['assay']`, `obs['disease']`, `obs['sex']`, `obs['organism']`, `obs['development_stage']`, `obs['self_reported_ethnicity']`
+- `obs['tissue']`, `obs['cell_type']`, `obs['assay']`, `obs['disease']`, `obs['sex']`, `obs['organism']`, `obs['development_stage']`
 - `obs['observation_joinid']`
 
 All other columns and all `uns` keys are left untouched. The labeler does not write to `uns` at all. Decisions about extra/drift columns belong outside this tool.
@@ -168,7 +168,7 @@ _(none currently)_
 Running the HCA labeler on gut-v1 myeloid (post-curate) produces a file where:
 
 - `var['feature_name']` is populated for 34,505 / 35,574 rows and NaN for the 1,069 deprecated IDs.
-- `obs` labels (`tissue`, `cell_type`, `assay`, `disease`, `sex`, `organism`, `development_stage`, `self_reported_ethnicity`) are populated from their `_ontology_term_id` inputs, overwriting the producer-drifted versions.
+- `obs` labels (`tissue`, `cell_type`, `assay`, `disease`, `sex`, `organism`, `development_stage`) are populated from their `_ontology_term_id` inputs, overwriting the producer-drifted versions.
 - `obs['observation_joinid']` is present.
 - `uns` is unchanged by the labeler. The labeler refuses to run on inputs that carry `uns['schema_version']` or `uns['schema_reference']` (preflight), but if those pass and any other `uns` keys exist on input they pass through untouched. The caller (or a subsequent tool) is responsible for any desired `uns['organism_ontology_term_id']` duplication for CELLxGENE-v7 tooling.
 - Producer `*_ontology_term` drift columns and custom columns like `gene_symbol` are untouched (the labeler does not drop them; that decision lives in `/curate-h5ad`).

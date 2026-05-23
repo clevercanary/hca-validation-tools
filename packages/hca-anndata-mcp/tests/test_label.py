@@ -24,10 +24,10 @@ def test_label_h5ad_happy_path(labelable_path):
     # All seven fixture Ensembl IDs are GENCODE-resolvable.
     assert result["feature_name_labeled"] == 7
     assert result["feature_name_nan"] == 0
-    # cell_type is optional but present in the fixture, so all 8 labels written.
+    # cell_type is optional but present in the fixture, so all 7 labels written.
     assert set(result["obs_labels_written"]) == {
         "tissue", "cell_type", "assay", "disease",
-        "sex", "organism", "development_stage", "self_reported_ethnicity",
+        "sex", "organism", "development_stage",
     }
 
     labeled = ad.read_h5ad(result["output_path"])
@@ -53,7 +53,7 @@ def test_label_h5ad_writes_edit_log_entry(labelable_path):
     assert details["observation_joinid_written"] is True
     assert set(details["obs_labels_written"]) == {
         "tissue", "cell_type", "assay", "disease",
-        "sex", "organism", "development_stage", "self_reported_ethnicity",
+        "sex", "organism", "development_stage",
     }
 
 

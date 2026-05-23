@@ -271,8 +271,8 @@ def test_cosmetic_check_sentinel_values_match():
     from .fixtures.hca_fixtures import adata
 
     modified = adata.copy()
-    modified.obs["self_reported_ethnicity"] = "unknown"
-    modified.obs["self_reported_ethnicity_ontology_term_id"] = "unknown"
+    modified.obs["sex"] = "unknown"
+    modified.obs["sex_ontology_term_id"] = "unknown"
     _, validator = _validate_from_fixture(modified)
     warnings, errors = _cosmetic_check_messages(validator)
     assert len(warnings) == 1
@@ -281,19 +281,20 @@ def test_cosmetic_check_sentinel_values_match():
 
 def test_cosmetic_check_sentinel_values_mismatch_errors():
     # Guards against a regression where sentinel term IDs ('unknown', 'na')
-    # are silently treated as unresolvable. self_reported_ethnicity declares
-    # its 'unknown' exception only inside a dependencies block, so this
-    # exercises the union-with-dependencies path in _collect_curie_exceptions.
+    # are silently treated as unresolvable. sex_ontology_term_id declares
+    # its 'unknown' / 'na' exceptions only inside dependencies blocks, so
+    # this exercises the union-with-dependencies path in
+    # _collect_curie_exceptions.
     from .fixtures.hca_fixtures import adata
 
     modified = adata.copy()
-    modified.obs["self_reported_ethnicity"] = "PRODUCER_LABEL"
-    modified.obs["self_reported_ethnicity_ontology_term_id"] = "unknown"
+    modified.obs["sex"] = "PRODUCER_LABEL"
+    modified.obs["sex_ontology_term_id"] = "unknown"
     _, validator = _validate_from_fixture(modified)
     warnings, errors = _cosmetic_check_messages(validator)
     assert len(warnings) == 1
     assert any(
-        "self_reported_ethnicity_ontology_term_id" in e
+        "sex_ontology_term_id" in e
         and "'PRODUCER_LABEL'" in e
         and "'unknown'" in e
         for e in errors
@@ -315,6 +316,64 @@ def test_cosmetic_check_fires_with_ignore_labels_false():
     warnings, errors = _cosmetic_check_messages(validator)
     assert len(warnings) == 1
     assert any("'WRONG'" in e for e in errors)
+
+
+# ---------------------------------------------------------------------------
+# Forbidden-column checks (#370): HCA must not collect self_reported_ethnicity
+# (privacy). Both the *_ontology_term_id source column and the cosmetic label
+# column are declared `requirement_level: forbidden` in the schema, and the
+# validator errors if either appears in obs.
+# ---------------------------------------------------------------------------
+
+
+def _forbidden_errors(validator):
+    return [
+        e for e in validator.errors
+        if "must not be present" in e and "self_reported_ethnicity" in e
+    ]
+
+
+def test_forbidden_sre_columns_absent_passes():
+    from .fixtures.hca_fixtures import adata
+
+    _, validator = _validate_from_fixture(adata.copy())
+    assert _forbidden_errors(validator) == []
+
+
+def test_forbidden_sre_ontology_term_id_only_errors():
+    from .fixtures.hca_fixtures import adata
+
+    modified = adata.copy()
+    modified.obs["self_reported_ethnicity_ontology_term_id"] = "HANCESTRO:0019"
+    _, validator = _validate_from_fixture(modified)
+    matches = _forbidden_errors(validator)
+    assert len(matches) == 1, validator.errors
+    assert "self_reported_ethnicity_ontology_term_id" in matches[0]
+    assert "(privacy)" in matches[0]
+
+
+def test_forbidden_sre_label_only_errors():
+    from .fixtures.hca_fixtures import adata
+
+    modified = adata.copy()
+    modified.obs["self_reported_ethnicity"] = "Japanese"
+    _, validator = _validate_from_fixture(modified)
+    matches = _forbidden_errors(validator)
+    assert len(matches) == 1, validator.errors
+    # Must match the label column specifically, not the ontology-term-id one.
+    assert "'self_reported_ethnicity'" in matches[0]
+    assert "self_reported_ethnicity_ontology_term_id" not in matches[0]
+
+
+def test_forbidden_sre_both_columns_double_error():
+    from .fixtures.hca_fixtures import adata
+
+    modified = adata.copy()
+    modified.obs["self_reported_ethnicity_ontology_term_id"] = "HANCESTRO:0019"
+    modified.obs["self_reported_ethnicity"] = "Japanese"
+    _, validator = _validate_from_fixture(modified)
+    matches = _forbidden_errors(validator)
+    assert len(matches) == 2, validator.errors
 
 
 def test_study_pi_missing():

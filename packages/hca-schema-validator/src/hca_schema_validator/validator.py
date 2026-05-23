@@ -133,24 +133,37 @@ class HCAValidator(Validator):
         base class runs, then validated with full validation only if present.
         Missing optional columns produce no warning or error.
 
+        Columns with requirement_level: forbidden are removed before the base
+        class runs (so it never tries to validate values on them), then
+        error if the column is present in the dataframe. The error text is
+        taken from ``forbidden_error`` on the schema entry.
+
         For obs, the base class's per-column sanity loop is restricted to
         schema-defined columns. Curator-added extras (e.g. ``barcode``,
         ``original_cell_type``) and HCA fields defined only in the LinkML
         entity schemas are skipped, preventing zero-observation warnings
         and other type checks from amplifying on columns the h5ad validator
-        has no rules for.
+        has no rules for. Forbidden columns are intentionally excluded from
+        ``schema_columns`` so they are also dropped from the per-column loop.
         """
         df_definition = self.schema_def["components"].get(df_name, {})
         if "columns" not in df_definition:
             return super()._validate_dataframe(df_name)
 
         # Capture the full schema column set before requirement_level
-        # extraction below strips optional / strongly_recommended entries.
-        schema_columns = set(df_definition["columns"].keys())
+        # extraction below strips optional / strongly_recommended / forbidden
+        # entries. Forbidden columns are excluded so the per-column sanity
+        # loop ignores them even when they slip into obs.
+        schema_columns = {
+            c for c, d in df_definition["columns"].items()
+            if d.get("requirement_level") != "forbidden"
+        }
 
-        # Extract optional and strongly_recommended columns before base class sees them
+        # Extract optional, strongly_recommended, and forbidden columns
+        # before base class sees them.
         optional_columns = {}
         sr_columns = {}
+        forbidden_columns = {}
         for col_name in list(df_definition["columns"]):
             col_def = df_definition["columns"][col_name]
             level = col_def.get("requirement_level")
@@ -159,6 +172,9 @@ class HCAValidator(Validator):
                 del df_definition["columns"][col_name]
             elif level == "strongly_recommended":
                 sr_columns[col_name] = col_def
+                del df_definition["columns"][col_name]
+            elif level == "forbidden":
+                forbidden_columns[col_name] = col_def
                 del df_definition["columns"][col_name]
 
         # For obs, filter to schema columns so the vendored per-column
@@ -181,12 +197,22 @@ class HCAValidator(Validator):
             # Restore schema def even if super() raises
             df_definition["columns"].update(sr_columns)
             df_definition["columns"].update(optional_columns)
+            df_definition["columns"].update(forbidden_columns)
             # Restore the full obs so downstream checks see all columns
             if original_obs is not None:
                 self.adata.obs = original_obs
 
         df = getattr_anndata(self.adata, df_name)
         if df is not None:
+            # Forbidden columns: error if present.
+            for col_name, col_def in forbidden_columns.items():
+                if col_name in df.columns:
+                    self.errors.append(
+                        col_def.get(
+                            "forbidden_error",
+                            f"Column '{col_name}' must not be present in {df_name}.",
+                        )
+                    )
             # Validate strongly_recommended columns (warn if missing)
             for col_name, col_def in sr_columns.items():
                 self._validate_strongly_recommended(df, df_name, col_name, col_def)

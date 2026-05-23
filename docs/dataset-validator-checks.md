@@ -97,8 +97,9 @@ All other rules come from the vendored base class (§5).
 - `disease_ontology_term_id` — MONDO.
 - `development_stage_ontology_term_id` — HsapDv/MmusDv per organism.
 - `sex_ontology_term_id` — PATO.
-- `self_reported_ethnicity_ontology_term_id` — HANCESTRO.
 - `organism_ontology_term_id` — NCBITaxon allowlist.
+
+`obs['self_reported_ethnicity_ontology_term_id']` and `obs['self_reported_ethnicity']` are **forbidden** in HCA (privacy). If either is present, the validator emits a `must not be present in obs` error and the curator must drop both columns upstream.
 
 ### `uns`
 
