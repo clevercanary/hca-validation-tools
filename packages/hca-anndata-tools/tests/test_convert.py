@@ -113,6 +113,38 @@ def test_convert_edit_log(cellxgene_h5ad):
     assert log[0]["details"]["source_schema_version"] == "7.1.0"
 
 
+def test_convert_strips_sre_columns(cellxgene_h5ad):
+    # Both columns exist in the CXG fixture per create_cellxgene_h5ad; HCA
+    # forbids them (privacy — #370). The converter must drop them so the
+    # output passes HCA validation. See #410.
+    original = ad.read_h5ad(str(cellxgene_h5ad))
+    assert "self_reported_ethnicity_ontology_term_id" in original.obs.columns
+    assert "self_reported_ethnicity" in original.obs.columns
+
+    result = convert_cellxgene_to_hca(str(cellxgene_h5ad))
+    written = ad.read_h5ad(result["output_path"])
+
+    assert "self_reported_ethnicity_ontology_term_id" not in written.obs.columns
+    assert "self_reported_ethnicity" not in written.obs.columns
+
+
+def test_convert_edit_log_records_sre_strip(cellxgene_h5ad):
+    result = convert_cellxgene_to_hca(str(cellxgene_h5ad))
+    written = ad.read_h5ad(result["output_path"])
+
+    log = json.loads(written.uns["provenance"][EDIT_LOG_KEY])
+    details = log[0]["details"]
+    assert details["obs_columns_stripped"] == [
+        "self_reported_ethnicity_ontology_term_id",
+        "self_reported_ethnicity",
+    ]
+    # Strip is also called out in the human-readable conversions list.
+    assert any(
+        "HCA-forbidden obs columns" in c
+        for c in details["conversions"]
+    )
+
+
 def test_convert_expression_unchanged(cellxgene_h5ad):
     original = ad.read_h5ad(str(cellxgene_h5ad))
     result = convert_cellxgene_to_hca(str(cellxgene_h5ad))
