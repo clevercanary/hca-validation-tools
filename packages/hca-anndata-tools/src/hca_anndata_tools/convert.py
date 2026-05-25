@@ -15,7 +15,6 @@ import pandas as pd
 from ._io import (
     ensure_provenance_group,
     open_h5ad,
-    read_obs_column_names,
     read_obs_index,
     transplant_obs_columns,
     update_column_order,
@@ -62,7 +61,9 @@ def convert_cellxgene_to_hca(
     Avoids loading the expression matrix into memory.
 
     Preserves cellxgene provenance in uns['provenance']['cellxgene'], broadcasts
-    organism from uns to obs, and renames the output from the dataset title.
+    organism from uns to obs, strips HCA-forbidden obs columns
+    (``self_reported_ethnicity_ontology_term_id`` and ``self_reported_ethnicity``)
+    for privacy (see #370), and renames the output from the dataset title.
 
     Args:
         path: Path to a CellxGENE h5ad file.
@@ -109,7 +110,15 @@ def convert_cellxgene_to_hca(
         # --- Step 2: Read cell index and count via h5py ---
         source_index = read_obs_index(path)
         n_obs = len(source_index)
-        source_obs_columns = set(read_obs_column_names(path))
+
+        # Probe actual obs members (not the `column-order` attribute) so the
+        # edit-log entry honestly reflects what will be stripped. For well-
+        # formed CXG files the two agree; reading members directly avoids
+        # the edge case where the attr lists a column that isn't actually
+        # present as a dataset (which would make the strip a no-op while
+        # the edit log overclaimed).
+        with h5py.File(path, "r") as _f:
+            source_obs_members = set(_f["obs"].keys())
 
         # --- Step 3: Build temp AnnData ---
         conversions = []
@@ -120,10 +129,9 @@ def convert_cellxgene_to_hca(
                 f"{list(cellxgene_source.keys())}"
             )
 
-        # Forbidden-by-HCA obs columns to remove (privacy — see #370). Pre-compute
-        # so the edit-log entry can name what actually got stripped; the h5py
-        # block below does the deletion.
-        obs_columns_stripped = [c for c in _OBS_COLUMNS_TO_STRIP if c in source_obs_columns]
+        # Forbidden-by-HCA obs columns to remove (privacy — see #370). The
+        # h5py block below performs the actual deletion.
+        obs_columns_stripped = [c for c in _OBS_COLUMNS_TO_STRIP if c in source_obs_members]
         if obs_columns_stripped:
             conversions.append(
                 f"Stripped HCA-forbidden obs columns (privacy): {obs_columns_stripped}"

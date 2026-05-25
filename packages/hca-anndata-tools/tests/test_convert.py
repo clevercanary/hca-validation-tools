@@ -134,10 +134,13 @@ def test_convert_edit_log_records_sre_strip(cellxgene_h5ad):
 
     log = json.loads(written.uns["provenance"][EDIT_LOG_KEY])
     details = log[0]["details"]
-    assert details["obs_columns_stripped"] == [
+    # Set-equality so the test doesn't pin the iteration order of
+    # _OBS_COLUMNS_TO_STRIP — coverage is "both columns recorded", not
+    # "recorded in this specific order".
+    assert set(details["obs_columns_stripped"]) == {
         "self_reported_ethnicity_ontology_term_id",
         "self_reported_ethnicity",
-    ]
+    }
     # Strip is also called out in the human-readable conversions list.
     assert any(
         "HCA-forbidden obs columns" in c
