@@ -153,10 +153,12 @@ class HCAValidator(Validator):
         # Capture the full schema column set before requirement_level
         # extraction below strips optional / strongly_recommended / forbidden
         # entries. Forbidden columns are excluded so the per-column sanity
-        # loop ignores them even when they slip into obs.
+        # loop ignores them even when they slip into obs. ``requirement_level``
+        # comparisons are case-insensitive throughout so the validator stays
+        # symmetric with HCALabeler's preflight (which already lowercases).
         schema_columns = {
             c for c, d in df_definition["columns"].items()
-            if d.get("requirement_level") != "forbidden"
+            if str(d.get("requirement_level", "")).lower() != "forbidden"
         }
 
         # Extract optional, strongly_recommended, and forbidden columns
@@ -166,7 +168,7 @@ class HCAValidator(Validator):
         forbidden_columns = {}
         for col_name in list(df_definition["columns"]):
             col_def = df_definition["columns"][col_name]
-            level = col_def.get("requirement_level")
+            level = str(col_def.get("requirement_level", "")).lower()
             if level == "optional":
                 optional_columns[col_name] = col_def
                 del df_definition["columns"][col_name]
