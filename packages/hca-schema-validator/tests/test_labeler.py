@@ -80,7 +80,6 @@ def test_obs_labels_populated_from_term_id(labeled):
         "sex",
         "organism",
         "development_stage",
-        "self_reported_ethnicity",
     ):
         assert col in labeled.obs.columns, f"{col} should be added by labeler"
         assert labeled.obs[col].notna().all(), f"{col} should be fully populated"
@@ -97,6 +96,26 @@ def test_preflight_fails_on_pre_populated_obs_label(base_adata, tmp_path):
         "Add labels error: Column 'tissue' is a reserved column name "
         "of 'obs'. Remove it from h5ad and try again."
     ) in str(excinfo.value)
+
+
+@pytest.mark.parametrize(
+    "column,value",
+    [
+        ("self_reported_ethnicity_ontology_term_id", "HANCESTRO:0019"),
+        ("self_reported_ethnicity", "Japanese"),
+    ],
+)
+def test_preflight_fails_on_forbidden_self_reported_ethnicity(base_adata, tmp_path, column, value):
+    # Symmetric with the validator's forbidden-column check: HCALabeler
+    # rejects both forbidden SRE columns in preflight so the labeler can
+    # never produce an HCA-invalid file. Both the ontology_term_id source
+    # and the cosmetic label column are forbidden — exercise each. See #370.
+    base_adata.obs[column] = value
+    with pytest.raises(ValueError) as excinfo:
+        _label(base_adata, tmp_path)
+    msg = str(excinfo.value)
+    assert column in msg
+    assert "must not be present" in msg
 
 
 def test_preflight_fails_on_pre_populated_label_without_source(base_adata, tmp_path):

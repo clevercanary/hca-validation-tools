@@ -55,7 +55,6 @@ def create_labelable_h5ad(path: Path) -> Path:
             "disease_ontology_term_id": pd.Categorical(["MONDO:0100096"] * n_obs),
             "sex_ontology_term_id": pd.Categorical(["PATO:0000383"] * n_obs),
             "tissue_ontology_term_id": pd.Categorical(["UBERON:0002048"] * n_obs),
-            "self_reported_ethnicity_ontology_term_id": pd.Categorical(["HANCESTRO:0019"] * n_obs),
             "development_stage_ontology_term_id": pd.Categorical(["HsapDv:0000003"] * n_obs),
             "organism_ontology_term_id": pd.Categorical(["NCBITaxon:9606"] * n_obs),
         },

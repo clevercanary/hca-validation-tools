@@ -44,6 +44,7 @@ Runs the full vendored schema validator against the unmodified CELLxGENE schema 
 - **`organism_ontology_term_id` lives in `obs`**, not `uns`. Feature-id/organism checks read from obs.
 - **`requirement_level: optional`** — silently skipped if missing, fully validated if present.
 - **`requirement_level: strongly_recommended`** — warns when missing; warns on NaN with count/percent; errors on list-separator values (`,`/`;`/`|`); errors on blocklist placeholder values.
+- **`requirement_level: forbidden`** — errors if the column is present in the dataframe; error text comes from `forbidden_error` on the schema entry. Currently used to enforce that `obs['self_reported_ethnicity_ontology_term_id']` and `obs['self_reported_ethnicity']` are absent (HCA does not collect ethnicity — privacy). `HCALabeler._preflight` rejects the same columns symmetrically so the labeler can never produce an HCA-invalid file.
 - **`pattern` regex on columns** — errors on values that don't fullmatch; uses `pattern_description` for the error text.
 - **`element_type: string` on lists** — errors on non-string or whitespace-only entries.
 - **Raw-layer retry** — re-runs `_validate_raw()` if the base class skipped it but `assay_ontology_term_id` exists.
@@ -97,7 +98,6 @@ All other rules come from the vendored base class (§5).
 - `disease_ontology_term_id` — MONDO.
 - `development_stage_ontology_term_id` — HsapDv/MmusDv per organism.
 - `sex_ontology_term_id` — PATO.
-- `self_reported_ethnicity_ontology_term_id` — HANCESTRO.
 - `organism_ontology_term_id` — NCBITaxon allowlist.
 
 ### `uns`

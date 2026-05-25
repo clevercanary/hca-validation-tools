@@ -467,70 +467,18 @@ components:
         add_labels:
           - type: curie
             to_column: tissue
+      # HCA does not collect self_reported_ethnicity (privacy). Both the
+      # ontology-term-id column and the cosmetic label column are forbidden;
+      # the validator emits `forbidden_error` if either appears in obs, and
+      # HCALabeler rejects them in preflight. Issue #370.
       self_reported_ethnicity_ontology_term_id:
-        type: curie
-        dependencies:
-          - # If organism is Human and tissue_type is not "cell line"
-            rule:
-              - column: organism_ontology_term_id
-                match_exact:
-                  terms:
-                    - NCBITaxon:9606
-              - column: tissue_type
-                exclude_exact:
-                  terms:
-                    - cell line
-            error_message_suffix: >-
-              When 'organism_ontology_term_id' is 'NCBITaxon:9606' (Homo sapiens) and 'tissue_type' is not 'cell line', self_reported_ethnicity_ontology_term_id MUST be formatted as one or more AfPO or HANCESTRO terms that are descendants of 'HANCESTRO:0601' for ethnicity category or 'HANCESTRO:0602' for geography-based population category, in ascending lexical order with the delimiter ` || `, or 'unknown' if unavailable.
-            type: curie
-            curie_constraints:
-              ontologies:
-                - HANCESTRO
-                - AFPO
-              exceptions:
-                - unknown
-              allowed:
-                ancestors:
-                  HANCESTRO:
-                    - HANCESTRO:0601
-                    - HANCESTRO:0602
-                  AFPO:
-                    - HANCESTRO:0601
-                    - HANCESTRO:0602
-              multi_term:
-                delimiter: " || "
-                sorted: True
-          - # If organism is not Human, self_reported_ethnicity_ontology_term_id must be "na"
-            rule:
-              column: organism_ontology_term_id
-              exclude_exact:
-                terms:
-                  - NCBITaxon:9606
-            error_message_suffix: >-
-              When 'organism_ontology_term_id' is NOT 'NCBITaxon:9606' (Homo sapiens), self_reported_ethnicity_ontology_term_id MUST be 'na'.
-            type: curie
-            curie_constraints:
-              ontologies:
-                - NA
-              exceptions:
-                - na
-          - # If tissue_type is "cell line", self_reported_ethnicity_ontology_term_id must be "na"
-            rule:
-              column: tissue_type
-              match_exact:
-                terms:
-                  - cell line
-            error_message_suffix: >-
-              When 'tissue_type' is 'cell line', 'self_reported_ethnicity_ontology_term_id' MUST be 'na'.
-            type: curie
-            curie_constraints:
-              ontologies:
-                - NA
-              exceptions:
-                - na
-        add_labels:
-          - type: curie
-            to_column: self_reported_ethnicity
+        requirement_level: forbidden
+        forbidden_error: >-
+          Column 'self_reported_ethnicity_ontology_term_id' must not be present in obs. HCA does not collect self_reported_ethnicity (privacy). Remove the column from obs.
+      self_reported_ethnicity:
+        requirement_level: forbidden
+        forbidden_error: >-
+          Column 'self_reported_ethnicity' must not be present in obs. HCA does not collect self_reported_ethnicity (privacy). Remove the column from obs.
       development_stage_ontology_term_id:
         type: curie
         dependencies:

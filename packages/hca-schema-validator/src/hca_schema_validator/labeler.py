@@ -30,7 +30,6 @@ HCA_DERIVED_OBS_LABELS = (
     "sex",
     "organism",
     "development_stage",
-    "self_reported_ethnicity",
 )
 # Keys that signal the input has already been through cellxgene-schema
 # add-labels. `citation` (also in the schema's reserved_columns list) is
@@ -74,6 +73,17 @@ class HCALabeler(AnnDataLabelAppender):
                 continue
             component = self.schema_def.get("components", {}).get(component_name, {})
             for col_name, col_def in component.get("columns", {}).items():
+                # Forbidden-column check: reject before the validator would,
+                # so curators see the same message from labeler and validator.
+                # Forbidden columns have no add_labels / source semantics, so
+                # we handle them first and skip the rest of the loop body.
+                if str(col_def.get("requirement_level", "")).lower() == "forbidden":
+                    if col_name in df.columns:
+                        issues.append(col_def.get(
+                            "forbidden_error",
+                            f"Column '{col_name}' must not be present in {component_name}.",
+                        ))
+                    continue
                 if "add_labels" not in col_def:
                     continue
                 # Reserved-column check fires regardless of source presence:
