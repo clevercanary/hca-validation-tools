@@ -12,7 +12,14 @@ import h5py
 import numpy as np
 import pandas as pd
 
-from ._io import ensure_provenance_group, open_h5ad, read_obs_index, transplant_obs_columns, verify_obs_transplant
+from ._io import (
+    ensure_provenance_group,
+    open_h5ad,
+    read_obs_index,
+    transplant_obs_columns,
+    update_column_order,
+    verify_obs_transplant,
+)
 from ._serialize import make_serializable
 from .write import (
     EDIT_LOG_KEY,
@@ -26,6 +33,10 @@ _CELLXGENE_RESERVED_UNS = ["schema_version", "schema_reference", "citation"]
 
 # CellxGENE uns keys that need to be broadcast to obs
 _UNS_TO_OBS = ["organism_ontology_term_id", "organism"]
+
+# Obs columns that exist in CellxGENE files but are forbidden in HCA (privacy);
+# stripped during conversion so the output passes HCA validation. See #370 / #410.
+_OBS_COLUMNS_TO_STRIP = ("self_reported_ethnicity_ontology_term_id", "self_reported_ethnicity")
 
 
 def _slugify(text: str, max_length: int = 80) -> str:
@@ -50,7 +61,9 @@ def convert_cellxgene_to_hca(
     Avoids loading the expression matrix into memory.
 
     Preserves cellxgene provenance in uns['provenance']['cellxgene'], broadcasts
-    organism from uns to obs, and renames the output from the dataset title.
+    organism from uns to obs, strips HCA-forbidden obs columns
+    (``self_reported_ethnicity_ontology_term_id`` and ``self_reported_ethnicity``)
+    for privacy (see #370), and renames the output from the dataset title.
 
     Args:
         path: Path to a CellxGENE h5ad file.
@@ -98,6 +111,15 @@ def convert_cellxgene_to_hca(
         source_index = read_obs_index(path)
         n_obs = len(source_index)
 
+        # Probe actual obs members (not the `column-order` attribute) so the
+        # edit-log entry honestly reflects what will be stripped. For well-
+        # formed CXG files the two agree; reading members directly avoids
+        # the edge case where the attr lists a column that isn't actually
+        # present as a dataset (which would make the strip a no-op while
+        # the edit log overclaimed).
+        with h5py.File(path, "r") as _f:
+            source_obs_members = set(_f["obs"].keys())
+
         # --- Step 3: Build temp AnnData ---
         conversions = []
 
@@ -105,6 +127,14 @@ def convert_cellxgene_to_hca(
             conversions.append(
                 f"Moved cellxgene reserved keys to uns['provenance']['cellxgene']: "
                 f"{list(cellxgene_source.keys())}"
+            )
+
+        # Forbidden-by-HCA obs columns to remove (privacy — see #370). The
+        # h5py block below performs the actual deletion.
+        obs_columns_stripped = [c for c in _OBS_COLUMNS_TO_STRIP if c in source_obs_members]
+        if obs_columns_stripped:
+            conversions.append(
+                f"Stripped HCA-forbidden obs columns (privacy): {obs_columns_stripped}"
             )
 
         # Broadcast obs columns (categorical, 1 category, all codes=0)
@@ -138,6 +168,7 @@ def convert_cellxgene_to_hca(
                 "source_schema_version": cellxgene_source.get("schema_version"),
                 "source_citation": cellxgene_source.get("citation"),
                 "conversions": conversions,
+                "obs_columns_stripped": obs_columns_stripped,
             },
         )
 
@@ -186,6 +217,18 @@ def convert_cellxgene_to_hca(
 
                 obs_cols_added = list(obs_data.keys())
                 transplant_obs_columns(f_temp, f_out, obs_cols_added, overwrite=True)
+
+                # Strip HCA-forbidden obs columns (privacy — see #370 / #410).
+                # Deletes the HDF5 dataset/group for each column, then updates
+                # the obs `column-order` attribute so the resulting file still
+                # round-trips through anndata cleanly.
+                stripped = set()
+                for col in obs_columns_stripped:
+                    if col in f_out["obs"]:
+                        del f_out["obs"][col]
+                        stripped.add(col)
+                if stripped:
+                    update_column_order(f_out, [], stripped)
 
                 # Transplant edit_history into provenance
                 if EDIT_LOG_KEY in prov_out:
