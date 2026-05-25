@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.6.0](https://github.com/clevercanary/hca-validation-tools/compare/hca-anndata-mcp-v0.5.1...hca-anndata-mcp-v0.6.0) (2026-05-25)
+
+
+### ⚠ BREAKING CHANGES
+
+* **hca-schema-validator:** forbid self_reported_ethnicity columns in obs ([#370](https://github.com/clevercanary/hca-validation-tools/issues/370)) (#409)
+
+### Features
+
+* **hca-schema-validator:** forbid self_reported_ethnicity columns in obs ([#370](https://github.com/clevercanary/hca-validation-tools/issues/370)) ([#409](https://github.com/clevercanary/hca-validation-tools/issues/409)) ([53c2fd8](https://github.com/clevercanary/hca-validation-tools/commit/53c2fd808af90611068738675de47fb24596b7c1))
+
 ## [0.5.1](https://github.com/clevercanary/hca-validation-tools/compare/hca-anndata-mcp-v0.5.0...hca-anndata-mcp-v0.5.1) (2026-05-17)
 
 
