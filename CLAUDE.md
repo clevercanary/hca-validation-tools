@@ -67,6 +67,22 @@ make batch-publish-container ENV=prod   # Same for production
 make batch-submit-job ENV=dev
 ```
 
+## Release Policy
+
+All three publishable packages (`hca-schema-validator`, `hca-anndata-tools`, `hca-anndata-mcp`) are pre-1.0 and treated as still iterating. Two flags in `release-please-config.json` shape the bump behavior:
+
+- **`bump-minor-pre-major: true`** — on a 0.x package, `feat!` (BREAKING CHANGE) produces a minor bump (`0.12.1` → `0.13.0`), not release-please's default `0.x` → `1.0.0` promotion.
+- **`bump-patch-for-minor-pre-major: true`** — non-breaking `feat:` commits produce a patch bump (`0.12.1` → `0.12.2`), not the default minor. This keeps the minor bump as the explicit "breaking change" signal at 0.x.
+
+Net effect on 0.x packages: `fix:` → patch, `feat:` → patch, `feat!:` → minor. The minor digit is the only signal that a release contains a breaking change; consumers pinning `>=0.12,<0.13` get automatic patches but block on minors.
+
+**Cutting 1.0.0 is a deliberate manual act.** When a package is API-stable enough to graduate:
+
+1. Land a commit with `Release-As: 1.0.0` in the footer (release-please will honor it), OR
+2. Hand-edit `.release-please-manifest.json` to set the target version.
+
+Before doing either, update `.github/workflows/release-please.yml` — the MCP publish step has sed substitutions that hard-cap sibling packages at `<1`. Those caps must be relaxed (e.g., `<2`) or the post-1.0 MCP wheel on PyPI will refuse to install. (Tracked in a follow-up issue.)
+
 ## Updating hca-schema-validator in the Batch Service
 
 When a new version of `hca-schema-validator` is released (via release-please → PyPI):
