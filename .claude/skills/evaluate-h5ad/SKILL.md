@@ -99,7 +99,7 @@ Flag any uncompressed dataset in a >100 MB file as an issue.
 |---|---|---|---|
 | … | … | … | … |
 
-See `/curate-h5ad` Step 5 for classification meanings (`not_in_gencode` / `missing_from_var` / `known_rename`), the `feature_name` → `gene_name` → `var.index` fallback order, and where each miss kind points for remediation.
+See `/curate-h5ad` Step 5 for classification meanings (`not_in_gencode` / `missing_from_var` / `known_rename`), the `feature_name` → `gene_name` → `var.index` fallback order, and where each miss kind points for remediation. Report each missing marker by symbol and classification only — do not speculate about cause (typo / glob / rename); the classification name is the answer.
 
 - If `validate_cell_annotation` ran (CAP present), render its result as a single sub-block. Render this block independently of the marker-gene table — the two are conditionally independent and either may render without the other. The wrapper has two failure shapes; handle each accordingly:
   - **Top-level `{error: str}`** — only fires on wrapper-level failures (path resolution, missing file, unexpected exception in the wrapper itself). Report the error as a single line and skip the table below.
