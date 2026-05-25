@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.13.0](https://github.com/clevercanary/hca-validation-tools/compare/hca-schema-validator-v0.12.1...hca-schema-validator-v0.13.0) (2026-05-25)
+
+
+### ⚠ BREAKING CHANGES
+
+* **hca-schema-validator:** forbid self_reported_ethnicity columns in obs ([#370](https://github.com/clevercanary/hca-validation-tools/issues/370)) (#409)
+
+### Features
+
+* **hca-schema-validator:** forbid self_reported_ethnicity columns in obs ([#370](https://github.com/clevercanary/hca-validation-tools/issues/370)) ([#409](https://github.com/clevercanary/hca-validation-tools/issues/409)) ([53c2fd8](https://github.com/clevercanary/hca-validation-tools/commit/53c2fd808af90611068738675de47fb24596b7c1))
+
 ## [0.12.1](https://github.com/clevercanary/hca-validation-tools/compare/hca-schema-validator-v0.12.0...hca-schema-validator-v0.12.1) (2026-05-17)
 
 
