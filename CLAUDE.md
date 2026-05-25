@@ -67,6 +67,27 @@ make batch-publish-container ENV=prod   # Same for production
 make batch-submit-job ENV=dev
 ```
 
+## Release Policy
+
+All three publishable packages (`hca-schema-validator`, `hca-anndata-tools`, `hca-anndata-mcp`) are pre-1.0 and treated as still iterating. Two flags in `release-please-config.json` shape the bump behavior:
+
+- **`bump-minor-pre-major: true`** — on a 0.x package, `feat!` (BREAKING CHANGE) produces a minor bump (`0.12.1` → `0.13.0`), not release-please's default `0.x` → `1.0.0` promotion.
+- **`bump-patch-for-minor-pre-major: true`** — non-breaking `feat:` commits produce a patch bump (`0.12.1` → `0.12.2`), not the default minor. This keeps the minor bump as the explicit "breaking change" signal at 0.x.
+
+Net effect on 0.x packages: `fix:` → patch, `feat:` → patch, `feat!:` → minor. The minor digit is the only signal that a release contains a breaking change; consumers pinning `>=0.12,<0.13` get automatic patches but block on minors.
+
+**Cutting 1.0.0 is a deliberate manual act.** When a package is API-stable enough to graduate, land a commit with `Release-As: 1.0.0` in the footer:
+
+```
+chore(<package>): graduate to 1.0.0
+
+Release-As: 1.0.0
+```
+
+This is release-please's supported override mechanism — it overrides the auto-computed bump for the package whose path the commit touches. Don't hand-edit `.release-please-manifest.json`: that file is a back-reference to the last released version per path and editing it doesn't reliably cut a release; it can also desync from the git tags release-please uses for compare links.
+
+Before tagging 1.0.0, update `.github/workflows/release-please.yml` — the MCP publish step has sed substitutions that hard-cap sibling packages at `<1`. Those caps must be relaxed (e.g., `<2`) or the post-1.0 MCP wheel on PyPI will refuse to install. (Tracked in [#416](https://github.com/clevercanary/hca-validation-tools/issues/416).)
+
 ## Updating hca-schema-validator in the Batch Service
 
 When a new version of `hca-schema-validator` is released (via release-please → PyPI):
