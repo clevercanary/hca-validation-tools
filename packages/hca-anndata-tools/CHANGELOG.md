@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.1](https://github.com/clevercanary/hca-validation-tools/compare/hca-anndata-tools-v0.5.0...hca-anndata-tools-v0.5.1) (2026-05-25)
+
+
+### Features
+
+* **hca-anndata-tools:** strip forbidden SRE obs columns in convert_cellxgene_to_hca ([#410](https://github.com/clevercanary/hca-validation-tools/issues/410)) ([#419](https://github.com/clevercanary/hca-validation-tools/issues/419)) ([e9df88e](https://github.com/clevercanary/hca-validation-tools/commit/e9df88ed9f1a56e832d8e5b4497e3815a9b3e26d))
+
 ## [0.5.0](https://github.com/clevercanary/hca-validation-tools/compare/hca-anndata-tools-v0.4.0...hca-anndata-tools-v0.5.0) (2026-05-17)
 
 
