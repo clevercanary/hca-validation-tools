@@ -24,6 +24,7 @@ from hca_anndata_tools import (
 from hca_anndata_mcp.tools.check_cosmetic import check_cosmetic_labels_h5ad
 from hca_anndata_mcp.tools.label import label_h5ad
 from hca_anndata_mcp.tools.plot import plot_embedding_mcp
+from hca_anndata_mcp.tools.strip import strip_forbidden_obs_columns
 from hca_anndata_mcp.tools.validate import validate_cell_annotation, validate_schema
 
 mcp = FastMCP(
@@ -38,6 +39,11 @@ mcp = FastMCP(
         "list_uns_fields to see HCA dataset metadata and what's missing, "
         "set_uns to update HCA dataset metadata fields with schema validation, "
         "convert_cellxgene_to_hca to convert CellxGENE files to HCA format, "
+        "strip_forbidden_obs_columns to remove HCA-forbidden obs columns "
+        "(self_reported_ethnicity*) from HCA-layout files — use this when "
+        "the file is already HCA-layout and the SRE columns survived from "
+        "upstream; on CellxGENE-layout files convert_cellxgene_to_hca strips "
+        "them automatically as a side-effect, "
         "validate_marker_genes to check CAP marker genes against var, "
         "copy_cap_annotations to copy CAP annotations from a source into an HCA target file, "
         "replace_placeholder_values to replace banned placeholder values with NaN in obs columns, "
@@ -70,6 +76,7 @@ mcp.tool()(get_cap_annotations)
 mcp.tool()(list_uns_fields)
 mcp.tool()(set_uns)
 mcp.tool()(convert_cellxgene_to_hca)
+mcp.tool()(strip_forbidden_obs_columns)
 mcp.tool()(validate_marker_genes)
 mcp.tool()(copy_cap_annotations)
 mcp.tool()(replace_placeholder_values)
