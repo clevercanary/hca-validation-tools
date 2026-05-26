@@ -91,7 +91,13 @@ def test_validate_cell_annotation_happy_path(tmp_path):
     path = create_cap_annotated_h5ad(tmp_path / "cap.h5ad")
     result = validate_cell_annotation(str(path))
     assert result["is_valid"] is True
+    assert result["error_count"] == 0
     assert result["errors"] == []
+    # Pin the warnings contract too — without this, a future addition of
+    # non-fatal warnings (e.g. Phase 2 #363) would silently change the
+    # wrapper's surfaced API without test failure.
+    assert result["warning_count"] == 0
+    assert result["warnings"] == []
 
 
 def test_validate_cell_annotation_missing_file():

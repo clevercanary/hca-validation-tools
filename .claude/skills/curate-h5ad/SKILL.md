@@ -131,7 +131,7 @@ Only include the rows for tools that actually ran this session.
 | `hcaCellAnnotation` warnings | N | M |
 | Named issues resolved | — | e.g. "raw.X absent", "`unknown` placeholder in `library_preparation_batch`" |
 
-Counts mirror the two validators the dataset-validator service runs at upload time: `hcaSchema` (Tier 1 + cosmetic checks, from `validate_schema`) and `hcaCellAnnotation` (CAP structural checks, from `validate_cell_annotation`). Both rows omit cleanly when their respective validator wasn't run this session (e.g. cell-annotation rows are skipped on files without CAP).
+Counts mirror the two validators the dataset-validator service runs at upload time: `hcaSchema` (Tier 1 + cosmetic checks, from `validate_schema`) and `hcaCellAnnotation` (CAP structural checks, from `validate_cell_annotation`). Each validator's rows (all of its `hcaSchema:*` rows, or all of its `hcaCellAnnotation:*` rows) omit cleanly together when that validator wasn't run this session — e.g. the cell-annotation rows are skipped wholesale on files without CAP.
 
 Count **CAP "zero observations" warnings** (text: `contains a category '...' with zero observations`) separately from other `hcaSchema` warnings. These are *expected* after `copy_cap_annotations`: CAP declares a closed vocabulary per annotation set that spans all lineages, and a per-lineage file only realizes a subset — unused vocabulary terms are intentional schema information, not a defect. Report the count and move on; don't prune them. The validator's `--add-labels` remediation note comes from vendored CellxGENE code and does not apply to HCA.
 
