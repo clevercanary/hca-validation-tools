@@ -79,6 +79,7 @@ Report these but don't attempt to fix:
 - Any `obs['organism_ontology_term_id']` value other than `NCBITaxon:9606` — `label_h5ad` is human-only. Supporting another organism is a code change, not a curation fix.
 - Any controlled output column is pre-populated: in `obs` (`tissue`, `cell_type`, `assay`, `disease`, `sex`, `organism`, `development_stage`, `observation_joinid`), in `var` (`feature_name`, `feature_reference`, `feature_biotype`, `feature_length`, `feature_type`), or in `raw.var` when present (the same five `feature_*` columns). `label_h5ad` refuses to run rather than silently overwrite producer values that may disagree with the ontology IDs, GENCODE, or the labeler's hash digest. Upstream needs to drop the column(s) so the labeler can populate from `*_ontology_term_id` and `var.index` cleanly. Do not strip them here — list every offender from the preflight error so the curator can fix them in one pass.
 - File carries `obs['self_reported_ethnicity']` or `obs['self_reported_ethnicity_ontology_term_id']` on an **HCA-layout** input — HCA forbids these for privacy. `label_h5ad` and `validate_schema` both reject the file. Upstream needs to drop both columns and re-emit; do not strip them here. (Not applicable to CellxGENE-layout inputs — `convert_cellxgene_to_hca` strips both columns automatically during conversion.)
+- Any `validate_cell_annotation` error other than `NO_SETS_ERROR` (e.g. missing required `--<suffix>` obs columns on an annotation set, malformed `cellannotation_schema_version`, per-set metadata not a dict). These are CAP-side structural defects — `copy_cap_annotations` faithfully copies what the CAP source provides, so the fix has to land in the CAP export. Surface the validator's verbatim error so the curator can ask the CAP team for a corrected export. (The `NO_SETS_ERROR` case is the B1 "no CAP source provided yet" workflow above.)
 
 ## Step 3 — Present the punch list
 
@@ -99,6 +100,8 @@ Each tool writes a new timestamped file. For most subsequent calls, passing eith
 ## Step 5 — Report
 
 Re-run `view_edit_log` on the final file, then produce a structured report with these sections in order. Also re-run `validate_schema` — but only if `check_schema_type` reports `hca` on the final file. If the file is still CellxGENE (e.g. conversion wasn't approved), skip the validator rerun and note why under "Validator delta" instead of pasting a misleading error list. Use markdown tables; skip any section with no content.
+
+Also re-run `get_cap_annotations` on the final file, and if it reports `has_cap_annotations: true`, run `validate_cell_annotation` on the final file too. This is the structural validator the dataset-validator service runs at upload time under the `hcaCellAnnotation` key — running it here catches issues during curation instead of post-upload. Gate on `has_cap_annotations` directly (not on the edit log) so the validator runs on any file that ships with CAP, including files where the producer pre-attached CAP without going through `copy_cap_annotations`. Its output feeds the **Validator delta** section's cell-annotation rows.
 
 For the Provenance line below, re-run `get_summary` on the final file to fetch its obs columns, then run `get_descriptive_stats` with `columns` set to the intersection of `["donor_id", "sample_id", "library_id"]` and the final file's obs column names (extract `name` from each `{name, dtype}` object in `get_summary.obs_columns`).
 
@@ -121,14 +124,18 @@ Only include the rows for tools that actually ran this session.
 
 |  | Before | After |
 |---|---|---|
-| Errors | N | M |
-| Non-feature-ID warnings | N | M |
-| CAP zero-observation warnings | N | M |
-| Named warnings resolved | — | e.g. "raw.X absent", "`unknown` placeholder in `library_preparation_batch`" |
+| `hcaSchema` errors | N | M |
+| `hcaSchema` non-feature-ID warnings | N | M |
+| `hcaSchema` CAP zero-observation warnings | N | M |
+| `hcaCellAnnotation` errors | N | M |
+| `hcaCellAnnotation` warnings | N | M |
+| Named issues resolved | — | e.g. "raw.X absent", "`unknown` placeholder in `library_preparation_batch`" |
 
-Count **CAP "zero observations" warnings** (text: `contains a category '...' with zero observations`) separately from other warnings. These are *expected* after `copy_cap_annotations`: CAP declares a closed vocabulary per annotation set that spans all lineages, and a per-lineage file only realizes a subset — unused vocabulary terms are intentional schema information, not a defect. Report the count and move on; don't prune them. The validator's `--add-labels` remediation note comes from vendored CellxGENE code and does not apply to HCA.
+Counts mirror the two validators the dataset-validator service runs at upload time: `hcaSchema` (Tier 1 + cosmetic checks, from `validate_schema`) and `hcaCellAnnotation` (CAP structural checks, from `validate_cell_annotation`). Each validator's rows (all of its `hcaSchema:*` rows, or all of its `hcaCellAnnotation:*` rows) omit cleanly together when that validator wasn't run this session — e.g. the cell-annotation rows are skipped wholesale on files without CAP.
 
-Also list the specific error/warning kinds that disappeared or newly appeared, one line each.
+Count **CAP "zero observations" warnings** (text: `contains a category '...' with zero observations`) separately from other `hcaSchema` warnings. These are *expected* after `copy_cap_annotations`: CAP declares a closed vocabulary per annotation set that spans all lineages, and a per-lineage file only realizes a subset — unused vocabulary terms are intentional schema information, not a defect. Report the count and move on; don't prune them. The validator's `--add-labels` remediation note comes from vendored CellxGENE code and does not apply to HCA.
+
+Also list the specific error/warning kinds that disappeared or newly appeared, one line each, prefixed with their validator (`hcaSchema:` or `hcaCellAnnotation:`).
 
 ### CAP overlap (only if `copy_cap_annotations` ran this session, or a prior `import_cap_annotations` entry is in the edit log)
 
