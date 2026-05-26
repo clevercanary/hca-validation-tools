@@ -32,6 +32,7 @@ Then synthesize the results into a report with these sections in order. Use mark
 
 ## 1. File overview
 One compact block (bullets or a short table) with:
+- **Atlas** (when the input lives under `/Users/dave/hca-tracker-upload/prod/<bionetwork>/<atlas-slug>/...`): render as `` `<bionetwork> / <atlas-slug>` (HCA Tracker upload location) ``. Extracted purely from the path — there is no `atlas` field on the file itself, so the upload-tracker directory convention is the source of truth. Omit this bullet if the file isn't under that tree.
 - Input path (`$ARGUMENTS`). If the tools auto-resolved to a newer snapshot, add the resolved basename on a second line — read it from any tool that returns a `filename` field (e.g. `check_schema_type.filename`). Skip the second line when input and resolved agree.
 - Shape: `n_obs × n_vars`, file size (MB)
 - `title` from `uns`
@@ -45,10 +46,9 @@ One compact block (bullets or a short table) with:
 | Category | Missing |
 |---|---|
 | Required (schema-wide) | list the `missing_required` field names |
-| Required (bionetwork) | list the `missing_required_bionetwork` field names |
 | Extra uns keys (not in schema) | list any `extra_uns_keys` |
 
-If nothing is missing, say so in a single line instead of an empty table.
+Do not render a `Required (bionetwork)` row. `missing_required_bionetwork` is union-aggregated across modelled bionetwork subclasses (adipose / gut / MSK) and not routed per file, so its value is uninformative — empty isn't a green light, and a hit could be a false positive against the wrong bionetwork. If nothing is missing across the whole table, say so in a single line instead of rendering it.
 
 ## 3. Storage & compression
 

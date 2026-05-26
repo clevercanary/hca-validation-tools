@@ -114,6 +114,8 @@ Then add an **Outstanding issues** bullet list pulled from Buckets B1, B2, and C
 ### Header
 One short paragraph or bullet block with: final file path, shape (`n_obs × n_vars`), `title` from `uns`, schema type (include version only when schema is CellxGENE — HCA is unversioned), X verdict + `raw.X` presence, compression status, `obsm` keys present. Add a **Provenance** line: `N donors · M samples · K libraries` from `get_descriptive_stats.columns[<col>].unique` for each column. Skip any metric whose column wasn't returned or whose `unique` is 0.
 
+If the final file lives under `/Users/dave/hca-tracker-upload/prod/<bionetwork>/<atlas-slug>/...`, lead the bullet block with an **Atlas** line rendered as `` `<bionetwork> / <atlas-slug>` (HCA Tracker upload location) ``. Extracted purely from the path — no `atlas` field exists on the file itself, so the upload-tracker directory convention is the source of truth. Omit the bullet when the file isn't under that tree.
+
 ### Mechanical fixes applied
 
 | # | Operation | Effect |
