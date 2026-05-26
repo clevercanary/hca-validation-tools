@@ -6,7 +6,10 @@ Phase 1 (see issue #362) performs four structural checks:
    is a non-empty dict).
 2. ``uns['cellannotation_schema_version']`` is present and well-formed.
 3. ``uns['cellannotation_metadata']`` is a dict and each per-set value is a
-   dict with a ``title`` key.
+   dict. The CAP AnnData schema's per-set required fields (``description``,
+   ``annotation_method``, ``algorithm_name``, ``algorithm_version``,
+   ``algorithm_repo_url``) are left to the upstream CAP-side validator; this
+   check only enforces structural shape.
 4. Each annotation set has the CAP-required per-set obs columns.
 
 Marker-gene coverage (Phase 2) and CL-term validity (Phase 3) are out of
@@ -35,9 +38,6 @@ _REQUIRED_OBS_SUFFIXES = (
     "rationale",
     "marker_gene_evidence",
 )
-
-# CAP per-set metadata keys required in uns['cellannotation_metadata'][<set>].
-_REQUIRED_SET_METADATA_KEYS = ("title",)
 
 NO_SETS_ERROR = (
     "No CAP annotation sets present. At least one annotation set conforming "
@@ -139,12 +139,6 @@ class HCACellAnnotationValidator:
                     f"dict; got {type(set_meta).__name__}."
                 )
                 continue
-            missing_keys = [k for k in _REQUIRED_SET_METADATA_KEYS if k not in set_meta]
-            if missing_keys:
-                self._error(
-                    f"uns['cellannotation_metadata']['{set_name}'] is missing "
-                    f"required keys: {missing_keys}."
-                )
             annotation_sets.append(set_name)
         return annotation_sets
 
