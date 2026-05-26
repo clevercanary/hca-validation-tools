@@ -20,7 +20,11 @@ Run all of the following MCP tool calls in parallel to gather data:
 6. **get_cap_annotations** — CAP cell annotation sets, if present
 7. **view_edit_log** — read `uns/provenance/edit_history` so edit history is already in hand when synthesizing the report
 
-Then, only if `get_cap_annotations` reports `has_cap_annotations: true`, call **validate_marker_genes** — CAP marker-gene coverage against the target's var gene-name source (`var['feature_name']` preferred, else `var['gene_name']`, else `var.index`). The `has_cap_annotations` gate already implies HCA-layout, so the tool has what it needs; skipping on non-CAP files avoids a redundant call.
+Then, only if `get_cap_annotations` reports `has_cap_annotations: true`, call both of these in parallel:
+- **validate_marker_genes** — CAP marker-gene coverage against the target's var gene-name source (`var['feature_name']` preferred, else `var['gene_name']`, else `var.index`).
+- **validate_cell_annotation** — HCA Cell Annotation structural checks (annotation-set presence, well-formed `cellannotation_schema_version`, per-set metadata is a dict, required `--<suffix>` obs columns). This is the validator the dataset-validator service runs under the `hcaCellAnnotation` key at upload time; running it here surfaces issues during curation instead of post-upload.
+
+The `has_cap_annotations` gate already implies HCA-layout, so both tools have what they need; skipping on non-CAP files avoids redundant calls (and on a no-CAP file `validate_cell_annotation` would only emit the obvious `NO_SETS_ERROR`).
 
 After **get_summary** returns, also run **get_descriptive_stats** with `columns` set to the intersection of `["donor_id", "sample_id", "library_id"]` and the obs column names from `get_summary.obs_columns` (which is a list of `{name, dtype}` objects — extract `name`). Depends on `get_summary`, so this step is sequential, not part of the parallel batch. Used only for the Provenance bullet in Section 1.
 
@@ -96,6 +100,16 @@ Flag any uncompressed dataset in a >100 MB file as an issue.
 | … | … | … | … |
 
 See `/curate-h5ad` Step 5 for classification meanings (`not_in_gencode` / `missing_from_var` / `known_rename`), the `feature_name` → `gene_name` → `var.index` fallback order, and where each miss kind points for remediation.
+
+- If `validate_cell_annotation` ran (CAP present), render its result as a single sub-block. Render this block independently of the marker-gene table — the two are conditionally independent and either may render without the other. If the tool returned `{error: ...}` (e.g. file read failure), report the error as a single line and skip the table below.
+
+| HCA Cell Annotation validator | Value |
+|---|---|
+| `is_valid` | true / false |
+| `error_count` | … |
+| `warning_count` | … |
+
+Then list each error and warning verbatim, one per line. If `error_count` and `warning_count` are both 0, replace the list with a single "No structural cell-annotation issues" line. This is what the dataset-validator service runs at upload time under the `hcaCellAnnotation` key — catching issues here means fewer red-dot surprises in the tracker.
 
 ## 6. Edit history
 Summarize entries as a table: `timestamp`, `operation`, one-line `description`. If absent, note that the file hasn't been edited through `hca-anndata-tools`.

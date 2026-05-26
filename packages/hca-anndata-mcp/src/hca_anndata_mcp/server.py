@@ -24,7 +24,7 @@ from hca_anndata_tools import (
 from hca_anndata_mcp.tools.check_cosmetic import check_cosmetic_labels_h5ad
 from hca_anndata_mcp.tools.label import label_h5ad
 from hca_anndata_mcp.tools.plot import plot_embedding_mcp
-from hca_anndata_mcp.tools.validate import validate_schema
+from hca_anndata_mcp.tools.validate import validate_cell_annotation, validate_schema
 
 mcp = FastMCP(
     name="hca-anndata-mcp",
@@ -47,6 +47,9 @@ mcp = FastMCP(
         "check_x_normalization to classify X as raw-counts / normalized / indeterminate, "
         "check_schema_type to identify CellxGENE vs HCA layout and report the schema version, "
         "validate_schema to run the HCA schema validator and report is_valid / errors / warnings, "
+        "validate_cell_annotation to run the HCA Cell Annotation validator (structural CAP checks: "
+        "annotation-set presence, schema_version semver, per-set metadata is a dict, required "
+        "--<suffix> obs columns), complementary to validate_schema, "
         "check_cosmetic_labels_h5ad as a fast targeted alternative — checks only that "
         "producer-supplied obs label columns (tissue, cell_type, ...) match their "
         "*_ontology_term_id values, without the full schema validation cost, "
@@ -76,5 +79,6 @@ mcp.tool()(view_edit_log)
 mcp.tool()(check_x_normalization)
 mcp.tool()(check_schema_type)
 mcp.tool()(validate_schema)
+mcp.tool()(validate_cell_annotation)
 mcp.tool()(check_cosmetic_labels_h5ad)
 mcp.tool()(label_h5ad)

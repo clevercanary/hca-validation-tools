@@ -1,9 +1,10 @@
-"""Unit tests for the validate_schema MCP wrapper."""
+"""Unit tests for the validate_schema + validate_cell_annotation MCP wrappers."""
 
 import anndata as ad
-from hca_anndata_mcp.tools.validate import validate_schema
+from hca_anndata_mcp.tools.validate import validate_cell_annotation, validate_schema
 from hca_anndata_tools.testing import create_sample_h5ad
-from hca_schema_validator.testing import create_labelable_h5ad
+from hca_schema_validator.cell_annotation_validator import NO_SETS_ERROR
+from hca_schema_validator.testing import create_cap_annotated_h5ad, create_labelable_h5ad
 
 
 def test_validate_schema_shape(sample_h5ad):
@@ -69,3 +70,44 @@ def test_validate_schema_resolves_latest(tmp_path):
 
     assert direct_original["errors"] != direct_snapshot["errors"]  # discriminator works
     assert via_lineage == direct_snapshot
+
+
+# ---------------------------------------------------------------------------
+# validate_cell_annotation
+
+
+def test_validate_cell_annotation_shape(tmp_path):
+    path = create_cap_annotated_h5ad(tmp_path / "cap.h5ad")
+    result = validate_cell_annotation(str(path))
+    assert set(result.keys()) == {
+        "filename", "is_valid", "error_count", "warning_count", "errors", "warnings",
+    }
+    assert isinstance(result["is_valid"], bool)
+    assert result["error_count"] == len(result["errors"])
+    assert result["warning_count"] == len(result["warnings"])
+
+
+def test_validate_cell_annotation_happy_path(tmp_path):
+    path = create_cap_annotated_h5ad(tmp_path / "cap.h5ad")
+    result = validate_cell_annotation(str(path))
+    assert result["is_valid"] is True
+    assert result["errors"] == []
+
+
+def test_validate_cell_annotation_missing_file():
+    result = validate_cell_annotation("/nonexistent/file.h5ad")
+    assert "error" in result
+
+
+def test_validate_cell_annotation_surfaces_no_sets_error(tmp_path):
+    """Confirm underlying validator errors come through the MCP wrapper.
+
+    A file with no CAP annotation set should surface NO_SETS_ERROR
+    verbatim — proves the wrapper exposes the validator's full error list
+    rather than just a boolean verdict.
+    """
+    path = tmp_path / "no-cap.h5ad"
+    create_sample_h5ad(path)
+    result = validate_cell_annotation(str(path))
+    assert result["is_valid"] is False
+    assert NO_SETS_ERROR in result["errors"]
