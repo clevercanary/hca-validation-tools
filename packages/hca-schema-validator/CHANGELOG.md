@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.1](https://github.com/clevercanary/hca-validation-tools/compare/hca-schema-validator-v0.13.0...hca-schema-validator-v0.13.1) (2026-05-26)
+
+
+### Bug Fixes
+
+* **cell-annotation-validator:** drop bogus per-set title requirement ([#424](https://github.com/clevercanary/hca-validation-tools/issues/424)) ([f9d6d17](https://github.com/clevercanary/hca-validation-tools/commit/f9d6d17c714068e0eb8d2c4a3aff887c29e6351a))
+
 ## [0.13.0](https://github.com/clevercanary/hca-validation-tools/compare/hca-schema-validator-v0.12.1...hca-schema-validator-v0.13.0) (2026-05-25)
 
 
