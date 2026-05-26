@@ -137,6 +137,13 @@ def strip_forbidden_obs_columns(path: str) -> dict:
         output_path = generate_output_path(path)
         shutil.copy2(path, output_path)
 
+        # Defer the malformed-log cleanup until after the with-block closes
+        # the output file — calling os.remove on an open HDF5 handle works
+        # on POSIX (unlinked-but-open inode) but raises on Windows, and even
+        # on POSIX the subsequent context __exit__ flush hits a removed
+        # inode. Capture the error here, exit the context cleanly, then
+        # remove + return.
+        log_error = None
         with h5py.File(output_path, "a") as f_out:
             stripped = _strip_forbidden_obs_columns_h5py(f_out)
             # `present` was computed before the copy, so it should match
@@ -154,12 +161,13 @@ def strip_forbidden_obs_columns(path: str) -> dict:
             existing_log = read_edit_log_h5py(f_out)
             log_result = build_edit_log(existing_log, [entry], path)
             if "error" in log_result:
-                # The file is already partly mutated at this point. Clean
-                # up the half-written snapshot and surface the log error.
-                os.remove(output_path)
-                return log_result
+                log_error = log_result
+            else:
+                write_edit_log_h5py(f_out, log_result["json"])
 
-            write_edit_log_h5py(f_out, log_result["json"])
+        if log_error is not None:
+            os.remove(output_path)
+            return log_error
 
         cleanup_previous_version(path, output_path)
 

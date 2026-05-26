@@ -59,7 +59,7 @@ For each item, write a concrete question. For **B1** items, do not include a sug
 
 **B2 — Recommended (optional fields the wrangler may want to set)**
 
-Only the fields explicitly named below belong in B2. Do **not** scan `list_uns_fields` for other unset optional fields and invent questions about them — a field being optional-and-unset is not itself a reason to ask. The skill's scope is the explicit tool list (`convert_cellxgene_to_hca`, `normalize_raw`, `replace_placeholder_values`, `label_h5ad`, `copy_cap_annotations`, `set_uns` on the named fields here, `compress_h5ad`); everything else is the wrangler's call, unprompted.
+Only the fields explicitly named below belong in B2. Do **not** scan `list_uns_fields` for other unset optional fields and invent questions about them — a field being optional-and-unset is not itself a reason to ask. The skill's scope is the explicit tool list (`convert_cellxgene_to_hca`, `strip_forbidden_obs_columns`, `normalize_raw`, `replace_placeholder_values`, `label_h5ad`, `copy_cap_annotations`, `set_uns` on the named fields here, `compress_h5ad`); everything else is the wrangler's call, unprompted.
 
 - `default_embedding` — list the obsm keys and ask which one. Optional per schema, but a file shipped without it will display in CELLxGENE Explorer with no default scatter. Must name a 2D embedding to actually plot; 30D latents (e.g. `X_scVI`) are valid per schema but won't display. If only one 2D embedding exists, surface that — the wrangler will almost certainly pick it.
 
@@ -93,8 +93,9 @@ If the wrangler answers any Bucket B items (B1 or B2), promote those to Bucket A
 Order:
 
 1. `convert_cellxgene_to_hca` first if applicable — then stop, re-run Steps 1–3 on the converted file before continuing (conversion changes the layout enough that the prior punch list is stale).
-2. Content edits, in this order: `normalize_raw`, each `replace_placeholder_values`, `label_h5ad`, `copy_cap_annotations` (if a source was supplied), and any `set_uns` approved in Step 3. `label_h5ad` must run **before** `copy_cap_annotations` — `copy_cap_annotations` calls `validate_marker_genes`, which reads `var['feature_name']`; running the labeler first gives marker-gene validation canonical gene symbols to match against.
-3. `compress_h5ad` last.
+2. `strip_forbidden_obs_columns` next if applicable (HCA-layout input with SRE columns present) — must run before `label_h5ad`, whose preflight refuses while SRE is present. On CellxGENE-layout inputs this is unnecessary; the convert step above already stripped them.
+3. Content edits, in this order: `normalize_raw`, each `replace_placeholder_values`, `label_h5ad`, `copy_cap_annotations` (if a source was supplied), and any `set_uns` approved in Step 3. `label_h5ad` must run **before** `copy_cap_annotations` — `copy_cap_annotations` calls `validate_marker_genes`, which reads `var['feature_name']`; running the labeler first gives marker-gene validation canonical gene symbols to match against.
+4. `compress_h5ad` last.
 
 Each tool writes a new timestamped file. For most subsequent calls, passing either the original path or the latest works — `resolve_latest` picks up the newest variant automatically. Two exceptions: `convert_cellxgene_to_hca` does not auto-resolve (call it with the exact path you want to convert), and `copy_cap_annotations` only auto-resolves its `target_path` (the `source_path` is used verbatim).
 
