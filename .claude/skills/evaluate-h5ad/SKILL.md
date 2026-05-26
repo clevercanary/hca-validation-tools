@@ -99,7 +99,7 @@ Flag any uncompressed dataset in a >100 MB file as an issue.
 |---|---|---|---|
 | … | … | … | … |
 
-See `/curate-h5ad` Step 5 for classification meanings (`not_in_gencode` / `missing_from_var` / `known_rename`), the `feature_name` → `gene_name` → `var.index` fallback order, and where each miss kind points for remediation.
+See `/curate-h5ad` Step 5 for classification meanings (`not_in_gencode` / `missing_from_var` / `known_rename`), the `feature_name` → `gene_name` → `var.index` fallback order, and where each miss kind points for remediation. Report each missing marker by symbol and classification only — do not speculate about cause (typo / glob / rename); the classification name is the answer.
 
 - If `validate_cell_annotation` ran (CAP present), render its result as a single sub-block. Render this block independently of the marker-gene table — the two are conditionally independent and either may render without the other. The wrapper has two failure shapes; handle each accordingly:
   - **Top-level `{error: str}`** — only fires on wrapper-level failures (path resolution, missing file, unexpected exception in the wrapper itself). Report the error as a single line and skip the table below.
@@ -114,7 +114,14 @@ See `/curate-h5ad` Step 5 for classification meanings (`not_in_gencode` / `missi
 Then list each error and warning verbatim, one per line. If `error_count` and `warning_count` are both 0, replace the list with a single "No structural cell-annotation issues" line. This is what the dataset-validator service runs at upload time under the `hcaCellAnnotation` key — catching issues here means fewer red-dot surprises in the tracker.
 
 ## 6. Edit history
-Summarize entries as a table: `timestamp`, `operation`, one-line `description`. If absent, note that the file hasn't been edited through `hca-anndata-tools`.
+
+Render every entry returned by `view_edit_log` as a table, oldest first:
+
+| # | Timestamp (UTC) | Operation | Description |
+|---|---|---|---|
+| 1 | 2026-04-21 04:19:10 | `normalize_raw` | Moved raw counts to raw.X and normalized X with normalize_total(target_sum=10000) + log1p |
+
+Format the timestamp as `YYYY-MM-DD HH:MM:SS` (drop the `T` and the fractional seconds and timezone — entries are always UTC). Use the entry's `description` field verbatim. If the file has no edit log, say "No edit history — file hasn't been edited through `hca-anndata-tools`."
 
 ## 7. Summary & recommendations
 - One-line readiness verdict: ready / needs work / not started.
