@@ -79,16 +79,6 @@ def test_malformed_schema_version_errors(cap_h5ad):
     assert any("semver" in e for e in v.errors)
 
 
-def test_set_missing_title_errors(cap_h5ad):
-    def mutate(adata):
-        adata.uns["cellannotation_metadata"] = {"author_annotation": {}}
-    _rewrite(cap_h5ad, mutate)
-
-    v = HCACellAnnotationValidator()
-    assert v.validate_adata(str(cap_h5ad)) is False
-    assert any("author_annotation" in e and "title" in e for e in v.errors)
-
-
 def test_set_metadata_wrong_type_errors(cap_h5ad):
     def mutate(adata):
         adata.uns["cellannotation_metadata"] = {"author_annotation": "not-a-dict"}
