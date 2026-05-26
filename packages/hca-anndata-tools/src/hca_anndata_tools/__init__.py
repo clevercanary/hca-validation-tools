@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from .plot import plot_embedding
     from .stats import get_descriptive_stats
     from .storage import get_storage_info
+    from .strip import strip_forbidden_obs_columns
     from .summary import get_summary
     from .view import view_data
     from .write import (
@@ -56,6 +57,7 @@ _LAZY_IMPORTS = {
     "copy_cap_annotations": ".copy_cap",
     "compress_h5ad": ".compress",
     "normalize_raw": ".normalize",
+    "strip_forbidden_obs_columns": ".strip",
     "check_x_normalization": ".inspect",
     "check_schema_type": ".inspect",
 }
