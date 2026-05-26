@@ -68,7 +68,7 @@ class TestObsGrainIdentifierCoverage:
         })
         result = compute_metadata_coverage(make_adata(obs), schemaview)
         donor_id = field_entry(result, "obs", "donor_id")
-        assert donor_id == {"entity_class": "obs", "field": "donor_id", "complete": 3, "issues": {}}
+        assert donor_id == {"entity_class": "obs", "field": "donor_id", "complete": 3, "missing": 0, "inconsistent": 0}
 
     def test_missing_donor_id_reported_at_obs_grain_only(self, schemaview):
         obs = pd.DataFrame({
@@ -78,7 +78,8 @@ class TestObsGrainIdentifierCoverage:
         result = compute_metadata_coverage(make_adata(obs), schemaview)
         entry = field_entry(result, "obs", "donor_id")
         assert entry["complete"] == 3
-        assert entry["issues"] == {"missing": 2}
+        assert entry["missing"] == 2
+        assert entry["inconsistent"] == 0
 
 
 class TestEntityPropertyCoverage:
@@ -94,7 +95,8 @@ class TestEntityPropertyCoverage:
             "entity_class": "donor",
             "field": "sex_ontology_term_id",
             "complete": 2,
-            "issues": {},
+            "missing": 0,
+            "inconsistent": 0,
         }
 
     def test_partial_population_buckets_as_missing(self, schemaview):
@@ -106,7 +108,8 @@ class TestEntityPropertyCoverage:
         result = compute_metadata_coverage(make_adata(obs), schemaview)
         entry = field_entry(result, "donor", "manner_of_death")
         assert entry["complete"] == 1
-        assert entry["issues"] == {"missing": 1}
+        assert entry["missing"] == 1
+        assert entry["inconsistent"] == 0
 
     def test_disagreeing_values_bucket_as_inconsistent(self, schemaview):
         obs = pd.DataFrame({
@@ -117,7 +120,8 @@ class TestEntityPropertyCoverage:
         result = compute_metadata_coverage(make_adata(obs), schemaview)
         entry = field_entry(result, "donor", "manner_of_death")
         assert entry["complete"] == 1
-        assert entry["issues"] == {"inconsistent": 1}
+        assert entry["inconsistent"] == 1
+        assert entry["missing"] == 0
 
     def test_inconsistent_wins_over_missing_for_same_field(self, schemaview):
         # D1 has both null and conflicting values (inconsistent precedence applies).
@@ -131,7 +135,8 @@ class TestEntityPropertyCoverage:
         result = compute_metadata_coverage(make_adata(obs), schemaview)
         entry = field_entry(result, "donor", "manner_of_death")
         assert entry["complete"] == 1  # D3
-        assert entry["issues"] == {"inconsistent": 1, "missing": 1}
+        assert entry["inconsistent"] == 1  # D1
+        assert entry["missing"] == 1  # D2
 
     def test_field_absent_from_obs_reports_all_missing(self, schemaview):
         obs = pd.DataFrame({
@@ -141,7 +146,26 @@ class TestEntityPropertyCoverage:
         result = compute_metadata_coverage(make_adata(obs), schemaview)
         entry = field_entry(result, "donor", "manner_of_death")
         assert entry["complete"] == 0
-        assert entry["issues"] == {"missing": 2}
+        assert entry["missing"] == 2
+        assert entry["inconsistent"] == 0
+
+    def test_entries_emit_flat_issue_keys_with_no_issues_wrapper(self, schemaview):
+        # Pin the post-#436 wire shape: each field_coverage entry exposes
+        # `complete`, `missing`, `inconsistent` as sibling integer keys (always
+        # present, including zero), with no nested `issues` map. Regressions in
+        # the emission helper would surface here even if full-dict equality
+        # tests above were softened.
+        obs = pd.DataFrame({
+            "donor_id":  ["D1"],
+            "sample_id": ["S1"],
+            "sex_ontology_term_id": ["PATO:0000384"],
+        })
+        result = compute_metadata_coverage(make_adata(obs), schemaview)
+        for entry in result["field_coverage"]:
+            assert set(entry.keys()) == {
+                "entity_class", "field", "complete", "missing", "inconsistent"
+            }, entry
+            assert "issues" not in entry, entry
 
 
 class TestDatasetClassSlots:
@@ -160,7 +184,8 @@ class TestDatasetClassSlots:
             "entity_class": "dataset",
             "field": "description",
             "complete": 0,
-            "issues": {"missing": 1},
+            "missing": 1,
+            "inconsistent": 0,
         }
 
     def test_dataset_obs_slot_complete_when_consistent(self, schemaview):
@@ -173,7 +198,8 @@ class TestDatasetClassSlots:
         result = compute_metadata_coverage(make_adata(obs), schemaview)
         entry = field_entry(result, "dataset", "gene_annotation_version")
         assert entry["complete"] == 1
-        assert entry["issues"] == {}
+        assert entry["missing"] == 0
+        assert entry["inconsistent"] == 0
 
     def test_dataset_obs_slot_inconsistent_across_cells(self, schemaview):
         obs = pd.DataFrame({
@@ -184,7 +210,8 @@ class TestDatasetClassSlots:
         result = compute_metadata_coverage(make_adata(obs), schemaview)
         entry = field_entry(result, "dataset", "gene_annotation_version")
         assert entry["complete"] == 0
-        assert entry["issues"] == {"inconsistent": 1}
+        assert entry["inconsistent"] == 1
+        assert entry["missing"] == 0
 
 
 class TestSchemaMetadata:
@@ -210,12 +237,12 @@ class TestInvariant:
         result = compute_metadata_coverage(make_adata(obs), schemaview)
         for entry in result["field_coverage"]:
             expected = result["entities"][entry["entity_class"]]["record_count"]
-            assert entry["complete"] + sum(entry["issues"].values()) == expected, entry
+            assert entry["complete"] + entry["missing"] + entry["inconsistent"] == expected, entry
 
     def test_violation_raises(self):
         entities = {"donor": {"record_count": 10}}
         bad: List[Dict[str, Any]] = [
-            {"entity_class": "donor", "field": "x", "complete": 5, "issues": {"missing": 4}}
+            {"entity_class": "donor", "field": "x", "complete": 5, "missing": 4, "inconsistent": 0}
         ]
         with pytest.raises(RuntimeError, match="invariant violated"):
             _assert_invariant(entities, bad)
@@ -304,7 +331,8 @@ class TestEmptyStringSentinels:
         # Two cells had unusable donor_id — counted at obs grain.
         donor_id_entry = field_entry(result, "obs", "donor_id")
         assert donor_id_entry["complete"] == 3
-        assert donor_id_entry["issues"] == {"missing": 2}
+        assert donor_id_entry["missing"] == 2
+        assert donor_id_entry["inconsistent"] == 0
 
     def test_empty_string_entity_property_is_missing_not_complete(self, schemaview):
         obs = pd.DataFrame({
@@ -315,7 +343,8 @@ class TestEmptyStringSentinels:
         result = compute_metadata_coverage(make_adata(obs), schemaview)
         entry = field_entry(result, "donor", "manner_of_death")
         assert entry["complete"] == 1  # D1
-        assert entry["issues"] == {"missing": 1}  # D2
+        assert entry["missing"] == 1  # D2
+        assert entry["inconsistent"] == 0
 
     def test_empty_string_in_categorical_identifier_treated_as_missing(self, schemaview):
         # Real h5ad files often store donor_id / sample_id as pd.Categorical for
@@ -332,7 +361,8 @@ class TestEmptyStringSentinels:
             "entity_class": "obs",
             "field": "donor_id",
             "complete": 3,
-            "issues": {"missing": 2},
+            "missing": 2,
+            "inconsistent": 0,
         }
 
     def test_empty_string_uns_slot_is_missing(self, schemaview):
@@ -340,7 +370,8 @@ class TestEmptyStringSentinels:
         result = compute_metadata_coverage(make_adata(obs, {"description": "   "}), schemaview)
         entry = field_entry(result, "dataset", "description")
         assert entry["complete"] == 0
-        assert entry["issues"] == {"missing": 1}
+        assert entry["missing"] == 1
+        assert entry["inconsistent"] == 0
 
     def test_uns_list_of_empty_strings_is_missing(self, schemaview):
         # study_pi and batch_condition are multivalued uns fields. A list with
@@ -353,7 +384,8 @@ class TestEmptyStringSentinels:
             )
             entry = field_entry(result, "dataset", "study_pi")
             assert entry["complete"] == 0, f"input: {empty_list!r}"
-            assert entry["issues"] == {"missing": 1}, f"input: {empty_list!r}"
+            assert entry["missing"] == 1, f"input: {empty_list!r}"
+            assert entry["inconsistent"] == 0, f"input: {empty_list!r}"
 
     def test_uns_list_with_one_populated_element_is_complete(self, schemaview):
         # If any element of the list is a real value, the slot is populated.
@@ -363,7 +395,8 @@ class TestEmptyStringSentinels:
         )
         entry = field_entry(result, "dataset", "study_pi")
         assert entry["complete"] == 1
-        assert entry["issues"] == {}
+        assert entry["missing"] == 0
+        assert entry["inconsistent"] == 0
 
 
 class TestMissingIdentifierColumn:
@@ -381,7 +414,8 @@ class TestMissingIdentifierColumn:
             "entity_class": "obs",
             "field": "donor_id",
             "complete": 0,
-            "issues": {"missing": 3},
+            "missing": 3,
+            "inconsistent": 0,
         }
 
     def test_donor_slots_still_emitted_when_donor_id_column_absent(self, schemaview):
@@ -395,5 +429,6 @@ class TestMissingIdentifierColumn:
             "entity_class": "donor",
             "field": "manner_of_death",
             "complete": 0,
-            "issues": {},
+            "missing": 0,
+            "inconsistent": 0,
         }

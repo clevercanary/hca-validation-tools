@@ -5,17 +5,22 @@ LinkML class eligible for coverage reporting (currently Donor, Sample, Dataset),
 the module enumerates non-identifier, non-FK, non-deprecated slots that carry
 an `annDataLocation` annotation and buckets each entity instance into one of:
 
-  - complete         — value present and self-consistent across the entity's rows
-  - issues.missing   — at least one row missing the value (and not inconsistent)
-  - issues.inconsistent — multiple distinct non-null values within the entity
+  - complete     — value present and self-consistent across the entity's rows
+  - missing      — at least one row missing the value (and not inconsistent)
+  - inconsistent — multiple distinct non-null values within the entity
 
 Identifier slots (e.g. `donor_id`, `sample_id`) are reported at a synthetic
 `obs` entity class with denominator equal to total cell rows, so cells missing
 their parent identifier surface exactly once without inflating entity-grain
 counts.
 
+Each emitted `field_coverage` entry carries `complete`, `missing`, and
+`inconsistent` as sibling integer keys (always present, including with value
+zero). Future issue types (e.g. `invalid_value`) will join as additional
+sibling keys.
+
 Invariant: for every emitted entry,
-  complete + sum(issues.values()) == entities[entity_class].record_count.
+  complete + missing + inconsistent == entities[entity_class].record_count.
 """
 
 from typing import Any, Dict, List, Optional, Tuple
@@ -103,16 +108,12 @@ def compute_metadata_coverage(adata: Any, schemaview: SchemaView) -> Dict[str, A
 
 
 def _entry(entity_class: str, field: str, complete: int, *, missing: int = 0, inconsistent: int = 0) -> Dict[str, Any]:
-    issues: Dict[str, int] = {}
-    if inconsistent:
-        issues["inconsistent"] = inconsistent
-    if missing:
-        issues["missing"] = missing
     return {
         "entity_class": entity_class,
         "field": field,
         "complete": complete,
-        "issues": issues,
+        "missing": missing,
+        "inconsistent": inconsistent,
     }
 
 
@@ -244,11 +245,11 @@ def _assert_invariant(
     for entry in field_coverage:
         entity_class = entry["entity_class"]
         expected = entities[entity_class]["record_count"]
-        actual = entry["complete"] + sum(entry["issues"].values())
+        actual = entry["complete"] + entry["missing"] + entry["inconsistent"]
         if actual != expected:
             # RuntimeError (not AssertionError) so `python -O` can't strip the check.
             raise RuntimeError(
                 "metadata_coverage invariant violated for "
                 f"({entity_class}, {entry['field']}): "
-                f"complete + issues = {actual}, expected {expected}"
+                f"complete + missing + inconsistent = {actual}, expected {expected}"
             )
