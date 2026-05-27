@@ -218,15 +218,14 @@ def _classify_var_column(
     existing_nan = existing.isna()
     canonical_nan = canonical_series.isna()
 
-    # A row is in a "real disagreement" state when both sides have a
-    # value and they differ. Rows where the producer has a value and
-    # canonical is NaN ALSO count as mismatch — producer claimed a
-    # symbol for an Ensembl ID GENCODE doesn't know, and the populator
-    # can't verify it. NaN-existing rows are never mismatch (they're
-    # either fillable or both-NaN no-ops).
-    populated_disagreement = (
-        ~existing_nan & (~canonical_nan & (existing != canonical_series))
-        | (~existing_nan & canonical_nan)
+    # A row is in disagreement when the producer has a value AND
+    # either (a) canonical is NaN (GENCODE doesn't know this Ensembl
+    # ID — populator can't verify) or (b) canonical has a value and
+    # they differ. NaN-existing rows are never mismatch — they're
+    # either fillable (canonical has a value to give) or both-NaN
+    # no-ops.
+    populated_disagreement = (~existing_nan) & (
+        canonical_nan | (existing != canonical_series)
     )
     if populated_disagreement.any():
         pair_counts = (
