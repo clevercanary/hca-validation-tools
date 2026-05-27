@@ -69,14 +69,6 @@ _VAR_DERIVED_COLS: tuple[tuple[str, str], ...] = (
 )
 
 
-def _is_all_nan(series: Any) -> bool:
-    """True if every value in the Series is NaN/None. Accepts Any to
-    swallow pandas' DataFrame-or-Series return type ambiguity on
-    ``df[col]`` indexing — both Series and DataFrame support
-    ``.isna().all()`` returning a truthy scalar."""
-    return bool(series.isna().all())
-
-
 def _classify_obs_column(
     obs: pd.DataFrame,
     cosmetic_col: str,

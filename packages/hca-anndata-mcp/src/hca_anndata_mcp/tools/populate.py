@@ -56,7 +56,12 @@ def populate_labels(path: str) -> dict:
         if not os.path.isfile(path):
             return {"error": f"File not found: {path}"}
 
-        with open_h5ad(path, backed=None) as adata:
+        # backed="r": populator only mutates obs/var/raw.var (all
+        # in-memory DataFrames even in backed mode); X stays on disk
+        # and is streamed by anndata's write path. Avoids multi-GB
+        # memory spikes on large tracker-source files. Same pattern as
+        # label_h5ad.
+        with open_h5ad(path, backed="r") as adata:
             # Origin-level refusal: this file came through
             # convert_cellxgene_to_hca, so cellxgene-schema add-labels
             # already populated every controlled column upstream.

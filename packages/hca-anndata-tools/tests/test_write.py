@@ -370,3 +370,19 @@ def test_has_edit_log_operation_malformed_log_returns_false(sample_h5ad_for_writ
     adata.uns.setdefault("provenance", {})[EDIT_LOG_KEY] = "this is not json"
 
     assert has_edit_log_operation(adata, "import_cellxgene") is False
+
+
+def test_has_edit_log_operation_accepts_list_shape(sample_h5ad_for_write):
+    """Edit log can be a Python list in-memory during write transforms
+    (mirroring build_edit_log's input handling). The helper should
+    handle that shape too, not just the on-disk JSON string."""
+    from hca_anndata_tools.write import has_edit_log_operation
+
+    adata = ad.read_h5ad(str(sample_h5ad_for_write))
+    entry = _make_entry(operation="import_cellxgene", description="Imported from CXG")
+    log_list = [{**entry, "source_file": "fake.h5ad", "source_sha256": "0" * 64}]
+    # Assign as a Python list (not a JSON string).
+    adata.uns.setdefault("provenance", {})[EDIT_LOG_KEY] = log_list
+
+    assert has_edit_log_operation(adata, "import_cellxgene") is True
+    assert has_edit_log_operation(adata, "normalize_raw") is False
