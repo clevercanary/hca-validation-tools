@@ -17,6 +17,10 @@ do, and the all-or-nothing refusal is wrong here.
 
   * Missing OR all-NaN → fill from canonical (term_id → ontology label
     for obs; Ensembl ID → GENCODE for var).
+  * Present with some NaN rows AND every populated row matches
+    canonical → partial-fill: keep the populated values, fill only the
+    NaN rows from canonical. (Verify first, then fill — never blends a
+    fill with an unverified mismatch.)
   * Present, every value matches canonical → skip (no-op).
   * Present, any value mismatches → refuse with row-level evidence.
 
