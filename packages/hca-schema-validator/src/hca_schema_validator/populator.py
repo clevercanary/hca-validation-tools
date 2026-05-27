@@ -239,15 +239,30 @@ def _classify_var_column(
             .groupby(["existing", "canonical"], dropna=False)
             .size()
         )
-        errors = [
-            (
-                f"var['{col}']: {n} rows have '{existing_v}' but GENCODE "
-                f"canonical is '{canonical_v}'. Either drop var['{col}'] (the "
-                f"populator will fill it from var.index) or fix the source "
-                f"Ensembl IDs."
-            )
-            for (existing_v, canonical_v), n in pair_counts.items()
-        ]
+        errors: list[str] = []
+        for (existing_v, canonical_v), n in pair_counts.items():
+            if pd.isna(canonical_v):
+                # GENCODE doesn't recognize this Ensembl ID — producer
+                # has a value the populator can't verify. Separate
+                # message because "GENCODE canonical is '<NA>'" reads
+                # opaquely to curators.
+                errors.append(
+                    f"var['{col}']: {n} rows have '{existing_v}' but "
+                    f"GENCODE has no canonical value for the corresponding "
+                    f"Ensembl ID. Either drop var['{col}'] (the populator "
+                    f"will fill what it can and leave these rows NaN) or "
+                    f"verify upstream that the Ensembl IDs are valid for "
+                    f"the GENCODE version in use."
+                )
+            else:
+                # Real value-vs-value mismatch — both sides have a value
+                # and they differ.
+                errors.append(
+                    f"var['{col}']: {n} rows have '{existing_v}' but GENCODE "
+                    f"canonical is '{canonical_v}'. Either drop var['{col}'] "
+                    f"(the populator will fill it from var.index) or fix "
+                    f"the source Ensembl IDs."
+                )
         return "errored", errors, None
 
     # Every populated row matches canonical. Check whether NaN rows have

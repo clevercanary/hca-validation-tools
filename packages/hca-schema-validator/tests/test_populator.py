@@ -71,8 +71,11 @@ def test_fill_all_empty(tmp_path):
 
 
 def test_no_observation_joinid_written(tmp_path):
-    """The whole point vs HCALabeler: never write the non-reproducible
-    random observation_joinid column."""
+    """Populator never writes obs['observation_joinid'] — it's HCA-
+    reserved-but-not-required, and writing reserved columns is out of
+    scope for a per-column-fill tool (joinid semantics belong with
+    label_h5ad's broader labeling pass). See the populator.py module
+    docstring for the full rationale; this test pins the contract."""
     adata = _load(create_labelable_h5ad(tmp_path / "no_oj.h5ad"))
     result = populate_in_memory(adata)
     assert "error" not in result
@@ -268,6 +271,35 @@ def test_error_on_var_mismatch(tmp_path):
     assert any(
         "var['feature_name']" in e and "WRONG_SYMBOL" in e
         for e in result["details"]["errors"]
+    )
+
+
+def test_error_message_distinguishes_unknown_ensembl(tmp_path):
+    """When GENCODE doesn't know the Ensembl ID but the producer claimed
+    a value, the error message must NOT format canonical as '<NA>' —
+    that's opaque to curators. Should explain that GENCODE has no
+    canonical value for the ID."""
+    adata = _load(create_labelable_h5ad(tmp_path / "unknown_ensembl.h5ad"))
+    # Replace var.index with a fake Ensembl ID GENCODE won't know, then
+    # claim a feature_name for that row. Triggers the NaN-canonical
+    # mismatch path.
+    fake_ids = ["ENSG99999999999"] + list(adata.var.index[1:])
+    adata.var.index = pd.Index(fake_ids)
+    adata.var["feature_name"] = pd.Categorical(["FAKE_SYMBOL"] * adata.n_vars)
+
+    result = populate_in_memory(adata)
+
+    assert "error" in result
+    msgs = result["details"]["errors"]
+    # New message format for the NaN-canonical branch — should not
+    # render '<NA>'.
+    nan_branch_msgs = [
+        m for m in msgs
+        if "GENCODE has no canonical value" in m
+    ]
+    assert nan_branch_msgs, f"expected NaN-canonical branch message, got: {msgs}"
+    assert not any("'<NA>'" in m for m in nan_branch_msgs), (
+        f"NaN-canonical messages must not format canonical as '<NA>': {nan_branch_msgs}"
     )
 
 
