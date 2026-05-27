@@ -331,3 +331,42 @@ def test_write_h5ad_never_deletes_original(sample_h5ad_for_write):
     r2 = write_h5ad(adata2, str(sample_h5ad_for_write), [_make_entry()])
     assert "error" not in r2
     assert os.path.isfile(str(sample_h5ad_for_write))
+
+
+# --- has_edit_log_operation ---
+
+
+def test_has_edit_log_operation_finds_matching_entry(sample_h5ad_for_write):
+    """Seed an edit log entry, then assert the operation is detected."""
+    from hca_anndata_tools.write import has_edit_log_operation
+
+    adata = ad.read_h5ad(str(sample_h5ad_for_write))
+    entry = _make_entry(operation="import_cellxgene", description="Imported from CXG")
+    seed = json.dumps([{
+        **entry,
+        "source_file": "fake.h5ad",
+        "source_sha256": "0" * 64,
+    }])
+    adata.uns.setdefault("provenance", {})[EDIT_LOG_KEY] = seed
+
+    assert has_edit_log_operation(adata, "import_cellxgene") is True
+    assert has_edit_log_operation(adata, "normalize_raw") is False
+
+
+def test_has_edit_log_operation_missing_log(sample_h5ad_for_write):
+    """No provenance / no edit_history → False, not an error."""
+    from hca_anndata_tools.write import has_edit_log_operation
+
+    adata = ad.read_h5ad(str(sample_h5ad_for_write))
+    # No provenance set on this fixture
+    assert has_edit_log_operation(adata, "import_cellxgene") is False
+
+
+def test_has_edit_log_operation_malformed_log_returns_false(sample_h5ad_for_write):
+    """Garbage JSON in the log → False rather than raising."""
+    from hca_anndata_tools.write import has_edit_log_operation
+
+    adata = ad.read_h5ad(str(sample_h5ad_for_write))
+    adata.uns.setdefault("provenance", {})[EDIT_LOG_KEY] = "this is not json"
+
+    assert has_edit_log_operation(adata, "import_cellxgene") is False

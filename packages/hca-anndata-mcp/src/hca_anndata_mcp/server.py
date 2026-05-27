@@ -24,6 +24,7 @@ from hca_anndata_tools import (
 from hca_anndata_mcp.tools.check_cosmetic import check_cosmetic_labels_h5ad
 from hca_anndata_mcp.tools.label import label_h5ad
 from hca_anndata_mcp.tools.plot import plot_embedding_mcp
+from hca_anndata_mcp.tools.populate import populate_labels
 from hca_anndata_mcp.tools.strip import strip_forbidden_obs_columns
 from hca_anndata_mcp.tools.validate import validate_cell_annotation, validate_schema
 
@@ -62,6 +63,10 @@ mcp = FastMCP(
         "label_h5ad to populate var['feature_name'] (+ feature_reference/biotype/length/type) and "
         "obs ontology labels (tissue, cell_type, ...) from *_ontology_term_id columns — run before "
         "copy_cap_annotations so marker-gene validation has canonical gene symbols to match against, "
+        "populate_labels as the tracker-source counterpart to label_h5ad: per-column fill/verify "
+        "for HCA-tracker-imported files (fills empty columns, skips columns already matching "
+        "canonical, refuses on mismatch with row-level evidence; never writes observation_joinid; "
+        "refuses on CellxGENE-imported files where add-labels already ran upstream), "
         "and view_edit_log to inspect the edit history recorded in a file."
     ),
 )
@@ -89,3 +94,4 @@ mcp.tool()(validate_schema)
 mcp.tool()(validate_cell_annotation)
 mcp.tool()(check_cosmetic_labels_h5ad)
 mcp.tool()(label_h5ad)
+mcp.tool()(populate_labels)

@@ -102,6 +102,44 @@ def _is_timestamped(path: str) -> bool:
     return bool(_TIMESTAMP_PATTERN.search(os.path.basename(path)))
 
 
+def has_edit_log_operation(adata, operation: str) -> bool:
+    """Return True if ``uns['provenance']['edit_history']`` contains an
+    entry with the given ``operation`` value.
+
+    Returns False if the log is missing, malformed, or contains no
+    matching entry. Each entry's ``operation`` is the machine-readable
+    name set by :func:`make_edit_entry` (e.g. ``"import_cellxgene"``,
+    ``"strip_forbidden_obs_columns"``).
+
+    Use this to gate tools on file origin / prior edits without having
+    to parse the edit-log JSON yourself. Common case: refusing to run a
+    redundant operation that an earlier tool already performed.
+
+    Args:
+        adata: An AnnData (or anything with a ``.uns`` mapping).
+        operation: The operation name to look for.
+
+    Returns:
+        ``True`` if any matching entry exists, ``False`` otherwise.
+    """
+    provenance = adata.uns.get("provenance")
+    if not isinstance(provenance, dict):
+        return False
+    log_raw = provenance.get(EDIT_LOG_KEY)
+    if not isinstance(log_raw, str):
+        return False
+    try:
+        log = json.loads(log_raw)
+    except json.JSONDecodeError:
+        return False
+    if not isinstance(log, list):
+        return False
+    return any(
+        isinstance(entry, dict) and entry.get("operation") == operation
+        for entry in log
+    )
+
+
 def make_edit_entry(
     operation: str,
     description: str,
