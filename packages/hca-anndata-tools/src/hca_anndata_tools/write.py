@@ -102,6 +102,56 @@ def _is_timestamped(path: str) -> bool:
     return bool(_TIMESTAMP_PATTERN.search(os.path.basename(path)))
 
 
+def has_edit_log_operation(adata, operation: str) -> bool:
+    """Return True if ``uns['provenance']['edit_history']`` contains an
+    entry with the given ``operation`` value.
+
+    Accepts both shapes the edit log can take, mirroring
+    :func:`build_edit_log`'s input handling:
+
+    * JSON string — the on-disk shape (what
+      :func:`read_edit_log_h5py` returns and what AnnData round-trips
+      through HDF5).
+    * Python ``list`` of dicts — the in-flight shape during write
+      transformations, before the log is serialized.
+
+    Returns False if the log is missing, malformed, or contains no
+    matching entry. Each entry's ``operation`` is the machine-readable
+    name set by :func:`make_edit_entry` (e.g. ``"import_cellxgene"``,
+    ``"strip_forbidden_obs_columns"``).
+
+    Use this to gate tools on file origin / prior edits without having
+    to parse the edit-log JSON yourself. Common case: refusing to run a
+    redundant operation that an earlier tool already performed.
+
+    Args:
+        adata: An AnnData (or anything with a ``.uns`` mapping).
+        operation: The operation name to look for.
+
+    Returns:
+        ``True`` if any matching entry exists, ``False`` otherwise.
+    """
+    provenance = adata.uns.get("provenance")
+    if not isinstance(provenance, dict):
+        return False
+    log_raw = provenance.get(EDIT_LOG_KEY)
+    if isinstance(log_raw, str):
+        try:
+            log = json.loads(log_raw)
+        except json.JSONDecodeError:
+            return False
+    elif isinstance(log_raw, list):
+        log = log_raw
+    else:
+        return False
+    if not isinstance(log, list):
+        return False
+    return any(
+        isinstance(entry, dict) and entry.get("operation") == operation
+        for entry in log
+    )
+
+
 def make_edit_entry(
     operation: str,
     description: str,
