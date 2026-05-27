@@ -310,6 +310,45 @@ def test_refuse_cellxgene_layout(tmp_path):
     assert "convert_cellxgene_to_hca" in result["error"]
 
 
+def test_refuse_provenance_cellxgene(tmp_path):
+    """File has uns['provenance']['cellxgene'] — set by our own
+    convert_cellxgene_to_hca tool. Even without a top-level
+    schema_version (which the convert tool moves out) the populator
+    must recognize this as a CellxGENE-derived file and refuse."""
+    adata = _load(create_labelable_h5ad(tmp_path / "from_convert.h5ad"))
+    adata.uns.setdefault("provenance", {})["cellxgene"] = {
+        "schema_version": "7.0.0",
+        "schema_reference": "https://example.com",
+        "citation": "Some citation",
+    }
+
+    result = populate_in_memory(adata)
+    assert "error" in result
+    assert "CellxGENE-derived" in result["error"]
+    assert "provenance" in result["error"]
+    assert "label_h5ad" in result["error"]
+
+
+def test_refuse_observation_joinid_present(tmp_path):
+    """Most durable signal of CellxGENE-derived: obs['observation_joinid']
+    is written by cellxgene-schema add-labels and persists. If it's
+    present, the file has been through CellxGENE labeling somewhere
+    upstream — populator must refuse even if none of the other markers
+    (schema_version, provenance/cellxgene, edit log) are present."""
+    import pandas as pd
+
+    adata = _load(create_labelable_h5ad(tmp_path / "with_joinid.h5ad"))
+    # No schema_version, no provenance/cellxgene — only the joinid.
+    adata.obs["observation_joinid"] = pd.Categorical(
+        [f"joinid_{i}" for i in range(adata.n_obs)]
+    )
+
+    result = populate_in_memory(adata)
+    assert "error" in result
+    assert "CellxGENE-derived" in result["error"]
+    assert "observation_joinid" in result["error"]
+
+
 def test_refuse_non_human(tmp_path):
     adata = _load(create_labelable_h5ad(tmp_path / "mouse.h5ad"))
     adata.obs["organism_ontology_term_id"] = pd.Categorical(["NCBITaxon:10090"] * adata.n_obs)

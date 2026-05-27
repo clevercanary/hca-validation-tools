@@ -303,6 +303,31 @@ def populate_in_memory(adata: ad.AnnData) -> dict:
             )
         }
 
+    # CellxGENE-derived detection: file isn't currently in CellxGENE
+    # layout (we passed the schema_version check above) but has markers
+    # from a prior CellxGENE conversion or add-labels pass. Multiple
+    # signals are checked because different conversion paths leave
+    # different markers — combining them guards against any single
+    # marker being lost or wiped downstream.
+    cellxgene_signals: list[str] = []
+    provenance = adata.uns.get("provenance")
+    if isinstance(provenance, dict) and "cellxgene" in provenance:
+        cellxgene_signals.append("uns['provenance']['cellxgene']")
+    if "observation_joinid" in adata.obs.columns:
+        cellxgene_signals.append("obs['observation_joinid']")
+
+    if cellxgene_signals:
+        return {
+            "error": (
+                f"File is CellxGENE-derived (signals: "
+                f"{', '.join(cellxgene_signals)}). cellxgene-schema "
+                f"add-labels has already populated every controlled "
+                f"column upstream; running populate_labels would be a "
+                f"redundant pass. If you need to repopulate, drop the "
+                f"label columns and use label_h5ad instead."
+            )
+        }
+
     # ---- Compute canonical + classify every column ----
 
     # HCALabeler instance for its ``_get_mapping_dict_feature_*`` helpers
