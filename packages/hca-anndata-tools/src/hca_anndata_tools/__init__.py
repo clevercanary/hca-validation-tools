@@ -59,7 +59,6 @@ _LAZY_IMPORTS = {
     "copy_cap_annotations": ".copy_cap",
     "compress_h5ad": ".compress",
     "normalize_raw": ".normalize",
-    "populate_labels": ".populate",
     "strip_forbidden_obs_columns": ".strip",
     "check_x_normalization": ".inspect",
     "check_schema_type": ".inspect",

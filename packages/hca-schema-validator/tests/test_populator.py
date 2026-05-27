@@ -91,6 +91,88 @@ def test_skip_matched_obs_columns(tmp_path):
     assert "tissue" not in result["filled"]
 
 
+def test_partial_fill_obs_when_some_rows_nan(tmp_path):
+    """Producer labeled most rows correctly but left some NaN. Populator
+    verifies every populated row matches canonical, then fills the NaN
+    rows from canonical — no mismatch, partial fill. Reports the column
+    in 'filled' (merged values), NOT in 'matched'."""
+    adata = _load(create_labelable_h5ad(tmp_path / "partial_obs.h5ad"))
+    # 4 rows in the fixture; pre-populate 2 with canonical, 2 with NaN.
+    n = adata.n_obs
+    canonical_tissue = _FIXTURE_CANONICAL["tissue"]
+    partial = pd.Categorical(
+        [canonical_tissue, None, canonical_tissue, None],
+        categories=[canonical_tissue],
+    )
+    adata.obs["tissue"] = partial
+
+    result = populate_in_memory(adata)
+
+    assert "error" not in result, result
+    assert "tissue" in result["filled"], result
+    assert "tissue" not in result["matched"]
+    # All 4 rows should now equal canonical (2 preserved + 2 filled).
+    assert (adata.obs["tissue"] == canonical_tissue).all()
+
+
+def test_partial_fill_var_when_some_rows_nan(tmp_path):
+    """Same partial-fill semantic for var feature_name: producer wrote
+    correct gene symbols on some rows, NaN on others. Populator fills
+    the NaN rows from GENCODE without rewriting the producer's correct
+    values."""
+    adata = _load(create_labelable_h5ad(tmp_path / "partial_var.h5ad"))
+    # First, compute what GENCODE thinks the canonical feature_name is
+    # for the fixture's Ensembl IDs by running populate once on a sibling
+    # adata to capture the canonical values.
+    sib = _load(create_labelable_h5ad(tmp_path / "sib.h5ad"))
+    populate_in_memory(sib)
+    canonical_names = list(sib.var["feature_name"])
+
+    # On the target file: pre-populate every-other row with the canonical
+    # value, leave the rest NaN.
+    partial = [
+        canonical_names[i] if i % 2 == 0 else None
+        for i in range(adata.n_vars)
+    ]
+    adata.var["feature_name"] = pd.Categorical(partial)
+
+    result = populate_in_memory(adata)
+
+    assert "error" not in result, result
+    assert "var/feature_name" in result["filled"], result
+    # All rows should now equal canonical (no producer values overwritten,
+    # NaN rows filled).
+    written = list(adata.var["feature_name"])
+    for i, expected in enumerate(canonical_names):
+        if expected is None or pd.isna(expected):
+            continue
+        assert written[i] == expected, f"row {i}: got {written[i]!r}, expected {expected!r}"
+
+
+def test_partial_fill_refuses_when_filled_rows_mismatch(tmp_path):
+    """Partial-NaN obs column where the populated rows DON'T match
+    canonical → refuse entirely, no fill of the NaN rows. The whole
+    point: only fill NaNs when every populated row passes verification."""
+    adata = _load(create_labelable_h5ad(tmp_path / "partial_mismatch.h5ad"))
+    n = adata.n_obs
+    # Producer wrote a WRONG value on 2 rows, left 2 NaN. No fill should
+    # happen even though the NaN rows could be filled — the populated
+    # rows fail verification.
+    partial = pd.Categorical(
+        ["wrong-tissue", None, "wrong-tissue", None],
+        categories=["wrong-tissue"],
+    )
+    adata.obs["tissue"] = partial
+
+    result = populate_in_memory(adata)
+
+    assert "error" in result
+    assert any("obs['tissue']" in e and "wrong-tissue" in e for e in result["details"]["errors"])
+    # NaN rows should still be NaN — partial fill must not happen on a
+    # column whose populated rows didn't pass verification.
+    assert adata.obs["tissue"].iloc[1] is pd.NA or pd.isna(adata.obs["tissue"].iloc[1])
+
+
 def test_skipped_when_everything_matched(tmp_path):
     """All obs labels + all var feature_* pre-populated with canonical →
     skipped sentinel, adata not mutated."""

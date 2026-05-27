@@ -41,7 +41,7 @@ See issue #421.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 import anndata as ad
 import pandas as pd
@@ -85,10 +85,25 @@ def _classify_obs_column(
 ) -> tuple[str, list[str], pd.Series | None]:
     """Classify one obs label column as fill / matched / errored / skip-no-source.
 
-    Returns ``(status, errors, canonical_series)``. ``canonical_series``
-    is the per-row canonical values, returned when ``status == "fill"``
-    so the caller can write it without recomputing. ``errors`` is the
-    per-row mismatch messages when ``status == "errored"``.
+    Returns ``(status, errors, series)``:
+
+    * ``"fill"`` — column missing entirely. ``series`` is the per-row
+      canonical for the caller to write.
+    * ``"matched"`` — column present, every non-NaN row agrees with
+      canonical, no NaN rows have a known canonical to fill. ``series``
+      is ``None``.
+    * ``"errored"`` — at least one non-NaN row disagrees with canonical
+      (or a labeled row has a NaN source term ID). ``series`` is
+      ``None``. ``errors`` is populated.
+    * ``"skip-no-source"`` — neither cosmetic nor source column present;
+      nothing to do.
+
+    Note: returning ``"matched"`` with NaN rows present and a non-NaN
+    canonical for those rows would be a partial-fill case — those are
+    routed through ``"fill"`` with a *merged* series (existing values
+    preserved, NaN rows replaced with canonical) when no mismatches are
+    found. The merge happens only after every populated row has been
+    verified against canonical.
     """
     cosmetic_present = cosmetic_col in obs.columns
     source_present = source_col in obs.columns
@@ -111,7 +126,7 @@ def _classify_obs_column(
         lambda t: pd.NA if pd.isna(t) else _lookup_canonical_label(str(t), exceptions)
     )
 
-    if not cosmetic_present or _is_all_nan(obs[cosmetic_col]):
+    if not cosmetic_present:
         return "fill", [], canonical
 
     existing = obs[cosmetic_col].astype(object)
@@ -134,9 +149,8 @@ def _classify_obs_column(
                 )
             continue
         if file_label_str is None:
-            # Source has term_id, cosmetic is NaN on this row — treat as
-            # fillable downstream (populate will replace NaN with canonical).
-            # Don't emit an error.
+            # term_id present, cosmetic NaN — partial-fill candidate.
+            # Verified by the merge step below; no error here.
             continue
         canonical_label = _lookup_canonical_label(str(term_id), exceptions)
         if canonical_label is None or canonical_label == file_label_str:
@@ -148,8 +162,20 @@ def _classify_obs_column(
             f"match {source_col}."
         )
 
+    # If any non-NaN row mismatches canonical, refuse — no partial fill
+    # on a column where the producer's filled rows don't match canonical.
     if errors:
         return "errored", errors, None
+
+    # Every populated row agrees with canonical. Now check whether any
+    # NaN rows could be filled from canonical. If so, return a merged
+    # series (existing values preserved, NaN rows replaced with canonical
+    # where canonical is itself non-NaN).
+    needs_fill_mask = existing.isna() & canonical.notna()
+    if needs_fill_mask.any():
+        merged = cast(pd.Series, existing.where(~needs_fill_mask, canonical))
+        return "fill", [], merged
+
     return "matched", [], None
 
 
@@ -162,6 +188,11 @@ def _classify_var_column(
 
     ``canonical_dict`` is the result of ``HCALabeler._get_mapping_dict_*``
     for this column — maps Ensembl ID → expected value.
+
+    Partial-fill semantics match the obs side: any populated row that
+    disagrees with canonical refuses the column outright; only when
+    every populated row matches do NaN rows get filled from canonical
+    (and only where canonical itself is non-NaN).
     """
     canonical_series = pd.Series(
         [canonical_dict.get(eid, pd.NA) for eid in var.index],
@@ -169,35 +200,53 @@ def _classify_var_column(
         dtype=object,
     )
 
-    if col not in var.columns or _is_all_nan(var[col]):
+    if col not in var.columns:
         return "fill", [], canonical_series
 
     existing = var[col].astype(object)
-    # Both-NaN counts as match (GENCODE didn't know this ID and producer
-    # also didn't claim a value).
-    both_nan = existing.isna() & canonical_series.isna()
-    equal = (existing == canonical_series) | both_nan
-    if equal.all():
-        return "matched", [], None
+    existing_nan = existing.isna()
+    canonical_nan = canonical_series.isna()
 
-    mismatch_mask = ~equal
-    pair_counts = (
-        pd.DataFrame(
-            {"existing": existing[mismatch_mask], "canonical": canonical_series[mismatch_mask]}
-        )
-        .groupby(["existing", "canonical"], dropna=False)
-        .size()
+    # A row is in a "real disagreement" state when both sides have a
+    # value and they differ. Rows where the producer has a value and
+    # canonical is NaN ALSO count as mismatch — producer claimed a
+    # symbol for an Ensembl ID GENCODE doesn't know, and the populator
+    # can't verify it. NaN-existing rows are never mismatch (they're
+    # either fillable or both-NaN no-ops).
+    populated_disagreement = (
+        ~existing_nan & (~canonical_nan & (existing != canonical_series))
+        | (~existing_nan & canonical_nan)
     )
-    errors = [
-        (
-            f"var['{col}']: {n} rows have '{existing_v}' but GENCODE "
-            f"canonical is '{canonical_v}'. Either drop var['{col}'] (the "
-            f"populator will fill it from var.index) or fix the source "
-            f"Ensembl IDs."
+    if populated_disagreement.any():
+        pair_counts = (
+            pd.DataFrame(
+                {
+                    "existing": existing[populated_disagreement],
+                    "canonical": canonical_series[populated_disagreement],
+                }
+            )
+            .groupby(["existing", "canonical"], dropna=False)
+            .size()
         )
-        for (existing_v, canonical_v), n in pair_counts.items()
-    ]
-    return "errored", errors, None
+        errors = [
+            (
+                f"var['{col}']: {n} rows have '{existing_v}' but GENCODE "
+                f"canonical is '{canonical_v}'. Either drop var['{col}'] (the "
+                f"populator will fill it from var.index) or fix the source "
+                f"Ensembl IDs."
+            )
+            for (existing_v, canonical_v), n in pair_counts.items()
+        ]
+        return "errored", errors, None
+
+    # Every populated row matches canonical. Check whether NaN rows have
+    # a non-NaN canonical to fill.
+    needs_fill_mask = existing_nan & ~canonical_nan
+    if needs_fill_mask.any():
+        merged = cast(pd.Series, existing.where(~needs_fill_mask, canonical_series))
+        return "fill", [], merged
+
+    return "matched", [], None
 
 
 def populate_in_memory(adata: ad.AnnData) -> dict:
