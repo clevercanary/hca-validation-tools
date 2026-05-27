@@ -36,6 +36,9 @@ def test_fill_all_empty(tmp_path):
     result = populate_in_memory(adata)
 
     assert "error" not in result, result
+    # All 7 obs labels + 5 var feature_* + 5 raw.var feature_* mirrors
+    # (the fixture's raw is a copy of an unlabeled adata, so raw.var
+    # also starts empty and gets the same symmetric fill).
     assert set(result["filled"]) == {
         "tissue",
         "cell_type",
@@ -49,6 +52,11 @@ def test_fill_all_empty(tmp_path):
         "var/feature_biotype",
         "var/feature_length",
         "var/feature_type",
+        "raw.var/feature_name",
+        "raw.var/feature_reference",
+        "raw.var/feature_biotype",
+        "raw.var/feature_length",
+        "raw.var/feature_type",
     }
     assert result["matched"] == []
 
@@ -147,6 +155,48 @@ def test_partial_fill_var_when_some_rows_nan(tmp_path):
         if expected is None or pd.isna(expected):
             continue
         assert written[i] == expected, f"row {i}: got {written[i]!r}, expected {expected!r}"
+
+
+def test_raw_var_mismatch_refuses_not_silently_skips(tmp_path):
+    """Pre-populate raw.var['feature_name'] with WRONG values while var
+    is empty. Old behavior was 'fill var, skip raw.var because column
+    exists' — silent — leaving stale wrong values on raw.var. New
+    symmetric behavior: classify raw.var separately, refuse on mismatch
+    with row-level evidence prefixed as raw.var['col'].
+    """
+    adata = _load(create_labelable_h5ad(tmp_path / "raw_mismatch.h5ad"))
+    # adata.raw was set by the fixture as a copy of adata. Now overwrite
+    # raw.var['feature_name'] with deliberately wrong values.
+    raw_var = adata.raw.var
+    raw_var["feature_name"] = pd.Categorical(["WRONG_RAW_SYMBOL"] * adata.n_vars)
+
+    result = populate_in_memory(adata)
+
+    assert "error" in result
+    # The error must be attributed to raw.var (the rewrite at fill-time
+    # changes the prefix in the message).
+    assert any(
+        "raw.var['feature_name']" in e and "WRONG_RAW_SYMBOL" in e
+        for e in result["details"]["errors"]
+    ), result["details"]["errors"]
+
+
+def test_raw_var_fill_when_empty(tmp_path):
+    """raw.var feature_name column missing → populator fills it via the
+    same path as var. Reports the fill as 'raw.var/feature_name'."""
+    adata = _load(create_labelable_h5ad(tmp_path / "raw_fill.h5ad"))
+    # Fixture leaves raw.var without feature_* columns by default.
+    # Confirm: feature_name should be absent or NaN on raw.var.
+    if "feature_name" in adata.raw.var.columns:
+        # Some fixture variants set it; drop to test the fill path
+        # explicitly.
+        del adata.raw.var["feature_name"]
+
+    result = populate_in_memory(adata)
+
+    assert "error" not in result, result
+    assert "raw.var/feature_name" in result["filled"], result
+    assert "feature_name" in adata.raw.var.columns
 
 
 def test_partial_fill_refuses_when_filled_rows_mismatch(tmp_path):

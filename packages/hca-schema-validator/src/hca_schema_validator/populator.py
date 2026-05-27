@@ -122,8 +122,16 @@ def _classify_obs_column(
         return "skip-no-source", [], None
 
     term_id_series = pd.Series(obs[source_col]).astype(object)
+    # Cache canonical lookups per unique term_id. With a tracker file of
+    # ~50k cells and ~5 unique tissue terms, this collapses ~50k ontology
+    # lookups to ~5 — significant on large files. Mirrors the cache shape
+    # in :func:`validator._compare_cosmetic_to_term_ids`.
+    canonical_cache: dict[str, Any] = {
+        str(t): _lookup_canonical_label(str(t), exceptions)
+        for t in term_id_series.dropna().unique()
+    }
     canonical: pd.Series = term_id_series.map(
-        lambda t: pd.NA if pd.isna(t) else _lookup_canonical_label(str(t), exceptions)
+        lambda t: pd.NA if pd.isna(t) else canonical_cache.get(str(t))
     )
 
     if not cosmetic_present:
@@ -152,7 +160,7 @@ def _classify_obs_column(
             # term_id present, cosmetic NaN — partial-fill candidate.
             # Verified by the merge step below; no error here.
             continue
-        canonical_label = _lookup_canonical_label(str(term_id), exceptions)
+        canonical_label = canonical_cache[str(term_id)]
         if canonical_label is None or canonical_label == file_label_str:
             continue
         errors.append(
@@ -317,6 +325,11 @@ def populate_in_memory(adata: ad.AnnData) -> dict:
     errors: list[str] = []
     fill_obs: dict[str, pd.Series] = {}
     fill_var: dict[str, pd.Series] = {}
+    # raw.var fills, keyed by column name. raw.var.index can differ from
+    # var.index (different gene set), so the canonical is recomputed per
+    # raw.var.index before classification — never reuse the var-side
+    # canonical for raw.var.
+    fill_raw_var: dict[str, pd.Series] = {}
 
     # Obs classification
     for cosmetic_col in HCA_DERIVED_OBS_LABELS:
@@ -333,10 +346,17 @@ def populate_in_memory(adata: ad.AnnData) -> dict:
             fill_obs[cosmetic_col] = canonical  # type: ignore[assignment]
         # status == "skip-no-source": neither column present, no action
 
-    # Var classification
+    # Var + raw.var classification — symmetric, same three-way contract
+    # (fill / match / error) applied to both. raw.var gets its own
+    # canonical computed against its own index, since gene sets can differ.
     var_ids = adata.var.index.tolist()
+    raw_var = adata.raw.var if adata.raw is not None else None
+    raw_var_ids = raw_var.index.tolist() if raw_var is not None else None
+
     for col, getter_name in _VAR_DERIVED_COLS:
         getter = getattr(labeler, getter_name)
+
+        # adata.var
         canonical_dict = getter(var_ids)
         status, col_errors, canonical_series = _classify_var_column(
             adata.var, col, canonical_dict
@@ -347,6 +367,25 @@ def populate_in_memory(adata: ad.AnnData) -> dict:
             matched.append(f"var/{col}")
         elif status == "fill":
             fill_var[col] = canonical_series  # type: ignore[assignment]
+
+        # adata.raw.var — same logic, separate canonical
+        if raw_var is not None and raw_var_ids is not None:
+            raw_canonical_dict = getter(raw_var_ids)
+            raw_status, raw_col_errors, raw_canonical_series = _classify_var_column(
+                raw_var, col, raw_canonical_dict
+            )
+            if raw_status == "errored":
+                # Re-tag the error messages so the caller sees which side
+                # produced them (the underlying messages say "var['col']";
+                # rewrite to "raw.var['col']" for clarity).
+                errors.extend(
+                    e.replace(f"var['{col}']", f"raw.var['{col}']")
+                    for e in raw_col_errors
+                )
+            elif raw_status == "matched":
+                matched.append(f"raw.var/{col}")
+            elif raw_status == "fill":
+                fill_raw_var[col] = raw_canonical_series  # type: ignore[assignment]
 
     # ---- Mismatch refusal: write nothing, surface all errors ----
 
@@ -362,14 +401,16 @@ def populate_in_memory(adata: ad.AnnData) -> dict:
                 "errors": errors,
                 "matched": matched,
                 "would_fill": sorted(
-                    list(fill_obs) + [f"var/{c}" for c in fill_var]
+                    list(fill_obs)
+                    + [f"var/{c}" for c in fill_var]
+                    + [f"raw.var/{c}" for c in fill_raw_var]
                 ),
             },
         }
 
     # ---- No-op: every present column matched, nothing to fill ----
 
-    if not fill_obs and not fill_var:
+    if not fill_obs and not fill_var and not fill_raw_var:
         return {
             "skipped": True,
             "reason": (
@@ -389,17 +430,13 @@ def populate_in_memory(adata: ad.AnnData) -> dict:
     for col, canonical in fill_var.items():
         adata.var[col] = pd.Categorical(canonical)
         filled.append(f"var/{col}")
-        # Mirror to raw.var when present, same as HCALabeler does.
-        if adata.raw is not None:
-            raw_var = adata.raw.var
-            if raw_var is not None and col not in raw_var.columns:
-                getter_name = dict(_VAR_DERIVED_COLS)[col]
-                raw_dict = getattr(labeler, getter_name)(raw_var.index.tolist())
-                raw_canonical = pd.Series(
-                    [raw_dict.get(eid, pd.NA) for eid in raw_var.index],
-                    index=raw_var.index,
-                    dtype=object,
-                )
-                raw_var[col] = pd.Categorical(raw_canonical)
+
+    if fill_raw_var and adata.raw is not None:
+        # adata.raw.var assignment goes through anndata's Raw object —
+        # mutate it in place, same shape as the var-side write above.
+        raw_var_df = adata.raw.var
+        for col, canonical in fill_raw_var.items():
+            raw_var_df[col] = pd.Categorical(canonical)
+            filled.append(f"raw.var/{col}")
 
     return {"filled": filled, "matched": matched}
