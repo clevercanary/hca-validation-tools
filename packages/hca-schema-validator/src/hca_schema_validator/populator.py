@@ -1,12 +1,14 @@
 """Per-column fill/verify for HCA-tracker-imported h5ad files.
 
 The :class:`HCALabeler` ``label()`` flow has a hardline preflight that
-refuses if any controlled column is pre-populated — the right behavior
-for files freshly converted from CellxGENE (where add-labels already
-populated everything upstream, so labeling again would just generate a
-new random ``observation_joinid``). But it blocks the HCA-tracker-
-imported workflow, where the producer populated *some* cosmetic obs
-labels but left others empty and ``var['feature_name']`` missing.
+refuses if any controlled column is pre-populated. For files freshly
+converted from CellxGENE that's effectively a "skip" gate (the convert
+step preserves all label columns from upstream add-labels, so the
+labeler always refuses on them — the right answer is to not call it).
+But the same gate blocks the HCA-tracker-imported workflow, where the
+producer populated *some* cosmetic obs labels but left others empty
+and ``var['feature_name']`` missing — there's real per-column work to
+do, and the all-or-nothing refusal is wrong here.
 
 :func:`populate_in_memory` is the tracker-source counterpart:
 
@@ -18,8 +20,17 @@ labels but left others empty and ``var['feature_name']`` missing.
   * Present, every value matches canonical → skip (no-op).
   * Present, any value mismatches → refuse with row-level evidence.
 
-* Never writes ``obs['observation_joinid']``. HCA reserved-but-optional;
-  fresh random IDs on every call would pollute the audit trail.
+* Never writes ``obs['observation_joinid']``. The column is HCA-
+  reserved-but-not-required (the HCA validator doesn't error on its
+  absence; CellxGENE downstream consumers do require it). The value
+  ``HCALabeler`` writes for it via ``get_hash_digest_column(obs)`` is
+  deterministic per cell index (xxhash → base85) — not random — so
+  the avoidance here isn't about reproducibility. It's scope: a per-
+  column-fill tool shouldn't quietly start writing reserved columns
+  that aren't in its declared contract. If a file genuinely needs
+  ``observation_joinid`` populated, that's ``label_h5ad``'s
+  responsibility (and ``label_h5ad`` only runs cleanly on files with
+  all controlled columns absent — currently a niche case).
 
 * Refuses outright (no per-column fallback) when:
 
