@@ -40,6 +40,13 @@ do, and the all-or-nothing refusal is wrong here.
   * Any non-human ``obs['organism_ontology_term_id']`` value.
   * ``uns['schema_version']`` present (CellxGENE-layout — caller should
     run ``hca_anndata_tools.convert_cellxgene_to_hca`` instead).
+  * Any CellxGENE-derived marker is present on an otherwise HCA-layout
+    file (``uns['provenance']['cellxgene']`` or
+    ``obs['observation_joinid']``). These mean cellxgene-schema add-
+    labels already populated every controlled column upstream — running
+    again would be a redundant pass. Multiple markers are checked
+    because different conversion paths leave different ones; combining
+    them guards against any single marker being lost or wiped.
 
   The check for ``import_cellxgene`` in the edit log is intentionally
   *not* done here — that's an origin-level refusal owned by the
@@ -280,8 +287,10 @@ def populate_in_memory(adata: ad.AnnData) -> dict:
     Mutates ``adata`` when fills are needed. See module docstring for
     the full per-column logic and refusal rules. Origin-level refusals
     (e.g. CellxGENE-imported via edit log) are the caller's job — this
-    function only refuses on data-level signals (SRE present, non-human
-    organism, CellxGENE layout via ``uns['schema_version']``).
+    function only refuses on data-level signals: SRE present, non-human
+    organism, CellxGENE layout via ``uns['schema_version']``, or any
+    CellxGENE-derived marker on an HCA-layout file
+    (``uns['provenance']['cellxgene']``, ``obs['observation_joinid']``).
 
     Args:
         adata: An :class:`anndata.AnnData` in memory.
