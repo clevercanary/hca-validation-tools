@@ -12,11 +12,6 @@ __all__ = ["ListHandler", "run_validator", "validator_logger_name"]
 
 validator_logger_name = "hca_schema_validator._vendored.cellxgene_schema.validate"
 
-TIER_1_ERROR_HEADER = (
-  "HCA Tier 1 metadata validation failed. "
-  "See https://data.humancellatlas.org/metadata/tier-1 for schema requirements."
-)
-
 
 def _reorder_feature_id_warnings_last(warnings):
   other, feature_id = [], []
@@ -26,16 +21,13 @@ def _reorder_feature_id_warnings_last(warnings):
 
 
 def run_validator(file_path):
-  result = run_with_captured_logs(
+  return run_with_captured_logs(
     file_path=file_path,
     logger_name=validator_logger_name,
     validate=lambda p: HCAValidator(ignore_labels=True).validate_adata(p),
     unexpected_error_prefix="Encountered an unexpected error while calling HCA schema validator",
     postprocess_warnings=_reorder_feature_id_warnings_last,
   )
-  if result["errors"]:
-    result["errors"] = [TIER_1_ERROR_HEADER, *result["errors"]]
-  return result
 
 
 if __name__ == "__main__":
