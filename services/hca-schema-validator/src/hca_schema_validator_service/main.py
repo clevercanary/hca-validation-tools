@@ -21,14 +21,13 @@ def _reorder_feature_id_warnings_last(warnings):
 
 
 def run_validator(file_path):
-  result = run_with_captured_logs(
+  return run_with_captured_logs(
     file_path=file_path,
     logger_name=validator_logger_name,
     validate=lambda p: HCAValidator(ignore_labels=True).validate_adata(p),
     unexpected_error_prefix="Encountered an unexpected error while calling HCA schema validator",
     postprocess_warnings=_reorder_feature_id_warnings_last,
   )
-  return result
 
 
 if __name__ == "__main__":
