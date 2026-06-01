@@ -7,7 +7,6 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from hca_schema_validator_service.main import (
-  TIER_1_ERROR_HEADER,
   run_validator,
   validator_logger_name,
 )
@@ -60,7 +59,7 @@ from hca_schema_validator_service.main import (
     "error": None,
     "expected_output": {
       "valid": False,
-      "errors": [TIER_1_ERROR_HEADER, "Error foo", "Error bar", "Error baz"],
+      "errors": ["Error foo", "Error bar", "Error baz"],
       "warnings": ["Warning foo"]
     }
   },
@@ -75,7 +74,7 @@ from hca_schema_validator_service.main import (
     "error": Exception("Error in validation"),
     "expected_output": {
       "valid": False,
-      "errors": [TIER_1_ERROR_HEADER, "Encountered an unexpected error while calling HCA schema validator: Error in validation"],
+      "errors": ["Encountered an unexpected error while calling HCA schema validator: Error in validation"],
       "warnings": []
     }
   }
