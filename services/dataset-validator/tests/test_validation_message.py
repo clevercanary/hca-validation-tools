@@ -8,6 +8,12 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from dataset_validator.main import ValidationToolReport, ValidationMessage, TRUNCATED_MESSAGES_PREFIX
 
+# Length budget exercised by these tests. Used to live as MAX_SNS_MESSAGE_LENGTH
+# in main.py, but to_length_limited_json() no longer assumes an SNS budget — the
+# truncator is being retargeted at the S3 claim-check. Tests pin the historical
+# value so the existing truncation/binary-search behavior stays exercised.
+TEST_MAX_LENGTH = 250_000
+
 @pytest.mark.parametrize("test_case", [
     {
         "name": "none_truncated",
@@ -158,7 +164,7 @@ def test_length_limited_json_scenarios(test_case):
       for tool_key, tool_counts in test_case["message_counts"].items()
     }
   )
-  message_json = message.to_length_limited_json()
+  message_json = message.to_length_limited_json(TEST_MAX_LENGTH)
   assert test_case["expected_min_length"] <= len(message_json)
   assert len(message_json) <= test_case["expected_max_length"]
   if "expected_truncated_count" in test_case:
@@ -207,7 +213,7 @@ def test_empty_lists_serialize_as_empty():
     "hcaSchema": {"errors": [], "warnings": [large] * 5000},  # overflows
     "hcaCellAnnotation": {"errors": [], "warnings": []},  # empty
   })
-  parsed = json.loads(message.to_length_limited_json())
+  parsed = json.loads(message.to_length_limited_json(TEST_MAX_LENGTH))
   for tool in ("cap", "cellxgene", "hcaCellAnnotation"):
     assert parsed["tool_reports"][tool]["errors"] == [], (
       f"{tool}.errors should be [] but got {parsed['tool_reports'][tool]['errors']}"
@@ -227,7 +233,7 @@ def test_placeholder_includes_counts():
     "hcaSchema": {"errors": [], "warnings": [large] * 5000},
     "hcaCellAnnotation": {"errors": [], "warnings": []},
   })
-  parsed = json.loads(message.to_length_limited_json())
+  parsed = json.loads(message.to_length_limited_json(TEST_MAX_LENGTH))
   warnings = parsed["tool_reports"]["hcaSchema"]["warnings"]
   marker = warnings[-1]
   match = re.fullmatch(rf"{re.escape(TRUNCATED_MESSAGES_PREFIX)} \((\d+) of (\d+) shown\)", marker)
@@ -250,7 +256,7 @@ def test_collapsed_to_zero_still_reports_original_count():
     "hcaSchema": {"errors": [], "warnings": [big] * 50},  # small but truncated first
     "hcaCellAnnotation": {"errors": [big] * 1100, "warnings": []},  # fills budget
   })
-  parsed = json.loads(message.to_length_limited_json())
+  parsed = json.loads(message.to_length_limited_json(TEST_MAX_LENGTH))
   warnings = parsed["tool_reports"]["hcaSchema"]["warnings"]
   assert len(warnings) == 1, f"expected collapse to placeholder only, got {len(warnings)} entries"
   assert warnings[0] == f"{TRUNCATED_MESSAGES_PREFIX} (0 of 50 shown)", (
