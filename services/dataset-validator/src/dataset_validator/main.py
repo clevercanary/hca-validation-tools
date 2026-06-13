@@ -123,12 +123,16 @@ class ValidationMessagePointer:
     body carries just these fields so the tracker can locate and fetch the
     authoritative payload. Adding a field here makes it part of the SNS
     contract — keep this list minimal.
+
+    `bucket` and `key` refer to the file that was validated, not the file
+    containing the validation results; the location of the latter is derived
+    automatically by the tracker.
     """
     file_id: str              # UUID from Tracker database
     status: str               # "success", "failure"
     timestamp: str            # ISO format timestamp (UTC)
-    bucket: str               # S3 bucket name
-    key: str                  # S3 object key
+    bucket: str               # S3 bucket name for the file that was validated
+    key: str                  # S3 object key for the file that was validated
     batch_job_id: str         # Unique AWS Batch job ID for debugging
 
     def to_json(self) -> str:
