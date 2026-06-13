@@ -651,8 +651,9 @@ def test_write_validation_results_to_s3_writes_full_untruncated_json(mock_aws):
         file_id='file-3', batch_job_id='job-3', tool_reports=tool_reports
     )
 
-    # Sanity: this message must actually trigger SNS truncation, otherwise
-    # the test wouldn't be meaningfully exercising the claim-check use case.
+    # Sanity: this message must actually exceed the historical byte-budget (so
+    # to_length_limited_json() would truncate under that budget), otherwise the
+    # test wouldn't be meaningfully exercising the claim-check use case.
     full_json = message.to_json()
     truncated_json = message.to_length_limited_json(TRUNCATION_BUDGET)
     assert len(full_json) > TRUNCATION_BUDGET
