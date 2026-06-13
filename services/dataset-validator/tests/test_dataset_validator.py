@@ -624,7 +624,7 @@ def test_write_validation_results_to_s3_writes_full_untruncated_json(mock_aws):
 
     # Cap that to_length_limited_json() must hold under. Used to be a shared
     # SNS-bound constant; now the truncator is decoupled from SNS, so
-    # this test pins the historical 250 KiB budget locally to exercise it.
+    # this test pins the historical 250K-byte budget locally to exercise it.
     TRUNCATION_BUDGET = 250_000
 
     # Build a message whose SNS-bound JSON would be truncated.
