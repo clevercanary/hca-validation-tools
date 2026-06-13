@@ -1079,7 +1079,13 @@ def test_end_to_end_validation_scenarios(mock_read_h5ad, caplog, mock_aws, env_m
         assert expected_log in caplog.text
 
     # Verify SNS pointer body + S3 claim-check heavy fields
-    _validate_published_result(mock_aws, caplog, test_case["expected_sns_message"])
+    _validate_published_result(
+        mock_aws,
+        caplog,
+        test_case["expected_sns_message"],
+        source_bucket=mock_aws['bucket_name'],
+        source_key=test_case["s3_key"],
+    )
     assert "S3 claim check write succeeded" in caplog.text
 
 
@@ -1155,7 +1161,7 @@ def _get_sns_backend():
     return sns_backends[DEFAULT_ACCOUNT_ID]["us-east-1"]
 
 
-def _validate_published_result(mock_aws, caplog, expected_message):
+def _validate_published_result(mock_aws, caplog, expected_message, source_bucket, source_key):
     """Validate the published validation result.
 
     The SNS body is pointer-only (file_id / status / timestamp / bucket
@@ -1163,6 +1169,9 @@ def _validate_published_result(mock_aws, caplog, expected_message):
     batch_job_name, metadata_summary, tool_reports, error_message) live in
     the S3 claim check. This helper enforces that split: pointer fields are
     checked on SNS, everything else on the claim-check object.
+
+    source_bucket / source_key identify the file that was validated; they
+    appear on both the SNS pointer and the claim-check body and must match.
     """
 
     topic_arn = mock_aws['topic_arn']
@@ -1174,14 +1183,16 @@ def _validate_published_result(mock_aws, caplog, expected_message):
     sns_body = _get_last_sns_message(_get_sns_backend(), topic_arn)
 
     # SNS body is pointer-only — assert the exact set of keys plus their values
-    # for fields the test pins. timestamp/bucket/key aren't pinned by the test
-    # cases but must be present (they're required pointer fields).
+    # for fields the test pins. timestamp isn't pinned by the test cases but
+    # must be present (it's a required pointer field).
     assert set(sns_body.keys()) == {
         "file_id", "status", "timestamp", "bucket", "key", "batch_job_id"
     }, f"SNS body should be pointer-only, got keys: {sorted(sns_body.keys())}"
     assert sns_body["status"] == expected_message["status"]
     assert sns_body["file_id"] == expected_message["file_id"]
     assert sns_body["batch_job_id"] == expected_message["batch_job_id"]
+    assert sns_body["bucket"] == source_bucket
+    assert sns_body["key"] == source_key
 
     # Heavy fields are asserted on the S3 claim check, which is the
     # authoritative payload.
@@ -1195,6 +1206,8 @@ def _validate_published_result(mock_aws, caplog, expected_message):
     claim_body = json.loads(claim_obj['Body'].read().decode('utf-8'))
 
     assert claim_body["status"] == expected_message["status"]
+    assert claim_body["bucket"] == source_bucket
+    assert claim_body["key"] == source_key
     assert claim_body["integrity_status"] == expected_message["integrity_status"], (
         f"Expected integrity_status '{expected_message['integrity_status']}', "
         f"got '{claim_body['integrity_status']}'"
