@@ -15,7 +15,7 @@ import resource
 import shutil
 import sys
 import subprocess
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, fields
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, List, Optional, Tuple
@@ -29,8 +29,6 @@ from hca_validation.metadata_coverage import compute_metadata_coverage
 from hca_validation.schema_utils import load_schemaview
 
 
-# Somewhat less than the actual value of 256KiB, to make room for small unforeseen deviations
-MAX_SNS_MESSAGE_LENGTH = 250_000
 # S3 prefix under which full validation results are written as a "claim check"
 # the tracker can read from to avoid using a truncated SNS message.
 S3_VALIDATION_METADATA_PREFIX = "validation-metadata"
@@ -118,16 +116,30 @@ class ValidationToolReport:
     finished_at: str
 
 @dataclass
-class ValidationMessage:
-    """SNS message structure for validation results."""
-    # Required fields
+class ValidationMessagePointer:
+    """Pointer-only payload published to SNS.
+
+    The full ValidationMessage is written to S3 as a claim check; the SNS
+    body carries just these fields so the tracker can locate and fetch the
+    authoritative payload. Adding a field here makes it part of the SNS
+    contract — keep this list minimal.
+    """
     file_id: str              # UUID from Tracker database
     status: str               # "success", "failure"
     timestamp: str            # ISO format timestamp (UTC)
     bucket: str               # S3 bucket name
     key: str                  # S3 object key
     batch_job_id: str         # Unique AWS Batch job ID for debugging
-    
+
+    def to_json(self) -> str:
+        """Convert to JSON string."""
+        return json.dumps(asdict(self), separators=(',', ':'))
+
+
+@dataclass
+class ValidationMessage(ValidationMessagePointer):
+    """Full validation result. Written to S3 as a claim check; the SNS body
+    carries only the ValidationMessagePointer subset (see to_pointer)."""
     # Optional fields
     batch_job_name: Optional[str] = None                 # Job definition name (for context)
     downloaded_sha256: Optional[str] = None              # SHA256 computed from downloaded file
@@ -140,10 +152,12 @@ class ValidationMessage:
     metadata_coverage: Optional[dict] = None             # Per-field completeness summary (#405)
     error_message: Optional[str] = None                  # Human-readable error description
 
-    def to_json(self) -> str:
-        """Convert to JSON string."""
-        return json.dumps(asdict(self), separators=(',', ':'))
-    
+    def to_pointer(self) -> ValidationMessagePointer:
+        """Project to the pointer-only payload published to SNS."""
+        return ValidationMessagePointer(
+            **{f.name: getattr(self, f.name) for f in fields(ValidationMessagePointer)}
+        )
+
     def _get_report_message_list(self, report_key: str, message_type: str) -> List[str]:
         if self.tool_reports is None:
             raise RuntimeError("tool_reports not set")
@@ -157,7 +171,7 @@ class ValidationMessage:
     def _json_length_of_report_list(self, report_key: str, message_type: str) -> int:
         return len(json.dumps(self._get_report_message_list(report_key, message_type)))
 
-    def to_length_limited_json(self, max_length=MAX_SNS_MESSAGE_LENGTH) -> str:
+    def to_length_limited_json(self, max_length: int) -> str:
         """Convert to a JSON string with message lists truncated to ensure that the JSON is below a given length."""
 
         # If there are no reports to truncate or the full message is short enough, use the full message
@@ -266,26 +280,31 @@ def log_memory_usage(label: str) -> None:
 
 def publish_validation_result(message: ValidationMessage, sns_topic_arn: str) -> bool:
     """
-    Publish validation result to SNS topic.
-    
+    Publish the pointer-only payload to SNS.
+
+    The full ValidationMessage is written to S3 as a claim check
+    (see write_validation_results_to_s3); the SNS body carries only
+    ValidationMessagePointer fields so the tracker can locate and fetch the
+    authoritative payload.
+
     Args:
         message: ValidationMessage containing result data
         sns_topic_arn: ARN of the SNS topic to publish to
-        
+
     Returns:
         True if published successfully, False otherwise
     """
     try:
         logger.info("Publishing validation result to SNS topic: %s", sns_topic_arn)
-        
+
         # Create SNS client
         # Let boto3 resolve region from the environment/metadata
         sns_client = boto3.client('sns')
-        
+
         # Publish message
         response = sns_client.publish(
             TopicArn=sns_topic_arn,
-            Message=message.to_length_limited_json(),
+            Message=message.to_pointer().to_json(),
             Subject=f"Dataset Validation Result - {message.status.upper()}"
         )
         
