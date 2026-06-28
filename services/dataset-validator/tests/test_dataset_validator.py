@@ -425,6 +425,16 @@ def test_read_shape_var_fallback_is_robust(tmp_path):
         n_obs, n_vars = _read_shape(f, obs)
     assert (n_obs, n_vars) == (3, 7)
 
+    # var._index points at a group (not a dataset) → degrade, don't raise.
+    path3 = tmp_path / "weird3.h5ad"
+    with h5py.File(path3, "w") as f:
+        f.create_dataset("X", data=np.zeros(3, dtype=np.float32))
+        var = f.create_group("var")
+        var.attrs["_index"] = "idx"
+        var.create_group("idx")
+        n_obs, n_vars = _read_shape(f, obs)
+    assert (n_obs, n_vars) == (3, 0)
+
 
 def test_matrix_storage_excluded_from_sns_message():
     """matrix_storage is kept in the full claim-check JSON but omitted from the

@@ -173,10 +173,13 @@ class ValidationMessage:
         """
 
         # The inline SNS message never carries matrix_storage; serialize/truncate a
-        # view of self with it stripped. (No copy in the common case where it's None.)
+        # view of self with it stripped. A shallow copy suffices — only the
+        # matrix_storage field is reassigned, and the truncation path below
+        # deep-copies before mutating tool_reports lists, so the original (and
+        # its possibly-large matrix_storage) is never copied or mutated here.
         base = self
         if self.matrix_storage is not None:
-            base = copy.deepcopy(self)
+            base = copy.copy(self)
             base.matrix_storage = None
 
         # If there are no reports to truncate or the full message is short enough, use the full message
@@ -512,7 +515,9 @@ def _read_shape(f: h5py.File, obs: pd.DataFrame) -> Tuple[int, int]:
         if isinstance(index_name, bytes):
             index_name = index_name.decode()
         if index_name is not None and index_name in var:
-            n_vars = int(var[index_name].shape[0])
+            node = var[index_name]
+            if isinstance(node, h5py.Dataset):
+                n_vars = int(node.shape[0])
     return int(len(obs)), n_vars
 
 
