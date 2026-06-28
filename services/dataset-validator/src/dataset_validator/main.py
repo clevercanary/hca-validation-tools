@@ -242,8 +242,8 @@ class ValidationMessage:
                 min_invalid_length = middle_length
                 truncated_message._set_report_message_list(*threshold_path, truncated_list_before)
 
-        # Return the truncated message JSON
-        return truncated_message.to_json()
+        # Return the truncated message JSON (matrix_storage omitted, see _to_sns_json)
+        return truncated_message._to_sns_json()
 
 
 def configure_logging() -> logging.Logger:

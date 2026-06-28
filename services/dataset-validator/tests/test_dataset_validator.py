@@ -469,6 +469,35 @@ def test_matrix_storage_excluded_from_sns_message():
     assert len(sns) < MAX_SNS_MESSAGE_LENGTH
 
 
+def test_sns_omits_matrix_storage_on_truncation_path():
+    """Even when tool-report lists force the binary-search truncation path, the
+    final SNS payload omits matrix_storage and stays under the limit."""
+    from dataset_validator.main import (
+        ValidationMessage, ValidationToolReport, MAX_SNS_MESSAGE_LENGTH,
+    )
+
+    # Huge error list → forces truncation through to the binary-search return.
+    huge_errors = [f"ERROR {i}: " + "x" * 60 for i in range(10000)]
+    reports = {
+        "hcaSchema": ValidationToolReport(
+            valid=False, errors=huge_errors, warnings=[],
+            started_at="2024-01-01T00:00:00Z", finished_at="2024-01-01T00:00:01Z",
+        ),
+    }
+    msg = ValidationMessage(
+        file_id="f", status="failure", timestamp="2024-01-01T00:00:00Z",
+        bucket="b", key="k", batch_job_id="j",
+        tool_reports=reports,
+        matrix_storage={"X": {"format": "csr_matrix"}, "raw_X": None, "layers": None},
+    )
+    assert len(msg.to_json()) > MAX_SNS_MESSAGE_LENGTH  # forces truncation
+
+    sns = msg.to_length_limited_json()
+    parsed = json.loads(sns)
+    assert "matrix_storage" not in parsed          # omitted on the truncation path too
+    assert len(sns) < MAX_SNS_MESSAGE_LENGTH        # actually under the measured limit
+
+
 @pytest.mark.parametrize("test_case", [
     {
         "name": "success",

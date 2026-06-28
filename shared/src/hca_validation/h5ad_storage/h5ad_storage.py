@@ -69,7 +69,10 @@ def _matrix_info(node: Any) -> Optional[dict]:
     if isinstance(node, h5py.Dataset):
         shape = tuple(int(x) for x in node.shape)
         itemsize = np.dtype(node.dtype).itemsize
-        n_elements = int(np.prod(shape)) if shape else 0
+        # dtype=object keeps the product in Python big-ints — a large dense
+        # matrix would overflow numpy's fixed-width integer (int32 on some
+        # platforms) and yield a wrong/negative resident_bytes.
+        n_elements = int(np.prod(shape, dtype=object)) if shape else 0
         return {
             "format": "dense",
             "n_obs": shape[0] if len(shape) >= 1 else None,
