@@ -104,6 +104,21 @@ def test_unrecognized_layer_node_is_filtered(tmp_path):
     assert all(v is not None for v in layers.values())
 
 
+def test_incomplete_sparse_node_is_unrecognized(tmp_path):
+    """A node advertising a sparse encoding but missing data/indices/indptr is
+    treated as unrecognized (None), not a KeyError that fails the whole call."""
+    path = tmp_path / "t.h5ad"
+    _make_file(path, with_raw=True, with_layer_int64=True)
+    with h5py.File(path, "a") as f:
+        # X advertises csr_matrix but is missing 'indptr'.
+        del f["X"]["indptr"]
+
+    result = get_matrix_storage(str(path))
+    assert result["X"] is None                  # degraded, not raised
+    assert result["raw_X"] is not None          # other matrices still reported
+    assert result["layers"]["denoised"] is not None
+
+
 def test_only_unrecognized_layers_returns_none(tmp_path):
     """If no layer is a matrix, layers collapses to None, not an empty dict."""
     path = tmp_path / "t.h5ad"

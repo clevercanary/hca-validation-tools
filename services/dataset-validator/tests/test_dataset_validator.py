@@ -462,9 +462,10 @@ def test_matrix_storage_excluded_from_sns_message():
     assert len(full["matrix_storage"]["layers"]) == 5000
     assert len(msg.to_json()) > MAX_SNS_MESSAGE_LENGTH  # would be oversized inline
 
-    # ...but the inline SNS payload drops it and stays under the limit.
+    # ...but the inline SNS payload omits the key entirely (shape identical to
+    # the pre-matrix_storage payload) and stays under the limit.
     sns = msg.to_length_limited_json()
-    assert json.loads(sns)["matrix_storage"] is None
+    assert "matrix_storage" not in json.loads(sns)
     assert len(sns) < MAX_SNS_MESSAGE_LENGTH
 
 

@@ -40,6 +40,11 @@ def _matrix_info(node: Any) -> Optional[dict]:
     encoding = _decode(node.attrs.get("encoding-type", ""))
 
     if isinstance(node, h5py.Group) and encoding in _SPARSE_ENCODINGS:
+        # Treat an incomplete sparse node (missing data/indices/indptr) as
+        # unrecognized rather than raising — one malformed node must not fail
+        # introspection for the whole file.
+        if not all(k in node for k in ("data", "indices", "indptr")):
+            return None
         data = cast(h5py.Dataset, node["data"])
         indices = cast(h5py.Dataset, node["indices"])
         indptr = cast(h5py.Dataset, node["indptr"])

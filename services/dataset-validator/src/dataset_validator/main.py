@@ -162,29 +162,27 @@ class ValidationMessage:
     def _json_length_of_report_list(self, report_key: str, message_type: str) -> int:
         return len(json.dumps(self._get_report_message_list(report_key, message_type)))
 
-    def to_length_limited_json(self, max_length=MAX_SNS_MESSAGE_LENGTH) -> str:
-        """Convert to a JSON string with message lists truncated to ensure that the JSON is below a given length.
+    def _to_sns_json(self) -> str:
+        """Serialize for the inline SNS payload, omitting ``matrix_storage``.
 
-        ``matrix_storage`` (#447) is omitted entirely from the inline SNS payload:
-        it can be large (a file with many layers) and is always available in full
-        from the S3 claim-check (write_validation_results_to_s3), which the tracker
-        reads preferentially. Keeping it out keeps the SNS message shape identical
-        to the pre-#447 payload.
+        ``matrix_storage`` (#447) can be large (a file with many layers) and is
+        always available in full from the S3 claim-check
+        (write_validation_results_to_s3), which the tracker reads preferentially.
+        Dropping the key keeps the SNS message shape identical to the pre-#447
+        payload.
         """
+        data = asdict(self)
+        data.pop("matrix_storage", None)
+        return json.dumps(data, separators=(',', ':'))
 
-        # The inline SNS message never carries matrix_storage; serialize/truncate a
-        # view of self with it stripped. A shallow copy suffices — only the
-        # matrix_storage field is reassigned, and the truncation path below
-        # deep-copies before mutating tool_reports lists, so the original (and
-        # its possibly-large matrix_storage) is never copied or mutated here.
-        base = self
-        if self.matrix_storage is not None:
-            base = copy.copy(self)
-            base.matrix_storage = None
+    def to_length_limited_json(self, max_length=MAX_SNS_MESSAGE_LENGTH) -> str:
+        """Convert to a length-limited SNS JSON string, truncating message lists
+        to stay below ``max_length``. Excludes ``matrix_storage`` (see
+        :meth:`_to_sns_json`)."""
 
-        # If there are no reports to truncate or the full message is short enough, use the full message
-        full_message = base.to_json()
-        if base.tool_reports is None or len(full_message) < max_length:
+        # If there are no reports to truncate or the message is short enough, use it as-is.
+        full_message = self._to_sns_json()
+        if self.tool_reports is None or len(full_message) < max_length:
             return full_message
 
         # Create a list of (tool_key, message_type) pairs to consider for truncation.
@@ -193,36 +191,39 @@ class ValidationMessage:
         # false PartiallyValidIcon indicators in the tracker UI (#382).
         list_paths = [
             (key, message_type)
-            for key in base.tool_reports.keys()
+            for key in self.tool_reports.keys()
             for message_type in ["errors", "warnings"]
-            if base._get_report_message_list(key, message_type)
+            if self._get_report_message_list(key, message_type)
         ]
         # Truncation priority: warnings first, then cellxgene errors, then cap errors,
         # then hcaSchema errors, then hcaCellAnnotation errors (preserved longest)
         list_paths.sort(key=lambda p: (
             0 if p[1] == "warnings" else 1 + TOOL_ERROR_PRIORITY.get(p[0], 0),
-            -base._json_length_of_report_list(*p),
+            -self._json_length_of_report_list(*p),
         ))
 
-        # Create a copy of the validation message to truncate lists in
-        truncated_message = copy.deepcopy(base)
+        # Truncate lists in a copy. Strip matrix_storage before the deep copy so
+        # the (possibly large) field is neither copied nor serialized.
+        truncated_message = copy.copy(self)
+        truncated_message.matrix_storage = None
+        truncated_message = copy.deepcopy(truncated_message)
 
         # Truncate entire lists until the message JSON is small enough, and note which list was the last to be truncated
         threshold_path = None
         for p in list_paths:
-            original_total = len(base._get_report_message_list(*p))
+            original_total = len(self._get_report_message_list(*p))
             truncated_message._set_report_message_list(*p, [_truncated_marker(0, original_total)])
-            if len(truncated_message.to_json()) < max_length:
+            if len(truncated_message._to_sns_json()) < max_length:
                 threshold_path = p
                 break
 
         # If all lists have been truncated and somehow none have made the message small enough,
         # give up and try using it anyway
         if threshold_path is None:
-            return truncated_message.to_json()
+            return truncated_message._to_sns_json()
 
         # Get the original value of the list that was the threshold for making the message small enough
-        message_list = base._get_report_message_list(*threshold_path)
+        message_list = self._get_report_message_list(*threshold_path)
 
         # Do a binary search to determine how much of the list can be retained,
         # ensuring that the truncated message remains at a valid length
@@ -235,7 +236,7 @@ class ValidationMessage:
                 *threshold_path,
                 [*message_list[:middle_length], _truncated_marker(middle_length, len(message_list))],
             )
-            if len(truncated_message.to_json()) < max_length:
+            if len(truncated_message._to_sns_json()) < max_length:
                 max_valid_length = middle_length
             else:
                 min_invalid_length = middle_length
