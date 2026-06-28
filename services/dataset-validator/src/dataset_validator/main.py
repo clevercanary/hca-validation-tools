@@ -18,14 +18,17 @@ import subprocess
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable, List, Optional, Tuple
+from types import SimpleNamespace
+from typing import Callable, List, Optional, Tuple, cast
 
 import boto3
 from botocore.exceptions import ClientError
-import anndata
+from anndata.io import read_elem
+import h5py
 import pandas as pd
 
 from hca_validation.metadata_coverage import compute_metadata_coverage
+from hca_validation.h5ad_storage import get_matrix_storage
 from hca_validation.schema_utils import load_schemaview
 
 
@@ -138,6 +141,7 @@ class ValidationMessage:
         dict[str, ValidationToolReport]
     ] = None
     metadata_coverage: Optional[dict] = None             # Per-field completeness summary (#405)
+    matrix_storage: Optional[dict] = None                # Per-matrix/layer shape + size, from HDF5 header (#447)
     error_message: Optional[str] = None                  # Human-readable error description
 
     def to_json(self) -> str:
@@ -157,11 +161,32 @@ class ValidationMessage:
     def _json_length_of_report_list(self, report_key: str, message_type: str) -> int:
         return len(json.dumps(self._get_report_message_list(report_key, message_type)))
 
-    def to_length_limited_json(self, max_length=MAX_SNS_MESSAGE_LENGTH) -> str:
-        """Convert to a JSON string with message lists truncated to ensure that the JSON is below a given length."""
+    def _to_sns_json(self) -> str:
+        """Serialize for the inline SNS payload, omitting ``matrix_storage``.
 
-        # If there are no reports to truncate or the full message is short enough, use the full message
-        full_message = self.to_json()
+        ``matrix_storage`` (#447) can be large (a file with many layers) and is
+        always available in full from the S3 claim-check
+        (write_validation_results_to_s3), which the tracker reads preferentially.
+        Dropping the key keeps the SNS message shape identical to the pre-#447
+        payload.
+        """
+        # Null matrix_storage on a shallow copy before asdict so its (possibly
+        # large) payload is never recursively copied just to be discarded.
+        src = self
+        if self.matrix_storage is not None:
+            src = copy.copy(self)
+            src.matrix_storage = None
+        data = asdict(src)
+        data.pop("matrix_storage", None)
+        return json.dumps(data, separators=(',', ':'))
+
+    def to_length_limited_json(self, max_length=MAX_SNS_MESSAGE_LENGTH) -> str:
+        """Convert to a length-limited SNS JSON string, truncating message lists
+        to stay below ``max_length``. Excludes ``matrix_storage`` (see
+        :meth:`_to_sns_json`)."""
+
+        # If there are no reports to truncate or the message is short enough, use it as-is.
+        full_message = self._to_sns_json()
         if self.tool_reports is None or len(full_message) < max_length:
             return full_message
 
@@ -182,22 +207,25 @@ class ValidationMessage:
             -self._json_length_of_report_list(*p),
         ))
 
-        # Create a copy of the validation message to truncate lists in
-        truncated_message = copy.deepcopy(self)
+        # Truncate lists in a copy. Strip matrix_storage before the deep copy so
+        # the (possibly large) field is neither copied nor serialized.
+        truncated_message = copy.copy(self)
+        truncated_message.matrix_storage = None
+        truncated_message = copy.deepcopy(truncated_message)
 
         # Truncate entire lists until the message JSON is small enough, and note which list was the last to be truncated
         threshold_path = None
         for p in list_paths:
             original_total = len(self._get_report_message_list(*p))
             truncated_message._set_report_message_list(*p, [_truncated_marker(0, original_total)])
-            if len(truncated_message.to_json()) < max_length:
+            if len(truncated_message._to_sns_json()) < max_length:
                 threshold_path = p
                 break
 
         # If all lists have been truncated and somehow none have made the message small enough,
         # give up and try using it anyway
         if threshold_path is None:
-            return truncated_message.to_json()
+            return truncated_message._to_sns_json()
 
         # Get the original value of the list that was the threshold for making the message small enough
         message_list = self._get_report_message_list(*threshold_path)
@@ -213,14 +241,14 @@ class ValidationMessage:
                 *threshold_path,
                 [*message_list[:middle_length], _truncated_marker(middle_length, len(message_list))],
             )
-            if len(truncated_message.to_json()) < max_length:
+            if len(truncated_message._to_sns_json()) < max_length:
                 max_valid_length = middle_length
             else:
                 min_invalid_length = middle_length
                 truncated_message._set_report_message_list(*threshold_path, truncated_list_before)
 
-        # Return the truncated message JSON
-        return truncated_message.to_json()
+        # Return the truncated message JSON (matrix_storage omitted, see _to_sns_json)
+        return truncated_message._to_sns_json()
 
 
 def configure_logging() -> logging.Logger:
@@ -412,45 +440,6 @@ def get_column_unique_values_if_present(df: pd.DataFrame, name: str, map_value=s
     return list(df[name].map(map_value).unique()) if name in df else []
 
 
-def read_metadata(file_path: Path) -> MetadataSummary:
-    """
-    Read metadata from an H5AD file and extract key biological annotations.
-    
-    This function opens an H5AD (AnnData) file in backed mode and extracts unique values
-    from key observation columns to create a metadata summary. The file is automatically
-    closed after reading to prevent resource leaks.
-    
-    Args:
-        file_path: Path to the H5AD file to read metadata from
-        
-    Returns:
-        MetadataSummary: A summary containing:
-            - title: Title of the individual dataset
-            - assay: List of unique assay types in the dataset
-            - suspension_type: List of unique suspension types
-            - tissue: List of unique tissue types
-            - disease: List of unique disease conditions
-            - cell_count: Total number of cells/observations in the dataset
-            
-    Raises:
-        Exception: If the H5AD file cannot be read or required columns are missing
-        
-    Note:
-        The file is opened in backed mode ('r') for memory efficiency and automatically
-        closed in the finally block to ensure proper resource cleanup.
-    """
-    adata = None
-    try:
-        adata = anndata.io.read_h5ad(file_path, backed="r")
-        return _extract_metadata_summary(adata)
-    except Exception as e:
-        logger.error("Error reading metadata: %s", e)
-        raise
-    finally:
-        if adata is not None:
-            adata.file.close()
-
-
 def _extract_metadata_summary(adata) -> MetadataSummary:
     title = adata.uns.get("title")
     # anndata.obs is typed DataFrame | Dataset2D (backed vs in-memory); runtime is DataFrame here
@@ -471,30 +460,87 @@ def _get_schemaview():
     return load_schemaview()
 
 
-def read_file_metadata(file_path: Path) -> Tuple[MetadataSummary, Optional[dict]]:
-    """Open an h5ad once and return (metadata_summary, metadata_coverage).
+def _read_shape(f: h5py.File, obs: pd.DataFrame) -> Tuple[int, int]:
+    """Derive (n_obs, n_vars) from the X header, falling back to obs/var length.
 
-    Coverage failures are non-fatal — they're returned as None so the
-    caller can still publish a summary. Reading the file at all is fatal
-    (raised through), since downstream validators depend on it.
+    X carries a ``shape`` attr when sparse; when dense it's a 2-D dataset.
     """
-    adata = None
+    if "X" in f:
+        x = f["X"]
+        shape = x.attrs.get("shape")
+        # Guard against a non-sequence shape attr (malformed file) so we fall
+        # through to the var/obs fallback instead of raising on len().
+        if shape is not None and hasattr(shape, "__len__") and len(shape) == 2:
+            return int(shape[0]), int(shape[1])
+        if isinstance(x, h5py.Dataset) and len(x.shape) == 2:
+            return int(x.shape[0]), int(x.shape[1])
+    n_vars = 0
+    if "var" in f:
+        var = f["var"]
+        # Defensive: this fallback only runs for files where X lacks a shape
+        # attr (not produced by anndata). Degrade to 0 rather than raising a
+        # cryptic h5py error if var isn't a group or its index is missing/malformed.
+        if isinstance(var, h5py.Group):
+            index_name = var.attrs.get("_index")
+            if isinstance(index_name, bytes):
+                index_name = index_name.decode()
+            if index_name is not None and index_name in var:
+                node = var[index_name]
+                if isinstance(node, h5py.Dataset):
+                    n_vars = int(node.shape[0])
+    return int(len(obs)), n_vars
+
+
+def _read_metadata_inputs(file_path: Path) -> Tuple[pd.DataFrame, dict, int, int]:
+    """Read (obs, uns, n_obs, n_vars) from an h5ad without loading matrices.
+
+    Uses targeted ``read_elem`` of obs/uns plus the X header for shape — never
+    opens X/raw/layers. This replaces ``read_h5ad(path, backed="r")``, whose
+    backed mode is X-only and eagerly materializes ``layers`` + ``raw`` (15–24+ GB
+    on large files). See hca-validation-tools#447.
+    """
+    with h5py.File(file_path, "r") as f:
+        # obs/uns are always HDF5 groups in an h5ad; cast so read_elem accepts
+        # them (f[...] is typed Group | Dataset | Datatype). read_elem returns a
+        # broad RWAble type; obs/uns are concretely a DataFrame and a dict.
+        obs = cast(pd.DataFrame, read_elem(cast(h5py.Group, f["obs"])))
+        uns = cast(dict, read_elem(cast(h5py.Group, f["uns"]))) if "uns" in f else {}
+        n_obs, n_vars = _read_shape(f, obs)
+    return obs, uns, n_obs, n_vars
+
+
+def read_file_metadata(
+    file_path: Path,
+) -> Tuple[MetadataSummary, Optional[dict], Optional[dict]]:
+    """Read metadata once and return (summary, coverage, matrix_storage).
+
+    Only obs + uns (+ matrix headers) are read — never the matrices themselves —
+    so this stays bounded (~1 GB) even on files whose X/raw/layers hold billions
+    of nonzeros. Coverage and matrix-storage failures are non-fatal (returned as
+    None); a failure to read obs/uns is fatal (raised through).
+    """
     try:
-        try:
-            adata = anndata.io.read_h5ad(file_path, backed="r")
-            summary = _extract_metadata_summary(adata)
-        except Exception as e:
-            logger.error("Error reading metadata: %s", e)
-            raise
-        try:
-            coverage = compute_metadata_coverage(adata, _get_schemaview())
-        except Exception as e:
-            logger.warning("metadata_coverage computation failed: %s", e)
-            coverage = None
-        return summary, coverage
-    finally:
-        if adata is not None:
-            adata.file.close()
+        obs, uns, n_obs, n_vars = _read_metadata_inputs(file_path)
+    except Exception as e:
+        logger.error("Error reading metadata: %s", e)
+        raise
+
+    adata_like = SimpleNamespace(obs=obs, uns=uns, n_obs=n_obs, n_vars=n_vars)
+    summary = _extract_metadata_summary(adata_like)
+
+    try:
+        coverage = compute_metadata_coverage(adata_like, _get_schemaview())
+    except Exception as e:
+        logger.warning("metadata_coverage computation failed: %s", e)
+        coverage = None
+
+    try:
+        matrix_storage = get_matrix_storage(str(file_path))
+    except Exception as e:
+        logger.warning("matrix_storage computation failed: %s", e)
+        matrix_storage = None
+
+    return summary, coverage, matrix_storage
 
 
 def get_default_cap_validator_script_path() -> Path:
@@ -950,10 +996,13 @@ def main() -> int:
 
             validation_message.integrity_status = INTEGRITY_VALID
 
-        # Read metadata summary + per-field coverage (#405) in one h5ad open.
-        validation_message.metadata_summary, validation_message.metadata_coverage = (
-            read_file_metadata(local_file)
-        )
+        # Read metadata summary + per-field coverage (#405) + per-matrix storage
+        # (#447) without loading any matrix data.
+        (
+            validation_message.metadata_summary,
+            validation_message.metadata_coverage,
+            validation_message.matrix_storage,
+        ) = read_file_metadata(local_file)
         log_memory_usage("after metadata read")
         gc.collect()
 
