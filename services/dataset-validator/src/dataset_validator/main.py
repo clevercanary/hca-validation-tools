@@ -163,11 +163,25 @@ class ValidationMessage:
         return len(json.dumps(self._get_report_message_list(report_key, message_type)))
 
     def to_length_limited_json(self, max_length=MAX_SNS_MESSAGE_LENGTH) -> str:
-        """Convert to a JSON string with message lists truncated to ensure that the JSON is below a given length."""
+        """Convert to a JSON string with message lists truncated to ensure that the JSON is below a given length.
+
+        ``matrix_storage`` (#447) is omitted entirely from the inline SNS payload:
+        it can be large (a file with many layers) and is always available in full
+        from the S3 claim-check (write_validation_results_to_s3), which the tracker
+        reads preferentially. Keeping it out keeps the SNS message shape identical
+        to the pre-#447 payload.
+        """
+
+        # The inline SNS message never carries matrix_storage; serialize/truncate a
+        # view of self with it stripped. (No copy in the common case where it's None.)
+        base = self
+        if self.matrix_storage is not None:
+            base = copy.deepcopy(self)
+            base.matrix_storage = None
 
         # If there are no reports to truncate or the full message is short enough, use the full message
-        full_message = self.to_json()
-        if self.tool_reports is None or len(full_message) < max_length:
+        full_message = base.to_json()
+        if base.tool_reports is None or len(full_message) < max_length:
             return full_message
 
         # Create a list of (tool_key, message_type) pairs to consider for truncation.
@@ -176,24 +190,24 @@ class ValidationMessage:
         # false PartiallyValidIcon indicators in the tracker UI (#382).
         list_paths = [
             (key, message_type)
-            for key in self.tool_reports.keys()
+            for key in base.tool_reports.keys()
             for message_type in ["errors", "warnings"]
-            if self._get_report_message_list(key, message_type)
+            if base._get_report_message_list(key, message_type)
         ]
         # Truncation priority: warnings first, then cellxgene errors, then cap errors,
         # then hcaSchema errors, then hcaCellAnnotation errors (preserved longest)
         list_paths.sort(key=lambda p: (
             0 if p[1] == "warnings" else 1 + TOOL_ERROR_PRIORITY.get(p[0], 0),
-            -self._json_length_of_report_list(*p),
+            -base._json_length_of_report_list(*p),
         ))
 
         # Create a copy of the validation message to truncate lists in
-        truncated_message = copy.deepcopy(self)
+        truncated_message = copy.deepcopy(base)
 
         # Truncate entire lists until the message JSON is small enough, and note which list was the last to be truncated
         threshold_path = None
         for p in list_paths:
-            original_total = len(self._get_report_message_list(*p))
+            original_total = len(base._get_report_message_list(*p))
             truncated_message._set_report_message_list(*p, [_truncated_marker(0, original_total)])
             if len(truncated_message.to_json()) < max_length:
                 threshold_path = p
@@ -205,7 +219,7 @@ class ValidationMessage:
             return truncated_message.to_json()
 
         # Get the original value of the list that was the threshold for making the message small enough
-        message_list = self._get_report_message_list(*threshold_path)
+        message_list = base._get_report_message_list(*threshold_path)
 
         # Do a binary search to determine how much of the list can be retained,
         # ensuring that the truncated message remains at a valid length
@@ -511,10 +525,11 @@ def _read_metadata_inputs(file_path: Path) -> Tuple[pd.DataFrame, dict, int, int
     on large files). See hca-validation-tools#447.
     """
     with h5py.File(file_path, "r") as f:
-        # read_elem returns a broad RWAble type; obs/uns are concretely a
-        # DataFrame and a dict for an h5ad.
-        obs = cast(pd.DataFrame, read_elem(f["obs"]))
-        uns = cast(dict, read_elem(f["uns"])) if "uns" in f else {}
+        # obs/uns are always HDF5 groups in an h5ad; cast so read_elem accepts
+        # them (f[...] is typed Group | Dataset | Datatype). read_elem returns a
+        # broad RWAble type; obs/uns are concretely a DataFrame and a dict.
+        obs = cast(pd.DataFrame, read_elem(cast(h5py.Group, f["obs"])))
+        uns = cast(dict, read_elem(cast(h5py.Group, f["uns"]))) if "uns" in f else {}
         n_obs, n_vars = _read_shape(f, obs)
     return obs, uns, n_obs, n_vars
 

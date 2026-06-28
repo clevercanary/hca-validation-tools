@@ -426,6 +426,38 @@ def test_read_shape_var_fallback_is_robust(tmp_path):
     assert (n_obs, n_vars) == (3, 7)
 
 
+def test_matrix_storage_excluded_from_sns_message():
+    """matrix_storage is kept in the full claim-check JSON but omitted from the
+    inline SNS payload, so a large matrix_storage can't push SNS over the limit."""
+    from dataset_validator.main import ValidationMessage, MAX_SNS_MESSAGE_LENGTH
+
+    # A pathologically large matrix_storage (thousands of layers) with empty
+    # tool reports — the case that previously slipped past the length limiter.
+    big_layers = {
+        f"layer_{i}": {
+            "format": "csr_matrix", "n_obs": 1, "n_vars": 1, "nnz": 0,
+            "data_dtype": "float32", "index_dtype": "int64",
+            "on_disk_bytes": 0, "resident_bytes": 0,
+        }
+        for i in range(5000)
+    }
+    msg = ValidationMessage(
+        file_id="f", status="success", timestamp="2024-01-01T00:00:00Z",
+        bucket="b", key="k", batch_job_id="j",
+        matrix_storage={"X": None, "raw_X": None, "layers": big_layers},
+    )
+
+    # Full claim-check payload retains matrix_storage...
+    full = json.loads(msg.to_json())
+    assert len(full["matrix_storage"]["layers"]) == 5000
+    assert len(msg.to_json()) > MAX_SNS_MESSAGE_LENGTH  # would be oversized inline
+
+    # ...but the inline SNS payload drops it and stays under the limit.
+    sns = msg.to_length_limited_json()
+    assert json.loads(sns)["matrix_storage"] is None
+    assert len(sns) < MAX_SNS_MESSAGE_LENGTH
+
+
 @pytest.mark.parametrize("test_case", [
     {
         "name": "success",

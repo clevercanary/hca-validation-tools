@@ -6,7 +6,6 @@ notably the int32-vs-int64 index case that drives the resident-bytes math.
 
 import h5py
 import numpy as np
-import pytest
 
 from hca_validation.h5ad_storage import get_matrix_storage
 
