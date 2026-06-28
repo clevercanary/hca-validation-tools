@@ -35,8 +35,20 @@ def _storage_size(dataset: h5py.Dataset) -> int:
 def _matrix_info(node: Any) -> Optional[dict]:
     """Storage facts for one matrix node (sparse group or dense dataset).
 
-    Returns ``None`` for anything that isn't a recognizable matrix.
+    Returns ``None`` for anything that isn't a recognizable matrix, or that
+    can't be introspected. This helper is best-effort: a malformed node (e.g. a
+    scalar/string ``shape`` attr, an odd dtype) degrades to ``None`` rather than
+    aborting introspection for the whole file.
     """
+    try:
+        return _parse_matrix_node(node)
+    except Exception:
+        return None
+
+
+def _parse_matrix_node(node: Any) -> Optional[dict]:
+    """Parse one matrix node into storage facts. May raise on malformed input;
+    callers go through :func:`_matrix_info`, which degrades that to ``None``."""
     encoding = _decode(node.attrs.get("encoding-type", ""))
 
     if isinstance(node, h5py.Group) and encoding in _SPARSE_ENCODINGS:

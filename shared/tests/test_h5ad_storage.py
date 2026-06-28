@@ -122,6 +122,21 @@ def test_unrecognized_layer_node_is_filtered(tmp_path):
     assert all(v is not None for v in layers.values())
 
 
+def test_malformed_sparse_node_degrades_to_none(tmp_path):
+    """A node that advertises a sparse encoding but has an unparseable shape attr
+    degrades to None (best-effort), and doesn't abort the whole call."""
+    path = tmp_path / "t.h5ad"
+    _make_file(path, with_raw=True, with_layer_int64=True)
+    with h5py.File(path, "a") as f:
+        # X is a valid csr group but its shape attr is a non-sequence scalar.
+        f["X"].attrs["shape"] = np.int64(5)
+
+    result = get_matrix_storage(str(path))
+    assert result["X"] is None                  # degraded, not raised
+    assert result["raw_X"] is not None          # other matrices still reported
+    assert result["layers"]["denoised"] is not None
+
+
 def test_incomplete_sparse_node_is_unrecognized(tmp_path):
     """A node advertising a sparse encoding but missing data/indices/indptr is
     treated as unrecognized (None), not a KeyError that fails the whole call."""
