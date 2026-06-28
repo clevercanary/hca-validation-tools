@@ -102,8 +102,13 @@ def get_matrix_storage(path: str) -> dict:
             result["raw_X"] = _matrix_info(raw["X"])
         layers_group = f["layers"] if "layers" in f else None
         if isinstance(layers_group, h5py.Group) and len(layers_group):
+            # Only keep recognizable matrices so the documented shape
+            # ({name: {...}}) holds — _matrix_info returns None for anything
+            # that isn't a sparse/dense matrix node.
             layers = {}
             for name in layers_group:
-                layers[name] = _matrix_info(layers_group[name])
-            result["layers"] = layers
+                info = _matrix_info(layers_group[name])
+                if info is not None:
+                    layers[name] = info
+            result["layers"] = layers or None
     return result

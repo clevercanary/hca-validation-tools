@@ -88,3 +88,27 @@ def test_no_layers_returns_none(tmp_path):
     path = tmp_path / "t.h5ad"
     _make_file(path, with_layer_int64=False)
     assert get_matrix_storage(str(path))["layers"] is None
+
+
+def test_unrecognized_layer_node_is_filtered(tmp_path):
+    """Layers that aren't sparse/dense matrices must not leak None into the
+    documented {name: {...}} shape."""
+    path = tmp_path / "t.h5ad"
+    _make_file(path, with_layer_int64=True)
+    with h5py.File(path, "a") as f:
+        # A plain group with no encoding-type is not a recognizable matrix.
+        f["layers"].create_group("not_a_matrix")
+
+    layers = get_matrix_storage(str(path))["layers"]
+    assert "not_a_matrix" not in layers          # filtered out, no None value
+    assert "denoised" in layers                  # the real matrix survives
+    assert all(v is not None for v in layers.values())
+
+
+def test_only_unrecognized_layers_returns_none(tmp_path):
+    """If no layer is a matrix, layers collapses to None, not an empty dict."""
+    path = tmp_path / "t.h5ad"
+    _make_file(path, with_layer_int64=False)
+    with h5py.File(path, "a") as f:
+        f.create_group("layers").create_group("not_a_matrix")
+    assert get_matrix_storage(str(path))["layers"] is None

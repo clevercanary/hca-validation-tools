@@ -491,7 +491,14 @@ def _read_shape(f: h5py.File, obs: pd.DataFrame) -> Tuple[int, int]:
     n_vars = 0
     if "var" in f:
         var = f["var"]
-        n_vars = int(var[var.attrs["_index"]].shape[0])
+        # Defensive: this fallback only runs for files where X lacks a shape
+        # attr (not produced by anndata). Degrade to 0 rather than raising a
+        # cryptic h5py error if the var index is missing/malformed.
+        index_name = var.attrs.get("_index")
+        if isinstance(index_name, bytes):
+            index_name = index_name.decode()
+        if index_name is not None and index_name in var:
+            n_vars = int(var[index_name].shape[0])
     return int(len(obs)), n_vars
 
 

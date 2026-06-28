@@ -399,6 +399,33 @@ def test_read_file_metadata_real_h5ad(tmp_path):
     assert "denoised" in storage["layers"]
 
 
+def test_read_shape_var_fallback_is_robust(tmp_path):
+    """When X has no shape header, _read_shape falls back to var — and must
+    degrade (n_vars=0) rather than raise on a missing/malformed var index."""
+    import h5py
+    from dataset_validator.main import _read_shape
+
+    obs = pd.DataFrame({"a": [1, 2, 3]})
+
+    # X is a 1-D dataset (no usable 2-D shape) and var lacks an "_index" attr.
+    path = tmp_path / "weird.h5ad"
+    with h5py.File(path, "w") as f:
+        f.create_dataset("X", data=np.zeros(3, dtype=np.float32))
+        f.create_group("var")
+        n_obs, n_vars = _read_shape(f, obs)
+    assert (n_obs, n_vars) == (3, 0)
+
+    # var with a valid (bytes) _index pointing at a real dataset → counted.
+    path2 = tmp_path / "weird2.h5ad"
+    with h5py.File(path2, "w") as f:
+        f.create_dataset("X", data=np.zeros(3, dtype=np.float32))
+        var = f.create_group("var")
+        var.attrs["_index"] = b"gene_id"
+        var.create_dataset("gene_id", data=np.arange(7))
+        n_obs, n_vars = _read_shape(f, obs)
+    assert (n_obs, n_vars) == (3, 7)
+
+
 @pytest.mark.parametrize("test_case", [
     {
         "name": "success",
