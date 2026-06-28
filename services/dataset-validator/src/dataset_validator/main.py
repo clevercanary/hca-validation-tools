@@ -171,7 +171,13 @@ class ValidationMessage:
         Dropping the key keeps the SNS message shape identical to the pre-#447
         payload.
         """
-        data = asdict(self)
+        # Null matrix_storage on a shallow copy before asdict so its (possibly
+        # large) payload is never recursively copied just to be discarded.
+        src = self
+        if self.matrix_storage is not None:
+            src = copy.copy(self)
+            src.matrix_storage = None
+        data = asdict(src)
         data.pop("matrix_storage", None)
         return json.dumps(data, separators=(',', ':'))
 
@@ -511,14 +517,15 @@ def _read_shape(f: h5py.File, obs: pd.DataFrame) -> Tuple[int, int]:
         var = f["var"]
         # Defensive: this fallback only runs for files where X lacks a shape
         # attr (not produced by anndata). Degrade to 0 rather than raising a
-        # cryptic h5py error if the var index is missing/malformed.
-        index_name = var.attrs.get("_index")
-        if isinstance(index_name, bytes):
-            index_name = index_name.decode()
-        if index_name is not None and index_name in var:
-            node = var[index_name]
-            if isinstance(node, h5py.Dataset):
-                n_vars = int(node.shape[0])
+        # cryptic h5py error if var isn't a group or its index is missing/malformed.
+        if isinstance(var, h5py.Group):
+            index_name = var.attrs.get("_index")
+            if isinstance(index_name, bytes):
+                index_name = index_name.decode()
+            if index_name is not None and index_name in var:
+                node = var[index_name]
+                if isinstance(node, h5py.Dataset):
+                    n_vars = int(node.shape[0])
     return int(len(obs)), n_vars
 
 

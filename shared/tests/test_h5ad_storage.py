@@ -56,8 +56,26 @@ def test_x_sparse_facts(tmp_path):
     assert x["nnz"] == 4
     assert x["data_dtype"] == "float32"
     assert x["index_dtype"] == "int32"
+    assert x["indptr_dtype"] == "int32"
     # resident = nnz*(data_itemsize + index_itemsize) + indptr_len*indptr_itemsize
     assert x["resident_bytes"] == 4 * (4 + 4) + 4 * 4
+
+
+def test_indices_and_indptr_dtypes_reported_separately(tmp_path):
+    """index_dtype and indptr_dtype are distinct facts and can differ (the
+    int32-indices / int64-indptr case for matrices with >2^31 nonzeros)."""
+    path = tmp_path / "mixed.h5ad"
+    with h5py.File(path, "w") as f:
+        _write_csr(
+            f.create_group("X"),
+            shape=(3, 4), data=_DATA,
+            indices=_INDICES.astype("int32"), indptr=_INDPTR.astype("int64"),
+        )
+    x = get_matrix_storage(str(path))["X"]
+    assert x["index_dtype"] == "int32"
+    assert x["indptr_dtype"] == "int64"
+    # resident uses both: nnz*(4 data + 4 idx) + indptr_len*8
+    assert x["resident_bytes"] == 4 * (4 + 4) + 4 * 8
 
 
 def test_int64_layer_doubles_index_cost(tmp_path):

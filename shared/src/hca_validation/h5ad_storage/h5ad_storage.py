@@ -62,6 +62,7 @@ def _matrix_info(node: Any) -> Optional[dict]:
             "nnz": nnz,
             "data_dtype": str(np.dtype(data.dtype)),
             "index_dtype": str(np.dtype(indices.dtype)),
+            "indptr_dtype": str(np.dtype(indptr.dtype)),
             "on_disk_bytes": int(on_disk),
             "resident_bytes": int(resident),
         }
@@ -80,6 +81,7 @@ def _matrix_info(node: Any) -> Optional[dict]:
             "nnz": None,
             "data_dtype": str(np.dtype(node.dtype)),
             "index_dtype": None,
+            "indptr_dtype": None,
             "on_disk_bytes": _storage_size(node),
             "resident_bytes": int(n_elements * itemsize),
         }
@@ -92,8 +94,10 @@ def get_matrix_storage(path: str) -> dict:
 
     Reads only HDF5 metadata — does not load matrix data. Each value carries
     ``format``, ``n_obs``/``n_vars``, ``nnz`` (None for dense), ``data_dtype``,
-    ``index_dtype`` (None for dense), ``on_disk_bytes`` and ``resident_bytes``
-    (the estimated in-memory footprint of a full, non-backed load).
+    ``index_dtype`` and ``indptr_dtype`` (the ``indices`` and ``indptr`` dtypes
+    respectively; both None for dense — note they can differ, e.g. int32 indices
+    with int64 indptr), ``on_disk_bytes`` and ``resident_bytes`` (the estimated
+    in-memory footprint of a full, non-backed load).
 
     Args:
         path: Path to an ``.h5ad`` file.
