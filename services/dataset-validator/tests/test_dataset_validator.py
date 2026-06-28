@@ -5,6 +5,7 @@ import logging
 import os
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Dict, Any, List
 from unittest.mock import MagicMock, patch
 import sys
@@ -338,21 +339,20 @@ def test_missing_bucket_skips_s3_claim_check(caplog, env_manager, base_env_vars)
         }
     }
 ], ids=lambda x: x["name"])
-@patch("anndata.io.read_h5ad")
-def test_read_metadata_scenarios(mock_read_h5ad, test_case):
-    """Parameterized test for metadata reading scenarios."""
-    from dataset_validator.main import read_metadata, MetadataSummary
-    
-    # Set up anndata mock
-    mock_adata = MagicMock()
-    mock_read_h5ad.return_value = mock_adata
-    mock_adata.obs = pd.DataFrame(test_case["adata"]["obs"])
-    mock_adata.uns = test_case["adata"]["uns"]
-    mock_adata.n_obs = mock_adata.obs.shape[0]
-    mock_adata.n_vars = test_case["adata"]["n_vars"]
+def test_extract_metadata_summary_scenarios(test_case):
+    """Parameterized test for the metadata summary extraction (obs/uns -> MetadataSummary)."""
+    from dataset_validator.main import _extract_metadata_summary, MetadataSummary
 
-    # Test reading metadata
-    metadata_summary = read_metadata(Path("test-file.h5ad"))
+    # _extract_metadata_summary only reads .obs/.uns/.n_obs/.n_vars
+    obs = pd.DataFrame(test_case["adata"]["obs"])
+    adata_like = SimpleNamespace(
+        obs=obs,
+        uns=test_case["adata"]["uns"],
+        n_obs=obs.shape[0],
+        n_vars=test_case["adata"]["n_vars"],
+    )
+
+    metadata_summary = _extract_metadata_summary(adata_like)
 
     assert metadata_summary == MetadataSummary(**test_case["expected_result"])
 
@@ -434,6 +434,18 @@ def test_read_shape_var_fallback_is_robust(tmp_path):
         var.create_group("idx")
         n_obs, n_vars = _read_shape(f, obs)
     assert (n_obs, n_vars) == (3, 0)
+
+    # X has a scalar (non-sequence) shape attr → fall through to the var index
+    # rather than raising on len(shape).
+    path4 = tmp_path / "weird4.h5ad"
+    with h5py.File(path4, "w") as f:
+        x = f.create_group("X")
+        x.attrs["shape"] = np.int64(5)            # scalar, not a 2-tuple
+        var = f.create_group("var")
+        var.attrs["_index"] = "gene_id"
+        var.create_dataset("gene_id", data=np.arange(7))
+        n_obs, n_vars = _read_shape(f, obs)
+    assert (n_obs, n_vars) == (3, 7)
 
 
 def test_matrix_storage_excluded_from_sns_message():
