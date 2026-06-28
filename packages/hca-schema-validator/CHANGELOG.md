@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.2](https://github.com/clevercanary/hca-validation-tools/compare/hca-schema-validator-v0.13.1...hca-schema-validator-v0.13.2) (2026-06-28)
+
+
+### Features
+
+* populate_labels — per-column fill/verify for HCA-tracker-imported files ([#421](https://github.com/clevercanary/hca-validation-tools/issues/421)) ([#439](https://github.com/clevercanary/hca-validation-tools/issues/439)) ([673e690](https://github.com/clevercanary/hca-validation-tools/commit/673e690a6320d31ce8493657cf06770aa1a4624e))
+
 ## [0.13.1](https://github.com/clevercanary/hca-validation-tools/compare/hca-schema-validator-v0.13.0...hca-schema-validator-v0.13.1) (2026-05-26)
 
 
