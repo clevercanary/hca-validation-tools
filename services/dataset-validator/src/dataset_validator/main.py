@@ -18,14 +18,18 @@ import subprocess
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable, List, Optional, Tuple
+from types import SimpleNamespace
+from typing import Callable, List, Optional, Tuple, cast
 
 import boto3
 from botocore.exceptions import ClientError
 import anndata
+from anndata.io import read_elem
+import h5py
 import pandas as pd
 
 from hca_validation.metadata_coverage import compute_metadata_coverage
+from hca_validation.h5ad_storage import get_matrix_storage
 from hca_validation.schema_utils import load_schemaview
 
 
@@ -138,6 +142,7 @@ class ValidationMessage:
         dict[str, ValidationToolReport]
     ] = None
     metadata_coverage: Optional[dict] = None             # Per-field completeness summary (#405)
+    matrix_storage: Optional[dict] = None                # Per-matrix/layer shape + size, from HDF5 header (#447)
     error_message: Optional[str] = None                  # Human-readable error description
 
     def to_json(self) -> str:
@@ -471,30 +476,74 @@ def _get_schemaview():
     return load_schemaview()
 
 
-def read_file_metadata(file_path: Path) -> Tuple[MetadataSummary, Optional[dict]]:
-    """Open an h5ad once and return (metadata_summary, metadata_coverage).
+def _read_shape(f: h5py.File, obs: pd.DataFrame) -> Tuple[int, int]:
+    """Derive (n_obs, n_vars) from the X header, falling back to obs/var length.
 
-    Coverage failures are non-fatal — they're returned as None so the
-    caller can still publish a summary. Reading the file at all is fatal
-    (raised through), since downstream validators depend on it.
+    X carries a ``shape`` attr when sparse; when dense it's a 2-D dataset.
     """
-    adata = None
+    if "X" in f:
+        x = f["X"]
+        shape = x.attrs.get("shape")
+        if shape is not None and len(shape) == 2:
+            return int(shape[0]), int(shape[1])
+        if isinstance(x, h5py.Dataset) and len(x.shape) == 2:
+            return int(x.shape[0]), int(x.shape[1])
+    n_vars = 0
+    if "var" in f:
+        var = f["var"]
+        n_vars = int(var[var.attrs["_index"]].shape[0])
+    return int(len(obs)), n_vars
+
+
+def _read_metadata_inputs(file_path: Path) -> Tuple[pd.DataFrame, dict, int, int]:
+    """Read (obs, uns, n_obs, n_vars) from an h5ad without loading matrices.
+
+    Uses targeted ``read_elem`` of obs/uns plus the X header for shape — never
+    opens X/raw/layers. This replaces ``read_h5ad(path, backed="r")``, whose
+    backed mode is X-only and eagerly materializes ``layers`` + ``raw`` (15–24+ GB
+    on large files). See hca-validation-tools#447.
+    """
+    with h5py.File(file_path, "r") as f:
+        # read_elem returns a broad RWAble type; obs/uns are concretely a
+        # DataFrame and a dict for an h5ad.
+        obs = cast(pd.DataFrame, read_elem(f["obs"]))
+        uns = cast(dict, read_elem(f["uns"])) if "uns" in f else {}
+        n_obs, n_vars = _read_shape(f, obs)
+    return obs, uns, n_obs, n_vars
+
+
+def read_file_metadata(
+    file_path: Path,
+) -> Tuple[MetadataSummary, Optional[dict], Optional[dict]]:
+    """Read metadata once and return (summary, coverage, matrix_storage).
+
+    Only obs + uns (+ matrix headers) are read — never the matrices themselves —
+    so this stays bounded (~1 GB) even on files whose X/raw/layers hold billions
+    of nonzeros. Coverage and matrix-storage failures are non-fatal (returned as
+    None); a failure to read obs/uns is fatal (raised through).
+    """
     try:
-        try:
-            adata = anndata.io.read_h5ad(file_path, backed="r")
-            summary = _extract_metadata_summary(adata)
-        except Exception as e:
-            logger.error("Error reading metadata: %s", e)
-            raise
-        try:
-            coverage = compute_metadata_coverage(adata, _get_schemaview())
-        except Exception as e:
-            logger.warning("metadata_coverage computation failed: %s", e)
-            coverage = None
-        return summary, coverage
-    finally:
-        if adata is not None:
-            adata.file.close()
+        obs, uns, n_obs, n_vars = _read_metadata_inputs(file_path)
+    except Exception as e:
+        logger.error("Error reading metadata: %s", e)
+        raise
+
+    adata_like = SimpleNamespace(obs=obs, uns=uns, n_obs=n_obs, n_vars=n_vars)
+    summary = _extract_metadata_summary(adata_like)
+
+    try:
+        coverage = compute_metadata_coverage(adata_like, _get_schemaview())
+    except Exception as e:
+        logger.warning("metadata_coverage computation failed: %s", e)
+        coverage = None
+
+    try:
+        matrix_storage = get_matrix_storage(str(file_path))
+    except Exception as e:
+        logger.warning("matrix_storage computation failed: %s", e)
+        matrix_storage = None
+
+    return summary, coverage, matrix_storage
 
 
 def get_default_cap_validator_script_path() -> Path:
@@ -950,10 +999,13 @@ def main() -> int:
 
             validation_message.integrity_status = INTEGRITY_VALID
 
-        # Read metadata summary + per-field coverage (#405) in one h5ad open.
-        validation_message.metadata_summary, validation_message.metadata_coverage = (
-            read_file_metadata(local_file)
-        )
+        # Read metadata summary + per-field coverage (#405) + per-matrix storage
+        # (#447) without loading any matrix data.
+        (
+            validation_message.metadata_summary,
+            validation_message.metadata_coverage,
+            validation_message.matrix_storage,
+        ) = read_file_metadata(local_file)
         log_memory_usage("after metadata read")
         gc.collect()
 

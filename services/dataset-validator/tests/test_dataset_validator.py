@@ -19,6 +19,28 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from dataset_validator.main import get_poetry_venv_path_from
 
 
+def _setup_metadata_mocks(mock_read_inputs, mock_matrix_storage, test_adata):
+    """Configure the read_file_metadata seam mocks from a test ``adata`` spec.
+
+    ``read_file_metadata`` reads obs/uns/shape via ``_read_metadata_inputs`` and
+    per-matrix storage via ``get_matrix_storage`` (no full h5ad open), so tests
+    drive those two seams instead of mocking ``anndata.read_h5ad``.
+    """
+    if test_adata is None:
+        return
+    if "exception" in test_adata:
+        mock_read_inputs.side_effect = test_adata["exception"]
+        return
+    obs_df = pd.DataFrame(test_adata["obs"])
+    mock_read_inputs.return_value = (
+        obs_df,
+        test_adata["uns"],
+        obs_df.shape[0],
+        test_adata["n_vars"],
+    )
+    mock_matrix_storage.return_value = test_adata.get("matrix_storage")
+
+
 dataset_validator_venv_path = get_poetry_venv_path_from(Path(__file__).parent.parent)
 mock_modules_path = Path(__file__).parent / "mock-modules"
 external_validator_path_vars = {
@@ -335,6 +357,48 @@ def test_read_metadata_scenarios(mock_read_h5ad, test_case):
     assert metadata_summary == MetadataSummary(**test_case["expected_result"])
 
 
+def test_read_file_metadata_real_h5ad(tmp_path):
+    """read_file_metadata reads obs/uns/shape + matrix_storage from a real h5ad
+    without loading matrices (the #447 fix path: no read_h5ad(backed="r"))."""
+    import anndata as ad
+    import scipy.sparse as sp
+    from dataset_validator.main import read_file_metadata
+
+    n_obs, n_vars = 5, 8
+    X = sp.random(n_obs, n_vars, density=0.5, format="csr", dtype=np.float32)
+    obs = pd.DataFrame({
+        "assay": ["a", "a", "b", "b", "a"],
+        "suspension_type": ["cell"] * 5,
+        "tissue": ["lung"] * 5,
+        "disease": ["normal"] * 5,
+        "donor_id": ["d1", "d1", "d2", "d2", "d2"],
+    }, index=[f"cell{i}" for i in range(n_obs)])
+    adata = ad.AnnData(X=X, obs=obs)
+    adata.uns["title"] = "tiny"
+    adata.raw = adata
+    adata.layers["denoised"] = X.copy()
+    path = tmp_path / "tiny.h5ad"
+    adata.write_h5ad(path)
+
+    summary, coverage, storage = read_file_metadata(path)
+
+    # Summary read straight from obs/uns (not the matrices)
+    assert summary.title == "tiny"
+    assert summary.cell_count == n_obs
+    assert summary.gene_count == n_vars
+    assert set(summary.assay) == {"a", "b"}
+
+    # Coverage still computed from the same obs/uns
+    assert coverage is not None
+    assert isinstance(coverage["field_coverage"], list)
+
+    # Matrix storage captured from the HDF5 header for X, raw.X and the layer
+    assert storage["X"]["format"] == "csr_matrix"
+    assert (storage["X"]["n_obs"], storage["X"]["n_vars"]) == (n_obs, n_vars)
+    assert storage["raw_X"] is not None
+    assert "denoised" in storage["layers"]
+
+
 @pytest.mark.parametrize("test_case", [
     {
         "name": "success",
@@ -481,6 +545,7 @@ def test_cap_validator_script_scenarios(mock_upload_validator, test_case):
             'metadata_summary': None,
             'tool_reports': None,
             'metadata_coverage': None,
+            'matrix_storage': None,
             'error_message': None
         },
         "use_valid_topic": True,
@@ -714,8 +779,9 @@ def test_write_validation_results_to_s3_writes_full_untruncated_json(mock_aws):
         "expected_stdout": None
     }
 ], ids=lambda x: x["name"])
-@patch("anndata.io.read_h5ad")
-def test_local_file_mode(mock_read_h5ad, caplog, env_manager, tmp_path, test_case, capsys):
+@patch("dataset_validator.main.get_matrix_storage")
+@patch("dataset_validator.main._read_metadata_inputs")
+def test_local_file_mode(mock_read_inputs, mock_matrix_storage, caplog, env_manager, tmp_path, test_case, capsys):
     """Test LOCAL_FILE mode skips S3/integrity, prints JSON when no SNS."""
     from dataset_validator.main import main
 
@@ -733,15 +799,8 @@ def test_local_file_mode(mock_read_h5ad, caplog, env_manager, tmp_path, test_cas
     # Ensure S3/SNS vars are not set
     env_manager['clear'](['S3_BUCKET', 'S3_KEY', 'FILE_ID', 'SNS_TOPIC_ARN', 'AWS_BATCH_JOB_ID'])
 
-    # Set up anndata mock
-    test_adata = test_case["adata"]
-    if test_adata is not None:
-        mock_adata = MagicMock()
-        mock_read_h5ad.return_value = mock_adata
-        mock_adata.obs = pd.DataFrame(test_adata["obs"])
-        mock_adata.uns = test_adata["uns"]
-        mock_adata.n_obs = mock_adata.obs.shape[0]
-        mock_adata.n_vars = test_adata["n_vars"]
+    # Drive the metadata read seam (obs/uns/shape + matrix storage)
+    _setup_metadata_mocks(mock_read_inputs, mock_matrix_storage, test_case["adata"])
 
     with caplog.at_level(logging.INFO, logger="dataset_validator.main"):
         result = main()
@@ -1015,8 +1074,9 @@ def test_local_file_mode(mock_read_h5ad, caplog, env_manager, tmp_path, test_cas
         }
     }
 ], ids=lambda x: x["name"])
-@patch("anndata.io.read_h5ad")
-def test_end_to_end_validation_scenarios(mock_read_h5ad, caplog, mock_aws, env_manager, test_case):
+@patch("dataset_validator.main.get_matrix_storage")
+@patch("dataset_validator.main._read_metadata_inputs")
+def test_end_to_end_validation_scenarios(mock_read_inputs, mock_matrix_storage, caplog, mock_aws, env_manager, test_case):
     """Parameterized test for end-to-end validation scenarios."""
     from dataset_validator.main import main
 
@@ -1042,18 +1102,8 @@ def test_end_to_end_validation_scenarios(mock_read_h5ad, caplog, mock_aws, env_m
     else:
         env_manager['clear'](['CAP_MOCK_ERROR'])
 
-    # Set up anndata mock
-    test_adata = test_case["adata"]
-    if test_adata is not None:
-        if "exception" in test_adata:
-            mock_read_h5ad.side_effect = test_adata["exception"]
-        else:
-            mock_adata = MagicMock()
-            mock_read_h5ad.return_value = mock_adata
-            mock_adata.obs = pd.DataFrame(test_adata["obs"])
-            mock_adata.uns = test_adata["uns"]
-            mock_adata.n_obs = mock_adata.obs.shape[0]
-            mock_adata.n_vars = test_adata["n_vars"]
+    # Drive the metadata read seam (obs/uns/shape + matrix storage)
+    _setup_metadata_mocks(mock_read_inputs, mock_matrix_storage, test_case["adata"])
 
     # Run main function
     with caplog.at_level(logging.INFO, logger="dataset_validator.main"):
@@ -1085,9 +1135,10 @@ def test_end_to_end_validation_scenarios(mock_read_h5ad, caplog, mock_aws, env_m
     assert "S3 claim check write succeeded" in caplog.text
 
 
-@patch("anndata.io.read_h5ad")
+@patch("dataset_validator.main.get_matrix_storage")
+@patch("dataset_validator.main._read_metadata_inputs")
 def test_unset_validation_results_bucket_skips_s3_claim_check(
-    mock_read_h5ad, caplog, mock_aws, env_manager
+    mock_read_inputs, mock_matrix_storage, caplog, mock_aws, env_manager
 ):
     """VALIDATION_RESULTS_BUCKET is optional: when unset, validation still
     completes successfully but no S3 claim-check write is attempted."""
@@ -1106,17 +1157,16 @@ def test_unset_validation_results_bucket_skips_s3_claim_check(
     })
     env_manager['clear'](['VALIDATION_RESULTS_BUCKET', 'CAP_MOCK_ERROR'])
 
-    mock_adata = MagicMock()
-    mock_read_h5ad.return_value = mock_adata
-    mock_adata.obs = pd.DataFrame({
-        "assay": ["assay-a"],
-        "suspension_type": ["cell"],
-        "tissue": ["lung"],
-        "disease": ["normal"],
+    _setup_metadata_mocks(mock_read_inputs, mock_matrix_storage, {
+        "obs": {
+            "assay": ["assay-a"],
+            "suspension_type": ["cell"],
+            "tissue": ["lung"],
+            "disease": ["normal"],
+        },
+        "uns": {"title": "test"},
+        "n_vars": 10,
     })
-    mock_adata.uns = {"title": "test"}
-    mock_adata.n_obs = 1
-    mock_adata.n_vars = 10
 
     with caplog.at_level(logging.INFO, logger="dataset_validator.main"):
         result = main()
