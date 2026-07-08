@@ -29,8 +29,9 @@ _UNS_OPTIONAL_KEYS = [
     "hierarchy",
 ]
 
-# Deprecated top-level CAP keys. Their presence *without* a cap_metadata wrapper
-# signals the old layout, which is refused rather than normalized (issue #452).
+# Deprecated top-level CAP keys. Their presence signals the old layout — even
+# alongside a nested cap_metadata block (a mixed-layout file) — which is refused
+# rather than normalized (issue #452).
 _LEGACY_CAP_MARKERS = ("cellannotation_metadata", "cellannotation_schema_version")
 
 LEGACY_LAYOUT_ERROR = (
