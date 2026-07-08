@@ -158,12 +158,14 @@ def copy_cap_annotations(
         # anndata-specific encoding that's complex to parse via raw h5py.
         with open_h5ad(source_path) as source:
             # Only the nested uns['cap_metadata'] layout is accepted; the
-            # deprecated top-level layout is refused, not normalized. The full
-            # block travels into the target unchanged.
+            # deprecated top-level layout is refused, not normalized. Refuse it
+            # first — including a mixed file that also carries a nested block —
+            # so deprecated keys never slip through. The full block travels into
+            # the target unchanged.
+            if is_legacy_cap_layout(source.uns):
+                return {"error": LEGACY_LAYOUT_ERROR}
             cap_block = resolve_cap_block(source.uns)
             if cap_block is None:
-                if is_legacy_cap_layout(source.uns):
-                    return {"error": LEGACY_LAYOUT_ERROR}
                 if CAP_METADATA_KEY in source.uns:
                     return {"error": "Source uns['cap_metadata'] is malformed (not a dict/group)."}
                 return {"error": "Source has no cellannotation_metadata in uns['cap_metadata']"}

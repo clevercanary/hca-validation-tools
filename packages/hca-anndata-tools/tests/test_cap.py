@@ -148,6 +148,19 @@ def test_cap_detects_annotation_set(cap_h5ad):
     assert "my_labels" in result["annotation_sets"]
 
 
+def test_cap_flags_mixed_layout(cap_h5ad, tmp_path):
+    # A mixed file (nested cap_metadata + a deprecated top-level key) is flagged
+    # legacy and not treated as valid CAP. Copy the module-scoped fixture first.
+    mixed = tmp_path / "mixed.h5ad"
+    adata = ad.read_h5ad(cap_h5ad)
+    adata.uns["cellannotation_schema_version"] = "0.2.0"
+    adata.write_h5ad(mixed)
+
+    result = get_cap_annotations(str(mixed))
+    assert result["has_cap_annotations"] is False
+    assert result["layout"] == "legacy_toplevel"
+
+
 def test_cap_flags_legacy_toplevel_layout(cap_h5ad, tmp_path, downgrade_cap_to_legacy):
     # An old-format file (CAP keys at top level) is NOT accepted as CAP, but the
     # deprecated layout is surfaced via `layout` as a diagnostic. Copy the

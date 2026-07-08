@@ -113,17 +113,18 @@ class HCACellAnnotationValidator:
     def _resolve_cap_metadata(self, uns) -> Optional[Mapping]:
         """Return the canonical ``uns['cap_metadata']`` mapping, or None.
 
-        Strict: CAP metadata must live under ``uns['cap_metadata']``. When the
-        block is absent, records ``LEGACY_LAYOUT_ERROR`` if the deprecated
-        top-level keys are present (so the contributor knows to re-nest), else
-        ``NO_SETS_ERROR``. Returns None in every error case.
+        Strict: CAP metadata must live under ``uns['cap_metadata']``. Any
+        deprecated top-level key records ``LEGACY_LAYOUT_ERROR`` — even
+        alongside a nested block (a mixed-layout file) — so the contributor
+        knows to drop the deprecated keys. A missing block with no deprecated
+        keys records ``NO_SETS_ERROR``. Returns None in every error case.
         """
+        if "cellannotation_metadata" in uns or "cellannotation_schema_version" in uns:
+            self._error(LEGACY_LAYOUT_ERROR)
+            return None
         cap = uns.get("cap_metadata")
         if cap is None:
-            if "cellannotation_metadata" in uns or "cellannotation_schema_version" in uns:
-                self._error(LEGACY_LAYOUT_ERROR)
-            else:
-                self._error(NO_SETS_ERROR)
+            self._error(NO_SETS_ERROR)
             return None
         if not isinstance(cap, Mapping):
             self._error(

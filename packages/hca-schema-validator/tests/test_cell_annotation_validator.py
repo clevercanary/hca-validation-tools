@@ -67,6 +67,18 @@ def test_legacy_toplevel_layout_errors(cap_h5ad):
     assert LEGACY_LAYOUT_ERROR in v.errors
 
 
+def test_mixed_layout_errors(cap_h5ad):
+    # A mixed file (nested cap_metadata AND a deprecated top-level key) is
+    # rejected — the deprecated key must not slip through.
+    def mutate(adata):
+        adata.uns["cellannotation_schema_version"] = "1.0.0"
+    _rewrite(cap_h5ad, mutate)
+
+    v = HCACellAnnotationValidator()
+    assert v.validate_adata(str(cap_h5ad)) is False
+    assert LEGACY_LAYOUT_ERROR in v.errors
+
+
 def test_missing_cap_metadata_errors(tmp_path):
     # A file with no CAP at all gets NO_SETS_ERROR, not the legacy message.
     from hca_schema_validator.testing import create_labelable_h5ad

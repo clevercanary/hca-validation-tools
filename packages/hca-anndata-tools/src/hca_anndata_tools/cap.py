@@ -42,8 +42,14 @@ LEGACY_LAYOUT_ERROR = (
 
 
 def is_legacy_cap_layout(uns) -> bool:
-    """True if the file carries deprecated top-level CAP keys and no cap_metadata."""
-    return CAP_METADATA_KEY not in uns and any(k in uns for k in _LEGACY_CAP_MARKERS)
+    """True if the file carries any deprecated top-level CAP key.
+
+    Fires even when a nested ``cap_metadata`` block is also present (a
+    mixed-layout file): the strict clean-break contract refuses anything
+    carrying deprecated top-level keys rather than silently letting the nested
+    block win.
+    """
+    return any(k in uns for k in _LEGACY_CAP_MARKERS)
 
 
 def resolve_cap_block(uns) -> dict | None:
@@ -113,17 +119,17 @@ def get_cap_annotations(path: str, annotation_set: str | None = None) -> dict:
         with open_h5ad(path) as adata:
             obs_columns = list(adata.obs.columns)
 
-            # Only the nested uns['cap_metadata'] layout is accepted. A legacy
-            # top-level file is surfaced via `layout` as a diagnostic but is not
-            # treated as valid CAP (has_cap_annotations stays False).
-            cap = resolve_cap_block(adata.uns)
-            if cap is not None:
-                layout = "cap_metadata"
-            elif is_legacy_cap_layout(adata.uns):
+            # Only the nested uns['cap_metadata'] layout is accepted. Any
+            # deprecated top-level marker — even alongside a nested block (a
+            # mixed-layout file) — is surfaced via `layout` as a diagnostic and
+            # is not treated as valid CAP (has_cap_annotations stays False).
+            if is_legacy_cap_layout(adata.uns):
                 layout = "legacy_toplevel"
+                cap = {}
             else:
-                layout = None
-            cap = cap or {}
+                cap = resolve_cap_block(adata.uns)
+                layout = "cap_metadata" if cap is not None else None
+                cap = cap or {}
 
             # Annotation sets are defined in cellannotation_metadata
             meta = cap.get("cellannotation_metadata", {})

@@ -218,6 +218,18 @@ def test_copy_refuses_legacy_toplevel_source(tmp_path, downgrade_cap_to_legacy):
     assert "cap_metadata" in result["error"]
 
 
+def test_copy_refuses_mixed_layout_source(cap_source, hca_target):
+    # A mixed source (nested cap_metadata AND a deprecated top-level key) is
+    # refused rather than silently accepted with the nested block winning.
+    adata = ad.read_h5ad(cap_source)
+    adata.uns["cellannotation_schema_version"] = "1.0.2"
+    adata.write_h5ad(cap_source)
+
+    result = copy_cap_annotations(str(cap_source), str(hca_target))
+    assert "error" in result
+    assert "cap_metadata" in result["error"]
+
+
 def test_copy_refuses_malformed_cap_metadata_source(cap_source, hca_target):
     # cap_metadata present but not a dict -> explicit malformed error, not the
     # generic "no cellannotation_metadata" message.
