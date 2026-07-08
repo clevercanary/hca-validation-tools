@@ -73,22 +73,25 @@ def _make_cap_source(
     adata = ad.AnnData(X=X, obs=obs, var=var)
 
     adata.uns["title"] = "CAP Test Dataset"
-    adata.uns["cellannotation_schema_version"] = "1.0.2"
-    adata.uns["cellannotation_metadata"] = {
-        "author_cell_type": {
-            "algorithm_name": "NA",
-            "algorithm_version": "NA",
-            "algorithm_repo_url": "NA",
-            "annotation_method": "manual",
-            "description": "Test annotation set",
-        }
+    # Canonical layout: the entire CAP block nests under uns['cap_metadata'].
+    adata.uns["cap_metadata"] = {
+        "cellannotation_schema_version": "1.0.2",
+        "cellannotation_metadata": {
+            "author_cell_type": {
+                "algorithm_name": "NA",
+                "algorithm_version": "NA",
+                "algorithm_repo_url": "NA",
+                "annotation_method": "manual",
+                "description": "Test annotation set",
+            }
+        },
+        "authors_list": "Test Author",
+        "hierarchy": {"author_cell_type": 1},
+        "description": "A test CAP dataset",
+        "cap_dataset_url": "https://celltype.info/test",
+        "publication_timestamp": "2026-01-01",
+        "publication_version": "1.0",
     }
-    adata.uns["authors_list"] = "Test Author"
-    adata.uns["hierarchy"] = {"author_cell_type": 1}
-    adata.uns["description"] = "A test CAP dataset"
-    adata.uns["cap_dataset_url"] = "https://celltype.info/test"
-    adata.uns["publication_timestamp"] = "2026-01-01"
-    adata.uns["publication_version"] = "1.0"
 
     adata.write_h5ad(path)
     return path
@@ -176,28 +179,82 @@ def test_copy_marker_gene_validation(cap_source, hca_target):
 
 
 
-def test_copy_uns_schema_toplevel(cap_source, hca_target):
+def test_copy_uns_cap_metadata_nested(cap_source, hca_target):
     result = copy_cap_annotations(str(cap_source), str(hca_target))
     written = ad.read_h5ad(result["output_path"])
-    assert "cellannotation_schema_version" in written.uns
-    assert "cellannotation_metadata" in written.uns
+    cap = written.uns["cap_metadata"]
+    assert "cellannotation_schema_version" in cap
+    assert "cellannotation_metadata" in cap
+    # Schema keys must NOT leak to the top level.
+    assert "cellannotation_schema_version" not in written.uns
+    assert "cellannotation_metadata" not in written.uns
 
 
-def test_copy_uns_provenance_cap(cap_source, hca_target):
+def test_copy_cap_metadata_includes_provenance(cap_source, hca_target):
     result = copy_cap_annotations(str(cap_source), str(hca_target))
     written = ad.read_h5ad(result["output_path"])
-    assert "provenance" in written.uns
-    assert "cap" in written.uns["provenance"]
-    cap = written.uns["provenance"]["cap"]
+    cap = written.uns["cap_metadata"]
+    # Publication provenance travels inside the cap_metadata block.
     assert cap["cap_dataset_url"] == "https://celltype.info/test"
     assert cap["authors_list"] == "Test Author"
     assert cap["description"] == "A test CAP dataset"
     assert cap["publication_timestamp"] == "2026-01-01"
     assert cap["publication_version"] == "1.0"
-    # NOT top-level
+    # The old provenance/cap split is gone.
+    assert "provenance" not in written.uns or "cap" not in written.uns["provenance"]
+    # NOT scattered at top level either.
     assert "cap_dataset_url" not in written.uns
     assert "authors_list" not in written.uns
-    assert "cap_metadata" not in written.uns
+
+
+def test_copy_refuses_legacy_toplevel_source(tmp_path, downgrade_cap_to_legacy):
+    # An old-format source (CAP keys at top level) is refused, not normalized:
+    # only the nested cap_metadata layout is accepted.
+    src = downgrade_cap_to_legacy(_make_cap_source(tmp_path / "legacy.h5ad", CELL_IDS))
+    target = _make_hca_target(tmp_path / "target_legacy.h5ad", CELL_IDS)
+
+    result = copy_cap_annotations(str(src), str(target))
+    assert "error" in result
+    assert "cap_metadata" in result["error"]
+
+
+def test_copy_refuses_mixed_layout_source(cap_source, hca_target):
+    # A mixed source (nested cap_metadata AND a deprecated top-level key) is
+    # refused rather than silently accepted with the nested block winning.
+    adata = ad.read_h5ad(cap_source)
+    adata.uns["cellannotation_schema_version"] = "1.0.2"
+    adata.write_h5ad(cap_source)
+
+    result = copy_cap_annotations(str(cap_source), str(hca_target))
+    assert "error" in result
+    assert "cap_metadata" in result["error"]
+
+
+def test_copy_refuses_malformed_cap_metadata_source(cap_source, hca_target):
+    # cap_metadata present but not a dict -> explicit malformed error, not the
+    # generic "no cellannotation_metadata" message.
+    adata = ad.read_h5ad(cap_source)
+    adata.uns["cap_metadata"] = "not-a-dict"
+    adata.write_h5ad(cap_source)
+
+    result = copy_cap_annotations(str(cap_source), str(hca_target))
+    assert "error" in result
+    assert "malformed" in result["error"].lower()
+
+
+def test_copy_refuses_legacy_target(cap_source, tmp_path):
+    # A target carrying deprecated top-level CAP (from older tooling) is refused
+    # rather than overwritten into a mixed-layout file — even with overwrite=True.
+    target = _make_hca_target(tmp_path / "legacy_target.h5ad", CELL_IDS)
+    adata = ad.read_h5ad(target)
+    adata.uns["cellannotation_schema_version"] = "1.0.2"
+    adata.uns["cellannotation_metadata"] = {"author_cell_type": {"description": "x"}}
+    adata.write_h5ad(target)
+
+    result = copy_cap_annotations(str(cap_source), str(target), overwrite=True)
+    assert "error" in result
+    assert "Target" in result["error"]
+    assert "cap_metadata" in result["error"]
 
 
 # --- Skip demographic columns ---
@@ -425,7 +482,7 @@ def test_copy_no_cap_source_fails(hca_target, tmp_path):
     no_cap = _make_hca_target(tmp_path / "no_cap.h5ad", CELL_IDS)
     result = copy_cap_annotations(str(no_cap), str(hca_target))
     assert "error" in result
-    assert "cellannotation_metadata" in result["error"]
+    assert "cap_metadata" in result["error"]
 
 
 def test_copy_target_has_cap_fails(cap_source, hca_target_with_cap):
@@ -438,7 +495,7 @@ def test_copy_target_has_cap_fails(cap_source, hca_target_with_cap):
 
 
 def test_copy_cap_preserves_cellxgene_provenance(cap_source, tmp_path):
-    """When target already has provenance/cellxgene, copy_cap adds provenance/cap alongside it."""
+    """When target already has provenance/cellxgene, copy_cap writes the CAP block to uns['cap_metadata'] alongside it (preserving the cellxgene provenance)."""
     n = len(CELL_IDS)
     rng = np.random.default_rng(99)
     X = sp.random(n, 5, density=0.3, format="csr", dtype=np.float32, random_state=rng)
@@ -458,9 +515,10 @@ def test_copy_cap_preserves_cellxgene_provenance(cap_source, tmp_path):
     result = copy_cap_annotations(str(cap_source), str(target_path))
     assert "error" not in result
     written = ad.read_h5ad(result["output_path"])
+    # Existing cellxgene provenance is preserved alongside the new CAP block.
     assert "cellxgene" in written.uns["provenance"]
     assert written.uns["provenance"]["cellxgene"]["schema_version"] == "7.0.0"
-    assert "cap" in written.uns["provenance"]
+    assert "cap_metadata" in written.uns
 
 
 # --- Overwrite ---

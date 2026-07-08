@@ -51,9 +51,9 @@ def validate_cell_annotation(path: str) -> dict:
 
     Wraps :class:`hca_schema_validator.HCACellAnnotationValidator` —
     Phase 1 structural checks only (presence of at least one CAP
-    annotation set, well-formed ``cellannotation_schema_version``, per-set
-    metadata is a dict, required per-set ``--<suffix>`` obs columns are
-    present). Marker-gene coverage (Phase 2, #363) and CL-term validity
+    annotation set under ``uns['cap_metadata']``, well-formed
+    ``cellannotation_schema_version``, per-set metadata is a dict, required
+    per-set ``--<suffix>`` obs columns are present). Marker-gene coverage (Phase 2, #363) and CL-term validity
     (Phase 3, #364) are not checked here; per-set required metadata
     fields (``description``, ``algorithm_name``, ...) are the upstream
     CAP-side validator's responsibility.

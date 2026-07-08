@@ -2,8 +2,29 @@
 
 from pathlib import Path
 
+import anndata as ad
 import pytest
 from hca_anndata_tools.testing import create_cellxgene_h5ad, create_sample_h5ad
+
+
+@pytest.fixture
+def downgrade_cap_to_legacy():
+    """Return a helper that rewrites a nested-CAP h5ad into the deprecated
+    top-level layout in place: lifts every key out of ``uns['cap_metadata']``
+    to the top level of ``uns`` and drops the wrapper. Used to build a
+    legacy-layout file for the detection / refusal tests (the legacy layout is
+    refused, not normalized).
+    """
+
+    def _downgrade(path: Path) -> Path:
+        adata = ad.read_h5ad(path)
+        cap = dict(adata.uns.pop("cap_metadata"))
+        for key, value in cap.items():
+            adata.uns[key] = value
+        adata.write_h5ad(path)
+        return path
+
+    return _downgrade
 
 
 @pytest.fixture(scope="session")
