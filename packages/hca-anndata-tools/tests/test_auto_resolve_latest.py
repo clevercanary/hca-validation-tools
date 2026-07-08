@@ -34,7 +34,7 @@ def _make_file(path: Path, *, n_obs: int, marker: str, edit_only: bool) -> None:
     )
     adata.uns["title"] = marker
     if edit_only:
-        adata.uns["cellannotation_schema_version"] = "1.0.0"
+        adata.uns["cap_metadata"] = {"cellannotation_schema_version": "1.0.0"}
         adata.obsm["X_umap"] = np.random.default_rng(0).normal(size=(n_obs, 2)).astype(np.float32)
     adata.write_h5ad(path)
 

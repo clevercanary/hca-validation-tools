@@ -1,5 +1,6 @@
 """Tests for the get_cap_annotations function and _make_serializable helper."""
 
+import shutil
 from pathlib import Path
 
 import anndata as ad
@@ -123,13 +124,15 @@ def cap_h5ad(tmp_path_factory) -> Path:
 
     adata = ad.AnnData(X=X, obs=obs, var=var)
     adata.uns["title"] = "CAP Test"
-    adata.uns["cellannotation_schema_version"] = "0.2.0"
-    adata.uns["cellannotation_metadata"] = {
-        "my_labels": {
-            "annotation_method": "manual",
-            "description": "Test annotations",
-            "author": "test",
-            "count": np.int64(42),
+    adata.uns["cap_metadata"] = {
+        "cellannotation_schema_version": "0.2.0",
+        "cellannotation_metadata": {
+            "my_labels": {
+                "annotation_method": "manual",
+                "description": "Test annotations",
+                "author": "test",
+                "count": np.int64(42),
+            },
         },
     }
 
@@ -141,7 +144,22 @@ def cap_h5ad(tmp_path_factory) -> Path:
 def test_cap_detects_annotation_set(cap_h5ad):
     result = get_cap_annotations(str(cap_h5ad))
     assert result["has_cap_annotations"] is True
+    assert result["layout"] == "cap_metadata"
     assert "my_labels" in result["annotation_sets"]
+
+
+def test_cap_flags_legacy_toplevel_layout(cap_h5ad, tmp_path, downgrade_cap_to_legacy):
+    # An old-format file (CAP keys at top level) is NOT accepted as CAP, but the
+    # deprecated layout is surfaced via `layout` as a diagnostic. Copy the
+    # module-scoped fixture first so the in-place downgrade doesn't corrupt it.
+    legacy = tmp_path / "legacy.h5ad"
+    shutil.copy(cap_h5ad, legacy)
+    downgrade_cap_to_legacy(legacy)
+
+    result = get_cap_annotations(str(legacy))
+    assert result["has_cap_annotations"] is False
+    assert result["layout"] == "legacy_toplevel"
+    assert result["annotation_sets"] == []
 
 
 def test_cap_reports_required_columns(cap_h5ad):

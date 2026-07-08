@@ -1,8 +1,61 @@
 """CAP (Cell Annotation Platform) schema inspection for AnnData files."""
 
+from collections.abc import Mapping
+
 from ._io import open_h5ad
 from ._serialize import make_serializable as _make_serializable
 from .write import resolve_latest
+
+# Canonical home for the CAP metadata block (issue #452).
+CAP_METADATA_KEY = "cap_metadata"
+
+# CAP uns keys the inspector reports on. `title` is the dataset title (it lives
+# at the top level of uns); the other keys constitute the CAP metadata block.
+_UNS_REQUIRED_KEYS = [
+    "cellannotation_schema_version",
+    "cellannotation_metadata",
+    "title",
+]
+
+_UNS_OPTIONAL_KEYS = [
+    "publication_timestamp",
+    "publication_version",
+    "description",
+    "cap_dataset_url",
+    "cap_publication_title",
+    "cap_publication_description",
+    "cap_publication_url",
+    "authors_list",
+    "hierarchy",
+]
+
+# Deprecated top-level CAP keys. Their presence *without* a cap_metadata wrapper
+# signals the old layout, which is refused rather than normalized (issue #452).
+_LEGACY_CAP_MARKERS = ("cellannotation_metadata", "cellannotation_schema_version")
+
+LEGACY_LAYOUT_ERROR = (
+    "Source uses the deprecated top-level CAP layout "
+    "(uns['cellannotation_metadata'] / uns['cellannotation_schema_version']). "
+    "Only the nested uns['cap_metadata'] layout is accepted; re-export the CAP "
+    "file with its metadata nested under uns['cap_metadata']."
+)
+
+
+def is_legacy_cap_layout(uns) -> bool:
+    """True if the file carries deprecated top-level CAP keys and no cap_metadata."""
+    return CAP_METADATA_KEY not in uns and any(k in uns for k in _LEGACY_CAP_MARKERS)
+
+
+def resolve_cap_block(uns) -> dict | None:
+    """Return the nested ``uns['cap_metadata']`` block as a dict, or None.
+
+    Only the canonical nested layout is accepted (issue #452) — the deprecated
+    top-level layout is *not* normalized. Callers detect it with
+    :func:`is_legacy_cap_layout` and refuse. A present-but-non-Mapping
+    ``cap_metadata`` is treated as absent.
+    """
+    block = uns.get(CAP_METADATA_KEY)
+    return dict(block) if isinstance(block, Mapping) else None
 
 # CAP obs column suffixes per the cell-annotation-schema spec
 _REQUIRED_SUFFIXES = [
@@ -24,24 +77,6 @@ _OPTIONAL_SUFFIXES = [
     "--category_cell_ontology_term",
     "--cell_ontology_assessment",
     "--confidence_score",
-]
-
-_UNS_REQUIRED_KEYS = [
-    "cellannotation_schema_version",
-    "cellannotation_metadata",
-    "title",
-]
-
-_UNS_OPTIONAL_KEYS = [
-    "publication_timestamp",
-    "publication_version",
-    "description",
-    "cap_dataset_url",
-    "cap_publication_title",
-    "cap_publication_description",
-    "cap_publication_url",
-    "authors_list",
-    "hierarchy",
 ]
 
 
@@ -78,19 +113,33 @@ def get_cap_annotations(path: str, annotation_set: str | None = None) -> dict:
         with open_h5ad(path) as adata:
             obs_columns = list(adata.obs.columns)
 
+            # Only the nested uns['cap_metadata'] layout is accepted. A legacy
+            # top-level file is surfaced via `layout` as a diagnostic but is not
+            # treated as valid CAP (has_cap_annotations stays False).
+            cap = resolve_cap_block(adata.uns)
+            if cap is not None:
+                layout = "cap_metadata"
+            elif is_legacy_cap_layout(adata.uns):
+                layout = "legacy_toplevel"
+            else:
+                layout = None
+            cap = cap or {}
+
             # Annotation sets are defined in cellannotation_metadata
-            meta = adata.uns.get("cellannotation_metadata", {})
+            meta = cap.get("cellannotation_metadata", {})
             annotation_sets = sorted(meta.keys()) if isinstance(meta, dict) else []
 
-            uns_keys = list(adata.uns.keys())
-            uns_present = [k for k in _UNS_REQUIRED_KEYS if k in uns_keys]
-            uns_missing = [k for k in _UNS_REQUIRED_KEYS if k not in uns_keys]
-            uns_optional_present = [k for k in _UNS_OPTIONAL_KEYS if k in uns_keys]
+            # CAP schema keys live in the block; `title` stays top-level.
+            present = set(cap) | ({"title"} if "title" in adata.uns else set())
+            uns_present = [k for k in _UNS_REQUIRED_KEYS if k in present]
+            uns_missing = [k for k in _UNS_REQUIRED_KEYS if k not in present]
+            uns_optional_present = [k for k in _UNS_OPTIONAL_KEYS if k in cap]
 
-            has_cap = "cellannotation_metadata" in uns_keys and len(annotation_sets) > 0
+            has_cap = "cellannotation_metadata" in cap and len(annotation_sets) > 0
 
             result = {
                 "has_cap_annotations": has_cap,
+                "layout": layout,
                 "annotation_sets": annotation_sets,
                 "uns_metadata": {
                     "required_present": uns_present,
@@ -102,11 +151,11 @@ def get_cap_annotations(path: str, annotation_set: str | None = None) -> dict:
             if not has_cap and annotation_set is None:
                 return result
 
-            if "cellannotation_metadata" in uns_keys:
-                result["cellannotation_metadata"] = _make_serializable(adata.uns["cellannotation_metadata"])
+            if "cellannotation_metadata" in cap:
+                result["cellannotation_metadata"] = _make_serializable(cap["cellannotation_metadata"])
 
-            if "authors_list" in uns_keys:
-                result["authors_list"] = _make_serializable(adata.uns["authors_list"])
+            if "authors_list" in cap:
+                result["authors_list"] = _make_serializable(cap["authors_list"])
 
             sets_to_inspect = []
             if annotation_set:

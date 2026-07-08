@@ -55,7 +55,7 @@ mcp = FastMCP(
         "check_schema_type to identify CellxGENE vs HCA layout and report the schema version, "
         "validate_schema to run the HCA schema validator and report is_valid / errors / warnings, "
         "validate_cell_annotation to run the HCA Cell Annotation validator (structural CAP checks: "
-        "annotation-set presence, well-formed semver in uns['cellannotation_schema_version'], "
+        "annotation-set presence, well-formed semver in uns['cap_metadata']['cellannotation_schema_version'], "
         "per-set metadata is a dict, required --<suffix> obs columns), complementary to validate_schema, "
         "check_cosmetic_labels_h5ad as a fast targeted alternative — checks only that "
         "producer-supplied obs label columns (tissue, cell_type, ...) match their "
