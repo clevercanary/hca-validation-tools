@@ -241,6 +241,20 @@ def copy_cap_annotations(
             return {"error": dupe_err}
         target_var_set = set(target_var_list)
 
+        # Refuse a target carrying deprecated top-level CAP (from older tooling)
+        # rather than silently overwriting it into a mixed-layout file. Symmetric
+        # with the legacy-source refusal above (issue #452).
+        if is_legacy_cap_layout(target_uns_keys):
+            return {
+                "error": (
+                    "Target uses the deprecated top-level CAP layout "
+                    "(uns['cellannotation_metadata'] / "
+                    "uns['cellannotation_schema_version']). Only the nested "
+                    "uns['cap_metadata'] layout is accepted; re-curate the target "
+                    "into the nested layout before copying CAP into it."
+                )
+            }
+
         # Detect existing CAP obs columns: any column with "--" separator
         existing_cap_cols = [c for c in target_obs_columns if "--" in c]
 

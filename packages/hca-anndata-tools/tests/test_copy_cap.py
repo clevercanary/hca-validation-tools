@@ -218,6 +218,21 @@ def test_copy_refuses_legacy_toplevel_source(tmp_path, downgrade_cap_to_legacy):
     assert "cap_metadata" in result["error"]
 
 
+def test_copy_refuses_legacy_target(cap_source, tmp_path):
+    # A target carrying deprecated top-level CAP (from older tooling) is refused
+    # rather than overwritten into a mixed-layout file — even with overwrite=True.
+    target = _make_hca_target(tmp_path / "legacy_target.h5ad", CELL_IDS)
+    adata = ad.read_h5ad(target)
+    adata.uns["cellannotation_schema_version"] = "1.0.2"
+    adata.uns["cellannotation_metadata"] = {"author_cell_type": {"description": "x"}}
+    adata.write_h5ad(target)
+
+    result = copy_cap_annotations(str(cap_source), str(target), overwrite=True)
+    assert "error" in result
+    assert "Target" in result["error"]
+    assert "cap_metadata" in result["error"]
+
+
 # --- Skip demographic columns ---
 
 

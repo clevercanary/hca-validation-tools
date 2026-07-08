@@ -11,8 +11,9 @@ from hca_anndata_tools.testing import create_cellxgene_h5ad, create_sample_h5ad
 def downgrade_cap_to_legacy():
     """Return a helper that rewrites a nested-CAP h5ad into the deprecated
     top-level layout in place: lifts every key out of ``uns['cap_metadata']``
-    to the top level of ``uns`` and drops the wrapper. Used to exercise
-    old -> new normalization on read.
+    to the top level of ``uns`` and drops the wrapper. Used to build a
+    legacy-layout file for the detection / refusal tests (the legacy layout is
+    refused, not normalized).
     """
 
     def _downgrade(path: Path) -> Path:
