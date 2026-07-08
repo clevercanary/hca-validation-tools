@@ -483,7 +483,7 @@ def test_copy_target_has_cap_fails(cap_source, hca_target_with_cap):
 
 
 def test_copy_cap_preserves_cellxgene_provenance(cap_source, tmp_path):
-    """When target already has provenance/cellxgene, copy_cap adds provenance/cap alongside it."""
+    """When target already has provenance/cellxgene, copy_cap writes the CAP block to uns['cap_metadata'] alongside it (preserving the cellxgene provenance)."""
     n = len(CELL_IDS)
     rng = np.random.default_rng(99)
     X = sp.random(n, 5, density=0.3, format="csr", dtype=np.float32, random_state=rng)
