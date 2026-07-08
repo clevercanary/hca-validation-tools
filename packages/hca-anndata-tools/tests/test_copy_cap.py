@@ -482,7 +482,7 @@ def test_copy_no_cap_source_fails(hca_target, tmp_path):
     no_cap = _make_hca_target(tmp_path / "no_cap.h5ad", CELL_IDS)
     result = copy_cap_annotations(str(no_cap), str(hca_target))
     assert "error" in result
-    assert "cellannotation_metadata" in result["error"]
+    assert "cap_metadata" in result["error"]
 
 
 def test_copy_target_has_cap_fails(cap_source, hca_target_with_cap):

@@ -168,7 +168,7 @@ def copy_cap_annotations(
             if cap_block is None:
                 if CAP_METADATA_KEY in source.uns:
                     return {"error": "Source uns['cap_metadata'] is malformed (not a dict/group)."}
-                return {"error": "Source has no cellannotation_metadata in uns['cap_metadata']"}
+                return {"error": "Source has no CAP metadata: uns['cap_metadata'] is missing."}
             if "cellannotation_metadata" not in cap_block:
                 return {"error": "Source has no cellannotation_metadata in uns['cap_metadata']"}
             if "cellannotation_schema_version" not in cap_block:
