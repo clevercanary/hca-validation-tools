@@ -386,7 +386,9 @@ def check_cosmetic_labels(adata, schema_def=None):
 
     * column present with at least one label, source absent → warning (nothing
       to check the labels against). An all-NaN column has no labels to check,
-      so it stays silent.
+      so it stays silent. The remediation depends on the source column's
+      `requirement_level`: deleting the cosmetic column is only offered when
+      the source is optional, since a required source must be added regardless.
     * column present + source present → row-level checks:
         - cosmetic value, source NaN → error ("add term ID, delete the label,
           or delete the column")
@@ -424,14 +426,25 @@ def check_cosmetic_labels(adata, schema_def=None):
             if obs[cosmetic_col].notna().any():
                 warnings.append(
                     f"obs['{cosmetic_col}'] is populated but obs['{source_col}'] is absent, "
-                    f"so its labels can't be checked against the ontology. Either add "
-                    f"obs['{source_col}'], or delete obs['{cosmetic_col}']."
+                    f"so its labels can't be checked against the ontology. "
+                    f"{_remediation_for_missing_source(obs_components, cosmetic_col, source_col)}"
                 )
             continue
         exceptions = _collect_curie_exceptions(obs_components.get(source_col, {}))
         errors.extend(_compare_cosmetic_to_term_ids(obs, cosmetic_col, source_col, exceptions))
 
     return warnings, errors
+
+
+def _remediation_for_missing_source(obs_components, cosmetic_col, source_col):
+    # Deleting the cosmetic column only silences this warning. When the source
+    # column is required by the schema, its absence is an error in its own
+    # right, so deleting is not a remediation — adding the source column is the
+    # only one. Columns carry no `requirement_level` when they are required.
+    level = str(obs_components.get(source_col, {}).get("requirement_level", "")).lower()
+    if level in ("optional", "strongly_recommended"):
+        return f"Either add obs['{source_col}'], or delete obs['{cosmetic_col}']."
+    return f"Add obs['{source_col}'] — the schema requires it."
 
 
 def _collect_curie_exceptions(source_def):

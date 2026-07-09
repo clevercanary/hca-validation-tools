@@ -236,6 +236,8 @@ def test_cosmetic_check_handles_optional_cell_type_with_source_present():
 
 def test_cosmetic_check_warns_when_source_column_absent():
     # The one unverifiable shape: labels with no term IDs to check them against.
+    # cell_type_ontology_term_id is optional, so deleting the label column is a
+    # real remediation and the warning offers it.
     from .fixtures.hca_fixtures import adata
 
     modified = adata.copy()
@@ -246,7 +248,23 @@ def test_cosmetic_check_warns_when_source_column_absent():
     assert len(warnings) == 1
     assert "obs['cell_type']" in warnings[0]
     assert "cell_type_ontology_term_id" in warnings[0]
+    assert "Either add" in warnings[0] and "or delete" in warnings[0]
     assert errors == []  # no source → no row-level check
+
+
+def test_cosmetic_check_missing_required_source_does_not_offer_delete():
+    # tissue_ontology_term_id is required, so deleting obs['tissue'] would only
+    # silence the warning while leaving the file missing a required column.
+    from .fixtures.hca_fixtures import adata
+
+    modified = adata.copy()
+    modified.obs["tissue"] = "lung"
+    del modified.obs["tissue_ontology_term_id"]
+    _, validator = _validate_from_fixture(modified)
+    warnings, _ = _cosmetic_check_messages(validator)
+    assert len(warnings) == 1
+    assert "Add obs['tissue_ontology_term_id']" in warnings[0]
+    assert "delete" not in warnings[0]
 
 
 def test_cosmetic_check_silent_when_column_all_nan_and_source_absent():
