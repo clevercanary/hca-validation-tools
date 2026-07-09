@@ -423,9 +423,9 @@ def check_cosmetic_labels(adata, schema_def=None):
         if source_col not in obs.columns:
             if obs[cosmetic_col].notna().any():
                 warnings.append(
-                    f"obs['{cosmetic_col}'] is populated but {source_col} is absent, so its "
-                    f"labels can't be checked against the ontology. Either add {source_col}, "
-                    f"or delete the cosmetic column."
+                    f"obs['{cosmetic_col}'] is populated but obs['{source_col}'] is absent, "
+                    f"so its labels can't be checked against the ontology. Either add "
+                    f"obs['{source_col}'], or delete obs['{cosmetic_col}']."
                 )
             continue
         exceptions = _collect_curie_exceptions(obs_components.get(source_col, {}))
