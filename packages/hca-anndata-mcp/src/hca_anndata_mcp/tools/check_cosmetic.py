@@ -18,8 +18,8 @@ def check_cosmetic_labels_h5ad(path: str) -> dict:
     For each of the controlled HCA obs label columns
     (:data:`hca_schema_validator.HCA_DERIVED_OBS_LABELS`):
 
-    * column present, source `*_ontology_term_id` absent → warning (the labels
-      can't be checked against anything)
+    * column present with at least one label, source `*_ontology_term_id`
+      absent → warning (the labels can't be checked against anything)
     * column present + source present → row-level checks:
         - cosmetic value with NaN term ID → error
         - cosmetic value disagrees with canonical ontology label → error
@@ -28,7 +28,12 @@ def check_cosmetic_labels_h5ad(path: str) -> dict:
           flags the bad ID, through its curie checks.
 
     A column is therefore silent both when its values agree with their term IDs
-    and when those term IDs couldn't be resolved at all — ``is_clean`` means
+    and when those term IDs couldn't be resolved at all.
+
+    This check looks at label/term-ID agreement and nothing else. It does not
+    detect forbidden columns (e.g. `self_reported_ethnicity`), missing required
+    columns, invalid ontology term IDs, or any other schema-level failure — all
+    of which :func:`validate_schema` catches. ``is_clean`` therefore means
     "nothing this check looks at is wrong", not "the file is valid".
 
     Args:
