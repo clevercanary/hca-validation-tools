@@ -1,4 +1,4 @@
-"""Unit tests for the check_cosmetic_labels_h5ad MCP wrapper (#377)."""
+"""Unit tests for the check_cosmetic_labels_h5ad MCP wrapper (#377, #443)."""
 
 import anndata as ad
 import numpy as np
@@ -16,7 +16,7 @@ def test_clean_file_is_clean(tmp_path):
     assert result["error_count"] == 0
 
 
-def test_warning_when_cosmetic_present_and_matches(tmp_path):
+def test_clean_when_cosmetic_present_and_matches(tmp_path):
     path = create_labelable_h5ad(tmp_path / "matches.h5ad")
     adata = ad.read_h5ad(path)
     adata.obs["tissue"] = "lung"  # canonical for UBERON:0002048
@@ -24,9 +24,22 @@ def test_warning_when_cosmetic_present_and_matches(tmp_path):
 
     result = check_cosmetic_labels_h5ad(str(path))
     assert "error" not in result, result
-    assert result["is_clean"] is False
+    assert result["is_clean"] is True
+    assert result["warning_count"] == 0
+    assert result["error_count"] == 0
+
+
+def test_warning_when_source_column_absent(tmp_path):
+    path = create_labelable_h5ad(tmp_path / "no_source.h5ad")
+    adata = ad.read_h5ad(path)
+    adata.obs["cell_type"] = "PRODUCER_CELL_TYPE"
+    del adata.obs["cell_type_ontology_term_id"]  # cell_type is optional
+    adata.write_h5ad(path)
+
+    result = check_cosmetic_labels_h5ad(str(path))
+    assert "error" not in result, result
     assert result["warning_count"] == 1
-    assert "obs['tissue']" in result["warnings"][0]
+    assert "obs['cell_type']" in result["warnings"][0]
     assert result["error_count"] == 0
 
 

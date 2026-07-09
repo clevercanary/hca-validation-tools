@@ -23,7 +23,7 @@ def test_validate_schema_missing_file():
 
 
 def test_validate_schema_surfaces_cosmetic_check(tmp_path):
-    """Confirm the new producer-cosmetic-column check (issue #377) surfaces
+    """Confirm the producer-cosmetic-column check (issues #377, #443) surfaces
     through the MCP wrapper. The wrapper just returns the validator's
     warnings/errors, so this test exercises the integration boundary
     rather than re-testing the underlying logic.
@@ -35,10 +35,6 @@ def test_validate_schema_surfaces_cosmetic_check(tmp_path):
 
     result = validate_schema(str(path))
 
-    assert any(
-        "obs['tissue']" in w and "should not be populated by producers" in w
-        for w in result["warnings"]
-    ), result["warnings"]
     assert any(
         "'WRONG_TISSUE_LABEL'" in e and "Either delete the cosmetic column" in e
         for e in result["errors"]

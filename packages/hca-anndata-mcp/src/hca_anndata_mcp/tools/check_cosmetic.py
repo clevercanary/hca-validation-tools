@@ -11,17 +11,20 @@ def check_cosmetic_labels_h5ad(path: str) -> dict:
     """Check producer-supplied obs label columns against their `*_ontology_term_id` siblings.
 
     Targeted alternative to :func:`validate_schema` — runs only the producer-
-    cosmetic-column check (issue #377), skipping the full schema/raw/feature
-    validation pipeline. Useful when a curator wants quick feedback on
+    cosmetic-column check (issues #377, #443), skipping the full schema/raw/
+    feature validation pipeline. Useful when a curator wants quick feedback on
     label/ID drift without paying for a full validate run.
 
-    For each of the eight controlled HCA obs label columns
+    For each of the controlled HCA obs label columns
     (:data:`hca_schema_validator.HCA_DERIVED_OBS_LABELS`):
 
-    * column present → warning ("delete the column")
-    * column present + source `*_ontology_term_id` present → row-level checks:
+    * column present, source `*_ontology_term_id` absent → warning (the labels
+      can't be checked against anything)
+    * column present + source present → row-level checks:
         - cosmetic value with NaN term ID → error
         - cosmetic value disagrees with canonical ontology label → error
+
+    A column whose values all agree with their term IDs is silent.
 
     Args:
         path: Path to an .h5ad file. Auto-resolves to the latest timestamped
