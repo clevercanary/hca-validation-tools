@@ -27,8 +27,9 @@ def check_cosmetic_labels_h5ad(path: str) -> dict:
           the label goes unchecked. Only the full :func:`validate_schema` run
           flags the bad ID, through its curie checks.
 
-    A column is therefore silent both when its values agree with their term IDs
-    and when those term IDs couldn't be resolved at all.
+    A column is therefore silent in three cases: when its values agree with their
+    term IDs, when those term IDs couldn't be resolved at all, and when it holds
+    no labels to check.
 
     This check looks at label/term-ID agreement and nothing else. It does not
     detect forbidden columns (e.g. `self_reported_ethnicity`), missing required
