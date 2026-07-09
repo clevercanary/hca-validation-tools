@@ -38,6 +38,7 @@ def test_warning_when_source_column_absent(tmp_path):
 
     result = check_cosmetic_labels_h5ad(str(path))
     assert "error" not in result, result
+    assert result["is_clean"] is False  # is_clean is false when *either* list is non-empty
     assert result["warning_count"] == 1
     assert "obs['cell_type']" in result["warnings"][0]
     assert result["error_count"] == 0
