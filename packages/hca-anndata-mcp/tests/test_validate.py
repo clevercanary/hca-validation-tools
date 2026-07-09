@@ -39,7 +39,22 @@ def test_validate_schema_surfaces_cosmetic_check(tmp_path):
         "'WRONG_TISSUE_LABEL'" in e and "Either delete the cosmetic column" in e
         for e in result["errors"]
     ), result["errors"]
+    # #443: a drifting label is an error, never a "delete the column" warning.
+    assert not any("obs['tissue']" in w for w in result["warnings"]), result["warnings"]
     assert result["is_valid"] is False
+
+
+def test_validate_schema_no_cosmetic_warning_when_labels_match(tmp_path):
+    """#443 at the integration boundary: a verified-canonical label column is silent."""
+    path = create_labelable_h5ad(tmp_path / "matching.h5ad")
+    adata = ad.read_h5ad(path)
+    adata.obs["tissue"] = "lung"  # canonical for UBERON:0002048
+    adata.write_h5ad(path)
+
+    result = validate_schema(str(path))
+
+    assert not any("obs['tissue']" in w for w in result["warnings"]), result["warnings"]
+    assert not any("obs['tissue']" in e for e in result["errors"]), result["errors"]
 
 
 def test_validate_schema_resolves_latest(tmp_path):
