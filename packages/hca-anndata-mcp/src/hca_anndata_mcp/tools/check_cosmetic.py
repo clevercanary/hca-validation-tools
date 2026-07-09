@@ -23,8 +23,13 @@ def check_cosmetic_labels_h5ad(path: str) -> dict:
     * column present + source present → row-level checks:
         - cosmetic value with NaN term ID → error
         - cosmetic value disagrees with canonical ontology label → error
+        - term ID that doesn't resolve in the ontology → silently skipped, so
+          the label goes unchecked. Only the full :func:`validate_schema` run
+          flags the bad ID, through its curie checks.
 
-    A column whose values all agree with their term IDs is silent.
+    A column is therefore silent both when its values agree with their term IDs
+    and when those term IDs couldn't be resolved at all — ``is_clean`` means
+    "nothing this check looks at is wrong", not "the file is valid".
 
     Args:
         path: Path to an .h5ad file. Auto-resolves to the latest timestamped
