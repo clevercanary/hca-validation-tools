@@ -154,12 +154,16 @@ def _cosmetic_check_messages(validator):
     """Filter validator messages to those about a derived obs label column (#377, #443).
 
     Matches on the column name rather than on message text, so a `warnings == []`
-    assertion stays honest if the check ever starts emitting a differently-worded
-    warning about a column it should be silent on.
+    or `errors == []` assertion stays honest if the check ever starts emitting a
+    differently-worded message about a column it should be silent on. Every
+    cosmetic-check message names its column as `obs['<col>']`; the curie validator's
+    errors name the bare `<col>_ontology_term_id`, so they don't collide.
     """
-    labels = [f"obs['{col}']" for col in HCA_DERIVED_OBS_LABELS]
-    warnings = [w for w in validator.warnings if any(label in w for label in labels)]
-    errors = [e for e in validator.errors if "Either delete the cosmetic column" in e or "Either add the term ID" in e]
+    def about_a_label_column(message):
+        return any(f"obs['{col}']" in message for col in HCA_DERIVED_OBS_LABELS)
+
+    warnings = [w for w in validator.warnings if about_a_label_column(w)]
+    errors = [e for e in validator.errors if about_a_label_column(e)]
     return warnings, errors
 
 
