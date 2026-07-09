@@ -384,8 +384,9 @@ def check_cosmetic_labels(adata, schema_def=None):
 
     Per-column rules (each fires independently and aggregates):
 
-    * column present, source absent → warning (nothing to check the labels
-      against)
+    * column present with at least one label, source absent → warning (nothing
+      to check the labels against). An all-NaN column has no labels to check,
+      so it stays silent.
     * column present + source present → row-level checks:
         - cosmetic value, source NaN → error ("add term ID, delete the label,
           or delete the column")
@@ -420,11 +421,12 @@ def check_cosmetic_labels(adata, schema_def=None):
             continue
         source_col = f"{cosmetic_col}_ontology_term_id"
         if source_col not in obs.columns:
-            warnings.append(
-                f"obs['{cosmetic_col}'] is present but {source_col} is absent, so its "
-                f"labels can't be checked against the ontology. Either add {source_col}, "
-                f"or delete the cosmetic column."
-            )
+            if obs[cosmetic_col].notna().any():
+                warnings.append(
+                    f"obs['{cosmetic_col}'] is populated but {source_col} is absent, so its "
+                    f"labels can't be checked against the ontology. Either add {source_col}, "
+                    f"or delete the cosmetic column."
+                )
             continue
         exceptions = _collect_curie_exceptions(obs_components.get(source_col, {}))
         errors.extend(_compare_cosmetic_to_term_ids(obs, cosmetic_col, source_col, exceptions))

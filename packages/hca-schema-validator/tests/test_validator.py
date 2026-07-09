@@ -249,6 +249,20 @@ def test_cosmetic_check_warns_when_source_column_absent():
     assert errors == []  # no source → no row-level check
 
 
+def test_cosmetic_check_silent_when_column_all_nan_and_source_absent():
+    # An empty column carries no labels, so there is nothing to check against
+    # the ontology and nothing to warn about.
+    from .fixtures.hca_fixtures import adata
+
+    modified = adata.copy()
+    modified.obs["cell_type"] = np.nan
+    del modified.obs["cell_type_ontology_term_id"]  # cell_type is optional, can be removed
+    _, validator = _validate_from_fixture(modified)
+    warnings, errors = _cosmetic_check_messages(validator)
+    assert warnings == []
+    assert errors == []
+
+
 def test_cosmetic_check_error_on_value_with_nan_term_id():
     from .fixtures.hca_fixtures import adata
 
