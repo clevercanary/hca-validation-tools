@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pytest
-from hca_schema_validator import HCAValidator
+from hca_schema_validator import HCA_DERIVED_OBS_LABELS, HCAValidator
 
 # Test fixtures directory
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "h5ads"
@@ -151,8 +151,14 @@ def test_valid_adata_passes():
 
 
 def _cosmetic_check_messages(validator):
-    """Filter validator messages to those produced by the cosmetic-label check (#377)."""
-    warnings = [w for w in validator.warnings if "should not be populated by producers" in w]
+    """Filter validator messages to those about a derived obs label column (#377, #443).
+
+    Matches on the column name rather than on message text, so a `warnings == []`
+    assertion stays honest if the check ever starts emitting a differently-worded
+    warning about a column it should be silent on.
+    """
+    labels = [f"obs['{col}']" for col in HCA_DERIVED_OBS_LABELS]
+    warnings = [w for w in validator.warnings if any(label in w for label in labels)]
     errors = [e for e in validator.errors if "Either delete the cosmetic column" in e or "Either add the term ID" in e]
     return warnings, errors
 
@@ -166,15 +172,17 @@ def test_cosmetic_check_silent_when_columns_absent():
     assert errors == []
 
 
-def test_cosmetic_check_warning_only_when_values_match():
+def test_cosmetic_check_silent_when_values_match():
+    # A verified-canonical column is not worth reporting: populate_labels writes
+    # these deliberately, and the row-level comparison below has already proven
+    # the values right. Regression guard for #443.
     from .fixtures.hca_fixtures import adata
 
     modified = adata.copy()
     modified.obs["tissue"] = "lung"  # canonical label for UBERON:0002048
     _, validator = _validate_from_fixture(modified)
     warnings, errors = _cosmetic_check_messages(validator)
-    assert len(warnings) == 1
-    assert "obs['tissue']" in warnings[0]
+    assert warnings == []
     assert errors == []
 
 
@@ -185,7 +193,7 @@ def test_cosmetic_check_error_on_mismatch():
     modified.obs["tissue"] = "WRONG_LABEL"
     _, validator = _validate_from_fixture(modified)
     warnings, errors = _cosmetic_check_messages(validator)
-    assert len(warnings) == 1
+    assert warnings == []
     assert any(
         "'WRONG_LABEL'" in e and "UBERON:0002048" in e and "'lung'" in e
         for e in errors
@@ -200,29 +208,30 @@ def test_cosmetic_check_aggregates_across_columns():
     modified.obs["assay"] = "WRONG_ASSAY"
     _, validator = _validate_from_fixture(modified)
     warnings, errors = _cosmetic_check_messages(validator)
-    assert len(warnings) == 2
+    assert warnings == []
     assert sum("'WRONG_TISSUE'" in e for e in errors) == 1
     assert sum("'WRONG_ASSAY'" in e for e in errors) == 1
 
 
 def test_cosmetic_check_handles_optional_cell_type_with_source_present():
     # cell_type is the only optional column in HCA_DERIVED_OBS_LABELS — verify
-    # it gets the same warning + mismatch-error treatment as the required
-    # columns when the source cell_type_ontology_term_id is present.
+    # it gets the same mismatch-error treatment as the required columns when
+    # the source cell_type_ontology_term_id is present.
     from .fixtures.hca_fixtures import adata
 
     modified = adata.copy()
     modified.obs["cell_type"] = "WRONG_CELL_TYPE"
     _, validator = _validate_from_fixture(modified)
     warnings, errors = _cosmetic_check_messages(validator)
-    assert any("obs['cell_type']" in w for w in warnings)
+    assert warnings == []
     assert any(
         "'WRONG_CELL_TYPE'" in e and "CL:0000066" in e and "'epithelial cell'" in e
         for e in errors
     ), errors
 
 
-def test_cosmetic_check_warning_only_when_source_column_absent():
+def test_cosmetic_check_warns_when_source_column_absent():
+    # The one unverifiable shape: labels with no term IDs to check them against.
     from .fixtures.hca_fixtures import adata
 
     modified = adata.copy()
@@ -232,6 +241,7 @@ def test_cosmetic_check_warning_only_when_source_column_absent():
     warnings, errors = _cosmetic_check_messages(validator)
     assert len(warnings) == 1
     assert "obs['cell_type']" in warnings[0]
+    assert "cell_type_ontology_term_id" in warnings[0]
     assert errors == []  # no source → no row-level check
 
 
@@ -245,7 +255,7 @@ def test_cosmetic_check_error_on_value_with_nan_term_id():
     modified.obs.loc[modified.obs.index[0], "cell_type_ontology_term_id"] = np.nan
     _, validator = _validate_from_fixture(modified)
     warnings, errors = _cosmetic_check_messages(validator)
-    assert len(warnings) == 1
+    assert warnings == []
     assert any(
         "have NaN in cell_type_ontology_term_id" in e and "1 rows labeled 'PRODUCER_LABEL'" in e
         for e in errors
@@ -261,7 +271,7 @@ def test_cosmetic_check_skips_unresolvable_term_ids():
     modified.obs.loc[:, "tissue_ontology_term_id"] = "UBERON:9999999"  # nonexistent
     _, validator = _validate_from_fixture(modified)
     warnings, errors = _cosmetic_check_messages(validator)
-    assert len(warnings) == 1
+    assert warnings == []
     # No mismatch error — unresolvable IDs are silently skipped here (the
     # curie validator surfaces the bad ID via its own pathway).
     assert errors == []
@@ -275,7 +285,7 @@ def test_cosmetic_check_sentinel_values_match():
     modified.obs["sex_ontology_term_id"] = "unknown"
     _, validator = _validate_from_fixture(modified)
     warnings, errors = _cosmetic_check_messages(validator)
-    assert len(warnings) == 1
+    assert warnings == []
     assert errors == []
 
 
@@ -292,7 +302,7 @@ def test_cosmetic_check_sentinel_values_mismatch_errors():
     modified.obs["sex_ontology_term_id"] = "unknown"
     _, validator = _validate_from_fixture(modified)
     warnings, errors = _cosmetic_check_messages(validator)
-    assert len(warnings) == 1
+    assert warnings == []
     assert any(
         "sex_ontology_term_id" in e
         and "'PRODUCER_LABEL'" in e
@@ -314,7 +324,7 @@ def test_cosmetic_check_fires_with_ignore_labels_false():
         validator.validate_adata(str(tmp_path))
 
     warnings, errors = _cosmetic_check_messages(validator)
-    assert len(warnings) == 1
+    assert warnings == []
     assert any("'WRONG'" in e for e in errors)
 
 

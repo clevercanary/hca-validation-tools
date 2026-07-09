@@ -375,14 +375,17 @@ class HCAValidator(Validator):
 def check_cosmetic_labels(adata, schema_def=None):
     """Run the producer-cosmetic-column check and return (warnings, errors).
 
-    The HCA labeler populates the eight controlled obs label columns from their
-    `*_ontology_term_id` counterparts. Producers shouldn't ship the cosmetic
-    columns at all; if they do, every populated row needs a term ID and the
-    cosmetic value must agree with the canonical ontology label.
+    The controlled obs label columns are derived from their
+    `*_ontology_term_id` counterparts. Carrying them is fine as long as they
+    can be checked and they agree with canonical: `populate_labels` writes
+    them deliberately, and CellxGENE exports arrive with them. What matters is
+    that every populated row has a term ID and that the label matches the
+    canonical ontology label for it.
 
     Per-column rules (each fires independently and aggregates):
 
-    * column present → warning ("delete the column")
+    * column present, source absent → warning (nothing to check the labels
+      against)
     * column present + source present → row-level checks:
         - cosmetic value, source NaN → error ("add term ID, delete the label,
           or delete the column")
@@ -399,7 +402,7 @@ def check_cosmetic_labels(adata, schema_def=None):
 
     Returns:
         ``(warnings, errors)`` — two lists of strings, ready for the caller to
-        append to its own report. Issue #377.
+        append to its own report. Issues #377, #443.
     """
     if schema_def is None:
         schema_def = _load_default_schema_def()
@@ -416,12 +419,12 @@ def check_cosmetic_labels(adata, schema_def=None):
         if cosmetic_col not in obs.columns:
             continue
         source_col = f"{cosmetic_col}_ontology_term_id"
-        warnings.append(
-            f"obs['{cosmetic_col}'] should not be populated by producers — "
-            f"the HCA labeler populates this column from {source_col}. "
-            f"Delete the column."
-        )
         if source_col not in obs.columns:
+            warnings.append(
+                f"obs['{cosmetic_col}'] is present but {source_col} is absent, so its "
+                f"labels can't be checked against the ontology. Either add {source_col}, "
+                f"or delete the cosmetic column."
+            )
             continue
         exceptions = _collect_curie_exceptions(obs_components.get(source_col, {}))
         errors.extend(_compare_cosmetic_to_term_ids(obs, cosmetic_col, source_col, exceptions))
