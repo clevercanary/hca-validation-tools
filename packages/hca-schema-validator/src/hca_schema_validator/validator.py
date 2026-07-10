@@ -387,8 +387,9 @@ def check_cosmetic_labels(adata, schema_def=None):
     * column present with at least one label, source absent → warning (nothing
       to check the labels against). An all-NaN column has no labels to check,
       so it stays silent. The remediation depends on the source column's
-      `requirement_level`: deleting the cosmetic column is only offered when
-      the source is optional, since a required source must be added regardless.
+      `requirement_level`: deleting the cosmetic column is only offered when the
+      source is not required (`optional` or `strongly_recommended`), since a
+      required source must be added regardless.
     * column present + source present → row-level checks:
         - cosmetic value, source NaN → error ("add term ID, delete the label,
           or delete the column")
