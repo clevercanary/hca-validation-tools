@@ -4,7 +4,6 @@ Dataset Validator - AWS Batch Job
 Main entry point for dataset validation processing.
 """
 
-import copy
 import functools
 import gc
 import hashlib
@@ -15,7 +14,7 @@ import resource
 import shutil
 import sys
 import subprocess
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, fields
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -32,23 +31,10 @@ from hca_validation.h5ad_storage import get_matrix_storage
 from hca_validation.schema_utils import load_schemaview
 
 
-# Somewhat less than the actual value of 256KiB, to make room for small unforeseen deviations
-MAX_SNS_MESSAGE_LENGTH = 250_000
-# S3 prefix under which full validation results are written as a "claim check"
-# the tracker can read from to avoid using a truncated SNS message.
+# S3 prefix under which full validation results are written as a "claim check".
+# The tracker reads the full results from this object; the SNS body carries only
+# a pointer to it.
 S3_VALIDATION_METADATA_PREFIX = "validation-metadata"
-# Prefix for the truncation placeholder string. The full marker also embeds
-# the retained-vs-total counts so curators see how many messages were dropped
-# even when binary-search collapses to zero retained — see _truncated_marker.
-TRUNCATED_MESSAGES_PREFIX = "Messages truncated"
-# When truncating to fit SNS limits, error lists from higher-priority tools are preserved longer.
-# Unknown tools default to priority 0 (truncated first among errors).
-TOOL_ERROR_PRIORITY = {"cellxgene": 0, "cap": 1, "hcaSchema": 2, "hcaCellAnnotation": 3}
-
-
-def _truncated_marker(retained: int, total: int) -> str:
-    """Format the truncation placeholder so the curator sees the original count."""
-    return f"{TRUNCATED_MESSAGES_PREFIX} ({retained} of {total} shown)"
 
 
 # Environment variable constants
@@ -121,16 +107,34 @@ class ValidationToolReport:
     finished_at: str
 
 @dataclass
-class ValidationMessage:
-    """SNS message structure for validation results."""
-    # Required fields
+class ValidationMessagePointer:
+    """Pointer-only payload published to SNS.
+
+    The full ValidationMessage is written to S3 as a claim check; the SNS
+    body carries just these fields so the tracker can locate and fetch the
+    authoritative payload. Adding a field here makes it part of the SNS
+    contract — keep this list minimal.
+
+    `bucket` and `key` refer to the file that was validated, not the file
+    containing the validation results; the location of the latter is derived
+    automatically by the tracker.
+    """
     file_id: str              # UUID from Tracker database
     status: str               # "success", "failure"
     timestamp: str            # ISO format timestamp (UTC)
-    bucket: str               # S3 bucket name
-    key: str                  # S3 object key
+    bucket: str               # S3 bucket name for the file that was validated
+    key: str                  # S3 object key for the file that was validated
     batch_job_id: str         # Unique AWS Batch job ID for debugging
-    
+
+    def to_json(self) -> str:
+        """Convert to JSON string."""
+        return json.dumps(asdict(self), separators=(',', ':'))
+
+
+@dataclass
+class ValidationMessage(ValidationMessagePointer):
+    """Full validation result. Written to S3 as a claim check; the SNS body
+    carries only the ValidationMessagePointer subset (see to_pointer)."""
     # Optional fields
     batch_job_name: Optional[str] = None                 # Job definition name (for context)
     downloaded_sha256: Optional[str] = None              # SHA256 computed from downloaded file
@@ -144,111 +148,11 @@ class ValidationMessage:
     matrix_storage: Optional[dict] = None                # Per-matrix/layer shape + size, from HDF5 header (#447)
     error_message: Optional[str] = None                  # Human-readable error description
 
-    def to_json(self) -> str:
-        """Convert to JSON string."""
-        return json.dumps(asdict(self), separators=(',', ':'))
-    
-    def _get_report_message_list(self, report_key: str, message_type: str) -> List[str]:
-        if self.tool_reports is None:
-            raise RuntimeError("tool_reports not set")
-        return getattr(self.tool_reports[report_key], message_type)
-
-    def _set_report_message_list(self, report_key: str, message_type: str, value: List[str]):
-        if self.tool_reports is None:
-            raise RuntimeError("tool_reports not set")
-        setattr(self.tool_reports[report_key], message_type, value)
-
-    def _json_length_of_report_list(self, report_key: str, message_type: str) -> int:
-        return len(json.dumps(self._get_report_message_list(report_key, message_type)))
-
-    def _to_sns_json(self) -> str:
-        """Serialize for the inline SNS payload, omitting ``matrix_storage``.
-
-        ``matrix_storage`` (#447) can be large (a file with many layers) and is
-        always available in full from the S3 claim-check
-        (write_validation_results_to_s3), which the tracker reads preferentially.
-        Dropping the key keeps the SNS message shape identical to the pre-#447
-        payload.
-        """
-        # Null matrix_storage on a shallow copy before asdict so its (possibly
-        # large) payload is never recursively copied just to be discarded.
-        src = self
-        if self.matrix_storage is not None:
-            src = copy.copy(self)
-            src.matrix_storage = None
-        data = asdict(src)
-        data.pop("matrix_storage", None)
-        return json.dumps(data, separators=(',', ':'))
-
-    def to_length_limited_json(self, max_length=MAX_SNS_MESSAGE_LENGTH) -> str:
-        """Convert to a length-limited SNS JSON string, truncating message lists
-        to stay below ``max_length``. Excludes ``matrix_storage`` (see
-        :meth:`_to_sns_json`)."""
-
-        # If there are no reports to truncate or the message is short enough, use it as-is.
-        full_message = self._to_sns_json()
-        if self.tool_reports is None or len(full_message) < max_length:
-            return full_message
-
-        # Create a list of (tool_key, message_type) pairs to consider for truncation.
-        # Empty lists are excluded so they keep their `[]` serialization — stamping
-        # them with a placeholder would inflate warningCount/errorCount and trip
-        # false PartiallyValidIcon indicators in the tracker UI (#382).
-        list_paths = [
-            (key, message_type)
-            for key in self.tool_reports.keys()
-            for message_type in ["errors", "warnings"]
-            if self._get_report_message_list(key, message_type)
-        ]
-        # Truncation priority: warnings first, then cellxgene errors, then cap errors,
-        # then hcaSchema errors, then hcaCellAnnotation errors (preserved longest)
-        list_paths.sort(key=lambda p: (
-            0 if p[1] == "warnings" else 1 + TOOL_ERROR_PRIORITY.get(p[0], 0),
-            -self._json_length_of_report_list(*p),
-        ))
-
-        # Truncate lists in a copy. Strip matrix_storage before the deep copy so
-        # the (possibly large) field is neither copied nor serialized.
-        truncated_message = copy.copy(self)
-        truncated_message.matrix_storage = None
-        truncated_message = copy.deepcopy(truncated_message)
-
-        # Truncate entire lists until the message JSON is small enough, and note which list was the last to be truncated
-        threshold_path = None
-        for p in list_paths:
-            original_total = len(self._get_report_message_list(*p))
-            truncated_message._set_report_message_list(*p, [_truncated_marker(0, original_total)])
-            if len(truncated_message._to_sns_json()) < max_length:
-                threshold_path = p
-                break
-
-        # If all lists have been truncated and somehow none have made the message small enough,
-        # give up and try using it anyway
-        if threshold_path is None:
-            return truncated_message._to_sns_json()
-
-        # Get the original value of the list that was the threshold for making the message small enough
-        message_list = self._get_report_message_list(*threshold_path)
-
-        # Do a binary search to determine how much of the list can be retained,
-        # ensuring that the truncated message remains at a valid length
-        max_valid_length = 0
-        min_invalid_length = len(message_list)
-        while min_invalid_length - max_valid_length > 1:
-            truncated_list_before = truncated_message._get_report_message_list(*threshold_path)
-            middle_length = int((max_valid_length + min_invalid_length)/2)
-            truncated_message._set_report_message_list(
-                *threshold_path,
-                [*message_list[:middle_length], _truncated_marker(middle_length, len(message_list))],
-            )
-            if len(truncated_message._to_sns_json()) < max_length:
-                max_valid_length = middle_length
-            else:
-                min_invalid_length = middle_length
-                truncated_message._set_report_message_list(*threshold_path, truncated_list_before)
-
-        # Return the truncated message JSON (matrix_storage omitted, see _to_sns_json)
-        return truncated_message._to_sns_json()
+    def to_pointer(self) -> ValidationMessagePointer:
+        """Project to the pointer-only payload published to SNS."""
+        return ValidationMessagePointer(
+            **{f.name: getattr(self, f.name) for f in fields(ValidationMessagePointer)}
+        )
 
 
 def configure_logging() -> logging.Logger:
@@ -294,26 +198,31 @@ def log_memory_usage(label: str) -> None:
 
 def publish_validation_result(message: ValidationMessage, sns_topic_arn: str) -> bool:
     """
-    Publish validation result to SNS topic.
-    
+    Publish the pointer-only payload to SNS.
+
+    The full ValidationMessage is written to S3 as a claim check
+    (see write_validation_results_to_s3); the SNS body carries only
+    ValidationMessagePointer fields so the tracker can locate and fetch the
+    authoritative payload.
+
     Args:
         message: ValidationMessage containing result data
         sns_topic_arn: ARN of the SNS topic to publish to
-        
+
     Returns:
         True if published successfully, False otherwise
     """
     try:
         logger.info("Publishing validation result to SNS topic: %s", sns_topic_arn)
-        
+
         # Create SNS client
         # Let boto3 resolve region from the environment/metadata
         sns_client = boto3.client('sns')
-        
+
         # Publish message
         response = sns_client.publish(
             TopicArn=sns_topic_arn,
-            Message=message.to_length_limited_json(),
+            Message=message.to_pointer().to_json(),
             Subject=f"Dataset Validation Result - {message.status.upper()}"
         )
         
