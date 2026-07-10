@@ -347,6 +347,38 @@ def test_cosmetic_check_sentinel_values_mismatch_errors():
     ), errors
 
 
+def test_check_cosmetic_labels_loads_default_schema_when_omitted():
+    # HCAValidator always passes schema_def, so the `schema_def=None` branch is
+    # reached only by in-process callers importing the check on its own. That is
+    # the supported way to run this rule outside the pipeline (#411), so pin it:
+    # omitting schema_def must behave identically to passing the bundled one.
+    #
+    # The missing-source case is the only one whose output actually depends on
+    # schema_def, so it is the only one that can tell a loaded schema from an
+    # unloaded one. Label/ID errors don't consult it, and sentinels resolve
+    # with or without the exception list. Here the remediation wording is read
+    # from cell_type_ontology_term_id's requirement_level: the bundled schema
+    # marks it non-required, so the warning offers "or delete"; with no schema
+    # loaded the column looks required and the warning drops that option.
+    from hca_schema_validator import check_cosmetic_labels
+    from hca_schema_validator.validator import _load_default_schema_def
+
+    from .fixtures.hca_fixtures import adata
+
+    modified = adata.copy()
+    modified.obs["cell_type"] = "some label"
+    del modified.obs["cell_type_ontology_term_id"]
+
+    assert check_cosmetic_labels(modified) == check_cosmetic_labels(
+        modified, _load_default_schema_def()
+    )
+
+    warnings, errors = check_cosmetic_labels(modified)
+    assert errors == []
+    assert len(warnings) == 1
+    assert "or delete obs['cell_type']" in warnings[0], warnings
+
+
 def test_cosmetic_check_fires_with_ignore_labels_false():
     from .fixtures.hca_fixtures import adata
 
