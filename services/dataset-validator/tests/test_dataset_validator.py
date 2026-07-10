@@ -449,9 +449,15 @@ def test_read_shape_var_fallback_is_robust(tmp_path):
 
 
 def test_matrix_storage_excluded_from_sns_message():
-    """matrix_storage is kept in the full claim-check JSON but omitted from the
-    inline SNS payload, so a large matrix_storage can't push SNS over the limit."""
-    from dataset_validator.main import ValidationMessage, MAX_SNS_MESSAGE_LENGTH
+    """matrix_storage is kept in the full claim-check JSON but never reaches SNS.
+
+    Formerly (#447) this was enforced by a `_to_sns_json` serializer that
+    stripped the key, because a large matrix_storage could push the inline SNS
+    body over the limit. The body is now pointer-only (#408), so the guarantee
+    holds by construction: matrix_storage is excluded the same way tool_reports
+    and metadata_summary are — by not being a pointer field at all.
+    """
+    from dataset_validator.main import ValidationMessage
 
     # A pathologically large matrix_storage (thousands of layers) with empty
     # tool reports — the case that previously slipped past the length limiter.
@@ -472,42 +478,13 @@ def test_matrix_storage_excluded_from_sns_message():
     # Full claim-check payload retains matrix_storage...
     full = json.loads(msg.to_json())
     assert len(full["matrix_storage"]["layers"]) == 5000
-    assert len(msg.to_json()) > MAX_SNS_MESSAGE_LENGTH  # would be oversized inline
 
-    # ...but the inline SNS payload omits the key entirely (shape identical to
-    # the pre-matrix_storage payload) and stays under the limit.
-    sns = msg.to_length_limited_json()
-    assert "matrix_storage" not in json.loads(sns)
-    assert len(sns) < MAX_SNS_MESSAGE_LENGTH
-
-
-def test_sns_omits_matrix_storage_on_truncation_path():
-    """Even when tool-report lists force the binary-search truncation path, the
-    final SNS payload omits matrix_storage and stays under the limit."""
-    from dataset_validator.main import (
-        ValidationMessage, ValidationToolReport, MAX_SNS_MESSAGE_LENGTH,
-    )
-
-    # Huge error list → forces truncation through to the binary-search return.
-    huge_errors = [f"ERROR {i}: " + "x" * 60 for i in range(10000)]
-    reports = {
-        "hcaSchema": ValidationToolReport(
-            valid=False, errors=huge_errors, warnings=[],
-            started_at="2024-01-01T00:00:00Z", finished_at="2024-01-01T00:00:01Z",
-        ),
+    # ...while the SNS body carries the six pointer fields and nothing else,
+    # however large matrix_storage grows.
+    sns = json.loads(msg.to_pointer().to_json())
+    assert set(sns) == {
+        "file_id", "status", "timestamp", "bucket", "key", "batch_job_id"
     }
-    msg = ValidationMessage(
-        file_id="f", status="failure", timestamp="2024-01-01T00:00:00Z",
-        bucket="b", key="k", batch_job_id="j",
-        tool_reports=reports,
-        matrix_storage={"X": {"format": "csr_matrix"}, "raw_X": None, "layers": None},
-    )
-    assert len(msg.to_json()) > MAX_SNS_MESSAGE_LENGTH  # forces truncation
-
-    sns = msg.to_length_limited_json()
-    parsed = json.loads(sns)
-    assert "matrix_storage" not in parsed          # omitted on the truncation path too
-    assert len(sns) < MAX_SNS_MESSAGE_LENGTH        # actually under the measured limit
 
 
 @pytest.mark.parametrize("test_case", [
@@ -714,11 +691,19 @@ def test_publish_validation_result_scenarios(caplog, mock_aws, test_case):
     for expected_log in test_case["expected_logs"]:
         assert expected_log in caplog.text
     
-    # For success case, verify message serialization
+    # For success case, verify the SNS body is the pointer-only payload
+    # — file_id / status / timestamp / bucket / key / batch_job_id and nothing
+    # else. The full ValidationMessage lives in the S3 claim check.
     if test_case["name"] == "success":
-        message_json = message.to_json()
-        parsed_message = json.loads(message_json)
-        assert parsed_message == test_case["message_data"]
+        published = _get_last_sns_message(_get_sns_backend(), topic_arn)
+        assert published == {
+            "file_id": test_case["message_data"]["file_id"],
+            "status": test_case["message_data"]["status"],
+            "timestamp": test_case["message_data"]["timestamp"],
+            "bucket": test_case["message_data"]["bucket"],
+            "key": test_case["message_data"]["key"],
+            "batch_job_id": test_case["message_data"]["batch_job_id"],
+        }
 
 
 def _build_message(**overrides) -> "object":
@@ -784,14 +769,24 @@ def test_write_validation_results_to_s3_failure(caplog, mock_aws):
 
 
 def test_write_validation_results_to_s3_writes_full_untruncated_json(mock_aws):
-    """The body written to S3 is the full to_json() output, not the SNS-truncated form."""
+    """The body written to S3 is the full to_json() output, however large.
+
+    Nothing truncates on this path. The binding size constraint is the tracker's,
+    not ours: it caps the claim check at 5 MB and rejects an oversized payload
+    visibly as `results_not_loaded` (hca-atlas-tracker#1265) rather than silently
+    ingesting a lossy one. Our own ceiling is `put_object`'s 5 GB single-request
+    limit — three orders of magnitude above that cap, and five above the ~100 KB
+    a payload actually runs to since #400/#402.
+    """
     from dataset_validator.main import (
         write_validation_results_to_s3,
         ValidationToolReport,
-        MAX_SNS_MESSAGE_LENGTH,
     )
 
-    # Build a message whose SNS-bound JSON would be truncated.
+    # Comfortably larger than the 250 KB the old SNS body was capped at, so the
+    # test shows the claim check is not bounded by that historical limit.
+    OLD_SNS_CAP = 250_000
+
     huge_errors = [f"error-{i}" for i in range(20000)]
     tool_reports = {
         "cap": ValidationToolReport(
@@ -815,12 +810,10 @@ def test_write_validation_results_to_s3_writes_full_untruncated_json(mock_aws):
         file_id='file-3', batch_job_id='job-3', tool_reports=tool_reports
     )
 
-    # Sanity: this message must actually trigger SNS truncation, otherwise
-    # the test wouldn't be meaningfully exercising the claim-check use case.
+    # Sanity: the message must actually exceed the old SNS cap, otherwise the
+    # test wouldn't be meaningfully exercising the claim-check use case.
     full_json = message.to_json()
-    truncated_json = message.to_length_limited_json()
-    assert len(full_json) > MAX_SNS_MESSAGE_LENGTH
-    assert truncated_json != full_json
+    assert len(full_json) > OLD_SNS_CAP
 
     assert write_validation_results_to_s3(
         message, mock_aws['bucket_name'], 'file-3', 'job-3'
@@ -1227,22 +1220,14 @@ def test_end_to_end_validation_scenarios(mock_read_inputs, mock_matrix_storage, 
     for expected_log in test_case["expected_logs"]:
         assert expected_log in caplog.text
 
-    # Verify SNS message content
-    _validate_sns_message(mock_aws, caplog, test_case["expected_sns_message"])
-
-    # Verify the S3 claim-check object was written for this run, regardless of
-    # whether the validation itself succeeded or failed — failures still get
-    # recorded so the tracker can read the full result if SNS was truncated.
-    expected_key = (
-        f"validation-metadata/{test_case['file_id']}/{test_case['batch_job_id']}.json"
+    # Verify SNS pointer body + S3 claim-check heavy fields
+    _validate_published_result(
+        mock_aws,
+        caplog,
+        test_case["expected_sns_message"],
+        source_bucket=mock_aws['bucket_name'],
+        source_key=test_case["s3_key"],
     )
-    claim_obj = mock_aws['s3_client'].get_object(
-        Bucket=mock_aws['validation_results_bucket_name'], Key=expected_key
-    )
-    claim_body = json.loads(claim_obj['Body'].read().decode('utf-8'))
-    assert claim_body['file_id'] == test_case['expected_sns_message']['file_id']
-    assert claim_body['batch_job_id'] == test_case['expected_sns_message']['batch_job_id']
-    assert claim_body['status'] == test_case['expected_sns_message']['status']
     assert "S3 claim check write succeeded" in caplog.text
 
 
@@ -1311,50 +1296,80 @@ def _get_last_sns_message(sns_backend, topic_arn):
     return json.loads(message_content)
 
 
-def _validate_sns_message(mock_aws, caplog, expected_message):
-    """Helper function to validate SNS message content using moto's internal API."""
-    import json
+def _get_sns_backend():
+    """Return moto's in-memory SNS backend for us-east-1."""
     from moto.core import DEFAULT_ACCOUNT_ID
     from moto.sns import sns_backends
-    
-    # Get the SNS backend and retrieve sent notifications
-    sns_backend = sns_backends[DEFAULT_ACCOUNT_ID]["us-east-1"]
+    return sns_backends[DEFAULT_ACCOUNT_ID]["us-east-1"]
+
+
+def _validate_published_result(mock_aws, caplog, expected_message, source_bucket, source_key):
+    """Validate the published validation result.
+
+    The SNS body is pointer-only (file_id / status / timestamp / bucket
+    / key / batch_job_id) and the heavy fields (integrity_status,
+    batch_job_name, metadata_summary, tool_reports, error_message) live in
+    the S3 claim check. This helper enforces that split: pointer fields are
+    checked on SNS, everything else on the claim-check object.
+
+    source_bucket / source_key identify the file that was validated; they
+    appear on both the SNS pointer and the claim-check body and must match.
+    """
+
     topic_arn = mock_aws['topic_arn']
-    
+
     # Verify at least one message was published
     assert "Successfully published SNS message" in caplog.text
-    
+
     # Get and parse the last published message
-    message = _get_last_sns_message(sns_backend, topic_arn)
-    
-    # Validate key fields that use constants - these should fail if constants change
-    assert message["status"] == expected_message["status"], (
-        f"Expected status '{expected_message['status']}', got '{message['status']}'"
+    sns_body = _get_last_sns_message(_get_sns_backend(), topic_arn)
+
+    # SNS body is pointer-only — assert the exact set of keys plus their values
+    # for fields the test pins. timestamp isn't pinned by the test cases but
+    # must be present (it's a required pointer field).
+    assert set(sns_body.keys()) == {
+        "file_id", "status", "timestamp", "bucket", "key", "batch_job_id"
+    }, f"SNS body should be pointer-only, got keys: {sorted(sns_body.keys())}"
+    assert sns_body["status"] == expected_message["status"]
+    assert sns_body["file_id"] == expected_message["file_id"]
+    assert sns_body["batch_job_id"] == expected_message["batch_job_id"]
+    assert sns_body["bucket"] == source_bucket
+    assert sns_body["key"] == source_key
+
+    # Heavy fields are asserted on the S3 claim check, which is the
+    # authoritative payload.
+    expected_key = (
+        f"validation-metadata/{expected_message['file_id']}"
+        f"/{expected_message['batch_job_id']}.json"
     )
-    assert message["integrity_status"] == expected_message["integrity_status"], (
+    claim_obj = mock_aws['s3_client'].get_object(
+        Bucket=mock_aws['validation_results_bucket_name'], Key=expected_key
+    )
+    claim_body = json.loads(claim_obj['Body'].read().decode('utf-8'))
+
+    assert claim_body["status"] == expected_message["status"]
+    assert claim_body["bucket"] == source_bucket
+    assert claim_body["key"] == source_key
+    assert claim_body["integrity_status"] == expected_message["integrity_status"], (
         f"Expected integrity_status '{expected_message['integrity_status']}', "
-        f"got '{message['integrity_status']}'"
+        f"got '{claim_body['integrity_status']}'"
     )
-    assert message["file_id"] == expected_message["file_id"]
-    assert message["batch_job_id"] == expected_message["batch_job_id"]
-    assert message["batch_job_name"] == expected_message["batch_job_name"]
+    assert claim_body["file_id"] == expected_message["file_id"]
+    assert claim_body["batch_job_id"] == expected_message["batch_job_id"]
+    assert claim_body["batch_job_name"] == expected_message["batch_job_name"]
+    assert claim_body["metadata_summary"] == expected_message["metadata_summary"]
 
-    # Verify that metadata was read and returned as expected
-    assert message["metadata_summary"] == expected_message["metadata_summary"]
-
-    # Verify that tool-specific reports are returned as expected
     if expected_message["tool_reports"] is None:
-        assert message["tool_reports"] is None
+        assert claim_body["tool_reports"] is None
     else:
         tool_reports_without_times = {
             tool: {k: v for k, v in report.items() if k not in {"started_at", "finished_at"}}
-            for tool, report in message["tool_reports"].items()
+            for tool, report in claim_body["tool_reports"].items()
         }
         assert tool_reports_without_times == expected_message["tool_reports"]
-    
-    # For success case, verify error_message is None
+
     if expected_message.get("error_message") is not None:
-        assert message.get("error_message") == expected_message["error_message"]
+        assert claim_body.get("error_message") == expected_message["error_message"]
 
 
 def _setup_valid_s3_file(s3_client, bucket_name: str, key: str):
