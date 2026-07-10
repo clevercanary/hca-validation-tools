@@ -369,11 +369,10 @@ def test_check_cosmetic_labels_loads_default_schema_when_omitted():
     modified.obs["cell_type"] = "some label"
     del modified.obs["cell_type_ontology_term_id"]
 
-    assert check_cosmetic_labels(modified) == check_cosmetic_labels(
-        modified, _load_default_schema_def()
-    )
+    defaulted = check_cosmetic_labels(modified)
+    assert defaulted == check_cosmetic_labels(modified, _load_default_schema_def())
 
-    warnings, errors = check_cosmetic_labels(modified)
+    warnings, errors = defaulted
     assert errors == []
     assert len(warnings) == 1
     assert "or delete obs['cell_type']" in warnings[0], warnings
