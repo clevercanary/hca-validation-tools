@@ -341,14 +341,21 @@ def write_validation_results_to_s3(
     """
     Write the full validation message JSON to S3 as a claim check.
 
-    The tracker reads this object when possible to avoid using an inline
-    SNS message that may have been truncated to fit the SNS 256 KiB limit.
-    Failures here are logged but never raise — the SNS publish is the
-    authoritative pipeline step.
+    This object is the authoritative payload. The tracker reads the results
+    from here and nowhere else: since hca-atlas-tracker#1275 it ignores the
+    SNS message body apart from the fields locating this object.
+
+    Failures here are logged but never raise, and the SNS publish still goes
+    ahead. That is deliberate — the tracker records a pointer to a missing
+    object as a `results_not_loaded` validation status carrying the S3 error,
+    whereas suppressing the publish would leave the file in its prior state
+    with no record at all. Note the tracker only ever sees the symptom
+    (`NoSuchKey`); the cause is in this function's log line alone (see #457).
 
     Args:
         message: ValidationMessage to serialize (untruncated)
-        bucket: S3 bucket (reuses the data bucket the input file came from)
+        bucket: Dedicated validation-results bucket (VALIDATION_RESULTS_BUCKET),
+            kept separate from the versioned data bucket holding the input file
         file_id: Tracker file UUID, used in the key
         batch_job_id: AWS Batch job ID, used in the key so each run gets a
             distinct object
