@@ -23,7 +23,14 @@ from ._io import (
     verify_obs_transplant,
 )
 from ._serialize import make_serializable
-from .cap import _OPTIONAL_SUFFIXES, _REQUIRED_SUFFIXES
+from .cap import (
+    CAP_METADATA_KEY,
+    LEGACY_LAYOUT_ERROR,
+    _OPTIONAL_SUFFIXES,
+    _REQUIRED_SUFFIXES,
+    is_legacy_cap_layout,
+    resolve_cap_block,
+)
 from .marker_genes import validate_marker_genes
 from .write import (
     EDIT_LOG_KEY,
@@ -35,32 +42,12 @@ from .write import (
     resolve_latest,
 )
 
-# Cell-annotation-schema uns keys — stay at top level (HCA schema)
-_UNS_SCHEMA_TOPLEVEL = [
-    "cellannotation_schema_version",
-    "cellannotation_metadata",
-]
-
-# CAP provenance keys — collected into uns["provenance"]["cap"]
-_UNS_CAP_PROVENANCE = [
-    "cap_dataset_url",
-    "cap_publication_title",
-    "cap_publication_description",
-    "cap_publication_url",
-    "authors_list",
-    "hierarchy",
-    "description",
-    "publication_timestamp",
-    "publication_version",
-]
-
 # Demographic annotation sets — not real CAP annotations, just renamed CXG columns
 _SKIP_SETS = {"sex", "development_stage", "self_reported_ethnicity"}
 
-# Keys to detect/remove existing CAP data on overwrite
-# Top-level uns keys written by copy_cap, replaced on overwrite.
-# provenance/cap is handled separately via merge logic.
-_OVERWRITE_UNS_KEYS = set(_UNS_SCHEMA_TOPLEVEL)
+# The entire CAP block is written into uns['cap_metadata'] (issue #452);
+# replaced wholesale on overwrite.
+_OVERWRITE_UNS_KEYS = {CAP_METADATA_KEY}
 
 # Maximum percent (0–100) of cells on either side that may be absent from the
 # other. Applied to both `missing_from_hca.pct` and `missing_from_cap.pct`.
@@ -110,9 +97,9 @@ def _check_duplicate_ids(index: list[str], label: str) -> str | None:
     return f"{label} have duplicate IDs (first 5): {dupes}"
 
 
-def _get_annotation_sets(source_uns: Mapping[str, Any]) -> list[str]:
-    """Get annotation sets defined in cellannotation_metadata."""
-    meta = source_uns.get("cellannotation_metadata", {})
+def _get_annotation_sets(cap_block: Mapping[str, Any]) -> list[str]:
+    """Get annotation sets defined in the CAP block's cellannotation_metadata."""
+    meta = cap_block.get("cellannotation_metadata", {})
     if isinstance(meta, dict):
         return [s for s in meta.keys() if s not in _SKIP_SETS]
     return []
@@ -170,18 +157,30 @@ def copy_cap_annotations(
         # We use anndata here because uns contains nested dicts with
         # anndata-specific encoding that's complex to parse via raw h5py.
         with open_h5ad(source_path) as source:
-            if "cellannotation_metadata" not in source.uns:
-                return {"error": "Source has no cellannotation_metadata in uns"}
-            if "cellannotation_schema_version" not in source.uns:
-                return {"error": "Source has no cellannotation_schema_version in uns"}
+            # Only the nested uns['cap_metadata'] layout is accepted; the
+            # deprecated top-level layout is refused, not normalized. Refuse it
+            # first — including a mixed file that also carries a nested block —
+            # so deprecated keys never slip through. The full block travels into
+            # the target unchanged.
+            if is_legacy_cap_layout(source.uns):
+                return {"error": LEGACY_LAYOUT_ERROR}
+            cap_block = resolve_cap_block(source.uns)
+            if cap_block is None:
+                if CAP_METADATA_KEY in source.uns:
+                    return {"error": "Source uns['cap_metadata'] is malformed (not a dict/group)."}
+                return {"error": "Source has no CAP metadata: uns['cap_metadata'] is missing."}
+            if "cellannotation_metadata" not in cap_block:
+                return {"error": "Source has no cellannotation_metadata in uns['cap_metadata']"}
+            if "cellannotation_schema_version" not in cap_block:
+                return {"error": "Source has no cellannotation_schema_version in uns['cap_metadata']"}
 
-            annotation_sets = _get_annotation_sets(source.uns)
+            annotation_sets = _get_annotation_sets(cap_block)
             if not annotation_sets:
                 return {"error": "Source has no annotation sets in cellannotation_metadata"}
 
-            cap_schema_version = str(source.uns["cellannotation_schema_version"])
-            all_uns_keys = _UNS_SCHEMA_TOPLEVEL + _UNS_CAP_PROVENANCE
-            source_uns = {k: make_serializable(source.uns[k]) for k in all_uns_keys if k in source.uns}
+            cap_schema_version = str(cap_block["cellannotation_schema_version"])
+            # resolve_cap_block already returns a fresh dict, so no extra copy.
+            source_cap_block = make_serializable(cap_block)
 
         # Read source obs via h5py (avoids slow backed-mode column access)
         with h5py.File(source_path, "r") as f:
@@ -238,12 +237,6 @@ def copy_cap_annotations(
 
             uns = f.get("uns")
             target_uns_keys = set(uns.keys()) if uns else set()
-            has_provenance_cap = (
-                uns is not None
-                and "provenance" in uns
-                and isinstance(uns["provenance"], h5py.Group)
-                and "cap" in uns["provenance"]
-            )
             raw_log = read_edit_log_h5py(f)
 
         target_index_set = set(target_index)
@@ -252,12 +245,24 @@ def copy_cap_annotations(
             return {"error": dupe_err}
         target_var_set = set(target_var_list)
 
+        # Refuse a target carrying deprecated top-level CAP (from older tooling)
+        # rather than silently overwriting it into a mixed-layout file. Symmetric
+        # with the legacy-source refusal above (issue #452).
+        if is_legacy_cap_layout(target_uns_keys):
+            return {
+                "error": (
+                    "Target uses the deprecated top-level CAP layout "
+                    "(uns['cellannotation_metadata'] / "
+                    "uns['cellannotation_schema_version']). Only the nested "
+                    "uns['cap_metadata'] layout is accepted; re-curate the target "
+                    "into the nested layout before copying CAP into it."
+                )
+            }
+
         # Detect existing CAP obs columns: any column with "--" separator
         existing_cap_cols = [c for c in target_obs_columns if "--" in c]
 
         existing_cap_uns = [k for k in _OVERWRITE_UNS_KEYS if k in target_uns_keys]
-        if has_provenance_cap:
-            existing_cap_uns.append("provenance/cap")
 
         if (existing_cap_cols or existing_cap_uns) and not overwrite:
             return {
@@ -295,17 +300,11 @@ def copy_cap_annotations(
         aligned_obs = source_obs_subset.reindex(target_index)
         del source_obs_subset
 
-        temp_uns = {}
-        uns_keys_added = []
-        for key in _UNS_SCHEMA_TOPLEVEL:
-            if key in source_uns:
-                temp_uns[key] = source_uns[key]
-                uns_keys_added.append(key)
-
-        cap_provenance = {k: source_uns[k] for k in _UNS_CAP_PROVENANCE if k in source_uns}
-        if cap_provenance:
-            temp_uns["provenance"] = {"cap": cap_provenance}
-            uns_keys_added.append("provenance")
+        # The entire CAP block lands in uns['cap_metadata'] (schema keys +
+        # publication provenance together). The edit log stays in
+        # uns['provenance']['edit_history'].
+        temp_uns: dict[str, Any] = {CAP_METADATA_KEY: source_cap_block}
+        uns_keys_added = [CAP_METADATA_KEY]
 
         source_basename = os.path.basename(source_path)
         source_sha256 = _compute_sha256(source_path)
@@ -365,8 +364,6 @@ def copy_cap_annotations(
                     for key in list(f_out["uns"].keys()):
                         if key in _OVERWRITE_UNS_KEYS:
                             del f_out["uns"][key]
-                    if "provenance" in f_out["uns"] and "cap" in f_out["uns"]["provenance"]:
-                        del f_out["uns"]["provenance"]["cap"]
 
                 # Transplant new obs columns from temp
                 for col in obs_cols_to_copy:
@@ -375,13 +372,7 @@ def copy_cap_annotations(
                 update_column_order(f_out, obs_cols_to_copy, deleted_cols)
 
                 for key in uns_keys_added:
-                    if key == "provenance":
-                        # Merge into existing provenance group, don't replace it
-                        prov_out = ensure_provenance_group(f_out)
-                        if "cap" in prov_out:
-                            del prov_out["cap"]
-                        f_temp.copy("uns/provenance/cap", prov_out, "cap")
-                    elif key in f_temp["uns"]:
+                    if key in f_temp["uns"]:
                         if key in f_out["uns"]:
                             del f_out["uns"][key]
                         f_temp.copy(f"uns/{key}", f_out["uns"])
@@ -392,7 +383,6 @@ def copy_cap_annotations(
                     del prov_out[EDIT_LOG_KEY]
                 if "provenance" in f_temp["uns"] and EDIT_LOG_KEY in f_temp["uns"]["provenance"]:
                     f_temp.copy(f"uns/provenance/{EDIT_LOG_KEY}", prov_out, EDIT_LOG_KEY)
-                # Remove legacy key if present
 
             # --- Step 5: Verify transplant — full column comparison ---
             verify_err = verify_obs_transplant(temp_path, output_path, obs_cols_to_copy)

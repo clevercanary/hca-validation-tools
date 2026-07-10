@@ -20,12 +20,20 @@ pydantic = "^2.11.4"
 pydantic-core = "^2.33.2"
 google-api-python-client = "^2.171.0"
 urllib3 = "^2.5.0"
+# Optional: only needed by the `h5ad_storage` module (HDF5 introspection).
+# Kept out of the default install so lightweight consumers (e.g. the entry-sheet
+# Lambda) don't pull h5py. Enable via the `h5ad` extra.
+h5py = {version = "^3.8", optional = true}
+
+[tool.poetry.extras]
+h5ad = ["h5py"]
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.5"
 pytest-mock = "^3.14.0"
 python-dotenv = "^1.1.0"
 requests = "^2.32.3"
+h5py = "^3.8"
 
 [tool.pytest.ini_options]
 markers = [

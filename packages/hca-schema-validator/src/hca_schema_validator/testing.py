@@ -91,7 +91,8 @@ def create_cap_annotated_h5ad(
     """Create a small h5ad with a valid CAP annotation set.
 
     Builds on :func:`create_labelable_h5ad` and overlays the CAP structures
-    (``obs`` columns with the ``<set>--<col>`` prefix + ``uns`` metadata) that
+    (``obs`` columns with the ``<set>--<col>`` prefix + nested
+    ``uns['cap_metadata']`` metadata) that
     :class:`HCACellAnnotationValidator` expects. Returns ``path``.
 
     Tests can mutate the written file to exercise specific failure modes.
@@ -103,9 +104,9 @@ def create_cap_annotated_h5ad(
     for suffix in _CAP_COLUMN_SUFFIXES:
         adata.obs[f"{set_name}--{suffix}"] = pd.Categorical(["value"] * n_obs)
 
-    adata.uns["cellannotation_schema_version"] = schema_version
-    adata.uns["cellannotation_metadata"] = {
-        set_name: {"title": f"{set_name} title"}
+    adata.uns["cap_metadata"] = {
+        "cellannotation_schema_version": schema_version,
+        "cellannotation_metadata": {set_name: {"title": f"{set_name} title"}},
     }
 
     adata.write_h5ad(path)
