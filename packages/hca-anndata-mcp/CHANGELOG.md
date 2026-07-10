@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.7.0](https://github.com/clevercanary/hca-validation-tools/compare/hca-anndata-mcp-v0.6.0...hca-anndata-mcp-v0.7.0) (2026-07-10)
+
+
+### ⚠ BREAKING CHANGES
+
+* **hca-anndata-mcp:** delete check_cosmetic_labels_h5ad tool ([#455](https://github.com/clevercanary/hca-validation-tools/issues/455))
+* **hca-schema-validator:** warn on cosmetic labels only when unverifiable ([#454](https://github.com/clevercanary/hca-validation-tools/issues/454))
+* nest CAP metadata under uns['cap_metadata'] ([#453](https://github.com/clevercanary/hca-validation-tools/issues/453))
+
+### Features
+
+* **hca-anndata-mcp:** delete check_cosmetic_labels_h5ad tool ([#455](https://github.com/clevercanary/hca-validation-tools/issues/455)) ([6061c9f](https://github.com/clevercanary/hca-validation-tools/commit/6061c9fe9fe06a5144ed6dc02fae87f7ee48353f))
+* **hca-schema-validator:** warn on cosmetic labels only when unverifiable ([#454](https://github.com/clevercanary/hca-validation-tools/issues/454)) ([d1518b1](https://github.com/clevercanary/hca-validation-tools/commit/d1518b1959a98750b4298cf383c259720f42888d))
+* nest CAP metadata under uns['cap_metadata'] ([#453](https://github.com/clevercanary/hca-validation-tools/issues/453)) ([99c6ba0](https://github.com/clevercanary/hca-validation-tools/commit/99c6ba01efc18ca852e8996663a746b0d12e67a5))
+* populate_labels — per-column fill/verify for HCA-tracker-imported files ([#421](https://github.com/clevercanary/hca-validation-tools/issues/421)) ([#439](https://github.com/clevercanary/hca-validation-tools/issues/439)) ([673e690](https://github.com/clevercanary/hca-validation-tools/commit/673e690a6320d31ce8493657cf06770aa1a4624e))
+* **skills:** wire HCACellAnnotationValidator into curate-h5ad + evaluate-h5ad ([#423](https://github.com/clevercanary/hca-validation-tools/issues/423)) ([#429](https://github.com/clevercanary/hca-validation-tools/issues/429)) ([8f14772](https://github.com/clevercanary/hca-validation-tools/commit/8f147720e888af493edcad1deb894be0c0874c43))
+* **strip:** strip_forbidden_obs_columns — SRE strip for HCA-layout files ([#434](https://github.com/clevercanary/hca-validation-tools/issues/434)) ([#435](https://github.com/clevercanary/hca-validation-tools/issues/435)) ([5e7925e](https://github.com/clevercanary/hca-validation-tools/commit/5e7925ec38da4eff43744a42ac04106512e1e267))
+
 ## [0.6.0](https://github.com/clevercanary/hca-validation-tools/compare/hca-anndata-mcp-v0.5.1...hca-anndata-mcp-v0.6.0) (2026-05-25)
 
 

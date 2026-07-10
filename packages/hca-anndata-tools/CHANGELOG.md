@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.6.0](https://github.com/clevercanary/hca-validation-tools/compare/hca-anndata-tools-v0.5.1...hca-anndata-tools-v0.6.0) (2026-07-10)
+
+
+### ⚠ BREAKING CHANGES
+
+* nest CAP metadata under uns['cap_metadata'] ([#453](https://github.com/clevercanary/hca-validation-tools/issues/453))
+
+### Features
+
+* nest CAP metadata under uns['cap_metadata'] ([#453](https://github.com/clevercanary/hca-validation-tools/issues/453)) ([99c6ba0](https://github.com/clevercanary/hca-validation-tools/commit/99c6ba01efc18ca852e8996663a746b0d12e67a5))
+* populate_labels — per-column fill/verify for HCA-tracker-imported files ([#421](https://github.com/clevercanary/hca-validation-tools/issues/421)) ([#439](https://github.com/clevercanary/hca-validation-tools/issues/439)) ([673e690](https://github.com/clevercanary/hca-validation-tools/commit/673e690a6320d31ce8493657cf06770aa1a4624e))
+* **strip:** strip_forbidden_obs_columns — SRE strip for HCA-layout files ([#434](https://github.com/clevercanary/hca-validation-tools/issues/434)) ([#435](https://github.com/clevercanary/hca-validation-tools/issues/435)) ([5e7925e](https://github.com/clevercanary/hca-validation-tools/commit/5e7925ec38da4eff43744a42ac04106512e1e267))
+
 ## [0.5.1](https://github.com/clevercanary/hca-validation-tools/compare/hca-anndata-tools-v0.5.0...hca-anndata-tools-v0.5.1) (2026-05-25)
 
 
