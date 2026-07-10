@@ -771,10 +771,12 @@ def test_write_validation_results_to_s3_failure(caplog, mock_aws):
 def test_write_validation_results_to_s3_writes_full_untruncated_json(mock_aws):
     """The body written to S3 is the full to_json() output, however large.
 
-    The claim check has no producer-side size limit: S3 objects go to 5 TB, and
-    the tracker enforces its own cap, rejecting an oversized payload visibly as
-    `results_not_loaded` (hca-atlas-tracker#1265) rather than silently ingesting
-    a lossy one. Nothing truncates on this path.
+    Nothing truncates on this path. The binding size constraint is the tracker's,
+    not ours: it caps the claim check at 5 MB and rejects an oversized payload
+    visibly as `results_not_loaded` (hca-atlas-tracker#1265) rather than silently
+    ingesting a lossy one. Our own ceiling is `put_object`'s 5 GB single-request
+    limit — three orders of magnitude above that cap, and five above the ~100 KB
+    a payload actually runs to since #400/#402.
     """
     from dataset_validator.main import (
         write_validation_results_to_s3,
