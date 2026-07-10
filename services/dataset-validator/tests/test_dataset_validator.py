@@ -524,6 +524,51 @@ def test_truncator_retains_matrix_storage():
     assert len(msg.tool_reports["hcaSchema"].errors) == len(huge_errors)
 
 
+@pytest.mark.parametrize("case", [
+    "no_tool_reports",          # early return of the full message
+    "empty_message_lists",      # nothing to truncate
+    "lists_too_small_to_absorb",  # lists collapse to placeholders, still over
+])
+def test_length_limited_json_is_best_effort_not_a_guarantee(case):
+    """max_length is best effort: only tool-report message lists are truncatable.
+
+    matrix_storage is unbounded (one entry per layer) and cannot be truncated,
+    so a message whose untruncatable remainder exceeds the budget comes back
+    over budget. Pinned because the S3 claim-check cap (#408) will build on this
+    method and must not read `max_length` as a hard guarantee.
+    """
+    from dataset_validator.main import ValidationMessage, ValidationToolReport
+
+    def _report(errors):
+        return {"hcaSchema": ValidationToolReport(
+            valid=not errors, errors=errors, warnings=[],
+            started_at="2024-01-01T00:00:00Z", finished_at="2024-01-01T00:00:01Z",
+        )}
+
+    tool_reports = {
+        "no_tool_reports": None,
+        "empty_message_lists": _report([]),
+        "lists_too_small_to_absorb": _report(["e" * 100] * 50),
+    }[case]
+
+    budget = 5_000
+    big_layers = {
+        f"layer_{i}": {"format": "csr_matrix", "on_disk_bytes": 0}
+        for i in range(2000)
+    }
+    msg = ValidationMessage(
+        file_id="f", status="success", timestamp="2024-01-01T00:00:00Z",
+        bucket="b", key="k", batch_job_id="j",
+        tool_reports=tool_reports,
+        matrix_storage={"X": None, "raw_X": None, "layers": big_layers},
+    )
+
+    result = msg.to_length_limited_json(budget)
+    assert len(result) > budget, f"{case}: expected an over-budget result"
+    # Over budget, but still valid JSON retaining the untruncatable payload.
+    assert len(json.loads(result)["matrix_storage"]["layers"]) == 2000
+
+
 @pytest.mark.parametrize("test_case", [
     {
         "name": "success",

@@ -180,14 +180,24 @@ class ValidationMessage(ValidationMessagePointer):
         return len(json.dumps(self._get_report_message_list(report_key, message_type)))
 
     def to_length_limited_json(self, max_length: int) -> str:
-        """Convert to a JSON string with message lists truncated to ensure that the JSON is below a given length.
+        """Convert to a JSON string, truncating tool-report message lists toward
+        ``max_length``.
 
-        Serializes the whole message, `matrix_storage` (#447) included. The
-        SNS-specific `_to_sns_json` that used to strip that field existed only
-        to keep it out of the inline SNS body; the body is now pointer-only
-        (see ValidationMessagePointer), so nothing needs stripping. This
-        truncator is retained for the S3 claim check, which must carry
-        `matrix_storage` in full.
+        ``max_length`` is best effort, not a guarantee. Only the tool-report
+        error/warning lists are truncatable; every other field is emitted whole.
+        The result exceeds ``max_length`` whenever those lists cannot absorb the
+        overage — when ``tool_reports`` is None, when its lists are already
+        empty, or when the untruncatable remainder is itself over budget. A
+        caller that must respect a hard cap has to check ``len()`` of the
+        result.
+
+        `matrix_storage` (#447) is the field most likely to cause that: it is
+        unbounded (one entry per layer) and cannot be truncated. It is
+        nonetheless serialized here. The `_to_sns_json` that used to strip it
+        existed solely to keep it out of the inline SNS body; that body is now
+        pointer-only (see ValidationMessagePointer), and this truncator is
+        retained for the S3 claim check, which must carry `matrix_storage` in
+        full.
         """
 
         # If there are no reports to truncate or the full message is short enough, use the full message
