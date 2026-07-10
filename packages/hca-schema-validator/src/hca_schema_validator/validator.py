@@ -375,14 +375,21 @@ class HCAValidator(Validator):
 def check_cosmetic_labels(adata, schema_def=None):
     """Run the producer-cosmetic-column check and return (warnings, errors).
 
-    The HCA labeler populates the eight controlled obs label columns from their
-    `*_ontology_term_id` counterparts. Producers shouldn't ship the cosmetic
-    columns at all; if they do, every populated row needs a term ID and the
-    cosmetic value must agree with the canonical ontology label.
+    The controlled obs label columns are derived from their
+    `*_ontology_term_id` counterparts. Carrying them is fine as long as they
+    can be checked and they agree with canonical: `populate_labels` writes
+    them deliberately, and CellxGENE exports arrive with them. What matters is
+    that every populated row has a term ID and that the label matches the
+    canonical ontology label for it.
 
     Per-column rules (each fires independently and aggregates):
 
-    * column present → warning ("delete the column")
+    * column present with at least one label, source absent → warning (nothing
+      to check the labels against). An all-NaN column has no labels to check,
+      so it stays silent. The remediation depends on the source column's
+      `requirement_level`: deleting the cosmetic column is only offered when the
+      source is not required (`optional` or `strongly_recommended`), since a
+      required source must be added regardless.
     * column present + source present → row-level checks:
         - cosmetic value, source NaN → error ("add term ID, delete the label,
           or delete the column")
@@ -399,7 +406,7 @@ def check_cosmetic_labels(adata, schema_def=None):
 
     Returns:
         ``(warnings, errors)`` — two lists of strings, ready for the caller to
-        append to its own report. Issue #377.
+        append to its own report. Issues #377, #443.
     """
     if schema_def is None:
         schema_def = _load_default_schema_def()
@@ -416,17 +423,29 @@ def check_cosmetic_labels(adata, schema_def=None):
         if cosmetic_col not in obs.columns:
             continue
         source_col = f"{cosmetic_col}_ontology_term_id"
-        warnings.append(
-            f"obs['{cosmetic_col}'] should not be populated by producers — "
-            f"the HCA labeler populates this column from {source_col}. "
-            f"Delete the column."
-        )
         if source_col not in obs.columns:
+            if obs[cosmetic_col].notna().any():
+                warnings.append(
+                    f"obs['{cosmetic_col}'] is populated but obs['{source_col}'] is absent, "
+                    f"so its labels can't be checked against the ontology. "
+                    f"{_remediation_for_missing_source(obs_components, cosmetic_col, source_col)}"
+                )
             continue
         exceptions = _collect_curie_exceptions(obs_components.get(source_col, {}))
         errors.extend(_compare_cosmetic_to_term_ids(obs, cosmetic_col, source_col, exceptions))
 
     return warnings, errors
+
+
+def _remediation_for_missing_source(obs_components, cosmetic_col, source_col):
+    # Deleting the cosmetic column only silences this warning. When the source
+    # column is required by the schema, its absence is an error in its own
+    # right, so deleting is not a remediation — adding the source column is the
+    # only one. Columns carry no `requirement_level` when they are required.
+    level = str(obs_components.get(source_col, {}).get("requirement_level", "")).lower()
+    if level in ("optional", "strongly_recommended"):
+        return f"Either add obs['{source_col}'], or delete obs['{cosmetic_col}']."
+    return f"Add obs['{source_col}'] — the schema requires it."
 
 
 def _collect_curie_exceptions(source_def):
