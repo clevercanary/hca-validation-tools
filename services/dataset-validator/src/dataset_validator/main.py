@@ -4,7 +4,6 @@ Dataset Validator - AWS Batch Job
 Main entry point for dataset validation processing.
 """
 
-import copy
 import functools
 import gc
 import hashlib
@@ -32,21 +31,10 @@ from hca_validation.h5ad_storage import get_matrix_storage
 from hca_validation.schema_utils import load_schemaview
 
 
-# S3 prefix under which full validation results are written as a "claim check"
-# the tracker can read from to avoid using a truncated SNS message.
+# S3 prefix under which full validation results are written as a "claim check".
+# The tracker reads the full results from this object; the SNS body carries only
+# a pointer to it.
 S3_VALIDATION_METADATA_PREFIX = "validation-metadata"
-# Prefix for the truncation placeholder string. The full marker also embeds
-# the retained-vs-total counts so curators see how many messages were dropped
-# even when binary-search collapses to zero retained — see _truncated_marker.
-TRUNCATED_MESSAGES_PREFIX = "Messages truncated"
-# When truncating to fit SNS limits, error lists from higher-priority tools are preserved longer.
-# Unknown tools default to priority 0 (truncated first among errors).
-TOOL_ERROR_PRIORITY = {"cellxgene": 0, "cap": 1, "hcaSchema": 2, "hcaCellAnnotation": 3}
-
-
-def _truncated_marker(retained: int, total: int) -> str:
-    """Format the truncation placeholder so the curator sees the original count."""
-    return f"{TRUNCATED_MESSAGES_PREFIX} ({retained} of {total} shown)"
 
 
 # Environment variable constants
@@ -165,105 +153,6 @@ class ValidationMessage(ValidationMessagePointer):
         return ValidationMessagePointer(
             **{f.name: getattr(self, f.name) for f in fields(ValidationMessagePointer)}
         )
-
-    def _get_report_message_list(self, report_key: str, message_type: str) -> List[str]:
-        if self.tool_reports is None:
-            raise RuntimeError("tool_reports not set")
-        return getattr(self.tool_reports[report_key], message_type)
-
-    def _set_report_message_list(self, report_key: str, message_type: str, value: List[str]):
-        if self.tool_reports is None:
-            raise RuntimeError("tool_reports not set")
-        setattr(self.tool_reports[report_key], message_type, value)
-
-    def _json_length_of_report_list(self, report_key: str, message_type: str) -> int:
-        return len(json.dumps(self._get_report_message_list(report_key, message_type)))
-
-    def to_length_limited_json(self, max_length: int) -> str:
-        """Convert to a JSON string, truncating tool-report message lists toward
-        ``max_length``.
-
-        ``max_length`` is best effort, not a guarantee. Only the tool-report
-        error/warning lists are truncatable; every other field is emitted whole.
-        The result exceeds ``max_length`` whenever those lists cannot absorb the
-        overage — when ``tool_reports`` is None, when its lists are already
-        empty, or when the untruncatable remainder is itself over budget. A
-        caller that must respect a hard cap has to check ``len()`` of the
-        result.
-
-        `matrix_storage` (#447) is the field most likely to cause that: it is
-        unbounded (one entry per layer) and cannot be truncated. It is
-        nonetheless serialized here. The `_to_sns_json` that used to strip it
-        existed solely to keep it out of the inline SNS body; that body is now
-        pointer-only (see ValidationMessagePointer), and this truncator is
-        retained for the S3 claim check, which must carry `matrix_storage` in
-        full.
-        """
-
-        # If there are no reports to truncate or the full message is short enough, use the full message
-        full_message = self.to_json()
-        if self.tool_reports is None or len(full_message) < max_length:
-            return full_message
-
-        # Create a list of (tool_key, message_type) pairs to consider for truncation.
-        # Empty lists are excluded so they keep their `[]` serialization — stamping
-        # them with a placeholder would inflate warningCount/errorCount and trip
-        # false PartiallyValidIcon indicators in the tracker UI (#382).
-        list_paths = [
-            (key, message_type)
-            for key in self.tool_reports.keys()
-            for message_type in ["errors", "warnings"]
-            if self._get_report_message_list(key, message_type)
-        ]
-        # Truncation priority: warnings first, then cellxgene errors, then cap errors,
-        # then hcaSchema errors, then hcaCellAnnotation errors (preserved longest)
-        list_paths.sort(key=lambda p: (
-            0 if p[1] == "warnings" else 1 + TOOL_ERROR_PRIORITY.get(p[0], 0),
-            -self._json_length_of_report_list(*p),
-        ))
-
-        # Truncate lists in a copy. Only tool_reports is mutated below, so deep-copy
-        # that alone: matrix_storage (#447) can be large, must survive into the
-        # output, and never needs copying.
-        truncated_message = copy.copy(self)
-        truncated_message.tool_reports = copy.deepcopy(self.tool_reports)
-
-        # Truncate entire lists until the message JSON is small enough, and note which list was the last to be truncated
-        threshold_path = None
-        for p in list_paths:
-            original_total = len(self._get_report_message_list(*p))
-            truncated_message._set_report_message_list(*p, [_truncated_marker(0, original_total)])
-            if len(truncated_message.to_json()) < max_length:
-                threshold_path = p
-                break
-
-        # If all lists have been truncated and somehow none have made the message small enough,
-        # give up and try using it anyway
-        if threshold_path is None:
-            return truncated_message.to_json()
-
-        # Get the original value of the list that was the threshold for making the message small enough
-        message_list = self._get_report_message_list(*threshold_path)
-
-        # Do a binary search to determine how much of the list can be retained,
-        # ensuring that the truncated message remains at a valid length
-        max_valid_length = 0
-        min_invalid_length = len(message_list)
-        while min_invalid_length - max_valid_length > 1:
-            truncated_list_before = truncated_message._get_report_message_list(*threshold_path)
-            middle_length = int((max_valid_length + min_invalid_length)/2)
-            truncated_message._set_report_message_list(
-                *threshold_path,
-                [*message_list[:middle_length], _truncated_marker(middle_length, len(message_list))],
-            )
-            if len(truncated_message.to_json()) < max_length:
-                max_valid_length = middle_length
-            else:
-                min_invalid_length = middle_length
-                truncated_message._set_report_message_list(*threshold_path, truncated_list_before)
-
-        # Return the truncated message JSON
-        return truncated_message.to_json()
 
 
 def configure_logging() -> logging.Logger:

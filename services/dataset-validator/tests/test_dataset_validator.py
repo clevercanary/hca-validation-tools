@@ -487,88 +487,6 @@ def test_matrix_storage_excluded_from_sns_message():
     }
 
 
-def test_truncator_retains_matrix_storage():
-    """to_length_limited_json truncates tool-report lists but keeps matrix_storage.
-
-    The truncator no longer feeds SNS; #408 retains it to be retargeted at the
-    S3 claim check, which must carry matrix_storage in full. Guards against a
-    regression to the old `_to_sns_json` behavior of silently dropping the key.
-    """
-    from dataset_validator.main import ValidationMessage, ValidationToolReport
-
-    budget = 250_000
-    # Huge error list → forces truncation through to the binary-search return.
-    huge_errors = [f"ERROR {i}: " + "x" * 60 for i in range(10000)]
-    reports = {
-        "hcaSchema": ValidationToolReport(
-            valid=False, errors=huge_errors, warnings=[],
-            started_at="2024-01-01T00:00:00Z", finished_at="2024-01-01T00:00:01Z",
-        ),
-    }
-    msg = ValidationMessage(
-        file_id="f", status="failure", timestamp="2024-01-01T00:00:00Z",
-        bucket="b", key="k", batch_job_id="j",
-        tool_reports=reports,
-        matrix_storage={"X": {"format": "csr_matrix"}, "raw_X": None, "layers": None},
-    )
-    assert len(msg.to_json()) > budget  # forces truncation
-
-    parsed = json.loads(msg.to_length_limited_json(budget))
-    assert len(msg.to_length_limited_json(budget)) < budget
-    assert parsed["matrix_storage"] == {
-        "X": {"format": "csr_matrix"}, "raw_X": None, "layers": None
-    }
-    assert len(parsed["tool_reports"]["hcaSchema"]["errors"]) < len(huge_errors)
-
-    # Truncating a copy must not mutate the original message.
-    assert len(msg.tool_reports["hcaSchema"].errors) == len(huge_errors)
-
-
-@pytest.mark.parametrize("case", [
-    "no_tool_reports",          # early return of the full message
-    "empty_message_lists",      # nothing to truncate
-    "lists_too_small_to_absorb",  # lists collapse to placeholders, still over
-])
-def test_length_limited_json_is_best_effort_not_a_guarantee(case):
-    """max_length is best effort: only tool-report message lists are truncatable.
-
-    matrix_storage is unbounded (one entry per layer) and cannot be truncated,
-    so a message whose untruncatable remainder exceeds the budget comes back
-    over budget. Pinned because the S3 claim-check cap (#408) will build on this
-    method and must not read `max_length` as a hard guarantee.
-    """
-    from dataset_validator.main import ValidationMessage, ValidationToolReport
-
-    def _report(errors):
-        return {"hcaSchema": ValidationToolReport(
-            valid=not errors, errors=errors, warnings=[],
-            started_at="2024-01-01T00:00:00Z", finished_at="2024-01-01T00:00:01Z",
-        )}
-
-    tool_reports = {
-        "no_tool_reports": None,
-        "empty_message_lists": _report([]),
-        "lists_too_small_to_absorb": _report(["e" * 100] * 50),
-    }[case]
-
-    budget = 5_000
-    big_layers = {
-        f"layer_{i}": {"format": "csr_matrix", "on_disk_bytes": 0}
-        for i in range(2000)
-    }
-    msg = ValidationMessage(
-        file_id="f", status="success", timestamp="2024-01-01T00:00:00Z",
-        bucket="b", key="k", batch_job_id="j",
-        tool_reports=tool_reports,
-        matrix_storage={"X": None, "raw_X": None, "layers": big_layers},
-    )
-
-    result = msg.to_length_limited_json(budget)
-    assert len(result) > budget, f"{case}: expected an over-budget result"
-    # Over budget, but still valid JSON retaining the untruncatable payload.
-    assert len(json.loads(result)["matrix_storage"]["layers"]) == 2000
-
-
 @pytest.mark.parametrize("test_case", [
     {
         "name": "success",
@@ -851,18 +769,22 @@ def test_write_validation_results_to_s3_failure(caplog, mock_aws):
 
 
 def test_write_validation_results_to_s3_writes_full_untruncated_json(mock_aws):
-    """The body written to S3 is the full to_json() output, not the SNS-truncated form."""
+    """The body written to S3 is the full to_json() output, however large.
+
+    The claim check has no producer-side size limit: S3 objects go to 5 TB, and
+    the tracker enforces its own cap, rejecting an oversized payload visibly as
+    `results_not_loaded` (hca-atlas-tracker#1265) rather than silently ingesting
+    a lossy one. Nothing truncates on this path.
+    """
     from dataset_validator.main import (
         write_validation_results_to_s3,
         ValidationToolReport,
     )
 
-    # Cap that to_length_limited_json() must hold under. Used to be a shared
-    # SNS-bound constant; now the truncator is decoupled from SNS, so
-    # this test pins the historical 250K-byte budget locally to exercise it.
-    TRUNCATION_BUDGET = 250_000
+    # Comfortably larger than the 250 KB the old SNS body was capped at, so the
+    # test shows the claim check is not bounded by that historical limit.
+    OLD_SNS_CAP = 250_000
 
-    # Build a message whose SNS-bound JSON would be truncated.
     huge_errors = [f"error-{i}" for i in range(20000)]
     tool_reports = {
         "cap": ValidationToolReport(
@@ -886,13 +808,10 @@ def test_write_validation_results_to_s3_writes_full_untruncated_json(mock_aws):
         file_id='file-3', batch_job_id='job-3', tool_reports=tool_reports
     )
 
-    # Sanity: this message must actually exceed the historical byte-budget (so
-    # to_length_limited_json() would truncate under that budget), otherwise the
+    # Sanity: the message must actually exceed the old SNS cap, otherwise the
     # test wouldn't be meaningfully exercising the claim-check use case.
     full_json = message.to_json()
-    truncated_json = message.to_length_limited_json(TRUNCATION_BUDGET)
-    assert len(full_json) > TRUNCATION_BUDGET
-    assert truncated_json != full_json
+    assert len(full_json) > OLD_SNS_CAP
 
     assert write_validation_results_to_s3(
         message, mock_aws['bucket_name'], 'file-3', 'job-3'
