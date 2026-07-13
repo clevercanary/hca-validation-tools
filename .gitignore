@@ -4,6 +4,9 @@
 # Claude Code per-user settings (permissions, etc.)
 .claude/settings.local.json
 
+# Claude Code agent worktrees (isolated subagent working copies)
+.claude/worktrees/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
