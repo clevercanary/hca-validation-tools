@@ -2,23 +2,23 @@
 
 help:
 	@echo "Available targets:"
-	@echo "  build      - Build the package with Poetry"
+	@echo "  build      - Build the package with uv"
 	@echo "  test       - Run tests with pytest"
 	@echo "  test-wheel - Build wheel, install in temp venv, run tests"
 	@echo "  clean      - Remove Python cache files and build artifacts"
 
 # Build the package
 build:
-	poetry build
+	uv build
 
 # Run tests
 test:
-	poetry run pytest tests/ -v
+	uv run pytest tests/ -v
 
 # Build wheel and run tests against the installed package
 test-wheel:
 	@echo "Building wheel..."
-	poetry build --format wheel
+	uv build --wheel
 	@echo "Creating temp venv and installing wheel..."
 	python3 -m venv /tmp/hca-test-wheel
 	/tmp/hca-test-wheel/bin/pip install --quiet dist/hca_schema_validator-*.whl pytest

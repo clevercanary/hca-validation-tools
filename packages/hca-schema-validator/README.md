@@ -17,14 +17,14 @@ pip install hca-schema-validator
 git clone https://github.com/clevercanary/hca-validation-tools.git
 cd hca-validation-tools/packages/hca-schema-validator
 
-# Install Poetry if you haven't already
-curl -sSL https://install.python-poetry.org | python3 -
+# Install uv if you haven't already
+curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # Install dependencies and package
-poetry install
+uv sync
 
 # Run tests
-poetry run pytest tests/
+uv run pytest tests/
 ```
 
 ## Usage
@@ -58,7 +58,7 @@ HCA-specific validation rules will be added incrementally.
 
 ```bash
 cd hca_schema_validator
-poetry run pytest tests/
+uv run pytest tests/
 ```
 
 ## Project Structure
@@ -169,11 +169,11 @@ Prerequisites: Python 3.10+, Docker, ~1GB disk for OWL files.
 
 7. **Verify and test**:
    ```bash
-   poetry run python -c "
+   uv run python -c "
    from hca_schema_validator._vendored.cellxgene_schema.ontology_parser import ONTOLOGY_PARSER
    print(ONTOLOGY_PARSER.is_valid_term_id('CL:4052065'))  # True
    "
-   poetry run pytest tests/ -v
+   uv run pytest tests/ -v
    ```
 
 8. **Clean up**: `rm -rf /tmp/ontology-guide-build`

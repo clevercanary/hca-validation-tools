@@ -8,8 +8,8 @@ MCP server for interactive exploration of AnnData h5ad files.
 # Run the MCP server
 hca-anndata-mcp
 
-# Or via poetry
-poetry run hca-anndata-mcp
+# Or from the project venv
+uv run hca-anndata-mcp
 ```
 
 ## Tools
