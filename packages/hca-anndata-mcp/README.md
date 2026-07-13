@@ -7,10 +7,23 @@ MCP server for interactive exploration of AnnData h5ad files.
 ```bash
 # Run the MCP server
 hca-anndata-mcp
-
-# Or from the project venv
-uv run hca-anndata-mcp
 ```
+
+Point an MCP client at the venv binary directly, not at a wrapper command:
+
+```json
+{
+  "mcpServers": {
+    "hca-anndata-mcp": {
+      "command": "/abs/path/to/packages/hca-anndata-mcp/.venv/bin/hca-anndata-mcp"
+    }
+  }
+}
+```
+
+`uv run hca-anndata-mcp` (like `poetry run` before it) does not work here. An MCP
+client needs a stable executable to spawn, and a wrapper command that resolves
+and syncs an environment first is not one.
 
 ## Tools
 

@@ -92,7 +92,9 @@ This is release-please's supported override mechanism — it overrides the auto-
 
 Before tagging 1.0.0, widen the sibling bounds in `packages/hca-anndata-mcp/pyproject.toml`. They are capped at the next minor (`hca-anndata-tools>=0.6,<0.7`) because at 0.x a minor bump signals a breaking change; once a sibling reaches 1.0 that cap must become `<2`, or the MCP wheel will refuse to install alongside it.
 
-`scripts/check_sibling_deps.py` runs in the publish workflow and fails the build if a sibling is declared without a bound, or with a bound that excludes the sibling's current version. Neither mistake is visible locally: `[tool.uv.sources]` resolves siblings from the checkout, so `uv sync`, pytest, and pyright all pass regardless of what the bound says.
+`scripts/check_sibling_deps.py` runs in the publish workflow and fails the build if a sibling is declared without a bound, as a direct `file://` reference, or with a bound that excludes the sibling's current version. None of these are visible locally: `[tool.uv.sources]` resolves siblings from the checkout, so `uv sync`, pytest, and pyright all pass regardless of what the bound says.
+
+**Minor-bumping a package means updating the bound in every sibling that depends on it.** release-please bumps a package's own version but has no Python plugin that rewrites dependents' constraints, so it will not do this for you. Concretely: if `hca-anndata-tools` goes `0.6.x` → `0.7.0` while `hca-anndata-mcp` still declares `hca-anndata-tools>=0.6,<0.7`, nothing breaks locally — but `hca-anndata-mcp`'s **next release will fail** at the `check_sibling_deps.py` step, because the wheel would tell consumers to install a version the package was never built against. That failure is intentional; fix it by widening the bound in `packages/hca-anndata-mcp/pyproject.toml`, not by bypassing the check.
 
 ## Updating hca-schema-validator in the Batch Service
 
