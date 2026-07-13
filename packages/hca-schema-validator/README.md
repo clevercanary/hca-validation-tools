@@ -12,13 +12,16 @@ pip install hca-schema-validator
 
 ### From Source (Development)
 
+Install uv by whichever method you prefer — see the
+[official installation guide](https://docs.astral.sh/uv/getting-started/installation/).
+On macOS `brew install uv` and `pipx install uv` are both auditable alternatives
+to the piped install script. Any method works; uv's version is what matters, not
+how it got there.
+
 ```bash
 # Clone the repository
 git clone https://github.com/clevercanary/hca-validation-tools.git
 cd hca-validation-tools/packages/hca-schema-validator
-
-# Install uv if you haven't already
-curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # Install dependencies and package
 uv sync
