@@ -25,10 +25,11 @@ built metadata has to be read directly. Wheels and sdists are both published, so
 both are checked.
 
 Needs `packaging`, and `tomllib` (so Python >= 3.11, above this repo's 3.10
-floor). Run it the way the publish workflow does:
+floor). The publish workflow pins 3.11 via setup-uv, so it runs this as:
 
-    uv run --no-project --python 3.12 --with packaging python \
-        scripts/check_sibling_deps.py <dist>...
+    uv run --no-project --with packaging python scripts/check_sibling_deps.py <dist>...
+
+Locally, pass --python 3.11 (or newer) if your default is older.
 """
 
 import sys

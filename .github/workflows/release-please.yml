@@ -36,13 +36,18 @@ jobs:
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
+        with:
+          # Pin the build interpreter. Without it the wheel is built against
+          # whatever Python ubuntu-latest happens to ship, so a runner image
+          # update could change or break a release with no change on our side.
+          python-version: "3.11"
 
       - name: Build package
         run: uv build
         working-directory: packages/hca-schema-validator
 
       - name: Check sibling dependency bounds
-        run: uv run --no-project --python 3.12 --with packaging python scripts/check_sibling_deps.py packages/hca-schema-validator/dist/*
+        run: uv run --no-project --with packaging python scripts/check_sibling_deps.py packages/hca-schema-validator/dist/*
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
@@ -64,13 +69,18 @@ jobs:
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
+        with:
+          # Pin the build interpreter. Without it the wheel is built against
+          # whatever Python ubuntu-latest happens to ship, so a runner image
+          # update could change or break a release with no change on our side.
+          python-version: "3.11"
 
       - name: Build package
         run: uv build
         working-directory: packages/hca-anndata-tools
 
       - name: Check sibling dependency bounds
-        run: uv run --no-project --python 3.12 --with packaging python scripts/check_sibling_deps.py packages/hca-anndata-tools/dist/*
+        run: uv run --no-project --with packaging python scripts/check_sibling_deps.py packages/hca-anndata-tools/dist/*
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
@@ -98,13 +108,18 @@ jobs:
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
+        with:
+          # Pin the build interpreter. Without it the wheel is built against
+          # whatever Python ubuntu-latest happens to ship, so a runner image
+          # update could change or break a release with no change on our side.
+          python-version: "3.11"
 
       - name: Build package
         run: uv build
         working-directory: packages/hca-anndata-mcp
 
       - name: Check sibling dependency bounds
-        run: uv run --no-project --python 3.12 --with packaging python scripts/check_sibling_deps.py packages/hca-anndata-mcp/dist/*
+        run: uv run --no-project --with packaging python scripts/check_sibling_deps.py packages/hca-anndata-mcp/dist/*
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
