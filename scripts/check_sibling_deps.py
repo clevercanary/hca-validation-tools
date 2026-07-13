@@ -54,9 +54,17 @@ def siblings() -> dict[str, Version]:
     """
     found = {}
     for pyproject in sorted(PACKAGES_DIR.glob("*/pyproject.toml")):
-        project = tomllib.loads(pyproject.read_text())["project"]
+        # tomllib reads binary and decodes the UTF-8 that TOML mandates, rather
+        # than whatever the platform's default encoding happens to be.
+        with pyproject.open("rb") as fh:
+            project = tomllib.load(fh)["project"]
         found[canonicalize_name(project["name"])] = Version(project["version"])
     return found
+
+
+def shallowest(names: list[str]) -> str:
+    """The distribution's own metadata file, not one nested inside its payload."""
+    return min(names, key=lambda n: n.count("/"))
 
 
 def read_requires_dist(dist: Path) -> list[str]:
@@ -66,15 +74,14 @@ def read_requires_dist(dist: Path) -> list[str]:
             names = [n for n in zf.namelist() if n.endswith(".dist-info/METADATA")]
             if not names:
                 raise ValueError(f"{dist}: no .dist-info/METADATA in wheel")
-            with zf.open(names[0]) as fh:
+            with zf.open(shallowest(names)) as fh:
                 metadata = BytesParser().parse(fh)
     else:
         with tarfile.open(dist) as tf:
             names = [n for n in tf.getnames() if n.endswith("PKG-INFO")]
             if not names:
                 raise ValueError(f"{dist}: no PKG-INFO in sdist")
-            # The distribution's own PKG-INFO is the shallowest one.
-            handle = tf.extractfile(min(names, key=lambda n: n.count("/")))
+            handle = tf.extractfile(shallowest(names))
             if handle is None:
                 raise ValueError(f"{dist}: PKG-INFO is not a regular file")
             with handle:
