@@ -71,7 +71,7 @@ hca_schema_validator/
 │       └── validator.py      # HCAValidator class
 ├── tests/
 │   └── test_validator.py # Unit tests
-├── pyproject.toml        # Poetry configuration & dependencies
+├── pyproject.toml        # uv/PEP 621 configuration & dependencies
 └── README.md            # This file
 ```
 
