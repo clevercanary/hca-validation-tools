@@ -1,6 +1,6 @@
 [project]
 name = "hca-anndata-tools"
-version = "0.6.0"
+version = "0.6.1"
 description = "Library for inspection, summarization, and statistics of AnnData h5ad files"
 authors = [{ name = "Clever Canary", email = "dave@clevercanary.com" }]
 license = "MIT"
