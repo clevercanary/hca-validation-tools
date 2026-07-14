@@ -1,90 +1,61 @@
-# The build context is the repo root and the Dockerfiles COPY whole directories
-# (`COPY shared/ ./shared/`), so anything sitting in them is baked into the image —
-# including artifacts git ignores, which `git status` reports as a clean tree.
+# An ALLOWLIST, not a denylist. Read this before changing it.
 #
-# Two rules govern this file, both learned the hard way:
+# The build context is the repo root, and both Dockerfiles COPY out of it. A
+# denylist here is open by default: every new cache directory, tool, or
+# credential file is a fresh chance to leak, and `check-clean` cannot help
+# because those files are gitignored — git reports a clean tree while the file
+# sits in a COPY'd directory. A nested .env really did get baked into an image
+# that way, and four separate rounds of review each found another missing
+# denylist entry.
 #
-# 1. Every pattern is `**/name`. A bare `name` matches ONLY the repo root, so a
-#    plain `.env` left a nested services/*/.env free to be copied into the image.
-#    `**` matches zero or more directories, so `**/name` covers the root too.
-#    Never add a bare pattern here: it will look like it works and silently miss
-#    every nested copy.
+# So: deny everything, then re-include exactly what the two Dockerfiles need.
+# Adding a build input means adding a line here. Forgetting to is a loud failure
+# (the build cannot find the file), which is the right way round — the denylist's
+# failures were silent.
 #
-# 2. `src/` trees are re-included at the bottom, and that is not optional. Names
-#    like `build`, `dist`, `docs` and `env` are legitimate Python package names.
-#    Without the re-include, a module at src/.../build/ would be dropped from the
-#    image and surface as a baffling ImportError at container start, with nothing
-#    pointing back here. The dot-directories are safe to exclude recursively — no
-#    package can be called `.venv` — but these four are only safe by luck.
+# Do not "simplify" this back into a denylist.
 
-# Virtualenvs. The dangerous one: uv creates a project-local .venv, so once
-# shared/ migrates to uv (#473), `COPY shared/` would otherwise bake a developer's
-# macOS venv into a linux/amd64 image.
-**/.venv/
-**/venv/
-**/env/
+# Deny everything.
+*
 
-# Python bytecode and tool caches
+# --- Re-include exactly the build inputs. ---
+#
+# shared/ — its pyproject and lockfile (poetry installs it as a path dependency)
+# and its source. Deliberately NOT shared/tests/ or shared/Makefile: the image
+# does not run them.
+!shared/pyproject.toml
+!shared/poetry.lock
+!shared/src/
+
+# services/ — each service's pyproject, lockfile and source. Covers all four;
+# the Batch image uses three and the Lambda image uses the fourth, and one
+# .dockerignore serves both builds.
+!services/*/pyproject.toml
+!services/*/poetry.lock
+!services/*/src/
+
+# The Lambda image copies this config in at build time.
+!deployment/entry-sheet-validator/config.yaml
+
+# --- Strip what must never ship, even from the allowed paths above. ---
+#
+# The re-includes are recursive, so anything sitting inside src/ would otherwise
+# ride along. Last match wins, so these come last.
+#
+# Note what is NOT needed here: no build/, dist/, docs/ or env/ exclusions. Those
+# are legitimate Python package names, and a denylist had to exclude them
+# recursively — which would have silently dropped a module at src/.../build/ from
+# the image. With an allowlist the problem does not arise: those directories were
+# never allowed in.
 **/__pycache__/
 **/*.py[cod]
 **/*$py.class
-**/.pytest_cache/
-**/.mypy_cache/
-**/.ruff_cache/
-**/.tox/
-**/.nox/
-
-# Build artifacts
-**/dist/
-**/build/
-**/*.egg-info/
-
-# Version control and CI
-**/.git/
-**/.gitignore
-**/.github/
-
-# Local tooling and editor state
-**/.claude/
-**/.vscode/
-**/.idea/
-**/*.code-workspace
-**/.pre-commit-config.yaml
-
-# Coverage and test output
-**/.coverage
-**/.coverage.*
-**/htmlcov/
-**/coverage.xml
-
-# Docs. Not excluding *.md generally: a pyproject declaring `readme = "README.md"`
-# needs that file to install, and a build breaking because a doc was filtered out
-# is a confusing failure that buys nothing.
-**/docs/
-
-# macOS
+**/.venv/
 **/.DS_Store
 
-# --- src/ trees are source, never build output. See rule 2 at the top. ---
-# This re-include protects a package legitimately named build/, dist/, docs/ or
-# env/ from the patterns above. The lines after it re-exclude what must never ship
-# even from inside src/, because last match wins.
-!**/src/**
-**/src/**/__pycache__/
-**/src/**/*.py[cod]
-**/src/**/.venv/
-**/src/**/.DS_Store
-
-# --- Secrets. Deliberately LAST, after the src/ re-include. ---
-# Last match wins, so putting these at the end means they apply everywhere,
-# including inside src/, with no duplicate entries to keep in sync. Every one of
-# these is also in .gitignore, which means check-clean is blind to them: git
-# reports a clean tree while the file sits there waiting to be copied in. That is
-# exactly how a nested .env got baked into an image before this file existed.
+# Secrets. All of these are gitignored, so check-clean is blind to them.
 **/.env
 **/.env.*
-!**/.env.example
-!**/.env.make.example
 **/.mcp.json
 **/.pypirc
 **/.netrc
