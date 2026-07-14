@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.1](https://github.com/clevercanary/hca-validation-tools/compare/hca-schema-validator-v0.14.0...hca-schema-validator-v0.14.1) (2026-07-14)
+
+
+### Build System
+
+* **packages:** migrate to uv and delete the release-please sed hack ([#472](https://github.com/clevercanary/hca-validation-tools/issues/472)) ([#479](https://github.com/clevercanary/hca-validation-tools/issues/479)) ([e695201](https://github.com/clevercanary/hca-validation-tools/commit/e695201005b6a86d0a50e7331fd6b378c9a5bc5b))
+
 ## [0.14.0](https://github.com/clevercanary/hca-validation-tools/compare/hca-schema-validator-v0.13.1...hca-schema-validator-v0.14.0) (2026-07-10)
 
 
