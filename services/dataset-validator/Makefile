@@ -82,10 +82,16 @@ tag-batch:
 	@docker tag $(LOCAL_IMAGE) $(REMOTE_IMAGE)
 
 # The image's contents come from the working tree — docker build copies files off
-# disk, and there is no .dockerignore, so untracked files reach the context too.
-# The tag, though, defaults to the HEAD commit. Publish from a dirty tree and the
-# tag names a commit that does not contain what is inside the image, so nobody can
-# tell what is deployed: checking out that SHA rebuilds something different.
+# disk, so uncommitted edits and untracked files land in the image. The tag,
+# though, defaults to the HEAD commit. Publish from a dirty tree and the tag names
+# a commit that does not contain what is inside the image, so nobody can tell what
+# is deployed: checking out that SHA rebuilds something different.
+#
+# The repo-root .dockerignore keeps *ignored* artifacts (__pycache__, .venv, ...)
+# out of the context, which is what makes `git status` a sufficient test here:
+# everything still reaching the context is tracked or untracked, and git reports
+# both. It does not make this guard redundant — an untracked, non-ignored file is
+# exactly the thing .dockerignore lets through and git flags as `??`.
 #
 # This fires even when TAG is overridden. A hand-picked tag does not make
 # unreproducible content acceptable in ECR, and letting TAG bypass the check would
