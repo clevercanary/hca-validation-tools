@@ -81,8 +81,27 @@ tag-batch:
 	@echo "Tagging $(LOCAL_IMAGE) as $(REMOTE_IMAGE)"
 	@docker tag $(LOCAL_IMAGE) $(REMOTE_IMAGE)
 
+# The image's contents come from the working tree — docker build copies files off
+# disk, and there is no .dockerignore, so untracked files reach the context too.
+# The tag, though, is the HEAD commit. Publish from a dirty tree and the tag names
+# a commit that does not contain what is inside the image, so nobody can tell what
+# is deployed: checking out that SHA rebuilds something different. Refuse instead.
+.PHONY: check-clean
+check-clean:
+	@if [ -n "$$(git status --porcelain)" ]; then \
+		echo "Error: refusing to publish from a dirty working tree."; \
+		echo ""; \
+		echo "  The image would contain these uncommitted changes, but be tagged $(SHA),"; \
+		echo "  a commit that does not have them. The tag would be a lie."; \
+		echo ""; \
+		git status --short | sed 's/^/    /'; \
+		echo ""; \
+		echo "  Commit and merge first, then rebuild."; \
+		exit 1; \
+	fi
+
 .PHONY: push-batch
-push-batch:
+push-batch: check-clean
 	@if [ -z "$(AWS_ACCOUNT_ID)" ] || [ -z "$(AWS_REGION)" ] || [ -z "$(ECR_REPO)" ]; then \
 		echo "Error: AWS_ACCOUNT_ID, AWS_REGION, and ECR_REPO are required"; \
 		exit 1; \
@@ -91,7 +110,7 @@ push-batch:
 	@docker push $(REMOTE_IMAGE)
 
 .PHONY: publish-batch
-publish-batch: ecr-login build-batch tag-batch push-batch
+publish-batch: check-clean ecr-login build-batch tag-batch push-batch
  
 
 # ----- AWS Batch Job Definition and Submission -----
