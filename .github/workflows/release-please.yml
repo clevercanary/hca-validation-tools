@@ -18,7 +18,7 @@ jobs:
       hca_anndata_tools_release: ${{ steps.release.outputs['packages/hca-anndata-tools--release_created'] }}
       hca_anndata_mcp_release: ${{ steps.release.outputs['packages/hca-anndata-mcp--release_created'] }}
     steps:
-      - uses: googleapis/release-please-action@v4
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         id: release
 
   publish-hca-schema-validator:
