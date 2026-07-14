@@ -81,31 +81,28 @@ tag-batch:
 	@echo "Tagging $(LOCAL_IMAGE) as $(REMOTE_IMAGE)"
 	@docker tag $(LOCAL_IMAGE) $(REMOTE_IMAGE)
 
-# The image's contents come from the working tree — docker build copies files off
-# disk, so uncommitted edits and untracked files land in the image. The tag,
-# though, defaults to the HEAD commit. Publish from a dirty tree and the tag names
-# a commit that does not contain what is inside the image, so nobody can tell what
-# is deployed: checking out that SHA rebuilds something different.
+# Refuses to publish an image whose tag would misdescribe its contents. `docker
+# build` copies from the working tree, but TAG defaults to the HEAD commit — so a
+# dirty tree produces an image tagged with a commit that does not contain what is
+# inside it, and checking out that SHA rebuilds something different.
 #
-# The repo-root .dockerignore keeps *ignored* artifacts (__pycache__, .venv, ...)
-# out of the context, which is what makes `git status` a sufficient test here:
-# everything still reaching the context is tracked or untracked, and git reports
-# both. It does not make this guard redundant — an untracked, non-ignored file is
-# exactly the thing .dockerignore lets through and git flags as `??`.
+# Three things below are load-bearing and look optional:
 #
-# This fires even when TAG is overridden. A hand-picked tag does not make
-# unreproducible content acceptable in ECR, and letting TAG bypass the check would
-# turn it into the override flag this guard deliberately does not have.
-# --untracked-files=all is not optional. `git status` honours the user's
-# status.showUntrackedFiles config, and someone who has set it to `no` would get
-# an empty --porcelain listing — the guard would pass while shipping untracked
-# files straight into the image. Forcing the flag makes the check independent of
-# whoever's machine it runs on.
-# Fails closed. A bare `$(git status ...)` substitution yields an empty string when
-# git errors — no repo, no git, a broken checkout — and an empty string reads as
-# "clean", so the guard would wave the build through in precisely the situations
-# where provenance cannot be established at all. Check the exit status, not just
-# the output.
+#   --untracked-files=all   `git status` honours status.showUntrackedFiles; a user
+#                           who set it to `no` would get an empty listing and the
+#                           guard would pass while shipping untracked files.
+#
+#   exit-status check       A bare `$(git status)` substitution is empty when git
+#                           errors, and empty reads as clean — failing open in
+#                           exactly the cases where provenance is unverifiable.
+#
+#   no TAG exemption        A hand-picked tag does not make unreproducible content
+#                           acceptable, and exempting it would quietly become the
+#                           override flag this guard is designed not to have.
+#
+# .dockerignore excludes *ignored* artifacts from the context, which is what makes
+# `git status` a sufficient test — but it does not make this guard redundant: an
+# untracked, non-ignored file reaches the image and git flags it `??`.
 .PHONY: check-clean
 check-clean:
 	@if ! git rev-parse --git-dir >/dev/null 2>&1; then \

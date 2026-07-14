@@ -121,15 +121,15 @@ Either way, confirm the lock actually moved before building:
 grep -A1 'name = "hca-schema-validator"' services/hca-schema-validator/poetry.lock
 ```
 
-### Only build the image from a clean tree, after merge
+### Only build the image from a clean tree
 
 ```bash
-make batch-publish-container ENV=dev     # then ENV=prod
+make batch-publish-container ENV=dev     # then ENV=prod, from main
 ```
 
-**The image's contents and its tag come from different places.** `docker build` copies from the **working tree**, so it picks up uncommitted edits; the tag is `git rev-parse --short HEAD`, i.e. the **last commit**. Build with a dirty tree, or from an unmerged branch, and you publish an image whose tag names a commit that does not contain what is inside it. Nothing warns you, and afterwards nobody can tell what is actually deployed: checking out that SHA reproduces a *different* image.
+**The image's contents and its tag come from different places.** `docker build` copies from the **working tree**, so it picks up uncommitted edits; the tag is `git rev-parse --short HEAD`, i.e. the **last commit**. Build with a dirty tree and you publish an image whose tag names a commit that does not contain what is inside it — nobody can then tell what is deployed, because checking out that SHA reproduces a *different* image. `make publish-batch` refuses to run from a dirty tree for this reason; do not work around it.
 
-So build only when `git status` is clean and the change is on `main`.
+**Dev may be built from a branch.** A clean branch commit is a real commit, so the tag still reproduces the image — that is how a change is validated on dev before it merges. **Prod should be built from `main`**, so that what is running in production is on the mainline and not on a branch that may never land.
 
 ## Architecture
 

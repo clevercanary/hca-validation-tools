@@ -1,20 +1,21 @@
-# The Docker build context is the repo root, and the Dockerfiles COPY whole
-# directories (e.g. `COPY shared/ ./shared/`). Without this file, anything sitting
-# in those directories is baked into the image — including artifacts git ignores,
-# which `git status` reports as a clean tree. The Batch image shipped with 45 stray
-# .pyc files from a developer's laptop before this existed.
+# The build context is the repo root and the Dockerfiles COPY whole directories
+# (`COPY shared/ ./shared/`), so anything sitting in them is baked into the image —
+# including artifacts git ignores, which `git status` reports as a clean tree.
 #
-# This is what makes the check-clean guard in services/dataset-validator's Makefile
-# sufficient: with local artifacts excluded here, everything left in the build
-# context is tracked or untracked, and git reports both — so a clean tree really
-# does mean the image matches the commit it is tagged with.
+# Two rules govern this file, both learned the hard way:
 #
-# EVERY pattern below is written `**/name`, deliberately and without exception.
-# A bare `name` matches ONLY the repo root, so `.env` left a nested
-# services/*/.env free to be copied into the image. `**` matches zero or more
-# directories, so `**/name` covers the root case too (verified) — one form, no
-# paired entries, nothing to forget. Do not add a bare pattern here; it will look
-# like it works and silently miss every nested copy.
+# 1. Every pattern is `**/name`. A bare `name` matches ONLY the repo root, so a
+#    plain `.env` left a nested services/*/.env free to be copied into the image.
+#    `**` matches zero or more directories, so `**/name` covers the root too.
+#    Never add a bare pattern here: it will look like it works and silently miss
+#    every nested copy.
+#
+# 2. `src/` trees are re-included at the bottom, and that is not optional. Names
+#    like `build`, `dist`, `docs` and `env` are legitimate Python package names.
+#    Without the re-include, a module at src/.../build/ would be dropped from the
+#    image and surface as a baffling ImportError at container start, with nothing
+#    pointing back here. The dot-directories are safe to exclude recursively — no
+#    package can be called `.venv` — but these four are only safe by luck.
 
 # Virtualenvs. The dangerous one: uv creates a project-local .venv, so once
 # shared/ migrates to uv (#473), `COPY shared/` would otherwise bake a developer's
@@ -23,7 +24,7 @@
 **/venv/
 **/env/
 
-# Python bytecode and caches
+# Python bytecode and tool caches
 **/__pycache__/
 **/*.py[cod]
 **/*$py.class
@@ -51,8 +52,6 @@
 **/.pre-commit-config.yaml
 
 # Secrets and machine-specific config — these must never reach an image.
-# Verified: before the `**/` forms existed, a nested shared/.env was copied
-# straight into the image and readable there.
 **/.env
 **/.env.*
 !**/.env.example
@@ -65,10 +64,22 @@
 **/htmlcov/
 **/coverage.xml
 
-# Repo-level docs. Deliberately NOT excluding *.md generally: a pyproject that
-# declares `readme = "README.md"` needs that file present to install, and a build
-# that breaks because a doc was filtered out is a confusing failure to buy nothing.
+# Docs. Not excluding *.md generally: a pyproject declaring `readme = "README.md"`
+# needs that file to install, and a build breaking because a doc was filtered out
+# is a confusing failure that buys nothing.
 **/docs/
 
 # macOS
 **/.DS_Store
+
+# --- src/ trees are source, never build output. See rule 2 at the top. ---
+# This re-include protects a package legitimately named build/, dist/, docs/ or
+# env/ from the patterns above. The lines after it re-exclude the things that must
+# never ship even from inside src/, because last match wins.
+!**/src/**
+**/src/**/__pycache__/
+**/src/**/*.py[cod]
+**/src/**/.venv/
+**/src/**/.env
+**/src/**/.env.*
+**/src/**/.DS_Store
