@@ -50,12 +50,20 @@ build/
 *.code-workspace
 .pre-commit-config.yaml
 
-# Secrets and machine-specific config — these must never reach an image
+# Secrets and machine-specific config — these must never reach an image.
+# The `**/` forms are load-bearing: a bare `.env` matches only the repo root, so
+# without them a nested services/*/.env or shared/.env is copied straight into the
+# image by the whole-directory COPYs. Verified — it leaked before these were added.
 .env
 .env.*
+**/.env
+**/.env.*
 !.env.example
 !.env.make.example
+!**/.env.example
+!**/.env.make.example
 .mcp.json
+**/.mcp.json
 
 # Coverage and test output
 .coverage
