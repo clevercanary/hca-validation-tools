@@ -83,16 +83,20 @@ tag-batch:
 
 # The image's contents come from the working tree — docker build copies files off
 # disk, and there is no .dockerignore, so untracked files reach the context too.
-# The tag, though, is the HEAD commit. Publish from a dirty tree and the tag names
-# a commit that does not contain what is inside the image, so nobody can tell what
-# is deployed: checking out that SHA rebuilds something different. Refuse instead.
+# The tag, though, defaults to the HEAD commit. Publish from a dirty tree and the
+# tag names a commit that does not contain what is inside the image, so nobody can
+# tell what is deployed: checking out that SHA rebuilds something different.
+#
+# This fires even when TAG is overridden. A hand-picked tag does not make
+# unreproducible content acceptable in ECR, and letting TAG bypass the check would
+# turn it into the override flag this guard deliberately does not have.
 .PHONY: check-clean
 check-clean:
 	@if [ -n "$$(git status --porcelain)" ]; then \
 		echo "Error: refusing to publish from a dirty working tree."; \
 		echo ""; \
-		echo "  The image would contain these uncommitted changes, but be tagged $(SHA),"; \
-		echo "  a commit that does not have them. The tag would be a lie."; \
+		echo "  The image would contain these uncommitted changes, but be published"; \
+		echo "  as :$(TAG), which does not have them. The tag would be a lie."; \
 		echo ""; \
 		git status --short | sed 's/^/    /'; \
 		echo ""; \
