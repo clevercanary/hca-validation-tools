@@ -1,82 +1,74 @@
 # The Docker build context is the repo root, and the Dockerfiles COPY whole
-# directories (e.g. `COPY shared/ ./shared/`). Without this file, anything
-# sitting in those directories is baked into the image — including artifacts
-# git ignores, which `git status` reports as a clean tree. The Batch image
-# shipped with 45 stray .pyc files from a developer's laptop before this
-# existed.
+# directories (e.g. `COPY shared/ ./shared/`). Without this file, anything sitting
+# in those directories is baked into the image — including artifacts git ignores,
+# which `git status` reports as a clean tree. The Batch image shipped with 45 stray
+# .pyc files from a developer's laptop before this existed.
 #
-# This is what makes the check-clean guard in services/dataset-validator's
-# Makefile sufficient: with local artifacts excluded here, everything left in
-# the build context is tracked, so a clean `git status` really does mean the
-# image matches the commit it is tagged with.
+# This is what makes the check-clean guard in services/dataset-validator's Makefile
+# sufficient: with local artifacts excluded here, everything left in the build
+# context is tracked or untracked, and git reports both — so a clean tree really
+# does mean the image matches the commit it is tagged with.
+#
+# EVERY pattern below is written `**/name`, deliberately and without exception.
+# A bare `name` matches ONLY the repo root, so `.env` left a nested
+# services/*/.env free to be copied into the image. `**` matches zero or more
+# directories, so `**/name` covers the root case too (verified) — one form, no
+# paired entries, nothing to forget. Do not add a bare pattern here; it will look
+# like it works and silently miss every nested copy.
 
-# Virtualenvs. A project-local .venv is the dangerous one: uv creates them, so
-# once shared/ migrates to uv (#473) `COPY shared/` would otherwise bake a
-# developer's macOS venv into a linux/amd64 image.
-.venv/
+# Virtualenvs. The dangerous one: uv creates a project-local .venv, so once
+# shared/ migrates to uv (#473), `COPY shared/` would otherwise bake a developer's
+# macOS venv into a linux/amd64 image.
 **/.venv/
-venv/
 **/venv/
-env/
 **/env/
 
 # Python bytecode and caches
-__pycache__/
 **/__pycache__/
-*.py[cod]
-*$py.class
-.pytest_cache/
+**/*.py[cod]
+**/*$py.class
 **/.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-.tox/
-.nox/
+**/.mypy_cache/
+**/.ruff_cache/
+**/.tox/
+**/.nox/
 
 # Build artifacts
-dist/
 **/dist/
-build/
-*.egg-info/
+**/build/
 **/*.egg-info/
 
 # Version control and CI
-.git/
-.gitignore
-.github/
+**/.git/
+**/.gitignore
+**/.github/
 
 # Local tooling and editor state
-.claude/
-.vscode/
-.idea/
-*.code-workspace
-.pre-commit-config.yaml
+**/.claude/
+**/.vscode/
+**/.idea/
+**/*.code-workspace
+**/.pre-commit-config.yaml
 
 # Secrets and machine-specific config — these must never reach an image.
-# The `**/` forms are load-bearing: a bare `.env` matches only the repo root, so
-# without them a nested services/*/.env or shared/.env is copied straight into the
-# image by the whole-directory COPYs. Verified — it leaked before these were added.
-.env
-.env.*
+# Verified: before the `**/` forms existed, a nested shared/.env was copied
+# straight into the image and readable there.
 **/.env
 **/.env.*
-!.env.example
-!.env.make.example
 !**/.env.example
 !**/.env.make.example
-.mcp.json
 **/.mcp.json
 
 # Coverage and test output
-.coverage
-.coverage.*
-htmlcov/
-coverage.xml
+**/.coverage
+**/.coverage.*
+**/htmlcov/
+**/coverage.xml
 
 # Repo-level docs. Deliberately NOT excluding *.md generally: a pyproject that
-# declares `readme = "README.md"` needs that file present to install, and a
-# build that breaks because a doc was filtered out is a confusing failure to buy
-# nothing.
-docs/
+# declares `readme = "README.md"` needs that file present to install, and a build
+# that breaks because a doc was filtered out is a confusing failure to buy nothing.
+**/docs/
 
 # macOS
-.DS_Store
+**/.DS_Store
