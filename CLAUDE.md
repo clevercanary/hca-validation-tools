@@ -46,7 +46,7 @@ cd services/hca-schema-validator && poetry run pytest tests/ -v
 
 Pyright covers `packages/hca-anndata-tools`, `packages/hca-anndata-mcp`, `packages/hca-schema-validator`, `services/dataset-validator`, and `services/hca-schema-validator`. Config is `pyrightconfig.json` at repo root. Runs one pass per venv since each has a disjoint dep set.
 
-Note: `hca-anndata-tools` doesn't declare pyright as a dev dep — its files are checked from the `hca-anndata-mcp` venv (which depends on tools, so it's a superset). This asymmetry goes away when we migrate to uv workspaces (#248) and have one shared venv.
+Note: `hca-anndata-tools` doesn't declare pyright as a dev dep — its files are checked from the `hca-anndata-mcp` venv (which depends on tools, so it's a superset). This asymmetry persists under uv: the uv migration (#248) deliberately does **not** use a workspace, so each project keeps its own venv rather than sharing one.
 
 ```bash
 make typecheck
@@ -54,7 +54,7 @@ make typecheck
 
 Pre-commit hook runs it on `git commit`. One-time setup: `pip install pre-commit && pre-commit install`.
 
-For Pylance to match in-editor, open the repo via `hca-validation-tools.code-workspace` (File → Open Workspace from File). Each package/service becomes its own root with its own poetry venv, so imports resolve correctly per folder.
+For Pylance to match in-editor, open the repo via `hca-validation-tools.code-workspace` (File → Open Workspace from File). Each package/service becomes its own root with its own venv (uv `.venv/` under `packages/`, poetry elsewhere), so imports resolve correctly per folder.
 
 ## Deployment Commands
 
@@ -90,7 +90,11 @@ Release-As: 1.0.0
 
 This is release-please's supported override mechanism — it overrides the auto-computed bump for the package whose path the commit touches. Don't hand-edit `.release-please-manifest.json`: that file is a back-reference to the last released version per path and editing it doesn't reliably cut a release; it can also desync from the git tags release-please uses for compare links.
 
-Before tagging 1.0.0, update `.github/workflows/release-please.yml` — the MCP publish step has sed substitutions that hard-cap sibling packages at `<1`. Those caps must be relaxed (e.g., `<2`) or the post-1.0 MCP wheel on PyPI will refuse to install. (Tracked in [#416](https://github.com/clevercanary/hca-validation-tools/issues/416).)
+Before tagging 1.0.0, widen the sibling bounds in `packages/hca-anndata-mcp/pyproject.toml`. They are capped at the next minor (`hca-anndata-tools>=0.6,<0.7`) because at 0.x a minor bump signals a breaking change; once a sibling reaches 1.0 that cap must become `<2`, or the MCP wheel will refuse to install alongside it.
+
+`scripts/check_sibling_deps.py` runs in the publish workflow and fails the build if a sibling is declared without a bound, as a direct `file://` reference, or with a bound that excludes the sibling's current version. None of these are visible locally: `[tool.uv.sources]` resolves siblings from the checkout, so `uv sync`, pytest, and pyright all pass regardless of what the bound says.
+
+**Minor-bumping a package means updating the bound in every sibling that depends on it.** release-please bumps a package's own version but has no Python plugin that rewrites dependents' constraints, so it will not do this for you. Concretely: if `hca-anndata-tools` goes `0.6.x` → `0.7.0` while `hca-anndata-mcp` still declares `hca-anndata-tools>=0.6,<0.7`, nothing breaks locally — but `hca-anndata-mcp`'s **next release will fail** at the `check_sibling_deps.py` step, because the wheel would tell consumers to install a version the package was never built against. That failure is intentional; fix it by widening the bound in `packages/hca-anndata-mcp/pyproject.toml`, not by bypassing the check.
 
 ## Updating hca-schema-validator in the Batch Service
 
@@ -131,7 +135,8 @@ Forgetting step 2 will cause the Docker build to fail with "pyproject.toml chang
 
 ## Key Technologies
 
-- Poetry for dependency management (environments cached in `~/Library/Caches/pypoetry/virtualenvs/`)
+- uv for dependency management in `packages/` (project-local `.venv/`, one `uv.lock` per package — no workspace, see #248)
+- Poetry for dependency management in `shared/` and `services/` (environments cached in `~/Library/Caches/pypoetry/virtualenvs/`) — migration to uv tracked in #248
 - LinkML for schema definition
 - Pydantic for runtime validation
 - gspread for Google Sheets API

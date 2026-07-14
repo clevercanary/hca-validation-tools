@@ -3,8 +3,8 @@
 Simple script to validate h5ad files with HCA schema.
 
 Usage:
-    poetry run python validate_file.py <path/to/file.h5ad>
-    poetry run python validate_file.py <path/to/file.h5ad> --with-labels
+    uv run python validate_file.py <path/to/file.h5ad>
+    uv run python validate_file.py <path/to/file.h5ad> --with-labels
 """
 import argparse
 
@@ -20,8 +20,8 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  poetry run python validate_file.py data.h5ad
-  poetry run python validate_file.py data.h5ad --with-labels
+  uv run python validate_file.py data.h5ad
+  uv run python validate_file.py data.h5ad --with-labels
         """
     )
     parser.add_argument(

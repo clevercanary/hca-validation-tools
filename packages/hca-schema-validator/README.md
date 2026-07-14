@@ -12,19 +12,22 @@ pip install hca-schema-validator
 
 ### From Source (Development)
 
+Install uv by whichever method you prefer — see the
+[official installation guide](https://docs.astral.sh/uv/getting-started/installation/).
+On macOS `brew install uv` and `pipx install uv` are both auditable alternatives
+to the piped install script. Any method works; uv's version is what matters, not
+how it got there.
+
 ```bash
 # Clone the repository
 git clone https://github.com/clevercanary/hca-validation-tools.git
 cd hca-validation-tools/packages/hca-schema-validator
 
-# Install Poetry if you haven't already
-curl -sSL https://install.python-poetry.org | python3 -
-
 # Install dependencies and package
-poetry install
+uv sync
 
 # Run tests
-poetry run pytest tests/
+uv run pytest tests/
 ```
 
 ## Usage
@@ -58,7 +61,7 @@ HCA-specific validation rules will be added incrementally.
 
 ```bash
 cd hca_schema_validator
-poetry run pytest tests/
+uv run pytest tests/
 ```
 
 ## Project Structure
@@ -71,7 +74,7 @@ hca_schema_validator/
 │       └── validator.py      # HCAValidator class
 ├── tests/
 │   └── test_validator.py # Unit tests
-├── pyproject.toml        # Poetry configuration & dependencies
+├── pyproject.toml        # uv/PEP 621 configuration & dependencies
 └── README.md            # This file
 ```
 
@@ -169,11 +172,11 @@ Prerequisites: Python 3.10+, Docker, ~1GB disk for OWL files.
 
 7. **Verify and test**:
    ```bash
-   poetry run python -c "
+   uv run python -c "
    from hca_schema_validator._vendored.cellxgene_schema.ontology_parser import ONTOLOGY_PARSER
    print(ONTOLOGY_PARSER.is_valid_term_id('CL:4052065'))  # True
    "
-   poetry run pytest tests/ -v
+   uv run pytest tests/ -v
    ```
 
 8. **Clean up**: `rm -rf /tmp/ontology-guide-build`

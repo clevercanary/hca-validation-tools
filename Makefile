@@ -214,9 +214,9 @@ test-all:
 .PHONY: typecheck
 typecheck:
 	@echo "Running pyright (hca-anndata-tools, hca-anndata-mcp)..."
-	@cd packages/hca-anndata-mcp && poetry run pyright --project ../.. ../hca-anndata-tools/src ../hca-anndata-mcp/src
+	@cd packages/hca-anndata-mcp && uv run pyright --project ../.. ../hca-anndata-tools/src ../hca-anndata-mcp/src
 	@echo "Running pyright (hca-schema-validator)..."
-	@cd packages/hca-schema-validator && poetry run pyright --project ../.. src
+	@cd packages/hca-schema-validator && uv run pyright --project ../.. src
 	@echo "Running pyright (dataset-validator)..."
 	@cd services/dataset-validator && poetry run pyright --project ../../ src
 	@echo "Running pyright (hca-schema-validator service)..."

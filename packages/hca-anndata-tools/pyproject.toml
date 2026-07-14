@@ -1,27 +1,32 @@
-[tool.poetry]
+[project]
 name = "hca-anndata-tools"
 version = "0.6.0"
 description = "Library for inspection, summarization, and statistics of AnnData h5ad files"
-authors = ["Clever Canary <dave@clevercanary.com>"]
+authors = [{ name = "Clever Canary", email = "dave@clevercanary.com" }]
 license = "MIT"
 readme = "README.md"
-homepage = "https://github.com/clevercanary/hca-validation-tools"
-packages = [{include = "hca_anndata_tools", from = "src"}]
-include = ["src/hca_anndata_tools/reference_data/*.csv.gz"]
+requires-python = ">=3.10,<4.0"
+dependencies = [
+    "anndata>=0.10,<1",
+    "pandas>2,<3",
+    "numpy<3",
+    "h5py>=3.8",
+    "scanpy>=1.10",
+    "matplotlib>=3.7",
+    "pydantic>=2,<3",
+]
 
-[tool.poetry.dependencies]
-python = "^3.10"
-anndata = ">=0.10,<1"
-pandas = ">2,<3"
-numpy = "<3"
-h5py = ">=3.8"
-scanpy = ">=1.10"
-matplotlib = ">=3.7"
-pydantic = ">=2,<3"
+[project.urls]
+Homepage = "https://github.com/clevercanary/hca-validation-tools"
 
-[tool.poetry.group.dev.dependencies]
-pytest = "^8.0"
+[dependency-groups]
+dev = ["pytest>=8.0,<9"]
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# Ships every file under the package directory, which is how the bundled
+# reference_data/*.csv.gz gene tables reach the wheel.
+[tool.hatch.build.targets.wheel]
+packages = ["src/hca_anndata_tools"]

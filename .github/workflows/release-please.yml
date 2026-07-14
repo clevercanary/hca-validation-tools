@@ -34,20 +34,23 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
         with:
+          # Pin both the build tool and the interpreter. Either one floating
+          # means a release can change or break with no change on our side:
+          # uv is pre-1.0 and `uv build` behaviour moves, and ubuntu-latest's
+          # default Python moves with the runner image. Bump these
+          # deliberately. Dev-side pinning is tracked in #480.
+          version: "0.10.9"
           python-version: "3.11"
 
-      - name: Install Poetry
-        run: |
-          curl -sSL https://install.python-poetry.org | python3 -
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
-
       - name: Build package
-        run: |
-          cd packages/hca-schema-validator
-          poetry build
+        run: uv build
+        working-directory: packages/hca-schema-validator
+
+      - name: Check sibling dependency bounds
+        run: uv run --no-project --with packaging python scripts/check_sibling_deps.py packages/hca-schema-validator/dist/*
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
@@ -67,20 +70,23 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
         with:
+          # Pin both the build tool and the interpreter. Either one floating
+          # means a release can change or break with no change on our side:
+          # uv is pre-1.0 and `uv build` behaviour moves, and ubuntu-latest's
+          # default Python moves with the runner image. Bump these
+          # deliberately. Dev-side pinning is tracked in #480.
+          version: "0.10.9"
           python-version: "3.11"
 
-      - name: Install Poetry
-        run: |
-          curl -sSL https://install.python-poetry.org | python3 -
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
-
       - name: Build package
-        run: |
-          cd packages/hca-anndata-tools
-          poetry build
+        run: uv build
+        working-directory: packages/hca-anndata-tools
+
+      - name: Check sibling dependency bounds
+        run: uv run --no-project --with packaging python scripts/check_sibling_deps.py packages/hca-anndata-tools/dist/*
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
@@ -106,35 +112,23 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
         with:
+          # Pin both the build tool and the interpreter. Either one floating
+          # means a release can change or break with no change on our side:
+          # uv is pre-1.0 and `uv build` behaviour moves, and ubuntu-latest's
+          # default Python moves with the runner image. Bump these
+          # deliberately. Dev-side pinning is tracked in #480.
+          version: "0.10.9"
           python-version: "3.11"
 
-      - name: Install Poetry
-        run: |
-          curl -sSL https://install.python-poetry.org | python3 -
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
-
-      - name: Swap path deps to version pins for PyPI
-        run: |
-          cd packages/hca-anndata-mcp
-          # Match by dependency key so whitespace / key-order changes in the
-          # {path = ..., develop = true} dict don't silently turn the sed
-          # into a no-op. POSIX [[:space:]] class (GNU sed -E doesn't treat
-          # \s as whitespace). Guard below catches multi-line dicts.
-          sed -i -E 's|^[[:space:]]*hca-anndata-tools[[:space:]]*=.*$|hca-anndata-tools = ">=0.1.0,<1"|' pyproject.toml
-          sed -i -E 's|^[[:space:]]*hca-schema-validator[[:space:]]*=.*$|hca-schema-validator = ">=0.10.0,<1"|' pyproject.toml
-          if grep -Eq 'path[[:space:]]*=[[:space:]]*"\.\./hca-anndata-tools"' pyproject.toml || grep -Eq 'path[[:space:]]*=[[:space:]]*"\.\./hca-schema-validator"' pyproject.toml; then
-            echo "ERROR: path dependency still present after sed replacement"
-            cat pyproject.toml
-            exit 1
-          fi
-
       - name: Build package
-        run: |
-          cd packages/hca-anndata-mcp
-          poetry build
+        run: uv build
+        working-directory: packages/hca-anndata-mcp
+
+      - name: Check sibling dependency bounds
+        run: uv run --no-project --with packaging python scripts/check_sibling_deps.py packages/hca-anndata-mcp/dist/*
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
