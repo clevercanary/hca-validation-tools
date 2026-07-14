@@ -102,9 +102,8 @@ The Docker image installs from `poetry.lock`, so **the lock is what decides whic
 
 **A patch release inside the existing constraint** (e.g. `0.14.0` → `0.14.1`, against `>=0.14.0,<0.15.0`):
 
-```bash
-cd services/hca-schema-validator && poetry update hca-schema-validator
-```
+1. `cd services/hca-schema-validator && poetry update hca-schema-validator`
+2. Commit `poetry.lock`
 
 No pin bump is needed — the constraint already admits it. But `poetry lock` **will not pick the new version up**: it re-resolves without upgrading within an unchanged constraint, so it happily keeps the old one. Only `poetry update <package>` moves the lock. This failure is **silent** — the build succeeds and the image just keeps shipping the old validator.
 
@@ -122,7 +121,15 @@ Either way, confirm the lock actually moved before building:
 grep -A1 'name = "hca-schema-validator"' services/hca-schema-validator/poetry.lock
 ```
 
-Then rebuild the image — dev first: `make batch-publish-container ENV=dev`
+### Only build the image from a clean tree, after merge
+
+```bash
+make batch-publish-container ENV=dev     # then ENV=prod
+```
+
+**The image's contents and its tag come from different places.** `docker build` copies from the **working tree**, so it picks up uncommitted edits; the tag is `git rev-parse --short HEAD`, i.e. the **last commit**. Build with a dirty tree, or from an unmerged branch, and you publish an image whose tag names a commit that does not contain what is inside it. Nothing warns you, and afterwards nobody can tell what is actually deployed: checking out that SHA reproduces a *different* image.
+
+So build only when `git status` is clean and the change is on `main`.
 
 ## Architecture
 
