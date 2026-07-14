@@ -101,15 +101,30 @@ tag-batch:
 # an empty --porcelain listing — the guard would pass while shipping untracked
 # files straight into the image. Forcing the flag makes the check independent of
 # whoever's machine it runs on.
+# Fails closed. A bare `$(git status ...)` substitution yields an empty string when
+# git errors — no repo, no git, a broken checkout — and an empty string reads as
+# "clean", so the guard would wave the build through in precisely the situations
+# where provenance cannot be established at all. Check the exit status, not just
+# the output.
 .PHONY: check-clean
 check-clean:
-	@if [ -n "$$(git status --porcelain --untracked-files=all)" ]; then \
+	@if ! git rev-parse --git-dir >/dev/null 2>&1; then \
+		echo "Error: not a git repository, so the tree cannot be verified."; \
+		echo "  Refusing to publish an image whose provenance cannot be established."; \
+		exit 1; \
+	fi; \
+	dirty=$$(git status --porcelain --untracked-files=all) || { \
+		echo "Error: 'git status' failed, so the tree cannot be verified."; \
+		echo "  Refusing to publish an image whose provenance cannot be established."; \
+		exit 1; \
+	}; \
+	if [ -n "$$dirty" ]; then \
 		echo "Error: refusing to publish from a dirty working tree."; \
 		echo ""; \
 		echo "  The image would contain these uncommitted changes, but be published"; \
 		echo "  as :$(TAG), which does not have them. The tag would be a lie."; \
 		echo ""; \
-		git status --short --untracked-files=all | sed 's/^/    /'; \
+		printf '%s\n' "$$dirty" | sed 's/^/    /'; \
 		echo ""; \
 		echo "  Commit and merge first, then rebuild."; \
 		exit 1; \
