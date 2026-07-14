@@ -509,14 +509,14 @@ numpy = ">=1.21.2"
 
 [[package]]
 name = "hca-schema-validator"
-version = "0.14.0"
+version = "0.14.1"
 description = "HCA schema validation for single-cell datasets"
 optional = false
 python-versions = "<4.0,>=3.10"
 groups = ["main"]
 files = [
-    {file = "hca_schema_validator-0.14.0-py3-none-any.whl", hash = "sha256:11474ac3e43774aaa33482d00af112a3053b1ef5328ae141b7eb4cfcf4b768f4"},
-    {file = "hca_schema_validator-0.14.0.tar.gz", hash = "sha256:338afd499316bce08b5dc6c391a533bb576240cce4d5d580e71aea5083057c47"},
+    {file = "hca_schema_validator-0.14.1-py3-none-any.whl", hash = "sha256:9f28ddf3503260684ac074490ada8d5c8e1d5fe647b66750478c9b6be5e47627"},
+    {file = "hca_schema_validator-0.14.1.tar.gz", hash = "sha256:64f2fa29de0402312940ee6b47dd78ff774bb34b4b466031ed246647d02dd77e"},
 ]
 
 [package.dependencies]
