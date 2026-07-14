@@ -51,13 +51,6 @@
 **/*.code-workspace
 **/.pre-commit-config.yaml
 
-# Secrets and machine-specific config — these must never reach an image.
-**/.env
-**/.env.*
-!**/.env.example
-!**/.env.make.example
-**/.mcp.json
-
 # Coverage and test output
 **/.coverage
 **/.coverage.*
@@ -74,12 +67,28 @@
 
 # --- src/ trees are source, never build output. See rule 2 at the top. ---
 # This re-include protects a package legitimately named build/, dist/, docs/ or
-# env/ from the patterns above. The lines after it re-exclude the things that must
-# never ship even from inside src/, because last match wins.
+# env/ from the patterns above. The lines after it re-exclude what must never ship
+# even from inside src/, because last match wins.
 !**/src/**
 **/src/**/__pycache__/
 **/src/**/*.py[cod]
 **/src/**/.venv/
-**/src/**/.env
-**/src/**/.env.*
 **/src/**/.DS_Store
+
+# --- Secrets. Deliberately LAST, after the src/ re-include. ---
+# Last match wins, so putting these at the end means they apply everywhere,
+# including inside src/, with no duplicate entries to keep in sync. Every one of
+# these is also in .gitignore, which means check-clean is blind to them: git
+# reports a clean tree while the file sits there waiting to be copied in. That is
+# exactly how a nested .env got baked into an image before this file existed.
+**/.env
+**/.env.*
+!**/.env.example
+!**/.env.make.example
+**/.mcp.json
+**/.pypirc
+**/.netrc
+**/.aws/
+**/*.pem
+**/id_rsa
+**/id_rsa.*
