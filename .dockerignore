@@ -1,0 +1,73 @@
+# The Docker build context is the repo root, and the Dockerfiles COPY whole
+# directories (e.g. `COPY shared/ ./shared/`). Without this file, anything
+# sitting in those directories is baked into the image — including artifacts
+# git ignores, which `git status` reports as a clean tree. The Batch image
+# shipped with 45 stray .pyc files from a developer's laptop before this
+# existed.
+#
+# This is what makes the check-clean guard in services/dataset-validator's
+# Makefile sufficient: with local artifacts excluded here, everything left in
+# the build context is tracked, so a clean `git status` really does mean the
+# image matches the commit it is tagged with.
+
+# Virtualenvs. A project-local .venv is the dangerous one: uv creates them, so
+# once shared/ migrates to uv (#473) `COPY shared/` would otherwise bake a
+# developer's macOS venv into a linux/amd64 image.
+.venv/
+**/.venv/
+venv/
+**/venv/
+env/
+
+# Python bytecode and caches
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+**/.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+
+# Build artifacts
+dist/
+**/dist/
+build/
+*.egg-info/
+**/*.egg-info/
+
+# Version control and CI
+.git/
+.gitignore
+.github/
+
+# Local tooling and editor state
+.claude/
+.vscode/
+.idea/
+*.code-workspace
+.pre-commit-config.yaml
+
+# Secrets and machine-specific config — these must never reach an image
+.env
+.env.*
+!.env.example
+!.env.make.example
+.mcp.json
+
+# Coverage and test output
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# Repo-level docs. Deliberately NOT excluding *.md generally: a pyproject that
+# declares `readme = "README.md"` needs that file present to install, and a
+# build that breaks because a doc was filtered out is a confusing failure to buy
+# nothing.
+docs/
+
+# macOS
+.DS_Store
