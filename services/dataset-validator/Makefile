@@ -96,15 +96,20 @@ tag-batch:
 # This fires even when TAG is overridden. A hand-picked tag does not make
 # unreproducible content acceptable in ECR, and letting TAG bypass the check would
 # turn it into the override flag this guard deliberately does not have.
+# --untracked-files=all is not optional. `git status` honours the user's
+# status.showUntrackedFiles config, and someone who has set it to `no` would get
+# an empty --porcelain listing — the guard would pass while shipping untracked
+# files straight into the image. Forcing the flag makes the check independent of
+# whoever's machine it runs on.
 .PHONY: check-clean
 check-clean:
-	@if [ -n "$$(git status --porcelain)" ]; then \
+	@if [ -n "$$(git status --porcelain --untracked-files=all)" ]; then \
 		echo "Error: refusing to publish from a dirty working tree."; \
 		echo ""; \
 		echo "  The image would contain these uncommitted changes, but be published"; \
 		echo "  as :$(TAG), which does not have them. The tag would be a lie."; \
 		echo ""; \
-		git status --short | sed 's/^/    /'; \
+		git status --short --untracked-files=all | sed 's/^/    /'; \
 		echo ""; \
 		echo "  Commit and merge first, then rebuild."; \
 		exit 1; \
