@@ -1,8 +1,8 @@
 # Build stage
 FROM python:3.11-slim-bookworm AS builder
 
-# Install Poetry
-RUN pip install poetry==2.2.1
+# Bring in uv (pinned for reproducible builds — do not use :latest).
+COPY --from=ghcr.io/astral-sh/uv:0.10.9 /uv /bin/uv
 
 # Set up the directory structure to match the expected paths
 WORKDIR /build
@@ -10,35 +10,29 @@ WORKDIR /build
 # Copy shared library (path dep of dataset-validator)
 COPY shared/ ./shared/
 
-# Copy services' Poetry configuration
-COPY services/dataset-validator/pyproject.toml services/dataset-validator/poetry.lock* ./services/dataset-validator/
-COPY services/cellxgene-validator/pyproject.toml services/cellxgene-validator/poetry.lock* ./services/cellxgene-validator/
-COPY services/hca-schema-validator/pyproject.toml services/hca-schema-validator/poetry.lock* ./services/hca-schema-validator/
+# Copy the services' uv project files
+COPY services/dataset-validator/pyproject.toml services/dataset-validator/uv.lock ./services/dataset-validator/
+COPY services/cellxgene-validator/pyproject.toml services/cellxgene-validator/uv.lock ./services/cellxgene-validator/
+COPY services/hca-schema-validator/pyproject.toml services/hca-schema-validator/uv.lock ./services/hca-schema-validator/
 
-RUN poetry self add poetry-plugin-export
-
-# Change to dataset validator service directory for Poetry operations
+# Export a locked requirements file per project for the final stage. Each is
+# installed into its own environment there — the three dependency sets are
+# mutually incompatible (that is the whole point of the isolation).
+#   --no-emit-project        the virtual projects install nothing themselves
+#   --no-emit-package shared  dataset-validator's shared source is COPY'd to
+#                             /opt/python in the final stage, not installed here
 WORKDIR /build/services/dataset-validator
-# Install dependencies
-RUN poetry install --only main --no-root
-# Export requirements for final stage. Drop the editable hca-validation-shared
-# path entry — the final stage receives the source via a direct COPY instead.
-RUN poetry export --without-hashes -o /tmp/requirements.txt && \
-    sed -i '/^-e file:.*shared/d' /tmp/requirements.txt
+RUN uv export --frozen --no-hashes --no-dev \
+        --no-emit-project --no-emit-package hca-validation-shared \
+        -o /tmp/requirements.txt
 
-# Change to CELLxGENE validator service directory for Poetry operations
 WORKDIR /build/services/cellxgene-validator
-# Install dependencies
-RUN poetry install
-# Export requirements for final stage
-RUN poetry export --without-hashes -o /tmp/requirements_cellxgene.txt
+RUN uv export --frozen --no-hashes --no-dev --no-emit-project \
+        -o /tmp/requirements_cellxgene.txt
 
-# Change to HCA schema validator service directory for Poetry operations
 WORKDIR /build/services/hca-schema-validator
-# Install dependencies
-RUN poetry install
-# Export requirements for final stage
-RUN poetry export --without-hashes -o /tmp/requirements_hca_schema.txt
+RUN uv export --frozen --no-hashes --no-dev --no-emit-project \
+        -o /tmp/requirements_hca_schema.txt
 
 # Final stage
 FROM python:3.11-slim-bookworm

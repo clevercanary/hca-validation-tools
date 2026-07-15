@@ -27,13 +27,11 @@
 !shared/pyproject.toml
 !shared/src/
 
-# services/ — each service's pyproject, lockfile and source. Covers all four;
+# services/ — each service's pyproject, uv.lock and source. Covers all four;
 # the Batch image uses three and the Lambda image uses the fourth, and one
-# .dockerignore serves both builds. Both lock formats are re-included during the
-# uv migration: the Lambda (entry-sheet) build reads uv.lock, the Batch build
-# still reads poetry.lock until #475 moves it to uv.
+# .dockerignore serves both builds. All services are on uv now (#474, #475), so
+# their builds read uv.lock; no poetry.lock line remains.
 !services/*/pyproject.toml
-!services/*/poetry.lock
 !services/*/uv.lock
 !services/*/src/
 

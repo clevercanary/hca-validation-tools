@@ -3,16 +3,17 @@ name = "hca-schema-validator-service"
 version = "0.1.0"
 requires-python = "~=3.11"
 dependencies = [
-    "hca-schema-validator (>=0.14.0,<0.15.0)"
+    "hca-schema-validator>=0.14.0,<0.15.0",
 ]
 
-[tool.poetry]
-package-mode = false
+[dependency-groups]
+dev = [
+    "pytest>=8.4.2,<9",
+    "pyright>=1.1.408,<2",
+]
 
-[tool.poetry.group.dev.dependencies]
-pytest = "^8.4.2"
-pyright = "^1.1.408"
-
-[build-system]
-requires = ["poetry-core>=2.0.0,<3.0.0"]
-build-backend = "poetry.core.masonry.api"
+# Not a distributable package — a subprocess validator built into the Batch image.
+# Consumes the PUBLISHED hca-schema-validator wheel (its exact cellxgene pins),
+# never a path dep. No exclude-newer (see #475 / cellxgene note).
+[tool.uv]
+package = false

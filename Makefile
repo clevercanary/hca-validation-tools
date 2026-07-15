@@ -218,6 +218,6 @@ typecheck:
 	@echo "Running pyright (hca-schema-validator)..."
 	@cd packages/hca-schema-validator && uv run pyright --project ../.. src
 	@echo "Running pyright (dataset-validator)..."
-	@cd services/dataset-validator && poetry run pyright --project ../../ src
+	@cd services/dataset-validator && uv run pyright --project ../../ src
 	@echo "Running pyright (hca-schema-validator service)..."
-	@cd services/hca-schema-validator && poetry run pyright --project ../../ src
+	@cd services/hca-schema-validator && uv run pyright --project ../../ src

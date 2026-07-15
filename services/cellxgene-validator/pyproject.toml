@@ -3,15 +3,15 @@ name = "cellxgene-validator"
 version = "0.1.0"
 requires-python = "~=3.11"
 dependencies = [
-    "cellxgene-schema (==7.0.1)"
+    "cellxgene-schema==7.0.1",
 ]
 
-[tool.poetry]
-package-mode = false
+[dependency-groups]
+dev = ["pytest>=8.4.2,<9"]
 
-[tool.poetry.group.dev.dependencies]
-pytest = "^8.4.2"
-
-[build-system]
-requires = ["poetry-core>=2.0.0,<3.0.0"]
-build-backend = "poetry.core.masonry.api"
+# Not a distributable package — a subprocess validator built into the Batch image.
+# No exclude-newer: the pre-uv poetry.lock is not cleanly reproducible at any date
+# (see #475). Fresh resolution; the migration's no-behavior-change guarantee is
+# proven by output equivalence + a real Batch run, not by freezing deps.
+[tool.uv]
+package = false
