@@ -98,14 +98,38 @@ Before tagging 1.0.0, widen the sibling bounds in `packages/hca-anndata-mcp/pypr
 
 ## Updating hca-schema-validator in the Batch Service
 
-When a new version of `hca-schema-validator` is released (via release-please → PyPI):
+The Docker image installs from `poetry.lock`, so **the lock is what decides which version ships** — not the constraint in `pyproject.toml`. Which of the two you touch depends on where the new release lands.
+
+**A patch release inside the existing constraint** (e.g. `0.14.0` → `0.14.1`, against `>=0.14.0,<0.15.0`):
+
+1. `cd services/hca-schema-validator && poetry update hca-schema-validator`
+2. Commit `poetry.lock`
+
+No pin bump is needed — the constraint already admits it. But `poetry lock` **will not pick the new version up**: it re-resolves without upgrading within an unchanged constraint, so it happily keeps the old one. Only `poetry update <package>` moves the lock. This failure is **silent** — the build succeeds and the image just keeps shipping the old validator.
+
+**A release that crosses the constraint** (e.g. `0.14.x` → `0.15.0`):
 
 1. Bump the version pin in `services/hca-schema-validator/pyproject.toml`
-2. **Regenerate the lock file**: `cd services/hca-schema-validator && poetry lock`
-3. Commit both `pyproject.toml` and `poetry.lock` together
-4. After merge, rebuild the Docker image: `make batch-publish-container ENV=dev`
+2. `cd services/hca-schema-validator && poetry lock`
+3. Commit `pyproject.toml` and `poetry.lock` together
 
-Forgetting step 2 will cause the Docker build to fail with "pyproject.toml changed significantly since poetry.lock was last generated."
+Here `poetry lock` is enough, because the constraint changed. Skipping it fails loudly: "pyproject.toml changed significantly since poetry.lock was last generated."
+
+Either way, confirm the lock actually moved before building:
+
+```bash
+grep -A1 'name = "hca-schema-validator"' services/hca-schema-validator/poetry.lock
+```
+
+### Only build the image from a clean tree
+
+```bash
+make batch-publish-container ENV=dev     # then ENV=prod, from main
+```
+
+**The image's contents and its tag come from different places.** `docker build` copies from the **working tree**, so it picks up uncommitted edits; the tag is `git rev-parse --short HEAD`, i.e. the **last commit**. Build with a dirty tree and you publish an image whose tag names a commit that does not contain what is inside it — nobody can then tell what is deployed, because checking out that SHA reproduces a *different* image. `make publish-batch` refuses to run from a dirty tree for this reason; do not work around it.
+
+**Dev may be built from a branch.** A clean branch commit is a real commit, so the tag still reproduces the image — that is how a change is validated on dev before it merges. **Prod should be built from `main`**, so that what is running in production is on the mainline and not on a branch that may never land.
 
 ## Architecture
 

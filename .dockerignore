@@ -1,0 +1,65 @@
+# An ALLOWLIST, not a denylist. Read this before changing it.
+#
+# The build context is the repo root, and both Dockerfiles COPY out of it. A
+# denylist here is open by default: every new cache directory, tool, or
+# credential file is a fresh chance to leak, and `check-clean` cannot help
+# because those files are gitignored — git reports a clean tree while the file
+# sits in a COPY'd directory. A nested .env really did get baked into an image
+# that way, and four separate rounds of review each found another missing
+# denylist entry.
+#
+# So: deny everything, then re-include exactly what the two Dockerfiles need.
+# Adding a build input means adding a line here. Forgetting to is a loud failure
+# (the build cannot find the file), which is the right way round — the denylist's
+# failures were silent.
+#
+# Do not "simplify" this back into a denylist.
+
+# Deny everything.
+*
+
+# --- Re-include exactly the build inputs. ---
+#
+# shared/ — its pyproject and lockfile (poetry installs it as a path dependency)
+# and its source. Deliberately NOT shared/tests/ or shared/Makefile: the image
+# does not run them.
+!shared/pyproject.toml
+!shared/poetry.lock
+!shared/src/
+
+# services/ — each service's pyproject, lockfile and source. Covers all four;
+# the Batch image uses three and the Lambda image uses the fourth, and one
+# .dockerignore serves both builds.
+!services/*/pyproject.toml
+!services/*/poetry.lock
+!services/*/src/
+
+# The Lambda image copies this config in at build time.
+!deployment/entry-sheet-validator/config.yaml
+
+# --- Strip what must never ship, even from the allowed paths above. ---
+#
+# The re-includes are recursive, so anything sitting inside src/ would otherwise
+# ride along. Last match wins, so these come last.
+#
+# Note what is NOT needed here: no build/, dist/, docs/ or env/ exclusions. Those
+# are legitimate Python package names, and a denylist had to exclude them
+# recursively — which would have silently dropped a module at src/.../build/ from
+# the image. With an allowlist the problem does not arise: those directories were
+# never allowed in.
+**/__pycache__/
+**/*.py[cod]
+**/*$py.class
+**/.venv/
+**/.DS_Store
+
+# Secrets. All of these are gitignored, so check-clean is blind to them.
+**/.env
+**/.env.*
+**/.mcp.json
+**/.pypirc
+**/.netrc
+**/.aws/
+**/*.pem
+**/id_rsa
+**/id_rsa.*
