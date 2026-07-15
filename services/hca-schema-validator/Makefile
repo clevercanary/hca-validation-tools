@@ -1,8 +1,8 @@
 # HCA Schema Validator Service Makefile
-# Runs in the hca-schema-validator service's Poetry environment
+# Runs in the hca-schema-validator service's uv environment
 
 .DEFAULT_GOAL := help
-POETRY := poetry
+UV := uv
 
 
 .PHONY: help
@@ -15,12 +15,12 @@ help:
 .PHONY: install
 install:
 	@echo "Installing hca-schema-validator dependencies..."
-	@$(POETRY) install
+	@$(UV) sync
 
 .PHONY: test
 test:
 	@echo "Running hca-schema-validator tests..."
-	@$(POETRY) run pytest tests/ -v
+	@$(UV) run pytest tests/ -v
 
 
 .PHONY: clean

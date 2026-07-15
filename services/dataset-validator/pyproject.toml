@@ -1,28 +1,37 @@
-[tool.poetry]
+[project]
 name = "hca-dataset-validator"
 version = "0.1.0"
 description = "Dataset validation Batch service for HCA validation tools"
-authors = ["Your Name <your.email@example.com>"]
-package-mode = false
+authors = [{ name = "Clever Canary", email = "dave@clevercanary.com" }]
+requires-python = ">=3.11,<4.0"
+dependencies = [
+    "hca-validation-shared[h5ad]",
+    # AWS dependencies for S3 operations
+    "boto3>=1.34.0,<2",
+    "anndata>=0.12.2,<0.13",
+    "cap-upload-validator>=1.5.1,<2",
+]
 
-[tool.poetry.dependencies]
-python = "^3.11"
-# AWS dependencies for S3 operations
-boto3 = "^1.34.0"
-# Minimal dependencies for Batch environment - add back as needed
-# python-dotenv = "^1.1.0"
-hca-validation-shared = {path = "../../shared", develop = true, extras = ["h5ad"]}
-anndata = "^0.12.2"
-cap-upload-validator = "^1.5.1"
+[dependency-groups]
+dev = [
+    "pytest>=8.3.5,<9",
+    "moto>=4.2.0,<5",
+    "pyright>=1.1.408,<2",
+]
 
-[tool.poetry.group.dev.dependencies]
-# Testing dependencies
-pytest = "^8.3.5"
-moto = "^4.2.0"
-# Additional dev dependencies - add back as needed
-# pytest-mock = "^3.14.0"
-pyright = "^1.1.408"
+# Not a distributable package — this is a Batch entrypoint, not a library.
+#
+# Deliberately NO `exclude-newer` (unlike the entry-sheet Lambda). The pre-uv
+# poetry.lock was an incrementally-updated patchwork, not a point-in-time
+# snapshot — it pinned boto3 1.40.15 (Aug 2025) alongside cap-upload-validator
+# 1.7.0 (released later), so no single date reproduces it (`uv lock` fails to
+# resolve at the early date). Fresh resolution is intentional here; the actual
+# validators are version-isolated (cellxgene-schema and hca-schema-validator run
+# in their own pinned venvs; cap-upload-validator resolves unchanged), and the
+# migration's like-for-like guarantee is proven by output equivalence against the
+# old image + a real Batch run, not by freezing this venv's deps. See #475.
+[tool.uv]
+package = false
 
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+[tool.uv.sources]
+hca-validation-shared = { path = "../../shared", editable = true }

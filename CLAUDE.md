@@ -98,27 +98,27 @@ Before tagging 1.0.0, widen the sibling bounds in `packages/hca-anndata-mcp/pypr
 
 ## Updating hca-schema-validator in the Batch Service
 
-The Docker image installs from `poetry.lock`, so **the lock is what decides which version ships** — not the constraint in `pyproject.toml`. Which of the two you touch depends on where the new release lands.
+The Docker image installs from `uv.lock` (via `uv export`), so **the lock is what decides which version ships** — not the constraint in `pyproject.toml`. Which of the two you touch depends on where the new release lands.
 
 **A patch release inside the existing constraint** (e.g. `0.14.0` → `0.14.1`, against `>=0.14.0,<0.15.0`):
 
-1. `cd services/hca-schema-validator && poetry update hca-schema-validator`
-2. Commit `poetry.lock`
+1. `cd services/hca-schema-validator && uv lock --upgrade-package hca-schema-validator`
+2. Commit `uv.lock`
 
-No pin bump is needed — the constraint already admits it. But `poetry lock` **will not pick the new version up**: it re-resolves without upgrading within an unchanged constraint, so it happily keeps the old one. Only `poetry update <package>` moves the lock. This failure is **silent** — the build succeeds and the image just keeps shipping the old validator.
+No pin bump is needed — the constraint already admits it. But a bare `uv lock` **will not pick the new version up**: it re-resolves conservatively and keeps the existing locked version. Only `uv lock --upgrade-package <package>` moves the lock. That failure is **silent** — the build succeeds and the image just keeps shipping the old validator.
 
 **A release that crosses the constraint** (e.g. `0.14.x` → `0.15.0`):
 
 1. Bump the version pin in `services/hca-schema-validator/pyproject.toml`
-2. `cd services/hca-schema-validator && poetry lock`
-3. Commit `pyproject.toml` and `poetry.lock` together
+2. `cd services/hca-schema-validator && uv lock`
+3. Commit `pyproject.toml` and `uv.lock` together
 
-Here `poetry lock` is enough, because the constraint changed. Skipping it fails loudly: "pyproject.toml changed significantly since poetry.lock was last generated."
+Here `uv lock` is enough, because the constraint changed.
 
 Either way, confirm the lock actually moved before building:
 
 ```bash
-grep -A1 'name = "hca-schema-validator"' services/hca-schema-validator/poetry.lock
+grep -A1 'name = "hca-schema-validator"' services/hca-schema-validator/uv.lock
 ```
 
 ### Only build the image from a clean tree
@@ -134,7 +134,7 @@ make batch-publish-container ENV=dev     # then ENV=prod, from main
 ## Architecture
 
 **Multi-Service Structure:**
-- `shared/` - Core library with LinkML schemas, Pydantic validation, entry sheet logic. All services depend on this via Poetry path dependency.
+- `shared/` - Core library with LinkML schemas, Pydantic validation, entry sheet logic. All services depend on this via a uv path dependency (`[tool.uv.sources]`).
 - `services/entry-sheet-validator/` - AWS Lambda service for Google Sheets validation
 - `services/dataset-validator/` - AWS Batch service for H5AD file validation using cap-upload-validator
 - `services/hca-schema-validator/` - Service wrapper for the published PyPI package

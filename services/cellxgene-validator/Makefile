@@ -1,8 +1,8 @@
 # CELLxGENE Validator Service Makefile
-# Runs in the cellxgene-validator Poetry environment
+# Runs in the cellxgene-validator uv environment
 
 .DEFAULT_GOAL := help
-POETRY := poetry
+UV := uv
 
 
 .PHONY: help
@@ -15,12 +15,12 @@ help:
 .PHONY: install
 install:
 	@echo "Installing cellxgene-validator dependencies..."
-	@$(POETRY) install
+	@$(UV) sync
 
 .PHONY: test
 test:
 	@echo "Running cellxgene-validator tests..."
-	@$(POETRY) run pytest tests/ -v
+	@$(UV) run pytest tests/ -v
 
 
 .PHONY: clean
