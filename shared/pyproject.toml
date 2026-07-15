@@ -1,39 +1,39 @@
-[tool.poetry]
+[project]
 name = "hca-validation-shared"
 version = "0.1.0"
 description = "Shared data dictionary generation for HCA validation tools"
-authors = ["Your Name <your.email@example.com>"]
-packages = [{include = "hca_validation", from = "src"}]
+authors = [{ name = "Clever Canary", email = "dave@clevercanary.com" }]
+requires-python = ">=3.10,<4.0"
+dependencies = [
+    "linkml-runtime>=1.9.1,<2",
+    "linkml-validator>=0.4.5,<0.5",
+    "linkml==1.9.2",
+    "pyyaml>=6.0,<7",
+    "pandas>=2.2.3,<3",
+    "requests>=2.32.3,<3",
+    "gspread>=6.2.0,<7",
+    "psutil>=7.0.0,<8",
+    "python-dotenv>=1.1.0,<2",
+    "pydantic>=2.11.4,<3",
+    "pydantic-core>=2.33.2,<3",
+    "google-api-python-client>=2.171.0,<3",
+    "urllib3>=2.5.0,<3",
+]
 
-[tool.poetry.dependencies]
-python = "^3.10"
-linkml-runtime = "^1.9.1"
-linkml-validator = "^0.4.5"
-linkml = "1.9.2"
-pyyaml = "^6.0"
-pandas = "^2.2.3"
-requests = "^2.32.3"
-gspread = "^6.2.0"
-psutil = "^7.0.0"
-python-dotenv = "^1.1.0"
-pydantic = "^2.11.4"
-pydantic-core = "^2.33.2"
-google-api-python-client = "^2.171.0"
-urllib3 = "^2.5.0"
 # Optional: only needed by the `h5ad_storage` module (HDF5 introspection).
 # Kept out of the default install so lightweight consumers (e.g. the entry-sheet
 # Lambda) don't pull h5py. Enable via the `h5ad` extra.
-h5py = {version = "^3.8", optional = true}
+[project.optional-dependencies]
+h5ad = ["h5py>=3.8,<4"]
 
-[tool.poetry.extras]
-h5ad = ["h5py"]
-
-[tool.poetry.group.dev.dependencies]
-pytest = "^8.3.5"
-pytest-mock = "^3.14.0"
-python-dotenv = "^1.1.0"
-requests = "^2.32.3"
-h5py = "^3.8"
+[dependency-groups]
+dev = [
+    "pytest>=8.3.5,<9",
+    "pytest-mock>=3.14.0,<4",
+    # Unconditional here (not via the h5ad extra) so the test suite always
+    # exercises the h5ad_storage module.
+    "h5py>=3.8,<4",
+]
 
 [tool.pytest.ini_options]
 markers = [
@@ -41,5 +41,8 @@ markers = [
 ]
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/hca_validation"]
