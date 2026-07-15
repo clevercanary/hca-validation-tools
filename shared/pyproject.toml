@@ -30,8 +30,6 @@ h5ad = ["h5py>=3.8,<4"]
 dev = [
     "pytest>=8.3.5,<9",
     "pytest-mock>=3.14.0,<4",
-    "python-dotenv>=1.1.0,<2",
-    "requests>=2.32.3,<3",
     # Unconditional here (not via the h5ad extra) so the test suite always
     # exercises the h5ad_storage module.
     "h5py>=3.8,<4",
