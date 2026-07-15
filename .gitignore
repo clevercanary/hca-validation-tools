@@ -107,7 +107,12 @@ ipython_config.py
 #   Similar to Pipfile.lock, it is generally recommended to include uv.lock in version control.
 #   This is especially recommended for binary packages to ensure reproducibility, and is more
 #   commonly ignored for libraries.
-#uv.lock
+#   Everything under packages/ is a published library, not a deployed app: nothing in the build
+#   or deploy path reads these locks (uv build resolves from pyproject.toml; the Docker images use
+#   the services' poetry.lock). Tracking them only invited drift, because release-please bumps
+#   pyproject.toml but not uv.lock (see #483). Scoped to packages/ so future uv-based *services*
+#   (apps) can still commit their locks.
+packages/*/uv.lock
 
 # poetry
 #   Similar to Pipfile.lock, it is generally recommended to include poetry.lock in version control.
