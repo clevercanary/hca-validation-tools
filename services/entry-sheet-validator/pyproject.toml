@@ -1,24 +1,37 @@
-[tool.poetry]
+[project]
 name = "hca-entry-sheet-validator"
 version = "0.1.0"
 description = "Entry sheet validation Lambda service for HCA validation tools"
-authors = ["Your Name <your.email@example.com>"]
-package-mode = false
-# No packages - this is a Lambda function, not a Python package
+authors = [{ name = "Clever Canary", email = "dave@clevercanary.com" }]
+requires-python = ">=3.10,<4.0"
+dependencies = [
+    "hca-validation-shared",
+    # AWS Lambda runtime
+    "boto3>=1.34.0,<2",
+    "python-dotenv>=1.1.0,<2",
+]
 
-[tool.poetry.dependencies]
-python = "^3.10"
-hca-validation-shared = {path = "../../shared", develop = true}
-# AWS Lambda runtime
-boto3 = "^1.34.0"
-# Minimal dependencies for Lambda environment
-python-dotenv = "^1.1.0"
+[dependency-groups]
+dev = [
+    "pytest>=8.3.5,<9",
+    "pytest-mock>=3.14.0,<4",
+    "moto>=4.2.0,<5",
+    # The container smoke test POSTs to the running Lambda over HTTP.
+    "requests>=2.32.3,<3",
+]
 
-[tool.poetry.group.dev.dependencies]
-pytest = "^8.3.5"
-pytest-mock = "^3.14.0"
-moto = "^4.2.0"
+# Not a distributable package — this is a Lambda function, not a library.
+# uv manages the environment and lockfile but builds no wheel.
+[tool.uv]
+package = false
+# Freeze the resolution to the dependency snapshot that the pre-uv poetry.lock
+# shipped (its last update was 2025-08-25). This keeps the uv migration
+# like-for-like: uv otherwise resolves every transitive dep to today's newest
+# in-range version (72 packages drifted, including major bumps and two that
+# broke the Lambda — linkml-runtime 1.11 and a curies→pystow chain that writes
+# to $HOME at import). Bump this date to update dependencies deliberately.
+exclude-newer = "2025-08-26T00:00:00Z"
 
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+# Deliberately no h5ad extra: the Lambda image must stay light (no h5py).
+[tool.uv.sources]
+hca-validation-shared = { path = "../../shared", editable = true }

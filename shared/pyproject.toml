@@ -5,7 +5,12 @@ description = "Shared data dictionary generation for HCA validation tools"
 authors = [{ name = "Clever Canary", email = "dave@clevercanary.com" }]
 requires-python = ">=3.10,<4.0"
 dependencies = [
-    "linkml-runtime>=1.9.1,<2",
+    # Capped below 1.10: linkml-runtime 1.10 removed Format.JSON, which the
+    # exact-pinned linkml==1.9.2 calls at import time. linkml 1.9.2's own
+    # metadata declares linkml-runtime<2, which is too loose — uv resolves to
+    # the newest in range and breaks `import linkml`. Poetry masked this by
+    # freezing 1.9.5 in its lock. Do not relax without bumping linkml.
+    "linkml-runtime>=1.9.2,<1.10",
     "linkml-validator>=0.4.5,<0.5",
     "linkml==1.9.2",
     "pyyaml>=6.0,<7",
