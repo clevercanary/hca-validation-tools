@@ -113,6 +113,10 @@ ipython_config.py
 #   pyproject.toml but not uv.lock (see #483). Scoped to packages/ so future uv-based *services*
 #   (apps) can still commit their locks.
 packages/*/uv.lock
+#   shared/ is the same shape: a library consumed only as a path dependency, never
+#   installed from its own lock (services build it through their poetry.lock; uv
+#   build/sync resolve from pyproject.toml). Nothing reads shared/uv.lock, so ignore it.
+shared/uv.lock
 
 # poetry
 #   Similar to Pipfile.lock, it is generally recommended to include poetry.lock in version control.
