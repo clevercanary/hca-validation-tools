@@ -18,9 +18,9 @@ COPY services/hca-schema-validator/pyproject.toml services/hca-schema-validator/
 # Export a locked requirements file per project for the final stage. Each is
 # installed into its own environment there — the three dependency sets are
 # mutually incompatible (that is the whole point of the isolation).
-#   --no-emit-project        the virtual projects install nothing themselves
-#   --no-emit-package shared  dataset-validator's shared source is COPY'd to
-#                             /opt/python in the final stage, not installed here
+#   --no-emit-project                     the virtual projects install nothing themselves
+#   --no-emit-package hca-validation-shared  its source is COPY'd to /opt/python
+#                                          in the final stage, not installed here
 WORKDIR /build/services/dataset-validator
 RUN uv export --frozen --no-hashes --no-dev \
         --no-emit-project --no-emit-package hca-validation-shared \
