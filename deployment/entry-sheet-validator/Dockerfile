@@ -1,30 +1,33 @@
 # Build stage
 FROM --platform=linux/amd64 public.ecr.aws/lambda/python:3.10 AS builder
 
-# Install Poetry
-RUN pip install poetry==1.8.3
+# Bring in uv (pinned for reproducible builds — do not use :latest).
+COPY --from=ghcr.io/astral-sh/uv:0.10.9 /uv /bin/uv
 
 # Set up the directory structure to match the expected paths
 WORKDIR /build
 
-# Copy shared library first
+# Copy shared library first (path dependency source)
 COPY shared/ ./shared/
 
-# Copy service Poetry configuration
-COPY services/entry-sheet-validator/pyproject.toml services/entry-sheet-validator/poetry.lock* ./services/entry-sheet-validator/
+# Copy the service's uv project files
+COPY services/entry-sheet-validator/pyproject.toml services/entry-sheet-validator/uv.lock ./services/entry-sheet-validator/
 
-# Change to service directory for Poetry operations
+# Change to service directory for uv operations
 WORKDIR /build/services/entry-sheet-validator
 
-# Configure Poetry to not create a virtual environment
-RUN poetry config virtualenvs.create false
-
-# Install dependencies (for wheel building, not runtime)
-RUN poetry install --only main --no-root
-
-# Export requirements and install with pip to /opt/python
-RUN poetry export --without-hashes -o /tmp/requirements.txt && \
-    pip install --no-cache-dir -r /tmp/requirements.txt --target /opt/python
+# Export the locked runtime dependency closure and install it into /opt/python.
+#   --no-dev             the Lambda ships no test deps (pytest/moto/...)
+#   --no-emit-project    entry-sheet is a virtual project — nothing to install
+#   --no-emit-package …  shared is served as source from /var/task (final stage),
+#                        so only its dependencies go into /opt/python, not shared itself
+# The build-image python (3.10) is pinned so environment markers resolve for the
+# runtime interpreter, not the builder's default.
+RUN uv export --frozen --no-hashes --no-dev \
+        --no-emit-project --no-emit-package hca-validation-shared \
+        -o /tmp/requirements.txt && \
+    uv pip install --no-cache --python /var/lang/bin/python --target /opt/python \
+        -r /tmp/requirements.txt
 
 # Download and unpack the AWS Parameters and Secrets Lambda Extension (v5) using a presigned URL
 ARG EXT_URL

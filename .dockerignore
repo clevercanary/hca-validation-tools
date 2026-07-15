@@ -20,18 +20,21 @@
 
 # --- Re-include exactly the build inputs. ---
 #
-# shared/ — its pyproject and lockfile (poetry installs it as a path dependency)
-# and its source. Deliberately NOT shared/tests/ or shared/Makefile: the image
-# does not run them.
+# shared/ — its pyproject (consumed as a path dependency) and its source.
+# Deliberately NOT shared/tests/ or shared/Makefile: the image does not run them.
+# No lockfile line: shared is on uv now (#473) and its uv.lock is gitignored;
+# the consuming project's own lock pins shared's dependency closure.
 !shared/pyproject.toml
-!shared/poetry.lock
 !shared/src/
 
 # services/ — each service's pyproject, lockfile and source. Covers all four;
 # the Batch image uses three and the Lambda image uses the fourth, and one
-# .dockerignore serves both builds.
+# .dockerignore serves both builds. Both lock formats are re-included during the
+# uv migration: the Lambda (entry-sheet) build reads uv.lock, the Batch build
+# still reads poetry.lock until #475 moves it to uv.
 !services/*/pyproject.toml
 !services/*/poetry.lock
+!services/*/uv.lock
 !services/*/src/
 
 # The Lambda image copies this config in at build time.
