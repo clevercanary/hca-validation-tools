@@ -17,7 +17,6 @@ import pandas as pd
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-from dataset_validator.main import get_uv_venv_path_from
 
 
 def _setup_metadata_mocks(mock_read_inputs, mock_matrix_storage, test_adata):
@@ -42,7 +41,10 @@ def _setup_metadata_mocks(mock_read_inputs, mock_matrix_storage, test_adata):
     mock_matrix_storage.return_value = test_adata.get("matrix_storage")
 
 
-dataset_validator_venv_path = get_uv_venv_path_from(Path(__file__).parent.parent)
+# Point the external-validator subprocesses at the interpreter running the
+# tests, so the suite doesn't depend on an in-project `.venv/` existing (works
+# under `uv run pytest`, an IDE runner, or CI regardless of how the env was made).
+dataset_validator_venv_path = sys.prefix
 mock_modules_path = Path(__file__).parent / "mock-modules"
 external_validator_path_vars = {
     'CELLXGENE_VALIDATOR_VENV': dataset_validator_venv_path,
