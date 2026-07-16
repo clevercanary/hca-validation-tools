@@ -41,9 +41,10 @@ def _setup_metadata_mocks(mock_read_inputs, mock_matrix_storage, test_adata):
     mock_matrix_storage.return_value = test_adata.get("matrix_storage")
 
 
-# Point the external-validator subprocesses at the interpreter running the
-# tests, so the suite doesn't depend on an in-project `.venv/` existing (works
-# under `uv run pytest`, an IDE runner, or CI regardless of how the env was made).
+# Use the venv prefix of the interpreter running the tests (apply_external_validator
+# appends `/bin/python` to this), so the suite doesn't depend on an in-project
+# `.venv/` existing — works under `uv run pytest`, an IDE runner, or CI regardless
+# of how the env was created.
 dataset_validator_venv_path = sys.prefix
 mock_modules_path = Path(__file__).parent / "mock-modules"
 external_validator_path_vars = {
