@@ -40,9 +40,11 @@ git clone https://github.com/your-org/hca-validation-tools.git
 cd hca-validation-tools
 
 # Build everything (schemas, data dictionaries, Docker images, run tests)
+# Note: build-all builds the Lambda container, so it needs Docker running and
+# AWS credentials (it invokes the entry-sheet build with PROFILE=excira).
 make build-all
 
-# Or install shared library only
+# Or just install the shared library (no Docker/AWS needed)
 cd shared
 uv sync
 ```

@@ -17,7 +17,7 @@ import pandas as pd
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-from dataset_validator.main import get_poetry_venv_path_from
+from dataset_validator.main import get_uv_venv_path_from
 
 
 def _setup_metadata_mocks(mock_read_inputs, mock_matrix_storage, test_adata):
@@ -42,7 +42,7 @@ def _setup_metadata_mocks(mock_read_inputs, mock_matrix_storage, test_adata):
     mock_matrix_storage.return_value = test_adata.get("matrix_storage")
 
 
-dataset_validator_venv_path = get_poetry_venv_path_from(Path(__file__).parent.parent)
+dataset_validator_venv_path = get_uv_venv_path_from(Path(__file__).parent.parent)
 mock_modules_path = Path(__file__).parent / "mock-modules"
 external_validator_path_vars = {
     'CELLXGENE_VALIDATOR_VENV': dataset_validator_venv_path,
@@ -214,7 +214,7 @@ class TestDatasetValidator:
         
         # Run the validator
         result = subprocess.run(
-            ['poetry', 'run', 'python', 'src/dataset_validator/main.py'],
+            [sys.executable, 'src/dataset_validator/main.py'],
             capture_output=True,
             text=True,
             env=env

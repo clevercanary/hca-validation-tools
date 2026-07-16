@@ -54,7 +54,7 @@ make typecheck
 
 Pre-commit hook runs it on `git commit`. One-time setup: `pip install pre-commit && pre-commit install`.
 
-For Pylance to match in-editor, open the repo via `hca-validation-tools.code-workspace` (File → Open Workspace from File). Each package/service becomes its own root with its own venv (uv `.venv/` under `packages/`, poetry elsewhere), so imports resolve correctly per folder.
+For Pylance to match in-editor, open the repo via `hca-validation-tools.code-workspace` (File → Open Workspace from File). Each package/service becomes its own root with its own uv `.venv/`, so imports resolve correctly per folder.
 
 ## Deployment Commands
 
