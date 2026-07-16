@@ -79,8 +79,8 @@ hca-validation-tools/
 
 ### **Build and Development**
 
-- **No Root pyproject.toml**: Each service manages its own dependencies independently (simpler than Poetry workspaces)
-- **Path Dependencies**: Services reference shared library via `{path = "../../shared", develop = true}`
+- **No Root pyproject.toml**: Each service manages its own dependencies independently (no uv workspace — see #248)
+- **Path Dependencies**: Services reference shared library via a uv path source, `[tool.uv.sources] hca-validation-shared = { path = "../../shared", editable = true }`
 - **Independent Builds**: Each service can be built and tested independently
 - **Shared Development**: Core library changes affect all services
 - **CI/CD**: Separate build pipelines for each service
@@ -100,7 +100,7 @@ hca-validation-tools/
 **Multi-Service Architecture**
 - Shared library created at `shared/` with core validation logic
 - Entry sheet validator service extracted to `services/entry-sheet-validator/`
-- Poetry environments configured to use cache directory
+- uv environments configured with project-local `.venv/` directories
 - All tests passing including integration tests with Google Sheets API
 
 **Build System**

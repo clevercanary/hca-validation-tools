@@ -1,13 +1,5 @@
 # HCA Validation Tools Makefile
-# This Makefile provides commands for validating LinkML schemas
-
-# Variables
-SCHEMA_DIR := src/hca_validation/schema
-SCHEMAS := $(wildcard shared/$(SCHEMA_DIR)/*.yaml)
-POETRY := cd shared && poetry run
-# Redirect stderr to suppress warnings from LinkML tools (duplicate -V parameter warnings)
-# These warnings are related to the LinkML tool implementation and not to schema issues
-SUPPRESS_WARNINGS := 2>/dev/null
+# This Makefile orchestrates the multi-service build; schema targets live in shared/Makefile.
 
 # Load Make-specific environment overrides (not checked in)
 # Put only simple KEY=value pairs here (no JSON).

@@ -29,17 +29,17 @@ cd shared && make gen-schema         # Generate Pydantic models from schemas
 make test-all
 
 # Shared library tests
-cd shared && poetry run pytest tests/ -v
-cd shared && poetry run pytest tests/test_validator.py -v          # Validator only
-cd shared && poetry run pytest tests/test_entry_sheet_validator.py -v  # Entry sheet only
-cd shared && poetry run pytest tests/ -m integration -v            # Integration tests (needs creds)
-cd shared && poetry run pytest tests/ -m "not integration" -v      # Skip integration tests
+cd shared && uv run pytest tests/ -v
+cd shared && uv run pytest tests/test_validator.py -v          # Validator only
+cd shared && uv run pytest tests/test_entry_sheet_validator.py -v  # Entry sheet only
+cd shared && uv run pytest tests/ -m integration -v            # Integration tests (needs creds)
+cd shared && uv run pytest tests/ -m "not integration" -v      # Skip integration tests
 
 # Service-specific tests
 cd services/entry-sheet-validator && make test-lambda-container
-cd services/dataset-validator && poetry run pytest tests/ -v
-cd services/cellxgene-validator && poetry run pytest tests/ -v
-cd services/hca-schema-validator && poetry run pytest tests/ -v
+cd services/dataset-validator && uv run pytest tests/ -v
+cd services/cellxgene-validator && uv run pytest tests/ -v
+cd services/hca-schema-validator && uv run pytest tests/ -v
 ```
 
 ## Type Checking
@@ -148,8 +148,8 @@ make batch-publish-container ENV=dev     # then ENV=prod, from main
 - Bionetwork-specific schemas (adipose, gut, musculoskeletal) extend the core schema
 
 **Service Independence:**
-- Each service has its own `pyproject.toml` and Poetry environment
-- Services reference shared via: `hca-validation-shared = {path = "../../shared", develop = true}`
+- Each service has its own `pyproject.toml` and uv environment (project-local `.venv/`)
+- Services reference shared via a uv path source: `[tool.uv.sources] hca-validation-shared = { path = "../../shared", editable = true }`
 - Different deployment targets allow for different dependency profiles (Lambda is lightweight, Batch has heavy scientific stack)
 
 ## Environment Configuration
@@ -159,8 +159,7 @@ make batch-publish-container ENV=dev     # then ENV=prod, from main
 
 ## Key Technologies
 
-- uv for dependency management in `packages/` (project-local `.venv/`, one `uv.lock` per package — no workspace, see #248)
-- Poetry for dependency management in `shared/` and `services/` (environments cached in `~/Library/Caches/pypoetry/virtualenvs/`) — migration to uv tracked in #248
+- uv for dependency management across `packages/`, `shared/`, and `services/` (project-local `.venv/`, one `uv.lock` per project — no workspace, see #248). The Poetry→uv migration (#248) is complete.
 - LinkML for schema definition
 - Pydantic for runtime validation
 - gspread for Google Sheets API
