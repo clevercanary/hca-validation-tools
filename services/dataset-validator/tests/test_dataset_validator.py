@@ -1392,10 +1392,57 @@ def _setup_valid_s3_file(s3_client, bucket_name: str, key: str):
 def _setup_corrupt_s3_file(s3_client, bucket_name: str, key: str):
     """Helper function to setup a corrupt S3 file with wrong SHA256 metadata."""
     test_content = b'mock dataset content'
-    
+
     s3_client.put_object(
         Bucket=bucket_name,
         Key=key,
         Body=test_content,
         Metadata={'source-sha256': 'wrong_hash_value'}
     )
+
+
+def test_get_uv_venv_path_from_returns_project_local_venv():
+    """The uv venv path for a project is its project-local `.venv/` directory."""
+    from dataset_validator.main import get_uv_venv_path_from
+
+    assert get_uv_venv_path_from(Path("/x/y")) == str(Path("/x/y") / ".venv")
+
+
+def test_apply_external_validator_falls_back_to_uv_venv(monkeypatch):
+    """When the venv env var is unset, the validator subprocess is invoked via
+    the project-local uv venv (`<project>/.venv/bin/python`) rather than the old
+    `poetry env info` lookup. The Batch container always sets `*_VALIDATOR_VENV`,
+    so this fallback is the local-dev path and is otherwise unexercised."""
+    from dataset_validator.main import apply_external_validator
+
+    root = Path("/fake/project")
+    # Ensure both env vars are unset so the default script path + uv venv
+    # fallback branches are exercised.
+    monkeypatch.delenv("TEST_VALIDATOR_SCRIPT", raising=False)
+    monkeypatch.delenv("TEST_VALIDATOR_VENV", raising=False)
+
+    captured = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        return SimpleNamespace(
+            stdout=json.dumps({"valid": True, "errors": [], "warnings": []}),
+            stderr="",
+            returncode=0,
+        )
+
+    monkeypatch.setattr("dataset_validator.main.subprocess.run", fake_run)
+
+    report = apply_external_validator(
+        Path("/data/file.h5ad"),
+        script_path_var="TEST_VALIDATOR_SCRIPT",
+        venv_path_var="TEST_VALIDATOR_VENV",
+        get_default_root_path=lambda: root,
+        default_package_name="pkg",
+        validator_name="test validator",
+    )
+
+    assert report.valid is True
+    assert captured["cmd"][0] == f"{root}/.venv/bin/python"
+    assert captured["cmd"][1] == str(root / "src" / "pkg" / "main.py")
+    assert captured["cmd"][2] == "/data/file.h5ad"
