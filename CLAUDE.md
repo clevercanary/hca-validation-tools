@@ -149,7 +149,7 @@ make batch-publish-container ENV=dev     # then ENV=prod, from main
 
 **Service Independence:**
 - Each service has its own `pyproject.toml` and uv environment (project-local `.venv/`)
-- Services declare `hca-validation-shared` in `[project].dependencies`; `[tool.uv.sources] hca-validation-shared = { path = "../../shared", editable = true }` redirects that dependency to the local checkout for development
+- Services that depend on the shared library (`entry-sheet-validator`, `dataset-validator`) declare `hca-validation-shared` in `[project].dependencies`; `[tool.uv.sources] hca-validation-shared = { path = "../../shared", editable = true }` redirects that dependency to the local checkout for development. (`cellxgene-validator` and `hca-schema-validator` don't depend on shared.)
 - Different deployment targets allow for different dependency profiles (Lambda is lightweight, Batch has heavy scientific stack)
 
 ## Environment Configuration

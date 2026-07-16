@@ -80,7 +80,7 @@ hca-validation-tools/
 ### **Build and Development**
 
 - **No Root pyproject.toml**: Each service manages its own dependencies independently (no uv workspace — see #248)
-- **Path Dependencies**: Services declare `hca-validation-shared` in `[project].dependencies`; `[tool.uv.sources] hca-validation-shared = { path = "../../shared", editable = true }` redirects that dependency to the local checkout for development
+- **Path Dependencies**: Services that use the shared library (`entry-sheet-validator`, `dataset-validator`) declare `hca-validation-shared` in `[project].dependencies`; `[tool.uv.sources] hca-validation-shared = { path = "../../shared", editable = true }` redirects that dependency to the local checkout for development (`cellxgene-validator` and `hca-schema-validator` don't depend on shared)
 - **Independent Builds**: Each service can be built and tested independently
 - **Shared Development**: Core library changes affect all services
 - **CI/CD**: Release automation runs via `.github/workflows/release-please.yml`; there is no automated per-service test CI yet (tracked in #461)
