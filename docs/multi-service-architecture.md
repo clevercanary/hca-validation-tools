@@ -80,10 +80,10 @@ hca-validation-tools/
 ### **Build and Development**
 
 - **No Root pyproject.toml**: Each service manages its own dependencies independently (no uv workspace — see #248)
-- **Path Dependencies**: Services reference shared library via a uv path source, `[tool.uv.sources] hca-validation-shared = { path = "../../shared", editable = true }`
+- **Path Dependencies**: Services declare `hca-validation-shared` in `[project].dependencies`; `[tool.uv.sources] hca-validation-shared = { path = "../../shared", editable = true }` redirects that dependency to the local checkout for development
 - **Independent Builds**: Each service can be built and tested independently
 - **Shared Development**: Core library changes affect all services
-- **CI/CD**: Separate build pipelines for each service
+- **CI/CD**: Release automation runs via `.github/workflows/release-please.yml`; there is no automated per-service test CI yet (tracked in #461)
 
 ### **Migration Strategy**
 
