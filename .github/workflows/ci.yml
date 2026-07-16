@@ -1,0 +1,89 @@
+name: CI
+
+# Phase 1 of #461: verify every PR with typecheck + tests. This is a local
+# workflow, not a caller of the shared clevercanary/.github reusable workflows
+# (those don't exist yet — see #461); migrating to them is deferred. Lint (Ruff,
+# conformance A9) is also deferred: the tree isn't Ruff-clean yet and needs a
+# mechanical sweep first.
+#
+# The entry-sheet-validator suite is intentionally excluded: its only test boots
+# a built Docker image (`hca-entry-sheet-validator:latest`) and needs AWS creds
+# (Lambda extension layer) plus a GOOGLE_SERVICE_ACCOUNT secret, so it can't run
+# on a plain PR runner. Revisit as a separate gated job.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  typecheck:
+    name: typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          version: "0.10.9"
+          python-version: "3.11"
+          enable-cache: true
+      - name: Typecheck (pyright)
+        run: make typecheck
+
+  test:
+    name: test (${{ matrix.project }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # `sync-args` is `--frozen` only where a uv.lock is committed. The
+          # services commit their lock, so CI installs exactly what's locked and
+          # fails loudly on a stale lock. shared/ and packages/* gitignore their
+          # lock (#483), so there's nothing to freeze — plain `uv sync` re-resolves.
+          #
+          # shared has an `integration` marker for tests needing live creds;
+          # PR CI runs only the hermetic subset.
+          - project: shared
+            sync-args: ''
+            pytest-args: '-m "not integration"'
+          # The three published packages — untested by `make test-all`, so this
+          # is net-new coverage of our PyPI artifacts.
+          - project: packages/hca-anndata-tools
+            sync-args: ''
+            pytest-args: ''
+          - project: packages/hca-anndata-mcp
+            sync-args: ''
+            pytest-args: ''
+          - project: packages/hca-schema-validator
+            sync-args: ''
+            pytest-args: ''
+          - project: services/dataset-validator
+            sync-args: '--frozen'
+            pytest-args: ''
+          - project: services/cellxgene-validator
+            sync-args: '--frozen'
+            pytest-args: ''
+          - project: services/hca-schema-validator
+            sync-args: '--frozen'
+            pytest-args: ''
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          version: "0.10.9"
+          python-version: "3.11"
+          enable-cache: true
+      - name: Sync dependencies
+        run: uv sync ${{ matrix.sync-args }}
+        working-directory: ${{ matrix.project }}
+      - name: Run tests
+        run: uv run pytest tests/ ${{ matrix.pytest-args }} -v
+        working-directory: ${{ matrix.project }}
