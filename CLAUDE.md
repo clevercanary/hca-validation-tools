@@ -29,17 +29,17 @@ cd shared && make gen-schema         # Generate Pydantic models from schemas
 make test-all
 
 # Shared library tests
-cd shared && poetry run pytest tests/ -v
-cd shared && poetry run pytest tests/test_validator.py -v          # Validator only
-cd shared && poetry run pytest tests/test_entry_sheet_validator.py -v  # Entry sheet only
-cd shared && poetry run pytest tests/ -m integration -v            # Integration tests (needs creds)
-cd shared && poetry run pytest tests/ -m "not integration" -v      # Skip integration tests
+cd shared && uv run pytest tests/ -v
+cd shared && uv run pytest tests/test_validator.py -v          # Validator only
+cd shared && uv run pytest tests/test_entry_sheet_validator.py -v  # Entry sheet only
+cd shared && uv run pytest tests/ -m integration -v            # Integration tests (needs creds)
+cd shared && uv run pytest tests/ -m "not integration" -v      # Skip integration tests
 
 # Service-specific tests
 cd services/entry-sheet-validator && make test-lambda-container
-cd services/dataset-validator && poetry run pytest tests/ -v
-cd services/cellxgene-validator && poetry run pytest tests/ -v
-cd services/hca-schema-validator && poetry run pytest tests/ -v
+cd services/dataset-validator && uv run pytest tests/ -v
+cd services/cellxgene-validator && uv run pytest tests/ -v
+cd services/hca-schema-validator && uv run pytest tests/ -v
 ```
 
 ## Type Checking
@@ -54,7 +54,7 @@ make typecheck
 
 Pre-commit hook runs it on `git commit`. One-time setup: `pip install pre-commit && pre-commit install`.
 
-For Pylance to match in-editor, open the repo via `hca-validation-tools.code-workspace` (File → Open Workspace from File). Each package/service becomes its own root with its own venv (uv `.venv/` under `packages/`, poetry elsewhere), so imports resolve correctly per folder.
+For Pylance to match in-editor, open the repo via `hca-validation-tools.code-workspace` (File → Open Workspace from File). Each package/service becomes its own root with its own uv `.venv/`, so imports resolve correctly per folder.
 
 ## Deployment Commands
 
@@ -148,8 +148,8 @@ make batch-publish-container ENV=dev     # then ENV=prod, from main
 - Bionetwork-specific schemas (adipose, gut, musculoskeletal) extend the core schema
 
 **Service Independence:**
-- Each service has its own `pyproject.toml` and Poetry environment
-- Services reference shared via: `hca-validation-shared = {path = "../../shared", develop = true}`
+- Each service has its own `pyproject.toml` and uv environment (project-local `.venv/`)
+- Services that depend on the shared library (`entry-sheet-validator`, `dataset-validator`) declare `hca-validation-shared` in `[project].dependencies`; `[tool.uv.sources] hca-validation-shared = { path = "../../shared", editable = true }` redirects that dependency to the local checkout for development. (`cellxgene-validator` and `hca-schema-validator` don't depend on shared.)
 - Different deployment targets allow for different dependency profiles (Lambda is lightweight, Batch has heavy scientific stack)
 
 ## Environment Configuration
@@ -159,8 +159,7 @@ make batch-publish-container ENV=dev     # then ENV=prod, from main
 
 ## Key Technologies
 
-- uv for dependency management in `packages/` (project-local `.venv/`, one `uv.lock` per package — no workspace, see #248)
-- Poetry for dependency management in `shared/` and `services/` (environments cached in `~/Library/Caches/pypoetry/virtualenvs/`) — migration to uv tracked in #248
+- uv for dependency management across `packages/`, `shared/`, and `services/` (project-local `.venv/`, its own `uv.lock` per project — no workspace, see #248). Service locks are committed; library locks under `packages/` and `shared/` are gitignored (see #483). The Poetry→uv migration (#248) is complete.
 - LinkML for schema definition
 - Pydantic for runtime validation
 - gspread for Google Sheets API

@@ -32,7 +32,7 @@ hca-validation-tools/
 
 ## Quick Start
 
-This project uses Poetry for dependency management and Make for build automation:
+This project uses uv for dependency management and Make for build automation:
 
 ```bash
 # Clone the repository
@@ -40,11 +40,13 @@ git clone https://github.com/your-org/hca-validation-tools.git
 cd hca-validation-tools
 
 # Build everything (schemas, data dictionaries, Docker images, run tests)
+# Note: build-all builds the Lambda container, so it needs Docker running and
+# AWS credentials (it invokes the entry-sheet build with PROFILE=excira).
 make build-all
 
-# Or install shared library only
+# Or just install the shared library (no Docker/AWS needed)
 cd shared
-poetry install --with dev
+uv sync
 ```
 
 ## Available Commands
@@ -94,7 +96,7 @@ GOOGLE_SERVICE_ACCOUNT='{"type": "service_account", "project_id": "your-project"
 ### Multi-Service Architecture
 - **`shared/`** - Core validation library used by all services
 - **`services/entry-sheet-validator/`** - AWS Lambda service for sheet validation
-- Each service has its own Poetry environment and test suite
+- Each service has its own uv environment and test suite
 
 ### Adding New Services
 1. Create new directory under `services/`
@@ -103,12 +105,12 @@ GOOGLE_SERVICE_ACCOUNT='{"type": "service_account", "project_id": "your-project"
 
 ## Virtual Environment Management
 
-This project uses Poetry's **cache directory** for virtual environments instead of in-project `.venv` directories:
+This project uses uv, which creates a **project-local `.venv/`** directory in each package/service:
 
-- **Shared library**: `/Users/$USER/Library/Caches/pypoetry/virtualenvs/hca-validation-shared-*/`
-- **Services**: Each service gets its own cached environment
-- **Benefits**: Cleaner project structure, better IDE integration, shared dependencies across projects
-- **VS Code**: Automatically discovers Poetry environments via `Ctrl+Shift+P` → "Python: Select Interpreter"
+- **Shared library**: `shared/.venv/`
+- **Services**: Each service gets its own `.venv/` alongside its `pyproject.toml`
+- **Reproducibility**: uv resolves dependencies into a `uv.lock`; `uv sync --frozen` installs exactly those versions without re-resolving (a plain `uv sync` may update the lock). The services commit their `uv.lock`, so `--frozen` works there; the library projects (`shared/`, `packages/*`) gitignore their lock (see #483), so a fresh clone re-resolves from `pyproject.toml`
+- **VS Code**: Open `hca-validation-tools.code-workspace` so each folder resolves its own `.venv`, or select the interpreter via `Ctrl+Shift+P` → "Python: Select Interpreter"
 
 ## License
 

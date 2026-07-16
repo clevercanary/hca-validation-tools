@@ -527,15 +527,13 @@ def get_default_hcas_validator_root_path():
     return Path(__file__).parent.parent.parent.parent / "hca-schema-validator"
 
 
-def get_poetry_venv_path_from(project_path: Path) -> str:
-    path_result = subprocess.run(
-        ["poetry", "env", "info", "--path"],
-        cwd=project_path,
-        capture_output=True,
-        text=True,
-        check=True
-    )
-    return path_result.stdout.strip()
+def get_uv_venv_path_from(project_path: Path) -> str:
+    """
+    Get the path to a uv project's virtual environment. uv places a
+    project-local `.venv/` directory next to the project's `pyproject.toml`,
+    so the venv path is `<project_path>/.venv`.
+    """
+    return str(project_path / ".venv")
 
 
 def apply_external_validator(
@@ -557,7 +555,7 @@ def apply_external_validator(
         script_path_var: Name of environment variable to get the path of the script from
         venv_path_var: Name of the environment variable from which to get the path of the virtual
             environment to call the script with
-        get_default_root_path: Function to use to get the root path of a Poetry project containing
+        get_default_root_path: Function to use to get the root path of a uv project containing
             the script if the environment variables don't exist
         default_package_name: Name of the folder in which the script is contained if the
             environment variables don't exist
@@ -572,7 +570,7 @@ def apply_external_validator(
         - The validator script should take the file path as a command-line argument, and print as
           output a JSON object containing a `valid` boolean, an `errors` array of strings, and a
           `warnings` array of strings
-        - The default Poetry project should contain the script at src/{default_package_name}/{default_script_name}
+        - The default uv project should contain the script at src/{default_package_name}/{default_script_name}
     """
 
     started_at = datetime.now(timezone.utc)
@@ -587,9 +585,9 @@ def apply_external_validator(
     # Get validator venv path from environment, if present
     venv_path = os.environ.get(venv_path_var)
 
-    # If environment variable is not present, get venv path via Poetry
+    # If environment variable is not present, use the project-local uv venv
     if venv_path is None:
-        venv_path = get_poetry_venv_path_from(get_default_root_path())
+        venv_path = get_uv_venv_path_from(get_default_root_path())
 
     try:
         # Call validator and parse output

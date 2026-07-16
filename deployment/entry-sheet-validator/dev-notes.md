@@ -5,11 +5,11 @@ This document summarizes the approach, technical decisions, and workflow for bui
 
 ---
 
-## 1. Dependency Management: Poetry & pip
-- **Development:** Poetry is used for dependency management and reproducible local environments.
-- **Lambda Runtime:** The Dockerfile installs Poetry, uses it to install dependencies, and then exports them to a `requirements.txt` file. pip then installs these into `/opt/python` (the Lambda layer directory), ensuring compatibility with AWS Lambda's expectations.
+## 1. Dependency Management: uv
+- **Development:** uv is used for dependency management and reproducible local environments (`uv.lock` pins the exact closure).
+- **Lambda Runtime:** The Dockerfile pins a uv release, runs `uv export --frozen` to produce a `requirements.txt` from the lock, then `uv pip install --target /opt/python` installs the closure into the Lambda layer directory, matching AWS Lambda's expected structure.
 
-**Why?** Poetry provides a modern workflow for development, but AWS Lambda expects dependencies in a pip-installable format and directory structure.
+**Why?** uv gives a fast, locked workflow for development, and exporting the frozen lock keeps the Lambda image installing exactly the versions that were tested locally.
 
 ---
 
@@ -70,7 +70,7 @@ This document summarizes the approach, technical decisions, and workflow for bui
 ---
 
 ## 8. Key Design Decisions
-- Use Poetry for local/dev, pip for Lambda runtime.
+- Use uv for local/dev and for exporting the locked requirements the Lambda image installs.
 - Fetch AWS extension securely at build time using a presigned URL.
 - Require correct IAM permissions for build-time resource access.
 - Keep build logic (Dockerfile) and orchestration (shell script) separate.
@@ -81,8 +81,8 @@ This document summarizes the approach, technical decisions, and workflow for bui
 ## References
 - [AWS Lambda Extensions Documentation](https://docs.aws.amazon.com/lambda/latest/dg/using-extensions.html)
 - [AWS Lambda Function URLs](https://docs.aws.amazon.com/lambda/latest/dg/urls-invocation.html)
-- [Poetry Documentation](https://python-poetry.org/docs/)
+- [uv Documentation](https://docs.astral.sh/uv/)
 
 ---
 
-_Last updated: 2025-05-26_
+_Last updated: 2026-07-16_
