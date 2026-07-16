@@ -159,7 +159,7 @@ make batch-publish-container ENV=dev     # then ENV=prod, from main
 
 ## Key Technologies
 
-- uv for dependency management across `packages/`, `shared/`, and `services/` (project-local `.venv/`, one `uv.lock` per project — no workspace, see #248). The Poetry→uv migration (#248) is complete.
+- uv for dependency management across `packages/`, `shared/`, and `services/` (project-local `.venv/`, its own `uv.lock` per project — no workspace, see #248). Service locks are committed; library locks under `packages/` and `shared/` are gitignored (see #483). The Poetry→uv migration (#248) is complete.
 - LinkML for schema definition
 - Pydantic for runtime validation
 - gspread for Google Sheets API

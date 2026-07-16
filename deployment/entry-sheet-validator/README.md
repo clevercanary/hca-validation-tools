@@ -31,7 +31,7 @@ Builds a Docker container image for the Lambda function using a multi-stage buil
 2. Generates a Dockerfile with a multi-stage build:
    - First stage exports the locked dependencies with uv and installs them
    - Second stage copies only the necessary files
-3. Copies the uv project files (`pyproject.toml`, `uv.lock`) from the project root
+3. Copies the service's uv project files (`services/entry-sheet-validator/{pyproject.toml,uv.lock}`) and the `shared/` path dependency (the Docker build context is the repo root)
 4. Builds the container for the AWS Lambda Python 3.10 runtime
 5. Cleans up the temporary directory
 
@@ -155,7 +155,7 @@ Memory usage is monitored and reported in the response, showing approximately 24
 ## Development Notes
 
 - The `output` directory is excluded from Git to avoid committing generated test files
-- The build process copies the uv project files (`pyproject.toml`, `uv.lock`) from the project root, ensuring the locked dependencies are used
+- The build process copies the service's uv project files (`services/entry-sheet-validator/{pyproject.toml,uv.lock}`) and the `shared/` source from their locations under the repo-root build context, ensuring the locked dependencies are used
 - The container includes explicit installation of pydantic and pydantic-core to handle C extensions properly
 
 ## Troubleshooting
