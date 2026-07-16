@@ -25,15 +25,14 @@ The Lambda function is integrated with API Gateway to provide a RESTful API endp
 
 ### `build_lambda_container.sh`
 
-Builds a Docker container image for the Lambda function using a multi-stage build process:
+Builds the Docker container image for the Lambda function. The script:
 
-1. Creates a temporary build directory
-2. Generates a Dockerfile with a multi-stage build:
-   - First stage exports the locked dependencies with uv and installs them
-   - Second stage copies only the necessary files
-3. Copies the service's uv project files (`services/entry-sheet-validator/{pyproject.toml,uv.lock}`) and the `shared/` path dependency (the Docker build context is the repo root)
-4. Builds the container for the AWS Lambda Python 3.10 runtime
-5. Cleans up the temporary directory
+1. Resolves the AWS Parameters and Secrets Lambda Extension layer to a presigned URL via `aws lambda get-layer-version-by-arn` (using the optional AWS profile passed as its first argument)
+2. Runs `docker build` against the committed `deployment/entry-sheet-validator/Dockerfile`, with the repo root as the build context and the presigned URL passed as the `EXT_URL` build arg, tagging the image `hca-entry-sheet-validator`
+
+That Dockerfile is itself multi-stage on the `public.ecr.aws/lambda/python:3.10` base:
+- The builder stage exports the locked dependencies with uv (`uv export --frozen`) and installs them into `/opt/python`
+- The final stage copies `/opt/python`, the unpacked extension, and the service + `shared/` source into the Lambda image
 
 Usage:
 
