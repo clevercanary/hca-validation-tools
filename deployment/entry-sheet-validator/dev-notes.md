@@ -85,4 +85,4 @@ This document summarizes the approach, technical decisions, and workflow for bui
 
 ---
 
-_Last updated: 2025-05-26_
+_Last updated: 2026-07-16_

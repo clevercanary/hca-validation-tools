@@ -107,7 +107,7 @@ This project uses uv, which creates a **project-local `.venv/`** directory in ea
 
 - **Shared library**: `shared/.venv/`
 - **Services**: Each service gets its own `.venv/` alongside its `pyproject.toml`
-- **Reproducibility**: uv resolves dependencies into a `uv.lock`; `uv sync --frozen` then installs exactly those versions without re-resolving (a plain `uv sync` may update the lock)
+- **Reproducibility**: uv resolves dependencies into a `uv.lock`; `uv sync --frozen` installs exactly those versions without re-resolving (a plain `uv sync` may update the lock). The services commit their `uv.lock`, so `--frozen` works there; the library projects (`shared/`, `packages/*`) gitignore their lock (see #483), so a fresh clone re-resolves from `pyproject.toml`
 - **VS Code**: Open `hca-validation-tools.code-workspace` so each folder resolves its own `.venv`, or select the interpreter via `Ctrl+Shift+P` → "Python: Select Interpreter"
 
 ## License
