@@ -15,7 +15,7 @@ hca-validation-tools#447.
 
 from __future__ import annotations
 
-from typing import Any, Optional, cast
+from typing import Any, cast
 
 import h5py
 import numpy as np
@@ -32,7 +32,7 @@ def _storage_size(dataset: h5py.Dataset) -> int:
     return int(dataset.id.get_storage_size())
 
 
-def _matrix_info(node: Any) -> Optional[dict]:
+def _matrix_info(node: Any) -> dict | None:
     """Storage facts for one matrix node (sparse group or dense dataset).
 
     Returns ``None`` for anything that isn't a recognizable matrix, or that
@@ -46,7 +46,7 @@ def _matrix_info(node: Any) -> Optional[dict]:
         return None
 
 
-def _parse_matrix_node(node: Any) -> Optional[dict]:
+def _parse_matrix_node(node: Any) -> dict | None:
     """Parse one matrix node into storage facts. May raise on malformed input;
     callers go through :func:`_matrix_info`, which degrades that to ``None``."""
     encoding = _decode(node.attrs.get("encoding-type", ""))

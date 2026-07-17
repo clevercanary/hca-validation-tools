@@ -23,7 +23,7 @@ Invariant: for every emitted entry,
   complete + missing + inconsistent == entities[entity_class].record_count.
 """
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import pandas as pd
 from linkml_runtime import SchemaView
@@ -39,7 +39,7 @@ from hca_validation.schema_utils import (
 SCHEMA_NAME = "tier_1"
 
 
-def compute_metadata_coverage(adata: Any, schemaview: SchemaView) -> Dict[str, Any]:
+def compute_metadata_coverage(adata: Any, schemaview: SchemaView) -> dict[str, Any]:
     """Build the `metadata_coverage` payload for one AnnData file.
 
     Parameters
@@ -57,8 +57,8 @@ def compute_metadata_coverage(adata: Any, schemaview: SchemaView) -> Dict[str, A
     obs: pd.DataFrame = adata.obs.replace(r"^\s*$", pd.NA, regex=True)
     uns = adata.uns
 
-    entities: Dict[str, Dict[str, int]] = {"obs": {"record_count": len(obs)}}
-    field_coverage: List[Dict[str, Any]] = []
+    entities: dict[str, dict[str, int]] = {"obs": {"record_count": len(obs)}}
+    field_coverage: list[dict[str, Any]] = []
 
     for class_name in coverage_classes(schemaview):
         entity_class = get_class_entity_type(class_name)
@@ -104,7 +104,7 @@ def compute_metadata_coverage(adata: Any, schemaview: SchemaView) -> Dict[str, A
     }
 
 
-def _entry(entity_class: str, field: str, complete: int, *, missing: int = 0, inconsistent: int = 0) -> Dict[str, Any]:
+def _entry(entity_class: str, field: str, complete: int, *, missing: int = 0, inconsistent: int = 0) -> dict[str, Any]:
     return {
         "entity_class": entity_class,
         "field": field,
@@ -136,14 +136,14 @@ def _entity_record_count(
     return int(obs[identifier.name].dropna().nunique())
 
 
-def _obs_identifier_entry(slot_name: str, obs: pd.DataFrame) -> Dict[str, Any]:
+def _obs_identifier_entry(slot_name: str, obs: pd.DataFrame) -> dict[str, Any]:
     if slot_name not in obs.columns:
         return _entry("obs", slot_name, complete=0, missing=len(obs))
     complete = int(obs[slot_name].notna().sum())
     return _entry("obs", slot_name, complete, missing=len(obs) - complete)
 
 
-def _uns_entry(entity_class: str, slot_name: str, uns: Any) -> Dict[str, Any]:
+def _uns_entry(entity_class: str, slot_name: str, uns: Any) -> dict[str, Any]:
     value = uns.get(slot_name)
     complete = 1 if _is_value_populated(value) else 0
     return _entry(entity_class, slot_name, complete, missing=1 - complete)
@@ -154,9 +154,9 @@ def _obs_entry(
     entity_class: str,
     slot_name: str,
     obs: pd.DataFrame,
-    grouped: Optional[Any],
+    grouped: Any | None,
     record_count: int,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     # Always emit an entry. Skipping any (entity_class, slot) looks like schema
     # drift to the tracker; emit `complete=0, missing=record_count` so the
     # invariant holds (when record_count is 0, both sides are 0).
@@ -180,7 +180,7 @@ def _obs_entry(
     )
 
 
-def _bucket_single_group(series: pd.Series) -> Tuple[int, int, int]:
+def _bucket_single_group(series: pd.Series) -> tuple[int, int, int]:
     """Bucket a Dataset-class obs slot. The whole obs table is one entity."""
     non_null = series.dropna()
     if non_null.empty:
@@ -193,7 +193,7 @@ def _bucket_single_group(series: pd.Series) -> Tuple[int, int, int]:
     return 1, 0, 0
 
 
-def _bucket_groups(grouped: Any, slot_name: str) -> Tuple[int, int, int]:
+def _bucket_groups(grouped: Any, slot_name: str) -> tuple[int, int, int]:
     """Bucket entity instances using a pre-built groupby on the identifier.
 
     Vectorized via `.agg(['size', 'count', 'nunique'])`:
@@ -236,8 +236,8 @@ def _is_value_populated(value: Any) -> bool:
 
 
 def _assert_invariant(
-    entities: Dict[str, Dict[str, int]],
-    field_coverage: List[Dict[str, Any]],
+    entities: dict[str, dict[str, int]],
+    field_coverage: list[dict[str, Any]],
 ) -> None:
     for entry in field_coverage:
         entity_class = entry["entity_class"]

@@ -7,7 +7,6 @@ import subprocess
 import sys
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Dict
 from unittest.mock import MagicMock, patch
 
 import boto3
@@ -110,7 +109,7 @@ def env_manager():
     """Fixture that provides environment variable management utilities."""
     original_env = {}
 
-    def set_env(env_vars: Dict[str, str]):
+    def set_env(env_vars: dict[str, str]):
         """Set environment variables and save originals for cleanup."""
         for key, value in env_vars.items():
             original_env[key] = os.environ.get(key)

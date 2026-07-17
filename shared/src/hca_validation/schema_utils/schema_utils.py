@@ -1,5 +1,5 @@
 import os
-from typing import Iterator, List, Optional, Tuple
+from collections.abc import Iterator
 
 import jsonasobj2
 from linkml_runtime import SchemaView
@@ -34,7 +34,7 @@ def load_schemaview():
     return SchemaView(schema_path)
 
 
-def get_entity_class_name(schema_type: str, bionetwork: Optional[str] = None) -> str:
+def get_entity_class_name(schema_type: str, bionetwork: str | None = None) -> str:
     # Validate schema type
     if schema_type not in schema_classes:
         raise ValueError(
@@ -58,7 +58,7 @@ def get_class_identifier_name(schemaview: SchemaView, class_name: str) -> str:
     raise ValueError(f"No identifier slot found for class {class_name}")
 
 
-def get_slot_anndata_location(slot: SlotDefinition) -> Optional[str]:
+def get_slot_anndata_location(slot: SlotDefinition) -> str | None:
     if not slot.annotations:
         return None
     for name, info in jsonasobj2.items(slot.annotations):
@@ -76,7 +76,7 @@ def is_deprecated_slot(schemaview: SchemaView, slot: SlotDefinition) -> bool:
     return False
 
 
-def coverage_classes(schemaview: SchemaView) -> List[str]:
+def coverage_classes(schemaview: SchemaView) -> list[str]:
     """DEFAULT LinkML class names eligible for metadata coverage reporting.
 
     Returns the canonical (non-bionetwork-specific) class for each entity type
@@ -95,7 +95,7 @@ def coverage_classes(schemaview: SchemaView) -> List[str]:
     return eligible
 
 
-def iter_coverage_slots(schemaview: SchemaView, class_name: str) -> Iterator[Tuple[str, str]]:
+def iter_coverage_slots(schemaview: SchemaView, class_name: str) -> Iterator[tuple[str, str]]:
     """Yield (slot_name, annDataLocation) for slots of `class_name` that participate
     in coverage reporting at entity grain.
 

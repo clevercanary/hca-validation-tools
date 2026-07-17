@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 AWS Lambda function for validating Google Sheets using the HCA entry sheet validator.
@@ -15,7 +14,7 @@ import os
 import traceback
 from dataclasses import asdict
 from http import HTTPStatus
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 import psutil
 
@@ -53,7 +52,7 @@ ERROR_TO_STATUS: dict[str, HTTPStatus] = {
 }
 
 
-def extract_validation_errors(sheet_id: str, bionetwork: Optional[str] = None) -> Tuple[SheetValidationResult, int]:
+def extract_validation_errors(sheet_id: str, bionetwork: str | None = None) -> tuple[SheetValidationResult, int]:
     """
     Extract validation errors from a Google Sheet.
 
@@ -133,7 +132,7 @@ def get_memory_usage():
     }
 
 
-def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     """
     AWS Lambda handler function for validating HCA entry sheets in Google Sheets format.
 

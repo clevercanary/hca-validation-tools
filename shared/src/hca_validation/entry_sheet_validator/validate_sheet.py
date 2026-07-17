@@ -1,14 +1,14 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 import json
 import os
 import re
 import sys
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Any, List, Mapping, Optional
+from typing import Any
 
 # Import libraries for Google API access
 import gspread
@@ -42,7 +42,7 @@ class WorksheetInfo:
 
     data: pd.DataFrame
     worksheet_id: int
-    source_columns: List[Any]
+    source_columns: list[Any]
     source_rows_start_index: int
 
     def get_a1(self, row, column):
@@ -59,7 +59,7 @@ class SpreadsheetMetadata:
     spreadsheet_title: str
     last_updated_date: str
     last_updated_by: str
-    last_updated_email: Optional[str]
+    last_updated_email: str | None
     can_edit: bool
 
 
@@ -68,7 +68,7 @@ class SpreadsheetInfo:
     """Container for Google Sheet data and metadata."""
 
     spreadsheet_metadata: SpreadsheetMetadata
-    worksheets: List[WorksheetInfo]
+    worksheets: list[WorksheetInfo]
 
 
 @dataclass
@@ -76,24 +76,24 @@ class SheetReadError(Exception):
     """Exception raised when reading a Google Sheet fails."""
 
     error_code: str
-    error_message: Optional[str] = None
-    spreadsheet_metadata: Optional[SpreadsheetMetadata] = None
-    worksheet_id: Optional[int] = None
+    error_message: str | None = None
+    spreadsheet_metadata: SpreadsheetMetadata | None = None
+    worksheet_id: int | None = None
 
 
 @dataclass
 class SheetErrorInfo:
     """Container for info regarding an error that occurred while reading and validating a Google Sheet."""
 
-    entity_type: Optional[str]
-    worksheet_id: Optional[int]
+    entity_type: str | None
+    worksheet_id: int | None
     message: str
-    row: Optional[int] = None
-    column: Optional[Any] = None
-    cell: Optional[str] = None
-    primary_key: Optional[str] = None
-    input: Optional[Any] = None
-    input_fix: Optional[str] = None
+    row: int | None = None
+    column: Any | None = None
+    cell: str | None = None
+    primary_key: str | None = None
+    input: Any | None = None
+    input_fix: str | None = None
 
 
 @dataclass
@@ -101,10 +101,10 @@ class SheetValidationResult:
     """Container for general info on the outcome of a Google Sheet validation."""
 
     successful: bool
-    spreadsheet_metadata: Optional[SpreadsheetMetadata]
-    error_code: Optional[str]
+    spreadsheet_metadata: SpreadsheetMetadata | None
+    error_code: str | None
     summary: Mapping[str, int | None]
-    errors: List[SheetErrorInfo]
+    errors: list[SheetErrorInfo]
 
 
 # Custom sentinel value used to detect missing parameters
@@ -356,8 +356,8 @@ def init_apis() -> ApiInstances:
 
 
 def read_worksheets(
-    sheet_id: str, spreadsheet_metadata: SpreadsheetMetadata, spreadsheet: gspread.Spreadsheet, sheet_indices: List[int]
-) -> tuple[List[WorksheetInfo], List[gspread.Worksheet]]:
+    sheet_id: str, spreadsheet_metadata: SpreadsheetMetadata, spreadsheet: gspread.Spreadsheet, sheet_indices: list[int]
+) -> tuple[list[WorksheetInfo], list[gspread.Worksheet]]:
     import logging
 
     logger = logging.getLogger(__name__)
@@ -365,7 +365,7 @@ def read_worksheets(
     # Get list of worksheets
 
     all_worksheets = spreadsheet.worksheets()
-    worksheets: List[gspread.Worksheet] = []
+    worksheets: list[gspread.Worksheet] = []
 
     logger.info(
         f"Attempting to get worksheets of spreadsheet {sheet_id} at indices: {', '.join(str(i) for i in sheet_indices)}"
@@ -423,9 +423,9 @@ def read_worksheets(
 
 def read_sheet_with_service_account(
     sheet_id: str,
-    entity_types: Optional[List[str]] = None,
-    apis: Optional[ApiInstances] = None,
-) -> tuple[SpreadsheetInfo, List[gspread.Worksheet]]:
+    entity_types: list[str] | None = None,
+    apis: ApiInstances | None = None,
+) -> tuple[SpreadsheetInfo, list[gspread.Worksheet]]:
     """
     Read data from a Google Sheet using a service account for authentication.
 
@@ -590,7 +590,7 @@ def normalize_dataframe_values(df: pd.DataFrame, schemaview: SchemaView, class_n
 
 
 def make_summary_without_entities(
-    error_count: int, entity_types: List[str] = default_entity_types
+    error_count: int, entity_types: list[str] = default_entity_types
 ) -> dict[str, int | None]:
     return {**{f"{entity_type}_count": None for entity_type in entity_types}, "error_count": error_count}
 
@@ -598,12 +598,12 @@ def make_summary_without_entities(
 def make_validation_result_for_whole_sheet_error(
     *,
     sheet_id: str,
-    entity_types: List[str],
+    entity_types: list[str],
     error_code: str,
-    error_message: Optional[str] = None,
-    spreadsheet_metadata: Optional[SpreadsheetMetadata] = None,
-    worksheet_id: Optional[int] = None,
-    entity_type: Optional[str] = None,
+    error_message: str | None = None,
+    spreadsheet_metadata: SpreadsheetMetadata | None = None,
+    worksheet_id: int | None = None,
+    entity_type: str | None = None,
 ) -> SheetValidationResult:
     error_msg = error_message or f"Error processing sheet {sheet_id} (Error: {error_code})"
     error_info = SheetErrorInfo(entity_type=entity_type, worksheet_id=worksheet_id, message=error_msg)
@@ -617,7 +617,7 @@ def make_validation_result_for_whole_sheet_error(
 
 
 def make_read_error_validation_result(
-    sheet_id: str, entity_types: List[str], read_error: SheetReadError
+    sheet_id: str, entity_types: list[str], read_error: SheetReadError
 ) -> SheetValidationResult:
     import logging
 
@@ -644,11 +644,11 @@ def handle_validation_error(
     validation_error: ValidationError,
     *,
     validation_summary: dict[str, int],
-    validation_errors_list: List[SheetErrorInfo],
+    validation_errors_list: list[SheetErrorInfo],
     entity_type: str,
     sheet_info: WorksheetInfo,
     row_index: int | MissingSentinel = MISSING,
-    row_id: Optional[Any] | MissingSentinel = MISSING,
+    row_id: Any | MissingSentinel = MISSING,
 ):
     for error in validation_error.errors():
         # Update error count
@@ -689,10 +689,10 @@ def handle_validation_error(
 def validate_google_sheet(
     sheet_id: str,
     *,
-    entity_types: List[str] = default_entity_types,
-    bionetwork: Optional[str] = None,
-    sheet_read_result: Optional[SpreadsheetInfo] = None,
-    apis: Optional[ApiInstances] = None,
+    entity_types: list[str] = default_entity_types,
+    bionetwork: str | None = None,
+    sheet_read_result: SpreadsheetInfo | None = None,
+    apis: ApiInstances | None = None,
 ) -> SheetValidationResult:
     """
     Validate data from a Google Sheet starting at row 6 until the first empty row.

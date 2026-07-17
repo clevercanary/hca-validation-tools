@@ -5,7 +5,7 @@ This module provides the main validation functionality for HCA data using Pydant
 """
 
 import itertools
-from typing import Any, Dict, Optional
+from typing import Any
 
 import pandas as pd
 from linkml_runtime import SchemaView
@@ -28,7 +28,7 @@ schema_classes = {
 }
 
 
-def validate(data: Dict[str, Any], *, class_name: str) -> Optional[ValidationError]:
+def validate(data: dict[str, Any], *, class_name: str) -> ValidationError | None:
     """
     Validate HCA data against a schema using Pydantic models.
 
@@ -53,7 +53,7 @@ def validate(data: Dict[str, Any], *, class_name: str) -> Optional[ValidationErr
         return e
 
 
-def validate_id_uniqueness(data: pd.DataFrame, schemaview: SchemaView, class_name: str) -> Optional[ValidationError]:
+def validate_id_uniqueness(data: pd.DataFrame, schemaview: SchemaView, class_name: str) -> ValidationError | None:
     """
     Validate that no entities in the given data have duplicate IDs.
 

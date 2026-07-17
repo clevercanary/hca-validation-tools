@@ -5,7 +5,7 @@ and `.uns` (dict) are needed by compute_metadata_coverage.
 """
 
 from types import SimpleNamespace
-from typing import Any, Dict, List
+from typing import Any
 
 import pandas as pd
 import pytest
@@ -20,11 +20,11 @@ def schemaview():
     return load_schemaview()
 
 
-def make_adata(obs: pd.DataFrame, uns: Dict[str, Any] | None = None):
+def make_adata(obs: pd.DataFrame, uns: dict[str, Any] | None = None):
     return SimpleNamespace(obs=obs, uns=uns or {})
 
 
-def field_entry(result: Dict[str, Any], entity_class: str, field: str) -> Dict[str, Any]:
+def field_entry(result: dict[str, Any], entity_class: str, field: str) -> dict[str, Any]:
     for entry in result["field_coverage"]:
         if entry["entity_class"] == entity_class and entry["field"] == field:
             return entry
@@ -265,7 +265,7 @@ class TestInvariant:
 
     def test_violation_raises(self):
         entities = {"donor": {"record_count": 10}}
-        bad: List[Dict[str, Any]] = [
+        bad: list[dict[str, Any]] = [
             {"entity_class": "donor", "field": "x", "complete": 5, "missing": 4, "inconsistent": 0}
         ]
         with pytest.raises(RuntimeError, match="invariant violated"):

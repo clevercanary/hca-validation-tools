@@ -1,5 +1,4 @@
 import dataclasses
-from typing import List, Optional
 
 from linkml_runtime import SchemaView
 from linkml_runtime.linkml_model.meta import ClassDefinition
@@ -21,9 +20,7 @@ sheet_value_fix_map = {
 }
 
 
-def get_fixed_value(
-    entity_type: str, entity_induced_class: ClassDefinition, slot_name: str, value: str
-) -> Optional[str]:
+def get_fixed_value(entity_type: str, entity_induced_class: ClassDefinition, slot_name: str, value: str) -> str | None:
     # We only need to check `attributes`, since an induced class has nothing in `slots`
     if slot_name not in entity_induced_class.attributes:
         return None
@@ -31,7 +28,7 @@ def get_fixed_value(
 
 
 def add_fix_to_error_if_available(
-    error: SheetErrorInfo, bionetwork: Optional[str], schemaview: SchemaView
+    error: SheetErrorInfo, bionetwork: str | None, schemaview: SchemaView
 ) -> SheetErrorInfo:
     # If the error doesn't have the required values, return it unchanged
     # Require string input value to avoid values that consist of the entire input row
@@ -44,7 +41,7 @@ def add_fix_to_error_if_available(
     return dataclasses.replace(error, input_fix=input_fix)
 
 
-def add_fixes_to_errors(errors: List[SheetErrorInfo], bionetwork: Optional[str]) -> List[SheetErrorInfo]:
+def add_fixes_to_errors(errors: list[SheetErrorInfo], bionetwork: str | None) -> list[SheetErrorInfo]:
     """
     Identify fixes for the given errors where possible, and return copies of the error objects with fixed values
     specified.

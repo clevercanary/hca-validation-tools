@@ -1,5 +1,4 @@
 import dataclasses
-from typing import List, Optional
 
 import gspread
 
@@ -20,8 +19,8 @@ from .validate_sheet import (
 def process_google_sheet(
     sheet_id: str,
     *,
-    entity_types: List[str] = default_entity_types,
-    bionetwork: Optional[str] = None,
+    entity_types: list[str] = default_entity_types,
+    bionetwork: str | None = None,
 ) -> SheetValidationResult:
     """
     Process a Google Sheet by:
