@@ -1,6 +1,7 @@
 """Unit tests for the validate_schema + validate_cell_annotation MCP wrappers."""
 
 import anndata as ad
+
 from hca_anndata_mcp.tools.validate import validate_cell_annotation, validate_schema
 from hca_anndata_tools.testing import create_sample_h5ad
 from hca_schema_validator.cell_annotation_validator import NO_SETS_ERROR

@@ -2,8 +2,9 @@
 
 import functools
 
-from hca_anndata_tools.plot import plot_embedding as _plot_embedding
 from mcp.types import ImageContent
+
+from hca_anndata_tools.plot import plot_embedding as _plot_embedding
 
 
 @functools.wraps(_plot_embedding, updated=[])

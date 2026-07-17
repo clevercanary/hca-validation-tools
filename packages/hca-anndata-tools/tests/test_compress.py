@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 import pytest
 import scipy.sparse as sp
+
 from hca_anndata_tools.compress import compress_h5ad
 
 

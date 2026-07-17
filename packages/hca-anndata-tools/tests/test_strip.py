@@ -5,6 +5,7 @@ import os
 
 import anndata as ad
 import pandas as pd
+
 from hca_anndata_tools.strip import (
     _OBS_COLUMNS_TO_STRIP,
     strip_forbidden_obs_columns,

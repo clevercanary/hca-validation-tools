@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 import pytest
 import scipy.sparse as sp
+
 from hca_anndata_tools._gencode import load_gencode_reference
 from hca_anndata_tools._io import read_var_gene_names
 from hca_anndata_tools.marker_genes import (

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import anndata as ad
 import pytest
+
 from hca_schema_validator import HCACellAnnotationValidator
 from hca_schema_validator.cell_annotation_validator import (
     LEGACY_LAYOUT_ERROR,

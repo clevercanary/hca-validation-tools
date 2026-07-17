@@ -360,6 +360,7 @@ def test_read_file_metadata_real_h5ad(tmp_path):
     without loading matrices (the #447 fix path: no read_h5ad(backed="r"))."""
     import anndata as ad
     import scipy.sparse as sp
+
     from dataset_validator.main import read_file_metadata
 
     n_obs, n_vars = 5, 8
@@ -404,6 +405,7 @@ def test_read_shape_var_fallback_is_robust(tmp_path):
     """When X has no shape header, _read_shape falls back to var — and must
     degrade (n_vars=0) rather than raise on a missing/malformed var index."""
     import h5py
+
     from dataset_validator.main import _read_shape
 
     obs = pd.DataFrame({"a": [1, 2, 3]})
@@ -586,6 +588,7 @@ def _build_cap_multi_exception(exceptions):
 def test_cap_validator_script_scenarios(mock_upload_validator, test_case):
     """Unit tests for cap_validator_script.py exception handling."""
     from cap_upload_validator.errors import AnnDataMissingCountMatrix, CapException
+
     from dataset_validator.cap_validator_script import main
 
     mock_instance = MagicMock()

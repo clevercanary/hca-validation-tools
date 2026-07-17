@@ -2,6 +2,7 @@
 
 import anndata as ad
 import pandas as pd
+
 from hca_schema_validator import populate_in_memory
 from hca_schema_validator.testing import create_labelable_h5ad
 from hca_schema_validator.validator import _lookup_canonical_label

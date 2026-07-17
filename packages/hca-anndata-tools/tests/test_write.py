@@ -6,6 +6,7 @@ import os
 import re
 
 import anndata as ad
+
 from hca_anndata_tools.write import (
     EDIT_LOG_KEY,
     generate_output_path,
