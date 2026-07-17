@@ -121,10 +121,10 @@ def get_matrix_storage(path: str) -> dict:
     with h5py.File(path, "r") as f:
         if "X" in f:
             result["X"] = _matrix_info(f["X"])
-        raw = f["raw"] if "raw" in f else None
+        raw = f.get("raw")
         if isinstance(raw, h5py.Group) and "X" in raw:
             result["raw_X"] = _matrix_info(raw["X"])
-        layers_group = f["layers"] if "layers" in f else None
+        layers_group = f.get("layers")
         if isinstance(layers_group, h5py.Group) and len(layers_group):
             # Only keep recognizable matrices so the documented shape
             # ({name: {...}}) holds — _matrix_info returns None for anything

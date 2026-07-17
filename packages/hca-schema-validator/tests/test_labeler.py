@@ -36,7 +36,7 @@ def _replace_first_feature_id(adata, new_id):
     Both indexes are updated together so they stay aligned (otherwise the
     labeler's raw.var mirror would target a different gene).
     """
-    new_ids = [new_id] + list(adata.var.index[1:])
+    new_ids = [new_id, *list(adata.var.index[1:])]
     adata.var.index = pd.Index(new_ids)
     raw = adata.raw.to_adata()
     raw.var.index = pd.Index(new_ids)

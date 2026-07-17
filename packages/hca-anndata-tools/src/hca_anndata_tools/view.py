@@ -61,12 +61,11 @@ def view_data(
 
             if isinstance(attr_obj, pd.DataFrame):
                 return _view_dataframe(attr_obj, columns, row_start, row_end)
-            elif hasattr(attr_obj, "shape") and len(getattr(attr_obj, "shape", ())) >= 1:
+            if hasattr(attr_obj, "shape") and len(getattr(attr_obj, "shape", ())) >= 1:
                 return _view_array(attr_obj, row_start, row_end, col_start, col_end)
-            elif isinstance(attr_obj, dict):
+            if isinstance(attr_obj, dict):
                 return _view_dict(attr_obj)
-            else:
-                return {"data": str(attr_obj), "type": type(attr_obj).__name__}
+            return {"data": str(attr_obj), "type": type(attr_obj).__name__}
 
     except Exception as e:
         return {"error": str(e)}
@@ -99,10 +98,7 @@ def _view_dataframe(
 def _view_array(arr, row_start: int, row_end: int, col_start: int, col_end: int) -> dict:
     """View a slice of an array-like object."""
     shape = arr.shape
-    if len(shape) == 1:
-        sliced = arr[row_start:row_end]
-    else:
-        sliced = arr[row_start:row_end, col_start:col_end]
+    sliced = arr[row_start:row_end] if len(shape) == 1 else arr[row_start:row_end, col_start:col_end]
 
     if hasattr(sliced, "toarray"):
         sliced = sliced.toarray()

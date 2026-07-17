@@ -100,7 +100,7 @@ def extract_validation_errors(sheet_id: str, bionetwork: Optional[str] = None) -
 
     except Exception as e:
         # If there's an error in the validation process itself
-        error_msg = f"Error in validation process: {str(e)}"
+        error_msg = f"Error in validation process: {e!s}"
         error_info = SheetErrorInfo(entity_type=None, worksheet_id=None, message=error_msg)
         return (
             SheetValidationResult(
@@ -154,18 +154,15 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         if "body" in event:
             try:
                 # Parse the body if it's a string (from API Gateway)
-                if isinstance(event["body"], str):
-                    body = json.loads(event["body"])
-                else:
-                    body = event["body"]
+                body = json.loads(event["body"]) if isinstance(event["body"], str) else event["body"]
 
                 sheet_id = body.get("sheet_id")
                 bionetwork = body.get("bionetwork")
             except Exception as e:
-                logger.warning(f"Error parsing request body: {str(e)}")
+                logger.warning(f"Error parsing request body: {e!s}")
                 return {
                     "statusCode": HTTPStatus.BAD_REQUEST.value,
-                    "body": json.dumps({"error": f"Invalid request body: {str(e)}"}),
+                    "body": json.dumps({"error": f"Invalid request body: {e!s}"}),
                     "headers": {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"},
                 }
         else:
@@ -226,12 +223,11 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 "body": json.dumps(response_data),
                 "headers": {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"},
             }
-        else:
-            # Direct Lambda invocation
-            return response_data
+        # Direct Lambda invocation
+        return response_data
     except Exception as e:
         # Log the error
-        logger.error(f"Error: {str(e)}")
+        logger.error(f"Error: {e!s}")
         logger.error(traceback.format_exc())
 
         # Prepare error response
@@ -244,9 +240,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 "body": json.dumps(error_response),
                 "headers": {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"},
             }
-        else:
-            # Direct Lambda invocation
-            return error_response
+        # Direct Lambda invocation
+        return error_response
 
 
 # For local testing

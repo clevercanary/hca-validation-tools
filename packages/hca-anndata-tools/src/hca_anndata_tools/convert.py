@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 import re
 import shutil
@@ -240,8 +241,6 @@ def convert_cellxgene_to_hca(
 
     except Exception as e:
         if output_path and os.path.isfile(output_path):
-            try:
+            with contextlib.suppress(OSError):
                 os.remove(output_path)
-            except OSError:
-                pass
         return {"error": str(e)}

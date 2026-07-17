@@ -339,9 +339,8 @@ def verify_file_integrity(file_path: Path, expected_sha256: str) -> bool:
     if computed_sha256.lower() == expected_sha256.lower():
         logger.info("File integrity verified successfully")
         return True
-    else:
-        logger.error("File integrity check failed - computed: %s, expected: %s", computed_sha256, expected_sha256)
-        return False
+    logger.error("File integrity check failed - computed: %s, expected: %s", computed_sha256, expected_sha256)
+    return False
 
 
 def get_column_unique_values_if_present(df: pd.DataFrame, name: str, map_value=str):
@@ -407,7 +406,7 @@ def _read_shape(f: h5py.File, obs: pd.DataFrame) -> Tuple[int, int]:
                 node = var[index_name]
                 if isinstance(node, h5py.Dataset):
                     n_vars = int(node.shape[0])
-    return int(len(obs)), n_vars
+    return len(obs), n_vars
 
 
 def _read_metadata_inputs(file_path: Path) -> Tuple[pd.DataFrame, dict, int, int]:
@@ -415,7 +414,7 @@ def _read_metadata_inputs(file_path: Path) -> Tuple[pd.DataFrame, dict, int, int
 
     Uses targeted ``read_elem`` of obs/uns plus the X header for shape — never
     opens X/raw/layers. This replaces ``read_h5ad(path, backed="r")``, whose
-    backed mode is X-only and eagerly materializes ``layers`` + ``raw`` (15–24+ GB
+    backed mode is X-only and eagerly materializes ``layers`` + ``raw`` (15-24+ GB
     on large files). See hca-validation-tools#447.
     """
     with h5py.File(file_path, "r") as f:
@@ -834,8 +833,10 @@ def main() -> int:
             error_msg = f"Missing required environment variables: {', '.join(missing_vars)}"
             logger.error(error_msg)
             validation_message = create_failure_message(env_vars, error_msg, start_time)
+            # exit_code must be assigned (not inlined as `return 1`): the finally
+            # block reads it for SNS status and completion logging on the way out.
             exit_code = 1
-            return exit_code
+            return exit_code  # noqa: RET504
 
         # Required env vars are guaranteed non-None after the missing_vars check above
         file_id = env_vars["file_id"]
@@ -886,7 +887,7 @@ def main() -> int:
                 validation_message.integrity_status = INTEGRITY_ERROR
                 validation_message.error_message = error_msg
                 exit_code = 1
-                return exit_code
+                return exit_code  # noqa: RET504
 
             # Compute downloaded file SHA256
             downloaded_sha256 = compute_sha256(local_file)
@@ -901,7 +902,7 @@ def main() -> int:
                 validation_message.integrity_status = INTEGRITY_INVALID
                 validation_message.error_message = error_msg
                 exit_code = 1
-                return exit_code
+                return exit_code  # noqa: RET504
 
             validation_message.integrity_status = INTEGRITY_VALID
 

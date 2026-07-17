@@ -51,17 +51,17 @@ def get_summary(path: str) -> dict:
                 "var_columns": [{"name": col, "dtype": str(adata.var[col].dtype)} for col in adata.var.columns],
                 "obsm_keys": [
                     {"key": k, "type": _type_name(adata.obsm[k]), "shape": _shape_str(adata.obsm[k])}
-                    for k in adata.obsm.keys()
+                    for k in adata.obsm
                 ],
                 "varm_keys": [
                     {"key": k, "type": _type_name(adata.varm[k]), "shape": _shape_str(adata.varm[k])}
-                    for k in adata.varm.keys()
+                    for k in adata.varm
                 ],
-                "obsp_keys": [{"key": k, "type": _type_name(adata.obsp[k])} for k in adata.obsp.keys()],
-                "varp_keys": [{"key": k, "type": _type_name(adata.varp[k])} for k in adata.varp.keys()],
+                "obsp_keys": [{"key": k, "type": _type_name(adata.obsp[k])} for k in adata.obsp],
+                "varp_keys": [{"key": k, "type": _type_name(adata.varp[k])} for k in adata.varp],
                 "layers": [
                     {"name": k, "type": _type_name(adata.layers[k]), "dtype": _dtype_str(adata.layers[k])}
-                    for k in adata.layers.keys()
+                    for k in adata.layers
                 ],
                 "uns_keys": list(adata.uns.keys()),
                 "has_raw": adata.raw is not None,

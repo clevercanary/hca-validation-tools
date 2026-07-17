@@ -272,7 +272,7 @@ def test_error_message_distinguishes_unknown_ensembl(tmp_path):
     # Replace var.index with a fake Ensembl ID GENCODE won't know, then
     # claim a feature_name for that row. Triggers the NaN-canonical
     # mismatch path.
-    fake_ids = ["ENSG99999999999"] + list(adata.var.index[1:])
+    fake_ids = ["ENSG99999999999", *list(adata.var.index[1:])]
     adata.var.index = pd.Index(fake_ids)
     adata.var["feature_name"] = pd.Categorical(["FAKE_SYMBOL"] * adata.n_vars)
 

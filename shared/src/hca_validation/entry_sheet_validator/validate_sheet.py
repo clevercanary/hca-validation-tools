@@ -927,15 +927,14 @@ def validate_google_sheet(
             summary=validation_summary,
             errors=validation_errors,
         )
-    else:
-        logger.warning(f"Validation found errors in some of the {len(entity_types)} entity types.")
-        return SheetValidationResult(
-            successful=False,
-            spreadsheet_metadata=sheet_read_result.spreadsheet_metadata,
-            error_code="validation_error",
-            summary=validation_summary,
-            errors=validation_errors,
-        )
+    logger.warning(f"Validation found errors in some of the {len(entity_types)} entity types.")
+    return SheetValidationResult(
+        successful=False,
+        spreadsheet_metadata=sheet_read_result.spreadsheet_metadata,
+        error_code="validation_error",
+        summary=validation_summary,
+        errors=validation_errors,
+    )
 
 
 if __name__ == "__main__":

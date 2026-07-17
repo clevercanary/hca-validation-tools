@@ -12,10 +12,10 @@ from .populator import populate_in_memory
 from .validator import HCAValidator, check_cosmetic_labels
 
 __all__ = [
-    "HCAValidator",
+    "HCA_DERIVED_OBS_LABELS",
     "HCACellAnnotationValidator",
     "HCALabeler",
-    "HCA_DERIVED_OBS_LABELS",
+    "HCAValidator",
     "check_cosmetic_labels",
     "populate_in_memory",
 ]
