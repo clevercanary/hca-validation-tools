@@ -53,11 +53,15 @@ async def test_get_storage_info(client, sample_h5ad):
 
 @pytest.mark.asyncio
 async def test_get_descriptive_stats(client, sample_h5ad):
-    data = await _call(client, "get_descriptive_stats", {
-        "path": str(sample_h5ad),
-        "attribute": "obs",
-        "value_counts": True,
-    })
+    data = await _call(
+        client,
+        "get_descriptive_stats",
+        {
+            "path": str(sample_h5ad),
+            "attribute": "obs",
+            "value_counts": True,
+        },
+    )
     assert data["n_rows"] == 50
     assert data["columns"]["sex"]["type"] == "categorical"
     assert data["columns"]["sex"]["unique"] == 3
@@ -68,23 +72,31 @@ async def test_get_descriptive_stats(client, sample_h5ad):
 
 @pytest.mark.asyncio
 async def test_get_descriptive_stats_with_filter(client, sample_h5ad):
-    data = await _call(client, "get_descriptive_stats", {
-        "path": str(sample_h5ad),
-        "attribute": "obs",
-        "filter_column": "sex",
-        "filter_operator": "==",
-        "filter_value": "female",
-    })
+    data = await _call(
+        client,
+        "get_descriptive_stats",
+        {
+            "path": str(sample_h5ad),
+            "attribute": "obs",
+            "filter_column": "sex",
+            "filter_operator": "==",
+            "filter_value": "female",
+        },
+    )
     assert data["n_rows"] < 50
 
 
 @pytest.mark.asyncio
 async def test_view_data_obs(client, sample_h5ad):
-    data = await _call(client, "view_data", {
-        "path": str(sample_h5ad),
-        "attribute": "obs",
-        "row_end": 5,
-    })
+    data = await _call(
+        client,
+        "view_data",
+        {
+            "path": str(sample_h5ad),
+            "attribute": "obs",
+            "row_end": 5,
+        },
+    )
     assert data["type"] == "dataframe"
     assert data["slice_shape"] == [5, 4]
     assert data["full_shape"] == [50, 4]
@@ -92,12 +104,16 @@ async def test_view_data_obs(client, sample_h5ad):
 
 @pytest.mark.asyncio
 async def test_view_data_obsm(client, sample_h5ad):
-    data = await _call(client, "view_data", {
-        "path": str(sample_h5ad),
-        "attribute": "obsm",
-        "key": "X_umap",
-        "row_end": 3,
-    })
+    data = await _call(
+        client,
+        "view_data",
+        {
+            "path": str(sample_h5ad),
+            "attribute": "obsm",
+            "key": "X_umap",
+            "row_end": 3,
+        },
+    )
     assert data["type"] == "array"
     assert data["full_shape"] == [50, 2]
     assert data["slice_shape"] == [3, 2]
@@ -105,10 +121,14 @@ async def test_view_data_obsm(client, sample_h5ad):
 
 @pytest.mark.asyncio
 async def test_view_data_uns(client, sample_h5ad):
-    data = await _call(client, "view_data", {
-        "path": str(sample_h5ad),
-        "attribute": "uns",
-    })
+    data = await _call(
+        client,
+        "view_data",
+        {
+            "path": str(sample_h5ad),
+            "attribute": "uns",
+        },
+    )
     assert data["type"] == "dict"
     assert data["data"]["title"] == "Test Dataset"
 
@@ -122,11 +142,14 @@ async def test_get_cap_annotations(client, sample_h5ad):
 
 @pytest.mark.asyncio
 async def test_plot_embedding(client, sample_h5ad):
-    result = await client.call_tool("plot_embedding", {
-        "path": str(sample_h5ad),
-        "color": "cell_type",
-        "embedding": "X_umap",
-    })
+    result = await client.call_tool(
+        "plot_embedding",
+        {
+            "path": str(sample_h5ad),
+            "color": "cell_type",
+            "embedding": "X_umap",
+        },
+    )
     assert not result.is_error
     # plot_embedding returns ImageContent, not TextContent
     content = result.content[0]

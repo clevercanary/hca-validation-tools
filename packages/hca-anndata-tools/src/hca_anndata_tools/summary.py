@@ -44,15 +44,11 @@ def get_summary(path: str) -> dict:
                     "type": _type_name(adata.X),
                     "dtype": _dtype_str(adata.X),
                     "shape": _shape_str(adata.X),
-                } if adata.X is not None else None,
-                "obs_columns": [
-                    {"name": col, "dtype": str(adata.obs[col].dtype)}
-                    for col in adata.obs.columns
-                ],
-                "var_columns": [
-                    {"name": col, "dtype": str(adata.var[col].dtype)}
-                    for col in adata.var.columns
-                ],
+                }
+                if adata.X is not None
+                else None,
+                "obs_columns": [{"name": col, "dtype": str(adata.obs[col].dtype)} for col in adata.obs.columns],
+                "var_columns": [{"name": col, "dtype": str(adata.var[col].dtype)} for col in adata.var.columns],
                 "obsm_keys": [
                     {"key": k, "type": _type_name(adata.obsm[k]), "shape": _shape_str(adata.obsm[k])}
                     for k in adata.obsm.keys()
@@ -61,14 +57,8 @@ def get_summary(path: str) -> dict:
                     {"key": k, "type": _type_name(adata.varm[k]), "shape": _shape_str(adata.varm[k])}
                     for k in adata.varm.keys()
                 ],
-                "obsp_keys": [
-                    {"key": k, "type": _type_name(adata.obsp[k])}
-                    for k in adata.obsp.keys()
-                ],
-                "varp_keys": [
-                    {"key": k, "type": _type_name(adata.varp[k])}
-                    for k in adata.varp.keys()
-                ],
+                "obsp_keys": [{"key": k, "type": _type_name(adata.obsp[k])} for k in adata.obsp.keys()],
+                "varp_keys": [{"key": k, "type": _type_name(adata.varp[k])} for k in adata.varp.keys()],
                 "layers": [
                     {"name": k, "type": _type_name(adata.layers[k]), "dtype": _dtype_str(adata.layers[k])}
                     for k in adata.layers.keys()

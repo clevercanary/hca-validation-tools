@@ -6,12 +6,14 @@ Usage:
     uv run python validate_file.py <path/to/file.h5ad>
     uv run python validate_file.py <path/to/file.h5ad> --with-labels
 """
+
 import argparse
 
 from hca_schema_validator import HCAValidator
 
 # Display constants
 SEPARATOR_WIDTH = 70
+
 
 def main():
     # Parse command-line arguments
@@ -22,16 +24,13 @@ def main():
 Examples:
   uv run python validate_file.py data.h5ad
   uv run python validate_file.py data.h5ad --with-labels
-        """
+        """,
     )
-    parser.add_argument(
-        "file",
-        help="Path to the h5ad file to validate"
-    )
+    parser.add_argument("file", help="Path to the h5ad file to validate")
     parser.add_argument(
         "--with-labels",
         action="store_true",
-        help="Include label validation (gene ID checks, etc.). Default: skip labels"
+        help="Include label validation (gene ID checks, etc.). Default: skip labels",
     )
 
     args = parser.parse_args()
@@ -71,6 +70,7 @@ Examples:
 
     if not validator.errors and not validator.warnings:
         print("No errors or warnings! 🎉\n")
+
 
 if __name__ == "__main__":
     main()

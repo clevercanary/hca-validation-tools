@@ -8,3 +8,8 @@ extend-exclude = [
 
 [lint]
 select = ["E", "F", "I", "W"]
+
+[lint.per-file-ignores]
+# __init__.py files re-export their package's public API; the imports are
+# intentional and covered by __all__ / lazy __getattr__ patterns, not dead code.
+"__init__.py" = ["F401"]

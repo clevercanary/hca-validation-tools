@@ -152,9 +152,7 @@ def strip_forbidden_obs_columns(path: str) -> dict:
 
             entry = make_edit_entry(
                 operation="strip_forbidden_obs_columns",
-                description=(
-                    f"Stripped HCA-forbidden obs columns (privacy): {stripped}"
-                ),
+                description=(f"Stripped HCA-forbidden obs columns (privacy): {stripped}"),
                 details={"obs_columns_stripped": stripped},
             )
 

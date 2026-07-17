@@ -1,7 +1,11 @@
 import dataclasses
 from typing import List, Optional
+
 import gspread
 
+from .apply_fixes import apply_fixes
+from .common import default_entity_types
+from .find_fixes import add_fixes_to_errors
 from .validate_sheet import (
     SheetReadError,
     SheetValidationResult,
@@ -11,9 +15,7 @@ from .validate_sheet import (
     read_sheet_with_service_account,
     validate_google_sheet,
 )
-from .find_fixes import add_fixes_to_errors
-from .apply_fixes import apply_fixes
-from .common import default_entity_types
+
 
 def process_google_sheet(
     sheet_id: str,
@@ -32,12 +34,13 @@ def process_google_sheet(
         entity_types: List of entity types to validate. Determines which worksheets are read and which schema is
             used for each.
         bionetwork: Optional string identifying the biological network context.
-        
+
     Returns:
         SheetValidationResult object
     """
 
     import logging
+
     logger = logging.getLogger(__name__)
 
     # Initialize sheet_data variable so it can be referenced during exception handling
@@ -77,10 +80,10 @@ def process_google_sheet(
                 errors_with_fix_info = add_fixes_to_errors(validation_result.errors, bionetwork)
                 if any(error.input_fix is not None for error in errors_with_fix_info):
                     logger.error(f"Sheet {sheet_id} still has fixes available after fixes were applied")
-        
+
         # Return validation result
         return validation_result
-    
+
     except gspread.exceptions.APIError as e:
         logger.error(f"Google Sheets API error: {e}")
         return make_validation_result_for_whole_sheet_error(
@@ -88,7 +91,7 @@ def process_google_sheet(
             entity_types=entity_types,
             error_code="api_error",
             error_message=f"Received error {e.code} from Google Sheets API: {e.error['message']}",
-            spreadsheet_metadata=None if sheet_data is None else sheet_data.spreadsheet_metadata
+            spreadsheet_metadata=None if sheet_data is None else sheet_data.spreadsheet_metadata,
         )
     except SheetReadError as read_error:
         return make_read_error_validation_result(sheet_id, entity_types, read_error)

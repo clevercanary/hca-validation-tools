@@ -64,6 +64,7 @@ def resolve_cap_block(uns) -> dict | None:
     block = uns.get(CAP_METADATA_KEY)
     return dict(block) if isinstance(block, Mapping) else None
 
+
 # CAP obs column suffixes per the cell-annotation-schema spec
 _REQUIRED_SUFFIXES = [
     "",  # the cell label column itself

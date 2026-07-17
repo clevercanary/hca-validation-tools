@@ -30,7 +30,10 @@ def test_stats_categorical_column(sample_h5ad):
 
 def test_stats_value_counts(sample_h5ad):
     result = get_descriptive_stats(
-        str(sample_h5ad), attribute="obs", columns=["cell_type"], value_counts=True,
+        str(sample_h5ad),
+        attribute="obs",
+        columns=["cell_type"],
+        value_counts=True,
     )
     col = result["columns"]["cell_type"]
     assert "value_counts" in col

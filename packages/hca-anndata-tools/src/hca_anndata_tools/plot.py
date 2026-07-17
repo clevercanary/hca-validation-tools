@@ -45,6 +45,7 @@ def plot_embedding(
         path = resolve_latest(path)
         # Lazy imports — scanpy/matplotlib are heavy and only needed for plotting
         import matplotlib
+
         if matplotlib.get_backend().lower() != "agg":
             matplotlib.use("Agg")
         import matplotlib.pyplot as plt

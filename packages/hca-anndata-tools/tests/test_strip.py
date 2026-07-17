@@ -107,11 +107,15 @@ def test_strip_preserves_existing_edit_log(sample_h5ad_for_write):
     # but we're seeding by hand here — those fields aren't required by the
     # validator unless we re-stamp. Use the minimal shape that build_edit_log
     # will accept on the next read.
-    seed_log = json.dumps([{
-        **prior_entry,
-        "source_file": "synthetic-seed.h5ad",
-        "source_sha256": "0" * 64,
-    }])
+    seed_log = json.dumps(
+        [
+            {
+                **prior_entry,
+                "source_file": "synthetic-seed.h5ad",
+                "source_sha256": "0" * 64,
+            }
+        ]
+    )
     adata.uns.setdefault("provenance", {})[EDIT_LOG_KEY] = seed_log
     adata.write_h5ad(sample_h5ad_for_write)
 

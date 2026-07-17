@@ -85,10 +85,7 @@ def resolve_latest(path: str) -> str:
     # Glob for timestamped variants, then strict regex filter on full basename
     pattern = os.path.join(directory, f"{glob.escape(stem)}-edit-*-*-*-*-*-*.h5ad")
     full_re = re.compile(rf"^{re.escape(stem)}-edit-\d{{4}}-\d{{2}}-\d{{2}}-\d{{2}}-\d{{2}}-\d{{2}}\.h5ad$")
-    candidates = [
-        f for f in glob.glob(pattern)
-        if full_re.match(os.path.basename(f))
-    ]
+    candidates = [f for f in glob.glob(pattern) if full_re.match(os.path.basename(f))]
 
     if not candidates:
         return path
@@ -146,10 +143,7 @@ def has_edit_log_operation(adata, operation: str) -> bool:
         return False
     if not isinstance(log, list):
         return False
-    return any(
-        isinstance(entry, dict) and entry.get("operation") == operation
-        for entry in log
-    )
+    return any(isinstance(entry, dict) and entry.get("operation") == operation for entry in log)
 
 
 def make_edit_entry(
@@ -212,10 +206,7 @@ def build_edit_log(
     sha256 = source_sha256 if source_sha256 is not None else _compute_sha256(source_path)
     source_filename = os.path.basename(source_path)
 
-    stamped_entries = [
-        {**entry, "source_file": source_filename, "source_sha256": sha256}
-        for entry in edit_entries
-    ]
+    stamped_entries = [{**entry, "source_file": source_filename, "source_sha256": sha256} for entry in edit_entries]
 
     if isinstance(existing_log_raw, str):
         try:
@@ -243,11 +234,7 @@ def cleanup_previous_version(source_path: str, output_path: str) -> None:
     Never deletes the original (non-timestamped) file. Skips if output
     overwrote source in place (same-second write).
     """
-    if (
-        _is_timestamped(source_path)
-        and source_path != output_path
-        and os.path.isfile(source_path)
-    ):
+    if _is_timestamped(source_path) and source_path != output_path and os.path.isfile(source_path):
         try:
             os.remove(source_path)
         except OSError:

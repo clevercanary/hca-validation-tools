@@ -159,15 +159,19 @@ def test_compress_h5ad_appends_to_existing_edit_log(uncompressed_h5ad):
         prov = f.require_group("uns/provenance")
         prov.attrs.setdefault("encoding-type", "dict")
         prov.attrs.setdefault("encoding-version", "0.1.0")
-        existing = json.dumps([{
-            "timestamp": "2026-01-01T00:00:00+00:00",
-            "tool": "hca-anndata-tools",
-            "tool_version": "0.0.0",
-            "operation": "fake_prior",
-            "description": "seeded prior entry",
-            "source_file": "uncompressed.h5ad",
-            "source_sha256": "0" * 64,
-        }])
+        existing = json.dumps(
+            [
+                {
+                    "timestamp": "2026-01-01T00:00:00+00:00",
+                    "tool": "hca-anndata-tools",
+                    "tool_version": "0.0.0",
+                    "operation": "fake_prior",
+                    "description": "seeded prior entry",
+                    "source_file": "uncompressed.h5ad",
+                    "source_sha256": "0" * 64,
+                }
+            ]
+        )
         ds = prov.create_dataset("edit_history", data=existing)
         ds.attrs["encoding-type"] = "string"
         ds.attrs["encoding-version"] = "0.2.0"

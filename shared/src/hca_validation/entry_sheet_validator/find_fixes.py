@@ -1,11 +1,12 @@
 import dataclasses
 from typing import List, Optional
+
 from linkml_runtime import SchemaView
 from linkml_runtime.linkml_model.meta import ClassDefinition
 
-from hca_validation.schema_utils import load_schemaview, get_entity_class_name
-from .validate_sheet import SheetErrorInfo
+from hca_validation.schema_utils import get_entity_class_name, load_schemaview
 
+from .validate_sheet import SheetErrorInfo
 
 # Spreadsheet values to identify possible fixes for
 # Mapping tuple of entity type, slot, and input value to corrected value
@@ -36,7 +37,7 @@ def add_fix_to_error_if_available(
     # Require string input value to avoid values that consist of the entire input row
     if error.entity_type is None or error.column is None or not isinstance(error.input, str):
         return error
-    
+
     entity_induced_class = schemaview.induced_class(get_entity_class_name(error.entity_type, bionetwork))
     input_fix = get_fixed_value(error.entity_type, entity_induced_class, error.column, error.input)
 
@@ -51,7 +52,7 @@ def add_fixes_to_errors(errors: List[SheetErrorInfo], bionetwork: Optional[str])
     Args:
         errors: List of error info objects
         bionetwork: Bionetwork associated with the data the errors come from
-    
+
     Returns:
         List of errors with fixes added where possible
     """

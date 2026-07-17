@@ -4,17 +4,17 @@ import json
 import logging
 import os
 import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Dict, Any, List
+from typing import Dict
 from unittest.mock import MagicMock, patch
-import sys
 
 import boto3
+import numpy as np
+import pandas as pd
 import pytest
 from moto import mock_s3, mock_sns
-import pandas as pd
-import numpy as np
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
@@ -48,12 +48,12 @@ def _setup_metadata_mocks(mock_read_inputs, mock_matrix_storage, test_adata):
 dataset_validator_venv_path = sys.prefix
 mock_modules_path = Path(__file__).parent / "mock-modules"
 external_validator_path_vars = {
-    'CELLXGENE_VALIDATOR_VENV': dataset_validator_venv_path,
-    'CELLXGENE_VALIDATOR_SCRIPT': str(mock_modules_path / "cellxgene_validator.py"),
-    'HCA_SCHEMA_VALIDATOR_VENV': dataset_validator_venv_path,
-    'HCA_SCHEMA_VALIDATOR_SCRIPT': str(mock_modules_path / "hca_schema_validator.py"),
-    'HCA_CELL_ANNOTATION_VALIDATOR_SCRIPT': str(mock_modules_path / "hca_cell_annotation_validator.py"),
-    'CAP_VALIDATOR_SCRIPT': str(mock_modules_path / "cap_validator.py"),
+    "CELLXGENE_VALIDATOR_VENV": dataset_validator_venv_path,
+    "CELLXGENE_VALIDATOR_SCRIPT": str(mock_modules_path / "cellxgene_validator.py"),
+    "HCA_SCHEMA_VALIDATOR_VENV": dataset_validator_venv_path,
+    "HCA_SCHEMA_VALIDATOR_SCRIPT": str(mock_modules_path / "hca_schema_validator.py"),
+    "HCA_CELL_ANNOTATION_VALIDATOR_SCRIPT": str(mock_modules_path / "hca_cell_annotation_validator.py"),
+    "CAP_VALIDATOR_SCRIPT": str(mock_modules_path / "cap_validator.py"),
 }
 
 
@@ -61,47 +61,47 @@ external_validator_path_vars = {
 def mock_aws():
     """Fixture that provides mocked AWS services (S3 and SNS)."""
     # Set AWS_DEFAULT_REGION for consistent behavior
-    original_region = os.environ.get('AWS_DEFAULT_REGION')
-    os.environ['AWS_DEFAULT_REGION'] = 'us-east-1'
-    
+    original_region = os.environ.get("AWS_DEFAULT_REGION")
+    os.environ["AWS_DEFAULT_REGION"] = "us-east-1"
+
     try:
         with mock_s3(), mock_sns():
             # Create S3 client and buckets
-            s3_client = boto3.client('s3', region_name='us-east-1')
-            s3_client.create_bucket(Bucket='test-bucket')
-            s3_client.create_bucket(Bucket='test-results-bucket')
+            s3_client = boto3.client("s3", region_name="us-east-1")
+            s3_client.create_bucket(Bucket="test-bucket")
+            s3_client.create_bucket(Bucket="test-results-bucket")
 
             # Create SNS client and topic
-            sns_client = boto3.client('sns', region_name='us-east-1')
-            topic_response = sns_client.create_topic(Name='test-topic')
-            topic_arn = topic_response['TopicArn']
+            sns_client = boto3.client("sns", region_name="us-east-1")
+            topic_response = sns_client.create_topic(Name="test-topic")
+            topic_arn = topic_response["TopicArn"]
 
             yield {
-                's3_client': s3_client,
-                'sns_client': sns_client,
-                'topic_arn': topic_arn,
-                'bucket_name': 'test-bucket',
-                'validation_results_bucket_name': 'test-results-bucket',
+                "s3_client": s3_client,
+                "sns_client": sns_client,
+                "topic_arn": topic_arn,
+                "bucket_name": "test-bucket",
+                "validation_results_bucket_name": "test-results-bucket",
             }
     finally:
         # Restore original region
         if original_region is None:
-            os.environ.pop('AWS_DEFAULT_REGION', None)
+            os.environ.pop("AWS_DEFAULT_REGION", None)
         else:
-            os.environ['AWS_DEFAULT_REGION'] = original_region
+            os.environ["AWS_DEFAULT_REGION"] = original_region
 
 
 @pytest.fixture
 def base_env_vars():
     """Fixture that provides base environment variables for testing."""
     return {
-        'S3_BUCKET': 'test-bucket',
-        'S3_KEY': 'test/file.h5ad',
-        'FILE_ID': 'test-file-uuid',
-        'SNS_TOPIC_ARN': 'arn:aws:sns:us-east-1:123456789012:test-topic',
-        'AWS_BATCH_JOB_ID': 'test-job-id',
-        'BATCH_JOB_NAME': 'test-job',
-        'AWS_DEFAULT_REGION': 'us-east-1'
+        "S3_BUCKET": "test-bucket",
+        "S3_KEY": "test/file.h5ad",
+        "FILE_ID": "test-file-uuid",
+        "SNS_TOPIC_ARN": "arn:aws:sns:us-east-1:123456789012:test-topic",
+        "AWS_BATCH_JOB_ID": "test-job-id",
+        "BATCH_JOB_NAME": "test-job",
+        "AWS_DEFAULT_REGION": "us-east-1",
     }
 
 
@@ -109,19 +109,19 @@ def base_env_vars():
 def env_manager():
     """Fixture that provides environment variable management utilities."""
     original_env = {}
-    
+
     def set_env(env_vars: Dict[str, str]):
         """Set environment variables and save originals for cleanup."""
         for key, value in env_vars.items():
             original_env[key] = os.environ.get(key)
             os.environ[key] = value
-    
+
     def clear_env(keys: list):
         """Clear specific environment variables."""
         for key in keys:
             original_env[key] = os.environ.get(key)
             os.environ.pop(key, None)
-    
+
     def restore_env():
         """Restore original environment variables."""
         for key, value in original_env.items():
@@ -130,102 +130,97 @@ def env_manager():
             else:
                 os.environ[key] = value
         original_env.clear()
-    
-    yield {
-        'set': set_env,
-        'clear': clear_env,
-        'restore': restore_env
-    }
-    
+
+    yield {"set": set_env, "clear": clear_env, "restore": restore_env}
+
     # Cleanup after test
     restore_env()
+
 
 class TestDatasetValidator:
     """Test cases for the dataset validator main functionality."""
 
-    @pytest.mark.parametrize("test_case", [
-        {
-            "name": "no_config",
-            "description": "Test that validator fails when no S3 config is provided",
-            "env_vars": {},  # Empty - will clear S3_BUCKET and S3_KEY
-            "clear_vars": ['S3_BUCKET', 'S3_KEY'],
-            "expected_exit_code": 1,
-            "expected_logs": [
-                "Dataset Validator starting",
-                "Missing required environment variables"
-            ]
-        },
-        {
-            "name": "invalid_s3_config", 
-            "description": "Test that validator fails when invalid S3 config is provided",
-            "env_vars": {
-                'S3_BUCKET': 'invalid-test-bucket',
-                'S3_KEY': 'invalid/test/file.h5ad',
-                'FILE_ID': 'test-file-uuid',
-                'SNS_TOPIC_ARN': 'arn:aws:sns:us-east-1:123456789012:test-topic',
-                'AWS_BATCH_JOB_ID': 'test-job-id',
-                'AWS_DEFAULT_REGION': 'us-east-1'
+    @pytest.mark.parametrize(
+        "test_case",
+        [
+            {
+                "name": "no_config",
+                "description": "Test that validator fails when no S3 config is provided",
+                "env_vars": {},  # Empty - will clear S3_BUCKET and S3_KEY
+                "clear_vars": ["S3_BUCKET", "S3_KEY"],
+                "expected_exit_code": 1,
+                "expected_logs": ["Dataset Validator starting", "Missing required environment variables"],
             },
-            "clear_vars": [],
-            "expected_exit_code": 1,
-            "expected_logs": [
-                "Dataset Validator starting",
-                "Work directory created:",
-                "Processing S3 file: s3://invalid-test-bucket/invalid/test/file.h5ad",
-                "S3 download failed",
-                "Dataset Validator failed:"
-            ]
-        },
-        {
-            "name": "work_directory_creation",
-            "description": "Test that work directory is created correctly with valid S3 config",
-            "env_vars": {
-                'S3_BUCKET': 'test-bucket',
-                'S3_KEY': 'test/file.h5ad',
-                'FILE_ID': 'test-file-uuid',
-                'SNS_TOPIC_ARN': 'arn:aws:sns:us-east-1:123456789012:test-topic',
-                'AWS_BATCH_JOB_ID': 'test-job-id',
-                'AWS_DEFAULT_REGION': 'us-east-1',
-                'BATCH_JOB_NAME': 'test-job'
+            {
+                "name": "invalid_s3_config",
+                "description": "Test that validator fails when invalid S3 config is provided",
+                "env_vars": {
+                    "S3_BUCKET": "invalid-test-bucket",
+                    "S3_KEY": "invalid/test/file.h5ad",
+                    "FILE_ID": "test-file-uuid",
+                    "SNS_TOPIC_ARN": "arn:aws:sns:us-east-1:123456789012:test-topic",
+                    "AWS_BATCH_JOB_ID": "test-job-id",
+                    "AWS_DEFAULT_REGION": "us-east-1",
+                },
+                "clear_vars": [],
+                "expected_exit_code": 1,
+                "expected_logs": [
+                    "Dataset Validator starting",
+                    "Work directory created:",
+                    "Processing S3 file: s3://invalid-test-bucket/invalid/test/file.h5ad",
+                    "S3 download failed",
+                    "Dataset Validator failed:",
+                ],
             },
-            "clear_vars": [],
-            "expected_exit_code": 1,
-            "expected_logs": [
-                "Work directory created: /tmp/dataset_validator"
-            ]
-        }
-    ], ids=lambda x: x["name"])
+            {
+                "name": "work_directory_creation",
+                "description": "Test that work directory is created correctly with valid S3 config",
+                "env_vars": {
+                    "S3_BUCKET": "test-bucket",
+                    "S3_KEY": "test/file.h5ad",
+                    "FILE_ID": "test-file-uuid",
+                    "SNS_TOPIC_ARN": "arn:aws:sns:us-east-1:123456789012:test-topic",
+                    "AWS_BATCH_JOB_ID": "test-job-id",
+                    "AWS_DEFAULT_REGION": "us-east-1",
+                    "BATCH_JOB_NAME": "test-job",
+                },
+                "clear_vars": [],
+                "expected_exit_code": 1,
+                "expected_logs": ["Work directory created: /tmp/dataset_validator"],
+            },
+        ],
+        ids=lambda x: x["name"],
+    )
     def test_subprocess_validation_scenarios(self, test_case):
         """Parameterized test for various subprocess validation scenarios."""
         # Prepare environment
         env = os.environ.copy()
-        
+
         # Add mock AWS credentials for subprocess tests
-        env.update({
-            'AWS_ACCESS_KEY_ID': 'testing',
-            'AWS_SECRET_ACCESS_KEY': 'testing',
-            'AWS_SECURITY_TOKEN': 'testing',
-            'AWS_SESSION_TOKEN': 'testing'
-        })
-        
+        env.update(
+            {
+                "AWS_ACCESS_KEY_ID": "testing",
+                "AWS_SECRET_ACCESS_KEY": "testing",
+                "AWS_SECURITY_TOKEN": "testing",
+                "AWS_SESSION_TOKEN": "testing",
+            }
+        )
+
         # Clear specified variables
         for var in test_case["clear_vars"]:
             env.pop(var, None)
-            
+
         # Set test-specific variables
         env.update(test_case["env_vars"])
-        
+
         # Run the validator
         result = subprocess.run(
-            [sys.executable, 'src/dataset_validator/main.py'],
-            capture_output=True,
-            text=True,
-            env=env
+            [sys.executable, "src/dataset_validator/main.py"], capture_output=True, text=True, env=env
         )
-        
+
         # Verify exit code
         assert result.returncode == test_case["expected_exit_code"]
-        
+
         # Verify expected log messages
         for expected_log in test_case["expected_logs"]:
             assert expected_log in result.stdout
@@ -237,8 +232,8 @@ def test_missing_sns_topic_logs_error_and_exits(caplog, env_manager, base_env_va
 
     # Set up environment with missing SNS_TOPIC_ARN
     test_env = base_env_vars.copy()
-    del test_env['SNS_TOPIC_ARN']  # Remove SNS topic to test missing variable
-    env_manager['set'](test_env)
+    del test_env["SNS_TOPIC_ARN"]  # Remove SNS topic to test missing variable
+    env_manager["set"](test_env)
 
     # Capture logs from the specific logger
     with caplog.at_level(logging.ERROR, logger="dataset_validator.main"):
@@ -257,9 +252,9 @@ def test_missing_bucket_skips_s3_claim_check(caplog, env_manager, base_env_vars)
     from dataset_validator.main import main
 
     test_env = base_env_vars.copy()
-    del test_env['S3_BUCKET']
-    env_manager['set'](test_env)
-    env_manager['clear'](['S3_BUCKET'])
+    del test_env["S3_BUCKET"]
+    env_manager["set"](test_env)
+    env_manager["clear"](["S3_BUCKET"])
 
     with caplog.at_level(logging.INFO, logger="dataset_validator.main"):
         result = main()
@@ -270,81 +265,81 @@ def test_missing_bucket_skips_s3_claim_check(caplog, env_manager, base_env_vars)
     assert "S3 claim check write" not in caplog.text
 
 
-@pytest.mark.parametrize("test_case", [
-    {
-        "name": "all_present",
-        "description": "Test reading metadata with all fields present",
-        "adata": {
-            "obs": {
-                "assay": ["assay-a", "assay-b", "assay-b", "assay-c", "assay-a"],
-                "suspension_type": [
-                    "suspension-type-a",
-                    "suspension-type-a",
-                    "suspension-type-a",
-                    "suspension-type-a",
-                    "suspension-type-a",
-                ],
-                "tissue": ["tissue-a", "tissue-a", "tissue-b", "tissue-a", "tissue-a"],
-                "disease": ["disease-a", "disease-b", "disease-c", "disease-d", "disease-e"]
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        {
+            "name": "all_present",
+            "description": "Test reading metadata with all fields present",
+            "adata": {
+                "obs": {
+                    "assay": ["assay-a", "assay-b", "assay-b", "assay-c", "assay-a"],
+                    "suspension_type": [
+                        "suspension-type-a",
+                        "suspension-type-a",
+                        "suspension-type-a",
+                        "suspension-type-a",
+                        "suspension-type-a",
+                    ],
+                    "tissue": ["tissue-a", "tissue-a", "tissue-b", "tissue-a", "tissue-a"],
+                    "disease": ["disease-a", "disease-b", "disease-c", "disease-d", "disease-e"],
+                },
+                "uns": {"title": "test-dataset-123"},
+                "n_vars": 12,
             },
-            "uns": {"title": "test-dataset-123"},
-            "n_vars": 12
-        },
-        "expected_result": {
-            "title": "test-dataset-123",
-            "assay": ["assay-a", "assay-b", "assay-c"],
-            "suspension_type": ["suspension-type-a"],
-            "tissue": ["tissue-a", "tissue-b"],
-            "disease": ["disease-a", "disease-b", "disease-c", "disease-d", "disease-e"],
-            "cell_count": 5,
-            "gene_count": 12
-        }
-    },
-    {
-        "name": "all_missing",
-        "description": "Test reading metadata with all possible fields absent",
-        "adata": {
-            "obs": {},
-            "uns": {},
-            "n_vars": 0
-        },
-        "expected_result": {
-            "title": "",
-            "assay": [],
-            "suspension_type": [],
-            "tissue": [],
-            "disease": [],
-            "cell_count": 0,
-            "gene_count": 0
-        }
-    },
-    {
-        "name": "nan",
-        "description": "Test that NAN is converted to string",
-        "adata": {
-            "obs": {
-                "assay": ["assay-a", "assay-b", np.nan],
-                "suspension_type": ["suspension-type-a", np.nan, "suspension-type-b"],
-                "tissue": [np.nan, "tissue-a", "tissue-a"],
-                "disease": ["disease-a", np.nan, np.nan]
+            "expected_result": {
+                "title": "test-dataset-123",
+                "assay": ["assay-a", "assay-b", "assay-c"],
+                "suspension_type": ["suspension-type-a"],
+                "tissue": ["tissue-a", "tissue-b"],
+                "disease": ["disease-a", "disease-b", "disease-c", "disease-d", "disease-e"],
+                "cell_count": 5,
+                "gene_count": 12,
             },
-            "uns": {"title": "test-dataset-456"},
-            "n_vars": 23
         },
-        "expected_result": {
-            "title": "test-dataset-456",
-            "assay": ["assay-a", "assay-b", "nan"],
-            "suspension_type": ["suspension-type-a", "nan", "suspension-type-b"],
-            "tissue": ["nan", "tissue-a"],
-            "disease": ["disease-a", "nan"],
-            "cell_count": 3,
-            "gene_count": 23
-        }
-    }
-], ids=lambda x: x["name"])
+        {
+            "name": "all_missing",
+            "description": "Test reading metadata with all possible fields absent",
+            "adata": {"obs": {}, "uns": {}, "n_vars": 0},
+            "expected_result": {
+                "title": "",
+                "assay": [],
+                "suspension_type": [],
+                "tissue": [],
+                "disease": [],
+                "cell_count": 0,
+                "gene_count": 0,
+            },
+        },
+        {
+            "name": "nan",
+            "description": "Test that NAN is converted to string",
+            "adata": {
+                "obs": {
+                    "assay": ["assay-a", "assay-b", np.nan],
+                    "suspension_type": ["suspension-type-a", np.nan, "suspension-type-b"],
+                    "tissue": [np.nan, "tissue-a", "tissue-a"],
+                    "disease": ["disease-a", np.nan, np.nan],
+                },
+                "uns": {"title": "test-dataset-456"},
+                "n_vars": 23,
+            },
+            "expected_result": {
+                "title": "test-dataset-456",
+                "assay": ["assay-a", "assay-b", "nan"],
+                "suspension_type": ["suspension-type-a", "nan", "suspension-type-b"],
+                "tissue": ["nan", "tissue-a"],
+                "disease": ["disease-a", "nan"],
+                "cell_count": 3,
+                "gene_count": 23,
+            },
+        },
+    ],
+    ids=lambda x: x["name"],
+)
 def test_extract_metadata_summary_scenarios(test_case):
     """Parameterized test for the metadata summary extraction (obs/uns -> MetadataSummary)."""
-    from dataset_validator.main import _extract_metadata_summary, MetadataSummary
+    from dataset_validator.main import MetadataSummary, _extract_metadata_summary
 
     # _extract_metadata_summary only reads .obs/.uns/.n_obs/.n_vars
     obs = pd.DataFrame(test_case["adata"]["obs"])
@@ -369,13 +364,16 @@ def test_read_file_metadata_real_h5ad(tmp_path):
 
     n_obs, n_vars = 5, 8
     X = sp.random(n_obs, n_vars, density=0.5, format="csr", dtype=np.float32)
-    obs = pd.DataFrame({
-        "assay": ["a", "a", "b", "b", "a"],
-        "suspension_type": ["cell"] * 5,
-        "tissue": ["lung"] * 5,
-        "disease": ["normal"] * 5,
-        "donor_id": ["d1", "d1", "d2", "d2", "d2"],
-    }, index=[f"cell{i}" for i in range(n_obs)])
+    obs = pd.DataFrame(
+        {
+            "assay": ["a", "a", "b", "b", "a"],
+            "suspension_type": ["cell"] * 5,
+            "tissue": ["lung"] * 5,
+            "disease": ["normal"] * 5,
+            "donor_id": ["d1", "d1", "d2", "d2", "d2"],
+        },
+        index=[f"cell{i}" for i in range(n_obs)],
+    )
     adata = ad.AnnData(X=X, obs=obs)
     adata.uns["title"] = "tiny"
     adata.raw = adata
@@ -443,7 +441,7 @@ def test_read_shape_var_fallback_is_robust(tmp_path):
     path4 = tmp_path / "weird4.h5ad"
     with h5py.File(path4, "w") as f:
         x = f.create_group("X")
-        x.attrs["shape"] = np.int64(5)            # scalar, not a 2-tuple
+        x.attrs["shape"] = np.int64(5)  # scalar, not a 2-tuple
         var = f.create_group("var")
         var.attrs["_index"] = "gene_id"
         var.create_dataset("gene_id", data=np.arange(7))
@@ -466,15 +464,24 @@ def test_matrix_storage_excluded_from_sns_message():
     # tool reports — the case that previously slipped past the length limiter.
     big_layers = {
         f"layer_{i}": {
-            "format": "csr_matrix", "n_obs": 1, "n_vars": 1, "nnz": 0,
-            "data_dtype": "float32", "index_dtype": "int64",
-            "on_disk_bytes": 0, "resident_bytes": 0,
+            "format": "csr_matrix",
+            "n_obs": 1,
+            "n_vars": 1,
+            "nnz": 0,
+            "data_dtype": "float32",
+            "index_dtype": "int64",
+            "on_disk_bytes": 0,
+            "resident_bytes": 0,
         }
         for i in range(5000)
     }
     msg = ValidationMessage(
-        file_id="f", status="success", timestamp="2024-01-01T00:00:00Z",
-        bucket="b", key="k", batch_job_id="j",
+        file_id="f",
+        status="success",
+        timestamp="2024-01-01T00:00:00Z",
+        bucket="b",
+        key="k",
+        batch_job_id="j",
         matrix_storage={"X": None, "raw_X": None, "layers": big_layers},
     )
 
@@ -485,34 +492,33 @@ def test_matrix_storage_excluded_from_sns_message():
     # ...while the SNS body carries the six pointer fields and nothing else,
     # however large matrix_storage grows.
     sns = json.loads(msg.to_pointer().to_json())
-    assert set(sns) == {
-        "file_id", "status", "timestamp", "bucket", "key", "batch_job_id"
-    }
+    assert set(sns) == {"file_id", "status", "timestamp", "bucket", "key", "batch_job_id"}
 
 
-@pytest.mark.parametrize("test_case", [
-    {
-        "name": "success",
-        "description": "Test successful CAP validation via mock subprocess",
-        "cap_mock_error": None,
-        "expected_report": {
-            "valid": True,
-            "errors": []
-        }
-    },
-    {
-        "name": "error",
-        "description": "Test CAP validation error via mock subprocess",
-        "cap_mock_error": "Error in CAP validator",
-        "expected_report": {
-            "valid": False,
-            "errors": ["Encountered an unexpected error while calling CAP validator: Error in CAP validator"]
-        }
-    }
-], ids=lambda x: x["name"])
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        {
+            "name": "success",
+            "description": "Test successful CAP validation via mock subprocess",
+            "cap_mock_error": None,
+            "expected_report": {"valid": True, "errors": []},
+        },
+        {
+            "name": "error",
+            "description": "Test CAP validation error via mock subprocess",
+            "cap_mock_error": "Error in CAP validator",
+            "expected_report": {
+                "valid": False,
+                "errors": ["Encountered an unexpected error while calling CAP validator: Error in CAP validator"],
+            },
+        },
+    ],
+    ids=lambda x: x["name"],
+)
 def test_cap_validator_scenarios(test_case, monkeypatch):
     """Parameterized test for CAP validation via subprocess."""
-    from dataset_validator.main import apply_cap_validator, ValidationToolReport
+    from dataset_validator.main import ValidationToolReport, apply_cap_validator
 
     # Point at the mock CAP validator script
     monkeypatch.setenv("CAP_VALIDATOR_SCRIPT", str(mock_modules_path / "cap_validator.py"))
@@ -535,46 +541,51 @@ def test_cap_validator_scenarios(test_case, monkeypatch):
 def _build_cap_multi_exception(exceptions):
     """Helper to build a CapMultiException from a list of exceptions."""
     from cap_upload_validator.errors import CapMultiException
+
     multi_ex = CapMultiException()
     for ex in exceptions:
         multi_ex.append(ex)
     return multi_ex
 
 
-@pytest.mark.parametrize("test_case", [
-    {
-        "name": "success",
-        "description": "Test cap_validator_script with successful validation",
-        "exception": None,
-        "expected_valid": True,
-        "expected_errors": []
-    },
-    {
-        "name": "cap_exception",
-        "description": "Test cap_validator_script with CapException",
-        "exception": "AnnDataMissingCountMatrix",
-        "expected_valid": False,
-        "expected_errors_contain": "AnnDataMissingCountMatrix"
-    },
-    {
-        "name": "cap_multi_exception",
-        "description": "Test cap_validator_script with CapMultiException (multiple errors)",
-        "exception": "CapMultiException",
-        "expected_valid": False,
-        "expected_error_count": 2
-    },
-    {
-        "name": "generic_exception",
-        "description": "Test cap_validator_script with unexpected Exception",
-        "exception": "Exception",
-        "expected_valid": False,
-        "expected_errors_contain": "Encountered an unexpected error"
-    }
-], ids=lambda x: x["name"])
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        {
+            "name": "success",
+            "description": "Test cap_validator_script with successful validation",
+            "exception": None,
+            "expected_valid": True,
+            "expected_errors": [],
+        },
+        {
+            "name": "cap_exception",
+            "description": "Test cap_validator_script with CapException",
+            "exception": "AnnDataMissingCountMatrix",
+            "expected_valid": False,
+            "expected_errors_contain": "AnnDataMissingCountMatrix",
+        },
+        {
+            "name": "cap_multi_exception",
+            "description": "Test cap_validator_script with CapMultiException (multiple errors)",
+            "exception": "CapMultiException",
+            "expected_valid": False,
+            "expected_error_count": 2,
+        },
+        {
+            "name": "generic_exception",
+            "description": "Test cap_validator_script with unexpected Exception",
+            "exception": "Exception",
+            "expected_valid": False,
+            "expected_errors_contain": "Encountered an unexpected error",
+        },
+    ],
+    ids=lambda x: x["name"],
+)
 @patch("dataset_validator.cap_validator_script.UploadValidator")
 def test_cap_validator_script_scenarios(mock_upload_validator, test_case):
     """Unit tests for cap_validator_script.py exception handling."""
-    from cap_upload_validator.errors import CapException, CapMultiException, AnnDataMissingCountMatrix
+    from cap_upload_validator.errors import AnnDataMissingCountMatrix, CapException
     from dataset_validator.cap_validator_script import main
 
     mock_instance = MagicMock()
@@ -583,9 +594,7 @@ def test_cap_validator_script_scenarios(mock_upload_validator, test_case):
     if test_case["exception"] == "AnnDataMissingCountMatrix":
         mock_instance.validate.side_effect = AnnDataMissingCountMatrix()
     elif test_case["exception"] == "CapMultiException":
-        mock_instance.validate.side_effect = _build_cap_multi_exception([
-            CapException(), AnnDataMissingCountMatrix()
-        ])
+        mock_instance.validate.side_effect = _build_cap_multi_exception([CapException(), AnnDataMissingCountMatrix()])
     elif test_case["exception"] == "Exception":
         mock_instance.validate.side_effect = Exception("something broke")
     # else: no exception, validate() succeeds
@@ -596,6 +605,7 @@ def test_cap_validator_script_scenarios(mock_upload_validator, test_case):
     # afterward — which restores to our patched StringIO, so the final JSON lands here.
     with patch("sys.argv", ["cap_validator_script.py", "test-file.h5ad"]):
         import io
+
         captured = io.StringIO()
         with patch("sys.stdout", captured):
             main()
@@ -608,92 +618,93 @@ def test_cap_validator_script_scenarios(mock_upload_validator, test_case):
     if "expected_errors" in test_case:
         assert output["errors"] == test_case["expected_errors"]
     if "expected_errors_contain" in test_case:
-        assert any(test_case["expected_errors_contain"] in e for e in output["errors"]), \
+        assert any(test_case["expected_errors_contain"] in e for e in output["errors"]), (
             f"Expected error containing '{test_case['expected_errors_contain']}', got: {output['errors']}"
+        )
     if "expected_error_count" in test_case:
-        assert len(output["errors"]) == test_case["expected_error_count"], \
+        assert len(output["errors"]) == test_case["expected_error_count"], (
             f"Expected {test_case['expected_error_count']} errors, got {len(output['errors'])}: {output['errors']}"
+        )
 
     mock_upload_validator.assert_called_once_with("test-file.h5ad")
     mock_instance.validate.assert_called_once()
 
 
-@pytest.mark.parametrize("test_case", [
-    {
-        "name": "success",
-        "description": "Test successful SNS message publishing",
-        "message_data": {
-            'file_id': 'test-file-123',
-            'status': 'success',
-            'timestamp': '2024-01-01T12:00:00Z',
-            'bucket': 'test-bucket',
-            'key': 'test/file.h5ad',
-            'batch_job_id': 'job-123',
-            'batch_job_name': 'test-job',
-            'downloaded_sha256': 'abc123',
-            'source_sha256': 'abc123',
-            'integrity_status': 'valid',
-            'metadata_summary': None,
-            'tool_reports': None,
-            'metadata_coverage': None,
-            'matrix_storage': None,
-            'error_message': None
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        {
+            "name": "success",
+            "description": "Test successful SNS message publishing",
+            "message_data": {
+                "file_id": "test-file-123",
+                "status": "success",
+                "timestamp": "2024-01-01T12:00:00Z",
+                "bucket": "test-bucket",
+                "key": "test/file.h5ad",
+                "batch_job_id": "job-123",
+                "batch_job_name": "test-job",
+                "downloaded_sha256": "abc123",
+                "source_sha256": "abc123",
+                "integrity_status": "valid",
+                "metadata_summary": None,
+                "tool_reports": None,
+                "metadata_coverage": None,
+                "matrix_storage": None,
+                "error_message": None,
+            },
+            "use_valid_topic": True,
+            "expected_result": True,
+            "log_level": logging.INFO,
+            "expected_logs": ["Publishing validation result to SNS topic", "Successfully published SNS message"],
         },
-        "use_valid_topic": True,
-        "expected_result": True,
-        "log_level": logging.INFO,
-        "expected_logs": [
-            "Publishing validation result to SNS topic",
-            "Successfully published SNS message"
-        ]
-    },
-    {
-        "name": "invalid_topic",
-        "description": "Test SNS publishing with invalid topic ARN",
-        "message_data": {
-            'file_id': 'test-file-123',
-            'status': 'failure',
-            'timestamp': '2024-01-01T12:00:00Z',
-            'bucket': 'test-bucket',
-            'key': 'test/file.h5ad',
-            'batch_job_id': 'job-123',
-            'error_message': 'Test error'
+        {
+            "name": "invalid_topic",
+            "description": "Test SNS publishing with invalid topic ARN",
+            "message_data": {
+                "file_id": "test-file-123",
+                "status": "failure",
+                "timestamp": "2024-01-01T12:00:00Z",
+                "bucket": "test-bucket",
+                "key": "test/file.h5ad",
+                "batch_job_id": "job-123",
+                "error_message": "Test error",
+            },
+            "use_valid_topic": False,
+            "expected_result": False,
+            "log_level": logging.ERROR,
+            "expected_logs": ["SNS publish failed"],
         },
-        "use_valid_topic": False,
-        "expected_result": False,
-        "log_level": logging.ERROR,
-        "expected_logs": [
-            "SNS publish failed"
-        ]
-    }
-], ids=lambda x: x["name"])
+    ],
+    ids=lambda x: x["name"],
+)
 def test_publish_validation_result_scenarios(caplog, mock_aws, test_case):
     """Parameterized test for SNS publishing scenarios."""
-    from dataset_validator.main import publish_validation_result, ValidationMessage, configure_logging
-    
+    from dataset_validator.main import ValidationMessage, configure_logging, publish_validation_result
+
     # Configure logging for the test
     configure_logging()
-    
+
     # Create test validation message
     message = ValidationMessage(**test_case["message_data"])
-    
+
     # Choose topic ARN based on test case
     if test_case["use_valid_topic"]:
-        topic_arn = mock_aws['topic_arn']
+        topic_arn = mock_aws["topic_arn"]
     else:
-        topic_arn = 'arn:aws:sns:us-east-1:123456789012:nonexistent-topic'
-    
+        topic_arn = "arn:aws:sns:us-east-1:123456789012:nonexistent-topic"
+
     # Test publishing
     with caplog.at_level(test_case["log_level"], logger="dataset_validator.main"):
         result = publish_validation_result(message, topic_arn)
-    
+
     # Verify result
     assert result is test_case["expected_result"]
-    
+
     # Verify expected log messages
     for expected_log in test_case["expected_logs"]:
         assert expected_log in caplog.text
-    
+
     # For success case, verify the SNS body is the pointer-only payload
     # — file_id / status / timestamp / bucket / key / batch_job_id and nothing
     # else. The full ValidationMessage lives in the S3 claim check.
@@ -712,20 +723,21 @@ def test_publish_validation_result_scenarios(caplog, mock_aws, test_case):
 def _build_message(**overrides) -> "object":
     """Helper to build a ValidationMessage for claim-check tests."""
     from dataset_validator.main import ValidationMessage
+
     base = {
-        'file_id': 'test-file-uuid',
-        'status': 'success',
-        'timestamp': '2024-01-01T12:00:00Z',
-        'bucket': 'test-bucket',
-        'key': 'datasets/test.h5ad',
-        'batch_job_id': 'job-abc',
-        'batch_job_name': 'test-job',
-        'downloaded_sha256': 'abc123',
-        'source_sha256': 'abc123',
-        'integrity_status': 'valid',
-        'metadata_summary': None,
-        'tool_reports': None,
-        'error_message': None,
+        "file_id": "test-file-uuid",
+        "status": "success",
+        "timestamp": "2024-01-01T12:00:00Z",
+        "bucket": "test-bucket",
+        "key": "datasets/test.h5ad",
+        "batch_job_id": "job-abc",
+        "batch_job_name": "test-job",
+        "downloaded_sha256": "abc123",
+        "source_sha256": "abc123",
+        "integrity_status": "valid",
+        "metadata_summary": None,
+        "tool_reports": None,
+        "error_message": None,
     }
     base.update(overrides)
     return ValidationMessage(**base)
@@ -733,39 +745,37 @@ def _build_message(**overrides) -> "object":
 
 def test_write_validation_results_to_s3_success(caplog, mock_aws):
     """Successful claim-check write places a JSON object at the expected key."""
-    from dataset_validator.main import write_validation_results_to_s3, configure_logging
+    from dataset_validator.main import configure_logging, write_validation_results_to_s3
+
     configure_logging()
 
-    message = _build_message(file_id='file-1', batch_job_id='job-1')
+    message = _build_message(file_id="file-1", batch_job_id="job-1")
 
     with caplog.at_level(logging.INFO, logger="dataset_validator.main"):
-        result = write_validation_results_to_s3(
-            message, mock_aws['bucket_name'], 'file-1', 'job-1'
-        )
+        result = write_validation_results_to_s3(message, mock_aws["bucket_name"], "file-1", "job-1")
 
     assert result is True
     assert "S3 claim check write succeeded for file file-1" in caplog.text
 
-    obj = mock_aws['s3_client'].get_object(
-        Bucket=mock_aws['bucket_name'],
-        Key='validation-metadata/file-1/job-1.json',
+    obj = mock_aws["s3_client"].get_object(
+        Bucket=mock_aws["bucket_name"],
+        Key="validation-metadata/file-1/job-1.json",
     )
-    body = obj['Body'].read().decode('utf-8')
+    body = obj["Body"].read().decode("utf-8")
     assert json.loads(body) == json.loads(message.to_json())
-    assert obj['ContentType'] == 'application/json'
+    assert obj["ContentType"] == "application/json"
 
 
 def test_write_validation_results_to_s3_failure(caplog, mock_aws):
     """Write to a nonexistent bucket logs the error and returns False without raising."""
-    from dataset_validator.main import write_validation_results_to_s3, configure_logging
+    from dataset_validator.main import configure_logging, write_validation_results_to_s3
+
     configure_logging()
 
-    message = _build_message(file_id='file-2', batch_job_id='job-2')
+    message = _build_message(file_id="file-2", batch_job_id="job-2")
 
     with caplog.at_level(logging.ERROR, logger="dataset_validator.main"):
-        result = write_validation_results_to_s3(
-            message, 'nonexistent-bucket', 'file-2', 'job-2'
-        )
+        result = write_validation_results_to_s3(message, "nonexistent-bucket", "file-2", "job-2")
 
     assert result is False
     assert "S3 claim check write failed for file file-2" in caplog.text
@@ -782,8 +792,8 @@ def test_write_validation_results_to_s3_writes_full_untruncated_json(mock_aws):
     a payload actually runs to since #400/#402.
     """
     from dataset_validator.main import (
-        write_validation_results_to_s3,
         ValidationToolReport,
+        write_validation_results_to_s3,
     )
 
     # Comfortably larger than the 250 KB the old SNS body was capped at, so the
@@ -793,99 +803,106 @@ def test_write_validation_results_to_s3_writes_full_untruncated_json(mock_aws):
     huge_errors = [f"error-{i}" for i in range(20000)]
     tool_reports = {
         "cap": ValidationToolReport(
-            valid=False, errors=huge_errors, warnings=[],
-            started_at='2024-01-01T12:00:00Z', finished_at='2024-01-01T12:00:01Z',
+            valid=False,
+            errors=huge_errors,
+            warnings=[],
+            started_at="2024-01-01T12:00:00Z",
+            finished_at="2024-01-01T12:00:01Z",
         ),
         "cellxgene": ValidationToolReport(
-            valid=True, errors=[], warnings=[],
-            started_at='2024-01-01T12:00:00Z', finished_at='2024-01-01T12:00:01Z',
+            valid=True,
+            errors=[],
+            warnings=[],
+            started_at="2024-01-01T12:00:00Z",
+            finished_at="2024-01-01T12:00:01Z",
         ),
         "hcaSchema": ValidationToolReport(
-            valid=True, errors=[], warnings=[],
-            started_at='2024-01-01T12:00:00Z', finished_at='2024-01-01T12:00:01Z',
+            valid=True,
+            errors=[],
+            warnings=[],
+            started_at="2024-01-01T12:00:00Z",
+            finished_at="2024-01-01T12:00:01Z",
         ),
         "hcaCellAnnotation": ValidationToolReport(
-            valid=True, errors=[], warnings=[],
-            started_at='2024-01-01T12:00:00Z', finished_at='2024-01-01T12:00:01Z',
+            valid=True,
+            errors=[],
+            warnings=[],
+            started_at="2024-01-01T12:00:00Z",
+            finished_at="2024-01-01T12:00:01Z",
         ),
     }
-    message = _build_message(
-        file_id='file-3', batch_job_id='job-3', tool_reports=tool_reports
-    )
+    message = _build_message(file_id="file-3", batch_job_id="job-3", tool_reports=tool_reports)
 
     # Sanity: the message must actually exceed the old SNS cap, otherwise the
     # test wouldn't be meaningfully exercising the claim-check use case.
     full_json = message.to_json()
     assert len(full_json) > OLD_SNS_CAP
 
-    assert write_validation_results_to_s3(
-        message, mock_aws['bucket_name'], 'file-3', 'job-3'
-    ) is True
+    assert write_validation_results_to_s3(message, mock_aws["bucket_name"], "file-3", "job-3") is True
 
-    obj = mock_aws['s3_client'].get_object(
-        Bucket=mock_aws['bucket_name'],
-        Key='validation-metadata/file-3/job-3.json',
+    obj = mock_aws["s3_client"].get_object(
+        Bucket=mock_aws["bucket_name"],
+        Key="validation-metadata/file-3/job-3.json",
     )
-    body = obj['Body'].read().decode('utf-8')
+    body = obj["Body"].read().decode("utf-8")
     assert body == full_json
 
 
-@pytest.mark.parametrize("test_case", [
-    {
-        "name": "success",
-        "description": "Local file mode completes validation, skips S3 and prints JSON to stdout",
-        "adata": {
-            "obs": {
-                "assay": ["assay-a"],
-                "suspension_type": ["cell"],
-                "tissue": ["lung"],
-                "disease": ["normal"]
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        {
+            "name": "success",
+            "description": "Local file mode completes validation, skips S3 and prints JSON to stdout",
+            "adata": {
+                "obs": {"assay": ["assay-a"], "suspension_type": ["cell"], "tissue": ["lung"], "disease": ["normal"]},
+                "uns": {"title": "local-test"},
+                "n_vars": 10,
             },
-            "uns": {"title": "local-test"},
-            "n_vars": 10
+            "expected_exit_code": 0,
+            "expected_logs": [
+                "Local file mode: validating",
+                "Validation completed successfully",
+            ],
+            "unexpected_logs": [
+                "Starting download:",
+                "Verifying file integrity",
+                "Publishing validation result to SNS",
+                "S3 claim check write",
+            ],
+            "expected_stdout": {
+                "status": "success",
+                "integrity_status": "valid",
+                "file_id": "local",
+                "batch_job_id": "local",
+                "bucket": "local",
+                "metadata_summary": {
+                    "title": "local-test",
+                    "assay": ["assay-a"],
+                    "suspension_type": ["cell"],
+                    "tissue": ["lung"],
+                    "disease": ["normal"],
+                    "cell_count": 1,
+                    "gene_count": 10,
+                },
+            },
         },
-        "expected_exit_code": 0,
-        "expected_logs": [
-            "Local file mode: validating",
-            "Validation completed successfully",
-        ],
-        "unexpected_logs": [
-            "Starting download:",
-            "Verifying file integrity",
-            "Publishing validation result to SNS",
-            "S3 claim check write",
-        ],
-        "expected_stdout": {
-            "status": "success",
-            "integrity_status": "valid",
-            "file_id": "local",
-            "batch_job_id": "local",
-            "bucket": "local",
-            "metadata_summary": {
-                "title": "local-test",
-                "assay": ["assay-a"],
-                "suspension_type": ["cell"],
-                "tissue": ["lung"],
-                "disease": ["normal"],
-                "cell_count": 1,
-                "gene_count": 10
-            }
-        }
-    },
-    {
-        "name": "file_not_found",
-        "description": "Local file mode fails when file does not exist",
-        "adata": None,
-        "local_file_override": "/nonexistent/path.h5ad",
-        "expected_exit_code": 1,
-        "expected_logs": [
-            "Missing required environment variables",
-            "file does not exist",
-        ],
-        "unexpected_logs": [],
-        "expected_stdout": None
-    }
-], ids=lambda x: x["name"])
+        {
+            "name": "file_not_found",
+            "description": "Local file mode fails when file does not exist",
+            "adata": None,
+            "local_file_override": "/nonexistent/path.h5ad",
+            "expected_exit_code": 1,
+            "expected_logs": [
+                "Missing required environment variables",
+                "file does not exist",
+            ],
+            "unexpected_logs": [],
+            "expected_stdout": None,
+        },
+    ],
+    ids=lambda x: x["name"],
+)
 @patch("dataset_validator.main.get_matrix_storage")
 @patch("dataset_validator.main._read_metadata_inputs")
 def test_local_file_mode(mock_read_inputs, mock_matrix_storage, caplog, env_manager, tmp_path, test_case, capsys):
@@ -899,12 +916,14 @@ def test_local_file_mode(mock_read_inputs, mock_matrix_storage, caplog, env_mana
         Path(local_file).touch()
 
     # Set only LOCAL_FILE — no S3/SNS/Batch vars
-    env_manager['set']({
-        'LOCAL_FILE': local_file,
-        **external_validator_path_vars,
-    })
+    env_manager["set"](
+        {
+            "LOCAL_FILE": local_file,
+            **external_validator_path_vars,
+        }
+    )
     # Ensure S3/SNS vars are not set
-    env_manager['clear'](['S3_BUCKET', 'S3_KEY', 'FILE_ID', 'SNS_TOPIC_ARN', 'AWS_BATCH_JOB_ID'])
+    env_manager["clear"](["S3_BUCKET", "S3_KEY", "FILE_ID", "SNS_TOPIC_ARN", "AWS_BATCH_JOB_ID"])
 
     # Drive the metadata read seam (obs/uns/shape + matrix storage)
     _setup_metadata_mocks(mock_read_inputs, mock_matrix_storage, test_case["adata"])
@@ -934,280 +953,272 @@ def test_local_file_mode(mock_read_inputs, mock_matrix_storage, caplog, env_mana
         assert "hcaCellAnnotation" in output["tool_reports"]
 
 
-@pytest.mark.parametrize("test_case", [
-    {
-        "name": "success",
-        "description": "Test complete validation workflow with successful validation",
-        "s3_key": "datasets/test.h5ad",
-        "file_id": "test-file-123",
-        "batch_job_id": "job-456",
-        "batch_job_name": "test-validation-job",
-        "setup_s3": lambda s3_client, bucket_name: _setup_valid_s3_file(s3_client, bucket_name, "datasets/test.h5ad"),
-        "adata": {
-            "obs": {
-                "assay": ["assay-a", "assay-b", "assay-b", "assay-c", "assay-a"],
-                "suspension_type": [
-                    "suspension-type-a",
-                    "suspension-type-a",
-                    "suspension-type-a",
-                    "suspension-type-a",
-                    "suspension-type-a",
-                ],
-                "tissue": ["tissue-a", "tissue-a", "tissue-b", "tissue-a", "tissue-a"],
-                "disease": ["disease-a", "disease-b", "disease-c", "disease-d", "disease-e"]
-            },
-            "uns": {"title": "test-dataset-123"},
-            "n_vars": 14
-        },
-        "expected_exit_code": 0,
-        "expected_logs": [
-            "Dataset Validator starting",
-            "Processing S3 file: s3://test-bucket/datasets/test.h5ad",
-            "Work directory created:",
-            "File ready for validation:",
-            "Validation completed successfully",
-            "Publishing validation result to SNS topic",
-            "Successfully published SNS message",
-            "Dataset Validator completed successfully"
-        ],
-        "expected_sns_message": {
-            "status": "success",
-            "integrity_status": "valid",
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        {
+            "name": "success",
+            "description": "Test complete validation workflow with successful validation",
+            "s3_key": "datasets/test.h5ad",
             "file_id": "test-file-123",
             "batch_job_id": "job-456",
             "batch_job_name": "test-validation-job",
-            "error_message": None,
-            "metadata_summary": {
-                "title": "test-dataset-123",
-                "assay": ["assay-a", "assay-b", "assay-c"],
-                "suspension_type": ["suspension-type-a"],
-                "tissue": ["tissue-a", "tissue-b"],
-                "disease": ["disease-a", "disease-b", "disease-c", "disease-d", "disease-e"],
-                "cell_count": 5,
-                "gene_count": 14
+            "setup_s3": lambda s3_client, bucket_name: _setup_valid_s3_file(
+                s3_client, bucket_name, "datasets/test.h5ad"
+            ),
+            "adata": {
+                "obs": {
+                    "assay": ["assay-a", "assay-b", "assay-b", "assay-c", "assay-a"],
+                    "suspension_type": [
+                        "suspension-type-a",
+                        "suspension-type-a",
+                        "suspension-type-a",
+                        "suspension-type-a",
+                        "suspension-type-a",
+                    ],
+                    "tissue": ["tissue-a", "tissue-a", "tissue-b", "tissue-a", "tissue-a"],
+                    "disease": ["disease-a", "disease-b", "disease-c", "disease-d", "disease-e"],
+                },
+                "uns": {"title": "test-dataset-123"},
+                "n_vars": 14,
             },
-            "tool_reports": {
-                "cap": {
-                    "valid": True,
-                    "errors": [],
-                    "warnings": []
+            "expected_exit_code": 0,
+            "expected_logs": [
+                "Dataset Validator starting",
+                "Processing S3 file: s3://test-bucket/datasets/test.h5ad",
+                "Work directory created:",
+                "File ready for validation:",
+                "Validation completed successfully",
+                "Publishing validation result to SNS topic",
+                "Successfully published SNS message",
+                "Dataset Validator completed successfully",
+            ],
+            "expected_sns_message": {
+                "status": "success",
+                "integrity_status": "valid",
+                "file_id": "test-file-123",
+                "batch_job_id": "job-456",
+                "batch_job_name": "test-validation-job",
+                "error_message": None,
+                "metadata_summary": {
+                    "title": "test-dataset-123",
+                    "assay": ["assay-a", "assay-b", "assay-c"],
+                    "suspension_type": ["suspension-type-a"],
+                    "tissue": ["tissue-a", "tissue-b"],
+                    "disease": ["disease-a", "disease-b", "disease-c", "disease-d", "disease-e"],
+                    "cell_count": 5,
+                    "gene_count": 14,
                 },
-                # cellxgene is stubbed in main.py (apply_cellxgene_validator
-                # is no longer called) — see #382. Expected output reflects
-                # the empty stub, not the mock script's "ERROR: test" output.
-                "cellxgene": {
-                    "valid": True,
-                    "errors": [],
-                    "warnings": []
+                "tool_reports": {
+                    "cap": {"valid": True, "errors": [], "warnings": []},
+                    # cellxgene is stubbed in main.py (apply_cellxgene_validator
+                    # is no longer called) — see #382. Expected output reflects
+                    # the empty stub, not the mock script's "ERROR: test" output.
+                    "cellxgene": {"valid": True, "errors": [], "warnings": []},
+                    "hcaSchema": {"valid": False, "errors": ["ERROR: test bar"], "warnings": ["WARNING: test bar"]},
+                    "hcaCellAnnotation": {
+                        "valid": False,
+                        "errors": ["ERROR: test baz"],
+                        "warnings": ["WARNING: test baz"],
+                    },
                 },
-                "hcaSchema": {
-                    "valid": False,
-                    "errors": ["ERROR: test bar"],
-                    "warnings": ["WARNING: test bar"]
-                },
-                "hcaCellAnnotation": {
-                    "valid": False,
-                    "errors": ["ERROR: test baz"],
-                    "warnings": ["WARNING: test baz"]
-                }
-            }
-        }
-    },
-    {
-        "name": "download_failure",
-        "description": "Test complete validation workflow with S3 download failure",
-        "s3_key": "datasets/nonexistent.h5ad",
-        "file_id": "test-file-456",
-        "batch_job_id": "job-789",
-        "batch_job_name": None,
-        "setup_s3": lambda s3_client, bucket_name: None,  # Don't upload any file
-        "adata": None,
-        "expected_exit_code": 1,
-        "expected_logs": [
-            "Dataset Validator starting",
-            "Processing S3 file: s3://test-bucket/datasets/nonexistent.h5ad",
-            "S3 download failed",
-            "Dataset Validator failed:",
-            "Publishing validation result to SNS topic",
-            "Successfully published SNS message"
-        ],
-        "expected_sns_message": {
-            "status": "failure",
-            "integrity_status": None,
+            },
+        },
+        {
+            "name": "download_failure",
+            "description": "Test complete validation workflow with S3 download failure",
+            "s3_key": "datasets/nonexistent.h5ad",
             "file_id": "test-file-456",
             "batch_job_id": "job-789",
             "batch_job_name": None,
-            "metadata_summary": None,
-            "tool_reports": None
-        }
-    },
-    {
-        "name": "integrity_failure",
-        "description": "Test complete validation workflow with file integrity failure",
-        "s3_key": "datasets/corrupt.h5ad",
-        "file_id": "test-file-789",
-        "batch_job_id": "job-101",
-        "batch_job_name": None,
-        "setup_s3": lambda s3_client, bucket_name: _setup_corrupt_s3_file(
-            s3_client, bucket_name, "datasets/corrupt.h5ad"
-        ),
-        "adata": None,
-        "expected_exit_code": 1,
-        "expected_logs": [
-            "Dataset Validator starting",
-            "File ready for validation:",
-            "File integrity verification failed - terminating",
-            "Publishing validation result to SNS topic",
-            "Successfully published SNS message"
-        ],
-        "expected_sns_message": {
-            "status": "failure",
-            "integrity_status": "invalid",
+            "setup_s3": lambda s3_client, bucket_name: None,  # Don't upload any file
+            "adata": None,
+            "expected_exit_code": 1,
+            "expected_logs": [
+                "Dataset Validator starting",
+                "Processing S3 file: s3://test-bucket/datasets/nonexistent.h5ad",
+                "S3 download failed",
+                "Dataset Validator failed:",
+                "Publishing validation result to SNS topic",
+                "Successfully published SNS message",
+            ],
+            "expected_sns_message": {
+                "status": "failure",
+                "integrity_status": None,
+                "file_id": "test-file-456",
+                "batch_job_id": "job-789",
+                "batch_job_name": None,
+                "metadata_summary": None,
+                "tool_reports": None,
+            },
+        },
+        {
+            "name": "integrity_failure",
+            "description": "Test complete validation workflow with file integrity failure",
+            "s3_key": "datasets/corrupt.h5ad",
             "file_id": "test-file-789",
             "batch_job_id": "job-101",
             "batch_job_name": None,
-            "metadata_summary": None,
-            "tool_reports": None
-        }
-    },
-    {
-        "name": "metadata_failure",
-        "description": "Test complete validation workflow with failure reading metadata",
-        "s3_key": "datasets/test.h5ad",
-        "file_id": "test-file-123",
-        "batch_job_id": "job-456",
-        "batch_job_name": "test-validation-job",
-        "setup_s3": lambda s3_client, bucket_name: _setup_valid_s3_file(s3_client, bucket_name, "datasets/test.h5ad"),
-        "adata": {
-            "exception": Exception("Test metadata error")
+            "setup_s3": lambda s3_client, bucket_name: _setup_corrupt_s3_file(
+                s3_client, bucket_name, "datasets/corrupt.h5ad"
+            ),
+            "adata": None,
+            "expected_exit_code": 1,
+            "expected_logs": [
+                "Dataset Validator starting",
+                "File ready for validation:",
+                "File integrity verification failed - terminating",
+                "Publishing validation result to SNS topic",
+                "Successfully published SNS message",
+            ],
+            "expected_sns_message": {
+                "status": "failure",
+                "integrity_status": "invalid",
+                "file_id": "test-file-789",
+                "batch_job_id": "job-101",
+                "batch_job_name": None,
+                "metadata_summary": None,
+                "tool_reports": None,
+            },
         },
-        "expected_exit_code": 1,
-        "expected_logs": [
-            "Dataset Validator starting",
-            "Processing S3 file: s3://test-bucket/datasets/test.h5ad",
-            "Work directory created:",
-            "File ready for validation:",
-            "Error reading metadata:",
-            "Dataset Validator failed:",
-            "Publishing validation result to SNS topic",
-            "Successfully published SNS message"
-        ],
-        "expected_sns_message": {
-            "status": "failure",
-            "integrity_status": "valid",
+        {
+            "name": "metadata_failure",
+            "description": "Test complete validation workflow with failure reading metadata",
+            "s3_key": "datasets/test.h5ad",
             "file_id": "test-file-123",
             "batch_job_id": "job-456",
             "batch_job_name": "test-validation-job",
-            "error_message": "Dataset Validator failed: Test metadata error",
-            "metadata_summary": None,
-            "tool_reports": None
-        }
-    },
-    {
-        "name": "cap_failure",
-        "description": "Test complete validation workflow with successful validation",
-        "s3_key": "datasets/test.h5ad",
-        "file_id": "test-file-123",
-        "batch_job_id": "job-456",
-        "batch_job_name": "test-validation-job",
-        "setup_s3": lambda s3_client, bucket_name: _setup_valid_s3_file(s3_client, bucket_name, "datasets/test.h5ad"),
-        "adata": {
-            "obs": {
-                "assay": ["assay-a", "assay-b", "assay-b", "assay-c", "assay-a"],
-                "suspension_type": [
-                    "suspension-type-a",
-                    "suspension-type-a",
-                    "suspension-type-a",
-                    "suspension-type-a",
-                    "suspension-type-a",
-                ],
-                "tissue": ["tissue-a", "tissue-a", "tissue-b", "tissue-a", "tissue-a"],
-                "disease": ["disease-a", "disease-b", "disease-c", "disease-d", "disease-e"]
+            "setup_s3": lambda s3_client, bucket_name: _setup_valid_s3_file(
+                s3_client, bucket_name, "datasets/test.h5ad"
+            ),
+            "adata": {"exception": Exception("Test metadata error")},
+            "expected_exit_code": 1,
+            "expected_logs": [
+                "Dataset Validator starting",
+                "Processing S3 file: s3://test-bucket/datasets/test.h5ad",
+                "Work directory created:",
+                "File ready for validation:",
+                "Error reading metadata:",
+                "Dataset Validator failed:",
+                "Publishing validation result to SNS topic",
+                "Successfully published SNS message",
+            ],
+            "expected_sns_message": {
+                "status": "failure",
+                "integrity_status": "valid",
+                "file_id": "test-file-123",
+                "batch_job_id": "job-456",
+                "batch_job_name": "test-validation-job",
+                "error_message": "Dataset Validator failed: Test metadata error",
+                "metadata_summary": None,
+                "tool_reports": None,
             },
-            "uns": {"title": "test-dataset-123"},
-            "n_vars": 17
         },
-        "cap_mock_error": "Error in CAP validator",
-        "expected_exit_code": 0,
-        "expected_logs": [
-            "Dataset Validator starting",
-            "Processing S3 file: s3://test-bucket/datasets/test.h5ad",
-            "Work directory created:",
-            "File ready for validation:",
-            "Validation completed successfully",
-            "Publishing validation result to SNS topic",
-            "Successfully published SNS message",
-            "Dataset Validator completed successfully"
-        ],
-        "expected_sns_message": {
-            "status": "success",
-            "integrity_status": "valid",
+        {
+            "name": "cap_failure",
+            "description": "Test complete validation workflow with successful validation",
+            "s3_key": "datasets/test.h5ad",
             "file_id": "test-file-123",
             "batch_job_id": "job-456",
             "batch_job_name": "test-validation-job",
-            "error_message": None,
-            "metadata_summary": {
-                "title": "test-dataset-123",
-                "assay": ["assay-a", "assay-b", "assay-c"],
-                "suspension_type": ["suspension-type-a"],
-                "tissue": ["tissue-a", "tissue-b"],
-                "disease": ["disease-a", "disease-b", "disease-c", "disease-d", "disease-e"],
-                "cell_count": 5,
-                "gene_count": 17
+            "setup_s3": lambda s3_client, bucket_name: _setup_valid_s3_file(
+                s3_client, bucket_name, "datasets/test.h5ad"
+            ),
+            "adata": {
+                "obs": {
+                    "assay": ["assay-a", "assay-b", "assay-b", "assay-c", "assay-a"],
+                    "suspension_type": [
+                        "suspension-type-a",
+                        "suspension-type-a",
+                        "suspension-type-a",
+                        "suspension-type-a",
+                        "suspension-type-a",
+                    ],
+                    "tissue": ["tissue-a", "tissue-a", "tissue-b", "tissue-a", "tissue-a"],
+                    "disease": ["disease-a", "disease-b", "disease-c", "disease-d", "disease-e"],
+                },
+                "uns": {"title": "test-dataset-123"},
+                "n_vars": 17,
             },
-            "tool_reports": {
-                "cap": {
-                    "valid": False,
-                    "errors": ["Encountered an unexpected error while calling CAP validator: Error in CAP validator"],
-                    "warnings": []
+            "cap_mock_error": "Error in CAP validator",
+            "expected_exit_code": 0,
+            "expected_logs": [
+                "Dataset Validator starting",
+                "Processing S3 file: s3://test-bucket/datasets/test.h5ad",
+                "Work directory created:",
+                "File ready for validation:",
+                "Validation completed successfully",
+                "Publishing validation result to SNS topic",
+                "Successfully published SNS message",
+                "Dataset Validator completed successfully",
+            ],
+            "expected_sns_message": {
+                "status": "success",
+                "integrity_status": "valid",
+                "file_id": "test-file-123",
+                "batch_job_id": "job-456",
+                "batch_job_name": "test-validation-job",
+                "error_message": None,
+                "metadata_summary": {
+                    "title": "test-dataset-123",
+                    "assay": ["assay-a", "assay-b", "assay-c"],
+                    "suspension_type": ["suspension-type-a"],
+                    "tissue": ["tissue-a", "tissue-b"],
+                    "disease": ["disease-a", "disease-b", "disease-c", "disease-d", "disease-e"],
+                    "cell_count": 5,
+                    "gene_count": 17,
                 },
-                # cellxgene stubbed in main.py — see #382.
-                "cellxgene": {
-                    "valid": True,
-                    "errors": [],
-                    "warnings": []
+                "tool_reports": {
+                    "cap": {
+                        "valid": False,
+                        "errors": [
+                            "Encountered an unexpected error while calling CAP validator: Error in CAP validator"
+                        ],
+                        "warnings": [],
+                    },
+                    # cellxgene stubbed in main.py — see #382.
+                    "cellxgene": {"valid": True, "errors": [], "warnings": []},
+                    "hcaSchema": {"valid": False, "errors": ["ERROR: test bar"], "warnings": ["WARNING: test bar"]},
+                    "hcaCellAnnotation": {
+                        "valid": False,
+                        "errors": ["ERROR: test baz"],
+                        "warnings": ["WARNING: test baz"],
+                    },
                 },
-                "hcaSchema": {
-                    "valid": False,
-                    "errors": ["ERROR: test bar"],
-                    "warnings": ["WARNING: test bar"]
-                },
-                "hcaCellAnnotation": {
-                    "valid": False,
-                    "errors": ["ERROR: test baz"],
-                    "warnings": ["WARNING: test baz"]
-                }
-            }
-        }
-    }
-], ids=lambda x: x["name"])
+            },
+        },
+    ],
+    ids=lambda x: x["name"],
+)
 @patch("dataset_validator.main.get_matrix_storage")
 @patch("dataset_validator.main._read_metadata_inputs")
-def test_end_to_end_validation_scenarios(mock_read_inputs, mock_matrix_storage, caplog, mock_aws, env_manager, test_case):
+def test_end_to_end_validation_scenarios(
+    mock_read_inputs, mock_matrix_storage, caplog, mock_aws, env_manager, test_case
+):
     """Parameterized test for end-to-end validation scenarios."""
     from dataset_validator.main import main
 
     # Setup S3 file based on test case
-    test_case["setup_s3"](mock_aws['s3_client'], mock_aws['bucket_name'])
+    test_case["setup_s3"](mock_aws["s3_client"], mock_aws["bucket_name"])
 
     # Set environment variables using fixture
     test_env = {
-        'S3_BUCKET': mock_aws['bucket_name'],
-        'S3_KEY': test_case["s3_key"],
-        'VALIDATION_RESULTS_BUCKET': mock_aws['validation_results_bucket_name'],
-        'FILE_ID': test_case["file_id"],
-        'SNS_TOPIC_ARN': mock_aws['topic_arn'],
-        'AWS_BATCH_JOB_ID': test_case["batch_job_id"],
-        **external_validator_path_vars
+        "S3_BUCKET": mock_aws["bucket_name"],
+        "S3_KEY": test_case["s3_key"],
+        "VALIDATION_RESULTS_BUCKET": mock_aws["validation_results_bucket_name"],
+        "FILE_ID": test_case["file_id"],
+        "SNS_TOPIC_ARN": mock_aws["topic_arn"],
+        "AWS_BATCH_JOB_ID": test_case["batch_job_id"],
+        **external_validator_path_vars,
     }
     if test_case["batch_job_name"]:
-        test_env['BATCH_JOB_NAME'] = test_case["batch_job_name"]
-    env_manager['set'](test_env)
+        test_env["BATCH_JOB_NAME"] = test_case["batch_job_name"]
+    env_manager["set"](test_env)
     # Manage CAP_MOCK_ERROR: set if specified, clear otherwise to prevent bleed between tests
     if test_case.get("cap_mock_error"):
-        env_manager['set']({'CAP_MOCK_ERROR': test_case["cap_mock_error"]})
+        env_manager["set"]({"CAP_MOCK_ERROR": test_case["cap_mock_error"]})
     else:
-        env_manager['clear'](['CAP_MOCK_ERROR'])
+        env_manager["clear"](["CAP_MOCK_ERROR"])
 
     # Drive the metadata read seam (obs/uns/shape + matrix storage)
     _setup_metadata_mocks(mock_read_inputs, mock_matrix_storage, test_case["adata"])
@@ -1228,7 +1239,7 @@ def test_end_to_end_validation_scenarios(mock_read_inputs, mock_matrix_storage, 
         mock_aws,
         caplog,
         test_case["expected_sns_message"],
-        source_bucket=mock_aws['bucket_name'],
+        source_bucket=mock_aws["bucket_name"],
         source_key=test_case["s3_key"],
     )
     assert "S3 claim check write succeeded" in caplog.text
@@ -1244,28 +1255,34 @@ def test_unset_validation_results_bucket_skips_s3_claim_check(
     from dataset_validator.main import main
 
     s3_key = "datasets/test.h5ad"
-    _setup_valid_s3_file(mock_aws['s3_client'], mock_aws['bucket_name'], s3_key)
+    _setup_valid_s3_file(mock_aws["s3_client"], mock_aws["bucket_name"], s3_key)
 
-    env_manager['set']({
-        'S3_BUCKET': mock_aws['bucket_name'],
-        'S3_KEY': s3_key,
-        'FILE_ID': 'test-file-no-results-bucket',
-        'SNS_TOPIC_ARN': mock_aws['topic_arn'],
-        'AWS_BATCH_JOB_ID': 'job-no-results-bucket',
-        **external_validator_path_vars,
-    })
-    env_manager['clear'](['VALIDATION_RESULTS_BUCKET', 'CAP_MOCK_ERROR'])
+    env_manager["set"](
+        {
+            "S3_BUCKET": mock_aws["bucket_name"],
+            "S3_KEY": s3_key,
+            "FILE_ID": "test-file-no-results-bucket",
+            "SNS_TOPIC_ARN": mock_aws["topic_arn"],
+            "AWS_BATCH_JOB_ID": "job-no-results-bucket",
+            **external_validator_path_vars,
+        }
+    )
+    env_manager["clear"](["VALIDATION_RESULTS_BUCKET", "CAP_MOCK_ERROR"])
 
-    _setup_metadata_mocks(mock_read_inputs, mock_matrix_storage, {
-        "obs": {
-            "assay": ["assay-a"],
-            "suspension_type": ["cell"],
-            "tissue": ["lung"],
-            "disease": ["normal"],
+    _setup_metadata_mocks(
+        mock_read_inputs,
+        mock_matrix_storage,
+        {
+            "obs": {
+                "assay": ["assay-a"],
+                "suspension_type": ["cell"],
+                "tissue": ["lung"],
+                "disease": ["normal"],
+            },
+            "uns": {"title": "test"},
+            "n_vars": 10,
         },
-        "uns": {"title": "test"},
-        "n_vars": 10,
-    })
+    )
 
     with caplog.at_level(logging.INFO, logger="dataset_validator.main"):
         result = main()
@@ -1279,23 +1296,23 @@ def test_unset_validation_results_bucket_skips_s3_claim_check(
 def _get_last_sns_message(sns_backend, topic_arn):
     """Helper function to extract and parse the last SNS message from moto backend."""
     import json
-    
+
     # Get all sent notifications for our topic
     all_sent_notifications = sns_backend.topics[topic_arn].sent_notifications
     assert len(all_sent_notifications) > 0, "No SNS messages were published"
-    
+
     # Parse the last published message
     last_notification = all_sent_notifications[-1]
-    
+
     # Handle different moto notification formats
     if isinstance(last_notification, dict):
-        message_content = last_notification['Message']
+        message_content = last_notification["Message"]
     elif isinstance(last_notification, tuple):
         # In some moto versions, notifications are stored as tuples
         message_content = last_notification[1]  # Usually (subject, message, ...)
     else:
         message_content = str(last_notification)
-    
+
     return json.loads(message_content)
 
 
@@ -1303,6 +1320,7 @@ def _get_sns_backend():
     """Return moto's in-memory SNS backend for us-east-1."""
     from moto.core import DEFAULT_ACCOUNT_ID
     from moto.sns import sns_backends
+
     return sns_backends[DEFAULT_ACCOUNT_ID]["us-east-1"]
 
 
@@ -1319,7 +1337,7 @@ def _validate_published_result(mock_aws, caplog, expected_message, source_bucket
     appear on both the SNS pointer and the claim-check body and must match.
     """
 
-    topic_arn = mock_aws['topic_arn']
+    topic_arn = mock_aws["topic_arn"]
 
     # Verify at least one message was published
     assert "Successfully published SNS message" in caplog.text
@@ -1330,9 +1348,9 @@ def _validate_published_result(mock_aws, caplog, expected_message, source_bucket
     # SNS body is pointer-only — assert the exact set of keys plus their values
     # for fields the test pins. timestamp isn't pinned by the test cases but
     # must be present (it's a required pointer field).
-    assert set(sns_body.keys()) == {
-        "file_id", "status", "timestamp", "bucket", "key", "batch_job_id"
-    }, f"SNS body should be pointer-only, got keys: {sorted(sns_body.keys())}"
+    assert set(sns_body.keys()) == {"file_id", "status", "timestamp", "bucket", "key", "batch_job_id"}, (
+        f"SNS body should be pointer-only, got keys: {sorted(sns_body.keys())}"
+    )
     assert sns_body["status"] == expected_message["status"]
     assert sns_body["file_id"] == expected_message["file_id"]
     assert sns_body["batch_job_id"] == expected_message["batch_job_id"]
@@ -1341,21 +1359,15 @@ def _validate_published_result(mock_aws, caplog, expected_message, source_bucket
 
     # Heavy fields are asserted on the S3 claim check, which is the
     # authoritative payload.
-    expected_key = (
-        f"validation-metadata/{expected_message['file_id']}"
-        f"/{expected_message['batch_job_id']}.json"
-    )
-    claim_obj = mock_aws['s3_client'].get_object(
-        Bucket=mock_aws['validation_results_bucket_name'], Key=expected_key
-    )
-    claim_body = json.loads(claim_obj['Body'].read().decode('utf-8'))
+    expected_key = f"validation-metadata/{expected_message['file_id']}/{expected_message['batch_job_id']}.json"
+    claim_obj = mock_aws["s3_client"].get_object(Bucket=mock_aws["validation_results_bucket_name"], Key=expected_key)
+    claim_body = json.loads(claim_obj["Body"].read().decode("utf-8"))
 
     assert claim_body["status"] == expected_message["status"]
     assert claim_body["bucket"] == source_bucket
     assert claim_body["key"] == source_key
     assert claim_body["integrity_status"] == expected_message["integrity_status"], (
-        f"Expected integrity_status '{expected_message['integrity_status']}', "
-        f"got '{claim_body['integrity_status']}'"
+        f"Expected integrity_status '{expected_message['integrity_status']}', got '{claim_body['integrity_status']}'"
     )
     assert claim_body["file_id"] == expected_message["file_id"]
     assert claim_body["batch_job_id"] == expected_message["batch_job_id"]
@@ -1378,27 +1390,18 @@ def _validate_published_result(mock_aws, caplog, expected_message, source_bucket
 def _setup_valid_s3_file(s3_client, bucket_name: str, key: str):
     """Helper function to setup a valid S3 file with correct SHA256 metadata."""
     import hashlib
-    test_content = b'mock dataset content for validation'
+
+    test_content = b"mock dataset content for validation"
     expected_sha256 = hashlib.sha256(test_content).hexdigest()
-    
-    s3_client.put_object(
-        Bucket=bucket_name,
-        Key=key,
-        Body=test_content,
-        Metadata={'source-sha256': expected_sha256}
-    )
+
+    s3_client.put_object(Bucket=bucket_name, Key=key, Body=test_content, Metadata={"source-sha256": expected_sha256})
 
 
 def _setup_corrupt_s3_file(s3_client, bucket_name: str, key: str):
     """Helper function to setup a corrupt S3 file with wrong SHA256 metadata."""
-    test_content = b'mock dataset content'
+    test_content = b"mock dataset content"
 
-    s3_client.put_object(
-        Bucket=bucket_name,
-        Key=key,
-        Body=test_content,
-        Metadata={'source-sha256': 'wrong_hash_value'}
-    )
+    s3_client.put_object(Bucket=bucket_name, Key=key, Body=test_content, Metadata={"source-sha256": "wrong_hash_value"})
 
 
 def test_get_uv_venv_path_from_returns_project_local_venv():

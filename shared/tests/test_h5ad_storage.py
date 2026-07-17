@@ -28,20 +28,26 @@ def _make_file(path, *, with_raw=True, with_layer_int64=True):
     with h5py.File(path, "w") as f:
         _write_csr(
             f.create_group("X"),
-            shape=(3, 4), data=_DATA,
-            indices=_INDICES.astype("int32"), indptr=_INDPTR.astype("int32"),
+            shape=(3, 4),
+            data=_DATA,
+            indices=_INDICES.astype("int32"),
+            indptr=_INDPTR.astype("int32"),
         )
         if with_raw:
             _write_csr(
                 f.create_group("raw").create_group("X"),
-                shape=(3, 4), data=_DATA,
-                indices=_INDICES.astype("int32"), indptr=_INDPTR.astype("int32"),
+                shape=(3, 4),
+                data=_DATA,
+                indices=_INDICES.astype("int32"),
+                indptr=_INDPTR.astype("int32"),
             )
         if with_layer_int64:
             _write_csr(
                 f.create_group("layers").create_group("denoised"),
-                shape=(3, 4), data=_DATA,
-                indices=_INDICES.astype("int64"), indptr=_INDPTR.astype("int64"),
+                shape=(3, 4),
+                data=_DATA,
+                indices=_INDICES.astype("int64"),
+                indptr=_INDPTR.astype("int64"),
             )
 
 
@@ -68,8 +74,10 @@ def test_indices_and_indptr_dtypes_reported_separately(tmp_path):
     with h5py.File(path, "w") as f:
         _write_csr(
             f.create_group("X"),
-            shape=(3, 4), data=_DATA,
-            indices=_INDICES.astype("int32"), indptr=_INDPTR.astype("int64"),
+            shape=(3, 4),
+            data=_DATA,
+            indices=_INDICES.astype("int32"),
+            indptr=_INDPTR.astype("int64"),
         )
     x = get_matrix_storage(str(path))["X"]
     assert x["index_dtype"] == "int32"
@@ -117,8 +125,8 @@ def test_unrecognized_layer_node_is_filtered(tmp_path):
         f["layers"].create_group("not_a_matrix")
 
     layers = get_matrix_storage(str(path))["layers"]
-    assert "not_a_matrix" not in layers          # filtered out, no None value
-    assert "denoised" in layers                  # the real matrix survives
+    assert "not_a_matrix" not in layers  # filtered out, no None value
+    assert "denoised" in layers  # the real matrix survives
     assert all(v is not None for v in layers.values())
 
 
@@ -132,8 +140,8 @@ def test_malformed_sparse_node_degrades_to_none(tmp_path):
         f["X"].attrs["shape"] = np.int64(5)
 
     result = get_matrix_storage(str(path))
-    assert result["X"] is None                  # degraded, not raised
-    assert result["raw_X"] is not None          # other matrices still reported
+    assert result["X"] is None  # degraded, not raised
+    assert result["raw_X"] is not None  # other matrices still reported
     assert result["layers"]["denoised"] is not None
 
 
@@ -147,8 +155,8 @@ def test_incomplete_sparse_node_is_unrecognized(tmp_path):
         del f["X"]["indptr"]
 
     result = get_matrix_storage(str(path))
-    assert result["X"] is None                  # degraded, not raised
-    assert result["raw_X"] is not None          # other matrices still reported
+    assert result["X"] is None  # degraded, not raised
+    assert result["raw_X"] is not None  # other matrices still reported
     assert result["layers"]["denoised"] is not None
 
 

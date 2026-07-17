@@ -12,8 +12,8 @@ import logging
 import os
 import resource
 import shutil
-import sys
 import subprocess
+import sys
 from dataclasses import asdict, dataclass, fields
 from datetime import datetime, timezone
 from pathlib import Path
@@ -21,15 +21,14 @@ from types import SimpleNamespace
 from typing import Callable, List, Optional, Tuple, cast
 
 import boto3
-from botocore.exceptions import ClientError
-from anndata.io import read_elem
 import h5py
 import pandas as pd
+from anndata.io import read_elem
+from botocore.exceptions import ClientError
 
-from hca_validation.metadata_coverage import compute_metadata_coverage
 from hca_validation.h5ad_storage import get_matrix_storage
+from hca_validation.metadata_coverage import compute_metadata_coverage
 from hca_validation.schema_utils import load_schemaview
-
 
 # S3 prefix under which full validation results are written as a "claim check".
 # The tracker reads the full results from this object; the SNS body carries only
@@ -39,33 +38,33 @@ S3_VALIDATION_METADATA_PREFIX = "validation-metadata"
 
 # Environment variable constants
 # Batch job variables
-S3_BUCKET = 'S3_BUCKET'
-S3_KEY = 'S3_KEY'
-VALIDATION_RESULTS_BUCKET = 'VALIDATION_RESULTS_BUCKET'
-LOG_LEVEL = 'LOG_LEVEL'
-FILE_ID = 'FILE_ID'
-SNS_TOPIC_ARN = 'SNS_TOPIC_ARN'
-AWS_BATCH_JOB_ID = 'AWS_BATCH_JOB_ID'
-AWS_BATCH_JOB_NAME = 'AWS_BATCH_JOB_NAME'
-AWS_DEFAULT_REGION = 'AWS_DEFAULT_REGION'
+S3_BUCKET = "S3_BUCKET"
+S3_KEY = "S3_KEY"
+VALIDATION_RESULTS_BUCKET = "VALIDATION_RESULTS_BUCKET"
+LOG_LEVEL = "LOG_LEVEL"
+FILE_ID = "FILE_ID"
+SNS_TOPIC_ARN = "SNS_TOPIC_ARN"
+AWS_BATCH_JOB_ID = "AWS_BATCH_JOB_ID"
+AWS_BATCH_JOB_NAME = "AWS_BATCH_JOB_NAME"
+AWS_DEFAULT_REGION = "AWS_DEFAULT_REGION"
 # Local file mode — bypass S3 download and integrity checks
-LOCAL_FILE = 'LOCAL_FILE'
+LOCAL_FILE = "LOCAL_FILE"
 # Validator path variables
-CELLXGENE_VALIDATOR_VENV = 'CELLXGENE_VALIDATOR_VENV'
+CELLXGENE_VALIDATOR_VENV = "CELLXGENE_VALIDATOR_VENV"
 CELLXGENE_VALIDATOR_SCRIPT = "CELLXGENE_VALIDATOR_SCRIPT"
-HCA_SCHEMA_VALIDATOR_VENV = 'HCA_SCHEMA_VALIDATOR_VENV'
+HCA_SCHEMA_VALIDATOR_VENV = "HCA_SCHEMA_VALIDATOR_VENV"
 HCA_SCHEMA_VALIDATOR_SCRIPT = "HCA_SCHEMA_VALIDATOR_SCRIPT"
 HCA_CELL_ANNOTATION_VALIDATOR_SCRIPT = "HCA_CELL_ANNOTATION_VALIDATOR_SCRIPT"
 CAP_VALIDATOR_SCRIPT = "CAP_VALIDATOR_SCRIPT"
 
 # Status constants
-STATUS_SUCCESS = 'success'
-STATUS_FAILURE = 'failure'
+STATUS_SUCCESS = "success"
+STATUS_FAILURE = "failure"
 
 # Integrity status constants
-INTEGRITY_VALID = 'valid'
-INTEGRITY_INVALID = 'invalid'
-INTEGRITY_ERROR = 'error'
+INTEGRITY_VALID = "valid"
+INTEGRITY_INVALID = "invalid"
+INTEGRITY_ERROR = "error"
 
 
 class JobContextFilter(logging.Filter):
@@ -74,11 +73,12 @@ class JobContextFilter(logging.Filter):
     In AWS Batch, the container environment is immutable for the lifetime of a job.
     We cache these values once at initialization for clarity and minimal overhead.
     """
+
     def __init__(self) -> None:
         super().__init__()
         self._job_id = os.environ.get(AWS_BATCH_JOB_ID, "unknown")
         # Prefer non-reserved name inside container
-        self._job_name = os.environ.get('BATCH_JOB_NAME', "-")
+        self._job_name = os.environ.get("BATCH_JOB_NAME", "-")
 
     def filter(self, record: logging.LogRecord) -> bool:
         record.job_id = self._job_id
@@ -89,6 +89,7 @@ class JobContextFilter(logging.Filter):
 @dataclass
 class MetadataSummary:
     """Summary of metadata from a dataset file."""
+
     title: str
     assay: List[str]
     suspension_type: List[str]
@@ -97,14 +98,17 @@ class MetadataSummary:
     cell_count: int
     gene_count: int
 
+
 @dataclass
 class ValidationToolReport:
     """Validation report and metadata of a run of an individual validation tool."""
+
     valid: bool
     errors: List[str]
     warnings: List[str]
     started_at: str
     finished_at: str
+
 
 @dataclass
 class ValidationMessagePointer:
@@ -119,67 +123,67 @@ class ValidationMessagePointer:
     containing the validation results; the location of the latter is derived
     automatically by the tracker.
     """
-    file_id: str              # UUID from Tracker database
-    status: str               # "success", "failure"
-    timestamp: str            # ISO format timestamp (UTC)
-    bucket: str               # S3 bucket name for the file that was validated
-    key: str                  # S3 object key for the file that was validated
-    batch_job_id: str         # Unique AWS Batch job ID for debugging
+
+    file_id: str  # UUID from Tracker database
+    status: str  # "success", "failure"
+    timestamp: str  # ISO format timestamp (UTC)
+    bucket: str  # S3 bucket name for the file that was validated
+    key: str  # S3 object key for the file that was validated
+    batch_job_id: str  # Unique AWS Batch job ID for debugging
 
     def to_json(self) -> str:
         """Convert to JSON string."""
-        return json.dumps(asdict(self), separators=(',', ':'))
+        return json.dumps(asdict(self), separators=(",", ":"))
 
 
 @dataclass
 class ValidationMessage(ValidationMessagePointer):
     """Full validation result. Written to S3 as a claim check; the SNS body
     carries only the ValidationMessagePointer subset (see to_pointer)."""
+
     # Optional fields
-    batch_job_name: Optional[str] = None                 # Job definition name (for context)
-    downloaded_sha256: Optional[str] = None              # SHA256 computed from downloaded file
-    source_sha256: Optional[str] = None                  # SHA256 from S3 metadata
-    integrity_status: Optional[str] = None               # "valid", "invalid", "error"
-    metadata_summary: Optional[MetadataSummary] = None   # Metadata from the file
-    tool_reports: Optional[                              # Reports for individual validation tools
+    batch_job_name: Optional[str] = None  # Job definition name (for context)
+    downloaded_sha256: Optional[str] = None  # SHA256 computed from downloaded file
+    source_sha256: Optional[str] = None  # SHA256 from S3 metadata
+    integrity_status: Optional[str] = None  # "valid", "invalid", "error"
+    metadata_summary: Optional[MetadataSummary] = None  # Metadata from the file
+    tool_reports: Optional[  # Reports for individual validation tools
         dict[str, ValidationToolReport]
     ] = None
-    metadata_coverage: Optional[dict] = None             # Per-field completeness summary (#405)
-    matrix_storage: Optional[dict] = None                # Per-matrix/layer shape + size, from HDF5 header (#447)
-    error_message: Optional[str] = None                  # Human-readable error description
+    metadata_coverage: Optional[dict] = None  # Per-field completeness summary (#405)
+    matrix_storage: Optional[dict] = None  # Per-matrix/layer shape + size, from HDF5 header (#447)
+    error_message: Optional[str] = None  # Human-readable error description
 
     def to_pointer(self) -> ValidationMessagePointer:
         """Project to the pointer-only payload published to SNS."""
-        return ValidationMessagePointer(
-            **{f.name: getattr(self, f.name) for f in fields(ValidationMessagePointer)}
-        )
+        return ValidationMessagePointer(**{f.name: getattr(self, f.name) for f in fields(ValidationMessagePointer)})
 
 
 def configure_logging() -> logging.Logger:
     """Configure logging for CloudWatch compatibility."""
     # Get log level from environment variable (default to INFO)
-    log_level = os.environ.get(LOG_LEVEL, 'INFO').upper()
-    
+    log_level = os.environ.get(LOG_LEVEL, "INFO").upper()
+
     logger = logging.getLogger(__name__)
     logger.setLevel(getattr(logging, log_level))
-    
+
     # Only add handlers if none exist (respects caplog handlers)
     if not logger.handlers:
         handler = logging.StreamHandler(sys.stdout)
         # Enrich logs with Batch context
         handler.addFilter(JobContextFilter())
         formatter = logging.Formatter(
-            '%(asctime)s [%(levelname)s] job_id=%(job_id)s job_name=%(job_name)s %(name)s: %(message)s',
-            datefmt='%Y-%m-%d %H:%M:%S'
+            "%(asctime)s [%(levelname)s] job_id=%(job_id)s job_name=%(job_name)s %(name)s: %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
         )
         handler.setFormatter(formatter)
         logger.addHandler(handler)
-    
+
     # Set boto3 logging to WARNING to reduce noise
-    logging.getLogger('boto3').setLevel(logging.WARNING)
-    logging.getLogger('botocore').setLevel(logging.WARNING)
-    logging.getLogger('urllib3').setLevel(logging.WARNING)
-    
+    logging.getLogger("boto3").setLevel(logging.WARNING)
+    logging.getLogger("botocore").setLevel(logging.WARNING)
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
+
     return logger
 
 
@@ -217,25 +221,25 @@ def publish_validation_result(message: ValidationMessage, sns_topic_arn: str) ->
 
         # Create SNS client
         # Let boto3 resolve region from the environment/metadata
-        sns_client = boto3.client('sns')
+        sns_client = boto3.client("sns")
 
         # Publish message
         response = sns_client.publish(
             TopicArn=sns_topic_arn,
             Message=message.to_pointer().to_json(),
-            Subject=f"Dataset Validation Result - {message.status.upper()}"
+            Subject=f"Dataset Validation Result - {message.status.upper()}",
         )
-        
-        message_id = response.get('MessageId', 'unknown')
+
+        message_id = response.get("MessageId", "unknown")
         logger.info("Successfully published SNS message: %s", message_id)
         return True
-        
+
     except ClientError as e:
-        error_code = e.response.get('Error', {}).get('Code', 'Unknown')
-        error_message = e.response.get('Error', {}).get('Message', str(e))
+        error_code = e.response.get("Error", {}).get("Code", "Unknown")
+        error_message = e.response.get("Error", {}).get("Message", str(e))
         logger.error("SNS publish failed [%s]: %s", error_code, error_message)
         return False
-        
+
     except Exception as e:
         logger.error("Unexpected error publishing to SNS: %s", str(e))
         return False
@@ -274,12 +278,12 @@ def write_validation_results_to_s3(
     """
     key = f"{S3_VALIDATION_METADATA_PREFIX}/{file_id}/{batch_job_id}.json"
     try:
-        s3_client = boto3.client('s3')
+        s3_client = boto3.client("s3")
         s3_client.put_object(
             Bucket=bucket,
             Key=key,
-            Body=message.to_json().encode('utf-8'),
-            ContentType='application/json',
+            Body=message.to_json().encode("utf-8"),
+            ContentType="application/json",
         )
         logger.info("S3 claim check write succeeded for file %s", file_id)
         return True
@@ -298,21 +302,21 @@ def create_work_directory(work_dir: str = "/tmp/dataset_validator") -> Path:
 def compute_sha256(file_path: Path) -> str:
     """
     Compute SHA256 hash of a file using streaming to handle large files efficiently.
-    
+
     Args:
         file_path: Path to the file to hash
-        
+
     Returns:
         Hexadecimal SHA256 hash string
     """
     logger.debug("Computing SHA256 for: %s", file_path)
     sha256_hash = hashlib.sha256()
-    
+
     with open(file_path, "rb") as f:
         # Read file in 64KB chunks to handle large files efficiently
         for chunk in iter(lambda: f.read(65536), b""):
             sha256_hash.update(chunk)
-    
+
     computed_hash = sha256_hash.hexdigest()
     logger.debug("Computed SHA256: %s", computed_hash)
     return computed_hash
@@ -321,23 +325,22 @@ def compute_sha256(file_path: Path) -> str:
 def verify_file_integrity(file_path: Path, expected_sha256: str) -> bool:
     """
     Verify file integrity by comparing computed SHA256 with expected value.
-    
+
     Args:
         file_path: Path to the file to verify
         expected_sha256: Expected SHA256 hash from S3 metadata
-        
+
     Returns:
         True if hashes match, False otherwise
     """
     logger.info("Verifying file integrity: %s", file_path)
     computed_sha256 = compute_sha256(file_path)
-    
+
     if computed_sha256.lower() == expected_sha256.lower():
         logger.info("File integrity verified successfully")
         return True
     else:
-        logger.error("File integrity check failed - computed: %s, expected: %s", 
-                    computed_sha256, expected_sha256)
+        logger.error("File integrity check failed - computed: %s, expected: %s", computed_sha256, expected_sha256)
         return False
 
 
@@ -349,7 +352,7 @@ def get_column_unique_values_if_present(df: pd.DataFrame, name: str, map_value=s
         df: Dataframe to get values from
         name: Name of the dataframe column to get values from
         map_value: Function to apply to each value to get the value to be used in the result (defaults to `str`)
-    
+
     Returns:
         Unique mapped values from the specified column
     """
@@ -481,9 +484,7 @@ def apply_cap_validator(file_path: Path) -> ValidationToolReport:
     started_at = datetime.now(timezone.utc)
 
     # Determine script path from env var or default (co-located script)
-    script_path = os.environ.get(CAP_VALIDATOR_SCRIPT) or str(
-        get_default_cap_validator_script_path()
-    )
+    script_path = os.environ.get(CAP_VALIDATOR_SCRIPT) or str(get_default_cap_validator_script_path())
 
     try:
         result = subprocess.run(
@@ -494,9 +495,7 @@ def apply_cap_validator(file_path: Path) -> ValidationToolReport:
         if result.stderr:
             logger.warning("CAP validator stderr: %s", result.stderr.strip())
         if result.returncode != 0:
-            raise subprocess.CalledProcessError(
-                result.returncode, script_path, result.stdout, result.stderr
-            )
+            raise subprocess.CalledProcessError(result.returncode, script_path, result.stdout, result.stderr)
         validator_output = json.loads(result.stdout)
     except Exception as e:
         message = f"Encountered an unexpected error while calling CAP validator: {e}"
@@ -544,7 +543,7 @@ def apply_external_validator(
     get_default_root_path: Callable[[], Path],
     default_package_name: str,
     validator_name: str,
-    default_script_name: str = "main.py"
+    default_script_name: str = "main.py",
 ) -> ValidationToolReport:
     """
     Apply an external validator to the given file by calling a Python script via command line,
@@ -595,17 +594,13 @@ def apply_external_validator(
             [f"{venv_path}/bin/python", str(validator_script_path), str(file_path)],
             capture_output=True,
             text=True,
-            check=True
+            check=True,
         )
         validator_output = json.loads(validator_result.stdout)
     except Exception as e:
         message = f"Encountered an unexpected error while calling {validator_name} script: {e}"
         logger.error(message)
-        validator_output = {
-            "valid": False,
-            "errors": [message],
-            "warnings": []
-        }
+        validator_output = {"valid": False, "errors": [message], "warnings": []}
 
     finished_at = datetime.now(timezone.utc)
 
@@ -614,7 +609,7 @@ def apply_external_validator(
         errors=validator_output["errors"],
         warnings=validator_output["warnings"],
         started_at=started_at.isoformat(),
-        finished_at=finished_at.isoformat()
+        finished_at=finished_at.isoformat(),
     )
 
 
@@ -641,7 +636,7 @@ def apply_cellxgene_validator(file_path: Path) -> ValidationToolReport:
         venv_path_var=CELLXGENE_VALIDATOR_VENV,
         get_default_root_path=get_default_cxg_validator_root_path,
         default_package_name="cellxgene_validator",
-        validator_name="CELLxGENE validator"
+        validator_name="CELLxGENE validator",
     )
 
 
@@ -662,7 +657,7 @@ def apply_hca_schema_validator(file_path: Path) -> ValidationToolReport:
         venv_path_var=HCA_SCHEMA_VALIDATOR_VENV,
         get_default_root_path=get_default_hcas_validator_root_path,
         default_package_name="hca_schema_validator_service",
-        validator_name="HCA schema validator"
+        validator_name="HCA schema validator",
     )
 
 
@@ -683,22 +678,22 @@ def apply_hca_cell_annotation_validator(file_path: Path) -> ValidationToolReport
         get_default_root_path=get_default_hcas_validator_root_path,
         default_package_name="hca_schema_validator_service",
         default_script_name="cell_annotation.py",
-        validator_name="HCA cell annotation validator"
+        validator_name="HCA cell annotation validator",
     )
 
 
 def download_s3_file(bucket: str, key: str, local_path: Path) -> str | None:
     """
     Download a file from S3 to the local work directory and extract metadata.
-    
+
     Args:
         bucket: S3 bucket name
         key: S3 object key
         local_path: Local file path to save the downloaded file
-        
+
     Returns:
         Source SHA256 from S3 metadata, or None if not available
-        
+
     Raises:
         ClientError: AWS S3 errors (permissions, missing files, etc.)
         Exception: Other errors (network, disk space, etc.)
@@ -706,21 +701,21 @@ def download_s3_file(bucket: str, key: str, local_path: Path) -> str | None:
     logger.info("Starting download: s3://%s/%s", bucket, key)
     try:
         # Let boto3 resolve region from the environment/metadata
-        s3_client = boto3.client('s3')
-        
+        s3_client = boto3.client("s3")
+
         # Get object metadata first
         response = s3_client.head_object(Bucket=bucket, Key=key)
-        source_sha256 = response.get('Metadata', {}).get('source-sha256')
-        
+        source_sha256 = response.get("Metadata", {}).get("source-sha256")
+
         # Download the file
         s3_client.download_file(bucket, key, str(local_path))
         logger.info("Successfully downloaded to %s", local_path)
-        
+
         if source_sha256:
             logger.info("Source SHA256 from metadata: %s", source_sha256)
         else:
             logger.warning("No source-sha256 metadata found for s3://%s/%s", bucket, key)
-        
+
         return source_sha256
     except ClientError as e:
         logger.error("S3 download failed: %s", e)
@@ -744,15 +739,15 @@ def validate_environment() -> tuple[dict[str, str | None], list[str]]:
     local_file = os.environ.get(LOCAL_FILE)
 
     env_vars = {
-        'local_file': local_file,
-        'bucket': os.environ.get(S3_BUCKET) or ("local" if local_file else None),
-        'key': os.environ.get(S3_KEY) or (local_file if local_file else None),
-        'validation_results_bucket': os.environ.get(VALIDATION_RESULTS_BUCKET),
-        'file_id': os.environ.get(FILE_ID) or ("local" if local_file else None),
-        'sns_topic_arn': os.environ.get(SNS_TOPIC_ARN),
-        'batch_job_id': os.environ.get(AWS_BATCH_JOB_ID) or ("local" if local_file else None),
+        "local_file": local_file,
+        "bucket": os.environ.get(S3_BUCKET) or ("local" if local_file else None),
+        "key": os.environ.get(S3_KEY) or (local_file if local_file else None),
+        "validation_results_bucket": os.environ.get(VALIDATION_RESULTS_BUCKET),
+        "file_id": os.environ.get(FILE_ID) or ("local" if local_file else None),
+        "sns_topic_arn": os.environ.get(SNS_TOPIC_ARN),
+        "batch_job_id": os.environ.get(AWS_BATCH_JOB_ID) or ("local" if local_file else None),
         # Read non-reserved job name if provided
-        'batch_job_name': os.environ.get('BATCH_JOB_NAME')
+        "batch_job_name": os.environ.get("BATCH_JOB_NAME"),
     }
 
     # In local file mode, all fields get defaults; only the file must exist
@@ -763,13 +758,13 @@ def validate_environment() -> tuple[dict[str, str | None], list[str]]:
         return env_vars, missing_vars
 
     # Check required variables (batch_job_name is optional; region is resolved by boto3)
-    required_vars = ['bucket', 'key', 'file_id', 'sns_topic_arn', 'batch_job_id']
+    required_vars = ["bucket", "key", "file_id", "sns_topic_arn", "batch_job_id"]
     var_name_mapping = {
-        'bucket': 'S3_BUCKET',
-        'key': 'S3_KEY',
-        'file_id': 'FILE_ID',
-        'sns_topic_arn': 'SNS_TOPIC_ARN',
-        'batch_job_id': 'AWS_BATCH_JOB_ID'
+        "bucket": "S3_BUCKET",
+        "key": "S3_KEY",
+        "file_id": "FILE_ID",
+        "sns_topic_arn": "SNS_TOPIC_ARN",
+        "batch_job_id": "AWS_BATCH_JOB_ID",
     }
     missing_vars = []
 
@@ -784,24 +779,24 @@ def validate_environment() -> tuple[dict[str, str | None], list[str]]:
 def create_failure_message(env_vars: dict[str, str | None], error: str, start_time: datetime) -> ValidationMessage:
     """Create ValidationMessage for failure cases."""
     return ValidationMessage(
-        file_id=env_vars.get('file_id') or "unknown",
+        file_id=env_vars.get("file_id") or "unknown",
         status=STATUS_FAILURE,
         timestamp=start_time.isoformat(),
-        bucket=env_vars.get('bucket') or "unknown",
-        key=env_vars.get('key') or "unknown",
-        batch_job_id=env_vars.get('batch_job_id') or "unknown",
-        batch_job_name=env_vars.get('batch_job_name'),
-        error_message=error
+        bucket=env_vars.get("bucket") or "unknown",
+        key=env_vars.get("key") or "unknown",
+        batch_job_id=env_vars.get("batch_job_id") or "unknown",
+        batch_job_name=env_vars.get("batch_job_name"),
+        error_message=error,
     )
 
 
 def cleanup_files(work_dir: Optional[Path] = None) -> None:
     """
     Clean up work directory after validation.
-    
+
     This function attempts to remove the entire work directory (including downloaded files)
     but logs warnings if cleanup fails without affecting the validation result.
-    
+
     Args:
         work_dir: Path to the work directory to remove
     """
@@ -833,7 +828,7 @@ def main() -> int:
 
         # Validate environment variables
         env_vars, missing_vars = validate_environment()
-        local_mode = bool(env_vars.get('local_file'))
+        local_mode = bool(env_vars.get("local_file"))
 
         if missing_vars:
             error_msg = f"Missing required environment variables: {', '.join(missing_vars)}"
@@ -843,10 +838,10 @@ def main() -> int:
             return exit_code
 
         # Required env vars are guaranteed non-None after the missing_vars check above
-        file_id = env_vars['file_id']
-        bucket = env_vars['bucket']
-        key = env_vars['key']
-        batch_job_id = env_vars['batch_job_id']
+        file_id = env_vars["file_id"]
+        bucket = env_vars["bucket"]
+        key = env_vars["key"]
+        batch_job_id = env_vars["batch_job_id"]
         # TODO: this check is redundant; see issue 399
         if file_id is None or bucket is None or key is None or batch_job_id is None:
             raise RuntimeError("Required env vars unexpectedly None after missing_vars check")
@@ -859,12 +854,12 @@ def main() -> int:
             bucket=bucket,
             key=key,
             batch_job_id=batch_job_id,
-            batch_job_name=env_vars['batch_job_name']
+            batch_job_name=env_vars["batch_job_name"],
         )
 
         if local_mode:
             # Local file mode — skip S3 download and integrity checks
-            local_file_path = env_vars['local_file']
+            local_file_path = env_vars["local_file"]
             if local_file_path is None:
                 raise RuntimeError("local_mode set but LOCAL_FILE env var is None")
             local_file = Path(local_file_path)
@@ -933,8 +928,11 @@ def main() -> int:
         # apply_cellxgene_validator back in. See #382.
         now_iso = datetime.now(timezone.utc).isoformat()
         cellxgene_validation_report = ValidationToolReport(
-            valid=True, errors=[], warnings=[],
-            started_at=now_iso, finished_at=now_iso,
+            valid=True,
+            errors=[],
+            warnings=[],
+            started_at=now_iso,
+            finished_at=now_iso,
         )
 
         # Call HCA schema validator
@@ -951,7 +949,7 @@ def main() -> int:
             "cap": cap_validation_report,
             "cellxgene": cellxgene_validation_report,
             "hcaSchema": hca_schema_validation_report,
-            "hcaCellAnnotation": hca_cell_annotation_validation_report
+            "hcaCellAnnotation": hca_cell_annotation_validation_report,
         }
 
         logger.info("Validation completed successfully")
@@ -979,16 +977,14 @@ def main() -> int:
         # Attempt to write full results to S3 as a claim check before SNS.
         # Skipped in local mode (no real bucket) and when env validation
         # never resolved a real bucket/file_id/batch_job_id (early-exit path).
-        s3_bucket = env_vars.get('validation_results_bucket')
-        s3_file_id = env_vars.get('file_id')
-        s3_batch_job_id = env_vars.get('batch_job_id')
+        s3_bucket = env_vars.get("validation_results_bucket")
+        s3_file_id = env_vars.get("file_id")
+        s3_batch_job_id = env_vars.get("batch_job_id")
         if validation_message and not local_mode and s3_bucket and s3_file_id and s3_batch_job_id:
-            write_validation_results_to_s3(
-                validation_message, s3_bucket, s3_file_id, s3_batch_job_id
-            )
+            write_validation_results_to_s3(validation_message, s3_bucket, s3_file_id, s3_batch_job_id)
 
         # Publish or print results
-        sns_topic_arn = env_vars.get('sns_topic_arn')
+        sns_topic_arn = env_vars.get("sns_topic_arn")
         if validation_message and sns_topic_arn:
             publish_success = publish_validation_result(validation_message, sns_topic_arn)
             if not publish_success:

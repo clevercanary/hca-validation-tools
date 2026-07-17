@@ -39,9 +39,7 @@ def test_strip_actually_strips(tmp_path):
     create_sample_h5ad(path)
     adata = ad.read_h5ad(path)
     adata.uns.pop("schema_version", None)
-    adata.obs["self_reported_ethnicity_ontology_term_id"] = pd.Categorical(
-        ["unknown"] * adata.n_obs
-    )
+    adata.obs["self_reported_ethnicity_ontology_term_id"] = pd.Categorical(["unknown"] * adata.n_obs)
     adata.write_h5ad(path)
 
     result = strip_forbidden_obs_columns(str(path))

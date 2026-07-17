@@ -79,10 +79,12 @@ class HCALabeler(AnnDataLabelAppender):
                 # we handle them first and skip the rest of the loop body.
                 if str(col_def.get("requirement_level", "")).lower() == "forbidden":
                     if col_name in df.columns:
-                        issues.append(col_def.get(
-                            "forbidden_error",
-                            f"Column '{col_name}' must not be present in {component_name}.",
-                        ))
+                        issues.append(
+                            col_def.get(
+                                "forbidden_error",
+                                f"Column '{col_name}' must not be present in {component_name}.",
+                            )
+                        )
                     continue
                 if "add_labels" not in col_def:
                     continue
@@ -129,9 +131,7 @@ class HCALabeler(AnnDataLabelAppender):
                     "(file appears to have been processed by cellxgene-schema add-labels already)"
                 )
         if _ORGANISM_COL in self.adata.obs.columns:
-            non_human = sorted(
-                v for v in self.adata.obs[_ORGANISM_COL].dropna().unique() if v != _HUMAN_TAXON
-            )
+            non_human = sorted(v for v in self.adata.obs[_ORGANISM_COL].dropna().unique() if v != _HUMAN_TAXON)
             if non_human:
                 issues.append(
                     f"obs['{_ORGANISM_COL}'] contains non-human values {non_human}; "
@@ -209,9 +209,7 @@ class HCALabeler(AnnDataLabelAppender):
         # anything in the ERCC table is "spike-in" regardless of its literal
         # ID shape. Unknown-organism IDs still NaN (via _map_by_organism) so
         # all five feature_* columns stay in sync — same rows NaN everywhere.
-        return self._map_by_organism(
-            ids, lambda _i, o: "spike-in" if o == SupportedOrganisms.ERCC else "gene"
-        )
+        return self._map_by_organism(ids, lambda _i, o: "spike-in" if o == SupportedOrganisms.ERCC else "gene")
 
     def preflight(self) -> None:
         """Raise ``ValueError`` if the input fails HCA preflight checks.

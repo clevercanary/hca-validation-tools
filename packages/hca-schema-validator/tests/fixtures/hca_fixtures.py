@@ -129,11 +129,21 @@ good_obs["suspension_type"] = good_obs["suspension_type"].astype("category")
 good_obs["tissue_type"] = good_obs["tissue_type"].astype("category")
 good_obs["tissue_type"] = good_obs["tissue_type"].cat.add_categories(["primary cell culture", "organoid", "cell line"])
 for _col in [
-    "sample_id", "library_id", "institute", "library_preparation_batch",
-    "library_sequencing_run", "alignment_software", "manner_of_death",
-    "sample_source", "sample_collection_method", "sampled_site_condition",
-    "sample_preservation_method", "sequenced_fragment", "reference_genome",
-    "cell_enrichment", "gene_annotation_version",
+    "sample_id",
+    "library_id",
+    "institute",
+    "library_preparation_batch",
+    "library_sequencing_run",
+    "alignment_software",
+    "manner_of_death",
+    "sample_source",
+    "sample_collection_method",
+    "sampled_site_condition",
+    "sample_preservation_method",
+    "sequenced_fragment",
+    "reference_genome",
+    "cell_enrichment",
+    "gene_annotation_version",
 ]:
     good_obs[_col] = good_obs[_col].astype("category")
 
@@ -275,11 +285,21 @@ good_obs_visium["tissue_type"] = good_obs_visium["tissue_type"].cat.add_categori
     ["primary cell culture", "organoid", "cell line"]
 )
 for _col in [
-    "sample_id", "library_id", "institute", "library_preparation_batch",
-    "library_sequencing_run", "alignment_software", "manner_of_death",
-    "sample_source", "sample_collection_method", "sampled_site_condition",
-    "sample_preservation_method", "sequenced_fragment", "reference_genome",
-    "cell_enrichment", "gene_annotation_version",
+    "sample_id",
+    "library_id",
+    "institute",
+    "library_preparation_batch",
+    "library_sequencing_run",
+    "alignment_software",
+    "manner_of_death",
+    "sample_source",
+    "sample_collection_method",
+    "sampled_site_condition",
+    "sample_preservation_method",
+    "sequenced_fragment",
+    "reference_genome",
+    "cell_enrichment",
+    "gene_annotation_version",
 ]:
     good_obs_visium[_col] = good_obs_visium[_col].astype("category")
 
@@ -378,11 +398,21 @@ good_obs_slide_seqv2["tissue_type"] = good_obs_slide_seqv2["tissue_type"].cat.ad
     ["primary cell culture", "organoid", "cell line"]
 )
 for _col in [
-    "sample_id", "library_id", "institute", "library_preparation_batch",
-    "library_sequencing_run", "alignment_software", "manner_of_death",
-    "sample_source", "sample_collection_method", "sampled_site_condition",
-    "sample_preservation_method", "sequenced_fragment", "reference_genome",
-    "cell_enrichment", "gene_annotation_version",
+    "sample_id",
+    "library_id",
+    "institute",
+    "library_preparation_batch",
+    "library_sequencing_run",
+    "alignment_software",
+    "manner_of_death",
+    "sample_source",
+    "sample_collection_method",
+    "sampled_site_condition",
+    "sample_preservation_method",
+    "sequenced_fragment",
+    "reference_genome",
+    "cell_enrichment",
+    "gene_annotation_version",
 ]:
     good_obs_slide_seqv2[_col] = good_obs_slide_seqv2[_col].astype("category")
 
@@ -482,11 +512,21 @@ good_obs_visium_is_single_false["tissue_type"] = good_obs_visium_is_single_false
     ["primary cell culture", "organoid", "cell line"]
 )
 for _col in [
-    "sample_id", "library_id", "institute", "library_preparation_batch",
-    "library_sequencing_run", "alignment_software", "manner_of_death",
-    "sample_source", "sample_collection_method", "sampled_site_condition",
-    "sample_preservation_method", "sequenced_fragment", "reference_genome",
-    "cell_enrichment", "gene_annotation_version",
+    "sample_id",
+    "library_id",
+    "institute",
+    "library_preparation_batch",
+    "library_sequencing_run",
+    "alignment_software",
+    "manner_of_death",
+    "sample_source",
+    "sample_collection_method",
+    "sampled_site_condition",
+    "sample_preservation_method",
+    "sequenced_fragment",
+    "reference_genome",
+    "cell_enrichment",
+    "gene_annotation_version",
 ]:
     good_obs_visium_is_single_false[_col] = good_obs_visium_is_single_false[_col].astype("category")
 
@@ -585,11 +625,21 @@ good_obs_mouse["suspension_type"] = good_obs_mouse["suspension_type"].astype("ca
 good_obs_mouse["tissue_type"] = good_obs_mouse["tissue_type"].astype("category")
 good_obs_mouse["tissue_type"] = good_obs_mouse["tissue_type"].cat.add_categories(["tissue", "organoid", "cell line"])
 for _col in [
-    "sample_id", "library_id", "institute", "library_preparation_batch",
-    "library_sequencing_run", "alignment_software", "manner_of_death",
-    "sample_source", "sample_collection_method", "sampled_site_condition",
-    "sample_preservation_method", "sequenced_fragment", "reference_genome",
-    "cell_enrichment", "gene_annotation_version",
+    "sample_id",
+    "library_id",
+    "institute",
+    "library_preparation_batch",
+    "library_sequencing_run",
+    "alignment_software",
+    "manner_of_death",
+    "sample_source",
+    "sample_collection_method",
+    "sampled_site_condition",
+    "sample_preservation_method",
+    "sequenced_fragment",
+    "reference_genome",
+    "cell_enrichment",
+    "gene_annotation_version",
 ]:
     good_obs_mouse[_col] = good_obs_mouse[_col].astype("category")
 

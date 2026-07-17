@@ -87,15 +87,8 @@ class HCAValidator(Validator):
         super()._deep_check()
 
         # Match by substring to avoid brittle coupling to exact upstream wording
-        raw_skip_warnings = [
-            w for w in self.warnings
-            if "Validation of raw layer was not performed" in w
-        ]
-        if (
-            raw_skip_warnings
-            and "raw" in self.schema_def
-            and "assay_ontology_term_id" in self.adata.obs.columns
-        ):
+        raw_skip_warnings = [w for w in self.warnings if "Validation of raw layer was not performed" in w]
+        if raw_skip_warnings and "raw" in self.schema_def and "assay_ontology_term_id" in self.adata.obs.columns:
             for w in raw_skip_warnings:
                 self.warnings.remove(w)
             self._validate_raw()
@@ -112,13 +105,9 @@ class HCAValidator(Validator):
         if element_type == "string":
             for i in current_list:
                 if not isinstance(i, str):
-                    self.errors.append(
-                        f"Value '{i}' in list '{list_name}' is not valid, it must be a string."
-                    )
+                    self.errors.append(f"Value '{i}' in list '{list_name}' is not valid, it must be a string.")
                 elif len(i.strip()) == 0:
-                    self.errors.append(
-                        f"Value in list '{list_name}' must not be empty or whitespace-only."
-                    )
+                    self.errors.append(f"Value in list '{list_name}' must not be empty or whitespace-only.")
 
     def _validate_dataframe(self, df_name):
         """
@@ -157,8 +146,7 @@ class HCAValidator(Validator):
         # comparisons are case-insensitive throughout so the validator stays
         # symmetric with HCALabeler's preflight (which already lowercases).
         schema_columns = {
-            c for c, d in df_definition["columns"].items()
-            if str(d.get("requirement_level", "")).lower() != "forbidden"
+            c for c, d in df_definition["columns"].items() if str(d.get("requirement_level", "")).lower() != "forbidden"
         }
 
         # Extract optional, strongly_recommended, and forbidden columns
@@ -223,9 +211,7 @@ class HCAValidator(Validator):
                 if col_name in df.columns:
                     column = df[col_name]
                     if "dependencies" in col_def:
-                        column = self._validate_column_dependencies(
-                            df, df_name, col_name, col_def["dependencies"]
-                        )
+                        column = self._validate_column_dependencies(df, df_name, col_name, col_def["dependencies"])
                     if len(column) > 0:
                         if "warning_message" in col_def:
                             self.warnings.append(col_def["warning_message"])
@@ -234,10 +220,7 @@ class HCAValidator(Validator):
     def _validate_strongly_recommended(self, df, df_name, col_name, col_def):
         """Validate a strongly_recommended column: warn on missing/NaN, error on blocklist."""
         if col_name not in df.columns:
-            self.warnings.append(
-                f"Column '{col_name}' in dataframe '{df_name}' is strongly "
-                f"recommended but missing."
-            )
+            self.warnings.append(f"Column '{col_name}' in dataframe '{df_name}' is strongly recommended but missing.")
             return
 
         column = df[col_name]
@@ -249,16 +232,12 @@ class HCAValidator(Validator):
             total = len(column)
             pct = (nan_count * 100 // total) if total > 0 else 0
             self.warnings.append(
-                f"Column '{col_name}' is strongly recommended. "
-                f"{nan_count}/{total} ({pct}%) values are NaN."
+                f"Column '{col_name}' is strongly recommended. {nan_count}/{total} ({pct}%) values are NaN."
             )
 
         # Separator check — reject values containing list separators
         separators = {",", ";", "|"}
-        bad_sep_values = [
-            str(v) for v in column.dropna().unique()
-            if any(sep in str(v) for sep in separators)
-        ]
+        bad_sep_values = [str(v) for v in column.dropna().unique() if any(sep in str(v) for sep in separators)]
         if bad_sep_values:
             shown = bad_sep_values[:3]
             self.errors.append(
@@ -270,10 +249,7 @@ class HCAValidator(Validator):
         # Blocklist check — error on invalid values (case-insensitive)
         if "blocklist" in col_def:
             blocklist = {v.lower() for v in col_def["blocklist"]}
-            bad_values = [
-                str(v) for v in column.dropna().unique()
-                if str(v).strip().lower() in blocklist
-            ]
+            bad_values = [str(v) for v in column.dropna().unique() if str(v).strip().lower() in blocklist]
             if bad_values:
                 self.errors.append(
                     f"Column '{col_name}' in dataframe '{df_name}' contains "
@@ -317,10 +293,7 @@ class HCAValidator(Validator):
             organism_ontology_id = None
 
             if not organism:
-                self.warnings.append(
-                    f"Feature ID '{feature_id}' in '{df_name}' not found "
-                    f"in {version_label}."
-                )
+                self.warnings.append(f"Feature ID '{feature_id}' in '{df_name}' not found in {version_label}.")
                 continue
             else:
                 organism_ontology_id = organism.value
@@ -328,10 +301,7 @@ class HCAValidator(Validator):
             valid_gene_id = get_gene_checker(organism).is_valid_id(feature_id)
 
             if not valid_gene_id:
-                self.warnings.append(
-                    f"Feature ID '{feature_id}' in '{df_name}' not found "
-                    f"in {version_label}."
-                )
+                self.warnings.append(f"Feature ID '{feature_id}' in '{df_name}' not found in {version_label}.")
 
             if dataset_organism is not None and organism_ontology_id is not None and valid_gene_id:
                 is_descendant = organism_ontology_id in ONTOLOGY_PARSER.get_term_ancestors(dataset_organism, True)
@@ -468,10 +438,7 @@ def _load_default_schema_def():
 
 def _compare_cosmetic_to_term_ids(obs, cosmetic_col, source_col, exceptions):
     pair_counts = (
-        obs[[source_col, cosmetic_col]]
-        .astype(object)
-        .groupby([source_col, cosmetic_col], dropna=False)
-        .size()
+        obs[[source_col, cosmetic_col]].astype(object).groupby([source_col, cosmetic_col], dropna=False).size()
     )
     canonical_cache: dict[str, str | None] = {}
     errors: list[str] = []

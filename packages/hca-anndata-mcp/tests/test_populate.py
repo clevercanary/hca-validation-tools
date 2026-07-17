@@ -49,11 +49,15 @@ def test_refuse_cellxgene_imported(tmp_path):
         description="Imported from CellxGENE Discover: test",
         details={},
     )
-    log = json.dumps([{
-        **entry,
-        "source_file": "test.h5ad",
-        "source_sha256": "0" * 64,
-    }])
+    log = json.dumps(
+        [
+            {
+                **entry,
+                "source_file": "test.h5ad",
+                "source_sha256": "0" * 64,
+            }
+        ]
+    )
     adata.uns.setdefault("provenance", {})[EDIT_LOG_KEY] = log
     adata.write_h5ad(path)
 
@@ -71,11 +75,15 @@ def test_preserves_existing_edit_log(tmp_path):
         description="Stripped HCA-forbidden obs columns (privacy): ['self_reported_ethnicity']",
         details={"obs_columns_stripped": ["self_reported_ethnicity"]},
     )
-    seed = json.dumps([{
-        **prior,
-        "source_file": "synthetic-seed.h5ad",
-        "source_sha256": "0" * 64,
-    }])
+    seed = json.dumps(
+        [
+            {
+                **prior,
+                "source_file": "synthetic-seed.h5ad",
+                "source_sha256": "0" * 64,
+            }
+        ]
+    )
     adata.uns.setdefault("provenance", {})[EDIT_LOG_KEY] = seed
     adata.write_h5ad(path)
 

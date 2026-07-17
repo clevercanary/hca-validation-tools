@@ -342,11 +342,15 @@ def test_has_edit_log_operation_finds_matching_entry(sample_h5ad_for_write):
 
     adata = ad.read_h5ad(str(sample_h5ad_for_write))
     entry = _make_entry(operation="import_cellxgene", description="Imported from CXG")
-    seed = json.dumps([{
-        **entry,
-        "source_file": "fake.h5ad",
-        "source_sha256": "0" * 64,
-    }])
+    seed = json.dumps(
+        [
+            {
+                **entry,
+                "source_file": "fake.h5ad",
+                "source_sha256": "0" * 64,
+            }
+        ]
+    )
     adata.uns.setdefault("provenance", {})[EDIT_LOG_KEY] = seed
 
     assert has_edit_log_operation(adata, "import_cellxgene") is True

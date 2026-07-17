@@ -141,12 +141,9 @@ def _classify_obs_column(
     # lookups to ~5 — significant on large files. Mirrors the cache shape
     # in :func:`validator._compare_cosmetic_to_term_ids`.
     canonical_cache: dict[str, Any] = {
-        str(t): _lookup_canonical_label(str(t), exceptions)
-        for t in term_id_series.dropna().unique()
+        str(t): _lookup_canonical_label(str(t), exceptions) for t in term_id_series.dropna().unique()
     }
-    canonical: pd.Series = term_id_series.map(
-        lambda t: pd.NA if pd.isna(t) else canonical_cache.get(str(t))
-    )
+    canonical: pd.Series = term_id_series.map(lambda t: pd.NA if pd.isna(t) else canonical_cache.get(str(t)))
 
     if not cosmetic_present:
         return "fill", [], canonical
@@ -235,9 +232,7 @@ def _classify_var_column(
     # they differ. NaN-existing rows are never mismatch — they're
     # either fillable (canonical has a value to give) or both-NaN
     # no-ops.
-    populated_disagreement = (~existing_nan) & (
-        canonical_nan | (existing != canonical_series)
-    )
+    populated_disagreement = (~existing_nan) & (canonical_nan | (existing != canonical_series))
     if populated_disagreement.any():
         pair_counts = (
             pd.DataFrame(
@@ -318,11 +313,7 @@ def populate_in_memory(adata: ad.AnnData) -> dict:
         }
 
     if _ORGANISM_COL in adata.obs.columns:
-        non_human = sorted(
-            v
-            for v in adata.obs[_ORGANISM_COL].dropna().unique()
-            if v != _HUMAN_TAXON
-        )
+        non_human = sorted(v for v in adata.obs[_ORGANISM_COL].dropna().unique() if v != _HUMAN_TAXON)
         if non_human:
             return {
                 "error": (
@@ -371,9 +362,7 @@ def populate_in_memory(adata: ad.AnnData) -> dict:
     # HCALabeler instance for its ``_get_mapping_dict_feature_*`` helpers
     # (we never call ``label()`` — that triggers the hardline preflight).
     labeler = HCALabeler(adata)
-    obs_components = (
-        labeler.schema_def.get("components", {}).get("obs", {}).get("columns", {})
-    )
+    obs_components = labeler.schema_def.get("components", {}).get("obs", {}).get("columns", {})
 
     filled: list[str] = []
     matched: list[str] = []
@@ -390,9 +379,7 @@ def populate_in_memory(adata: ad.AnnData) -> dict:
     for cosmetic_col in HCA_DERIVED_OBS_LABELS:
         source_col = f"{cosmetic_col}_ontology_term_id"
         exceptions = _collect_curie_exceptions(obs_components.get(source_col, {}))
-        status, col_errors, canonical = _classify_obs_column(
-            adata.obs, cosmetic_col, source_col, exceptions
-        )
+        status, col_errors, canonical = _classify_obs_column(adata.obs, cosmetic_col, source_col, exceptions)
         if status == "errored":
             errors.extend(col_errors)
         elif status == "matched":
@@ -413,9 +400,7 @@ def populate_in_memory(adata: ad.AnnData) -> dict:
 
         # adata.var
         canonical_dict = getter(var_ids)
-        status, col_errors, canonical_series = _classify_var_column(
-            adata.var, col, canonical_dict
-        )
+        status, col_errors, canonical_series = _classify_var_column(adata.var, col, canonical_dict)
         if status == "errored":
             errors.extend(col_errors)
         elif status == "matched":
@@ -426,17 +411,12 @@ def populate_in_memory(adata: ad.AnnData) -> dict:
         # adata.raw.var — same logic, separate canonical
         if raw_var is not None and raw_var_ids is not None:
             raw_canonical_dict = getter(raw_var_ids)
-            raw_status, raw_col_errors, raw_canonical_series = _classify_var_column(
-                raw_var, col, raw_canonical_dict
-            )
+            raw_status, raw_col_errors, raw_canonical_series = _classify_var_column(raw_var, col, raw_canonical_dict)
             if raw_status == "errored":
                 # Re-tag the error messages so the caller sees which side
                 # produced them (the underlying messages say "var['col']";
                 # rewrite to "raw.var['col']" for clarity).
-                errors.extend(
-                    e.replace(f"var['{col}']", f"raw.var['{col}']")
-                    for e in raw_col_errors
-                )
+                errors.extend(e.replace(f"var['{col}']", f"raw.var['{col}']") for e in raw_col_errors)
             elif raw_status == "matched":
                 matched.append(f"raw.var/{col}")
             elif raw_status == "fill":
@@ -456,9 +436,7 @@ def populate_in_memory(adata: ad.AnnData) -> dict:
                 "errors": errors,
                 "matched": matched,
                 "would_fill": sorted(
-                    list(fill_obs)
-                    + [f"var/{c}" for c in fill_var]
-                    + [f"raw.var/{c}" for c in fill_raw_var]
+                    list(fill_obs) + [f"var/{c}" for c in fill_var] + [f"raw.var/{c}" for c in fill_raw_var]
                 ),
             },
         }

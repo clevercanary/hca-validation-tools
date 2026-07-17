@@ -125,17 +125,14 @@ def convert_cellxgene_to_hca(
 
         if cellxgene_source:
             conversions.append(
-                f"Moved cellxgene reserved keys to uns['provenance']['cellxgene']: "
-                f"{list(cellxgene_source.keys())}"
+                f"Moved cellxgene reserved keys to uns['provenance']['cellxgene']: {list(cellxgene_source.keys())}"
             )
 
         # Forbidden-by-HCA obs columns to remove (privacy — see #370). The
         # h5py block below performs the actual deletion.
         obs_columns_stripped = [c for c in _OBS_COLUMNS_TO_STRIP if c in source_obs_members]
         if obs_columns_stripped:
-            conversions.append(
-                f"Stripped HCA-forbidden obs columns (privacy): {obs_columns_stripped}"
-            )
+            conversions.append(f"Stripped HCA-forbidden obs columns (privacy): {obs_columns_stripped}")
 
         # Broadcast obs columns (categorical, 1 category, all codes=0)
         obs_data = {}
@@ -192,9 +189,7 @@ def convert_cellxgene_to_hca(
 
             shutil.copy2(path, output_path)
 
-            with h5py.File(temp_path, "r") as f_temp, \
-                 h5py.File(output_path, "a") as f_out:
-
+            with h5py.File(temp_path, "r") as f_temp, h5py.File(output_path, "a") as f_out:
                 f_out.require_group("uns")
 
                 # Delete CellxGENE reserved keys from uns

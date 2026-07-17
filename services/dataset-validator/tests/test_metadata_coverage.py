@@ -10,7 +10,7 @@ from typing import Any, Dict, List
 import pandas as pd
 import pytest
 
-from hca_validation.metadata_coverage import compute_metadata_coverage, SCHEMA_NAME
+from hca_validation.metadata_coverage import SCHEMA_NAME, compute_metadata_coverage
 from hca_validation.metadata_coverage.metadata_coverage import _assert_invariant
 from hca_validation.schema_utils import load_schemaview
 
@@ -36,10 +36,12 @@ def field_entry(result: Dict[str, Any], entity_class: str, field: str) -> Dict[s
 
 class TestEntities:
     def test_record_counts_use_distinct_identifier_values(self, schemaview):
-        obs = pd.DataFrame({
-            "donor_id":  ["D1", "D1", "D2", "D2", "D2"],
-            "sample_id": ["S1", "S1", "S2", "S2", "S3"],
-        })
+        obs = pd.DataFrame(
+            {
+                "donor_id": ["D1", "D1", "D2", "D2", "D2"],
+                "sample_id": ["S1", "S1", "S2", "S2", "S3"],
+            }
+        )
         result = compute_metadata_coverage(make_adata(obs), schemaview)
         assert result["entities"]["obs"]["record_count"] == 5
         assert result["entities"]["dataset"]["record_count"] == 1
@@ -47,10 +49,12 @@ class TestEntities:
         assert result["entities"]["sample"]["record_count"] == 3
 
     def test_donor_count_excludes_cells_with_missing_donor_id(self, schemaview):
-        obs = pd.DataFrame({
-            "donor_id":  ["D1", "D1", None, None, "D2"],
-            "sample_id": ["S1", "S1", "S2", "S2", "S3"],
-        })
+        obs = pd.DataFrame(
+            {
+                "donor_id": ["D1", "D1", None, None, "D2"],
+                "sample_id": ["S1", "S1", "S2", "S2", "S3"],
+            }
+        )
         result = compute_metadata_coverage(make_adata(obs), schemaview)
         assert result["entities"]["donor"]["record_count"] == 2
 
@@ -62,19 +66,23 @@ class TestEntities:
 
 class TestObsGrainIdentifierCoverage:
     def test_full_donor_id_population_has_no_issues(self, schemaview):
-        obs = pd.DataFrame({
-            "donor_id":  ["D1", "D2", "D3"],
-            "sample_id": ["S1", "S2", "S3"],
-        })
+        obs = pd.DataFrame(
+            {
+                "donor_id": ["D1", "D2", "D3"],
+                "sample_id": ["S1", "S2", "S3"],
+            }
+        )
         result = compute_metadata_coverage(make_adata(obs), schemaview)
         donor_id = field_entry(result, "obs", "donor_id")
         assert donor_id == {"entity_class": "obs", "field": "donor_id", "complete": 3, "missing": 0, "inconsistent": 0}
 
     def test_missing_donor_id_reported_at_obs_grain_only(self, schemaview):
-        obs = pd.DataFrame({
-            "donor_id":  ["D1", "D1", None, None, "D2"],
-            "sample_id": ["S1", "S1", "S2", "S2", "S3"],
-        })
+        obs = pd.DataFrame(
+            {
+                "donor_id": ["D1", "D1", None, None, "D2"],
+                "sample_id": ["S1", "S1", "S2", "S2", "S3"],
+            }
+        )
         result = compute_metadata_coverage(make_adata(obs), schemaview)
         entry = field_entry(result, "obs", "donor_id")
         assert entry["complete"] == 3
@@ -84,11 +92,13 @@ class TestObsGrainIdentifierCoverage:
 
 class TestEntityPropertyCoverage:
     def test_complete_field_emits_empty_issues(self, schemaview):
-        obs = pd.DataFrame({
-            "donor_id":  ["D1", "D1", "D2"],
-            "sample_id": ["S1", "S1", "S2"],
-            "sex_ontology_term_id": ["PATO:0000383", "PATO:0000383", "PATO:0000384"],
-        })
+        obs = pd.DataFrame(
+            {
+                "donor_id": ["D1", "D1", "D2"],
+                "sample_id": ["S1", "S1", "S2"],
+                "sex_ontology_term_id": ["PATO:0000383", "PATO:0000383", "PATO:0000384"],
+            }
+        )
         result = compute_metadata_coverage(make_adata(obs), schemaview)
         entry = field_entry(result, "donor", "sex_ontology_term_id")
         assert entry == {
@@ -100,11 +110,13 @@ class TestEntityPropertyCoverage:
         }
 
     def test_partial_population_buckets_as_missing(self, schemaview):
-        obs = pd.DataFrame({
-            "donor_id":  ["D1", "D1", "D2", "D2"],
-            "sample_id": ["S1", "S1", "S2", "S2"],
-            "manner_of_death": ["1", "1", None, "3"],  # D2 has one null row
-        })
+        obs = pd.DataFrame(
+            {
+                "donor_id": ["D1", "D1", "D2", "D2"],
+                "sample_id": ["S1", "S1", "S2", "S2"],
+                "manner_of_death": ["1", "1", None, "3"],  # D2 has one null row
+            }
+        )
         result = compute_metadata_coverage(make_adata(obs), schemaview)
         entry = field_entry(result, "donor", "manner_of_death")
         assert entry["complete"] == 1
@@ -112,11 +124,13 @@ class TestEntityPropertyCoverage:
         assert entry["inconsistent"] == 0
 
     def test_disagreeing_values_bucket_as_inconsistent(self, schemaview):
-        obs = pd.DataFrame({
-            "donor_id":  ["D1", "D1", "D2", "D2"],
-            "sample_id": ["S1", "S1", "S2", "S2"],
-            "manner_of_death": ["1", "2", "3", "3"],  # D1 has two distinct values
-        })
+        obs = pd.DataFrame(
+            {
+                "donor_id": ["D1", "D1", "D2", "D2"],
+                "sample_id": ["S1", "S1", "S2", "S2"],
+                "manner_of_death": ["1", "2", "3", "3"],  # D1 has two distinct values
+            }
+        )
         result = compute_metadata_coverage(make_adata(obs), schemaview)
         entry = field_entry(result, "donor", "manner_of_death")
         assert entry["complete"] == 1
@@ -127,11 +141,13 @@ class TestEntityPropertyCoverage:
         # D1 has both null and conflicting values (inconsistent precedence applies).
         # D2 has only nulls (missing).
         # D3 is complete.
-        obs = pd.DataFrame({
-            "donor_id":  ["D1", "D1", "D1", "D2", "D2", "D3", "D3"],
-            "sample_id": ["S1", "S1", "S1", "S2", "S2", "S3", "S3"],
-            "manner_of_death": ["1", "2", None, None, None, "0", "0"],
-        })
+        obs = pd.DataFrame(
+            {
+                "donor_id": ["D1", "D1", "D1", "D2", "D2", "D3", "D3"],
+                "sample_id": ["S1", "S1", "S1", "S2", "S2", "S3", "S3"],
+                "manner_of_death": ["1", "2", None, None, None, "0", "0"],
+            }
+        )
         result = compute_metadata_coverage(make_adata(obs), schemaview)
         entry = field_entry(result, "donor", "manner_of_death")
         assert entry["complete"] == 1  # D3
@@ -139,10 +155,12 @@ class TestEntityPropertyCoverage:
         assert entry["missing"] == 1  # D2
 
     def test_field_absent_from_obs_reports_all_missing(self, schemaview):
-        obs = pd.DataFrame({
-            "donor_id":  ["D1", "D1", "D2"],
-            "sample_id": ["S1", "S1", "S2"],
-        })
+        obs = pd.DataFrame(
+            {
+                "donor_id": ["D1", "D1", "D2"],
+                "sample_id": ["S1", "S1", "S2"],
+            }
+        )
         result = compute_metadata_coverage(make_adata(obs), schemaview)
         entry = field_entry(result, "donor", "manner_of_death")
         assert entry["complete"] == 0
@@ -155,16 +173,16 @@ class TestEntityPropertyCoverage:
         # present, including zero), with no nested `issues` map. Regressions in
         # the emission helper would surface here even if full-dict equality
         # tests above were softened.
-        obs = pd.DataFrame({
-            "donor_id":  ["D1"],
-            "sample_id": ["S1"],
-            "sex_ontology_term_id": ["PATO:0000384"],
-        })
+        obs = pd.DataFrame(
+            {
+                "donor_id": ["D1"],
+                "sample_id": ["S1"],
+                "sex_ontology_term_id": ["PATO:0000384"],
+            }
+        )
         result = compute_metadata_coverage(make_adata(obs), schemaview)
         for entry in result["field_coverage"]:
-            assert set(entry.keys()) == {
-                "entity_class", "field", "complete", "missing", "inconsistent"
-            }, entry
+            assert set(entry.keys()) == {"entity_class", "field", "complete", "missing", "inconsistent"}, entry
             assert "issues" not in entry, entry
 
 
@@ -190,11 +208,13 @@ class TestDatasetClassSlots:
 
     def test_dataset_obs_slot_complete_when_consistent(self, schemaview):
         # gene_annotation_version is annDataLocation=obs but owned by the Dataset class.
-        obs = pd.DataFrame({
-            "donor_id":  ["D1", "D1", "D2"],
-            "sample_id": ["S1", "S1", "S2"],
-            "gene_annotation_version": ["v1", "v1", "v1"],
-        })
+        obs = pd.DataFrame(
+            {
+                "donor_id": ["D1", "D1", "D2"],
+                "sample_id": ["S1", "S1", "S2"],
+                "gene_annotation_version": ["v1", "v1", "v1"],
+            }
+        )
         result = compute_metadata_coverage(make_adata(obs), schemaview)
         entry = field_entry(result, "dataset", "gene_annotation_version")
         assert entry["complete"] == 1
@@ -202,11 +222,13 @@ class TestDatasetClassSlots:
         assert entry["inconsistent"] == 0
 
     def test_dataset_obs_slot_inconsistent_across_cells(self, schemaview):
-        obs = pd.DataFrame({
-            "donor_id":  ["D1", "D2"],
-            "sample_id": ["S1", "S2"],
-            "gene_annotation_version": ["v1", "v2"],
-        })
+        obs = pd.DataFrame(
+            {
+                "donor_id": ["D1", "D2"],
+                "sample_id": ["S1", "S2"],
+                "gene_annotation_version": ["v1", "v2"],
+            }
+        )
         result = compute_metadata_coverage(make_adata(obs), schemaview)
         entry = field_entry(result, "dataset", "gene_annotation_version")
         assert entry["complete"] == 0
@@ -229,11 +251,13 @@ class TestSchemaMetadata:
 
 class TestInvariant:
     def test_passes_for_real_output(self, schemaview):
-        obs = pd.DataFrame({
-            "donor_id":  ["D1", "D1", "D2", None],
-            "sample_id": ["S1", "S1", "S2", "S2"],
-            "manner_of_death": ["1", "2", "3", "3"],
-        })
+        obs = pd.DataFrame(
+            {
+                "donor_id": ["D1", "D1", "D2", None],
+                "sample_id": ["S1", "S1", "S2", "S2"],
+                "manner_of_death": ["1", "2", "3", "3"],
+            }
+        )
         result = compute_metadata_coverage(make_adata(obs), schemaview)
         for entry in result["field_coverage"]:
             expected = result["entities"][entry["entity_class"]]["record_count"]
@@ -283,9 +307,7 @@ class TestFieldCoverageEnumeration:
         pairs = [(e["entity_class"], e["field"]) for e in result["field_coverage"]]
         assert len(pairs) == len(set(pairs)), f"duplicate entries: {pairs}"
         # entity_class values are the canonical lowercase HCA grains only.
-        assert {e["entity_class"] for e in result["field_coverage"]} <= {
-            "obs", "dataset", "donor", "sample"
-        }
+        assert {e["entity_class"] for e in result["field_coverage"]} <= {"obs", "dataset", "donor", "sample"}
 
     def test_cell_entity_class_absent_in_v0(self, schemaview):
         # The Cell LinkML class has no slots in v0, so no entity_class == "cell"
@@ -321,10 +343,12 @@ class TestEmptyStringSentinels:
     """
 
     def test_empty_string_donor_id_does_not_inflate_donor_count(self, schemaview):
-        obs = pd.DataFrame({
-            "donor_id":  ["D1", "D1", "", "  ", "D2"],
-            "sample_id": ["S1", "S1", "S2", "S2", "S3"],
-        })
+        obs = pd.DataFrame(
+            {
+                "donor_id": ["D1", "D1", "", "  ", "D2"],
+                "sample_id": ["S1", "S1", "S2", "S2", "S3"],
+            }
+        )
         result = compute_metadata_coverage(make_adata(obs), schemaview)
         # Two real donors (D1, D2), not four.
         assert result["entities"]["donor"]["record_count"] == 2
@@ -335,11 +359,13 @@ class TestEmptyStringSentinels:
         assert donor_id_entry["inconsistent"] == 0
 
     def test_empty_string_entity_property_is_missing_not_complete(self, schemaview):
-        obs = pd.DataFrame({
-            "donor_id":  ["D1", "D1", "D2", "D2"],
-            "sample_id": ["S1", "S1", "S2", "S2"],
-            "manner_of_death": ["1", "1", "", "  "],  # D2 has no real value
-        })
+        obs = pd.DataFrame(
+            {
+                "donor_id": ["D1", "D1", "D2", "D2"],
+                "sample_id": ["S1", "S1", "S2", "S2"],
+                "manner_of_death": ["1", "1", "", "  "],  # D2 has no real value
+            }
+        )
         result = compute_metadata_coverage(make_adata(obs), schemaview)
         entry = field_entry(result, "donor", "manner_of_death")
         assert entry["complete"] == 1  # D1
@@ -350,10 +376,12 @@ class TestEmptyStringSentinels:
         # Real h5ad files often store donor_id / sample_id as pd.Categorical for
         # memory efficiency on millions of rows. Empty string as a category must
         # normalize to NA the same way it does for object-dtype columns.
-        obs = pd.DataFrame({
-            "donor_id":  pd.Categorical(["D1", "D1", "", "  ", "D2"]),
-            "sample_id": pd.Categorical(["S1", "S1", "S2", "S2", "S3"]),
-        })
+        obs = pd.DataFrame(
+            {
+                "donor_id": pd.Categorical(["D1", "D1", "", "  ", "D2"]),
+                "sample_id": pd.Categorical(["S1", "S1", "S2", "S2", "S3"]),
+            }
+        )
         result = compute_metadata_coverage(make_adata(obs), schemaview)
         assert result["entities"]["donor"]["record_count"] == 2
         entry = field_entry(result, "obs", "donor_id")
@@ -377,11 +405,10 @@ class TestEmptyStringSentinels:
         # study_pi and batch_condition are multivalued uns fields. A list with
         # only empty / whitespace elements should count as missing, not complete.
         import numpy as np
+
         obs = pd.DataFrame({"donor_id": ["D1"], "sample_id": ["S1"]})
         for empty_list in ([""], ["   "], ["", "  "], np.array([""], dtype=object), []):
-            result = compute_metadata_coverage(
-                make_adata(obs, {"study_pi": empty_list}), schemaview
-            )
+            result = compute_metadata_coverage(make_adata(obs, {"study_pi": empty_list}), schemaview)
             entry = field_entry(result, "dataset", "study_pi")
             assert entry["complete"] == 0, f"input: {empty_list!r}"
             assert entry["missing"] == 1, f"input: {empty_list!r}"
@@ -390,9 +417,7 @@ class TestEmptyStringSentinels:
     def test_uns_list_with_one_populated_element_is_complete(self, schemaview):
         # If any element of the list is a real value, the slot is populated.
         obs = pd.DataFrame({"donor_id": ["D1"], "sample_id": ["S1"]})
-        result = compute_metadata_coverage(
-            make_adata(obs, {"study_pi": ["", "Smith, John"]}), schemaview
-        )
+        result = compute_metadata_coverage(make_adata(obs, {"study_pi": ["", "Smith, John"]}), schemaview)
         entry = field_entry(result, "dataset", "study_pi")
         assert entry["complete"] == 1
         assert entry["missing"] == 0

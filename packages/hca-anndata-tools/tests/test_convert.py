@@ -142,10 +142,7 @@ def test_convert_edit_log_records_sre_strip(cellxgene_h5ad):
         "self_reported_ethnicity",
     }
     # Strip is also called out in the human-readable conversions list.
-    assert any(
-        "HCA-forbidden obs columns" in c
-        for c in details["conversions"]
-    )
+    assert any("HCA-forbidden obs columns" in c for c in details["conversions"])
 
 
 def test_convert_expression_unchanged(cellxgene_h5ad):
