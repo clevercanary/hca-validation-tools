@@ -24,10 +24,10 @@ from ._io import (
 )
 from ._serialize import make_serializable
 from .cap import (
-    CAP_METADATA_KEY,
-    LEGACY_LAYOUT_ERROR,
     _OPTIONAL_SUFFIXES,
     _REQUIRED_SUFFIXES,
+    CAP_METADATA_KEY,
+    LEGACY_LAYOUT_ERROR,
     is_legacy_cap_layout,
     resolve_cap_block,
 )
@@ -217,7 +217,9 @@ def copy_cap_annotations(
             return {"error": "No CAP obs columns found to copy"}
 
         source_index = set(source_index_list)
-        dupe_err = _check_duplicate_ids(source_index_list, "CAP cells") or _check_duplicate_ids(source_var_list, "CAP genes")
+        dupe_err = _check_duplicate_ids(source_index_list, "CAP cells") or _check_duplicate_ids(
+            source_var_list, "CAP genes"
+        )
         if dupe_err:
             return {"error": dupe_err}
         source_var_set = set(source_var_list)
@@ -350,9 +352,7 @@ def copy_cap_annotations(
             shutil.copy2(target_path, output_path)
 
             # Transplant from temp into output
-            with h5py.File(temp_path, "r") as f_temp, \
-                 h5py.File(output_path, "a") as f_out:
-
+            with h5py.File(temp_path, "r") as f_temp, h5py.File(output_path, "a") as f_out:
                 f_out.require_group("uns")
 
                 deleted_cols = set()

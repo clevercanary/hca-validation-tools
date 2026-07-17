@@ -12,7 +12,7 @@ CELL_ANNOTATION_SCRIPT = SRC_DIR / "hca_schema_validator_service" / "cell_annota
 MAIN_SCRIPT = SRC_DIR / "hca_schema_validator_service" / "main.py"
 
 sys.path.insert(0, str(SRC_DIR))
-from hca_schema_validator_service.cell_annotation import (
+from hca_schema_validator_service.cell_annotation import (  # noqa: E402
     run_validator,
     validator_logger_name,
 )
@@ -131,9 +131,7 @@ def test_subprocess_script_imports_cleanly(script_path, tmp_path):
         capture_output=True,
         text=True,
     )
-    assert "Traceback" not in result.stderr, (
-        f"{script_path.name} failed at import or early execution: {result.stderr}"
-    )
+    assert "Traceback" not in result.stderr, f"{script_path.name} failed at import or early execution: {result.stderr}"
 
 
 def test_cell_annotation_subprocess_returns_json(tmp_path):
@@ -147,9 +145,7 @@ def test_cell_annotation_subprocess_returns_json(tmp_path):
         capture_output=True,
         text=True,
     )
-    assert result.returncode == 0, (
-        f"stdout={result.stdout!r} stderr={result.stderr!r}"
-    )
+    assert result.returncode == 0, f"stdout={result.stdout!r} stderr={result.stderr!r}"
     output = json.loads(result.stdout)
     assert output["valid"] is False
     assert any("Unable to read h5ad file" in e for e in output["errors"])

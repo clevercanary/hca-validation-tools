@@ -30,7 +30,6 @@ from typing import List, Optional
 import anndata as ad
 import semver
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -127,10 +126,7 @@ class HCACellAnnotationValidator:
             self._error(NO_SETS_ERROR)
             return None
         if not isinstance(cap, Mapping):
-            self._error(
-                f"uns['cap_metadata'] must be a dict/group; got "
-                f"{type(cap).__name__}."
-            )
+            self._error(f"uns['cap_metadata'] must be a dict/group; got {type(cap).__name__}.")
             return None
         return cap
 
@@ -188,7 +184,4 @@ class HCACellAnnotationValidator:
         for suffix in _REQUIRED_OBS_SUFFIXES:
             col = f"{set_name}--{suffix}"
             if col not in obs_columns:
-                self._error(
-                    f"Annotation set '{set_name}' is missing required obs "
-                    f"column '{col}'."
-                )
+                self._error(f"Annotation set '{set_name}' is missing required obs column '{col}'.")

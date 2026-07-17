@@ -8,9 +8,11 @@ import numpy as np
 import pandas as pd
 import pytest
 import scipy.sparse as sp
+
 from hca_anndata_tools.cap import _make_serializable, get_cap_annotations
 
 # -- _make_serializable tests --------------------------------------------------
+
 
 def test_serializable_int():
     assert _make_serializable(np.int64(42)) == 42
@@ -62,6 +64,7 @@ def test_serializable_passthrough():
 
 # -- get_cap_annotations tests -------------------------------------------------
 
+
 def test_cap_no_annotations(sample_h5ad):
     """Sample file has no CAP annotations."""
     result = get_cap_annotations(str(sample_h5ad))
@@ -92,6 +95,7 @@ def test_cap_nonexistent_annotation_set(sample_h5ad):
 
 # -- Tests with a CAP-annotated fixture ----------------------------------------
 
+
 @pytest.fixture(scope="module")
 def cap_h5ad(tmp_path_factory) -> Path:
     """Create an h5ad with CAP-style annotation columns."""
@@ -106,16 +110,10 @@ def cap_h5ad(tmp_path_factory) -> Path:
             "my_labels": pd.Categorical(labels),
             "my_labels--cell_fullname": [f"{label} cell" for label in labels],
             "my_labels--cell_ontology_exists": rng.choice([True, False], n_obs),
-            "my_labels--cell_ontology_term_id": rng.choice(
-                ["CL:0000540", "CL:0000127", "CL:0000129"], n_obs
-            ),
-            "my_labels--cell_ontology_term": rng.choice(
-                ["neuron", "astrocyte", "microglial cell"], n_obs
-            ),
+            "my_labels--cell_ontology_term_id": rng.choice(["CL:0000540", "CL:0000127", "CL:0000129"], n_obs),
+            "my_labels--cell_ontology_term": rng.choice(["neuron", "astrocyte", "microglial cell"], n_obs),
             "my_labels--rationale": ["morphology"] * n_obs,
-            "my_labels--marker_gene_evidence": rng.choice(
-                ["RBFOX3", "GFAP", "AIF1"], n_obs
-            ),
+            "my_labels--marker_gene_evidence": rng.choice(["RBFOX3", "GFAP", "AIF1"], n_obs),
         },
         index=[f"cell_{i}" for i in range(n_obs)],
     )

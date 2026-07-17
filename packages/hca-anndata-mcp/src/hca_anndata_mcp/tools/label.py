@@ -73,10 +73,7 @@ def label_h5ad(path: str) -> dict:
             # `cell_type` column without a source means the labeler skips the
             # write, so we track source presence to avoid reporting phantom
             # writes.
-            labels_with_source = {
-                c for c in HCA_DERIVED_OBS_LABELS
-                if f"{c}_ontology_term_id" in adata.obs.columns
-            }
+            labels_with_source = {c for c in HCA_DERIVED_OBS_LABELS if f"{c}_ontology_term_id" in adata.obs.columns}
             raw_var_mirrored = adata.raw is not None
 
             labeler = HCALabeler(adata)

@@ -6,6 +6,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pytest
+
 from hca_schema_validator import HCA_DERIVED_OBS_LABELS, HCAValidator
 
 # Test fixtures directory
@@ -53,7 +54,7 @@ def test_instantiate():
     """Test that HCAValidator can be instantiated."""
     validator = HCAValidator()
     assert validator is not None
-    assert hasattr(validator, 'validate_adata')
+    assert hasattr(validator, "validate_adata")
 
 
 def test_inheritance():
@@ -69,12 +70,12 @@ def test_has_validation_methods():
     validator = HCAValidator()
 
     # Public methods
-    assert hasattr(validator, 'validate_adata')
+    assert hasattr(validator, "validate_adata")
 
     # Protected methods (can override later)
-    assert hasattr(validator, '_deep_check')
-    assert hasattr(validator, '_validate_feature_ids')
-    assert hasattr(validator, '_set_schema_def')
+    assert hasattr(validator, "_deep_check")
+    assert hasattr(validator, "_validate_feature_ids")
+    assert hasattr(validator, "_set_schema_def")
 
 
 def test_validate_valid_h5ad():
@@ -138,8 +139,9 @@ def test_organism_in_obs():
 
         # Should not have errors about organism being deprecated in obs
         for error in validator.errors:
-            assert not ("organism" in error.lower() and "deprecated" in error.lower()), \
+            assert not ("organism" in error.lower() and "deprecated" in error.lower()), (
                 "organism_ontology_term_id should not be deprecated in obs for HCA schema"
+            )
 
 
 def test_valid_adata_passes():
@@ -159,6 +161,7 @@ def _cosmetic_check_messages(validator):
     cosmetic-check message names its column as `obs['<col>']`; the curie validator's
     errors name the bare `<col>_ontology_term_id`, so they don't collide.
     """
+
     def about_a_label_column(message):
         return any(f"obs['{col}']" in message for col in HCA_DERIVED_OBS_LABELS)
 
@@ -198,10 +201,7 @@ def test_cosmetic_check_error_on_mismatch():
     _, validator = _validate_from_fixture(modified)
     warnings, errors = _cosmetic_check_messages(validator)
     assert warnings == []
-    assert any(
-        "'WRONG_LABEL'" in e and "UBERON:0002048" in e and "'lung'" in e
-        for e in errors
-    ), errors
+    assert any("'WRONG_LABEL'" in e and "UBERON:0002048" in e and "'lung'" in e for e in errors), errors
 
 
 def test_cosmetic_check_aggregates_across_columns():
@@ -228,10 +228,7 @@ def test_cosmetic_check_handles_optional_cell_type_with_source_present():
     _, validator = _validate_from_fixture(modified)
     warnings, errors = _cosmetic_check_messages(validator)
     assert warnings == []
-    assert any(
-        "'WRONG_CELL_TYPE'" in e and "CL:0000066" in e and "'epithelial cell'" in e
-        for e in errors
-    ), errors
+    assert any("'WRONG_CELL_TYPE'" in e and "CL:0000066" in e and "'epithelial cell'" in e for e in errors), errors
 
 
 def test_cosmetic_check_warns_when_source_column_absent():
@@ -293,8 +290,7 @@ def test_cosmetic_check_error_on_value_with_nan_term_id():
     warnings, errors = _cosmetic_check_messages(validator)
     assert warnings == []
     assert any(
-        "have NaN in cell_type_ontology_term_id" in e and "1 rows labeled 'PRODUCER_LABEL'" in e
-        for e in errors
+        "have NaN in cell_type_ontology_term_id" in e and "1 rows labeled 'PRODUCER_LABEL'" in e for e in errors
     ), errors
 
 
@@ -339,12 +335,7 @@ def test_cosmetic_check_sentinel_values_mismatch_errors():
     _, validator = _validate_from_fixture(modified)
     warnings, errors = _cosmetic_check_messages(validator)
     assert warnings == []
-    assert any(
-        "sex_ontology_term_id" in e
-        and "'PRODUCER_LABEL'" in e
-        and "'unknown'" in e
-        for e in errors
-    ), errors
+    assert any("sex_ontology_term_id" in e and "'PRODUCER_LABEL'" in e and "'unknown'" in e for e in errors), errors
 
 
 def test_check_cosmetic_labels_loads_default_schema_when_omitted():
@@ -404,10 +395,7 @@ def test_cosmetic_check_fires_with_ignore_labels_false():
 
 
 def _forbidden_errors(validator):
-    return [
-        e for e in validator.errors
-        if "must not be present" in e and "self_reported_ethnicity" in e
-    ]
+    return [e for e in validator.errors if "must not be present" in e and "self_reported_ethnicity" in e]
 
 
 def test_forbidden_sre_columns_absent_passes():
@@ -726,6 +714,7 @@ def test_pattern_rejects_gene_annotation_version_with_trailing_garbage():
 # Direct unit tests for _validate_list and _validate_column overrides
 # ---------------------------------------------------------------------------
 
+
 class TestValidateList:
     """Direct unit tests for HCAValidator._validate_list with element_type 'string'."""
 
@@ -908,6 +897,7 @@ class TestValidateColumn:
 def test_feature_id_warnings_come_last():
     """Feature ID warnings (not found in GENCODE) should be sorted after other warnings."""
     from hca_schema_validator.validator import HCAValidator
+
     v = HCAValidator()
     # Simulate mixed warnings (with WARNING: prefix added by base validate_adata)
     v.warnings = [
@@ -983,6 +973,7 @@ def test_optional_column_emits_warning_message():
     test_adata.raw.var.drop("feature_is_filtered", axis=1, inplace=True)
 
     from hca_schema_validator.validator import HCAValidator
+
     v = HCAValidator()
     v.reset()
     v.adata = test_adata
@@ -1017,13 +1008,9 @@ def test_raw_validation_runs_despite_unrelated_errors():
     assert is_valid is False
 
     # The "raw layer was not performed" warning should be absent
-    raw_skip_warnings = [
-        w for w in validator.warnings
-        if "Validation of raw layer was not performed" in w
-    ]
+    raw_skip_warnings = [w for w in validator.warnings if "Validation of raw layer was not performed" in w]
     assert len(raw_skip_warnings) == 0, (
-        f"Raw validation was skipped despite assay_ontology_term_id being present. "
-        f"Warnings: {validator.warnings}"
+        f"Raw validation was skipped despite assay_ontology_term_id being present. Warnings: {validator.warnings}"
     )
 
 
@@ -1045,9 +1032,7 @@ def test_non_schema_obs_column_with_unused_categories_is_skipped():
 
     _, validator = _validate_from_fixture(modified)
 
-    barcode_messages = [
-        m for m in (validator.warnings + validator.errors) if "barcode" in m
-    ]
+    barcode_messages = [m for m in (validator.warnings + validator.errors) if "barcode" in m]
     assert barcode_messages == [], (
         f"Expected no validator messages about non-schema 'barcode' column; got: {barcode_messages}"
     )
@@ -1071,10 +1056,7 @@ def test_schema_obs_column_with_unused_categories_still_warns():
 
     _, validator = _validate_from_fixture(modified)
 
-    sample_id_zero_obs = [
-        w for w in validator.warnings
-        if "sample_id" in w and "zero observations" in w
-    ]
+    sample_id_zero_obs = [w for w in validator.warnings if "sample_id" in w and "zero observations" in w]
     assert len(sample_id_zero_obs) >= 1, (
         f"Expected at least one zero-observation warning for schema column 'sample_id'; "
         f"got warnings: {validator.warnings}"

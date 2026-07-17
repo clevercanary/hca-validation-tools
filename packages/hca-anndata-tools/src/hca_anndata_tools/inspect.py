@@ -54,9 +54,7 @@ def _classify_x_at_path(path: str, sample_size: int) -> dict:
     nonzero = sample[sample != 0]
     nonzero_count = int(nonzero.size)
     has_negative = bool((sample < 0).any()) if sample.size else False
-    is_integer_valued = (
-        bool(np.all(np.mod(nonzero, 1) == 0)) if nonzero_count else False
-    )
+    is_integer_valued = bool(np.all(np.mod(nonzero, 1) == 0)) if nonzero_count else False
 
     if nonzero_count == 0:
         verdict = "indeterminate"

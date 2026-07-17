@@ -46,6 +46,7 @@ def test_happy_path(cap_h5ad):
 def test_no_cellannotation_metadata_errors(cap_h5ad):
     def mutate(adata):
         _mutate_cap(adata, lambda cap: cap.pop("cellannotation_metadata"))
+
     _rewrite(cap_h5ad, mutate)
 
     v = HCACellAnnotationValidator()
@@ -60,6 +61,7 @@ def test_legacy_toplevel_layout_errors(cap_h5ad):
         cap = dict(adata.uns.pop("cap_metadata"))
         for key, value in cap.items():
             adata.uns[key] = value
+
     _rewrite(cap_h5ad, mutate)
 
     v = HCACellAnnotationValidator()
@@ -72,6 +74,7 @@ def test_mixed_layout_errors(cap_h5ad):
     # rejected — the deprecated key must not slip through.
     def mutate(adata):
         adata.uns["cellannotation_schema_version"] = "1.0.0"
+
     _rewrite(cap_h5ad, mutate)
 
     v = HCACellAnnotationValidator()
@@ -92,6 +95,7 @@ def test_missing_cap_metadata_errors(tmp_path):
 def test_empty_metadata_errors(cap_h5ad):
     def mutate(adata):
         _mutate_cap(adata, lambda cap: cap.update(cellannotation_metadata={}))
+
     _rewrite(cap_h5ad, mutate)
 
     v = HCACellAnnotationValidator()
@@ -102,6 +106,7 @@ def test_empty_metadata_errors(cap_h5ad):
 def test_metadata_wrong_type_errors(cap_h5ad):
     def mutate(adata):
         _mutate_cap(adata, lambda cap: cap.update(cellannotation_metadata="not-a-dict"))
+
     _rewrite(cap_h5ad, mutate)
 
     v = HCACellAnnotationValidator()
@@ -112,6 +117,7 @@ def test_metadata_wrong_type_errors(cap_h5ad):
 def test_missing_schema_version_errors(cap_h5ad):
     def mutate(adata):
         _mutate_cap(adata, lambda cap: cap.pop("cellannotation_schema_version"))
+
     _rewrite(cap_h5ad, mutate)
 
     v = HCACellAnnotationValidator()
@@ -122,6 +128,7 @@ def test_missing_schema_version_errors(cap_h5ad):
 def test_malformed_schema_version_errors(cap_h5ad):
     def mutate(adata):
         _mutate_cap(adata, lambda cap: cap.update(cellannotation_schema_version="not-a-version"))
+
     _rewrite(cap_h5ad, mutate)
 
     v = HCACellAnnotationValidator()
@@ -135,6 +142,7 @@ def test_set_metadata_wrong_type_errors(cap_h5ad):
             adata,
             lambda cap: cap.update(cellannotation_metadata={"author_annotation": "not-a-dict"}),
         )
+
     _rewrite(cap_h5ad, mutate)
 
     v = HCACellAnnotationValidator()
@@ -145,14 +153,12 @@ def test_set_metadata_wrong_type_errors(cap_h5ad):
 def test_missing_required_obs_column_errors(cap_h5ad):
     def mutate(adata):
         adata.obs.drop(columns=["author_annotation--rationale"], inplace=True)
+
     _rewrite(cap_h5ad, mutate)
 
     v = HCACellAnnotationValidator()
     assert v.validate_adata(str(cap_h5ad)) is False
-    assert any(
-        "author_annotation" in e and "author_annotation--rationale" in e
-        for e in v.errors
-    )
+    assert any("author_annotation" in e and "author_annotation--rationale" in e for e in v.errors)
 
 
 def test_validate_adata_resets_state(cap_h5ad, tmp_path):

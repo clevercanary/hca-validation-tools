@@ -5,6 +5,7 @@ import os
 import re
 
 import anndata as ad
+
 from hca_anndata_tools.convert import _slugify, convert_cellxgene_to_hca
 from hca_anndata_tools.write import EDIT_LOG_KEY
 
@@ -142,10 +143,7 @@ def test_convert_edit_log_records_sre_strip(cellxgene_h5ad):
         "self_reported_ethnicity",
     }
     # Strip is also called out in the human-readable conversions list.
-    assert any(
-        "HCA-forbidden obs columns" in c
-        for c in details["conversions"]
-    )
+    assert any("HCA-forbidden obs columns" in c for c in details["conversions"])
 
 
 def test_convert_expression_unchanged(cellxgene_h5ad):

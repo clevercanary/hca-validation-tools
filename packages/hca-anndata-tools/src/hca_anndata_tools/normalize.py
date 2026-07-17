@@ -50,9 +50,7 @@ def normalize_raw(path: str) -> dict:
         with open_h5ad(path, backed=None) as adata:
             # CXG schema forbids feature_is_filtered in raw.var.
             raw_source = adata.copy()
-            raw_source.var = raw_source.var.drop(
-                columns=["feature_is_filtered"], errors="ignore"
-            )
+            raw_source.var = raw_source.var.drop(columns=["feature_is_filtered"], errors="ignore")
             adata.raw = raw_source
             sc.pp.normalize_total(adata, target_sum=_TARGET_SUM)
             sc.pp.log1p(adata)

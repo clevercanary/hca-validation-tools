@@ -88,9 +88,7 @@ def get_descriptive_stats(
                         col_info["top"] = str(vc.index[0])
                         col_info["freq"] = int(vc.iloc[0])
                     if value_counts:
-                        col_info["value_counts"] = {
-                            str(k): int(v) for k, v in vc.items()
-                        }
+                        col_info["value_counts"] = {str(k): int(v) for k, v in vc.items()}
                     result["columns"][col] = col_info
 
             return result

@@ -21,11 +21,15 @@ from cap_upload_validator.errors import CapException, CapMultiException
 
 def main() -> None:
     if len(sys.argv) < 2:
-        print(json.dumps({
-            "valid": False,
-            "errors": ["Missing required file path argument."],
-            "warnings": [],
-        }))
+        print(
+            json.dumps(
+                {
+                    "valid": False,
+                    "errors": ["Missing required file path argument."],
+                    "warnings": [],
+                }
+            )
+        )
         sys.exit(1)
 
     file_path = sys.argv[1]
@@ -44,9 +48,7 @@ def main() -> None:
     except CapMultiException as multi_ex:
         errors.extend(str(e) for e in multi_ex.ex_list)
     except (CapException, Exception) as e:
-        errors.append(
-            f"Encountered an unexpected error while calling CAP validator: {e}"
-        )
+        errors.append(f"Encountered an unexpected error while calling CAP validator: {e}")
     finally:
         # Capture anything the validator printed, then restore stdout
         captured = sys.stdout.getvalue()

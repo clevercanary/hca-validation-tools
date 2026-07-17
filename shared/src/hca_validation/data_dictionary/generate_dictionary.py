@@ -7,22 +7,24 @@ of the HCA validation schema, which can be used as a data dictionary.
 By default, the dictionary is saved to the 'data_dictionaries' directory in the project root.
 """
 
-import sys
 import json
+import sys
 from pathlib import Path
-from typing import Dict, Any
-from linkml_runtime import SchemaView
+from typing import Any, Dict
+
 import jsonasobj2
+from linkml_runtime import SchemaView
 
 from hca_validation.schema_utils import get_class_entity_type
+
 
 def transform_schema_to_data_dictionary(schemaview: SchemaView) -> Dict[str, Any]:
     """
     Transform the LinkML schema into the requested data dictionary format.
-    
+
     Args:
         schema_dict: The expanded LinkML schema dictionary
-        
+
     Returns:
         A dictionary in the requested format for the data dictionary
     """
@@ -31,21 +33,12 @@ def transform_schema_to_data_dictionary(schemaview: SchemaView) -> Dict[str, Any
         "name": "tier_1",
         "title": "HCA Tier 1 Metadata",
         "classes": [],
-        "prefixes": {
-            "cxg": "https://github.com/chanzuckerberg/single-cell-curation/blob/main/schema/5.2.0/schema.md"
-        },
-        "annotations": {
-            "cxg": "CELLxGENE"
-        }
+        "prefixes": {"cxg": "https://github.com/chanzuckerberg/single-cell-curation/blob/main/schema/5.2.0/schema.md"},
+        "annotations": {"cxg": "CELLxGENE"},
     }
-    
+
     # Names of the classes to include in output
-    included_classes = {
-        "Dataset",
-        "Donor",
-        "Sample",
-        "Cell"
-    }
+    included_classes = {"Dataset", "Donor", "Sample", "Cell"}
 
     # Get set of names of all enums in the schema
     schema_enum_names = set(schemaview.all_enums())
@@ -55,15 +48,15 @@ def transform_schema_to_data_dictionary(schemaview: SchemaView) -> Dict[str, Any
         # Skip abstract classes or other non-relevant classes
         if class_info.abstract or class_name not in included_classes:
             continue
-            
+
         # Create the class entry with title-cased name for title
         class_entry = {
             "title": class_name.title(),  # Ensure title case
             "description": class_info.description or "",
             "name": get_class_entity_type(class_name),  # Use lowercase entity type
-            "attributes": []
+            "attributes": [],
         }
-        
+
         # Get all slots for this class, sorting values from the returned set to retain consistent order
         all_slots = sorted(schemaview.class_induced_slots(class_name), key=lambda slot: slot.name)
 
@@ -77,57 +70,58 @@ def transform_schema_to_data_dictionary(schemaview: SchemaView) -> Dict[str, Any
                 "description": slot_info.description or "",
                 "range": slot_info.range if slot_info.range is not None else "string",
                 "required": slot_info.required if slot_info.required is not None else False,
-                "multivalued": slot_info.multivalued if slot_info.multivalued is not None else False
+                "multivalued": slot_info.multivalued if slot_info.multivalued is not None else False,
             }
-            
+
             # Add examples if available
             if slot_info.examples:
                 # Get the first example value
                 example = slot_info.examples[0]
                 attribute["example"] = example.value
-            
+
             # Add annotations if available - format as requested
             if slot_info.annotations:
                 formatted_annotations = {}
                 for annot_name, annot_info in jsonasobj2.items(slot_info.annotations):
                     formatted_annotations[annot_name] = annot_info.value
                 attribute["annotations"] = formatted_annotations
-            
+
             # Add rationale if available in comments - as a string, not an array
             if slot_info.comments:
                 if isinstance(slot_info.comments, list):
                     attribute["rationale"] = "\n".join(slot_info.comments)
                 else:
                     attribute["rationale"] = slot_info.comments
-            
+
             # Add values information if available in notes - as a string, not an array
             if slot_info.notes:
                 if isinstance(slot_info.notes, list):
                     attribute["values"] = "\n".join(slot_info.notes)
                 else:
                     attribute["values"] = slot_info.notes
-            
+
             # If this is an enum, add the values
             if slot_info.range in schema_enum_names:
                 enum_info = schemaview.induced_enum(slot_info.range)
                 values_list = []
-                for pv_name in (enum_info.permissible_values or {}):
+                for pv_name in enum_info.permissible_values or {}:
                     values_list.append(pv_name)
                 if values_list:
                     attribute["values"] = "; ".join(values_list)
-            
+
             # Add the attribute to the class
             class_entry["attributes"].append(attribute)
-        
+
         # Add the class to the output
         output["classes"].append(class_entry)
-    
+
     return output
+
 
 def generate_dictionary(schema_path=None, output_path=None):
     """
     Generate a data dictionary JSON from the specified schema file.
-    
+
     Args:
         schema_path: Path to the schema file (default: core.yaml in the schema directory)
         output_path: Path to write the output JSON (default: standard path in data_dictionaries directory)
@@ -135,33 +129,34 @@ def generate_dictionary(schema_path=None, output_path=None):
     # Get paths
     current_dir = Path(__file__).parent
     project_root = current_dir.parent.parent.parent.parent
-    
+
     # Default to core.yaml if no schema path is provided
     if schema_path is None:
         # Get the path to the schema directory (in shared library)
         schema_dir = project_root / "shared" / "src" / "hca_validation" / "schema"
         schema_path = schema_dir / "core.yaml"
-    
+
     # Load the schema
     schemaview = SchemaView(str(schema_path), merge_imports=True)
-    
+
     # Transform the schema into the requested format
     data_dict = transform_schema_to_data_dictionary(schemaview)
-    
+
     # If no output path is provided, use the standard path
     if output_path is None:
         # Create data_dictionaries directory if it doesn't exist
         data_dict_dir = project_root / "data_dictionaries"
         data_dict_dir.mkdir(exist_ok=True)
-        
+
         # Use a standard filename based on the schema name
         schema_name = Path(schema_path).stem
         output_path = data_dict_dir / f"{schema_name}_data_dictionary.json"
-    
+
     # Write to file
     with open(output_path, "w", encoding="utf-8") as fh:
         json.dump(data_dict, fh, indent=2)
     print(f"Data dictionary written to {output_path}")
+
 
 def main():
     """Command-line entry point."""
@@ -173,11 +168,12 @@ def main():
         current_dir = Path(__file__).parent
         schema_dir = current_dir.parent / "schema"
         schema_path = schema_dir / "core.yaml"
-    
+
     # If a specific output path is provided as an argument, use it
     output_path = sys.argv[2] if len(sys.argv) > 2 else None
-    
+
     generate_dictionary(schema_path, output_path)
+
 
 if __name__ == "__main__":
     main()

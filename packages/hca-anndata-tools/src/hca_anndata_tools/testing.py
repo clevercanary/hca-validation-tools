@@ -35,9 +35,7 @@ def create_sample_h5ad(path: Path) -> Path:
         {
             "sex": pd.Categorical(rng.choice(["male", "female", "unknown"], n_obs)),
             "tissue": pd.Categorical(rng.choice(["brain", "lung", "heart"], n_obs)),
-            "cell_type": pd.Categorical(rng.choice(
-                ["T cell", "B cell", "macrophage", "neuron", "epithelial"], n_obs
-            )),
+            "cell_type": pd.Categorical(rng.choice(["T cell", "B cell", "macrophage", "neuron", "epithelial"], n_obs)),
             "n_counts": rng.integers(500, 5000, n_obs).astype(np.float32),
         },
         index=[f"cell_{i}" for i in range(n_obs)],  # pyright: ignore[reportArgumentType]
@@ -89,14 +87,10 @@ def create_cellxgene_h5ad(path: Path) -> Path:
 
     obs = pd.DataFrame(
         {
-            "cell_type_ontology_term_id": pd.Categorical(
-                rng.choice(["CL:0000540", "CL:0000235"], n_obs)
-            ),
+            "cell_type_ontology_term_id": pd.Categorical(rng.choice(["CL:0000540", "CL:0000235"], n_obs)),
             "assay_ontology_term_id": pd.Categorical(["EFO:0009922"] * n_obs),
             "disease_ontology_term_id": pd.Categorical(["PATO:0000461"] * n_obs),
-            "sex_ontology_term_id": pd.Categorical(
-                rng.choice(["PATO:0000383", "PATO:0000384"], n_obs)
-            ),
+            "sex_ontology_term_id": pd.Categorical(rng.choice(["PATO:0000383", "PATO:0000384"], n_obs)),
             "tissue_ontology_term_id": pd.Categorical(["UBERON:0000966"] * n_obs),
             "self_reported_ethnicity_ontology_term_id": pd.Categorical(["unknown"] * n_obs),
             "development_stage_ontology_term_id": pd.Categorical(["HsapDv:0000087"] * n_obs),
@@ -139,8 +133,12 @@ def create_cellxgene_h5ad(path: Path) -> Path:
     # CellxGENE uns fields
     adata.uns["title"] = "snRNA-seq of Human Retina - Test Subset"
     adata.uns["schema_version"] = "7.1.0"
-    adata.uns["schema_reference"] = "https://github.com/chanzuckerberg/single-cell-curation/blob/main/schema/7.1.0/schema.md"
-    adata.uns["citation"] = "Publication: https://doi.org/10.1234/test Dataset Version: https://datasets.cellxgene.cziscience.com/test-uuid.h5ad"
+    adata.uns["schema_reference"] = (
+        "https://github.com/chanzuckerberg/single-cell-curation/blob/main/schema/7.1.0/schema.md"
+    )
+    adata.uns["citation"] = (
+        "Publication: https://doi.org/10.1234/test Dataset Version: https://datasets.cellxgene.cziscience.com/test-uuid.h5ad"
+    )
     adata.uns["organism_ontology_term_id"] = "NCBITaxon:9606"
     adata.uns["organism"] = "Homo sapiens"
 

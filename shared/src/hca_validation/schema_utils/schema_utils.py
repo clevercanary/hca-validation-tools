@@ -1,5 +1,6 @@
 import os
 from typing import Iterator, List, Optional, Tuple
+
 import jsonasobj2
 from linkml_runtime import SchemaView
 from linkml_runtime.linkml_model.meta import SlotDefinition
@@ -7,22 +8,14 @@ from linkml_runtime.linkml_model.meta import SlotDefinition
 # Map entity types and bionetworks to their corresponding class names
 schema_classes = {
     "dataset": {
-      "DEFAULT": "Dataset",
-      "adipose": "AdiposeDataset",
-      "gut": "GutDataset",
-      "musculoskeletal": "MusculoskeletalDataset",
+        "DEFAULT": "Dataset",
+        "adipose": "AdiposeDataset",
+        "gut": "GutDataset",
+        "musculoskeletal": "MusculoskeletalDataset",
     },
-    "donor": {
-      "DEFAULT": "Donor"
-    },
-    "sample": {
-      "DEFAULT": "Sample",
-      "adipose": "AdiposeSample",
-      "gut": "GutSample"
-    },
-    "cell": {
-      "DEFAULT": "Cell"
-    }
+    "donor": {"DEFAULT": "Donor"},
+    "sample": {"DEFAULT": "Sample", "adipose": "AdiposeSample", "gut": "GutSample"},
+    "cell": {"DEFAULT": "Cell"},
 }
 
 # Derive mapping from class name to entity type
@@ -44,9 +37,10 @@ def load_schemaview():
 def get_entity_class_name(schema_type: str, bionetwork: Optional[str] = None) -> str:
     # Validate schema type
     if schema_type not in schema_classes:
-        raise ValueError(f"Unsupported schema type: {schema_type}. "
-                       f"Supported types are: {', '.join(schema_classes.keys())}")
-    
+        raise ValueError(
+            f"Unsupported schema type: {schema_type}. Supported types are: {', '.join(schema_classes.keys())}"
+        )
+
     type_classes = schema_classes[schema_type]
     return type_classes.get(bionetwork, type_classes["DEFAULT"])
 
@@ -101,9 +95,7 @@ def coverage_classes(schemaview: SchemaView) -> List[str]:
     return eligible
 
 
-def iter_coverage_slots(
-    schemaview: SchemaView, class_name: str
-) -> Iterator[Tuple[str, str]]:
+def iter_coverage_slots(schemaview: SchemaView, class_name: str) -> Iterator[Tuple[str, str]]:
     """Yield (slot_name, annDataLocation) for slots of `class_name` that participate
     in coverage reporting at entity grain.
 
@@ -132,7 +124,7 @@ def get_class_foreign_keys(schemaview: SchemaView, class_name: str):
     Args:
       schemaview: Schemaview to get class and slot info from
       class_name: Name of class to get slots for
-    
+
     Returns:
       List of (slot name, slot range) tuples
     """

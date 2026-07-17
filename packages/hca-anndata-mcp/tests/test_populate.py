@@ -9,6 +9,7 @@ the wrapper's file-I/O contract + the cellxgene-imported origin refusal
 import json
 
 import anndata as ad
+
 from hca_anndata_mcp.tools.populate import populate_labels
 from hca_anndata_tools.write import EDIT_LOG_KEY, make_edit_entry
 from hca_schema_validator.testing import create_labelable_h5ad
@@ -49,11 +50,15 @@ def test_refuse_cellxgene_imported(tmp_path):
         description="Imported from CellxGENE Discover: test",
         details={},
     )
-    log = json.dumps([{
-        **entry,
-        "source_file": "test.h5ad",
-        "source_sha256": "0" * 64,
-    }])
+    log = json.dumps(
+        [
+            {
+                **entry,
+                "source_file": "test.h5ad",
+                "source_sha256": "0" * 64,
+            }
+        ]
+    )
     adata.uns.setdefault("provenance", {})[EDIT_LOG_KEY] = log
     adata.write_h5ad(path)
 
@@ -71,11 +76,15 @@ def test_preserves_existing_edit_log(tmp_path):
         description="Stripped HCA-forbidden obs columns (privacy): ['self_reported_ethnicity']",
         details={"obs_columns_stripped": ["self_reported_ethnicity"]},
     )
-    seed = json.dumps([{
-        **prior,
-        "source_file": "synthetic-seed.h5ad",
-        "source_sha256": "0" * 64,
-    }])
+    seed = json.dumps(
+        [
+            {
+                **prior,
+                "source_file": "synthetic-seed.h5ad",
+                "source_sha256": "0" * 64,
+            }
+        ]
+    )
     adata.uns.setdefault("provenance", {})[EDIT_LOG_KEY] = seed
     adata.write_h5ad(path)
 

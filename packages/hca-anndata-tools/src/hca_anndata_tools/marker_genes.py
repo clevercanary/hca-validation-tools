@@ -85,21 +85,13 @@ def validate_marker_genes(path: str, annotation_set: str | None = None) -> dict:
 
         if annotation_set:
             if annotation_set not in all_sets:
-                return {
-                    "error": (
-                        f"Annotation set '{annotation_set}' not found. "
-                        f"Available: {all_sets}"
-                    )
-                }
+                return {"error": (f"Annotation set '{annotation_set}' not found. Available: {all_sets}")}
             sets_to_check = [annotation_set]
         else:
             sets_to_check = all_sets
 
         # Filter to sets that have marker_gene_evidence
-        sets_with_markers = [
-            s for s in sets_to_check
-            if f"{s}--marker_gene_evidence" in obs_columns
-        ]
+        sets_with_markers = [s for s in sets_to_check if f"{s}--marker_gene_evidence" in obs_columns]
 
         if not sets_with_markers:
             return {
@@ -160,6 +152,7 @@ def validate_marker_genes(path: str, annotation_set: str | None = None) -> dict:
 
         # Deduplicate top-level lists (same gene can appear in multiple sets)
         seen = set()
+
         def _dedup(items):
             out = []
             for item in items:

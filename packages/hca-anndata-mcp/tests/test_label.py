@@ -5,6 +5,7 @@ import shutil
 
 import anndata as ad
 import pytest
+
 from hca_anndata_mcp.tools.label import label_h5ad
 from hca_anndata_tools.testing import create_sample_h5ad
 from hca_schema_validator.testing import create_labelable_h5ad
@@ -26,8 +27,13 @@ def test_label_h5ad_happy_path(labelable_path):
     assert result["feature_name_nan"] == 0
     # cell_type is optional but present in the fixture, so all 7 labels written.
     assert set(result["obs_labels_written"]) == {
-        "tissue", "cell_type", "assay", "disease",
-        "sex", "organism", "development_stage",
+        "tissue",
+        "cell_type",
+        "assay",
+        "disease",
+        "sex",
+        "organism",
+        "development_stage",
     }
 
     labeled = ad.read_h5ad(result["output_path"])
@@ -52,8 +58,13 @@ def test_label_h5ad_writes_edit_log_entry(labelable_path):
     assert details["raw_var_mirrored"] is True
     assert details["observation_joinid_written"] is True
     assert set(details["obs_labels_written"]) == {
-        "tissue", "cell_type", "assay", "disease",
-        "sex", "organism", "development_stage",
+        "tissue",
+        "cell_type",
+        "assay",
+        "disease",
+        "sex",
+        "organism",
+        "development_stage",
     }
 
 

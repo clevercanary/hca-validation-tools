@@ -8,29 +8,28 @@ This script tests the functionality of the entry sheet validator, including:
 2. Handling error conditions (sheet not found, access denied, etc.)
 3. Validating sheet content
 """
-import os
-import json
-from typing import List
-import pytest
-from unittest.mock import DEFAULT, patch, MagicMock, call
-import pandas as pd
-from google.oauth2.service_account import Credentials
-import gspread
-from gspread.exceptions import SpreadsheetNotFound, WorksheetNotFound, APIError
 
+import json
+import os
+from unittest.mock import DEFAULT, MagicMock, patch
+
+import gspread
+import pandas as pd
+import pytest
+from gspread.exceptions import SpreadsheetNotFound
+
+from hca_validation.entry_sheet_validator.common import default_entity_types
+from hca_validation.entry_sheet_validator.process_sheet import process_google_sheet
 from hca_validation.entry_sheet_validator.validate_sheet import (
     ApiInstances,
     SheetReadError,
-    SheetErrorInfo,
     SheetValidationResult,
     SpreadsheetInfo,
     SpreadsheetMetadata,
     WorksheetInfo,
     read_sheet_with_service_account,
-    validate_google_sheet
+    validate_google_sheet,
 )
-from hca_validation.entry_sheet_validator.process_sheet import process_google_sheet
-from hca_validation.entry_sheet_validator.common import default_entity_types
 
 # Test sheet IDs
 PUBLIC_SHEET_ID = "1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY"  # This is a public sheet
@@ -39,67 +38,115 @@ NONEXISTENT_SHEET_ID = "1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"  # This shee
 
 # Sample data for mocking
 # Generic data
-SAMPLE_SHEET_DATA = pd.DataFrame({
-    'column1': ['', '', '', '', 'value1', 'value2'],
-    'column2': ['', '', '', '', 'value3', 'value4']
-})
+SAMPLE_SHEET_DATA = pd.DataFrame(
+    {"column1": ["", "", "", "", "value1", "value2"], "column2": ["", "", "", "", "value3", "value4"]}
+)
 # Data without rows to validate
-SAMPLE_SHEET_DATA_WITHOUT_ENTITIES = pd.DataFrame({
-    'column1': ['', '', '', ''],
-})
+SAMPLE_SHEET_DATA_WITHOUT_ENTITIES = pd.DataFrame(
+    {
+        "column1": ["", "", "", ""],
+    }
+)
 # Data to test parsing of empty values and lists
-SAMPLE_SHEET_DATA_WITH_CASTS = pd.DataFrame({
-    'contact_email': ['', '', '', '', "foo@example.com", '   ', 'bar@example.com'],
-    'study_pi': ['', '', '', '', 'Foo', 'Bar; Baz', '']
-})
+SAMPLE_SHEET_DATA_WITH_CASTS = pd.DataFrame(
+    {
+        "contact_email": ["", "", "", "", "foo@example.com", "   ", "bar@example.com"],
+        "study_pi": ["", "", "", "", "Foo", "Bar; Baz", ""],
+    }
+)
 # Data to test parsing of integers, including invalid values that will be left as strings
-SAMPLE_SHEET_DATA_WITH_INTEGERS = pd.DataFrame({
-    'cell_number_loaded': [
-        '', '', '', '', '1', '-23', '456', '', '7890', '1,234', '-56,789', '123,456', '78,901,234', '56,78',
-        '9,012345',
-    ],
-    # Required to prevent the empty value above from being treated as the end of the data
-    'sample_id': ['', '', '', '', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k']
-})
+SAMPLE_SHEET_DATA_WITH_INTEGERS = pd.DataFrame(
+    {
+        "cell_number_loaded": [
+            "",
+            "",
+            "",
+            "",
+            "1",
+            "-23",
+            "456",
+            "",
+            "7890",
+            "1,234",
+            "-56,789",
+            "123,456",
+            "78,901,234",
+            "56,78",
+            "9,012345",
+        ],
+        # Required to prevent the empty value above from being treated as the end of the data
+        "sample_id": ["", "", "", "", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k"],
+    }
+)
 # Data to test parsing of integers, with values that can all be represented as optional integers
-SAMPLE_SHEET_DATA_WITH_VALID_AND_MISSING_INTEGERS = pd.DataFrame({
-    'cell_number_loaded': ['', '', '', '', '1', '-23', '', '7890'],
-    # Required to prevent the empty value above from being treated as the end of the data
-    'sample_id': ['', '', '', '', 'a', 'b', 'c', 'd']
-})
+SAMPLE_SHEET_DATA_WITH_VALID_AND_MISSING_INTEGERS = pd.DataFrame(
+    {
+        "cell_number_loaded": ["", "", "", "", "1", "-23", "", "7890"],
+        # Required to prevent the empty value above from being treated as the end of the data
+        "sample_id": ["", "", "", "", "a", "b", "c", "d"],
+    }
+)
 # Data to test validation of ID uniqueness
-SAMPLE_SHEET_DATA_WITH_DUPLICATE_IDS = pd.DataFrame({
-    'dataset_id': ['', '', '', '', 'foo', 'bar', 'foo', '', '', 'baz', 'baz', 'baz'],
-    # This column is required to prevent the empty IDs from being treated as the end of the data
-    'description': ['', '', '', '', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']
-})
+SAMPLE_SHEET_DATA_WITH_DUPLICATE_IDS = pd.DataFrame(
+    {
+        "dataset_id": ["", "", "", "", "foo", "bar", "foo", "", "", "baz", "baz", "baz"],
+        # This column is required to prevent the empty IDs from being treated as the end of the data
+        "description": ["", "", "", "", "a", "b", "c", "d", "e", "f", "g", "h"],
+    }
+)
 # Data to test validation of referential integrity
-SAMPLE_DATASETS_SHEET_DATA_WITH_REFERENCES = pd.DataFrame({
-    'dataset_id': ['', '', '', '', 'dataset_a', 'dataset_b', 'dataset_c']
-})
-SAMPLE_DONORS_SHEET_DATA_WITH_REFERENCES = pd.DataFrame({
-    # References to datasets, which do have an ID column; contains empty cells and references to missing datasets
-    'dataset_id': [
-        '', '', '', '', 'dataset_b', 'dataset_a', '', 'dataset_missing_a', 'dataset_missing_b', 'dataset_b', '',
-        'dataset_a', 'dataset_missing_b',
-    ],
-    # Prevent the empty IDs from being treated as the end of the data
-    'description': ['', '', '', '', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i']
-})
-SAMPLE_SAMPLES_SHEET_DATA_WITH_REFERENCES = pd.DataFrame({
-    # Missing references to datasets
-    # References to donors, which are missing an ID column; contains empty cells
-    'donor_id': ['', '', '', '', 'donor_b', '', 'donor_a', '', '', 'donor_b', 'donor_b'],
-    # Prevent the empty IDs from being treated as the end of the data
-    'description': ['', '', '', '', 'a', 'b', 'c', 'd', 'e', 'f', 'g']
-})
+SAMPLE_DATASETS_SHEET_DATA_WITH_REFERENCES = pd.DataFrame(
+    {"dataset_id": ["", "", "", "", "dataset_a", "dataset_b", "dataset_c"]}
+)
+SAMPLE_DONORS_SHEET_DATA_WITH_REFERENCES = pd.DataFrame(
+    {
+        # References to datasets, which do have an ID column; contains empty cells and references to missing datasets
+        "dataset_id": [
+            "",
+            "",
+            "",
+            "",
+            "dataset_b",
+            "dataset_a",
+            "",
+            "dataset_missing_a",
+            "dataset_missing_b",
+            "dataset_b",
+            "",
+            "dataset_a",
+            "dataset_missing_b",
+        ],
+        # Prevent the empty IDs from being treated as the end of the data
+        "description": ["", "", "", "", "a", "b", "c", "d", "e", "f", "g", "h", "i"],
+    }
+)
+SAMPLE_SAMPLES_SHEET_DATA_WITH_REFERENCES = pd.DataFrame(
+    {
+        # Missing references to datasets
+        # References to donors, which are missing an ID column; contains empty cells
+        "donor_id": ["", "", "", "", "donor_b", "", "donor_a", "", "", "donor_b", "donor_b"],
+        # Prevent the empty IDs from being treated as the end of the data
+        "description": ["", "", "", "", "a", "b", "c", "d", "e", "f", "g"],
+    }
+)
 # Data to test automatic fixes
-SAMPLE_SHEET_DATA_WITH_FIXES = pd.DataFrame({
-    'manner_of_death': [
-        '', '', '', '', '1', 'unknown', 'not_applicable', '4', 'not applicable', 'not a manner of death',
-        'not_applicable',
-    ],
-})
+SAMPLE_SHEET_DATA_WITH_FIXES = pd.DataFrame(
+    {
+        "manner_of_death": [
+            "",
+            "",
+            "",
+            "",
+            "1",
+            "unknown",
+            "not_applicable",
+            "4",
+            "not applicable",
+            "not a manner of death",
+            "not_applicable",
+        ],
+    }
+)
 
 # Data to be compared with derived values
 SAMPLE_SHEET_DATA_WITH_CASTS_EXPECTED_NORMALIZATION = [
@@ -145,13 +192,13 @@ def _create_mock_spreadsheet_info(
         datasets_sheet_data = SAMPLE_SHEET_DATA if sheet_data is None else sheet_data
     if samples_sheet_data is not None and donors_sheet_data is None:
         donors_sheet_data = SAMPLE_SHEET_DATA
-    
+
     worksheets = [
         WorksheetInfo(
             data=datasets_sheet_data,
             worksheet_id=123,
             source_columns=list(datasets_sheet_data.columns),
-            source_rows_start_index=1
+            source_rows_start_index=1,
         )
     ]
     if donors_sheet_data is not None:
@@ -160,7 +207,7 @@ def _create_mock_spreadsheet_info(
                 data=donors_sheet_data,
                 worksheet_id=456,
                 source_columns=list(donors_sheet_data.columns),
-                source_rows_start_index=1
+                source_rows_start_index=1,
             )
         )
     if samples_sheet_data is not None:
@@ -169,20 +216,21 @@ def _create_mock_spreadsheet_info(
                 data=samples_sheet_data,
                 worksheet_id=789,
                 source_columns=list(samples_sheet_data.columns),
-                source_rows_start_index=1
+                source_rows_start_index=1,
             )
         )
-    
+
     return SpreadsheetInfo(
         spreadsheet_metadata=SpreadsheetMetadata(
             spreadsheet_title="Test Sheet Title",
             last_updated_date="2025-06-06T22:43:57.554Z",
             last_updated_by="foo",
             last_updated_email="foo@example.com",
-            can_edit=sheet_editable
+            can_edit=sheet_editable,
         ),
-        worksheets=worksheets
+        worksheets=worksheets,
     )
+
 
 def _test_validation_with_mock_sheets_response(
     validation_function,
@@ -195,8 +243,8 @@ def _test_validation_with_mock_sheets_response(
     samples_sheet_data=None,
     expect_read_call=True,
     expected_apis_parameter=None,
-    expected_error_code='validation_error',
-    additional_arguments={}
+    expected_error_code="validation_error",
+    additional_arguments={},
 ) -> SheetValidationResult:
     """Helper function for testing validation with service account access, for a validation function with a call
     signature like validate_google_sheet."""
@@ -206,14 +254,14 @@ def _test_validation_with_mock_sheets_response(
         sheet_data=sheet_data,
         datasets_sheet_data=datasets_sheet_data,
         donors_sheet_data=donors_sheet_data,
-        samples_sheet_data=samples_sheet_data
+        samples_sheet_data=samples_sheet_data,
     )
     mock_read_service_account.return_value = (
         mock_spreadsheet_info,
-        [MagicMock() for _ in mock_spreadsheet_info.worksheets]
+        [MagicMock() for _ in mock_spreadsheet_info.worksheets],
     )
 
-    entity_types = default_entity_types[:len(mock_spreadsheet_info.worksheets)]
+    entity_types = default_entity_types[: len(mock_spreadsheet_info.worksheets)]
 
     # Run validation
     validation_result = validation_function(
@@ -226,7 +274,7 @@ def _test_validation_with_mock_sheets_response(
     else:
         # Otherwise, verify sheet data was not read
         mock_read_service_account.assert_not_called()
-    
+
     # Verify metadata is returned
     assert validation_result.spreadsheet_metadata
     assert validation_result.spreadsheet_metadata.spreadsheet_title == "Test Sheet Title"
@@ -234,7 +282,7 @@ def _test_validation_with_mock_sheets_response(
     assert validation_result.spreadsheet_metadata.last_updated_by == "foo"
     assert validation_result.spreadsheet_metadata.last_updated_email == "foo@example.com"
     assert validation_result.error_code == expected_error_code
-    
+
     return validation_result
 
 
@@ -245,20 +293,22 @@ class TestReadSheetWithServiceAccount:
     def mock_env_with_credentials(self):
         """Fixture to mock environment with service account credentials."""
         original_env = os.environ.copy()
-        os.environ['GOOGLE_SERVICE_ACCOUNT'] = json.dumps({
-            "type": "service_account",
-            "project_id": "test-project",
-            "private_key_id": "test-key-id",
-            "private_key": (
-                "-----BEGIN PRIVATE KEY-----\nMOCK_PRIVATE_KEY_FOR_TESTING_ONLY\n-----END PRIVATE KEY-----\n"
-            ),
-            "client_email": "test@test-project.iam.gserviceaccount.com",
-            "client_id": "123456789",
-            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-            "token_uri": "https://oauth2.googleapis.com/token",
-            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-            "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/test%40test-project.iam.gserviceaccount.com"
-        })
+        os.environ["GOOGLE_SERVICE_ACCOUNT"] = json.dumps(
+            {
+                "type": "service_account",
+                "project_id": "test-project",
+                "private_key_id": "test-key-id",
+                "private_key": (
+                    "-----BEGIN PRIVATE KEY-----\nMOCK_PRIVATE_KEY_FOR_TESTING_ONLY\n-----END PRIVATE KEY-----\n"
+                ),
+                "client_email": "test@test-project.iam.gserviceaccount.com",
+                "client_id": "123456789",
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
+                "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+                "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/test%40test-project.iam.gserviceaccount.com",
+            }
+        )
         yield
         os.environ.clear()
         os.environ.update(original_env)
@@ -273,16 +323,18 @@ class TestReadSheetWithServiceAccount:
         # Mock the Drive API
         mock_get = MagicMock()
         mock_files = MagicMock()
-        
+
         # Mock spreadsheet.values_batch_get
         mock_data = {
-            "valueRanges": [{
-                "values": [
-                    ['header1', 'header2'],  # Headers
-                    ['value1', 'value3'],    # Row 1
-                    ['value2', 'value4']     # Row 2
-                ]
-            }]
+            "valueRanges": [
+                {
+                    "values": [
+                        ["header1", "header2"],  # Headers
+                        ["value1", "value3"],  # Row 1
+                        ["value2", "value4"],  # Row 2
+                    ]
+                }
+            ]
         }
         mock_sheet.values_batch_get.return_value = mock_data
         mock_worksheet.id = 123
@@ -296,22 +348,18 @@ class TestReadSheetWithServiceAccount:
         # Mock the Drive API response
         mock_get.execute.return_value = {
             "modifiedTime": "2025-06-06T22:43:57.554Z",
-            "lastModifyingUser": {
-                "displayName": "foo"
-            },
-            "capabilities": {
-                "canModifyContent": True
-            }
+            "lastModifyingUser": {"displayName": "foo"},
+            "capabilities": {"canModifyContent": True},
         }
         mock_files.get.return_value = mock_get
         mock_drive.files.return_value = mock_files
 
         return mock_sheet
 
-    @patch('googleapiclient.discovery.build')
-    @patch('hca_validation.entry_sheet_validator.validate_sheet.create_requests_session')
-    @patch('gspread.authorize')
-    @patch('google.oauth2.service_account.Credentials.from_service_account_info')
+    @patch("googleapiclient.discovery.build")
+    @patch("hca_validation.entry_sheet_validator.validate_sheet.create_requests_session")
+    @patch("gspread.authorize")
+    @patch("google.oauth2.service_account.Credentials.from_service_account_info")
     def test_with_service_account_credentials(
         self,
         mock_credentials,
@@ -343,7 +391,7 @@ class TestReadSheetWithServiceAccount:
         assert sheet_info.worksheet_id == 123
         assert sheet_info.source_columns == ["header1", "header2"]
         assert sheet_info.source_rows_start_index == 1
-        
+
         # Verify the mocks were called correctly
         mock_credentials.assert_called_once()
         mock_authorize.assert_called_once()
@@ -353,10 +401,10 @@ class TestReadSheetWithServiceAccount:
         # Expect values_batch_get to have been called with a range consisting of the quoted worksheet title
         mock_sheet.values_batch_get.assert_called_once_with(["'Test Worksheet'"])
 
-    @patch('googleapiclient.discovery.build')
-    @patch('hca_validation.entry_sheet_validator.validate_sheet.create_requests_session')
-    @patch('gspread.authorize')
-    @patch('google.oauth2.service_account.Credentials.from_service_account_info')
+    @patch("googleapiclient.discovery.build")
+    @patch("hca_validation.entry_sheet_validator.validate_sheet.create_requests_session")
+    @patch("gspread.authorize")
+    @patch("google.oauth2.service_account.Credentials.from_service_account_info")
     def test_pre_initialize_apis(
         self,
         mock_credentials,
@@ -388,51 +436,53 @@ class TestReadSheetWithServiceAccount:
     def test_without_service_account_credentials(self):
         """Test reading a sheet without service account credentials."""
         # Ensure no credentials are set
-        if 'GOOGLE_SERVICE_ACCOUNT' in os.environ:
-            del os.environ['GOOGLE_SERVICE_ACCOUNT']
+        if "GOOGLE_SERVICE_ACCOUNT" in os.environ:
+            del os.environ["GOOGLE_SERVICE_ACCOUNT"]
 
         # The function should raise a read error containing only 'auth_missing' code when no credentials are available
         with pytest.raises(SheetReadError) as error_info:
             read_sheet_with_service_account(PUBLIC_SHEET_ID)
-        assert error_info.value.error_code == 'auth_missing'
+        assert error_info.value.error_code == "auth_missing"
         assert error_info.value.spreadsheet_metadata is None
         assert error_info.value.worksheet_id is None
-        
+
     def test_with_unresolved_credentials(self):
         """Test reading a sheet with unresolved credentials from Secrets Manager."""
         # Set credentials to a string that looks like an unresolved secret reference
         original_env = os.environ.copy()
-        os.environ['GOOGLE_SERVICE_ACCOUNT'] = 'aws:secretsmanager:dev/hca-atlas-tracker/google-service-account'
+        os.environ["GOOGLE_SERVICE_ACCOUNT"] = "aws:secretsmanager:dev/hca-atlas-tracker/google-service-account"
 
         try:
             # The function should return read error containing only 'auth_unresolved' code when credentials weren't
             # resolved
             with pytest.raises(SheetReadError) as error_info:
                 read_sheet_with_service_account(PUBLIC_SHEET_ID)
-            assert error_info.value.error_code == 'auth_unresolved'
+            assert error_info.value.error_code == "auth_unresolved"
             assert error_info.value.spreadsheet_metadata is None
             assert error_info.value.worksheet_id is None
         finally:
             # Restore original environment
             os.environ.clear()
             os.environ.update(original_env)
-            
+
     def test_with_invalid_format_credentials(self):
         """Test reading a sheet with invalid format credentials."""
         # Set credentials to a valid JSON but missing required fields
         original_env = os.environ.copy()
-        os.environ['GOOGLE_SERVICE_ACCOUNT'] = json.dumps({
-            "type": "service_account",
-            "project_id": "test-project"
-            # Missing required fields: private_key, client_email, token_uri
-        })
+        os.environ["GOOGLE_SERVICE_ACCOUNT"] = json.dumps(
+            {
+                "type": "service_account",
+                "project_id": "test-project",
+                # Missing required fields: private_key, client_email, token_uri
+            }
+        )
 
         try:
             # The function should return read error containing only 'auth_invalid_format' code when credentials are
             # missing required fields
             with pytest.raises(SheetReadError) as error_info:
                 read_sheet_with_service_account(PUBLIC_SHEET_ID)
-            assert error_info.value.error_code == 'auth_invalid_format'
+            assert error_info.value.error_code == "auth_invalid_format"
             assert error_info.value.spreadsheet_metadata is None
             assert error_info.value.worksheet_id is None
         finally:
@@ -440,9 +490,9 @@ class TestReadSheetWithServiceAccount:
             os.environ.clear()
             os.environ.update(original_env)
 
-    @patch('hca_validation.entry_sheet_validator.validate_sheet.create_requests_session')
-    @patch('gspread.authorize')
-    @patch('google.oauth2.service_account.Credentials.from_service_account_info')
+    @patch("hca_validation.entry_sheet_validator.validate_sheet.create_requests_session")
+    @patch("gspread.authorize")
+    @patch("google.oauth2.service_account.Credentials.from_service_account_info")
     def test_sheet_not_found(
         self,
         mock_credentials,
@@ -459,17 +509,17 @@ class TestReadSheetWithServiceAccount:
         # The function should return read error containing only 'sheet_not_found' code when the sheet is not found
         with pytest.raises(SheetReadError) as error_info:
             read_sheet_with_service_account(NONEXISTENT_SHEET_ID)
-        assert error_info.value.error_code == 'sheet_not_found'
+        assert error_info.value.error_code == "sheet_not_found"
         assert error_info.value.spreadsheet_metadata is None
         assert error_info.value.worksheet_id is None
-        
+
         # Verify the mocks were called correctly
         mock_client.open_by_key.assert_called_once_with(NONEXISTENT_SHEET_ID)
 
-    @patch('googleapiclient.discovery.build')
-    @patch('hca_validation.entry_sheet_validator.validate_sheet.create_requests_session')
-    @patch('gspread.authorize')
-    @patch('google.oauth2.service_account.Credentials.from_service_account_info')
+    @patch("googleapiclient.discovery.build")
+    @patch("hca_validation.entry_sheet_validator.validate_sheet.create_requests_session")
+    @patch("gspread.authorize")
+    @patch("google.oauth2.service_account.Credentials.from_service_account_info")
     def test_worksheet_not_found(
         self,
         mock_credentials,
@@ -490,17 +540,17 @@ class TestReadSheetWithServiceAccount:
         # the worksheet is not found
         with pytest.raises(SheetReadError) as error_info:
             read_sheet_with_service_account(PUBLIC_SHEET_ID)
-        assert error_info.value.error_code == 'worksheet_not_found'
+        assert error_info.value.error_code == "worksheet_not_found"
         assert error_info.value.spreadsheet_metadata is not None
         assert error_info.value.worksheet_id is None
-        
+
         # Verify the mocks were called correctly
         mock_client.open_by_key.assert_called_once_with(PUBLIC_SHEET_ID)
         mock_sheet.worksheets.assert_called_once()
 
-    @patch('hca_validation.entry_sheet_validator.validate_sheet.create_requests_session')
-    @patch('gspread.authorize')
-    @patch('google.oauth2.service_account.Credentials.from_service_account_info')
+    @patch("hca_validation.entry_sheet_validator.validate_sheet.create_requests_session")
+    @patch("gspread.authorize")
+    @patch("google.oauth2.service_account.Credentials.from_service_account_info")
     def test_api_error(
         self,
         mock_credentials,
@@ -518,17 +568,17 @@ class TestReadSheetWithServiceAccount:
         # The function should return read error containing only 'api_error' code when an API error occurs
         with pytest.raises(SheetReadError) as error_info:
             read_sheet_with_service_account(PUBLIC_SHEET_ID)
-        assert error_info.value.error_code == 'api_error'
+        assert error_info.value.error_code == "api_error"
         assert error_info.value.spreadsheet_metadata is None
         assert error_info.value.worksheet_id is None
-        
+
         # Verify the mocks were called correctly
         mock_client.open_by_key.assert_called_once_with(PUBLIC_SHEET_ID)
 
-    @patch('googleapiclient.discovery.build')
-    @patch('hca_validation.entry_sheet_validator.validate_sheet.create_requests_session')
-    @patch('gspread.authorize')
-    @patch('google.oauth2.service_account.Credentials.from_service_account_info')
+    @patch("googleapiclient.discovery.build")
+    @patch("hca_validation.entry_sheet_validator.validate_sheet.create_requests_session")
+    @patch("gspread.authorize")
+    @patch("google.oauth2.service_account.Credentials.from_service_account_info")
     def test_generic_exception_with_metadata(
         self,
         mock_credentials,
@@ -548,10 +598,10 @@ class TestReadSheetWithServiceAccount:
         # The function should return read error containing 'api_error' code and spreadsheet metadata
         with pytest.raises(SheetReadError) as error_info:
             read_sheet_with_service_account(PUBLIC_SHEET_ID)
-        assert error_info.value.error_code == 'api_error'
+        assert error_info.value.error_code == "api_error"
         assert error_info.value.spreadsheet_metadata is not None
         assert error_info.value.worksheet_id is None
-        
+
         # Verify the mocks were called correctly
         mock_client.open_by_key.assert_called_once_with(PUBLIC_SHEET_ID)
         mock_sheet.worksheets.assert_called_once()
@@ -560,12 +610,12 @@ class TestReadSheetWithServiceAccount:
 class TestValidateGoogleSheet:
     """Tests for the validate_google_sheet function."""
 
-    @patch('hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account')
+    @patch("hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account")
     def test_service_account_access(self, mock_read_service_account):
         """Test validation with service account access."""
         _test_validation_with_mock_sheets_response(validate_google_sheet, mock_read_service_account)
 
-    @patch('hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account')
+    @patch("hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account")
     def test_service_account_access_with_bionetwork(self, mock_read_service_account):
         """Test validation using network-specific model."""
         result = _test_validation_with_mock_sheets_response(
@@ -575,15 +625,17 @@ class TestValidateGoogleSheet:
         # but not by the default model
         assert any(error.column == "doublet_detection" for error in result.errors)
 
-    @patch('hca_validation.validator.validate')
-    @patch('hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account')
+    @patch("hca_validation.validator.validate")
+    @patch("hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account")
     def test_row_normalization_before_validation(self, mock_read_service_account, mock_validate):
         """Test normalization of rows passed to the validation function."""
         # Store dicts that the validation function is called with
         validated_dicts = []
+
         def save_data(data, class_name):
             validated_dicts.append(data)
             return DEFAULT
+
         mock_validate.side_effect = save_data
         # Validate the mock sheet
         _test_validation_with_mock_sheets_response(
@@ -592,15 +644,18 @@ class TestValidateGoogleSheet:
         # Confirm that values were converted as expected
         assert validated_dicts == SAMPLE_SHEET_DATA_WITH_CASTS_EXPECTED_NORMALIZATION
 
-    @patch('hca_validation.validator.validate')
-    @patch('hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account')
+    @patch("hca_validation.validator.validate")
+    @patch("hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account")
     def test_int_normalization_before_validation(self, mock_read_service_account, mock_validate):
         """Test normalization of integer fields passed to the validation function."""
         # Store dicts that the validation function is called with
         validated_dicts = []
+
         def save_data(data, class_name):
-            if class_name.endswith("Sample"): validated_dicts.append(data)
+            if class_name.endswith("Sample"):
+                validated_dicts.append(data)
             return DEFAULT
+
         mock_validate.side_effect = save_data
         # Validate the mock sheet
         _test_validation_with_mock_sheets_response(
@@ -611,16 +666,19 @@ class TestValidateGoogleSheet:
         # Confirm that values were converted as expected
         assert validated_dicts == SAMPLE_SHEET_DATA_WITH_INTEGERS_EXPECTED_NORMALIZATION
 
-    @patch('hca_validation.validator.validate')
-    @patch('hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account')
+    @patch("hca_validation.validator.validate")
+    @patch("hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account")
     def test_valid_and_missing_int_normalization_before_validation(self, mock_read_service_account, mock_validate):
         """Test normalization of integer fields passed to the validation function, with only valid and missing
         integers."""
         # Store dicts that the validation function is called with
         validated_dicts = []
+
         def save_data(data, class_name):
-            if class_name.endswith("Sample"): validated_dicts.append(data)
+            if class_name.endswith("Sample"):
+                validated_dicts.append(data)
             return DEFAULT
+
         mock_validate.side_effect = save_data
         # Validate the mock sheet
         _test_validation_with_mock_sheets_response(
@@ -631,15 +689,17 @@ class TestValidateGoogleSheet:
         # Confirm that values were converted as expected
         assert validated_dicts == SAMPLE_SHEET_DATA_WITH_VALID_AND_MISSING_INTEGERS_EXPECTED_NORMALIZATION
 
-    @patch('hca_validation.validator.validate')
-    @patch('hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account')
+    @patch("hca_validation.validator.validate")
+    @patch("hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account")
     def test_class_name(self, mock_read_service_account, mock_validate):
         """Test that the correct class name is passed to the validation function."""
         # Store class name that the validation function was last called with
         last_class_name_info = {}
+
         def save_class_name(data, class_name):
             last_class_name_info["value"] = class_name
             return DEFAULT
+
         mock_validate.side_effect = save_class_name
         # Validate the mock sheet with default dataset model
         _test_validation_with_mock_sheets_response(validate_google_sheet, mock_read_service_account)
@@ -647,13 +707,11 @@ class TestValidateGoogleSheet:
         assert last_class_name_info["value"] == "Dataset"
         mock_read_service_account.reset_mock()
         # Validate the mock sheet with Gut Network dataset model
-        _test_validation_with_mock_sheets_response(
-            validate_google_sheet, mock_read_service_account, bionetwork="gut"
-        )
+        _test_validation_with_mock_sheets_response(validate_google_sheet, mock_read_service_account, bionetwork="gut")
         # Confirm that correct class was used
         assert last_class_name_info["value"] == "GutDataset"
 
-    @patch('hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account')
+    @patch("hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account")
     def test_duplicate_ids(self, mock_read_service_account):
         """Test validation of duplicate IDs."""
         result = _test_validation_with_mock_sheets_response(
@@ -671,7 +729,7 @@ class TestValidateGoogleSheet:
             for error in duplicate_id_errors
         )
 
-    @patch('hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account')
+    @patch("hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account")
     def test_referential_integrity(self, mock_read_service_account):
         """Test validation of referential integrity."""
         result = _test_validation_with_mock_sheets_response(
@@ -679,24 +737,22 @@ class TestValidateGoogleSheet:
             mock_read_service_account,
             datasets_sheet_data=SAMPLE_DATASETS_SHEET_DATA_WITH_REFERENCES,
             donors_sheet_data=SAMPLE_DONORS_SHEET_DATA_WITH_REFERENCES,
-            samples_sheet_data=SAMPLE_SAMPLES_SHEET_DATA_WITH_REFERENCES
+            samples_sheet_data=SAMPLE_SAMPLES_SHEET_DATA_WITH_REFERENCES,
         )
         # Based on the mock data, expect:
         # - Three missing reference errors for donors
         # - Four missing reference errors for samples, all for donor_id
         donors_reference_errors = [
-            error for error in result.errors
-            if error.entity_type == "donor" and "doesn't exist" in error.message
+            error for error in result.errors if error.entity_type == "donor" and "doesn't exist" in error.message
         ]
         samples_reference_errors = [
-            error for error in result.errors
-            if error.entity_type == "sample" and "doesn't exist" in error.message
+            error for error in result.errors if error.entity_type == "sample" and "doesn't exist" in error.message
         ]
         assert len(donors_reference_errors) == 3
         assert len(samples_reference_errors) == 4
         assert all(error.column == "donor_id" for error in samples_reference_errors)
 
-    @patch('hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account')
+    @patch("hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account")
     def test_available_fixes(self, mock_read_service_account):
         """Test that validate_google_sheet does not provide fixes on its own."""
         result = _test_validation_with_mock_sheets_response(
@@ -706,7 +762,7 @@ class TestValidateGoogleSheet:
         )
         assert all(error.input_fix is None for error in result.errors)
 
-    @patch('hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account')
+    @patch("hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account")
     def test_pre_initialized_apis(self, mock_read_service_account):
         """Test that pre-initialized APIs get passed to read_sheet_with_service_account."""
         mock_apis = MagicMock()
@@ -714,10 +770,10 @@ class TestValidateGoogleSheet:
             validate_google_sheet,
             mock_read_service_account,
             additional_arguments={"apis": mock_apis},
-            expected_apis_parameter=mock_apis
+            expected_apis_parameter=mock_apis,
         )
 
-    @patch('hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account')
+    @patch("hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account")
     def test_pre_loaded_sheet_data(self, mock_read_service_account):
         """Test validation of pre-loaded sheet data."""
         mock_sheet_info = _create_mock_spreadsheet_info()
@@ -725,31 +781,34 @@ class TestValidateGoogleSheet:
             validate_google_sheet,
             mock_read_service_account,
             additional_arguments={"sheet_read_result": mock_sheet_info},
-            expect_read_call=False
+            expect_read_call=False,
         )
 
-    @patch('hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account')
+    @patch("hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account")
     def test_service_account_access_failure(self, mock_read_service_account):
         """Test validation when service account access fails."""
         # Mock service account read failure
-        mock_read_service_account.side_effect = SheetReadError(error_code='auth_missing')
+        mock_read_service_account.side_effect = SheetReadError(error_code="auth_missing")
 
         # Run validation
         validation_result = validate_google_sheet(PUBLIC_SHEET_ID)
 
         # Verify service account method was used
         mock_read_service_account.assert_called_once_with(PUBLIC_SHEET_ID, ["dataset", "donor", "sample"], None)
-        
+
         # Verify that an error was reported
         assert len(validation_result.errors) > 0
         assert any("access" in error.message.lower() for error in validation_result.errors)
-        
+
         # Verify result, metadata, error code, and summary
         assert validation_result.successful is False
         assert validation_result.spreadsheet_metadata is None
-        assert validation_result.error_code == 'auth_missing'
+        assert validation_result.error_code == "auth_missing"
         assert validation_result.summary == {
-            "dataset_count": None, "donor_count": None, "sample_count": None, "error_count": 1
+            "dataset_count": None,
+            "donor_count": None,
+            "sample_count": None,
+            "error_count": 1,
         }
 
     def test_invalid_bionetwork(self):
@@ -758,8 +817,8 @@ class TestValidateGoogleSheet:
         # Run validation
         with pytest.raises(ValueError, match="'not-a-bionetwork' is not a valid bionetwork"):
             validate_google_sheet(PUBLIC_SHEET_ID, bionetwork="not-a-bionetwork")
-    
-    @patch('hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account')
+
+    @patch("hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account")
     def test_sheet_without_entities(self, mock_read_service_account):
         """Test that entity counts are still returned when an error is generated due to a sheet lacking rows to
         validate."""
@@ -768,17 +827,17 @@ class TestValidateGoogleSheet:
             mock_read_service_account,
             datasets_sheet_data=SAMPLE_SHEET_DATA_WITHOUT_ENTITIES,
             donors_sheet_data=SAMPLE_SHEET_DATA,
-            expected_error_code="no_data"
+            expected_error_code="no_data",
         )
         assert result.successful is False
         assert result.summary == {"dataset_count": 0, "donor_count": 2, "error_count": 1}
-        
+
 
 class TestProcessGoogleSheet:
     """Tests for the process_google_sheet function."""
 
-    @patch('hca_validation.entry_sheet_validator.process_sheet.init_apis')
-    @patch('hca_validation.entry_sheet_validator.process_sheet.read_sheet_with_service_account')
+    @patch("hca_validation.entry_sheet_validator.process_sheet.init_apis")
+    @patch("hca_validation.entry_sheet_validator.process_sheet.read_sheet_with_service_account")
     def test_available_fixes(self, mock_read_service_account, mock_init_apis):
         """Test that available fixes are present in error info for non-editable spreadsheet."""
         mock_apis = MagicMock()
@@ -787,7 +846,7 @@ class TestProcessGoogleSheet:
             process_google_sheet,
             mock_read_service_account,
             donors_sheet_data=SAMPLE_SHEET_DATA_WITH_FIXES,
-            expected_apis_parameter=mock_apis
+            expected_apis_parameter=mock_apis,
         )
         # Based on the mock data, expect three errors in the manner_of_death column, with appropriate input values
         # and fixed values (or lack thereof)
@@ -800,9 +859,9 @@ class TestProcessGoogleSheet:
         assert mod_errors[2].input == "not_applicable"
         assert mod_errors[2].input_fix == "not applicable"
 
-    @patch('hca_validation.entry_sheet_validator.process_sheet.init_apis')
-    @patch('hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account')
-    @patch('hca_validation.entry_sheet_validator.process_sheet.read_sheet_with_service_account')
+    @patch("hca_validation.entry_sheet_validator.process_sheet.init_apis")
+    @patch("hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account")
+    @patch("hca_validation.entry_sheet_validator.process_sheet.read_sheet_with_service_account")
     def test_application_of_fixes(self, mock_read_service_account_a, mock_read_service_account_b, mock_init_apis):
         """Test validation and updating of editable spreadsheet with fixes available."""
         mock_apis = MagicMock()
@@ -811,7 +870,7 @@ class TestProcessGoogleSheet:
         mock_donors_worksheet = MagicMock()
         mock_read_result = (
             _create_mock_spreadsheet_info(donors_sheet_data=SAMPLE_SHEET_DATA_WITH_FIXES, sheet_editable=True),
-            [mock_datasets_worksheet, mock_donors_worksheet]
+            [mock_datasets_worksheet, mock_donors_worksheet],
         )
         mock_read_service_account_a.return_value = mock_read_result
         mock_read_service_account_b.return_value = mock_read_result
@@ -824,18 +883,15 @@ class TestProcessGoogleSheet:
         mock_read_service_account_a.assert_called_once_with(PUBLIC_SHEET_ID, ["dataset", "donor"], mock_apis)
         mock_read_service_account_b.assert_called_once_with(PUBLIC_SHEET_ID, ["dataset", "donor"], mock_apis)
 
-    @patch('hca_validation.entry_sheet_validator.process_sheet.init_apis')
-    @patch('hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account')
-    @patch('hca_validation.entry_sheet_validator.process_sheet.read_sheet_with_service_account')
+    @patch("hca_validation.entry_sheet_validator.process_sheet.init_apis")
+    @patch("hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account")
+    @patch("hca_validation.entry_sheet_validator.process_sheet.read_sheet_with_service_account")
     def test_sheet_without_fixes(self, mock_read_service_account_a, mock_read_service_account_b, mock_init_apis):
         """Test processing of editable spreadsheet without fixes."""
         mock_apis = MagicMock()
         mock_init_apis.return_value = mock_apis
         mock_datasets_worksheet = MagicMock()
-        mock_read_result = (
-            _create_mock_spreadsheet_info(sheet_editable=True),
-            [mock_datasets_worksheet]
-        )
+        mock_read_result = (_create_mock_spreadsheet_info(sheet_editable=True), [mock_datasets_worksheet])
         mock_read_service_account_a.return_value = mock_read_result
         mock_read_service_account_b.return_value = mock_read_result
         process_google_sheet(PUBLIC_SHEET_ID, entity_types=["dataset"])
@@ -844,41 +900,44 @@ class TestProcessGoogleSheet:
         # Verify that spreadsheet was only read once
         mock_read_service_account_a.assert_called_once_with(PUBLIC_SHEET_ID, ["dataset"], mock_apis)
         mock_read_service_account_b.assert_not_called()
-    
-    @patch('hca_validation.entry_sheet_validator.process_sheet.init_apis')
-    @patch('hca_validation.entry_sheet_validator.process_sheet.read_sheet_with_service_account')
+
+    @patch("hca_validation.entry_sheet_validator.process_sheet.init_apis")
+    @patch("hca_validation.entry_sheet_validator.process_sheet.read_sheet_with_service_account")
     def test_early_read_error(self, mock_read_service_account, mock_init_apis):
         """Test that a validation result object is properly returned when the initial read call raises a
         SheetReadError."""
-        
+
         # Mock APIs
         mock_apis = MagicMock()
         mock_init_apis.return_value = mock_apis
 
         # Mock read failure
-        mock_read_service_account.side_effect = SheetReadError(error_code='sheet_not_found')
+        mock_read_service_account.side_effect = SheetReadError(error_code="sheet_not_found")
 
         # Run processing pipeline
         validation_result = process_google_sheet(PUBLIC_SHEET_ID)
 
         # Verify read function was called
         mock_read_service_account.assert_called_once_with(PUBLIC_SHEET_ID, ["dataset", "donor", "sample"], mock_apis)
-        
+
         # Verify that an error was reported
         assert len(validation_result.errors) > 0
         assert any("access" in error.message.lower() for error in validation_result.errors)
-        
+
         # Verify result, metadata, error code, and summary
         assert validation_result.successful is False
         assert validation_result.spreadsheet_metadata is None
-        assert validation_result.error_code == 'sheet_not_found'
+        assert validation_result.error_code == "sheet_not_found"
         assert validation_result.summary == {
-            "dataset_count": None, "donor_count": None, "sample_count": None, "error_count": 1
+            "dataset_count": None,
+            "donor_count": None,
+            "sample_count": None,
+            "error_count": 1,
         }
 
-    @patch('hca_validation.entry_sheet_validator.process_sheet.init_apis')
-    @patch('hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account')
-    @patch('hca_validation.entry_sheet_validator.process_sheet.read_sheet_with_service_account')
+    @patch("hca_validation.entry_sheet_validator.process_sheet.init_apis")
+    @patch("hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account")
+    @patch("hca_validation.entry_sheet_validator.process_sheet.read_sheet_with_service_account")
     def test_google_error_while_applying_fixes(
         self, mock_read_service_account_a, mock_read_service_account_b, mock_init_apis
     ):
@@ -891,14 +950,10 @@ class TestProcessGoogleSheet:
         mock_update_response = MagicMock()
         mock_read_service_account_a.return_value = (
             _create_mock_spreadsheet_info(donors_sheet_data=SAMPLE_SHEET_DATA_WITH_FIXES, sheet_editable=True),
-            [mock_datasets_worksheet, mock_donors_worksheet]
+            [mock_datasets_worksheet, mock_donors_worksheet],
         )
         mock_update_response.json.return_value = {
-            "error": {
-                "code": 500,
-                "message": "Test error",
-                "status": "internal_server_error"
-            }
+            "error": {"code": 500, "message": "Test error", "status": "internal_server_error"}
         }
         mock_donors_worksheet.batch_update.side_effect = gspread.exceptions.APIError(mock_update_response)
 
@@ -916,8 +971,8 @@ class TestProcessGoogleSheet:
         assert validation_result.successful is False
         assert validation_result.spreadsheet_metadata is not None
         assert validation_result.spreadsheet_metadata.spreadsheet_title == "Test Sheet Title"
-        assert validation_result.error_code == 'api_error'
-        assert validation_result.summary  == {"dataset_count": None, "donor_count": None, "error_count": 1}
+        assert validation_result.error_code == "api_error"
+        assert validation_result.summary == {"dataset_count": None, "donor_count": None, "error_count": 1}
 
 
 # Integration tests that use actual Google Sheets
@@ -929,18 +984,19 @@ class TestIntegration:
     def test_read_actual_sheet_with_service_account(self):
         """Test reading an actual sheet with service account credentials."""
         # Load credentials from .env file if not already in environment
-        if not os.environ.get('GOOGLE_SERVICE_ACCOUNT'):
-            from dotenv import load_dotenv
+        if not os.environ.get("GOOGLE_SERVICE_ACCOUNT"):
             from pathlib import Path
-            
-            dotenv_path = Path(__file__).parent.parent.parent / '.env'
+
+            from dotenv import load_dotenv
+
+            dotenv_path = Path(__file__).parent.parent.parent / ".env"
             if dotenv_path.exists():
                 load_dotenv(dotenv_path=dotenv_path)
-        
+
         # Skip test if credentials are still not available
-        if not os.environ.get('GOOGLE_SERVICE_ACCOUNT'):
+        if not os.environ.get("GOOGLE_SERVICE_ACCOUNT"):
             pytest.skip("No service account credentials available for integration test")
-            
+
         sheet_read_result = read_sheet_with_service_account(PUBLIC_SHEET_ID)[0]
         assert isinstance(sheet_read_result, SpreadsheetInfo)
         assert isinstance(sheet_read_result.spreadsheet_metadata.spreadsheet_title, str)
@@ -958,68 +1014,70 @@ class TestIntegration:
     def test_validate_actual_sheet_with_service_account(self):
         """Test validating an actual sheet with service account credentials."""
         # Load credentials from .env file if not already in environment
-        if not os.environ.get('GOOGLE_SERVICE_ACCOUNT'):
-            from dotenv import load_dotenv
+        if not os.environ.get("GOOGLE_SERVICE_ACCOUNT"):
             from pathlib import Path
-            
-            dotenv_path = Path(__file__).parent.parent.parent / '.env'
+
+            from dotenv import load_dotenv
+
+            dotenv_path = Path(__file__).parent.parent.parent / ".env"
             if dotenv_path.exists():
                 load_dotenv(dotenv_path=dotenv_path)
-        
+
         # Skip test if credentials are still not available
-        if not os.environ.get('GOOGLE_SERVICE_ACCOUNT'):
+        if not os.environ.get("GOOGLE_SERVICE_ACCOUNT"):
             pytest.skip("No service account credentials available for integration test")
-        
+
         # Run validation
         validation_result = validate_google_sheet(PUBLIC_SHEET_ID)
-        
+
         # Verify that the metadata was returned
         assert validation_result.spreadsheet_metadata is not None
         assert isinstance(validation_result.spreadsheet_metadata.spreadsheet_title, str)
         assert isinstance(validation_result.spreadsheet_metadata.last_updated_date, str)
         assert isinstance(validation_result.spreadsheet_metadata.last_updated_by, str)
-        
+
         # We don't assert on the number of errors since the sheet content may change
         # Just verify that the function ran without exceptions
-        
+
         # For public sheets, we should get the default title
         spreadsheet_title = validation_result.spreadsheet_metadata.spreadsheet_title
         assert spreadsheet_title == "Title unavailable (public access)" or isinstance(spreadsheet_title, str)
-        
+
         # The actual function returns 'validation_error' if validation errors are found
         # or 'no_data' if no data is found to validate
-        assert validation_result.error_code in ['validation_error', 'no_data']
+        assert validation_result.error_code in ["validation_error", "no_data"]
 
         # Verify that a summary with the expected information was returned
         assert isinstance(validation_result.summary, dict)
-        assert 'dataset_count' in validation_result.summary
-        assert isinstance(validation_result.summary['dataset_count'], int)
-        assert 'donor_count' in validation_result.summary
-        assert isinstance(validation_result.summary['donor_count'], int)
-        assert 'sample_count' in validation_result.summary
-        assert isinstance(validation_result.summary['sample_count'], int)
-        assert 'error_count' in validation_result.summary
-        assert isinstance(validation_result.summary['error_count'], int)
+        assert "dataset_count" in validation_result.summary
+        assert isinstance(validation_result.summary["dataset_count"], int)
+        assert "donor_count" in validation_result.summary
+        assert isinstance(validation_result.summary["donor_count"], int)
+        assert "sample_count" in validation_result.summary
+        assert isinstance(validation_result.summary["sample_count"], int)
+        assert "error_count" in validation_result.summary
+        assert isinstance(validation_result.summary["error_count"], int)
 
     def test_read_private_sheet_with_credentials(self):
         """Test reading a private sheet with service account credentials."""
         # Try to load credentials from .env file if not in environment
-        if not os.environ.get('GOOGLE_SERVICE_ACCOUNT'):
+        if not os.environ.get("GOOGLE_SERVICE_ACCOUNT"):
             # Check if .env file exists
-            env_file = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
+            env_file = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
             if os.path.exists(env_file):
                 try:
                     # Load .env file
                     from dotenv import load_dotenv
+
                     load_dotenv(env_file)
                     print(f"Loaded credentials from {env_file}")
                 except ImportError:
                     print("python-dotenv not installed, skipping .env loading")
-        
+
         # Skip this test if no credentials are available after trying to load from .env
-        if not os.environ.get('GOOGLE_SERVICE_ACCOUNT'):
+        if not os.environ.get("GOOGLE_SERVICE_ACCOUNT"):
             pytest.skip("Service account credentials not available")
-            
+
         # This test only runs if GOOGLE_SERVICE_ACCOUNT is set
         sheet_read_result = read_sheet_with_service_account(PRIVATE_SHEET_ID)[0]
         assert isinstance(sheet_read_result, SpreadsheetInfo)

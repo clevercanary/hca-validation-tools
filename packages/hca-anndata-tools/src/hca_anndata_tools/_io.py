@@ -121,9 +121,7 @@ def read_var_gene_names(path: str) -> tuple[set[str], dict[str, str]]:
 
         gene_names = set(names)
 
-        eid_to_var_name = {
-            _strip_ensembl_version(eid): name for eid, name in zip(index, names)
-        }
+        eid_to_var_name = {_strip_ensembl_version(eid): name for eid, name in zip(index, names)}
 
         return gene_names, eid_to_var_name
 
@@ -277,10 +275,7 @@ def verify_categorical_integrity(
             actual = int((codes >= 0).sum())
             expected = expected_valid_counts[col]
             if actual != expected:
-                return (
-                    f"Column '{col}': expected {expected} valid values, "
-                    f"got {actual}"
-                )
+                return f"Column '{col}': expected {expected} valid values, got {actual}"
 
     return None
 
@@ -300,8 +295,7 @@ def verify_obs_transplant(
     """
     import numpy as np
 
-    with h5py.File(temp_path, "r") as f_temp, \
-         h5py.File(output_path, "r") as f_out:
+    with h5py.File(temp_path, "r") as f_temp, h5py.File(output_path, "r") as f_out:
         for col in columns:
             temp_item = f_temp["obs"][col]
             out_item = f_out["obs"][col]

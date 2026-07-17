@@ -34,8 +34,16 @@ from .write import (
 
 # Default HCA placeholder values (case-insensitive)
 _DEFAULT_PLACEHOLDERS = [
-    "unknown", "na", "n/a", "none", "not available",
-    "not applicable", "tbd", "todo", "null", "undefined",
+    "unknown",
+    "na",
+    "n/a",
+    "none",
+    "not available",
+    "not applicable",
+    "tbd",
+    "todo",
+    "null",
+    "undefined",
 ]
 
 
@@ -81,17 +89,19 @@ def list_uns_fields(path: str) -> dict:
                 is_set = name in adata.uns
                 serialized = make_serializable(current) if is_set else None
 
-                fields.append({
-                    "name": name,
-                    "title": info.title,
-                    "description": info.description,
-                    "type": _type_display(info.annotation),
-                    "required": info.required,
-                    "bionetwork_only": info.bionetwork_only,
-                    "current_value": serialized,
-                    "is_set": is_set,
-                    "examples": info.examples,
-                })
+                fields.append(
+                    {
+                        "name": name,
+                        "title": info.title,
+                        "description": info.description,
+                        "type": _type_display(info.annotation),
+                        "required": info.required,
+                        "bionetwork_only": info.bionetwork_only,
+                        "current_value": serialized,
+                        "is_set": is_set,
+                        "examples": info.examples,
+                    }
+                )
 
                 if info.required and not is_set:
                     if info.bionetwork_only:
@@ -209,8 +219,7 @@ def set_uns(
                 if invalid:
                     return {
                         "error": (
-                            f"batch_condition values {invalid} are not obs columns. "
-                            f"Valid columns: {sorted(obs_cols)}"
+                            f"batch_condition values {invalid} are not obs columns. Valid columns: {sorted(obs_cols)}"
                         )
                     }
 
@@ -219,8 +228,7 @@ def set_uns(
                 if validated_value not in obsm_keys:
                     return {
                         "error": (
-                            f"default_embedding '{validated_value}' is not an obsm key. "
-                            f"Valid keys: {sorted(obsm_keys)}"
+                            f"default_embedding '{validated_value}' is not an obsm key. Valid keys: {sorted(obsm_keys)}"
                         )
                     }
 
@@ -378,7 +386,8 @@ def replace_placeholder_values(
                 cat_ds.attrs["encoding-type"] = "string-array"
                 cat_ds.attrs["encoding-version"] = "0.2.0"
                 codes_ds = grp.create_dataset(
-                    "codes", data=new_codes.astype(codes.dtype),
+                    "codes",
+                    data=new_codes.astype(codes.dtype),
                     compression=codes_compression,
                     compression_opts=codes_compression_opts,
                     chunks=codes_chunks,
@@ -389,9 +398,7 @@ def replace_placeholder_values(
             write_edit_log_h5py(f, log_result["json"])
 
             # Verify integrity after rewrite
-            integrity_err = verify_categorical_integrity(
-                f, list(columns_fixed.keys()), expected_valid_counts
-            )
+            integrity_err = verify_categorical_integrity(f, list(columns_fixed.keys()), expected_valid_counts)
             if integrity_err:
                 raise RuntimeError(integrity_err)
 

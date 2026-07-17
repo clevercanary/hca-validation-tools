@@ -93,8 +93,7 @@ def test_preflight_fails_on_pre_populated_obs_label(base_adata, tmp_path):
     with pytest.raises(ValueError) as excinfo:
         _label(base_adata, tmp_path)
     assert (
-        "Add labels error: Column 'tissue' is a reserved column name "
-        "of 'obs'. Remove it from h5ad and try again."
+        "Add labels error: Column 'tissue' is a reserved column name of 'obs'. Remove it from h5ad and try again."
     ) in str(excinfo.value)
 
 
@@ -147,10 +146,7 @@ def test_preflight_fails_on_pre_populated_observation_joinid(base_adata, tmp_pat
     with pytest.raises(ValueError) as excinfo:
         _label(base_adata, tmp_path)
     msg = str(excinfo.value)
-    assert (
-        "Column 'observation_joinid' is a reserved column name "
-        "of 'obs'. Remove it from h5ad and try again."
-    ) in msg
+    assert ("Column 'observation_joinid' is a reserved column name of 'obs'. Remove it from h5ad and try again.") in msg
     assert "Add labels error:" not in msg.split("observation_joinid")[0].rsplit("\n", 1)[-1]
 
 

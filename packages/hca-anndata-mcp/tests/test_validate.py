@@ -1,6 +1,7 @@
 """Unit tests for the validate_schema + validate_cell_annotation MCP wrappers."""
 
 import anndata as ad
+
 from hca_anndata_mcp.tools.validate import validate_cell_annotation, validate_schema
 from hca_anndata_tools.testing import create_sample_h5ad
 from hca_schema_validator.cell_annotation_validator import NO_SETS_ERROR
@@ -10,7 +11,12 @@ from hca_schema_validator.testing import create_cap_annotated_h5ad, create_label
 def test_validate_schema_shape(sample_h5ad):
     result = validate_schema(str(sample_h5ad))
     assert set(result.keys()) == {
-        "filename", "is_valid", "error_count", "warning_count", "errors", "warnings",
+        "filename",
+        "is_valid",
+        "error_count",
+        "warning_count",
+        "errors",
+        "warnings",
     }
     assert isinstance(result["is_valid"], bool)
     assert result["error_count"] == len(result["errors"])
@@ -35,10 +41,9 @@ def test_validate_schema_surfaces_cosmetic_check(tmp_path):
 
     result = validate_schema(str(path))
 
-    assert any(
-        "'WRONG_TISSUE_LABEL'" in e and "Either delete the cosmetic column" in e
-        for e in result["errors"]
-    ), result["errors"]
+    assert any("'WRONG_TISSUE_LABEL'" in e and "Either delete the cosmetic column" in e for e in result["errors"]), (
+        result["errors"]
+    )
     # #443: a drifting label is an error, never a "delete the column" warning.
     assert not any("obs['tissue']" in w for w in result["warnings"]), result["warnings"]
     assert result["is_valid"] is False
@@ -91,7 +96,12 @@ def test_validate_cell_annotation_shape(tmp_path):
     path = create_cap_annotated_h5ad(tmp_path / "cap.h5ad")
     result = validate_cell_annotation(str(path))
     assert set(result.keys()) == {
-        "filename", "is_valid", "error_count", "warning_count", "errors", "warnings",
+        "filename",
+        "is_valid",
+        "error_count",
+        "warning_count",
+        "errors",
+        "warnings",
     }
     assert isinstance(result["is_valid"], bool)
     assert result["error_count"] == len(result["errors"])

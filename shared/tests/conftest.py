@@ -3,7 +3,6 @@
 
 """Shared test configuration for HCA validation tools."""
 
-import pytest
 import sys
 from pathlib import Path
 

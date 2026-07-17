@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 import pytest
 import scipy.sparse as sp
+
 from hca_anndata_tools._gencode import load_gencode_reference
 from hca_anndata_tools._io import read_var_gene_names
 from hca_anndata_tools.marker_genes import (
@@ -127,9 +128,7 @@ def marker_h5ad(tmp_path_factory) -> Path:
             "test_labels--marker_gene_evidence": pd.Categorical(
                 rng.choice(["GFAP,AIF1", "RBFOX3", "CIMAP3", "SCL25A5"], n_obs)
             ),
-            "test_labels--cell_ontology_term_id": pd.Categorical(
-                rng.choice(["CL:0000540", "CL:0000127"], n_obs)
-            ),
+            "test_labels--cell_ontology_term_id": pd.Categorical(rng.choice(["CL:0000540", "CL:0000127"], n_obs)),
         },
         index=[f"cell_{i}" for i in range(n_obs)],
     )
@@ -160,9 +159,7 @@ def clean_h5ad(tmp_path_factory) -> Path:
         {
             "organism_ontology_term_id": pd.Categorical(["NCBITaxon:9606"] * n_obs),
             "ann": pd.Categorical(rng.choice(["a", "b"], n_obs)),
-            "ann--marker_gene_evidence": pd.Categorical(
-                rng.choice(["GFAP", "AIF1,RBFOX3"], n_obs)
-            ),
+            "ann--marker_gene_evidence": pd.Categorical(rng.choice(["GFAP", "AIF1,RBFOX3"], n_obs)),
         },
         index=[f"cell_{i}" for i in range(n_obs)],
     )
@@ -256,9 +253,7 @@ def versioned_h5ad(tmp_path_factory) -> Path:
         {
             "organism_ontology_term_id": pd.Categorical(["NCBITaxon:9606"] * n_obs),
             "ann": pd.Categorical(rng.choice(["a", "b"], n_obs)),
-            "ann--marker_gene_evidence": pd.Categorical(
-                rng.choice(["GFAP", "CIMAP3"], n_obs)
-            ),
+            "ann--marker_gene_evidence": pd.Categorical(rng.choice(["GFAP", "CIMAP3"], n_obs)),
         },
         index=[f"cell_{i}" for i in range(n_obs)],
     )

@@ -8,3 +8,24 @@ extend-exclude = [
 
 [lint]
 select = ["E", "F", "I", "W"]
+
+[lint.per-file-ignores]
+# __init__.py files re-export their package's public API; the imports are
+# intentional and covered by __all__ / lazy __getattr__ patterns, not dead code.
+"__init__.py" = ["F401"]
+
+[lint.isort]
+# Declare our packages explicitly so import grouping (I001) is identical in
+# every environment. Ruff's auto-detection of first-party vs third-party varies
+# with where it runs from (it classified `hca_validation` first-party locally
+# but third-party in CI), which made the same file pass locally and fail in CI.
+known-first-party = [
+    "hca_validation",
+    "hca_anndata_tools",
+    "hca_anndata_mcp",
+    "hca_schema_validator",
+    "hca_schema_validator_service",
+    "dataset_validator",
+    "cellxgene_validator",
+    "entry_sheet_validator_lambda",
+]

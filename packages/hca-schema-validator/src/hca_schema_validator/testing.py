@@ -15,7 +15,6 @@ import numpy as np
 import pandas as pd
 from scipy import sparse
 
-
 # GENCODE-recognized human Ensembl IDs used in the existing labeler fixtures.
 # These all resolve to a gene symbol, so ``feature_name`` comes out fully
 # populated (helps test the happy-path overwrite reporting).

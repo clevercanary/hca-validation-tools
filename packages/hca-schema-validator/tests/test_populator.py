@@ -2,10 +2,10 @@
 
 import anndata as ad
 import pandas as pd
+
 from hca_schema_validator import populate_in_memory
 from hca_schema_validator.testing import create_labelable_h5ad
 from hca_schema_validator.validator import _lookup_canonical_label
-
 
 # Canonical labels resolved from the fixture's term_ids. Computed once at
 # import so tests don't all pay the ontology-lookup cost.
@@ -109,7 +109,6 @@ def test_partial_fill_obs_when_some_rows_nan(tmp_path):
     in 'filled' (merged values), NOT in 'matched'."""
     adata = _load(create_labelable_h5ad(tmp_path / "partial_obs.h5ad"))
     # 4 rows in the fixture; pre-populate 2 with canonical, 2 with NaN.
-    n = adata.n_obs
     canonical_tissue = _FIXTURE_CANONICAL["tissue"]
     partial = pd.Categorical(
         [canonical_tissue, None, canonical_tissue, None],
@@ -141,10 +140,7 @@ def test_partial_fill_var_when_some_rows_nan(tmp_path):
 
     # On the target file: pre-populate every-other row with the canonical
     # value, leave the rest NaN.
-    partial = [
-        canonical_names[i] if i % 2 == 0 else None
-        for i in range(adata.n_vars)
-    ]
+    partial = [canonical_names[i] if i % 2 == 0 else None for i in range(adata.n_vars)]
     adata.var["feature_name"] = pd.Categorical(partial)
 
     result = populate_in_memory(adata)
@@ -178,10 +174,9 @@ def test_raw_var_mismatch_refuses_not_silently_skips(tmp_path):
     assert "error" in result
     # The error must be attributed to raw.var (the rewrite at fill-time
     # changes the prefix in the message).
-    assert any(
-        "raw.var['feature_name']" in e and "WRONG_RAW_SYMBOL" in e
-        for e in result["details"]["errors"]
-    ), result["details"]["errors"]
+    assert any("raw.var['feature_name']" in e and "WRONG_RAW_SYMBOL" in e for e in result["details"]["errors"]), result[
+        "details"
+    ]["errors"]
 
 
 def test_raw_var_fill_when_empty(tmp_path):
@@ -207,7 +202,6 @@ def test_partial_fill_refuses_when_filled_rows_mismatch(tmp_path):
     canonical → refuse entirely, no fill of the NaN rows. The whole
     point: only fill NaNs when every populated row passes verification."""
     adata = _load(create_labelable_h5ad(tmp_path / "partial_mismatch.h5ad"))
-    n = adata.n_obs
     # Producer wrote a WRONG value on 2 rows, left 2 NaN. No fill should
     # happen even though the NaN rows could be filled — the populated
     # rows fail verification.
@@ -253,9 +247,7 @@ def test_error_on_obs_mismatch(tmp_path):
     assert "error" in result
     assert "details" in result
     assert any(
-        "obs['tissue']" in e
-        and "totally-wrong-tissue-label" in e
-        and "UBERON:0002048" in e
+        "obs['tissue']" in e and "totally-wrong-tissue-label" in e and "UBERON:0002048" in e
         for e in result["details"]["errors"]
     )
 
@@ -268,10 +260,7 @@ def test_error_on_var_mismatch(tmp_path):
     result = populate_in_memory(adata)
 
     assert "error" in result
-    assert any(
-        "var['feature_name']" in e and "WRONG_SYMBOL" in e
-        for e in result["details"]["errors"]
-    )
+    assert any("var['feature_name']" in e and "WRONG_SYMBOL" in e for e in result["details"]["errors"])
 
 
 def test_error_message_distinguishes_unknown_ensembl(tmp_path):
@@ -293,10 +282,7 @@ def test_error_message_distinguishes_unknown_ensembl(tmp_path):
     msgs = result["details"]["errors"]
     # New message format for the NaN-canonical branch — should not
     # render '<NA>'.
-    nan_branch_msgs = [
-        m for m in msgs
-        if "GENCODE has no canonical value" in m
-    ]
+    nan_branch_msgs = [m for m in msgs if "GENCODE has no canonical value" in m]
     assert nan_branch_msgs, f"expected NaN-canonical branch message, got: {msgs}"
     assert not any("'<NA>'" in m for m in nan_branch_msgs), (
         f"NaN-canonical messages must not format canonical as '<NA>': {nan_branch_msgs}"
@@ -324,9 +310,7 @@ def test_partial_mix_mismatch_blocks_all(tmp_path):
 
 def test_refuse_sre_present(tmp_path):
     adata = _load(create_labelable_h5ad(tmp_path / "sre.h5ad"))
-    adata.obs["self_reported_ethnicity_ontology_term_id"] = pd.Categorical(
-        ["unknown"] * adata.n_obs
-    )
+    adata.obs["self_reported_ethnicity_ontology_term_id"] = pd.Categorical(["unknown"] * adata.n_obs)
 
     result = populate_in_memory(adata)
     assert "error" in result
@@ -371,9 +355,7 @@ def test_refuse_observation_joinid_present(tmp_path):
 
     adata = _load(create_labelable_h5ad(tmp_path / "with_joinid.h5ad"))
     # No schema_version, no provenance/cellxgene — only the joinid.
-    adata.obs["observation_joinid"] = pd.Categorical(
-        [f"joinid_{i}" for i in range(adata.n_obs)]
-    )
+    adata.obs["observation_joinid"] = pd.Categorical([f"joinid_{i}" for i in range(adata.n_obs)])
 
     result = populate_in_memory(adata)
     assert "error" in result
@@ -402,21 +384,22 @@ def test_does_NOT_check_edit_log(tmp_path):
     import json
 
     adata = _load(create_labelable_h5ad(tmp_path / "with_import.h5ad"))
-    seed = json.dumps([{
-        "timestamp": "2026-01-01T00:00:00+00:00",
-        "tool": "hca-anndata-tools",
-        "tool_version": "0.0.0",
-        "operation": "import_cellxgene",
-        "description": "Imported from CellxGENE Discover",
-        "details": {},
-        "source_file": "x.h5ad",
-        "source_sha256": "0" * 64,
-    }])
+    seed = json.dumps(
+        [
+            {
+                "timestamp": "2026-01-01T00:00:00+00:00",
+                "tool": "hca-anndata-tools",
+                "tool_version": "0.0.0",
+                "operation": "import_cellxgene",
+                "description": "Imported from CellxGENE Discover",
+                "details": {},
+                "source_file": "x.h5ad",
+                "source_sha256": "0" * 64,
+            }
+        ]
+    )
     adata.uns.setdefault("provenance", {})["edit_history"] = seed
 
     # Should NOT refuse — origin check is the wrapper's concern.
     result = populate_in_memory(adata)
-    assert "error" not in result, (
-        "populator must not check edit log; that's the wrapper's job. "
-        f"Got: {result}"
-    )
+    assert "error" not in result, f"populator must not check edit log; that's the wrapper's job. Got: {result}"

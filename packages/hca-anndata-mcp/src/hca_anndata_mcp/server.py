@@ -1,6 +1,12 @@
 """FastMCP server definition and tool registration."""
 
 from fastmcp import FastMCP
+
+from hca_anndata_mcp.tools.label import label_h5ad
+from hca_anndata_mcp.tools.plot import plot_embedding_mcp
+from hca_anndata_mcp.tools.populate import populate_labels
+from hca_anndata_mcp.tools.strip import strip_forbidden_obs_columns
+from hca_anndata_mcp.tools.validate import validate_cell_annotation, validate_schema
 from hca_anndata_tools import (
     check_schema_type,
     check_x_normalization,
@@ -20,12 +26,6 @@ from hca_anndata_tools import (
     view_data,
     view_edit_log,
 )
-
-from hca_anndata_mcp.tools.label import label_h5ad
-from hca_anndata_mcp.tools.plot import plot_embedding_mcp
-from hca_anndata_mcp.tools.populate import populate_labels
-from hca_anndata_mcp.tools.strip import strip_forbidden_obs_columns
-from hca_anndata_mcp.tools.validate import validate_cell_annotation, validate_schema
 
 mcp = FastMCP(
     name="hca-anndata-mcp",

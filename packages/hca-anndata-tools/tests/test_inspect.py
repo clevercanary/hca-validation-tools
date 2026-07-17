@@ -4,6 +4,7 @@ import anndata as ad
 import numpy as np
 import pandas as pd
 import scipy.sparse as sp
+
 from hca_anndata_tools.inspect import check_x_normalization
 
 
@@ -141,8 +142,15 @@ def test_check_x_normalization_return_shape_is_fixed(tmp_path):
     path = _write_h5ad(tmp_path / "shape.h5ad", X)
 
     expected = {
-        "filename", "dtype", "sample_size", "nonzero_count",
-        "nonzero_min", "nonzero_max", "is_integer_valued",
-        "has_negative", "has_raw_x", "verdict",
+        "filename",
+        "dtype",
+        "sample_size",
+        "nonzero_count",
+        "nonzero_min",
+        "nonzero_max",
+        "is_integer_valued",
+        "has_negative",
+        "has_raw_x",
+        "verdict",
     }
     assert set(check_x_normalization(str(path)).keys()) == expected

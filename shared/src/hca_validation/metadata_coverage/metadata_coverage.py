@@ -36,7 +36,6 @@ from hca_validation.schema_utils import (
     iter_coverage_slots,
 )
 
-
 SCHEMA_NAME = "tier_1"
 
 
@@ -72,11 +71,7 @@ def compute_metadata_coverage(adata: Any, schemaview: SchemaView) -> Dict[str, A
         # in obs, regardless of whether the column is present. A missing column is
         # the canonical "identifier not populated anywhere" signal and must not be
         # silently dropped — otherwise downstream can't distinguish it from drift.
-        if (
-            identifier is not None
-            and get_slot_anndata_location(identifier) == "obs"
-            and identifier_name is not None
-        ):
+        if identifier is not None and get_slot_anndata_location(identifier) == "obs" and identifier_name is not None:
             field_coverage.append(_obs_identifier_entry(identifier_name, obs))
 
         # Bucket all obs-grain entity-property slots in one vectorized pass per class.
@@ -89,13 +84,15 @@ def compute_metadata_coverage(adata: Any, schemaview: SchemaView) -> Dict[str, A
             if location == "uns":
                 field_coverage.append(_uns_entry(entity_class, slot_name, uns))
             elif location == "obs":
-                field_coverage.append(_obs_entry(
-                    entity_class=entity_class,
-                    slot_name=slot_name,
-                    obs=obs,
-                    grouped=grouped,
-                    record_count=record_count,
-                ))
+                field_coverage.append(
+                    _obs_entry(
+                        entity_class=entity_class,
+                        slot_name=slot_name,
+                        obs=obs,
+                        grouped=grouped,
+                        record_count=record_count,
+                    )
+                )
 
     _assert_invariant(entities, field_coverage)
 

@@ -63,10 +63,7 @@ def compress_h5ad(
         if current_filter and not force:
             return {
                 "skipped": True,
-                "reason": (
-                    f"X/data already uses '{current_filter}' filter "
-                    f"(pass force=True to rewrite anyway)"
-                ),
+                "reason": (f"X/data already uses '{current_filter}' filter (pass force=True to rewrite anyway)"),
                 "current_compression": current_filter,
             }
 
@@ -85,7 +82,9 @@ def compress_h5ad(
 
         with open_h5ad(path, backed="r") as adata:
             result = write_h5ad(
-                adata, path, [entry],
+                adata,
+                path,
+                [entry],
                 compression=compression,
                 compression_opts=compression_level,
             )

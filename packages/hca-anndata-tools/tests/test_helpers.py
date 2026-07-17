@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 import scipy.sparse as sp
+
 from hca_anndata_tools._io import (
     read_categorical_data,
     read_obs_index,
@@ -138,6 +139,7 @@ def test_transplant_obs_columns_basic(tmp_path):
 @pytest.fixture
 def _make_pair(tmp_path):
     """Create a matching temp/output pair with obs columns."""
+
     def _factory(obs_data: dict, index: list[str], mismatch_col: str | None = None):
         n = len(index)
         obs = pd.DataFrame(obs_data, index=index)
@@ -161,6 +163,7 @@ def _make_pair(tmp_path):
                     item["codes"][...] = codes
 
         return str(temp_path), str(output_path)
+
     return _factory
 
 
@@ -298,6 +301,7 @@ def test_build_edit_log_basic(tmp_path):
     assert "error" not in result
 
     import json
+
     log = json.loads(result["json"])
     assert len(log) == 1
     assert log[0]["tool"] == "test"
@@ -307,6 +311,7 @@ def test_build_edit_log_basic(tmp_path):
 
 def test_build_edit_log_appends(tmp_path):
     import json
+
     path = tmp_path / "test.h5ad"
     path.write_bytes(b"content")
 
@@ -327,6 +332,7 @@ def test_build_edit_log_precomputed_sha(tmp_path):
     result = build_edit_log("[]", [entry], str(path), source_sha256="abc123")
 
     import json
+
     log = json.loads(result["json"])
     assert log[0]["source_sha256"] == "abc123"
 

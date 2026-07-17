@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 import pytest
 import scipy.sparse as sp
+
 from hca_anndata_tools.copy_cap import copy_cap_annotations
 from hca_anndata_tools.write import EDIT_LOG_KEY
 
@@ -33,37 +34,21 @@ def _make_cap_source(
     obs = pd.DataFrame(
         {
             "author_cell_type": pd.Categorical(labels),
-            "author_cell_type--cell_fullname": pd.Categorical(
-                [f"{label} cell" for label in labels]
-            ),
+            "author_cell_type--cell_fullname": pd.Categorical([f"{label} cell" for label in labels]),
             "author_cell_type--cell_ontology_exists": pd.Categorical(["True"] * n),
-            "author_cell_type--cell_ontology_term_id": pd.Categorical(
-                rng.choice(["CL:0000540", "CL:0000127"], n)
-            ),
-            "author_cell_type--cell_ontology_term": pd.Categorical(
-                rng.choice(["neuron", "astrocyte"], n)
-            ),
+            "author_cell_type--cell_ontology_term_id": pd.Categorical(rng.choice(["CL:0000540", "CL:0000127"], n)),
+            "author_cell_type--cell_ontology_term": pd.Categorical(rng.choice(["neuron", "astrocyte"], n)),
             "author_cell_type--rationale": pd.Categorical(["morphology"] * n),
-            "author_cell_type--marker_gene_evidence": pd.Categorical(
-                rng.choice(["GFAP", "AIF1"], n)
-            ),
+            "author_cell_type--marker_gene_evidence": pd.Categorical(rng.choice(["GFAP", "AIF1"], n)),
             "author_cell_type--canonical_marker_genes": pd.Categorical(["unknown"] * n),
             "author_cell_type--synonyms": pd.Categorical(["unknown"] * n),
             "author_cell_type--category_fullname": pd.Categorical(["neural cell"] * n),
-            "author_cell_type--category_cell_ontology_term_id": pd.Categorical(
-                ["CL:0002319"] * n
-            ),
-            "author_cell_type--category_cell_ontology_term": pd.Categorical(
-                ["neural cell"] * n
-            ),
+            "author_cell_type--category_cell_ontology_term_id": pd.Categorical(["CL:0002319"] * n),
+            "author_cell_type--category_cell_ontology_term": pd.Categorical(["neural cell"] * n),
             # Demographic columns (should NOT be copied)
             "sex--cell_ontology_term_id": pd.Categorical(["PATO:0000384"] * n),
-            "development_stage--cell_ontology_term_id": pd.Categorical(
-                ["HsapDv:0000087"] * n
-            ),
-            "self_reported_ethnicity--cell_ontology_term_id": pd.Categorical(
-                ["HANCESTRO:0005"] * n
-            ),
+            "development_stage--cell_ontology_term_id": pd.Categorical(["HsapDv:0000087"] * n),
+            "self_reported_ethnicity--cell_ontology_term_id": pd.Categorical(["HANCESTRO:0005"] * n),
             "cell_type--cell_ontology_term_id": pd.Categorical(["CL:0000540"] * n),
         },
         index=cell_ids,
@@ -178,7 +163,6 @@ def test_copy_marker_gene_validation(cap_source, hca_target):
     assert "found_in_var" in mv
 
 
-
 def test_copy_uns_cap_metadata_nested(cap_source, hca_target):
     result = copy_cap_annotations(str(cap_source), str(hca_target))
     written = ad.read_h5ad(result["output_path"])
@@ -266,7 +250,6 @@ def test_copy_skips_demographic_columns(cap_source, hca_target):
     assert "sex--cell_ontology_term_id" not in written.obs.columns
     assert "development_stage--cell_ontology_term_id" not in written.obs.columns
     assert "self_reported_ethnicity--cell_ontology_term_id" not in written.obs.columns
-
 
 
 # --- Edit log ---
@@ -384,9 +367,7 @@ def test_var_overlap_rejects_duplicate_var_ids(cap_source, tmp_path):
 
 
 def test_copy_cell_mismatch_fails(cap_source, tmp_path):
-    different_cells = _make_hca_target(
-        tmp_path / "different.h5ad", [f"other_{i}" for i in range(10)]
-    )
+    different_cells = _make_hca_target(tmp_path / "different.h5ad", [f"other_{i}" for i in range(10)])
     result = copy_cap_annotations(str(cap_source), str(different_cells))
     assert "error" in result
     assert "mismatch" in result["error"].lower()
@@ -397,9 +378,7 @@ def test_copy_cap_uncovered_fails(cap_source, tmp_path):
     # HCA is a strict subset of CAP (5 of CAP's 10 cells). HCA is fully covered,
     # but half of CAP is missing from HCA — exercises the asymmetric failure
     # where missing_from_hca exceeds the threshold while missing_from_cap is 0.
-    subset = _make_hca_target(
-        tmp_path / "subset.h5ad", [f"cell_{i}" for i in range(5)]
-    )
+    subset = _make_hca_target(tmp_path / "subset.h5ad", [f"cell_{i}" for i in range(5)])
     result = copy_cap_annotations(str(cap_source), str(subset))
     assert "error" in result
     assert "mismatch" in result["error"].lower()
@@ -413,9 +392,7 @@ def test_copy_partial_overlap_succeeds(tmp_path):
     # Threshold is inclusive, so this should succeed and the HCA-only row
     # should end up with NaN in the new CAP columns.
     target_ids = [f"cell_{i}" for i in range(19)] + ["target_only"]
-    cap_20 = _make_cap_source(
-        tmp_path / "cap_20.h5ad", [f"cell_{i}" for i in range(20)]
-    )
+    cap_20 = _make_cap_source(tmp_path / "cap_20.h5ad", [f"cell_{i}" for i in range(20)])
     target = _make_hca_target(tmp_path / "target_20.h5ad", target_ids)
 
     result = copy_cap_annotations(str(cap_20), str(target))
@@ -453,6 +430,7 @@ def test_copy_rejects_non_categorical_source_column(cap_source, hca_target):
     # bypassing anndata's auto-coercion to categorical) to simulate a source
     # that violates CAP's categorical-everywhere serialization contract.
     import h5py
+
     col = "author_cell_type--rationale"
     with h5py.File(cap_source, "a") as f:
         del f["obs"][col]
@@ -495,7 +473,8 @@ def test_copy_target_has_cap_fails(cap_source, hca_target_with_cap):
 
 
 def test_copy_cap_preserves_cellxgene_provenance(cap_source, tmp_path):
-    """When target already has provenance/cellxgene, copy_cap writes the CAP block to uns['cap_metadata'] alongside it (preserving the cellxgene provenance)."""
+    """When target already has provenance/cellxgene, copy_cap writes the CAP block
+    to uns['cap_metadata'] alongside it (preserving the cellxgene provenance)."""
     n = len(CELL_IDS)
     rng = np.random.default_rng(99)
     X = sp.random(n, 5, density=0.3, format="csr", dtype=np.float32, random_state=rng)
@@ -525,9 +504,7 @@ def test_copy_cap_preserves_cellxgene_provenance(cap_source, tmp_path):
 
 
 def test_copy_overwrite(cap_source, hca_target_with_cap):
-    result = copy_cap_annotations(
-        str(cap_source), str(hca_target_with_cap), overwrite=True
-    )
+    result = copy_cap_annotations(str(cap_source), str(hca_target_with_cap), overwrite=True)
     assert "error" not in result
     written = ad.read_h5ad(result["output_path"])
     # Old CAP column removed
