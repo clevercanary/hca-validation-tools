@@ -996,7 +996,7 @@ def main() -> int:
         if exit_code == 0:
             logger.info("Dataset Validator completed successfully")
 
-        return exit_code
+    return exit_code
 
 
 if __name__ == "__main__":

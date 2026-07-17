@@ -84,7 +84,7 @@ def apply_fixes(
       gspread.exceptions.APIError:
         May be raised if a gspread operation fails
     """
-    worksheets_by_entity_type = dict(zip(entity_types, worksheets))
+    worksheets_by_entity_type = dict(zip(entity_types, worksheets, strict=True))
 
     value_ranges_by_entity_type = get_fix_value_ranges_by_entity_type(validation_result.errors, entity_types, sheet_id)
 

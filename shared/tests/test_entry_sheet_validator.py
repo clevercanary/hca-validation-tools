@@ -244,10 +244,13 @@ def _test_validation_with_mock_sheets_response(
     expect_read_call=True,
     expected_apis_parameter=None,
     expected_error_code="validation_error",
-    additional_arguments={},
+    additional_arguments=None,
 ) -> SheetValidationResult:
     """Helper function for testing validation with service account access, for a validation function with a call
     signature like validate_google_sheet."""
+
+    if additional_arguments is None:
+        additional_arguments = {}
 
     # Mock successful service account read
     mock_spreadsheet_info = _create_mock_spreadsheet_info(

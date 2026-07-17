@@ -156,7 +156,9 @@ def validate_referential_integrity(
         # Add errors to list
         line_errors.extend(
             get_row_error_details(index, id_value, fk_value, fk_slot_name, fk_entity_type)
-            for (index, fk_value), id_value in zip(missing_ref_rows[fk_slot_name].items(), missing_ref_row_ids)
+            for (index, fk_value), id_value in zip(
+                missing_ref_rows[fk_slot_name].items(), missing_ref_row_ids, strict=True
+            )
         )
 
     if not line_errors:

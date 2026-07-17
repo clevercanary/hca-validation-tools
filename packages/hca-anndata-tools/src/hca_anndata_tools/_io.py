@@ -121,7 +121,7 @@ def read_var_gene_names(path: str) -> tuple[set[str], dict[str, str]]:
 
         gene_names = set(names)
 
-        eid_to_var_name = {_strip_ensembl_version(eid): name for eid, name in zip(index, names)}
+        eid_to_var_name = {_strip_ensembl_version(eid): name for eid, name in zip(index, names, strict=True)}
 
         return gene_names, eid_to_var_name
 
