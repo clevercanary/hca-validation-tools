@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 import shutil
 import tempfile
@@ -49,7 +50,7 @@ _SKIP_SETS = {"sex", "development_stage", "self_reported_ethnicity"}
 # replaced wholesale on overwrite.
 _OVERWRITE_UNS_KEYS = {CAP_METADATA_KEY}
 
-# Maximum percent (0–100) of cells on either side that may be absent from the
+# Maximum percent (0-100) of cells on either side that may be absent from the
 # other. Applied to both `missing_from_hca.pct` and `missing_from_cap.pct`.
 _MAX_MISSING_PCT = 5.0
 
@@ -57,7 +58,7 @@ _MAX_MISSING_PCT = 5.0
 def _compute_axis_overlap(cap_ids: set[str], hca_ids: set[str]) -> dict:
     """Compare CAP and HCA ID sets along one axis (cells or genes).
 
-    Percentages are 0–100, computed as a share of the side the missing IDs
+    Percentages are 0-100, computed as a share of the side the missing IDs
     came from: `missing_from_hca.pct = 100 * missing_from_hca.n / n_cap`,
     and symmetrically for `missing_from_cap`. Rounded to one decimal place
     for readability — exact ratios can be recomputed from the integer
@@ -101,7 +102,7 @@ def _get_annotation_sets(cap_block: Mapping[str, Any]) -> list[str]:
     """Get annotation sets defined in the CAP block's cellannotation_metadata."""
     meta = cap_block.get("cellannotation_metadata", {})
     if isinstance(meta, dict):
-        return [s for s in meta.keys() if s not in _SKIP_SETS]
+        return [s for s in meta if s not in _SKIP_SETS]
     return []
 
 
@@ -408,8 +409,6 @@ def copy_cap_annotations(
 
     except Exception as e:
         if output_path and os.path.isfile(output_path):
-            try:
+            with contextlib.suppress(OSError):
                 os.remove(output_path)
-            except OSError:
-                pass
         return {"error": str(e)}

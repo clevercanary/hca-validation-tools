@@ -15,6 +15,7 @@ truth.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import shutil
 
@@ -176,8 +177,6 @@ def strip_forbidden_obs_columns(path: str) -> dict:
 
     except Exception as e:
         if output_path and os.path.isfile(output_path):
-            try:
+            with contextlib.suppress(OSError):
                 os.remove(output_path)
-            except OSError:
-                pass
         return {"error": str(e)}

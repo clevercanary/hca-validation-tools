@@ -56,14 +56,14 @@ def plot_embedding(
             basis = embedding.replace("X_", "")
             plot_title = title or f"{color} — {embedding}"
 
-            kwargs = dict(
-                color=color,
-                basis=basis,
-                title=plot_title,
-                legend_loc=legend_loc,
-                frameon=frameon,
-                show=False,
-            )
+            kwargs = {
+                "color": color,
+                "basis": basis,
+                "title": plot_title,
+                "legend_loc": legend_loc,
+                "frameon": frameon,
+                "show": False,
+            }
             if palette:
                 kwargs["palette"] = palette
 

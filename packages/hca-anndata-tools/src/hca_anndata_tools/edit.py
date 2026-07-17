@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import shutil
@@ -111,7 +112,7 @@ def list_uns_fields(path: str) -> dict:
 
             # Extra uns keys not in the HCA schema
             schema_keys = set(registry.keys()) | {"provenance"}
-            extra_uns_keys = sorted(k for k in adata.uns.keys() if k not in schema_keys)
+            extra_uns_keys = sorted(k for k in adata.uns if k not in schema_keys)
 
             return {
                 "filename": os.path.basename(path),
@@ -412,8 +413,6 @@ def replace_placeholder_values(
 
     except Exception as e:
         if output_path and os.path.isfile(output_path):
-            try:
+            with contextlib.suppress(OSError):
                 os.remove(output_path)
-            except OSError:
-                pass
         return {"error": str(e)}

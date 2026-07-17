@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import glob
 import hashlib
 import json
@@ -235,10 +236,8 @@ def cleanup_previous_version(source_path: str, output_path: str) -> None:
     overwrote source in place (same-second write).
     """
     if _is_timestamped(source_path) and source_path != output_path and os.path.isfile(source_path):
-        try:
-            os.remove(source_path)
-        except OSError:
-            pass  # write succeeded; stale file is harmless
+        with contextlib.suppress(OSError):
+            os.remove(source_path)  # write succeeded; stale file is harmless
 
 
 def write_h5ad(

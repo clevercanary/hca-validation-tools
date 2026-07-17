@@ -137,7 +137,8 @@ class HCAValidator(Validator):
         """
         df_definition = self.schema_def["components"].get(df_name, {})
         if "columns" not in df_definition:
-            return super()._validate_dataframe(df_name)
+            super()._validate_dataframe(df_name)
+            return
 
         # Capture the full schema column set before requirement_level
         # extraction below strips optional / strongly_recommended / forbidden
@@ -275,7 +276,7 @@ class HCAValidator(Validator):
         if organism == "NCBITaxon:9606":
             v = _gene_info["human"]["version"]
             return f"GENCODE v{v} (Ensembl 114)"
-        elif organism == "NCBITaxon:10090":
+        if organism == "NCBITaxon:10090":
             v = _gene_info["mouse"]["version"]
             return f"GENCODE {v} (Ensembl 114)"
         return "GENCODE reference (Ensembl 114)"
@@ -295,8 +296,7 @@ class HCAValidator(Validator):
             if not organism:
                 self.warnings.append(f"Feature ID '{feature_id}' in '{df_name}' not found in {version_label}.")
                 continue
-            else:
-                organism_ontology_id = organism.value
+            organism_ontology_id = organism.value
 
             valid_gene_id = get_gene_checker(organism).is_valid_id(feature_id)
 

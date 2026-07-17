@@ -57,7 +57,7 @@ def compute_metadata_coverage(adata: Any, schemaview: SchemaView) -> Dict[str, A
     obs: pd.DataFrame = adata.obs.replace(r"^\s*$", pd.NA, regex=True)
     uns = adata.uns
 
-    entities: Dict[str, Dict[str, int]] = {"obs": {"record_count": int(len(obs))}}
+    entities: Dict[str, Dict[str, int]] = {"obs": {"record_count": len(obs)}}
     field_coverage: List[Dict[str, Any]] = []
 
     for class_name in coverage_classes(schemaview):

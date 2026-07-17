@@ -36,7 +36,7 @@ def _inspect_item(f: h5py.File, name: str) -> dict | None:
     item = f[name]
     if isinstance(item, h5py.Dataset):
         return _dataset_info(item)
-    elif isinstance(item, h5py.Group):
+    if isinstance(item, h5py.Group):
         return _group_info(item)
     return None
 
