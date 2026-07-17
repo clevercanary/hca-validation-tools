@@ -307,7 +307,7 @@ def init_apis() -> ApiInstances:
             logger.info("Successfully created credentials object")
         except Exception as cred_error:
             logger.error(f"Error creating Google credentials object: {cred_error}")
-            raise SheetReadError(error_code="auth_error")
+            raise SheetReadError(error_code="auth_error") from cred_error
 
         # Authenticate with gspread
         logger.info("Authorizing with gspread...")
@@ -316,7 +316,7 @@ def init_apis() -> ApiInstances:
             logger.info("Successfully authorized with gspread")
         except Exception as auth_error:
             logger.error(f"Error authorizing with Google Sheets API: {auth_error}")
-            raise SheetReadError(error_code="auth_error")
+            raise SheetReadError(error_code="auth_error") from auth_error
 
         # Authenticate with Drive API
         logger.info("Authorizing with Drive API...")
@@ -325,34 +325,34 @@ def init_apis() -> ApiInstances:
             logger.info("Successfully authorized with Drive API")
         except Exception as auth_error:
             logger.error(f"Error authorizing with Google Drive API: {auth_error}")
-            raise SheetReadError(error_code="auth_error")
+            raise SheetReadError(error_code="auth_error") from auth_error
 
         return ApiInstances(gspread=gc, drive=drive)
 
     except json.JSONDecodeError as json_error:
         logger.error(f"Invalid JSON format in service account credentials: {json_error}")
-        raise SheetReadError(error_code="auth_invalid_format")
+        raise SheetReadError(error_code="auth_invalid_format") from json_error
     except gspread.exceptions.APIError as e:
         logger.error(f"Google Sheets API error: {e}")
         raise SheetReadError(
             error_code="api_error",
             error_message=f"Received error {e.code} from Google Sheets API: {e.error['message']}",
-        )
+        ) from e
     except GoogleHttpError as e:
         logger.error(f"Google API error: {e}")
         raise SheetReadError(
             error_code="api_error", error_message=f"Received error {e.status_code} from Google API: {e.reason}"
-        )
+        ) from e
     except requests.exceptions.RetryError as e:
         logger.error(f"Reached maximum configured API retries: {e}")
-        raise SheetReadError(error_code="max_api_retries")
-    except SheetReadError as e:
-        raise e
+        raise SheetReadError(error_code="max_api_retries") from e
+    except SheetReadError:
+        raise
     except Exception as e:
         logger.error(f"Unexpected error initializing APIs with service account: {e}")
         logger.error(f"Exception type: {type(e).__name__}")
         logger.error(f"Traceback: {traceback.format_exc()}")
-        raise SheetReadError(error_code="api_error")
+        raise SheetReadError(error_code="api_error") from e
 
 
 def read_worksheets(
@@ -391,7 +391,7 @@ def read_worksheets(
 
     worksheets_info = []
 
-    for sheet_index, worksheet, value_range in zip(sheet_indices, worksheets, api_result["valueRanges"]):
+    for sheet_index, worksheet, value_range in zip(sheet_indices, worksheets, api_result["valueRanges"], strict=True):
         data = gspread.utils.fill_gaps(value_range.get("values", [[]]))
         # Convert to DataFrame
         if len(data) >= 1:
@@ -423,7 +423,7 @@ def read_worksheets(
 
 def read_sheet_with_service_account(
     sheet_id: str,
-    entity_types: List[str] = ["dataset"],
+    entity_types: Optional[List[str]] = None,
     apis: Optional[ApiInstances] = None,
 ) -> tuple[SpreadsheetInfo, List[gspread.Worksheet]]:
     """
@@ -450,6 +450,9 @@ def read_sheet_with_service_account(
 
     # Configure logging
     logger = logging.getLogger(__name__)
+
+    if entity_types is None:
+        entity_types = ["dataset"]
 
     # Get sheet indices
     sheet_indices = [sheet_structure_by_entity_type[t]["sheet_index"] for t in entity_types]
@@ -504,42 +507,42 @@ def read_sheet_with_service_account(
 
             return SpreadsheetInfo(spreadsheet_metadata, sheets_info), gspread_worksheets
 
-        except gspread.exceptions.SpreadsheetNotFound:
+        except gspread.exceptions.SpreadsheetNotFound as e:
             logger.error(f"Sheet {sheet_id} not found. Check if the sheet ID is correct.")
             logger.error(
                 f"Error accessing Google Sheet with service account: Sheet {sheet_id} not found or not accessible "
                 "with provided credentials"
             )
-            raise SheetReadError(error_code="sheet_not_found", spreadsheet_metadata=spreadsheet_metadata)
+            raise SheetReadError(error_code="sheet_not_found", spreadsheet_metadata=spreadsheet_metadata) from e
         except PermissionError as e:
             logger.error(f"Permission denied accessing sheet {sheet_id}: {e}")
             logger.error("Make sure the service account has access to the sheet.")
-            raise SheetReadError(error_code="permission_denied", spreadsheet_metadata=spreadsheet_metadata)
+            raise SheetReadError(error_code="permission_denied", spreadsheet_metadata=spreadsheet_metadata) from e
         except gspread.exceptions.APIError as e:
             logger.error(f"Google Sheets API error: {e}")
             raise SheetReadError(
                 error_code="api_error",
                 error_message=f"Received error {e.code} from Google Sheets API: {e.error['message']}",
                 spreadsheet_metadata=spreadsheet_metadata,
-            )
+            ) from e
         except GoogleHttpError as e:
             logger.error(f"Google API error: {e}")
             raise SheetReadError(
                 error_code="api_error",
                 error_message=f"Received error {e.status_code} from Google API: {e.reason}",
                 spreadsheet_metadata=spreadsheet_metadata,
-            )
+            ) from e
         except requests.exceptions.RetryError as e:
             logger.error(f"Reached maximum configured API retries: {e}")
-            raise SheetReadError(error_code="max_api_retries", spreadsheet_metadata=spreadsheet_metadata)
+            raise SheetReadError(error_code="max_api_retries", spreadsheet_metadata=spreadsheet_metadata) from e
 
-    except SheetReadError as e:
-        raise e
+    except SheetReadError:
+        raise
     except Exception as e:
         logger.error(f"Unexpected error accessing Google Sheet with service account: {e}")
         logger.error(f"Exception type: {type(e).__name__}")
         logger.error(f"Traceback: {traceback.format_exc()}")
-        raise SheetReadError(error_code="api_error", spreadsheet_metadata=spreadsheet_metadata)
+        raise SheetReadError(error_code="api_error", spreadsheet_metadata=spreadsheet_metadata) from e
 
 
 def normalize_dataframe_values(df: pd.DataFrame, schemaview: SchemaView, class_name: str) -> pd.DataFrame:
@@ -740,7 +743,7 @@ def validate_google_sheet(
     # the original 1-based indices of the rows
     rows_to_validate_by_entity_type = {}
 
-    for entity_type, sheet_info in zip(entity_types, sheet_read_result.worksheets):
+    for entity_type, sheet_info in zip(entity_types, sheet_read_result.worksheets, strict=True):
         df = sheet_info.data
 
         # Skip the first column if it has no slot name
@@ -834,7 +837,7 @@ def validate_google_sheet(
 
     all_valid = True
 
-    for entity_type, sheet_info in zip(entity_types, sheet_read_result.worksheets):
+    for entity_type, sheet_info in zip(entity_types, sheet_read_result.worksheets, strict=True):
         # Determine schema class name to use for validation
         class_name = get_entity_class_name(entity_type, bionetwork)
         # Get normalized dataframe of rows to validate

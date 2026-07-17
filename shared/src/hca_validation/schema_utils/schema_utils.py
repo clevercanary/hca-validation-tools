@@ -88,7 +88,7 @@ def coverage_classes(schemaview: SchemaView) -> List[str]:
     sample, dataset) regardless of bionetwork.
     """
     eligible = []
-    for entity_type, network_mapping in schema_classes.items():
+    for network_mapping in schema_classes.values():
         class_name = network_mapping["DEFAULT"]
         if any(True for _ in iter_coverage_slots(schemaview, class_name)):
             eligible.append(class_name)
