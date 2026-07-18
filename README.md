@@ -120,8 +120,14 @@ uvx ruff@0.11.8 format --check . # formatting
 make typecheck                   # pyright
 ```
 
-A pre-commit hook runs these on `git commit` (one-time setup:
-`pip install pre-commit && pre-commit install`).
+Optionally install the pre-commit hook so equivalent checks run automatically on
+`git commit` — it applies `ruff --fix` and formatting and runs `make typecheck`
+(the auto-fixing counterparts of the read-only checks above). It is opt-in and
+does nothing until installed:
+
+```bash
+pip install pre-commit && pre-commit install
+```
 
 ### Deployment Commands
 
