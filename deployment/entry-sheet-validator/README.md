@@ -52,7 +52,7 @@ skips rather than passing on an auth failure.
 Build the image first (the target refuses to run if it is missing):
 
 ```bash
-make build-lambda-container PROFILE=excira   # produces hca-entry-sheet-validator:latest
+make build-lambda-container   # produces hca-entry-sheet-validator:latest (AWS profile from .env.make)
 make test-lambda-container
 ```
 

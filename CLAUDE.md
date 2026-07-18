@@ -60,8 +60,9 @@ For Pylance to match in-editor, open the repo via `hca-validation-tools.code-wor
 
 ```bash
 # Lambda (Entry Sheet Validator) - ENV=dev by default, use ENV=prod for production
-# PROFILE=excira is required for build (fetches AWS Lambda Extension layer via AWS API)
-make build-lambda-container PROFILE=excira
+# The build needs an AWS profile that can fetch the Lambda Extension layer; it
+# comes from LAMBDA_PROFILE in .env.make (override with PROFILE=... if needed).
+make build-lambda-container
 make deploy-lambda-container ENV=dev
 make invoke-lambda SHEET_ID=<google-sheet-id>
 

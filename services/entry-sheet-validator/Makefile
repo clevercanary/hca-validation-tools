@@ -18,7 +18,7 @@ help:
 	@echo "  deploy-lambda-container - Deploy the Lambda container image to AWS"
 
 # Test Lambda function locally.
-# Requires the image (build it first: `make build-lambda-container PROFILE=excira`)
+# Requires the image (build it first: `make build-lambda-container` from repo root)
 # and loads the repo-root .env so GOOGLE_SERVICE_ACCOUNT is present for the
 # happy-path assertion (without creds the happy-path test skips).
 .PHONY: test-lambda-container
