@@ -10,33 +10,32 @@ This repository contains validation tools organized in a multi-service architect
 - **Data Dictionary Generator**: Creates data dictionaries from LinkML schema definitions
 - **Schema Validation**: Validates LinkML schemas and generates Python models
 
-## Project Structure
+## Repository Layout
 
-```
-hca-validation-tools/
-├── shared/                     # Shared library and schemas
-│   ├── src/hca_validation/     # Core validation package
-│   │   ├── entry_sheet_validator/  # Google Sheets validation
-│   │   ├── data_dictionary/        # Dictionary generation
-│   │   ├── validator/              # LinkML validation
-│   │   └── schemas/                # LinkML schema definitions
-│   └── tests/                  # Shared library tests
-├── services/                   # Microservices
-│   └── entry-sheet-validator/  # Lambda service for sheet validation
-│       ├── src/                # Lambda function code
-│       └── tests/              # Service-specific tests
-├── deployment/                 # AWS deployment configurations
-├── data_dictionaries/          # Generated data dictionaries
-└── docs/                      # Documentation
-```
+Top-level directories and their roles (each package/service has its own
+`pyproject.toml`, uv environment, and `tests/`):
+
+- **`shared/`** — core validation library (LinkML schemas, generated Pydantic models, entry-sheet logic) that the services depend on via a uv path dependency
+- **`packages/`** — publishable PyPI packages: `hca-schema-validator`, `hca-anndata-tools`, `hca-anndata-mcp`
+- **`services/`** — deployable services: `entry-sheet-validator` (Lambda), `dataset-validator` (Batch), and the `cellxgene-validator` / `hca-schema-validator` wrappers
+- **`deployment/`** — Dockerfiles and per-service deployment configs
+- **`data_dictionaries/`** — generated data dictionaries
 
 ## Quick Start
 
-This project uses uv for dependency management and Make for build automation:
+This project uses uv for dependency management and Make for build automation.
+
+Install uv first (it also provisions the required Python version, so you don't
+need to install Python yourself) — see the
+[uv install docs](https://docs.astral.sh/uv/getting-started/installation/):
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-org/hca-validation-tools.git
+git clone https://github.com/clevercanary/hca-validation-tools.git
 cd hca-validation-tools
 
 # Build everything (schemas, data dictionaries, Docker images, run tests)
@@ -53,27 +52,88 @@ uv sync
 
 ### Build Commands
 ```bash
-make build-all          # Build everything and run tests
-make generate-schemas   # Generate Python models from LinkML schemas
-make validate-schema    # Validate all LinkML schema files
-make generate-data-dictionary  # Generate core data dictionary
-make build-lambda-container    # Build Lambda Docker container
+make build-all                 # Build shared lib + containers and run tests (needs Docker + AWS)
+make build-lambda-container    # Build the entry-sheet Lambda Docker image (needs PROFILE=excira)
+```
+
+Schema and data-dictionary generation live in the shared library's Makefile:
+
+```bash
+cd shared
+make gen-schema                # Generate Pydantic models from LinkML schemas
+make validate-schema           # Validate all LinkML schema files
+make generate-data-dictionary  # Generate the core data dictionary
+make build                     # All of the above in one step
 ```
 
 ### Test Commands
+
+Each package and service has its own uv environment, so tests are run per
+project with `uv run pytest`. Each line below is self-contained (run from the
+repo root):
+
 ```bash
-make test-all          # Run all tests
-make test-shared       # Run shared library tests only
-make test-integration  # Run integration tests only (requires credentials)
-make test-lambda-container     # Test Lambda container locally
+(cd shared                        && uv run pytest tests/ -m "not integration")  # shared library (unit)
+(cd packages/hca-anndata-tools    && uv run pytest tests/)
+(cd packages/hca-anndata-mcp      && uv run pytest tests/)
+(cd packages/hca-schema-validator && uv run pytest tests/)
+(cd services/dataset-validator    && uv run pytest tests/)
+(cd services/cellxgene-validator  && uv run pytest tests/)
+(cd services/hca-schema-validator && uv run pytest tests/)
 ```
 
-### Deployment Commands
+These seven suites are exactly what CI runs on every pull request. Type
+checking runs separately:
+
 ```bash
-make deploy-lambda-dev   # Deploy to development environment
-make deploy-lambda-prod  # Deploy to production environment
-make test-lambda-dev     # Test deployed Lambda in development
+make typecheck   # pyright across every typed project (one pass per venv)
 ```
+
+Integration tests (which hit live Google Sheets and need credentials in `.env`)
+are marked `integration` and skipped by default. Run only them with:
+
+```bash
+cd shared && uv run pytest tests/ -m integration
+```
+
+`make test-all` runs the shared and service suites in one go, **but note two
+gaps**: it invokes the entry-sheet container smoke test, so it **requires Docker
+and a built image** (and fails without them), and it **does not cover the
+`packages/` suites** — run those directly with the commands above.
+
+The **entry-sheet-validator container smoke test** is not part of the commands
+above; it boots the built Lambda image in Docker and needs credentials. See
+[deployment/entry-sheet-validator/README.md](deployment/entry-sheet-validator/README.md).
+
+### Checks (mirror CI)
+
+Before pushing, run the same lint, format, and type checks CI gates on. Ruff is
+pinned to match CI exactly:
+
+```bash
+uvx ruff@0.11.8 check .          # lint
+uvx ruff@0.11.8 format --check . # formatting
+make typecheck                   # pyright
+```
+
+A pre-commit hook runs these on `git commit` (one-time setup:
+`pip install pre-commit && pre-commit install`).
+
+### Deployment Commands
+
+The environment is selected with `ENV=dev` (default) or `ENV=prod`:
+
+```bash
+make deploy-lambda-container ENV=dev    # Deploy the entry-sheet Lambda (dev)
+make deploy-lambda-container ENV=prod   # Deploy the entry-sheet Lambda (prod)
+make invoke-lambda SHEET_ID=<id>        # Invoke the deployed Lambda
+
+# Dataset-validator Batch service
+make batch-publish-container ENV=dev    # Build, push to ECR, register the job def
+make batch-submit-job ENV=dev           # Submit a Batch validation job
+```
+
+See [CLAUDE.md](CLAUDE.md) for the full deployment and release workflow.
 
 ## Configuration
 
