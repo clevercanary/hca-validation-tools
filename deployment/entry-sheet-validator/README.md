@@ -40,26 +40,25 @@ Usage:
 make build-lambda-container
 ```
 
-### `test_lambda_container_locally.sh`
+### Local container smoke test
 
-Tests the Lambda container locally by running it in Docker and invoking it with a test event:
+`make test-lambda-container` (in `services/entry-sheet-validator/`) starts the
+built image in Docker and drives it through the Lambda Runtime Interface
+Emulator with `pytest tests/test_lambda_container_smoke.py`. It loads the
+repo-root `.env` so `GOOGLE_SERVICE_ACCOUNT` is present; with credentials the
+happy-path test asserts a `200` and a boolean `valid`, and without them it
+skips rather than passing on an auth failure.
 
-1. Creates a temporary directory for test files
-2. Generates a test event with a Google Sheet ID
-3. Creates a script to run the Lambda container
-4. Copies these files to the `output` directory
-
-Usage:
+Build the image first (the target refuses to run if it is missing):
 
 ```bash
+make build-lambda-container PROFILE=excira   # produces hca-entry-sheet-validator:latest
 make test-lambda-container
 ```
 
-After running this script, you can test the Lambda function locally with:
-
-```bash
-cd deployment/entry-sheet-validator/output && ./run_lambda.sh
-```
+The real Secrets-Extension → Secrets-Manager credential path is an AWS
+integration that only runs inside the deployed Lambda; verify it post-deploy
+with `make invoke-lambda ENV=dev`, not locally.
 
 ### `test_api_endpoint.sh`
 
