@@ -39,8 +39,8 @@ git clone https://github.com/clevercanary/hca-validation-tools.git
 cd hca-validation-tools
 
 # Build everything (schemas, data dictionaries, Docker images, run tests)
-# Note: build-all builds the Lambda container, so it needs Docker running and
-# AWS credentials (it invokes the entry-sheet build with PROFILE=excira).
+# Note: build-all builds the Lambda container, so it needs Docker running and an
+# AWS profile with access to the Lambda Extension layer (passed as PROFILE=...).
 make build-all
 
 # Or just install the shared library (no Docker/AWS needed)
@@ -53,7 +53,7 @@ uv sync
 ### Build Commands
 ```bash
 make build-all                 # Build shared lib + containers and run tests (needs Docker + AWS)
-make build-lambda-container    # Build the entry-sheet Lambda Docker image (needs PROFILE=excira)
+make build-lambda-container PROFILE=<profile>  # Build the entry-sheet Lambda image (AWS profile with Extension-layer access)
 ```
 
 Schema and data-dictionary generation live in the shared library's Makefile:
@@ -90,7 +90,9 @@ make typecheck   # pyright across every typed project (one pass per venv)
 ```
 
 Integration tests (which hit live Google Sheets and need credentials in `.env`)
-are marked `integration` and skipped by default. Run only them with:
+are marked `integration`. The unit-test command above excludes them with
+`-m "not integration"`; a bare `pytest tests/` would run them. Run only the
+integration tests with:
 
 ```bash
 cd shared && uv run pytest tests/ -m integration
@@ -102,7 +104,9 @@ and a built image** (and fails without them), and it **does not cover the
 `packages/` suites** — run those directly with the commands above.
 
 The **entry-sheet-validator container smoke test** is not part of the commands
-above; it boots the built Lambda image in Docker and needs credentials. See
+above; it boots the built Lambda image in Docker (so it needs a built image),
+and its happy-path assertion additionally needs `GOOGLE_SERVICE_ACCOUNT` in the
+environment — without it that assertion skips. See
 [deployment/entry-sheet-validator/README.md](deployment/entry-sheet-validator/README.md).
 
 ### Checks (mirror CI)
