@@ -14,11 +14,12 @@ import resource
 import shutil
 import subprocess
 import sys
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, fields
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Callable, List, Optional, Tuple, cast
+from typing import cast
 
 import boto3
 import h5py
@@ -91,10 +92,10 @@ class MetadataSummary:
     """Summary of metadata from a dataset file."""
 
     title: str
-    assay: List[str]
-    suspension_type: List[str]
-    tissue: List[str]
-    disease: List[str]
+    assay: list[str]
+    suspension_type: list[str]
+    tissue: list[str]
+    disease: list[str]
     cell_count: int
     gene_count: int
 
@@ -104,8 +105,8 @@ class ValidationToolReport:
     """Validation report and metadata of a run of an individual validation tool."""
 
     valid: bool
-    errors: List[str]
-    warnings: List[str]
+    errors: list[str]
+    warnings: list[str]
     started_at: str
     finished_at: str
 
@@ -142,17 +143,15 @@ class ValidationMessage(ValidationMessagePointer):
     carries only the ValidationMessagePointer subset (see to_pointer)."""
 
     # Optional fields
-    batch_job_name: Optional[str] = None  # Job definition name (for context)
-    downloaded_sha256: Optional[str] = None  # SHA256 computed from downloaded file
-    source_sha256: Optional[str] = None  # SHA256 from S3 metadata
-    integrity_status: Optional[str] = None  # "valid", "invalid", "error"
-    metadata_summary: Optional[MetadataSummary] = None  # Metadata from the file
-    tool_reports: Optional[  # Reports for individual validation tools
-        dict[str, ValidationToolReport]
-    ] = None
-    metadata_coverage: Optional[dict] = None  # Per-field completeness summary (#405)
-    matrix_storage: Optional[dict] = None  # Per-matrix/layer shape + size, from HDF5 header (#447)
-    error_message: Optional[str] = None  # Human-readable error description
+    batch_job_name: str | None = None  # Job definition name (for context)
+    downloaded_sha256: str | None = None  # SHA256 computed from downloaded file
+    source_sha256: str | None = None  # SHA256 from S3 metadata
+    integrity_status: str | None = None  # "valid", "invalid", "error"
+    metadata_summary: MetadataSummary | None = None  # Metadata from the file
+    tool_reports: dict[str, ValidationToolReport] | None = None  # Reports for individual validation tools
+    metadata_coverage: dict | None = None  # Per-field completeness summary (#405)
+    matrix_storage: dict | None = None  # Per-matrix/layer shape + size, from HDF5 header (#447)
+    error_message: str | None = None  # Human-readable error description
 
     def to_pointer(self) -> ValidationMessagePointer:
         """Project to the pointer-only payload published to SNS."""
@@ -378,7 +377,7 @@ def _get_schemaview():
     return load_schemaview()
 
 
-def _read_shape(f: h5py.File, obs: pd.DataFrame) -> Tuple[int, int]:
+def _read_shape(f: h5py.File, obs: pd.DataFrame) -> tuple[int, int]:
     """Derive (n_obs, n_vars) from the X header, falling back to obs/var length.
 
     X carries a ``shape`` attr when sparse; when dense it's a 2-D dataset.
@@ -409,7 +408,7 @@ def _read_shape(f: h5py.File, obs: pd.DataFrame) -> Tuple[int, int]:
     return len(obs), n_vars
 
 
-def _read_metadata_inputs(file_path: Path) -> Tuple[pd.DataFrame, dict, int, int]:
+def _read_metadata_inputs(file_path: Path) -> tuple[pd.DataFrame, dict, int, int]:
     """Read (obs, uns, n_obs, n_vars) from an h5ad without loading matrices.
 
     Uses targeted ``read_elem`` of obs/uns plus the X header for shape — never
@@ -429,7 +428,7 @@ def _read_metadata_inputs(file_path: Path) -> Tuple[pd.DataFrame, dict, int, int
 
 def read_file_metadata(
     file_path: Path,
-) -> Tuple[MetadataSummary, Optional[dict], Optional[dict]]:
+) -> tuple[MetadataSummary, dict | None, dict | None]:
     """Read metadata once and return (summary, coverage, matrix_storage).
 
     Only obs + uns (+ matrix headers) are read — never the matrices themselves —
@@ -789,7 +788,7 @@ def create_failure_message(env_vars: dict[str, str | None], error: str, start_ti
     )
 
 
-def cleanup_files(work_dir: Optional[Path] = None) -> None:
+def cleanup_files(work_dir: Path | None = None) -> None:
     """
     Clean up work directory after validation.
 
@@ -815,9 +814,9 @@ def main() -> int:
 
     # Initialize validation tracking variables
     start_time = datetime.now(timezone.utc)
-    validation_message: Optional[ValidationMessage] = None
+    validation_message: ValidationMessage | None = None
     exit_code = 1  # Default to failure
-    work_dir: Optional[Path] = None
+    work_dir: Path | None = None
     local_mode = False
     env_vars: dict[str, str | None] = {}
 

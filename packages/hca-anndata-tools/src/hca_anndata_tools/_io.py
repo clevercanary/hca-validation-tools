@@ -157,7 +157,7 @@ def write_edit_log_h5py(f: h5py.File, log_json: str) -> None:
     ds.attrs["encoding-version"] = "0.2.0"
 
 
-def read_categorical_data(item: h5py.Group) -> tuple[pd.Index, "np.ndarray"]:
+def read_categorical_data(item: h5py.Group) -> tuple[pd.Index, np.ndarray]:
     """Read categories and codes from a categorical h5py group.
 
     Args:

@@ -1,8 +1,8 @@
 """HCA labeler: NaN-tolerant AnnDataLabelAppender with HCA preflight checks."""
 
 import functools
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable, Dict, List
 
 import pandas as pd
 import yaml
@@ -66,7 +66,7 @@ class HCALabeler(AnnDataLabelAppender):
         self._preflight_done = False
 
     def _preflight(self) -> None:
-        issues: List[str] = []
+        issues: list[str] = []
         for component_name in ("obs", "var", "raw.var"):
             df = getattr_anndata(self.adata, component_name)
             if df is None:
@@ -141,7 +141,7 @@ class HCALabeler(AnnDataLabelAppender):
             raise ValueError("HCALabeler preflight failed:\n  - " + "\n  - ".join(issues))
 
     @staticmethod
-    def _reserved_collisions(df, component_name: str, add_labels_def: List[Dict]) -> List[str]:
+    def _reserved_collisions(df, component_name: str, add_labels_def: list[dict]) -> list[str]:
         """Return one error string per ``add_labels`` target already on ``df``.
 
         Mirrors the vendored validator's reserved-column wording so curators
@@ -152,7 +152,7 @@ class HCALabeler(AnnDataLabelAppender):
         need a different membership check and are intentionally out of
         scope; the HCA schema doesn't use them.
         """
-        issues: List[str] = []
+        issues: list[str] = []
         for label_def in add_labels_def:
             target = label_def.get("to_column")
             if target is not None and target in df.columns:
@@ -183,10 +183,10 @@ class HCALabeler(AnnDataLabelAppender):
 
     def _map_by_organism(
         self,
-        ids: List[str],
+        ids: list[str],
         fn: Callable[[str, SupportedOrganisms], object],
-    ) -> Dict[str, object]:
-        out: Dict[str, object] = {}
+    ) -> dict[str, object]:
+        out: dict[str, object] = {}
         for i in ids:
             organism = _organism_for_feature(i)
             out[i] = pd.NA if organism is None else fn(i, organism)

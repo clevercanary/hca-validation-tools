@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Test script for the HCA Entry Sheet Validator Lambda function.
@@ -37,7 +36,7 @@ def main():
     if args.creds_file:
         if os.path.exists(args.creds_file):
             print(f"Loading service account credentials from {args.creds_file}")
-            with open(args.creds_file, "r") as f:
+            with open(args.creds_file) as f:
                 credentials = f.read()
                 os.environ["GOOGLE_SERVICE_ACCOUNT"] = credentials
         else:

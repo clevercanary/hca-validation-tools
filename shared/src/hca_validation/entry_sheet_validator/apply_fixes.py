@@ -1,5 +1,3 @@
-from typing import List
-
 import gspread
 
 from hca_validation.entry_sheet_validator.validate_sheet import SheetErrorInfo, SheetValidationResult
@@ -22,7 +20,7 @@ def get_fix_value_range(a1: str, value: str):
     return {"range": a1, "values": [[value]]}
 
 
-def get_fix_value_ranges_by_entity_type(errors: List[SheetErrorInfo], entity_types: List[str], sheet_id: str):
+def get_fix_value_ranges_by_entity_type(errors: list[SheetErrorInfo], entity_types: list[str], sheet_id: str):
     """
     Create value range dicts to be passed to gspread in order to fix the given errors, organized by entity type
 
@@ -59,8 +57,8 @@ def get_fix_value_ranges_by_entity_type(errors: List[SheetErrorInfo], entity_typ
 
 def apply_fixes(
     validation_result: SheetValidationResult,
-    entity_types: List[str],
-    worksheets: List[gspread.Worksheet],
+    entity_types: list[str],
+    worksheets: list[gspread.Worksheet],
     sheet_id: str,
 ) -> bool:
     """

@@ -10,7 +10,7 @@ By default, the dictionary is saved to the 'data_dictionaries' directory in the 
 import json
 import sys
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 import jsonasobj2
 from linkml_runtime import SchemaView
@@ -18,7 +18,7 @@ from linkml_runtime import SchemaView
 from hca_validation.schema_utils import get_class_entity_type
 
 
-def transform_schema_to_data_dictionary(schemaview: SchemaView) -> Dict[str, Any]:
+def transform_schema_to_data_dictionary(schemaview: SchemaView) -> dict[str, Any]:
     """
     Transform the LinkML schema into the requested data dictionary format.
 

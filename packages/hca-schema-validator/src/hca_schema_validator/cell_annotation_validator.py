@@ -25,7 +25,6 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Mapping
-from typing import List, Optional
 
 import anndata as ad
 import semver
@@ -72,8 +71,8 @@ class HCACellAnnotationValidator:
     """
 
     def __init__(self) -> None:
-        self.errors: List[str] = []
-        self.warnings: List[str] = []
+        self.errors: list[str] = []
+        self.warnings: list[str] = []
 
     def _error(self, message: str) -> None:
         self.errors.append(message)
@@ -109,7 +108,7 @@ class HCACellAnnotationValidator:
 
         return not self.errors
 
-    def _resolve_cap_metadata(self, uns) -> Optional[Mapping]:
+    def _resolve_cap_metadata(self, uns) -> Mapping | None:
         """Return the canonical ``uns['cap_metadata']`` mapping, or None.
 
         Strict: CAP metadata must live under ``uns['cap_metadata']``. Any
@@ -152,7 +151,7 @@ class HCACellAnnotationValidator:
                 f"semver string (e.g. '0.1.0'); got {value!r}."
             )
 
-    def _check_metadata(self, cap) -> List[str]:
+    def _check_metadata(self, cap) -> list[str]:
         if "cellannotation_metadata" not in cap:
             self._error(NO_SETS_ERROR)
             return []
@@ -169,7 +168,7 @@ class HCACellAnnotationValidator:
             self._error(NO_SETS_ERROR)
             return []
 
-        annotation_sets: List[str] = []
+        annotation_sets: list[str] = []
         for set_name, set_meta in metadata.items():
             if not isinstance(set_meta, dict):
                 self._error(

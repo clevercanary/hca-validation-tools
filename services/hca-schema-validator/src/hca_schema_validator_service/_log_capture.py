@@ -10,13 +10,13 @@ service expects.
 from __future__ import annotations
 
 import logging
-from typing import Callable, List, Optional
+from collections.abc import Callable
 
 
 class ListHandler(logging.Handler):
     """Capture warning and error log records into lists."""
 
-    def __init__(self, warning_list: List[str], error_list: List[str]) -> None:
+    def __init__(self, warning_list: list[str], error_list: list[str]) -> None:
         super().__init__()
         self.warning_list = warning_list
         self.error_list = error_list
@@ -34,7 +34,7 @@ def run_with_captured_logs(
     logger_name: str,
     validate: Callable[[str], bool],
     unexpected_error_prefix: str,
-    postprocess_warnings: Optional[Callable[[List[str]], List[str]]] = None,
+    postprocess_warnings: Callable[[list[str]], list[str]] | None = None,
 ) -> dict:
     """Invoke ``validate(file_path)`` with warnings/errors captured from ``logger_name``.
 
@@ -44,8 +44,8 @@ def run_with_captured_logs(
     """
     logger = logging.getLogger(logger_name)
     logger.setLevel(logging.WARNING)
-    warning_messages: List[str] = []
-    error_messages: List[str] = []
+    warning_messages: list[str] = []
+    error_messages: list[str] = []
     handler = ListHandler(warning_messages, error_messages)
     logger.addHandler(handler)
 

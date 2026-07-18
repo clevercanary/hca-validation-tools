@@ -21,21 +21,21 @@ VOIBM_JSON_PATH = TEST_DIR / "valid_or_invalid_by_model_dataset.json"
 @pytest.fixture
 def valid_dataset():
     """Fixture to load the valid dataset."""
-    with open(VALID_JSON_PATH, "r") as f:
+    with open(VALID_JSON_PATH) as f:
         return json.load(f)
 
 
 @pytest.fixture
 def invalid_dataset():
     """Fixture to load the invalid dataset."""
-    with open(INVALID_JSON_PATH, "r") as f:
+    with open(INVALID_JSON_PATH) as f:
         return json.load(f)
 
 
 @pytest.fixture
 def voibm_dataset():
     """Fixture to load the valid-or-invalid-by-model dataset."""
-    with open(VOIBM_JSON_PATH, "r") as f:
+    with open(VOIBM_JSON_PATH) as f:
         return json.load(f)
 
 

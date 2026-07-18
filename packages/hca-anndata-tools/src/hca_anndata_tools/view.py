@@ -119,13 +119,13 @@ def _view_dict(d: dict) -> dict:
     """View a dict (uns entries), summarizing large values."""
     result = {}
     for k, v in d.items():
-        if isinstance(v, (str, int, float, bool)):
+        if isinstance(v, str | int | float | bool):
             result[k] = v
         elif isinstance(v, np.ndarray):
             result[k] = f"ndarray shape={v.shape} dtype={v.dtype}"
         elif isinstance(v, dict):
             result[k] = f"dict with {len(v)} keys: {list(v.keys())[:10]}"
-        elif isinstance(v, (list, tuple)):
+        elif isinstance(v, list | tuple):
             result[k] = f"{type(v).__name__} with {len(v)} items"
         elif isinstance(v, pd.DataFrame):
             result[k] = f"DataFrame shape={v.shape}"
