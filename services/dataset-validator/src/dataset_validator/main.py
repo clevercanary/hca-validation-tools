@@ -311,7 +311,7 @@ def compute_sha256(file_path: Path) -> str:
     logger.debug("Computing SHA256 for: %s", file_path)
     sha256_hash = hashlib.sha256()
 
-    with open(file_path, "rb") as f:
+    with file_path.open("rb") as f:
         # Read file in 64KB chunks to handle large files efficiently
         for chunk in iter(lambda: f.read(65536), b""):
             sha256_hash.update(chunk)
@@ -751,7 +751,7 @@ def validate_environment() -> tuple[dict[str, str | None], list[str]]:
     # In local file mode, all fields get defaults; only the file must exist
     if local_file:
         missing_vars = []
-        if not os.path.isfile(local_file):
+        if not Path(local_file).is_file():
             missing_vars.append(f"LOCAL_FILE={local_file} (file does not exist)")
         return env_vars, missing_vars
 

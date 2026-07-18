@@ -1,6 +1,6 @@
 """MCP wrappers for hca_schema_validator validators."""
 
-import os
+from pathlib import Path
 
 from hca_anndata_tools.write import resolve_latest
 from hca_schema_validator import HCACellAnnotationValidator, HCAValidator
@@ -24,7 +24,7 @@ def validate_schema(path: str) -> dict:
     """
     try:
         path = resolve_latest(path)
-        if not os.path.isfile(path):
+        if not Path(path).is_file():
             return {"error": f"File not found: {path}"}
         v = HCAValidator()
         try:
@@ -33,9 +33,9 @@ def validate_schema(path: str) -> dict:
             # Vendored cellxgene code exits on unrecoverable read failures.
             # Surface a generic error if no validator errors were captured.
             if not v.errors:
-                return {"error": f"Validator could not read {os.path.basename(path)}"}
+                return {"error": f"Validator could not read {Path(path).name}"}
         return {
-            "filename": os.path.basename(path),
+            "filename": Path(path).name,
             "is_valid": v.is_valid,
             "error_count": len(v.errors),
             "warning_count": len(v.warnings),
@@ -73,12 +73,12 @@ def validate_cell_annotation(path: str) -> dict:
     """
     try:
         path = resolve_latest(path)
-        if not os.path.isfile(path):
+        if not Path(path).is_file():
             return {"error": f"File not found: {path}"}
         v = HCACellAnnotationValidator()
         is_valid = v.validate_adata(path)
         return {
-            "filename": os.path.basename(path),
+            "filename": Path(path).name,
             "is_valid": is_valid,
             "error_count": len(v.errors),
             "warning_count": len(v.warnings),

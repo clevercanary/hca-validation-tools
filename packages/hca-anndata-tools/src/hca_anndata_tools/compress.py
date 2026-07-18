@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-import os
+from pathlib import Path
 from typing import Literal
 
 import h5py
@@ -67,7 +67,7 @@ def compress_h5ad(
                 "current_compression": current_filter,
             }
 
-        size_before = os.path.getsize(path)
+        size_before = Path(path).stat().st_size
 
         entry = make_edit_entry(
             operation="compress_h5ad",
@@ -92,7 +92,7 @@ def compress_h5ad(
         if "error" in result:
             return result
 
-        size_after = os.path.getsize(result["output_path"])
+        size_after = Path(result["output_path"]).stat().st_size
         ratio = round(size_before / size_after, 2) if size_after else None
 
         # Backfill size_after/ratio into the edit log entry we just wrote. We

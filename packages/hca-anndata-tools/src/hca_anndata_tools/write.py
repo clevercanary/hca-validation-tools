@@ -6,9 +6,9 @@ import contextlib
 import glob
 import hashlib
 import json
-import os
 import re
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 from . import __version__
@@ -26,7 +26,7 @@ _REQUIRED_ENTRY_KEYS = {"timestamp", "tool", "tool_version", "operation", "descr
 def _compute_sha256(path: str) -> str:
     """Compute SHA-256 hex digest of a file."""
     h = hashlib.sha256()
-    with open(path, "rb") as f:
+    with Path(path).open("rb") as f:
         for chunk in iter(lambda: f.read(_HASH_CHUNK_SIZE), b""):
             h.update(chunk)
     return h.hexdigest()
@@ -46,7 +46,7 @@ def strip_timestamp(filename: str) -> str:
 
 def _base_stem(path: str) -> str:
     """Extract the base stem (no timestamp, no extension) from an h5ad path."""
-    return strip_timestamp(os.path.basename(path)).removesuffix(".h5ad")
+    return strip_timestamp(Path(path).name).removesuffix(".h5ad")
 
 
 def generate_timestamp() -> str:
@@ -64,7 +64,7 @@ def generate_output_path(source_path: str) -> str:
         Path string in the same directory as source_path.
     """
     stem = _base_stem(source_path)
-    return os.path.join(os.path.dirname(source_path), f"{stem}-edit-{generate_timestamp()}.h5ad")
+    return str(Path(source_path).parent / f"{stem}-edit-{generate_timestamp()}.h5ad")
 
 
 def resolve_latest(path: str) -> str:
@@ -80,24 +80,23 @@ def resolve_latest(path: str) -> str:
     Returns:
         Path to the latest timestamped version, or the original if none exist.
     """
-    directory = os.path.dirname(path) or "."
+    directory = Path(path).parent
     stem = _base_stem(path)
 
     # Glob for timestamped variants, then strict regex filter on full basename
-    pattern = os.path.join(directory, f"{glob.escape(stem)}-edit-*-*-*-*-*-*.h5ad")
     full_re = re.compile(rf"^{re.escape(stem)}-edit-\d{{4}}-\d{{2}}-\d{{2}}-\d{{2}}-\d{{2}}-\d{{2}}\.h5ad$")
-    candidates = [f for f in glob.glob(pattern) if full_re.match(os.path.basename(f))]
+    candidates = [f for f in directory.glob(f"{glob.escape(stem)}-edit-*-*-*-*-*-*.h5ad") if full_re.match(f.name)]
 
     if not candidates:
         return path
 
     # Timestamps are lexicographically ordered
-    return os.path.normpath(max(candidates))
+    return str(max(candidates))
 
 
 def _is_timestamped(path: str) -> bool:
     """Check if a path has a timestamp suffix (i.e. it's an edit, not the original)."""
-    return bool(_TIMESTAMP_PATTERN.search(os.path.basename(path)))
+    return bool(_TIMESTAMP_PATTERN.search(Path(path).name))
 
 
 def has_edit_log_operation(adata, operation: str) -> bool:
@@ -205,7 +204,7 @@ def build_edit_log(
             return {"error": f"edit_entries[{i}] missing required keys: {sorted(missing)}"}
 
     sha256 = source_sha256 if source_sha256 is not None else _compute_sha256(source_path)
-    source_filename = os.path.basename(source_path)
+    source_filename = Path(source_path).name
 
     stamped_entries = [{**entry, "source_file": source_filename, "source_sha256": sha256} for entry in edit_entries]
 
@@ -235,9 +234,9 @@ def cleanup_previous_version(source_path: str, output_path: str) -> None:
     Never deletes the original (non-timestamped) file. Skips if output
     overwrote source in place (same-second write).
     """
-    if _is_timestamped(source_path) and source_path != output_path and os.path.isfile(source_path):
+    if _is_timestamped(source_path) and source_path != output_path and Path(source_path).is_file():
         with contextlib.suppress(OSError):
-            os.remove(source_path)  # write succeeded; stale file is harmless
+            Path(source_path).unlink()  # write succeeded; stale file is harmless
 
 
 def write_h5ad(
@@ -279,7 +278,7 @@ def write_h5ad(
         if not source_path.endswith(".h5ad"):
             return {"error": f"Source path must be a .h5ad file, got: {source_path}"}
 
-        if not os.path.isfile(source_path):
+        if not Path(source_path).is_file():
             return {"error": f"Source file not found: {source_path}"}
 
         provenance = adata.uns.get("provenance", {})

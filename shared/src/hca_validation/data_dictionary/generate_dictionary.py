@@ -153,7 +153,7 @@ def generate_dictionary(schema_path=None, output_path=None):
         output_path = data_dict_dir / f"{schema_name}_data_dictionary.json"
 
     # Write to file
-    with open(output_path, "w", encoding="utf-8") as fh:
+    with Path(output_path).open("w", encoding="utf-8") as fh:
         json.dump(data_dict, fh, indent=2)
     print(f"Data dictionary written to {output_path}")
 

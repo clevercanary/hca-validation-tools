@@ -1,5 +1,5 @@
-import os
 from collections.abc import Iterator
+from pathlib import Path
 
 import jsonasobj2
 from linkml_runtime import SchemaView
@@ -28,8 +28,8 @@ entity_types_by_class = {
 
 def load_schemaview():
     # Get the schema path
-    module_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    schema_path = os.path.join(module_dir, "schema/core.yaml")
+    module_dir = Path(__file__).parent.parent
+    schema_path = module_dir / "schema/core.yaml"
     # Create a schemaview
     return SchemaView(schema_path)
 

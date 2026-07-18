@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
 import json
-import os
 import re
 import sys
 from collections.abc import Mapping
@@ -913,9 +912,7 @@ def validate_google_sheet(
             all_valid = False
             logger.warning(f"Validation found errors in some of the {len(rows_to_validate)} {entity_type} rows.")
             logger.warning("Please check the schema requirements and update the data accordingly.")
-            logger.info(
-                f"Schema location: {os.path.join(os.path.dirname(__file__), f'../../schema/{entity_type}.yaml')}"
-            )
+            logger.info(f"Schema location: {Path(__file__).parent / f'../../schema/{entity_type}.yaml'}")
 
     # Summary
     if all_valid:

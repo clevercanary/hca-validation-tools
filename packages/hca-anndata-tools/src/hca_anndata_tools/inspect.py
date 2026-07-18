@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import os
+from pathlib import Path
 
 import h5py
 import numpy as np
@@ -74,7 +74,7 @@ def _classify_x_at_path(path: str, sample_size: int) -> dict:
             nonzero_max = float(finite.max())
 
     return {
-        "filename": os.path.basename(path),
+        "filename": Path(path).name,
         "dtype": dtype,
         "sample_size": int(sample.size),
         "nonzero_count": nonzero_count,
@@ -164,12 +164,12 @@ def check_schema_type(path: str) -> dict:
             version = _read_schema_version(f)
         if version:
             return {
-                "filename": os.path.basename(path),
+                "filename": Path(path).name,
                 "schema": "cellxgene",
                 "schema_version": version,
             }
         return {
-            "filename": os.path.basename(path),
+            "filename": Path(path).name,
             "schema": "hca",
             "schema_version": None,
         }

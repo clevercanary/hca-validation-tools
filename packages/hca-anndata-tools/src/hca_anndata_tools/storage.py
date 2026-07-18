@@ -1,6 +1,6 @@
 """HDF5 storage details for an AnnData file."""
 
-import os
+from pathlib import Path
 
 import h5py
 
@@ -55,7 +55,7 @@ def get_storage_info(path: str) -> dict:
             return {"error": "Only .h5ad files supported (not zarr)"}
 
         path = resolve_latest(path)
-        file_bytes = os.path.getsize(path)
+        file_bytes = Path(path).stat().st_size
         result = {
             "file_size_bytes": file_bytes,
             "file_size_mb": round(file_bytes / (1024 * 1024), 1),

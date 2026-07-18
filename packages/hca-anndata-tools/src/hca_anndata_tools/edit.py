@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import contextlib
 import json
-import os
 import shutil
 import types
 import typing
+from pathlib import Path
 
 import h5py
 import numpy as np
@@ -115,7 +115,7 @@ def list_uns_fields(path: str) -> dict:
             extra_uns_keys = sorted(k for k in adata.uns if k not in schema_keys)
 
             return {
-                "filename": os.path.basename(path),
+                "filename": Path(path).name,
                 "fields": fields,
                 "set_count": sum(1 for f in fields if f["is_set"]),
                 "missing_required": missing_required,
@@ -146,7 +146,7 @@ def view_edit_log(path: str) -> dict:
             entries = json.loads(read_edit_log_h5py(f))
 
         result = {
-            "filename": os.path.basename(path),
+            "filename": Path(path).name,
             "edit_count": len(entries),
             "entries": entries,
         }
@@ -256,8 +256,8 @@ def set_uns(
 
         return {
             **result,
-            "editing": os.path.basename(path),
-            "wrote": os.path.basename(result["output_path"]),
+            "editing": Path(path).name,
+            "wrote": Path(result["output_path"]).name,
             "field": field,
             "old_value": old_value,
             "new_value": make_serializable(validated_value),
@@ -412,7 +412,7 @@ def replace_placeholder_values(
         }
 
     except Exception as e:
-        if output_path and os.path.isfile(output_path):
+        if output_path and Path(output_path).is_file():
             with contextlib.suppress(OSError):
-                os.remove(output_path)
+                Path(output_path).unlink()
         return {"error": str(e)}

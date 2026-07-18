@@ -21,7 +21,7 @@ is the thin file-I/O shim around it:
    edit-log entry, return the new ``output_path``.
 """
 
-import os
+from pathlib import Path
 
 from hca_anndata_tools import has_edit_log_operation
 from hca_anndata_tools._io import open_h5ad
@@ -53,7 +53,7 @@ def populate_labels(path: str) -> dict:
     """
     try:
         path = resolve_latest(path)
-        if not os.path.isfile(path):
+        if not Path(path).is_file():
             return {"error": f"File not found: {path}"}
 
         # backed="r": populator only mutates obs/var/raw.var (all

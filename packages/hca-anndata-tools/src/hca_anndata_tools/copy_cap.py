@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import contextlib
-import os
 import shutil
 import tempfile
 from collections.abc import Mapping
+from pathlib import Path
 from typing import Any
 
 import anndata as ad
@@ -309,7 +309,7 @@ def copy_cap_annotations(
         temp_uns: dict[str, Any] = {CAP_METADATA_KEY: source_cap_block}
         uns_keys_added = [CAP_METADATA_KEY]
 
-        source_basename = os.path.basename(source_path)
+        source_basename = Path(source_path).name
         source_sha256 = _compute_sha256(source_path)
         target_sha256 = _compute_sha256(target_path)
 
@@ -346,7 +346,7 @@ def copy_cap_annotations(
         output_path = generate_output_path(target_path)
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            temp_path = os.path.join(tmpdir, "cap_temp.h5ad")
+            temp_path = str(Path(tmpdir) / "cap_temp.h5ad")
             temp_adata.write_h5ad(temp_path)
             del temp_adata
 
@@ -388,7 +388,7 @@ def copy_cap_annotations(
             # --- Step 5: Verify transplant — full column comparison ---
             verify_err = verify_obs_transplant(temp_path, output_path, obs_cols_to_copy)
             if verify_err:
-                os.remove(output_path)
+                Path(output_path).unlink()
                 return {"error": verify_err}
 
         # --- Step 6: Cleanup + validate marker genes ---
@@ -408,7 +408,7 @@ def copy_cap_annotations(
         }
 
     except Exception as e:
-        if output_path and os.path.isfile(output_path):
+        if output_path and Path(output_path).is_file():
             with contextlib.suppress(OSError):
-                os.remove(output_path)
+                Path(output_path).unlink()
         return {"error": str(e)}

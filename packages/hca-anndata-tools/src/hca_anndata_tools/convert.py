@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import contextlib
-import os
 import re
 import shutil
 import tempfile
+from pathlib import Path
 
 import anndata as ad
 import h5py
@@ -156,8 +156,8 @@ def convert_cellxgene_to_hca(
         slug = _slugify(title)
         timestamp = generate_timestamp()
         out_filename = f"{slug}-edit-{timestamp}.h5ad"
-        directory = output_dir if output_dir is not None else os.path.dirname(path)
-        output_path = os.path.join(directory, out_filename)
+        directory = Path(output_dir) if output_dir is not None else Path(path).parent
+        output_path = str(directory / out_filename)
 
         entry = make_edit_entry(
             operation="import_cellxgene",
@@ -184,7 +184,7 @@ def convert_cellxgene_to_hca(
 
         # --- Step 4: Copy source + transplant via h5py ---
         with tempfile.TemporaryDirectory() as tmpdir:
-            temp_path = os.path.join(tmpdir, "convert_temp.h5ad")
+            temp_path = str(Path(tmpdir) / "convert_temp.h5ad")
             temp_adata.write_h5ad(temp_path)
             del temp_adata
 
@@ -229,18 +229,18 @@ def convert_cellxgene_to_hca(
             # --- Step 5: Verify transplant ---
             verify_err = verify_obs_transplant(temp_path, output_path, obs_cols_added)
             if verify_err:
-                os.remove(output_path)
+                Path(output_path).unlink()
                 return {"error": verify_err}
 
         return {
             "output_path": output_path,
-            "source": os.path.basename(path),
+            "source": Path(path).name,
             "title": title,
             "conversions": conversions,
         }
 
     except Exception as e:
-        if output_path and os.path.isfile(output_path):
+        if output_path and Path(output_path).is_file():
             with contextlib.suppress(OSError):
-                os.remove(output_path)
+                Path(output_path).unlink()
         return {"error": str(e)}

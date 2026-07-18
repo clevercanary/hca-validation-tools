@@ -2,8 +2,8 @@
 
 import hashlib
 import json
-import os
 import re
+from pathlib import Path
 
 import anndata as ad
 
@@ -67,7 +67,7 @@ def test_generate_output_path_strips_existing_timestamp(tmp_path):
     source.touch()
     result = generate_output_path(str(source))
     # Should have base "data" with a NEW timestamp, not double-stamped
-    basename = os.path.basename(result)
+    basename = Path(result).name
     assert basename.startswith("data-")
     # Exactly one timestamp (no double-stamping) — use unanchored pattern
     ts_pattern = r"\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}"
@@ -76,7 +76,7 @@ def test_generate_output_path_strips_existing_timestamp(tmp_path):
 
 def test_generate_output_path_format(sample_h5ad_for_write):
     result = generate_output_path(str(sample_h5ad_for_write))
-    basename = os.path.basename(result)
+    basename = Path(result).name
     assert TIMESTAMP_RE.search(basename)
     assert basename.startswith("test-dataset-")
 
@@ -91,7 +91,7 @@ def test_write_h5ad_basic(sample_h5ad_for_write):
     assert "error" not in result
     assert "output_path" in result
 
-    assert os.path.isfile(result["output_path"])
+    assert Path(result["output_path"]).is_file()
     assert TIMESTAMP_RE.search(result["output_path"])
 
 
@@ -129,7 +129,7 @@ def test_write_h5ad_preserves_existing_log(sample_h5ad_for_write):
 def test_write_h5ad_sha256_correct(sample_h5ad_for_write):
     # Compute expected hash independently
     h = hashlib.sha256()
-    with open(sample_h5ad_for_write, "rb") as f:
+    with Path(sample_h5ad_for_write).open("rb") as f:
         for chunk in iter(lambda: f.read(8192), b""):
             h.update(chunk)
     expected_sha = h.hexdigest()
@@ -149,7 +149,7 @@ def test_write_h5ad_source_file_is_basename(sample_h5ad_for_write):
     written = ad.read_h5ad(result["output_path"])
     log = json.loads(written.uns["provenance"][EDIT_LOG_KEY])
     source_file = log[0]["source_file"]
-    assert source_file == os.path.basename(source_file)
+    assert source_file == Path(source_file).name
     assert source_file == "test-dataset.h5ad"
 
 
@@ -257,7 +257,7 @@ def test_write_h5ad_custom_output_path(sample_h5ad_for_write, tmp_path):
 
     assert "error" not in result
     assert result["output_path"] == custom
-    assert os.path.isfile(custom)
+    assert Path(custom).is_file()
 
 
 # --- resolve_latest ---
@@ -305,14 +305,14 @@ def test_write_h5ad_deletes_previous_timestamped(sample_h5ad_for_write):
     # First write: original → timestamped
     r1 = write_h5ad(adata, str(sample_h5ad_for_write), [_make_entry(description="first")])
     assert "error" not in r1
-    assert os.path.isfile(str(sample_h5ad_for_write))  # original still there
+    assert Path(sample_h5ad_for_write).is_file()  # original still there
 
     # Second write: timestamped → new timestamped
     adata2 = ad.read_h5ad(r1["output_path"])
     r2 = write_h5ad(adata2, r1["output_path"], [_make_entry(description="second")])
     assert "error" not in r2
-    assert os.path.isfile(str(sample_h5ad_for_write))  # original still there
-    assert os.path.isfile(r2["output_path"])  # latest version exists
+    assert Path(sample_h5ad_for_write).is_file()  # original still there
+    assert Path(r2["output_path"]).is_file()  # latest version exists
 
     # Count h5ad files in directory — should be original + one timestamped
     d = sample_h5ad_for_write.parent
@@ -325,13 +325,13 @@ def test_write_h5ad_never_deletes_original(sample_h5ad_for_write):
     adata = ad.read_h5ad(str(sample_h5ad_for_write))
     r1 = write_h5ad(adata, str(sample_h5ad_for_write), [_make_entry()])
     assert "error" not in r1
-    assert os.path.isfile(str(sample_h5ad_for_write))
+    assert Path(sample_h5ad_for_write).is_file()
 
     # Write again from original
     adata2 = ad.read_h5ad(str(sample_h5ad_for_write))
     r2 = write_h5ad(adata2, str(sample_h5ad_for_write), [_make_entry()])
     assert "error" not in r2
-    assert os.path.isfile(str(sample_h5ad_for_write))
+    assert Path(sample_h5ad_for_write).is_file()
 
 
 # --- has_edit_log_operation ---
