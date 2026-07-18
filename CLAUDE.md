@@ -52,7 +52,7 @@ Note: `hca-anndata-tools` doesn't declare pyright as a dev dep — its files are
 make typecheck
 ```
 
-Pre-commit hook runs it on `git commit`. One-time setup: `pip install pre-commit && pre-commit install`.
+A pre-commit hook can run this (plus `ruff --fix` and formatting) on `git commit`, but it is opt-in — it does nothing until you install it: `pip install pre-commit && pre-commit install`.
 
 For Pylance to match in-editor, open the repo via `hca-validation-tools.code-workspace` (File → Open Workspace from File). Each package/service becomes its own root with its own uv `.venv/`, so imports resolve correctly per folder.
 
