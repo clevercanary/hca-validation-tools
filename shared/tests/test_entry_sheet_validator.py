@@ -468,6 +468,102 @@ class TestReadSheetWithServiceAccount:
             os.environ.clear()
             os.environ.update(original_env)
 
+    # Valid service-account JSON used as the extension's SecretString payload.
+    _EXTENSION_SECRET_JSON = json.dumps(
+        {
+            "type": "service_account",
+            "project_id": "extension-project",
+            "private_key_id": "ext-key-id",
+            "private_key": (
+                "-----BEGIN PRIVATE KEY-----\nMOCK_PRIVATE_KEY_FOR_TESTING_ONLY\n-----END PRIVATE KEY-----\n"
+            ),
+            "client_email": "extension@extension-project.iam.gserviceaccount.com",
+            "client_id": "987654321",
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token",
+        }
+    )
+
+    @patch("requests.get")
+    @patch("googleapiclient.discovery.build")
+    @patch("hca_validation.entry_sheet_validator.validate_sheet.create_requests_session")
+    @patch("gspread.authorize")
+    @patch("google.oauth2.service_account.Credentials.from_service_account_info")
+    def test_with_extension_resolved_credentials(
+        self,
+        mock_credentials,
+        mock_authorize,
+        mock_create_requests_session,
+        mock_build,
+        mock_requests_get,
+    ):
+        """In a Lambda env, credentials come from the Secrets Extension (localhost:2773), not the env fallback.
+
+        This is the only path that exercises the HTTP body of get_secret_from_extension; every other test runs
+        outside Lambda and short-circuits at the `AWS_LAMBDA_FUNCTION_NAME` guard. GOOGLE_SERVICE_ACCOUNT is
+        deliberately set to an unresolved `aws:secretsmanager:` reference so that if the fallback were taken
+        instead of the extension, init_apis would raise `auth_unresolved` and this test would fail.
+        """
+        original_env = os.environ.copy()
+        os.environ["AWS_LAMBDA_FUNCTION_NAME"] = "hca-entry-sheet-validator"
+        os.environ["AWS_SESSION_TOKEN"] = "test-session-token"
+        # Pin ENVIRONMENT: init_apis derives the secret id from it (default "dev"), and the URL
+        # assertion below expects "dev/..."; without pinning, a runner with ENVIRONMENT=prod fails spuriously.
+        os.environ["ENVIRONMENT"] = "dev"
+        os.environ["GOOGLE_SERVICE_ACCOUNT"] = "aws:secretsmanager:dev/hca-atlas-tracker/google-service-account"
+
+        # Mock the extension's HTTP response: raise_for_status is a no-op, json() carries the SecretString.
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"SecretString": self._EXTENSION_SECRET_JSON}
+        mock_requests_get.return_value = mock_response
+
+        # Mock the downstream Google clients so the read proceeds without real network.
+        mock_client = MagicMock()
+        mock_authorize.return_value = mock_client
+        mock_drive = MagicMock()
+        mock_build.return_value = mock_drive
+        self._mock_api_outputs(mock_client, mock_drive)
+
+        try:
+            sheet_read_result = read_sheet_with_service_account(PUBLIC_SHEET_ID)[0]
+            assert isinstance(sheet_read_result, SpreadsheetInfo)
+
+            # The extension was queried with the session token and the environment-derived secret id.
+            mock_requests_get.assert_called_once()
+            call = mock_requests_get.call_args
+            assert "dev/hca-atlas-tracker/google-service-account" in call.args[0]
+            assert call.kwargs["headers"]["X-Aws-Parameters-Secrets-Token"] == "test-session-token"
+
+            # The credentials handed to Google came from the extension's SecretString, not the env fallback.
+            mock_credentials.assert_called_once()
+            assert (
+                mock_credentials.call_args.args[0]["client_email"]
+                == "extension@extension-project.iam.gserviceaccount.com"
+            )
+        finally:
+            os.environ.clear()
+            os.environ.update(original_env)
+
+    @patch("requests.get")
+    def test_with_extension_request_failure(self, mock_requests_get):
+        """If the extension call fails in a Lambda env, get_secret_from_extension returns None and init_apis
+        falls back to GOOGLE_SERVICE_ACCOUNT — here an unresolved reference, yielding `auth_unresolved`."""
+        original_env = os.environ.copy()
+        os.environ["AWS_LAMBDA_FUNCTION_NAME"] = "hca-entry-sheet-validator"
+        os.environ["AWS_SESSION_TOKEN"] = "test-session-token"
+        os.environ["GOOGLE_SERVICE_ACCOUNT"] = "aws:secretsmanager:dev/hca-atlas-tracker/google-service-account"
+
+        mock_requests_get.side_effect = RuntimeError("extension unreachable")
+
+        try:
+            with pytest.raises(SheetReadError) as error_info:
+                read_sheet_with_service_account(PUBLIC_SHEET_ID)
+            assert error_info.value.error_code == "auth_unresolved"
+            mock_requests_get.assert_called_once()
+        finally:
+            os.environ.clear()
+            os.environ.update(original_env)
+
     def test_with_invalid_format_credentials(self):
         """Test reading a sheet with invalid format credentials."""
         # Set credentials to a valid JSON but missing required fields

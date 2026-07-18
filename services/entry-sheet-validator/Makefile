@@ -12,16 +12,24 @@ TAG ?= $(SHA)
 .PHONY: help
 help:
 	@echo "Entry Sheet Validator Service Tasks:"
-	@echo "  test-lambda-container  - Test the Lambda container locally (uses .env for credentials)"
+	@echo "  test-lambda-container  - Test the Lambda container locally (loads root .env for credentials; needs a built image)"
 	@echo "  test-lambda            - Alias for test-lambda-container"
 	@echo "  build-lambda-container - Build the entry sheet validator Lambda container image"
 	@echo "  deploy-lambda-container - Deploy the Lambda container image to AWS"
 
-# Test Lambda function locally
+# Test Lambda function locally.
+# Requires the image (build it first: `make build-lambda-container PROFILE=excira`)
+# and loads the repo-root .env so GOOGLE_SERVICE_ACCOUNT is present for the
+# happy-path assertion (without creds the happy-path test skips).
 .PHONY: test-lambda-container
 test-lambda-container:
+	@docker image inspect hca-entry-sheet-validator:latest >/dev/null 2>&1 || { \
+		echo "Error: image hca-entry-sheet-validator:latest not found."; \
+		echo "Build it first: make build-lambda-container PROFILE=excira"; \
+		exit 1; \
+	}
 	@echo "Running pytest smoke test against Lambda container..."
-	@$(UV) pytest tests/test_lambda_container_smoke.py -v
+	@$(UV) --env-file ../../.env pytest tests/test_lambda_container_smoke.py -v
 
 # Test Lambda function locally
 .PHONY: test-lambda

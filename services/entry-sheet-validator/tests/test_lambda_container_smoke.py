@@ -41,53 +41,33 @@ def lambda_container():
 
 
 def test_lambda_container_smoke(lambda_container):
-    """Basic smoke test: POSTs a minimal event to the Lambda container and checks for a valid response."""
+    """Basic smoke: the container boots and returns a well-formed response (a `valid` result or an `error`).
+
+    Deliberately credential-agnostic — this only proves the container serves the endpoint; the credentialed
+    happy path is asserted in test_lambda_happy_path.
+    """
     event = {"sheet_id": "1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY"}
     response = requests.post("http://localhost:9000/2015-03-31/functions/function/invocations", json=event, timeout=10)
     assert response.status_code in (200, 400, 401)
     data = response.json()
-    # Accept both direct and API Gateway-style responses
-    if "body" in data:
-        body_data = json.loads(data["body"])
-        assert "valid" in body_data
-        # Optionally: assert body_data["valid"] is True
-    else:
-        assert "valid" in data
+    # Accept both direct and API Gateway-style (body is a JSON string) responses.
+    body_data = json.loads(data["body"]) if "body" in data else data
+    assert "valid" in body_data or "error" in body_data
 
 
 def test_lambda_happy_path(lambda_container):
-    """Test Lambda container with a valid public sheet_id (happy path)."""
+    """Happy path: with credentials present, a valid public sheet_id must return 200 and a boolean `valid`.
+
+    Without credentials the read cannot authenticate, so the happy path is untestable and the test skips
+    rather than passing on an auth failure (the weakness this replaced).
+    """
+    if not os.environ.get("GOOGLE_SERVICE_ACCOUNT"):
+        pytest.skip("GOOGLE_SERVICE_ACCOUNT not set (load the root .env); happy path needs credentials")
+
     event = {"sheet_id": "1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY"}
     response = requests.post("http://localhost:9000/2015-03-31/functions/function/invocations", json=event, timeout=10)
-    assert response.status_code in (200, 400, 401)
+    assert response.status_code == 200
     data = response.json()
-    # Handle API Gateway-style response
-    if "body" in data:
-        body_data = json.loads(data["body"])
-        assert "valid" in body_data
-        # Optionally: assert body_data["valid"] is True
-    else:
-        assert "valid" in data
-
-    """
-    Smoke test: POST a test event to the running Lambda container via RIE and check the response.
-    Assumes the container is running on localhost:9000.
-    """
-    event = {"queryStringParameters": {"sheet_id": "1Gp2yocEq9OWECfDgCVbExIgzYfM7s6nJV5ftyn-SMXQ"}}
-    try:
-        response = requests.post(
-            "http://localhost:9000/2015-03-31/functions/function/invocations", json=event, timeout=10
-        )
-    except Exception as e:
-        pytest.fail(f"Failed to contact Lambda container: {e}")
-    assert response.status_code in (200, 400, 401)
-    data = response.json()
-    # Handle API Gateway-style response (body is a JSON string)
-    if "body" in data:
-        try:
-            body_data = json.loads(data["body"])
-        except Exception:
-            body_data = {}
-        assert "valid" in body_data or "error" in body_data
-    else:
-        assert "valid" in data or "error" in data
+    # Handle both direct and API Gateway-style (body is a JSON string) responses.
+    body_data = json.loads(data["body"]) if "body" in data else data
+    assert isinstance(body_data.get("valid"), bool)
