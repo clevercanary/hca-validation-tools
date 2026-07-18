@@ -34,9 +34,9 @@ def main():
 
     # Load service account credentials if provided
     if args.creds_file:
-        if os.path.exists(args.creds_file):
+        if Path(args.creds_file).exists():
             print(f"Loading service account credentials from {args.creds_file}")
-            with open(args.creds_file) as f:
+            with Path(args.creds_file).open() as f:
                 credentials = f.read()
                 os.environ["GOOGLE_SERVICE_ACCOUNT"] = credentials
         else:
@@ -44,7 +44,7 @@ def main():
 
     # Load from .env file if provided
     elif args.env_file:
-        if os.path.exists(args.env_file):
+        if Path(args.env_file).exists():
             print(f"Loading environment variables from {args.env_file}")
             load_dotenv(args.env_file)
         else:

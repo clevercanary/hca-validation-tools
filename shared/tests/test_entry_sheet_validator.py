@@ -10,6 +10,7 @@ This script tests the functionality of the entry sheet validator, including:
 
 import json
 import os
+from pathlib import Path
 from unittest.mock import DEFAULT, MagicMock, patch
 
 import gspread
@@ -1065,8 +1066,8 @@ class TestIntegration:
         # Try to load credentials from .env file if not in environment
         if not os.environ.get("GOOGLE_SERVICE_ACCOUNT"):
             # Check if .env file exists
-            env_file = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
-            if os.path.exists(env_file):
+            env_file = Path(__file__).parent.parent / ".env"
+            if env_file.exists():
                 try:
                     # Load .env file
                     from dotenv import load_dotenv

@@ -1,7 +1,7 @@
 """Tests for strip_forbidden_obs_columns."""
 
 import json
-import os
+from pathlib import Path
 
 import anndata as ad
 import pandas as pd
@@ -72,7 +72,7 @@ def test_strip_no_op_when_neither_present(sample_h5ad_for_write):
     assert result.get("skipped") is True
     assert "reason" in result
     # No timestamped snapshot should appear in the source directory.
-    siblings = os.listdir(os.path.dirname(sample_h5ad_for_write))
+    siblings = [p.name for p in Path(sample_h5ad_for_write).parent.iterdir()]
     assert not any("-edit-" in name for name in siblings)
 
 
@@ -86,7 +86,7 @@ def test_strip_refuses_cellxgene_layout(cellxgene_h5ad):
     assert "CellxGENE-layout" in result["error"]
     assert "convert_cellxgene_to_hca" in result["error"]
     # No timestamped snapshot should appear in the source directory.
-    siblings = os.listdir(os.path.dirname(cellxgene_h5ad))
+    siblings = [p.name for p in Path(cellxgene_h5ad).parent.iterdir()]
     assert not any("-edit-" in name for name in siblings)
 
 

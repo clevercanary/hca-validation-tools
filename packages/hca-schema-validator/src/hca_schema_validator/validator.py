@@ -18,7 +18,7 @@ from .labeler import HCA_DERIVED_OBS_LABELS
 
 # GENCODE version info (loaded once at module level)
 _GENE_INFO_PATH = Path(__file__).parent / "_vendored" / "cellxgene_schema" / "gencode_files" / "gene_info.yml"
-with open(_GENE_INFO_PATH) as _f:
+with _GENE_INFO_PATH.open() as _f:
     _gene_info = yaml.safe_load(_f)
 
 # Schema file constants
@@ -61,7 +61,7 @@ class HCAValidator(Validator):
             # Load HCA-specific schema
             schema_path = Path(__file__).parent / SCHEMA_DIR / SCHEMA_FILENAME
 
-            with open(schema_path) as fp:
+            with schema_path.open() as fp:
                 self.schema_def = yaml.safe_load(fp)
 
     def validate_adata(self, h5ad_path=None):
@@ -432,7 +432,7 @@ def _collect_curie_exceptions(source_def):
 @functools.lru_cache(maxsize=1)
 def _load_default_schema_def():
     schema_path = Path(__file__).parent / SCHEMA_DIR / SCHEMA_FILENAME
-    with open(schema_path) as fp:
+    with schema_path.open() as fp:
         return yaml.safe_load(fp)
 
 

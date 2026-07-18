@@ -1,6 +1,6 @@
 """MCP wrapper for hca_schema_validator.HCALabeler."""
 
-import os
+from pathlib import Path
 
 from hca_anndata_tools._io import open_h5ad
 from hca_anndata_tools.write import make_edit_entry, resolve_latest, write_h5ad
@@ -58,7 +58,7 @@ def label_h5ad(path: str) -> dict:
     """
     try:
         path = resolve_latest(path)
-        if not os.path.isfile(path):
+        if not Path(path).is_file():
             return {"error": f"File not found: {path}"}
 
         # backed="r": the labeler only mutates obs/var/raw.var (all in-memory

@@ -16,8 +16,8 @@ truth.
 from __future__ import annotations
 
 import contextlib
-import os
 import shutil
+from pathlib import Path
 
 import h5py
 
@@ -105,7 +105,7 @@ def strip_forbidden_obs_columns(path: str) -> dict:
     output_path = None
     try:
         path = resolve_latest(path)
-        if not os.path.isfile(path):
+        if not Path(path).is_file():
             return {"error": f"File not found: {path}"}
 
         # Peek first: layout check + presence check. Both via h5py so we
@@ -165,7 +165,7 @@ def strip_forbidden_obs_columns(path: str) -> dict:
                 write_edit_log_h5py(f_out, log_result["json"])
 
         if log_error is not None:
-            os.remove(output_path)
+            Path(output_path).unlink()
             return log_error
 
         cleanup_previous_version(path, output_path)
@@ -176,7 +176,7 @@ def strip_forbidden_obs_columns(path: str) -> dict:
         }
 
     except Exception as e:
-        if output_path and os.path.isfile(output_path):
+        if output_path and Path(output_path).is_file():
             with contextlib.suppress(OSError):
-                os.remove(output_path)
+                Path(output_path).unlink()
         return {"error": str(e)}

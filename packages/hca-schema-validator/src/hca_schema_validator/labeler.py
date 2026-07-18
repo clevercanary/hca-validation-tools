@@ -61,7 +61,7 @@ def _organism_for_feature(feature_id: str):
 class HCALabeler(AnnDataLabelAppender):
     def __init__(self, adata):
         super().__init__(adata)
-        with open(_SCHEMA_PATH) as f:
+        with _SCHEMA_PATH.open() as f:
             self.schema_def = yaml.safe_load(f)
         self._preflight_done = False
 
