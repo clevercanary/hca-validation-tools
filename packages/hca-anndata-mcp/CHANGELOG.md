@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.7.2](https://github.com/clevercanary/hca-validation-tools/compare/hca-anndata-mcp-v0.7.1...hca-anndata-mcp-v0.7.2) (2026-07-19)
+
+
+### Styles
+
+* ruff format + lint sweep, enforce in CI ([#313](https://github.com/clevercanary/hca-validation-tools/issues/313)) ([#499](https://github.com/clevercanary/hca-validation-tools/issues/499)) ([d414d30](https://github.com/clevercanary/hca-validation-tools/commit/d414d309117c284a90cb32266d5c4b8036a86b3f))
+* **ruff:** enable PTH (pathlib) and migrate os.path → pathlib (closes [#467](https://github.com/clevercanary/hca-validation-tools/issues/467)) ([#509](https://github.com/clevercanary/hca-validation-tools/issues/509)) ([383a5a8](https://github.com/clevercanary/hca-validation-tools/commit/383a5a80b880a92e7e6b2398d1ac0b675e66ac3b))
+
+
+### Build System
+
+* **packages:** stop tracking packages/*/uv.lock ([#483](https://github.com/clevercanary/hca-validation-tools/issues/483)) ([#490](https://github.com/clevercanary/hca-validation-tools/issues/490)) ([021e5ac](https://github.com/clevercanary/hca-validation-tools/commit/021e5accce76677389e60f998e2f743320d93ed7))
+
 ## [0.7.1](https://github.com/clevercanary/hca-validation-tools/compare/hca-anndata-mcp-v0.7.0...hca-anndata-mcp-v0.7.1) (2026-07-14)
 
 
