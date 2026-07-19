@@ -148,8 +148,23 @@ See [CLAUDE.md](CLAUDE.md) for the full deployment and release workflow.
 ## Configuration
 
 ### Environment Files
+Both are **gitignored** — keep credentials and machine-specific values out of the repo.
+
 - **`.env`** - Contains `GOOGLE_SERVICE_ACCOUNT` credentials for Google Sheets API
-- **`.env.make`** - Contains AWS deployment variables (account IDs, regions, etc.)
+- **`.env.make`** - AWS deployment variables (account IDs, regions, roles) and the
+  AWS CLI profile used to build the Lambda image
+
+One-time AWS setup — copy the committed template and fill in your values:
+
+```bash
+cp .env.make.example .env.make
+# then edit .env.make: set LAMBDA_PROFILE to an AWS CLI profile that can fetch
+# the Lambda Extension layer (and fill in the account/region/role vars for deploy)
+```
+
+With `.env.make` in place, `make build-lambda-container` and `make build-all`
+pick up the profile automatically — no `PROFILE=` argument needed (pass
+`PROFILE=<name>` only to override).
 
 ### Google Sheets Integration
 To run integration tests or use the validator with private sheets:

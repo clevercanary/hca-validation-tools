@@ -18,14 +18,14 @@ help:
 	@echo "  deploy-lambda-container - Deploy the Lambda container image to AWS"
 
 # Test Lambda function locally.
-# Requires the image (build it first: `make build-lambda-container PROFILE=excira`)
+# Requires the image (build it first: `make build-lambda-container` from repo root)
 # and loads the repo-root .env so GOOGLE_SERVICE_ACCOUNT is present for the
 # happy-path assertion (without creds the happy-path test skips).
 .PHONY: test-lambda-container
 test-lambda-container:
 	@docker image inspect hca-entry-sheet-validator:latest >/dev/null 2>&1 || { \
 		echo "Error: image hca-entry-sheet-validator:latest not found."; \
-		echo "Build it first: make build-lambda-container PROFILE=excira"; \
+		echo "Build it first: make build-lambda-container (from repo root)"; \
 		exit 1; \
 	}
 	@echo "Running pytest smoke test against Lambda container..."

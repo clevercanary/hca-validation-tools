@@ -26,6 +26,12 @@ AWS_REGION       ?= $(DEV_AWS_REGION)
 LAMBDA_ROLE      ?= $(DEV_LAMBDA_ROLE)
 endif
 
+# AWS CLI profile for the entry-sheet Lambda build (fetches the Extension
+# layer). The build is env-agnostic — it produces one image — so this is a
+# single profile, not dev/prod. From LAMBDA_PROFILE in .env.make; override
+# with PROFILE=... .
+PROFILE ?= $(LAMBDA_PROFILE)
+
 # ----- Batch environment settings (mapped from .env.make) -----
 ifeq ($(ENV),prod)
 BATCH_PROFILE        ?= $(PROD_BATCH_PROFILE)
@@ -188,7 +194,7 @@ invoke-lambda:
 build-all:
 	@echo "Running full multi-service build & test chain..."
 	@$(MAKE) -C shared build
-	@$(MAKE) -C services/entry-sheet-validator build-lambda-container PROFILE=excira
+	@$(MAKE) -C services/entry-sheet-validator build-lambda-container PROFILE=$(PROFILE)
 	@$(MAKE) -C services/dataset-validator build
 	@$(MAKE) test-all
 	@echo "✓ All services built and tested successfully"

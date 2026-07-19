@@ -52,7 +52,7 @@ skips rather than passing on an auth failure.
 Build the image first (the target refuses to run if it is missing):
 
 ```bash
-make build-lambda-container PROFILE=excira   # produces hca-entry-sheet-validator:latest
+make build-lambda-container   # produces hca-entry-sheet-validator:latest (AWS profile from .env.make)
 make test-lambda-container
 ```
 
@@ -96,9 +96,17 @@ This generates test files and provides instructions for testing the Lambda conta
 
 ### Deploying to AWS
 
-AWS_PROFILE=excira make build-lambda-container
-AWS_PROFILE=excira make deploy-lambda-container ENV=dev
-AWS_PROFILE=hca-prod-lambda-deploy make deploy-lambda-container ENV=prod
+The build profile comes from `LAMBDA_PROFILE` in `.env.make` (see the repo-root
+README), so the build needs no profile on the command line. The **deploy**
+profile is still supplied via the `AWS_PROFILE` env var — dev and prod use
+different profiles. Sourcing the deploy profile from `.env.make` too is tracked
+in #517.
+
+```bash
+make build-lambda-container                                       # profile from .env.make
+AWS_PROFILE=<dev-profile>  make deploy-lambda-container ENV=dev
+AWS_PROFILE=<prod-profile> make deploy-lambda-container ENV=prod
+```
 
 ## API Request Format
 
