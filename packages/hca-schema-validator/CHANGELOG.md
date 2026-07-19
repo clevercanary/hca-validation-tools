@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.14.2](https://github.com/clevercanary/hca-validation-tools/compare/hca-schema-validator-v0.14.1...hca-schema-validator-v0.14.2) (2026-07-19)
+
+
+### Styles
+
+* ruff format + lint sweep, enforce in CI ([#313](https://github.com/clevercanary/hca-validation-tools/issues/313)) ([#499](https://github.com/clevercanary/hca-validation-tools/issues/499)) ([d414d30](https://github.com/clevercanary/hca-validation-tools/commit/d414d309117c284a90cb32266d5c4b8036a86b3f))
+* **ruff:** enable PTH (pathlib) and migrate os.path → pathlib (closes [#467](https://github.com/clevercanary/hca-validation-tools/issues/467)) ([#509](https://github.com/clevercanary/hca-validation-tools/issues/509)) ([383a5a8](https://github.com/clevercanary/hca-validation-tools/commit/383a5a80b880a92e7e6b2398d1ac0b675e66ac3b))
+* **ruff:** enable RET/SIM/C4/PIE/RUF small families ([#503](https://github.com/clevercanary/hca-validation-tools/issues/503)) ([#506](https://github.com/clevercanary/hca-validation-tools/issues/506)) ([52657cf](https://github.com/clevercanary/hca-validation-tools/commit/52657cf97a0315a1cf5bd988fecce42dd04bc207))
+* **ruff:** enable UP (pyupgrade) and apply autofixes (part of [#467](https://github.com/clevercanary/hca-validation-tools/issues/467)) ([#508](https://github.com/clevercanary/hca-validation-tools/issues/508)) ([e1f162f](https://github.com/clevercanary/hca-validation-tools/commit/e1f162f01f92b022b55c7e866c7723d1f02146af))
+
+
+### Build System
+
+* **packages:** stop tracking packages/*/uv.lock ([#483](https://github.com/clevercanary/hca-validation-tools/issues/483)) ([#490](https://github.com/clevercanary/hca-validation-tools/issues/490)) ([021e5ac](https://github.com/clevercanary/hca-validation-tools/commit/021e5accce76677389e60f998e2f743320d93ed7))
+
 ## [0.14.1](https://github.com/clevercanary/hca-validation-tools/compare/hca-schema-validator-v0.14.0...hca-schema-validator-v0.14.1) (2026-07-14)
 
 
