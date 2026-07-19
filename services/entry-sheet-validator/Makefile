@@ -25,7 +25,7 @@ help:
 test-lambda-container:
 	@docker image inspect hca-entry-sheet-validator:latest >/dev/null 2>&1 || { \
 		echo "Error: image hca-entry-sheet-validator:latest not found."; \
-		echo "Build it first: make build-lambda-container PROFILE=excira"; \
+		echo "Build it first: make build-lambda-container (from repo root)"; \
 		exit 1; \
 	}
 	@echo "Running pytest smoke test against Lambda container..."
