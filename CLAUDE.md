@@ -1,9 +1,5 @@
 # CLAUDE.md
 
-<!-- Shared sections (Team roster through GitHub API discipline) are seeded from
-     cc-claude-tools templates/CLAUDE.template.md; keep them in sync with the
-     plugin. The repo-specific sections above them are this repo's own content. -->
-
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
@@ -176,53 +172,6 @@ When starting work on a change:
 3. Make changes and commit to the feature branch
 4. Push and open a PR linking the issue: `gh pr create --title "..." --body "Closes #<issue-number>"`
 
-## Team roster
-
-| Name   | GitHub handle |
-|--------|---------------|
-| Dave   | NoopDog       |
-| Fran   | frano-m       |
-| Hunter | hunterckx     |
-| Mim    | MillenniumFalconMechanic |
-
-"Assign to Fran" always means the GitHub handle in this table. Never guess a
-handle. If someone is not in this table, ask.
-
-## Error handling philosophy
-
-Validate at trust boundaries only, and trust everything inside them.
-
-- The trust boundaries are: user input, network responses, file contents,
-  environment variables, CLI arguments, and data crossing a public API.
-  Validate at the boundary, once, and fail with a clear error that names
-  what was wrong.
-- Inside the boundary, where our functions call our functions, do NOT check
-  for null, undefined, or wrong types. A caller passing bad input is a bug
-  in the caller, so let the code throw. A stack trace at the real call site
-  is what enables the fix. A defensive fallback hides the bug.
-- Never silently coerce, default, or catch-and-continue to "handle" bad
-  input. Do not use `?? defaultValue` to paper over a missing value. Do not
-  write a try/catch whose handler just logs and proceeds.
-- A crash with a good message is the correct behavior for a contract
-  violation.
-
-When a reviewer, Copilot or human, suggests defensive handling of internal
-inputs, decline the suggestion and cite this section. The `/cc:auto-review`
-skill describes how to decline on the pull request thread.
-
-## Python conventions
-
-Ruff and Pyright enforce the mechanical rules in CI, so do not re-argue
-formatting or import order in review. For judgment-level style, the canon is
-*Effective Python* (Brett Slatkin, 3rd ed.); cite item numbers in reviews
-and declines the way this section is cited.
-
-## Auto-review
-
-When you believe a coding task is complete, announce that the code is done
-and run `/cc:auto-review`. The skill defines the only moments to interrupt
-the user. Clean review rounds proceed silently.
-
 ## Surprises
 
 You may encounter an environment, tool, dependency, or constraint that the
@@ -230,20 +179,3 @@ user never mentioned and that changes your approach. Examples: a conda
 environment, an unexpected framework, or a missing credential. When that
 happens, STOP and ask before proceeding. Do not work around the surprise
 silently.
-
-## Communication
-
-- Do not use analogies or metaphors.
-- Lead with the outcome in one sentence.
-- Keep status updates to one line.
-- Flag your assumptions explicitly.
-
-## GitHub API discipline
-
-- Never enumerate a full project board, and never paginate more than two
-  pages to find one item. If you do not have an ID, look in
-  `.claude/github-projects.md`. If the ID is not there, fetch it once and
-  add it to that file.
-- Never fetch issues or pull requests in a loop. Use a single search or
-  list call with filters instead.
-- If you get a rate-limit response, STOP and tell the user. Do not retry.
