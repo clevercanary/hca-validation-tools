@@ -460,10 +460,17 @@
         {
           "name": "is_primary_data",
           "title": "Is Primary Data",
-          "description": "Deprecated placeholder indicating whether sample represents primary data.",
-          "range": "string",
+          "description": "Whether the sample represents the primary data for these cells, as opposed to a re-analysis of data published elsewhere.",
+          "range": "boolean",
           "required": false,
-          "multivalued": false
+          "multivalued": false,
+          "example": "true",
+          "annotations": {
+            "annDataLocation": "obs",
+            "tier": "Tier 1",
+            "cxg": "is_primary_data"
+          },
+          "rationale": "Required by the h5ad validator and by the published Tier 1 dictionary, but left optional here until entry sheets carry the column \u2014 LinkML's `required` is enforced against entry sheet rows, so flipping it fails every sheet without it. See #544. Lives on Sample to match the published Tier 1 dictionary, which places it there even though CELLxGENE treats it as a per-cell flag. Consequence: coverage buckets it by sample_id, so an integrated object whose cells disagree within one sample (duplicate copies marked false, canonical ones true) reports that sample as inconsistent. That is accurate reporting of a genuinely mixed value, not a validation failure \u2014 the h5ad validator accepts such a file."
         },
         {
           "name": "library_id",
@@ -528,6 +535,10 @@
           "range": "SampleCollectionMethod",
           "required": true,
           "multivalued": false,
+          "annotations": {
+            "annDataLocation": "obs",
+            "tier": "Tier 1"
+          },
           "values": "brush; scraping; biopsy; surgical resection; blood draw; body fluid; other"
         },
         {
@@ -700,7 +711,38 @@
       "title": "Cell",
       "description": "A single cell derived from a sample",
       "name": "cell",
-      "attributes": []
+      "attributes": [
+        {
+          "name": "author_cell_type",
+          "title": "Author Cell Type",
+          "description": "Cell type label as assigned by the data author, in their own vocabulary.",
+          "range": "string",
+          "required": false,
+          "multivalued": false,
+          "example": "alveolar macrophage; luminal progenitor",
+          "annotations": {
+            "annDataLocation": "obs",
+            "tier": "Tier 1"
+          },
+          "rationale": "The author's own naming, retained alongside the ontology term so the original annotation is not lost when terms are mapped to CL"
+        },
+        {
+          "name": "cell_type_ontology_term_id",
+          "title": "Cell Type Ontology Term ID",
+          "description": "Cell type, as an ontology term.",
+          "range": "string",
+          "required": false,
+          "multivalued": false,
+          "example": "CL:0000583",
+          "annotations": {
+            "annDataLocation": "obs",
+            "tier": "Tier 1",
+            "cxg": "cell_type_ontology_term_id"
+          },
+          "rationale": "Optional to match the validator's requirement_level, but unrecoverable once dropped \u2014 populate_labels derives cell_type from this column, not the reverse",
+          "values": "A CL term, or \"unknown\". ZFA, FBbt, and WBbt terms are allowed depending on the organism. \"na\" is allowed if tissue_type is \"cell line\"."
+        }
+      ]
     }
   ],
   "prefixes": {

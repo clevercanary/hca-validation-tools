@@ -142,9 +142,29 @@ slots:
       To be able to link to other studies from the same institution as sometimes samples from different labs in the same institute are processed via similar core facilities. Thus batch effects may be smaller for datasets from the same institute even if other factors differ.
 
   is_primary_data:
-    is_a: deprecated_slot
     title: Is Primary Data
-    description: Deprecated placeholder indicating whether sample represents primary data.
+    description: >-
+      Whether the sample represents the primary data for these cells, as opposed to
+      a re-analysis of data published elsewhere.
+    examples:
+      - value: "true"
+    annotations:
+      annDataLocation: obs
+      tier: Tier 1
+      cxg: is_primary_data
+    range: boolean
+    required: false
+    multivalued: false
+    comments: >-
+      Required by the h5ad validator and by the published Tier 1 dictionary, but left
+      optional here until entry sheets carry the column — LinkML's `required` is
+      enforced against entry sheet rows, so flipping it fails every sheet without it. See #544.
+      Lives on Sample to match the published Tier 1 dictionary, which places it there
+      even though CELLxGENE treats it as a per-cell flag. Consequence: coverage buckets
+      it by sample_id, so an integrated object whose cells disagree within one sample
+      (duplicate copies marked false, canonical ones true) reports that sample as
+      inconsistent. That is accurate reporting of a genuinely mixed value, not a
+      validation failure — the h5ad validator accepts such a file.
 
   library_id:
     title: Library ID
@@ -380,6 +400,9 @@ slots:
   sample_collection_method:
     title: Sample Collection Method
     description: The method the sample was physically obtained from the donor.
+    annotations:
+      annDataLocation: obs
+      tier: Tier 1
     range: SampleCollectionMethod
     required: true
     notes: "brush; scraping; biopsy; surgical resection; blood draw; body fluid; other"

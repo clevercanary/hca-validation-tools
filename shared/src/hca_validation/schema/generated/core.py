@@ -836,7 +836,24 @@ class Sample(ConfiguredBaseModel):
                       'other factors differ.'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'EMBL-EBI; Genome Institute of Singapore'}]} })
-    is_primary_data: Optional[str] = Field(default=None, title="Is Primary Data", description="""Deprecated placeholder indicating whether sample represents primary data.""", json_schema_extra = { "linkml_meta": {'alias': 'is_primary_data', 'domain_of': ['Sample'], 'is_a': 'deprecated_slot'} })
+    is_primary_data: Optional[bool] = Field(default=None, title="Is Primary Data", description="""Whether the sample represents the primary data for these cells, as opposed to a re-analysis of data published elsewhere.""", json_schema_extra = { "linkml_meta": {'alias': 'is_primary_data',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
+                         'cxg': {'tag': 'cxg', 'value': 'is_primary_data'},
+                         'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'comments': ['Required by the h5ad validator and by the published Tier 1 '
+                      'dictionary, but left optional here until entry sheets carry the '
+                      "column — LinkML's `required` is enforced against entry sheet "
+                      'rows, so flipping it fails every sheet without it. See #544. '
+                      'Lives on Sample to match the published Tier 1 dictionary, which '
+                      'places it there even though CELLxGENE treats it as a per-cell '
+                      'flag. Consequence: coverage buckets it by sample_id, so an '
+                      'integrated object whose cells disagree within one sample '
+                      '(duplicate copies marked false, canonical ones true) reports '
+                      'that sample as inconsistent. That is accurate reporting of a '
+                      'genuinely mixed value, not a validation failure — the h5ad '
+                      'validator accepts such a file.'],
+         'domain_of': ['Sample'],
+         'examples': [{'value': 'true'}]} })
     library_id: str = Field(default=..., title="Library ID", description="""The unique ID that is used to track libraries in the investigator's institution (should align with the publication).""", json_schema_extra = { "linkml_meta": {'alias': 'library_id',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
@@ -864,6 +881,8 @@ class Sample(ConfiguredBaseModel):
          'domain_of': ['Sample'],
          'examples': [{'value': 'run1; NV0087'}]} })
     sample_collection_method: SampleCollectionMethod = Field(default=..., title="Sample Collection Method", description="""The method the sample was physically obtained from the donor.""", json_schema_extra = { "linkml_meta": {'alias': 'sample_collection_method',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
+                         'tier': {'tag': 'tier', 'value': 'Tier 1'}},
          'domain_of': ['Sample'],
          'notes': ['brush; scraping; biopsy; surgical resection; blood draw; body '
                    'fluid; other']} })
@@ -1063,7 +1082,24 @@ class AdiposeSample(Sample):
                       'other factors differ.'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'EMBL-EBI; Genome Institute of Singapore'}]} })
-    is_primary_data: Optional[str] = Field(default=None, title="Is Primary Data", description="""Deprecated placeholder indicating whether sample represents primary data.""", json_schema_extra = { "linkml_meta": {'alias': 'is_primary_data', 'domain_of': ['Sample'], 'is_a': 'deprecated_slot'} })
+    is_primary_data: Optional[bool] = Field(default=None, title="Is Primary Data", description="""Whether the sample represents the primary data for these cells, as opposed to a re-analysis of data published elsewhere.""", json_schema_extra = { "linkml_meta": {'alias': 'is_primary_data',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
+                         'cxg': {'tag': 'cxg', 'value': 'is_primary_data'},
+                         'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'comments': ['Required by the h5ad validator and by the published Tier 1 '
+                      'dictionary, but left optional here until entry sheets carry the '
+                      "column — LinkML's `required` is enforced against entry sheet "
+                      'rows, so flipping it fails every sheet without it. See #544. '
+                      'Lives on Sample to match the published Tier 1 dictionary, which '
+                      'places it there even though CELLxGENE treats it as a per-cell '
+                      'flag. Consequence: coverage buckets it by sample_id, so an '
+                      'integrated object whose cells disagree within one sample '
+                      '(duplicate copies marked false, canonical ones true) reports '
+                      'that sample as inconsistent. That is accurate reporting of a '
+                      'genuinely mixed value, not a validation failure — the h5ad '
+                      'validator accepts such a file.'],
+         'domain_of': ['Sample'],
+         'examples': [{'value': 'true'}]} })
     library_id: str = Field(default=..., title="Library ID", description="""The unique ID that is used to track libraries in the investigator's institution (should align with the publication).""", json_schema_extra = { "linkml_meta": {'alias': 'library_id',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
@@ -1091,6 +1127,8 @@ class AdiposeSample(Sample):
          'domain_of': ['Sample'],
          'examples': [{'value': 'run1; NV0087'}]} })
     sample_collection_method: SampleCollectionMethod = Field(default=..., title="Sample Collection Method", description="""The method the sample was physically obtained from the donor.""", json_schema_extra = { "linkml_meta": {'alias': 'sample_collection_method',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
+                         'tier': {'tag': 'tier', 'value': 'Tier 1'}},
          'domain_of': ['Sample'],
          'notes': ['brush; scraping; biopsy; surgical resection; blood draw; body '
                    'fluid; other']} })
@@ -1291,7 +1329,24 @@ class GutSample(Sample):
                       'other factors differ.'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'EMBL-EBI; Genome Institute of Singapore'}]} })
-    is_primary_data: Optional[str] = Field(default=None, title="Is Primary Data", description="""Deprecated placeholder indicating whether sample represents primary data.""", json_schema_extra = { "linkml_meta": {'alias': 'is_primary_data', 'domain_of': ['Sample'], 'is_a': 'deprecated_slot'} })
+    is_primary_data: Optional[bool] = Field(default=None, title="Is Primary Data", description="""Whether the sample represents the primary data for these cells, as opposed to a re-analysis of data published elsewhere.""", json_schema_extra = { "linkml_meta": {'alias': 'is_primary_data',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
+                         'cxg': {'tag': 'cxg', 'value': 'is_primary_data'},
+                         'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'comments': ['Required by the h5ad validator and by the published Tier 1 '
+                      'dictionary, but left optional here until entry sheets carry the '
+                      "column — LinkML's `required` is enforced against entry sheet "
+                      'rows, so flipping it fails every sheet without it. See #544. '
+                      'Lives on Sample to match the published Tier 1 dictionary, which '
+                      'places it there even though CELLxGENE treats it as a per-cell '
+                      'flag. Consequence: coverage buckets it by sample_id, so an '
+                      'integrated object whose cells disagree within one sample '
+                      '(duplicate copies marked false, canonical ones true) reports '
+                      'that sample as inconsistent. That is accurate reporting of a '
+                      'genuinely mixed value, not a validation failure — the h5ad '
+                      'validator accepts such a file.'],
+         'domain_of': ['Sample'],
+         'examples': [{'value': 'true'}]} })
     library_id: str = Field(default=..., title="Library ID", description="""The unique ID that is used to track libraries in the investigator's institution (should align with the publication).""", json_schema_extra = { "linkml_meta": {'alias': 'library_id',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
@@ -1319,6 +1374,8 @@ class GutSample(Sample):
          'domain_of': ['Sample'],
          'examples': [{'value': 'run1; NV0087'}]} })
     sample_collection_method: SampleCollectionMethod = Field(default=..., title="Sample Collection Method", description="""The method the sample was physically obtained from the donor.""", json_schema_extra = { "linkml_meta": {'alias': 'sample_collection_method',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
+                         'tier': {'tag': 'tier', 'value': 'Tier 1'}},
          'domain_of': ['Sample'],
          'notes': ['brush; scraping; biopsy; surgical resection; blood draw; body '
                    'fluid; other']} })
@@ -1566,7 +1623,26 @@ class Cell(ConfiguredBaseModel):
     """
     linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'https://github.com/clevercanary/hca-validation-tools/schema/cell'})
 
-    pass
+    author_cell_type: Optional[str] = Field(default=None, title="Author Cell Type", description="""Cell type label as assigned by the data author, in their own vocabulary.""", json_schema_extra = { "linkml_meta": {'alias': 'author_cell_type',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
+                         'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'comments': ["The author's own naming, retained alongside the ontology term "
+                      'so the original annotation is not lost when terms are mapped to '
+                      'CL'],
+         'domain_of': ['Cell'],
+         'examples': [{'value': 'alveolar macrophage; luminal progenitor'}]} })
+    cell_type_ontology_term_id: Optional[str] = Field(default=None, title="Cell Type Ontology Term ID", description="""Cell type, as an ontology term.""", json_schema_extra = { "linkml_meta": {'alias': 'cell_type_ontology_term_id',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
+                         'cxg': {'tag': 'cxg', 'value': 'cell_type_ontology_term_id'},
+                         'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'comments': ["Optional to match the validator's requirement_level, but "
+                      'unrecoverable once dropped — populate_labels derives cell_type '
+                      'from this column, not the reverse'],
+         'domain_of': ['Cell'],
+         'examples': [{'value': 'CL:0000583'}],
+         'notes': ['A CL term, or "unknown". ZFA, FBbt, and WBbt terms are allowed '
+                   'depending on the organism. "na" is allowed if tissue_type is "cell '
+                   'line".']} })
 
 
 # Model rebuild
