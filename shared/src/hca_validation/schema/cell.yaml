@@ -36,9 +36,10 @@ slots:
     range: string
     required: false
     multivalued: false
-    comments: >-
-      The author's own naming, retained alongside the ontology term so the original
-      annotation is not lost when terms are mapped to CL
+    comments:
+      - >-
+        The author's own naming, retained alongside the ontology term so the original
+        annotation is not lost when terms are mapped to CL
 
   cell_type_ontology_term_id:
     title: Cell Type Ontology Term ID
@@ -52,9 +53,11 @@ slots:
     range: string
     required: false
     multivalued: false
-    notes: >-
-      A CL term, or "unknown". ZFA, FBbt, and WBbt terms are allowed depending on the
-      organism. "na" is allowed if tissue_type is "cell line".
-    comments: >-
-      Optional to match the validator's requirement_level, but unrecoverable once
-      dropped — populate_labels derives cell_type from this column, not the reverse
+    notes:
+      - >-
+        A CL term, or "unknown". ZFA, FBbt, and WBbt terms are allowed depending on the
+        organism. "na" is allowed if tissue_type is "cell line".
+    comments:
+      - >-
+        Optional to match the validator's requirement_level, but unrecoverable once
+        dropped — populate_labels derives cell_type from this column, not the reverse

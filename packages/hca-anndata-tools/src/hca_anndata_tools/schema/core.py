@@ -846,7 +846,7 @@ class Sample(ConfiguredBaseModel):
          'comments': ['Required by the h5ad validator and by the published Tier 1 '
                       'dictionary, but left optional here until entry sheets carry the '
                       "column — LinkML's `required` is enforced against entry sheet "
-                      'rows, so flipping it fails every sheet without it. See #544. '
+                      'rows, so flipping it fails every sheet without it. See #544.',
                       'Lives on Sample to match the published Tier 1 dictionary, which '
                       'places it there even though CELLxGENE treats it as a per-cell '
                       'flag. Consequence: coverage buckets it by sample_id, so an '
@@ -1092,7 +1092,7 @@ class AdiposeSample(Sample):
          'comments': ['Required by the h5ad validator and by the published Tier 1 '
                       'dictionary, but left optional here until entry sheets carry the '
                       "column — LinkML's `required` is enforced against entry sheet "
-                      'rows, so flipping it fails every sheet without it. See #544. '
+                      'rows, so flipping it fails every sheet without it. See #544.',
                       'Lives on Sample to match the published Tier 1 dictionary, which '
                       'places it there even though CELLxGENE treats it as a per-cell '
                       'flag. Consequence: coverage buckets it by sample_id, so an '
@@ -1339,7 +1339,7 @@ class GutSample(Sample):
          'comments': ['Required by the h5ad validator and by the published Tier 1 '
                       'dictionary, but left optional here until entry sheets carry the '
                       "column — LinkML's `required` is enforced against entry sheet "
-                      'rows, so flipping it fails every sheet without it. See #544. '
+                      'rows, so flipping it fails every sheet without it. See #544.',
                       'Lives on Sample to match the published Tier 1 dictionary, which '
                       'places it there even though CELLxGENE treats it as a per-cell '
                       'flag. Consequence: coverage buckets it by sample_id, so an '

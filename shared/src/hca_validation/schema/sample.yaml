@@ -155,16 +155,19 @@ slots:
     range: boolean
     required: false
     multivalued: false
-    comments: >-
-      Required by the h5ad validator and by the published Tier 1 dictionary, but left
-      optional here until entry sheets carry the column — LinkML's `required` is
-      enforced against entry sheet rows, so flipping it fails every sheet without it. See #544.
-      Lives on Sample to match the published Tier 1 dictionary, which places it there
-      even though CELLxGENE treats it as a per-cell flag. Consequence: coverage buckets
-      it by sample_id, so an integrated object whose cells disagree within one sample
-      (duplicate copies marked false, canonical ones true) reports that sample as
-      inconsistent. That is accurate reporting of a genuinely mixed value, not a
-      validation failure — the h5ad validator accepts such a file.
+    comments:
+      - >-
+        Required by the h5ad validator and by the published Tier 1 dictionary, but left
+        optional here until entry sheets carry the column — LinkML's `required` is
+        enforced against entry sheet rows, so flipping it fails every sheet without it.
+        See #544.
+      - >-
+        Lives on Sample to match the published Tier 1 dictionary, which places it there
+        even though CELLxGENE treats it as a per-cell flag. Consequence: coverage buckets
+        it by sample_id, so an integrated object whose cells disagree within one sample
+        (duplicate copies marked false, canonical ones true) reports that sample as
+        inconsistent. That is accurate reporting of a genuinely mixed value, not a
+        validation failure — the h5ad validator accepts such a file.
 
   library_id:
     title: Library ID
