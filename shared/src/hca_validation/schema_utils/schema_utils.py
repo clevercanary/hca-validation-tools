@@ -103,8 +103,10 @@ def coverage_classes(schemaview: SchemaView) -> list[str]:
         # with no `oneOf`, and the tracker's completeness rollup intersects incoming
         # fields against its own data dictionary, ignoring ones it does not know. So
         # new *fields* are safe to emit without coordination, while a new *grain* is
-        # not — which is why #538 could add sample-grain rows for `is_primary_data`
-        # and `sample_collection_method` in the same change that suppresses Cell.
+        # not — which is why #538 could add a sample-grain row for
+        # `sample_collection_method` in the same change that suppresses Cell.
+        # (`is_primary_data` also gained the obs annotation but emits nothing: it
+        # remains a deprecated_slot, and deprecated slots are filtered from coverage.)
         # Remove once clevercanary/hca-atlas-tracker#1499 ships, which widens the
         # allowlist and makes entities["cell"] optional.
         if class_name == "Cell":
