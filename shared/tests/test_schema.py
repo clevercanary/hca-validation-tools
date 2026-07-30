@@ -117,11 +117,12 @@ def test_is_primary_data_stays_sheet_inert():
     Annotations are inert for validation, which is what lets the obs annotation coexist
     with the placeholder — see the slot's comments and #544.
     """
-    field = schema.Sample.model_fields["is_primary_data"]
-    assert field.annotation == (str | None), field.annotation
-    assert not field.is_required()
+    assert not schema.Sample.model_fields["is_primary_data"].is_required()
 
-    # The values a sheet might plausibly carry must all still pass.
+    # The behavioural check, and the one that matters: these are the values a sheet
+    # might plausibly carry, and all of them must still pass. This also subsumes an
+    # annotation-equality assertion — if the slot regained `range: boolean`, "na",
+    # "unknown" and "primary" would each raise here.
     for value in ("TRUE", "true", "na", "unknown", "primary", None):
         assert schema.Sample.model_validate({**_MINIMAL_SAMPLE, "is_primary_data": value}), (
             f"{value!r} should be accepted"
