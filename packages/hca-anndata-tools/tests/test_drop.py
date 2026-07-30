@@ -155,7 +155,11 @@ def test_drop_slash_path_cannot_erase_provenance(sample_h5ad_for_write):
 def test_drop_refuses_a_bare_string_for_columns(sample_h5ad_for_write):
     """columns="race" instead of ["race"] would iterate as characters and report
     'not present in obs: [r, a, c, e]' — a plausible slip from an MCP client
-    with a useless error, so it is named explicitly."""
+    with a useless error, so it is named explicitly.
+
+    The ignore is deliberate and must stay: the annotation already rejects this
+    statically, and the point of the test is the runtime guard that protects
+    MCP callers, who get no type checking at all."""
     result = drop_obs_columns(str(sample_h5ad_for_write), "race")  # pyright: ignore[reportArgumentType]
 
     assert "error" in result
@@ -178,10 +182,11 @@ def test_drop_refuses_non_string_entries(sample_h5ad_for_write):
 
 def test_drop_accepts_a_tuple_of_names(sample_h5ad_for_write):
     """Nothing depends on the argument being a list specifically, so a tuple
-    from a caller that built one should not be an error."""
+    from a caller that built one should not be an error — and the annotation
+    says so, which is why this call needs no type-checker exemption."""
     _add_obs_cols(sample_h5ad_for_write, "race")
 
-    result = drop_obs_columns(str(sample_h5ad_for_write), ("race",))  # pyright: ignore[reportArgumentType]
+    result = drop_obs_columns(str(sample_h5ad_for_write), ("race",))
 
     assert "error" not in result
     assert result["obs_columns_dropped"] == ["race"]

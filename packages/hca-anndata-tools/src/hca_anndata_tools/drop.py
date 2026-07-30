@@ -143,7 +143,7 @@ def _validate_request(obs: h5py.Group, uns: h5py.Group | None, columns: list[str
     return problems
 
 
-def drop_obs_columns(path: str, columns: list[str]) -> dict:
+def drop_obs_columns(path: str, columns: list[str] | tuple[str, ...]) -> dict:
     """Drop the named obs columns from an h5ad file.
 
     All-or-nothing: the whole request is validated before anything is written,
@@ -188,7 +188,11 @@ def drop_obs_columns(path: str, columns: list[str]) -> dict:
             ``strip_forbidden_obs_columns``, this makes no CellxGENE-layout
             refusal, because removing an arbitrary column is layout-agnostic.
         columns: Obs column names to drop. Duplicates are ignored; order is
-            preserved in the result.
+            preserved in the result. Annotated as list-or-tuple rather than
+            ``Sequence[str]`` deliberately: ``str`` satisfies ``Sequence[str]``,
+            so the looser annotation would stop a type checker from catching
+            ``columns="one_name"`` — a slip the runtime has to guard anyway
+            because MCP callers are not type-checked at all.
 
     Returns:
         Dict with ``output_path``, ``obs_columns_dropped`` and
