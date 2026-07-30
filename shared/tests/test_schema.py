@@ -59,6 +59,30 @@ _OBS_ANNOTATED_SLOTS = [
 ]
 
 
+# A Sample row that satisfies every required slot, so a test can vary one field and be
+# sure any failure came from that field. The models set `extra = "forbid"`, so this must
+# name only declared slots.
+_MINIMAL_SAMPLE = {
+    "sample_id": "S1",
+    "donor_id": "D1",
+    "dataset_id": "DS1",
+    "institute": "X",
+    "cell_enrichment": "na",
+    "library_id": "L1",
+    "library_preparation_batch": "b1",
+    "library_sequencing_run": "r1",
+    "sample_collection_method": "biopsy",
+    "sample_preservation_method": "fresh",
+    "sample_source": "surgical donor",
+    "sampled_site_condition": "healthy",
+    "suspension_type": "cell",
+    "tissue_type": "tissue",
+    "tissue_ontology_term_id": "UBERON:0000955",
+    "disease_ontology_term_id": "PATO:0000461",
+    "development_stage_ontology_term_id": "HsapDv:0000237",
+}
+
+
 @pytest.mark.parametrize(("class_name", "slot_name"), _OBS_ANNOTATED_SLOTS)
 def test_obs_slots_carry_anndata_location(schemaview, class_name, slot_name):
     """Regression guard for #538.
@@ -81,10 +105,25 @@ def test_cell_class_excluded_from_coverage(schemaview):
     assert "Cell" not in coverage_classes(schemaview)
 
 
-def test_is_primary_data_is_no_longer_a_deprecated_placeholder():
-    """#538 restored it to a real boolean slot. It stays optional until entry sheets
-    carry the column (#544) — LinkML's `required` is enforced against entry sheet rows,
-    so flipping it would fail every sheet lacking it."""
+def test_is_primary_data_stays_sheet_inert():
+    """#538 annotated `is_primary_data` but deliberately left it a deprecated_slot.
+
+    This is the load-bearing property: entry sheet validation runs
+    `Sample.model_validate(row_dict)` on data taken straight from sheet columns, so the
+    slot's `range` decides what curators may type. As an unconstrained string it accepts
+    anything, including the "na" convention this schema documents elsewhere
+    (`cell_enrichment`, `suspension_type`). Giving it `range: boolean` would start
+    rejecting those values, so sheets that validate today would begin failing.
+
+    Annotations are inert for validation, which is what lets the obs annotation coexist
+    with the placeholder — see the slot's comments and #544.
+    """
     field = schema.Sample.model_fields["is_primary_data"]
-    assert field.annotation == (bool | None), field.annotation
+    assert field.annotation == (str | None), field.annotation
     assert not field.is_required()
+
+    # The values a sheet might plausibly carry must all still pass.
+    for value in ("TRUE", "true", "na", "unknown", "primary", None):
+        assert schema.Sample.model_validate({**_MINIMAL_SAMPLE, "is_primary_data": value}), (
+            f"{value!r} should be accepted"
+        )

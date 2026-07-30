@@ -26,10 +26,9 @@ classes:
 slots:
   author_cell_type:
     title: Author Cell Type
-    description: >-
-      Cell type label as assigned by the data author, in their own vocabulary.
+    description: Encoding of author intuition of cellular annotation in the dataset.
     examples:
-      - value: alveolar macrophage; luminal progenitor
+      - value: Goblet cell; microglia
     annotations:
       annDataLocation: obs
       tier: Tier 1
@@ -37,15 +36,16 @@ slots:
     required: false
     multivalued: false
     comments:
+      - Encoding of author intuition of cellular annotation in their dataset.
       - >-
-        The author's own naming, retained alongside the ontology term so the original
-        annotation is not lost when terms are mapped to CL
+        Retained alongside the ontology term so the author's original naming is not lost
+        when terms are mapped to CL.
 
   cell_type_ontology_term_id:
     title: Cell Type Ontology Term ID
-    description: Cell type, as an ontology term.
+    description: Cell Ontology (CL) term.
     examples:
-      - value: CL:0000583
+      - value: CL:0001204
     annotations:
       annDataLocation: obs
       tier: Tier 1
@@ -54,10 +54,17 @@ slots:
     required: false
     multivalued: false
     notes:
+      - |
+        This must be a Cell Ontology (CL) term (http://www.ebi.ac.uk/ols4/ontologies/cl).
+
+        If no appropriate high-level term can be found or the cell type is unknown, then it is strongly recommended to use 'unknown'.
+
+        The following terms must not be used: "CL:0000255" for eukaryotic cell; "CL:0000257" for Eumycetozoan cell; "CL:0000548" for animal cell.
       - >-
-        A CL term, or "unknown". ZFA, FBbt, and WBbt terms are allowed depending on the
-        organism. "na" is allowed if tissue_type is "cell line".
+        ZFA, FBbt, and WBbt terms are allowed depending on the organism, and "na" is
+        allowed if tissue_type is "cell line" — per the h5ad validator's curie_constraints.
     comments:
+      - Encoding of cell type to help alignment with other datasets.
       - >-
-        Optional to match the validator's requirement_level, but unrecoverable once
-        dropped — populate_labels derives cell_type from this column, not the reverse
+        Unrecoverable once dropped — populate_labels derives cell_type from this column,
+        not the reverse. Optional here to match the h5ad validator's requirement_level.

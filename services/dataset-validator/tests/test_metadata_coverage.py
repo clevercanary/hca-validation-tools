@@ -323,19 +323,24 @@ class TestFieldCoverageEnumeration:
         assert all(e["entity_class"] != "cell" for e in result["field_coverage"])
 
     def test_newly_annotated_sample_slots_emit_at_sample_grain(self, schemaview):
-        # #538 gave `is_primary_data` and `sample_collection_method` an
-        # `annDataLocation: obs` annotation, which makes them coverage-eligible for the
-        # first time. `is_primary_data` additionally stopped being a deprecated slot,
-        # and deprecated slots are filtered out of coverage — so both changes were
-        # needed for it to appear here.
+        # #538 gave both `sample_collection_method` and `is_primary_data` an
+        # `annDataLocation: obs` annotation, but only the former becomes
+        # coverage-eligible: `is_primary_data` is still `is_a: deprecated_slot`, and
+        # deprecated slots are filtered out of coverage.
         #
-        # This is an additive wire-format change: two new sample-grain rows, shifting
-        # the denominator for anyone computing percentages over the set. "sample" is
-        # already in the tracker's allowlist, so nothing rejects it.
+        # That asymmetry is deliberate, not an oversight. `is_primary_data` stays a
+        # deprecated placeholder so entry sheet validation is untouched — the annotation
+        # alone is enough for annDataLocation-walking consumers like drop_obs_columns.
+        # See the slot's comments and #544.
+        #
+        # Net wire-format change is therefore ONE new sample-grain row, which shifts the
+        # denominator for anyone computing percentages. "sample" is already in the
+        # tracker's allowlist, so nothing rejects it.
         obs = pd.DataFrame({"donor_id": ["D1"], "sample_id": ["S1"]})
         result = compute_metadata_coverage(make_adata(obs), schemaview)
         sample_fields = {e["field"] for e in result["field_coverage"] if e["entity_class"] == "sample"}
-        assert {"is_primary_data", "sample_collection_method"} <= sample_fields
+        assert "sample_collection_method" in sample_fields
+        assert "is_primary_data" not in sample_fields
 
     def test_library_slots_emit_at_sample_grain(self, schemaview):
         # PRD-documented v0 contract: library_* slots are declared on the Sample

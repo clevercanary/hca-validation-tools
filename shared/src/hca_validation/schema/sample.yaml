@@ -142,32 +142,33 @@ slots:
       To be able to link to other studies from the same institution as sometimes samples from different labs in the same institute are processed via similar core facilities. Thus batch effects may be smaller for datasets from the same institute even if other factors differ.
 
   is_primary_data:
+    is_a: deprecated_slot
     title: Is Primary Data
-    description: >-
-      Whether the sample represents the primary data for these cells, as opposed to
-      a re-analysis of data published elsewhere.
-    examples:
-      - value: "true"
+    description: Deprecated placeholder indicating whether sample represents primary data.
     annotations:
       annDataLocation: obs
       tier: Tier 1
       cxg: is_primary_data
-    range: boolean
-    required: false
-    multivalued: false
     comments:
       - >-
-        Required by the h5ad validator and by the published Tier 1 dictionary, but left
-        optional here until entry sheets carry the column — LinkML's `required` is
-        enforced against entry sheet rows, so flipping it fails every sheet without it.
-        See #544.
+        Kept as a deprecated placeholder on purpose. The annotation is the only thing
+        added here, because annotations are inert for validation: they tell
+        annDataLocation-walking consumers such as drop_obs_columns that this obs column
+        exists and must not be deleted, without altering what the entry sheet validator
+        accepts. Restoring it to a real `range: boolean` slot would start type-checking
+        the column on entry sheets, where it is currently an unconstrained string that
+        tolerates any value including "na" — sheets that validate today would begin
+        failing. See #544.
       - >-
-        Lives on Sample to match the published Tier 1 dictionary, which places it there
-        even though CELLxGENE treats it as a per-cell flag. Consequence: coverage buckets
-        it by sample_id, so an integrated object whose cells disagree within one sample
-        (duplicate copies marked false, canonical ones true) reports that sample as
-        inconsistent. That is accurate reporting of a genuinely mixed value, not a
-        validation failure — the h5ad validator accepts such a file.
+        The real modelling question is deferred, not answered. CELLxGENE defines this in
+        obs as a per-cell bool, and the published Tier 1 dictionary describes it as "the
+        canonical instance of this cellular observation" — per-observation semantics —
+        while filing it under `sample`. A sample's cells can legitimately disagree, so
+        Sample is the wrong grain for it and this placeholder deliberately makes no
+        semantic claim. Moving it to Cell is its own change: slots are global by name in
+        LinkML, so it needs a slot_usage override rather than a move, and removing it
+        from Sample outright would make sheets carrying the column fail with
+        extra_forbidden.
 
   library_id:
     title: Library ID
@@ -403,12 +404,16 @@ slots:
   sample_collection_method:
     title: Sample Collection Method
     description: The method the sample was physically obtained from the donor.
+    examples:
+      - value: biopsy; brush; surgical resection
     annotations:
       annDataLocation: obs
       tier: Tier 1
     range: SampleCollectionMethod
     required: true
     notes: "brush; scraping; biopsy; surgical resection; blood draw; body fluid; other"
+    comments:
+      - Main contributor to batch effects
 
   tissue_ontology_term:
     is_a: deprecated_slot

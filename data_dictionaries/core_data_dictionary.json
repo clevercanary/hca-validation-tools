@@ -460,17 +460,16 @@
         {
           "name": "is_primary_data",
           "title": "Is Primary Data",
-          "description": "Whether the sample represents the primary data for these cells, as opposed to a re-analysis of data published elsewhere.",
-          "range": "boolean",
+          "description": "Deprecated placeholder indicating whether sample represents primary data.",
+          "range": "string",
           "required": false,
           "multivalued": false,
-          "example": "true",
           "annotations": {
             "annDataLocation": "obs",
             "tier": "Tier 1",
             "cxg": "is_primary_data"
           },
-          "rationale": "Required by the h5ad validator and by the published Tier 1 dictionary, but left optional here until entry sheets carry the column \u2014 LinkML's `required` is enforced against entry sheet rows, so flipping it fails every sheet without it. See #544.\nLives on Sample to match the published Tier 1 dictionary, which places it there even though CELLxGENE treats it as a per-cell flag. Consequence: coverage buckets it by sample_id, so an integrated object whose cells disagree within one sample (duplicate copies marked false, canonical ones true) reports that sample as inconsistent. That is accurate reporting of a genuinely mixed value, not a validation failure \u2014 the h5ad validator accepts such a file."
+          "rationale": "Kept as a deprecated placeholder on purpose. The annotation is the only thing added here, because annotations are inert for validation: they tell annDataLocation-walking consumers such as drop_obs_columns that this obs column exists and must not be deleted, without altering what the entry sheet validator accepts. Restoring it to a real `range: boolean` slot would start type-checking the column on entry sheets, where it is currently an unconstrained string that tolerates any value including \"na\" \u2014 sheets that validate today would begin failing. See #544.\nThe real modelling question is deferred, not answered. CELLxGENE defines this in obs as a per-cell bool, and the published Tier 1 dictionary describes it as \"the canonical instance of this cellular observation\" \u2014 per-observation semantics \u2014 while filing it under `sample`. A sample's cells can legitimately disagree, so Sample is the wrong grain for it and this placeholder deliberately makes no semantic claim. Moving it to Cell is its own change: slots are global by name in LinkML, so it needs a slot_usage override rather than a move, and removing it from Sample outright would make sheets carrying the column fail with extra_forbidden."
         },
         {
           "name": "library_id",
@@ -535,10 +534,12 @@
           "range": "SampleCollectionMethod",
           "required": true,
           "multivalued": false,
+          "example": "biopsy; brush; surgical resection",
           "annotations": {
             "annDataLocation": "obs",
             "tier": "Tier 1"
           },
+          "rationale": "Main contributor to batch effects",
           "values": "brush; scraping; biopsy; surgical resection; blood draw; body fluid; other"
         },
         {
@@ -715,32 +716,32 @@
         {
           "name": "author_cell_type",
           "title": "Author Cell Type",
-          "description": "Cell type label as assigned by the data author, in their own vocabulary.",
+          "description": "Encoding of author intuition of cellular annotation in the dataset.",
           "range": "string",
           "required": false,
           "multivalued": false,
-          "example": "alveolar macrophage; luminal progenitor",
+          "example": "Goblet cell; microglia",
           "annotations": {
             "annDataLocation": "obs",
             "tier": "Tier 1"
           },
-          "rationale": "The author's own naming, retained alongside the ontology term so the original annotation is not lost when terms are mapped to CL"
+          "rationale": "Encoding of author intuition of cellular annotation in their dataset.\nRetained alongside the ontology term so the author's original naming is not lost when terms are mapped to CL."
         },
         {
           "name": "cell_type_ontology_term_id",
           "title": "Cell Type Ontology Term ID",
-          "description": "Cell type, as an ontology term.",
+          "description": "Cell Ontology (CL) term.",
           "range": "string",
           "required": false,
           "multivalued": false,
-          "example": "CL:0000583",
+          "example": "CL:0001204",
           "annotations": {
             "annDataLocation": "obs",
             "tier": "Tier 1",
             "cxg": "cell_type_ontology_term_id"
           },
-          "rationale": "Optional to match the validator's requirement_level, but unrecoverable once dropped \u2014 populate_labels derives cell_type from this column, not the reverse",
-          "values": "A CL term, or \"unknown\". ZFA, FBbt, and WBbt terms are allowed depending on the organism. \"na\" is allowed if tissue_type is \"cell line\"."
+          "rationale": "Encoding of cell type to help alignment with other datasets.\nUnrecoverable once dropped \u2014 populate_labels derives cell_type from this column, not the reverse. Optional here to match the h5ad validator's requirement_level.",
+          "values": "This must be a Cell Ontology (CL) term (http://www.ebi.ac.uk/ols4/ontologies/cl).\n\nIf no appropriate high-level term can be found or the cell type is unknown, then it is strongly recommended to use 'unknown'.\n\nThe following terms must not be used: \"CL:0000255\" for eukaryotic cell; \"CL:0000257\" for Eumycetozoan cell; \"CL:0000548\" for animal cell.\n\nZFA, FBbt, and WBbt terms are allowed depending on the organism, and \"na\" is allowed if tissue_type is \"cell line\" \u2014 per the h5ad validator's curie_constraints."
         }
       ]
     }
