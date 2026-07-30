@@ -199,6 +199,23 @@ def test_drop_refuses_blank_names(sample_h5ad_for_write):
     assert "cannot contain" in result["error"]
 
 
+def test_drop_reports_each_bad_name_once(sample_h5ad_for_write):
+    """A malformed name is necessarily absent from obs too, so it would appear
+    under both problems unless the absent check excludes it.
+
+    Listing '/X' as merely "not present in obs" implied its only fault was a typo
+    and sent the reader past the path-name rule that actually explains it.
+    """
+    result = drop_obs_columns(str(sample_h5ad_for_write), ["/X", "definitely_not_here"])
+
+    error = result["error"]
+    assert error.count("/X") == 1, error
+    # The genuinely-absent name is still reported, and under the right problem.
+    absent_part = error.split("not present in obs:")[1]
+    assert "definitely_not_here" in absent_part
+    assert "/X" not in absent_part
+
+
 # --- R2: guard tiers ---------------------------------------------------------
 
 

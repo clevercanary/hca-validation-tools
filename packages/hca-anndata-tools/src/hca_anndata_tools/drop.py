@@ -135,8 +135,13 @@ def _validate_request(obs: h5py.Group, uns: h5py.Group | None, columns: list[str
     #
     # Reported last: a caller reading the error wants the schema verdict on the
     # names they meant more than the spelling of the ones they fumbled.
+    #
+    # Malformed names are excluded so each bad name is reported once. A name like
+    # "/X" is necessarily absent from `obs.keys()` too, and listing it under both
+    # problems implied its only fault was being missing — which would have sent a
+    # caller looking for a typo rather than reading the path-name rule above.
     members = set(obs.keys())
-    absent = [c for c in columns if c not in members]
+    absent = [c for c in columns if c not in members and c not in malformed]
     if absent:
         problems.append(f"not present in obs: {absent}")
 
