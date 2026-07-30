@@ -1,0 +1,413 @@
+"""Tests for drop_obs_columns."""
+
+import json
+from pathlib import Path
+
+import anndata as ad
+import h5py
+import numpy as np
+import pandas as pd
+
+from hca_anndata_tools._io import _decode_bytes, read_obs_column_names
+from hca_anndata_tools.drop import drop_obs_columns
+from hca_anndata_tools.write import EDIT_LOG_KEY, make_edit_entry
+
+
+def _add_obs_cols(path, *names):
+    """Add categorical obs columns to the fixture file, in place.
+
+    Deliberately does *not* touch ``uns['schema_version']``: the fixture sets
+    it, which is the marker ``strip_forbidden_obs_columns`` refuses on, so
+    leaving it proves drop makes no such refusal (R6).
+    """
+    adata = ad.read_h5ad(path)
+    for name in names:
+        adata.obs[name] = pd.Categorical(["value"] * adata.n_obs)
+    adata.write_h5ad(path)
+
+
+def _no_snapshot_written(path):
+    """True when no timestamped edit snapshot appeared beside the source."""
+    return not any("-edit-" in p.name for p in Path(path).parent.iterdir())
+
+
+# --- R1: all-or-nothing ------------------------------------------------------
+
+
+def test_drop_absent_column_errors_and_writes_nothing(sample_h5ad_for_write):
+    """A name that isn't in obs is a mistake, not a no-op. Nothing is written."""
+    result = drop_obs_columns(str(sample_h5ad_for_write), ["nonexistent_column"])
+
+    assert "error" in result
+    assert "not present in obs" in result["error"]
+    assert "nonexistent_column" in result["error"]
+    assert _no_snapshot_written(sample_h5ad_for_write)
+
+
+def test_drop_is_atomic_across_valid_and_invalid(sample_h5ad_for_write):
+    """The load-bearing R1 case: one bad name in a list of good ones drops
+    nothing at all. A partial drop would silently half-curate a file."""
+    _add_obs_cols(sample_h5ad_for_write, "ethnicity_verbatim")
+    before = Path(sample_h5ad_for_write).read_bytes()
+
+    result = drop_obs_columns(
+        str(sample_h5ad_for_write),
+        ["ethnicity_verbatim", "typo_column"],
+    )
+
+    assert "error" in result
+    assert _no_snapshot_written(sample_h5ad_for_write)
+    # The source file must be untouched, not merely un-snapshotted.
+    assert Path(sample_h5ad_for_write).read_bytes() == before
+    assert "ethnicity_verbatim" in ad.read_h5ad(sample_h5ad_for_write).obs.columns
+
+
+def test_drop_reports_every_problem_at_once(sample_h5ad_for_write):
+    """A caller who names two bad columns learns about both in one round trip."""
+    result = drop_obs_columns(str(sample_h5ad_for_write), ["donor_id", "typo_column"])
+
+    assert "error" in result
+    # donor_id is schema-required *and* absent from the fixture; the schema
+    # verdict is what matters, but the absent list must still be populated by
+    # the other name rather than short-circuited away.
+    assert "required" in result["error"]
+    assert "typo_column" in result["error"]
+
+
+def test_drop_empty_column_list_errors(sample_h5ad_for_write):
+    result = drop_obs_columns(str(sample_h5ad_for_write), [])
+
+    assert "error" in result
+    assert "No columns given" in result["error"]
+    assert _no_snapshot_written(sample_h5ad_for_write)
+
+
+def test_drop_dedupes_repeated_names(sample_h5ad_for_write):
+    """A repeated name is harmless — it drops once and reports once."""
+    _add_obs_cols(sample_h5ad_for_write, "ethnicity_verbatim")
+
+    result = drop_obs_columns(
+        str(sample_h5ad_for_write),
+        ["ethnicity_verbatim", "ethnicity_verbatim"],
+    )
+
+    assert "error" not in result
+    assert result["obs_columns_dropped"] == ["ethnicity_verbatim"]
+
+
+# --- R1: names must be plain column names, not HDF5 link paths ---------------
+
+
+def test_drop_refuses_names_containing_a_slash(sample_h5ad_for_write):
+    """h5py resolves '/X' from the file root and 'a/b' into subgroups, so an
+    unguarded `c in obs` check accepts names pointing outside obs and the
+    delete then unlinks them. Every other check here compares plain strings, so
+    a path-shaped name would otherwise slip past all of them."""
+    for name in ("/X", "/raw/X", "/var", "/uns", "/obsm/X_umap", "raw/X"):
+        result = drop_obs_columns(str(sample_h5ad_for_write), [name])
+
+        assert "error" in result, f"{name!r} must be refused"
+        assert "cannot contain" in result["error"]
+        assert _no_snapshot_written(sample_h5ad_for_write)
+
+    # The matrix and the other top-level groups are still there.
+    with h5py.File(sample_h5ad_for_write, "r") as f:
+        assert "X" in f
+        assert "var" in f
+        assert "uns" in f
+
+
+def test_drop_slash_path_cannot_bypass_the_schema_guard(sample_h5ad_for_write):
+    """'/obs/donor_id' resolves to the same dataset as 'donor_id' but would not
+    match the schema-required name set, so it must be refused by the path check
+    rather than sliding past the tier comparison."""
+    _add_obs_cols(sample_h5ad_for_write, "donor_id")
+
+    result = drop_obs_columns(str(sample_h5ad_for_write), ["/obs/donor_id"])
+
+    assert "error" in result
+    assert "donor_id" in ad.read_h5ad(sample_h5ad_for_write).obs.columns
+
+
+def test_drop_slash_path_cannot_erase_provenance(sample_h5ad_for_write):
+    """The edit log lives at uns/provenance/edit_history. Reaching it through a
+    link path would let a caller replace an audit trail with a fresh one that
+    records only its own operation."""
+    adata = ad.read_h5ad(sample_h5ad_for_write)
+    adata.uns.setdefault("provenance", {})[EDIT_LOG_KEY] = json.dumps(
+        [
+            {
+                **make_edit_entry(operation="prior_op", description="seed", details={}),
+                "source_file": "seed.h5ad",
+                "source_sha256": "0" * 64,
+            }
+        ]
+    )
+    adata.write_h5ad(sample_h5ad_for_write)
+
+    result = drop_obs_columns(str(sample_h5ad_for_write), [f"/uns/provenance/{EDIT_LOG_KEY}"])
+
+    assert "error" in result
+    log = json.loads(ad.read_h5ad(sample_h5ad_for_write).uns["provenance"][EDIT_LOG_KEY])
+    assert [e["operation"] for e in log] == ["prior_op"]
+
+
+def test_drop_refuses_blank_names(sample_h5ad_for_write):
+    result = drop_obs_columns(str(sample_h5ad_for_write), ["  "])
+
+    assert "error" in result
+    assert "cannot contain" in result["error"]
+
+
+# --- R2: guard tiers ---------------------------------------------------------
+
+
+def test_drop_refuses_schema_required_column(sample_h5ad_for_write):
+    """donor_id is required; dropping it would leave an invalid file."""
+    _add_obs_cols(sample_h5ad_for_write, "donor_id")
+
+    result = drop_obs_columns(str(sample_h5ad_for_write), ["donor_id"])
+
+    assert "error" in result
+    assert "required" in result["error"]
+    assert "donor_id" in result["error"]
+    assert _no_snapshot_written(sample_h5ad_for_write)
+
+
+def test_drop_refuses_schema_optional_column(sample_h5ad_for_write):
+    """author_batch_notes is optional per the schema but holds producer data
+    that cannot be reconstructed, so it is refused too."""
+    _add_obs_cols(sample_h5ad_for_write, "author_batch_notes")
+
+    result = drop_obs_columns(str(sample_h5ad_for_write), ["author_batch_notes"])
+
+    assert "error" in result
+    assert "author_batch_notes" in result["error"]
+    # Reported as the optional tier, not the required one — the distinction is
+    # the seam a future force flag would use.
+    assert "optional" in result["error"]
+    assert "required" not in result["error"]
+    assert _no_snapshot_written(sample_h5ad_for_write)
+
+
+def test_drop_refuses_obs_index(sample_h5ad_for_write):
+    """The index is a dataset in the obs group like any column, so a caller can
+    name it. Deleting it would destroy the file's cell identities."""
+    with h5py.File(sample_h5ad_for_write, "r") as f:
+        index_name = _decode_bytes(f["obs"].attrs.get("_index", "_index"))
+
+    result = drop_obs_columns(str(sample_h5ad_for_write), [index_name])
+
+    assert "error" in result
+    assert "obs index" in result["error"]
+    assert _no_snapshot_written(sample_h5ad_for_write)
+
+
+# --- R3: derived labels are not guarded --------------------------------------
+
+
+def test_drop_allows_canonical_derived_labels(sample_h5ad_for_write):
+    """cell_type/sex/tissue are outputs populate_labels regenerates from the
+    matching *_ontology_term_id columns, so they carry no guard."""
+    result = drop_obs_columns(str(sample_h5ad_for_write), ["cell_type", "sex", "tissue"])
+
+    assert "error" not in result
+    written = ad.read_h5ad(result["output_path"])
+    for col in ("cell_type", "sex", "tissue"):
+        assert col not in written.obs.columns
+
+
+# --- R4: the guard must not block the use case the tool exists for -----------
+
+
+def test_drop_removes_ethnicity_under_noncanonical_names(sample_h5ad_for_write):
+    """The reason this tool exists. These five names are how the breast-v1
+    source datasets carry ethnicity; none is a schema field, so none is
+    guarded. If this test fails the tool cannot do its job."""
+    aliases = [
+        "self_reported_ethnicity_label",
+        "ethnicity_verbatim",
+        "ethnicity_grouped",
+        "reported_ethnicity",
+        "race",
+    ]
+    _add_obs_cols(sample_h5ad_for_write, *aliases)
+
+    result = drop_obs_columns(str(sample_h5ad_for_write), aliases)
+
+    assert "error" not in result
+    assert result["obs_columns_dropped"] == aliases
+    written = ad.read_h5ad(result["output_path"])
+    for col in aliases:
+        assert col not in written.obs.columns
+
+
+def test_drop_removes_producer_label_columns(sample_h5ad_for_write):
+    """The other target class: derived labels under non-canonical names, which
+    differ per dataset and so cannot be a fixed list in code."""
+    labels = ["cell_type_label", "assay_label", "tissue_label"]
+    _add_obs_cols(sample_h5ad_for_write, *labels)
+
+    result = drop_obs_columns(str(sample_h5ad_for_write), labels)
+
+    assert "error" not in result
+    written = ad.read_h5ad(result["output_path"])
+    for col in labels:
+        assert col not in written.obs.columns
+
+
+# --- uns references: delete what the column owns, refuse what references it --
+
+
+def test_drop_deletes_the_palette_the_column_owns(sample_h5ad_for_write):
+    """scanpy stores a categorical's colours at uns['<col>_colors']. The palette
+    belongs to the column, so it goes with it — left behind it is orphaned, and
+    the validator rejects a colors field with no matching obs column."""
+    _add_obs_cols(sample_h5ad_for_write, "cell_type_label")
+    adata = ad.read_h5ad(sample_h5ad_for_write)
+    adata.uns["cell_type_label_colors"] = np.array(["#111111", "#222222"])
+    adata.uns["unrelated_colors"] = np.array(["#333333"])
+    adata.write_h5ad(sample_h5ad_for_write)
+
+    result = drop_obs_columns(str(sample_h5ad_for_write), ["cell_type_label"])
+
+    assert "error" not in result
+    assert result["uns_keys_dropped"] == ["cell_type_label_colors"]
+    written = ad.read_h5ad(result["output_path"])
+    assert "cell_type_label_colors" not in written.uns
+    # A palette belonging to some other column is none of our business.
+    assert "unrelated_colors" in written.uns
+
+
+def test_drop_reports_no_uns_keys_when_there_is_no_palette(sample_h5ad_for_write):
+    _add_obs_cols(sample_h5ad_for_write, "race")
+
+    result = drop_obs_columns(str(sample_h5ad_for_write), ["race"])
+
+    assert result["uns_keys_dropped"] == []
+
+
+def test_drop_refuses_column_referenced_by_batch_condition(sample_h5ad_for_write):
+    """uns['batch_condition'] is typed match_obs_columns, so its entries must
+    name obs columns. It declares which columns define the experiment's
+    batches — rewriting that claim is a curation decision, not cleanup."""
+    _add_obs_cols(sample_h5ad_for_write, "producer_batch")
+    adata = ad.read_h5ad(sample_h5ad_for_write)
+    adata.uns["batch_condition"] = np.array(["producer_batch"])
+    adata.write_h5ad(sample_h5ad_for_write)
+
+    result = drop_obs_columns(str(sample_h5ad_for_write), ["producer_batch"])
+
+    assert "error" in result
+    assert "batch_condition" in result["error"]
+    assert "producer_batch" in ad.read_h5ad(sample_h5ad_for_write).obs.columns
+
+
+def test_drop_allows_column_absent_from_batch_condition(sample_h5ad_for_write):
+    """The batch_condition check must key on membership, not on the key merely
+    existing — otherwise any file with batches becomes undroppable."""
+    _add_obs_cols(sample_h5ad_for_write, "producer_batch", "race")
+    adata = ad.read_h5ad(sample_h5ad_for_write)
+    adata.uns["batch_condition"] = np.array(["producer_batch"])
+    adata.write_h5ad(sample_h5ad_for_write)
+
+    result = drop_obs_columns(str(sample_h5ad_for_write), ["race"])
+
+    assert "error" not in result
+
+
+def test_drop_refuses_cap_annotation_set_columns(sample_h5ad_for_write):
+    """CAP set columns are named '<set>--<suffix>' and are not schema-named, so
+    nothing else catches them. uns['cap_metadata'] would still declare the set,
+    leaving it broken — the set has to go, not its columns."""
+    _add_obs_cols(sample_h5ad_for_write, "myset--cell_type")
+    adata = ad.read_h5ad(sample_h5ad_for_write)
+    adata.uns["cap_metadata"] = {"cellannotation_schema_version": "1.0.0"}
+    adata.write_h5ad(sample_h5ad_for_write)
+
+    result = drop_obs_columns(str(sample_h5ad_for_write), ["myset--cell_type"])
+
+    assert "error" in result
+    assert "cap_metadata" in result["error"]
+    assert "myset--cell_type" in ad.read_h5ad(sample_h5ad_for_write).obs.columns
+
+
+def test_drop_allows_double_dash_when_no_cap_metadata(sample_h5ad_for_write):
+    """Without a CAP declaration there is no set to break, so the '--' shape is
+    just a column name."""
+    _add_obs_cols(sample_h5ad_for_write, "odd--name")
+
+    result = drop_obs_columns(str(sample_h5ad_for_write), ["odd--name"])
+
+    assert "error" not in result
+
+
+# --- R5/R6: result shape and mechanics ---------------------------------------
+
+
+def test_drop_preserves_caller_order_and_leaves_other_columns(sample_h5ad_for_write):
+    _add_obs_cols(sample_h5ad_for_write, "race", "ethnicity_verbatim")
+
+    result = drop_obs_columns(str(sample_h5ad_for_write), ["race", "ethnicity_verbatim"])
+
+    assert result["obs_columns_dropped"] == ["race", "ethnicity_verbatim"]
+    written = ad.read_h5ad(result["output_path"])
+    # Untouched columns survive, including the numeric one.
+    for col in ("sex", "tissue", "cell_type", "n_counts"):
+        assert col in written.obs.columns
+
+
+def test_drop_succeeds_on_cellxgene_layout(cellxgene_h5ad):
+    """Unlike strip_forbidden_obs_columns, this makes no layout refusal —
+    removing an arbitrary column is layout-agnostic."""
+    _add_obs_cols(cellxgene_h5ad, "ethnicity_verbatim")
+
+    result = drop_obs_columns(str(cellxgene_h5ad), ["ethnicity_verbatim"])
+
+    assert "error" not in result
+    assert "ethnicity_verbatim" not in ad.read_h5ad(result["output_path"]).obs.columns
+
+
+def test_drop_updates_column_order(sample_h5ad_for_write):
+    """column-order must lose exactly the dropped names and keep the survivors
+    in their original relative order, or the file stops round-tripping."""
+    _add_obs_cols(sample_h5ad_for_write, "race")
+    before = read_obs_column_names(str(sample_h5ad_for_write))
+
+    result = drop_obs_columns(str(sample_h5ad_for_write), ["race", "cell_type"])
+    after = read_obs_column_names(result["output_path"])
+
+    assert "race" not in after
+    assert "cell_type" not in after
+    assert after == [c for c in before if c not in ("race", "cell_type")]
+
+
+def test_drop_preserves_existing_edit_log(sample_h5ad_for_write):
+    """An h5ad already carrying edit-log entries must get the new entry
+    appended, not replacing history."""
+    adata = ad.read_h5ad(sample_h5ad_for_write)
+    adata.obs["race"] = pd.Categorical(["value"] * adata.n_obs)
+    prior_entry = make_edit_entry(
+        operation="prior_synthetic_op",
+        description="Synthetic prior entry to verify the drop tool appends.",
+        details={"shape_before": [adata.n_obs, adata.n_vars]},
+    )
+    seed_log = json.dumps([{**prior_entry, "source_file": "synthetic-seed.h5ad", "source_sha256": "0" * 64}])
+    adata.uns.setdefault("provenance", {})[EDIT_LOG_KEY] = seed_log
+    adata.write_h5ad(sample_h5ad_for_write)
+
+    result = drop_obs_columns(str(sample_h5ad_for_write), ["race"])
+    assert "error" not in result
+
+    log = json.loads(ad.read_h5ad(result["output_path"]).uns["provenance"][EDIT_LOG_KEY])
+    assert len(log) == 2, f"Expected 2 entries (prior + drop), got {len(log)}"
+    assert log[0]["operation"] == "prior_synthetic_op"
+    assert log[1]["operation"] == "drop_obs_columns"
+    assert log[1]["details"]["obs_columns_dropped"] == ["race"]
+
+
+def test_drop_missing_file():
+    result = drop_obs_columns("/nonexistent/path/file.h5ad", ["race"])
+
+    assert "error" in result
+    assert "File not found" in result["error"]

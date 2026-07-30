@@ -2,6 +2,7 @@
 
 from fastmcp import FastMCP
 
+from hca_anndata_mcp.tools.drop import drop_obs_columns
 from hca_anndata_mcp.tools.label import label_h5ad
 from hca_anndata_mcp.tools.plot import plot_embedding_mcp
 from hca_anndata_mcp.tools.populate import populate_labels
@@ -44,6 +45,11 @@ mcp = FastMCP(
         "the file is already HCA-layout and the SRE columns survived from "
         "upstream; on CellxGENE-layout files convert_cellxgene_to_hca strips "
         "them automatically as a side-effect, "
+        "drop_obs_columns to remove caller-named obs columns — use this for "
+        "producer columns the schema doesn't name, such as ethnicity under a "
+        "non-canonical name (ethnicity_verbatim, race, ...) or derived labels "
+        "under a non-canonical name (cell_type_label, ...); it refuses any "
+        "column the HCA schema names and drops all or nothing, "
         "validate_marker_genes to check CAP marker genes against var, "
         "copy_cap_annotations to copy CAP annotations from a source into an HCA target file, "
         "replace_placeholder_values to replace banned placeholder values with NaN in obs columns, "
@@ -78,6 +84,7 @@ mcp.tool()(list_uns_fields)
 mcp.tool()(set_uns)
 mcp.tool()(convert_cellxgene_to_hca)
 mcp.tool()(strip_forbidden_obs_columns)
+mcp.tool()(drop_obs_columns)
 mcp.tool()(validate_marker_genes)
 mcp.tool()(copy_cap_annotations)
 mcp.tool()(replace_placeholder_values)
