@@ -310,14 +310,37 @@ class TestFieldCoverageEnumeration:
         assert {e["entity_class"] for e in result["field_coverage"]} <= {"obs", "dataset", "donor", "sample"}
 
     def test_cell_entity_class_absent_in_v0(self, schemaview):
-        # The Cell LinkML class has no slots in v0, so no entity_class == "cell"
-        # entries should appear and entities["cell"] should not be emitted.
-        # If someone adds a Cell slot, this test fires and forces a wire-format
-        # review (cell.record_count denominator, etc.).
+        # Cell gained slots in #538, so this exclusion is now deliberate rather than a
+        # side effect of the class being empty: coverage_classes() skips Cell by name,
+        # and the rationale lives there.
+        #
+        # What that comment does not cover, because it is a wire-format concern rather
+        # than a schema one: when the exclusion is lifted, cell.record_count needs a
+        # denominator decision (n_obs, presumably) before this test can be deleted.
         obs = pd.DataFrame({"donor_id": ["D1"], "sample_id": ["S1"]})
         result = compute_metadata_coverage(make_adata(obs), schemaview)
         assert "cell" not in result["entities"]
         assert all(e["entity_class"] != "cell" for e in result["field_coverage"])
+
+    def test_newly_annotated_sample_slots_emit_at_sample_grain(self, schemaview):
+        # #538 gave both `sample_collection_method` and `is_primary_data` an
+        # `annDataLocation: obs` annotation, but only the former becomes
+        # coverage-eligible: `is_primary_data` is still `is_a: deprecated_slot`, and
+        # deprecated slots are filtered out of coverage.
+        #
+        # That asymmetry is deliberate, not an oversight. `is_primary_data` stays a
+        # deprecated placeholder so entry sheet validation is untouched — the annotation
+        # alone is enough for annDataLocation-walking consumers like drop_obs_columns.
+        # See the slot's comments and #544.
+        #
+        # Net wire-format change is therefore ONE new sample-grain row, which shifts the
+        # denominator for anyone computing percentages. "sample" is already in the
+        # tracker's allowlist, so nothing rejects it.
+        obs = pd.DataFrame({"donor_id": ["D1"], "sample_id": ["S1"]})
+        result = compute_metadata_coverage(make_adata(obs), schemaview)
+        sample_fields = {e["field"] for e in result["field_coverage"] if e["entity_class"] == "sample"}
+        assert "sample_collection_method" in sample_fields
+        assert "is_primary_data" not in sample_fields
 
     def test_library_slots_emit_at_sample_grain(self, schemaview):
         # PRD-documented v0 contract: library_* slots are declared on the Sample

@@ -1,13 +1,33 @@
 # Bundled copy of shared/src/hca_validation/schema/generated/core.py
 # Generated from LinkML schemas via `cd shared && make gen-schema`.
 # To refresh: copy the generated file here after regeneration.
-from __future__ import annotations
+from __future__ import annotations 
 
-from decimal import Decimal
-from enum import Enum
-from typing import Any, ClassVar, Optional, Union
+import re
+import sys
+from datetime import (
+    date,
+    datetime,
+    time
+)
+from decimal import Decimal 
+from enum import Enum 
+from typing import (
+    Any,
+    ClassVar,
+    Literal,
+    Optional,
+    Union
+)
 
-from pydantic import BaseModel, ConfigDict, Field, RootModel
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    RootModel,
+    field_validator
+)
+
 
 metamodel_version = "None"
 version = "0.1.0"
@@ -819,7 +839,33 @@ class Sample(ConfiguredBaseModel):
                       'other factors differ.'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'EMBL-EBI; Genome Institute of Singapore'}]} })
-    is_primary_data: Optional[str] = Field(default=None, title="Is Primary Data", description="""Deprecated placeholder indicating whether sample represents primary data.""", json_schema_extra = { "linkml_meta": {'alias': 'is_primary_data', 'domain_of': ['Sample'], 'is_a': 'deprecated_slot'} })
+    is_primary_data: Optional[str] = Field(default=None, title="Is Primary Data", description="""Deprecated placeholder indicating whether sample represents primary data.""", json_schema_extra = { "linkml_meta": {'alias': 'is_primary_data',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
+                         'cxg': {'tag': 'cxg', 'value': 'is_primary_data'},
+                         'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'comments': ['Kept as a deprecated placeholder on purpose. The annotation is '
+                      'the only thing added here, because annotations are inert for '
+                      'validation: they tell annDataLocation-walking consumers such as '
+                      'drop_obs_columns that this obs column exists and must not be '
+                      'deleted, without altering what the entry sheet validator '
+                      'accepts. Restoring it to a real `range: boolean` slot would '
+                      'start type-checking the column on entry sheets, where it is '
+                      'currently an unconstrained string that tolerates any value '
+                      'including "na" — sheets that validate today would begin '
+                      'failing. See #544.',
+                      'The real modelling question is deferred, not answered. '
+                      'CELLxGENE defines this in obs as a per-cell bool, and the '
+                      'published Tier 1 dictionary describes it as "the canonical '
+                      'instance of this cellular observation" — per-observation '
+                      "semantics — while filing it under `sample`. A sample's cells "
+                      'can legitimately disagree, so Sample is the wrong grain for it '
+                      'and this placeholder deliberately makes no semantic claim. '
+                      'Moving it to Cell is its own change: slots are global by name '
+                      'in LinkML, so it needs a slot_usage override rather than a '
+                      'move, and removing it from Sample outright would make sheets '
+                      'carrying the column fail with extra_forbidden.'],
+         'domain_of': ['Sample'],
+         'is_a': 'deprecated_slot'} })
     library_id: str = Field(default=..., title="Library ID", description="""The unique ID that is used to track libraries in the investigator's institution (should align with the publication).""", json_schema_extra = { "linkml_meta": {'alias': 'library_id',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
@@ -847,7 +893,11 @@ class Sample(ConfiguredBaseModel):
          'domain_of': ['Sample'],
          'examples': [{'value': 'run1; NV0087'}]} })
     sample_collection_method: SampleCollectionMethod = Field(default=..., title="Sample Collection Method", description="""The method the sample was physically obtained from the donor.""", json_schema_extra = { "linkml_meta": {'alias': 'sample_collection_method',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
+                         'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'comments': ['Main contributor to batch effects'],
          'domain_of': ['Sample'],
+         'examples': [{'value': 'biopsy; brush; surgical resection'}],
          'notes': ['brush; scraping; biopsy; surgical resection; blood draw; body '
                    'fluid; other']} })
     sample_collection_year: Optional[str] = Field(default=None, title="Sample Collection Year", description="""Year of sample collection. Should not be detailed further (to exact month and day), to prevent identifiability.""", json_schema_extra = { "linkml_meta": {'alias': 'sample_collection_year',
@@ -1046,7 +1096,33 @@ class AdiposeSample(Sample):
                       'other factors differ.'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'EMBL-EBI; Genome Institute of Singapore'}]} })
-    is_primary_data: Optional[str] = Field(default=None, title="Is Primary Data", description="""Deprecated placeholder indicating whether sample represents primary data.""", json_schema_extra = { "linkml_meta": {'alias': 'is_primary_data', 'domain_of': ['Sample'], 'is_a': 'deprecated_slot'} })
+    is_primary_data: Optional[str] = Field(default=None, title="Is Primary Data", description="""Deprecated placeholder indicating whether sample represents primary data.""", json_schema_extra = { "linkml_meta": {'alias': 'is_primary_data',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
+                         'cxg': {'tag': 'cxg', 'value': 'is_primary_data'},
+                         'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'comments': ['Kept as a deprecated placeholder on purpose. The annotation is '
+                      'the only thing added here, because annotations are inert for '
+                      'validation: they tell annDataLocation-walking consumers such as '
+                      'drop_obs_columns that this obs column exists and must not be '
+                      'deleted, without altering what the entry sheet validator '
+                      'accepts. Restoring it to a real `range: boolean` slot would '
+                      'start type-checking the column on entry sheets, where it is '
+                      'currently an unconstrained string that tolerates any value '
+                      'including "na" — sheets that validate today would begin '
+                      'failing. See #544.',
+                      'The real modelling question is deferred, not answered. '
+                      'CELLxGENE defines this in obs as a per-cell bool, and the '
+                      'published Tier 1 dictionary describes it as "the canonical '
+                      'instance of this cellular observation" — per-observation '
+                      "semantics — while filing it under `sample`. A sample's cells "
+                      'can legitimately disagree, so Sample is the wrong grain for it '
+                      'and this placeholder deliberately makes no semantic claim. '
+                      'Moving it to Cell is its own change: slots are global by name '
+                      'in LinkML, so it needs a slot_usage override rather than a '
+                      'move, and removing it from Sample outright would make sheets '
+                      'carrying the column fail with extra_forbidden.'],
+         'domain_of': ['Sample'],
+         'is_a': 'deprecated_slot'} })
     library_id: str = Field(default=..., title="Library ID", description="""The unique ID that is used to track libraries in the investigator's institution (should align with the publication).""", json_schema_extra = { "linkml_meta": {'alias': 'library_id',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
@@ -1074,7 +1150,11 @@ class AdiposeSample(Sample):
          'domain_of': ['Sample'],
          'examples': [{'value': 'run1; NV0087'}]} })
     sample_collection_method: SampleCollectionMethod = Field(default=..., title="Sample Collection Method", description="""The method the sample was physically obtained from the donor.""", json_schema_extra = { "linkml_meta": {'alias': 'sample_collection_method',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
+                         'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'comments': ['Main contributor to batch effects'],
          'domain_of': ['Sample'],
+         'examples': [{'value': 'biopsy; brush; surgical resection'}],
          'notes': ['brush; scraping; biopsy; surgical resection; blood draw; body '
                    'fluid; other']} })
     sample_collection_year: Optional[str] = Field(default=None, title="Sample Collection Year", description="""Year of sample collection. Should not be detailed further (to exact month and day), to prevent identifiability.""", json_schema_extra = { "linkml_meta": {'alias': 'sample_collection_year',
@@ -1274,7 +1354,33 @@ class GutSample(Sample):
                       'other factors differ.'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'EMBL-EBI; Genome Institute of Singapore'}]} })
-    is_primary_data: Optional[str] = Field(default=None, title="Is Primary Data", description="""Deprecated placeholder indicating whether sample represents primary data.""", json_schema_extra = { "linkml_meta": {'alias': 'is_primary_data', 'domain_of': ['Sample'], 'is_a': 'deprecated_slot'} })
+    is_primary_data: Optional[str] = Field(default=None, title="Is Primary Data", description="""Deprecated placeholder indicating whether sample represents primary data.""", json_schema_extra = { "linkml_meta": {'alias': 'is_primary_data',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
+                         'cxg': {'tag': 'cxg', 'value': 'is_primary_data'},
+                         'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'comments': ['Kept as a deprecated placeholder on purpose. The annotation is '
+                      'the only thing added here, because annotations are inert for '
+                      'validation: they tell annDataLocation-walking consumers such as '
+                      'drop_obs_columns that this obs column exists and must not be '
+                      'deleted, without altering what the entry sheet validator '
+                      'accepts. Restoring it to a real `range: boolean` slot would '
+                      'start type-checking the column on entry sheets, where it is '
+                      'currently an unconstrained string that tolerates any value '
+                      'including "na" — sheets that validate today would begin '
+                      'failing. See #544.',
+                      'The real modelling question is deferred, not answered. '
+                      'CELLxGENE defines this in obs as a per-cell bool, and the '
+                      'published Tier 1 dictionary describes it as "the canonical '
+                      'instance of this cellular observation" — per-observation '
+                      "semantics — while filing it under `sample`. A sample's cells "
+                      'can legitimately disagree, so Sample is the wrong grain for it '
+                      'and this placeholder deliberately makes no semantic claim. '
+                      'Moving it to Cell is its own change: slots are global by name '
+                      'in LinkML, so it needs a slot_usage override rather than a '
+                      'move, and removing it from Sample outright would make sheets '
+                      'carrying the column fail with extra_forbidden.'],
+         'domain_of': ['Sample'],
+         'is_a': 'deprecated_slot'} })
     library_id: str = Field(default=..., title="Library ID", description="""The unique ID that is used to track libraries in the investigator's institution (should align with the publication).""", json_schema_extra = { "linkml_meta": {'alias': 'library_id',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
@@ -1302,7 +1408,11 @@ class GutSample(Sample):
          'domain_of': ['Sample'],
          'examples': [{'value': 'run1; NV0087'}]} })
     sample_collection_method: SampleCollectionMethod = Field(default=..., title="Sample Collection Method", description="""The method the sample was physically obtained from the donor.""", json_schema_extra = { "linkml_meta": {'alias': 'sample_collection_method',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
+                         'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'comments': ['Main contributor to batch effects'],
          'domain_of': ['Sample'],
+         'examples': [{'value': 'biopsy; brush; surgical resection'}],
          'notes': ['brush; scraping; biopsy; surgical resection; blood draw; body '
                    'fluid; other']} })
     sample_collection_year: Optional[str] = Field(default=None, title="Sample Collection Year", description="""Year of sample collection. Should not be detailed further (to exact month and day), to prevent identifiability.""", json_schema_extra = { "linkml_meta": {'alias': 'sample_collection_year',
@@ -1549,7 +1659,37 @@ class Cell(ConfiguredBaseModel):
     """
     linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'https://github.com/clevercanary/hca-validation-tools/schema/cell'})
 
-    pass
+    author_cell_type: Optional[str] = Field(default=None, title="Author Cell Type", description="""Encoding of author intuition of cellular annotation in the dataset.""", json_schema_extra = { "linkml_meta": {'alias': 'author_cell_type',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
+                         'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'comments': ['Encoding of author intuition of cellular annotation in their '
+                      'dataset.',
+                      "Retained alongside the ontology term so the author's original "
+                      'naming is not lost when terms are mapped to CL.'],
+         'domain_of': ['Cell'],
+         'examples': [{'value': 'Goblet cell; microglia'}]} })
+    cell_type_ontology_term_id: Optional[str] = Field(default=None, title="Cell Type Ontology Term ID", description="""Cell Ontology (CL) term.""", json_schema_extra = { "linkml_meta": {'alias': 'cell_type_ontology_term_id',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
+                         'cxg': {'tag': 'cxg', 'value': 'cell_type_ontology_term_id'},
+                         'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'comments': ['Encoding of cell type to help alignment with other datasets.',
+                      'Unrecoverable once dropped — populate_labels derives cell_type '
+                      'from this column, not the reverse. Optional here to match the '
+                      "h5ad validator's requirement_level."],
+         'domain_of': ['Cell'],
+         'examples': [{'value': 'CL:0001204'}],
+         'notes': ['This must be a Cell Ontology (CL) term '
+                   '(http://www.ebi.ac.uk/ols4/ontologies/cl).\n'
+                   '\n'
+                   'If no appropriate high-level term can be found or the cell type is '
+                   "unknown, then it is strongly recommended to use 'unknown'.\n"
+                   '\n'
+                   'The following terms must not be used: "CL:0000255" for eukaryotic '
+                   'cell; "CL:0000257" for Eumycetozoan cell; "CL:0000548" for animal '
+                   'cell.\n',
+                   'ZFA, FBbt, and WBbt terms are allowed depending on the organism, '
+                   'and "na" is allowed if tissue_type is "cell line" — per the h5ad '
+                   "validator's curie_constraints."]} })
 
 
 # Model rebuild

@@ -80,8 +80,8 @@ def coverage_classes(schemaview: SchemaView) -> list[str]:
     """DEFAULT LinkML class names eligible for metadata coverage reporting.
 
     Returns the canonical (non-bionetwork-specific) class for each entity type
-    when that class has at least one coverage-eligible slot. Cell currently has
-    no slots and so is excluded in v0.
+    when that class has at least one coverage-eligible slot. Cell is excluded
+    deliberately — see below.
 
     Bionetwork-specific variants (AdiposeDataset, GutSample, etc.) are intentionally
     excluded: the validator emits coverage at the generic entity grain (donor,
@@ -90,6 +90,27 @@ def coverage_classes(schemaview: SchemaView) -> list[str]:
     eligible = []
     for network_mapping in schema_classes.values():
         class_name = network_mapping["DEFAULT"]
+        # Cell gained slots in #538, which would otherwise make it eligible and
+        # emit entity_class == "cell" rows. The tracker validates every coverage
+        # row against a closed allowlist of ["dataset", "donor", "obs", "sample"],
+        # and because metadata_coverage shares a schema with tool_reports, an
+        # unrecognized grain fails the *entire* validation-results message rather
+        # than degrading coverage. Nothing consumes cell-grain coverage today, so
+        # suppressing it here avoids a cross-repo deploy ordering constraint.
+        #
+        # Note the asymmetry, which is deliberate rather than an oversight: only
+        # `entity_class` is allowlisted. The row's `field` is `string().required()`
+        # with no `oneOf`, and the tracker's completeness rollup intersects incoming
+        # fields against its own data dictionary, ignoring ones it does not know. So
+        # new *fields* are safe to emit without coordination, while a new *grain* is
+        # not — which is why #538 could add a sample-grain row for
+        # `sample_collection_method` in the same change that suppresses Cell.
+        # (`is_primary_data` also gained the obs annotation but emits nothing: it
+        # remains a deprecated_slot, and deprecated slots are filtered from coverage.)
+        # Remove once clevercanary/hca-atlas-tracker#1499 ships, which widens the
+        # allowlist and makes entities["cell"] optional.
+        if class_name == "Cell":
+            continue
         if any(True for _ in iter_coverage_slots(schemaview, class_name)):
             eligible.append(class_name)
     return eligible
