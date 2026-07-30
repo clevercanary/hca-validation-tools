@@ -303,6 +303,25 @@ def test_drop_refuses_column_referenced_by_batch_condition(sample_h5ad_for_write
     assert "producer_batch" in ad.read_h5ad(sample_h5ad_for_write).obs.columns
 
 
+def test_drop_reads_scalar_batch_condition(sample_h5ad_for_write):
+    """A bare string lands on disk as a scalar bytes dataset rather than an
+    array, so iterating it would yield individual characters. Covers the
+    scalar branch of _read_batch_condition, which the array-valued tests
+    above never reach."""
+    _add_obs_cols(sample_h5ad_for_write, "producer_batch")
+    adata = ad.read_h5ad(sample_h5ad_for_write)
+    adata.uns["batch_condition"] = "producer_batch"
+    adata.write_h5ad(sample_h5ad_for_write)
+
+    with h5py.File(sample_h5ad_for_write, "r") as f:
+        assert f["uns"]["batch_condition"].shape == (), "fixture must produce a scalar, not an array"
+
+    result = drop_obs_columns(str(sample_h5ad_for_write), ["producer_batch"])
+
+    assert "error" in result
+    assert "batch_condition" in result["error"]
+
+
 def test_drop_allows_column_absent_from_batch_condition(sample_h5ad_for_write):
     """The batch_condition check must key on membership, not on the key merely
     existing — otherwise any file with batches becomes undroppable."""
