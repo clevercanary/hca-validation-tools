@@ -243,6 +243,93 @@ def test_drop_refuses_obs_index(sample_h5ad_for_write):
     assert _no_snapshot_written(sample_h5ad_for_write)
 
 
+# --- R2: the columns #538 made visible to the guard --------------------------
+#
+# These four were invisible to annDataLocation-walking until #538 (PR #545), so an
+# earlier revision of this tool deleted all of them without complaint. The LinkML
+# schema was the real defect: `Cell` was a bare `pass` with nowhere for the cell
+# annotation to live, and two `Sample` slots carried no annotation. A hardcoded
+# column list here was considered and rejected — the premise of #531 is that such
+# lists rot.
+#
+# Pinned here because the guard's coverage of them is a property of *this* tool,
+# and nothing else in this suite would notice if a future schema regeneration
+# silently dropped an annotation.
+
+
+def test_drop_refuses_the_columns_538_made_visible(sample_h5ad_for_write):
+    """All three at once, and the error must name every one of them.
+
+    Refusing two of three would be worse than refusing none: the caller would see
+    an error, assume nothing happened, and the tool's all-or-nothing contract (R1)
+    is what makes that assumption safe.
+    """
+    columns = ["cell_type_ontology_term_id", "is_primary_data", "sample_collection_method"]
+    _add_obs_cols(sample_h5ad_for_write, *columns)
+
+    result = drop_obs_columns(str(sample_h5ad_for_write), columns)
+
+    assert "error" in result
+    for column in columns:
+        assert column in result["error"], f"{column} fell through the guard"
+    assert _no_snapshot_written(sample_h5ad_for_write)
+
+
+def test_drop_splits_the_538_columns_across_tiers(sample_h5ad_for_write):
+    """`sample_collection_method` is schema-required; the other two are optional.
+
+    The tiers are reported apart because that seam is what a future `--force` flag
+    would act on, so a column landing in the wrong tier would become droppable
+    once that flag exists.
+    """
+    columns = ["cell_type_ontology_term_id", "is_primary_data", "sample_collection_method"]
+    _add_obs_cols(sample_h5ad_for_write, *columns)
+
+    error = drop_obs_columns(str(sample_h5ad_for_write), columns)["error"]
+
+    required_part, _, optional_part = error.partition("; ")
+    assert "required" in required_part
+    assert "sample_collection_method" in required_part
+    assert "optional" in optional_part
+    assert "cell_type_ontology_term_id" in optional_part
+    assert "is_primary_data" in optional_part
+
+
+def test_drop_refuses_cell_type_ontology_term_id(sample_h5ad_for_write):
+    """The worst of the four to lose: it is unrecoverable.
+
+    `populate_labels` derives `cell_type` *from* this column, not the reverse, so
+    once it is gone the file's cell annotation cannot be reconstructed from
+    anything else in the file. It is schema-*optional* (matching the h5ad
+    validator's `requirement_level`), which is exactly why the guard has to refuse
+    the optional tier too rather than only the required one.
+    """
+    _add_obs_cols(sample_h5ad_for_write, "cell_type_ontology_term_id")
+
+    result = drop_obs_columns(str(sample_h5ad_for_write), ["cell_type_ontology_term_id"])
+
+    assert "error" in result
+    assert "cell_type_ontology_term_id" in result["error"]
+    assert "optional" in result["error"]
+    assert _no_snapshot_written(sample_h5ad_for_write)
+
+
+def test_drop_refuses_author_cell_type(sample_h5ad_for_write):
+    """#538 gave `Cell` this slot too, so it is now guarded.
+
+    Deliberate: it holds the author's own cell-type naming, which no other column
+    can reconstruct once removed. Distinct from the derived labels below, which are
+    unguarded precisely because they are regenerable.
+    """
+    _add_obs_cols(sample_h5ad_for_write, "author_cell_type")
+
+    result = drop_obs_columns(str(sample_h5ad_for_write), ["author_cell_type"])
+
+    assert "error" in result
+    assert "author_cell_type" in result["error"]
+    assert _no_snapshot_written(sample_h5ad_for_write)
+
+
 # --- R3: derived labels are not guarded --------------------------------------
 
 

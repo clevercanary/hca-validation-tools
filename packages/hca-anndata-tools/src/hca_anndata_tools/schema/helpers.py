@@ -163,8 +163,8 @@ def uns_field_registry() -> dict[str, UnsFieldInfo]:
 def build_obs_column_tiers() -> tuple[frozenset[str], frozenset[str]]:
     """Collect obs column names the HCA schema names, split by requiredness.
 
-    Returns ``(required, optional)`` as a union across every class in
-    every entity class. Consumers get the two tiers separately rather than one
+    Returns ``(required, optional)`` as a union across every entity class.
+    Consumers get the two tiers separately rather than one
     combined set so they can say *which* tier a column offended — see
     :func:`~hca_anndata_tools.drop.drop_obs_columns`, whose guard refuses both
     but reports them apart.

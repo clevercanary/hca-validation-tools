@@ -73,6 +73,36 @@ def test_optional_tier_contains_known_optional_columns():
         assert col in optional, f"{col} should be schema-optional"
 
 
+def test_columns_538_made_visible_are_tiered():
+    """#538 (PR #545) added the LinkML declarations these four depend on.
+
+    Before it, `Cell` was a bare `pass` and two `Sample` slots carried no
+    `annDataLocation`, so all four were invisible to this walk and `drop_obs_columns`
+    deleted them without complaint. Asserted here as well as in test_drop because the
+    two failures look different: here it means the bundled model went stale, there it
+    means the guard stopped consulting it.
+
+    `sample_collection_method` is required; the Cell pair and `is_primary_data` are
+    optional, matching the h5ad validator's requirement levels.
+    """
+    assert "sample_collection_method" in _required()
+    for col in ("cell_type_ontology_term_id", "author_cell_type", "is_primary_data"):
+        assert col in _optional(), f"{col} should be schema-optional"
+
+
+def test_cell_entity_contributes_obs_columns():
+    """The `Cell` class is reachable from the entity walk and contributes columns.
+
+    `Cell` was empty until #538, so this is the first thing that would break if a
+    regeneration lost the class or the walk stopped reaching it — a silent failure
+    otherwise, since the tiers would simply come back two columns lighter.
+    """
+    from hca_anndata_tools.schema.core import Cell
+
+    assert Cell in _entity_classes()
+    assert {"author_cell_type", "cell_type_ontology_term_id"} <= _optional()
+
+
 def test_tiers_are_disjoint():
     """A column required by any entity is required, even where another class
     declares it optional — the stricter tier wins."""
