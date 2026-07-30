@@ -28,8 +28,7 @@ def test_schemaview_classes(schemaview):
     """
     for classes in schema_classes.values():
         for class_name in classes.values():
-            print(class_name)
-            assert schemaview.get_class(class_name) is not None
+            assert schemaview.get_class(class_name) is not None, f"{class_name} missing from schemaview"
 
 
 def test_generated_classes():
