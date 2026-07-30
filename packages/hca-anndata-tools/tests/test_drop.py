@@ -152,6 +152,41 @@ def test_drop_slash_path_cannot_erase_provenance(sample_h5ad_for_write):
     assert [e["operation"] for e in log] == ["prior_op"]
 
 
+def test_drop_refuses_a_bare_string_for_columns(sample_h5ad_for_write):
+    """columns="race" instead of ["race"] would iterate as characters and report
+    'not present in obs: [r, a, c, e]' — a plausible slip from an MCP client
+    with a useless error, so it is named explicitly."""
+    result = drop_obs_columns(str(sample_h5ad_for_write), "race")  # pyright: ignore[reportArgumentType]
+
+    assert "error" in result
+    assert "not a single string" in result["error"]
+    assert _no_snapshot_written(sample_h5ad_for_write)
+
+
+def test_drop_refuses_non_string_entries(sample_h5ad_for_write):
+    """This is an MCP-exposed tool, so columns arrives as decoded JSON and may
+    hold numbers or nulls. Every check downstream assumes strings, so they are
+    rejected up front with a message that says so rather than surfacing
+    "argument of type 'int' is not iterable"."""
+    for bad in ([123], [None], ["race", 123]):
+        result = drop_obs_columns(str(sample_h5ad_for_write), bad)  # pyright: ignore[reportArgumentType]
+
+        assert "error" in result
+        assert "only strings" in result["error"], f"{bad!r} gave: {result['error']}"
+        assert _no_snapshot_written(sample_h5ad_for_write)
+
+
+def test_drop_accepts_a_tuple_of_names(sample_h5ad_for_write):
+    """Nothing depends on the argument being a list specifically, so a tuple
+    from a caller that built one should not be an error."""
+    _add_obs_cols(sample_h5ad_for_write, "race")
+
+    result = drop_obs_columns(str(sample_h5ad_for_write), ("race",))  # pyright: ignore[reportArgumentType]
+
+    assert "error" not in result
+    assert result["obs_columns_dropped"] == ["race"]
+
+
 def test_drop_refuses_blank_names(sample_h5ad_for_write):
     result = drop_obs_columns(str(sample_h5ad_for_write), ["  "])
 

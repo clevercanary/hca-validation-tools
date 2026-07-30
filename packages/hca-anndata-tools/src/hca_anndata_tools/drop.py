@@ -197,11 +197,31 @@ def drop_obs_columns(path: str, columns: list[str]) -> dict:
     """
     output_path = None
     try:
-        if not columns:
+        # Shape-check the argument before anything reads it. This is an
+        # MCP-exposed tool, so `columns` arrives as decoded JSON and may hold
+        # numbers or nulls, and every check below assumes strings. Without
+        # this, a non-string entry raises inside `"/" in c` and surfaces as
+        # "argument of type 'int' is not iterable" — safe, since nothing has
+        # been written yet, but it breaks the promise that one error reports
+        # every problem.
+        if isinstance(columns, str):
+            return {
+                "error": (
+                    "columns must be a list of column names, not a single string — "
+                    "a bare string iterates as individual characters."
+                )
+            }
+        try:
+            # Dedupe, preserving caller order. A repeated name is harmless, so
+            # it isn't worth reporting as a problem.
+            requested = list(dict.fromkeys(columns))
+        except TypeError:
+            return {"error": "columns must be a list of column names."}
+        if not requested:
             return {"error": "No columns given — name the obs columns to drop."}
-        # Dedupe, preserving caller order. A repeated name is harmless, so it
-        # isn't worth reporting as a problem.
-        requested = list(dict.fromkeys(columns))
+        non_str = [c for c in requested if not isinstance(c, str)]
+        if non_str:
+            return {"error": f"columns must contain only strings; got: {non_str}"}
 
         path = resolve_latest(path)
         if not Path(path).is_file():
