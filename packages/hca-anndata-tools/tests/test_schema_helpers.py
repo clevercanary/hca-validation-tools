@@ -7,7 +7,10 @@ non-membership assertions below are load-bearing safety properties, not
 incidental facts.
 """
 
+from pydantic import BaseModel
+
 from hca_anndata_tools.schema.helpers import (
+    _entity_classes,
     build_obs_column_tiers,
     obs_column_tiers,
     uns_field_registry,
@@ -76,9 +79,34 @@ def test_tiers_are_disjoint():
     assert not (_required() & _optional())
 
 
+def test_entity_classes_are_derived_not_enumerated():
+    """`allowed_bionetwork_names` in shared declares 18 bionetworks against the 3
+    that currently have schema classes. A hardcoded class list would silently go
+    stale the first time one of the other 15 gains a subclass, and stale here
+    means a required column quietly losing its guard in drop_obs_columns.
+
+    Pins that the walk reaches every entity class in the module, so adding a
+    bionetwork needs no change here."""
+    from hca_anndata_tools.schema import core
+
+    derived = {c.__name__ for c in _entity_classes()}
+    # Every model class in core.py that subclasses one of the four entity bases
+    # must be reachable. Compare against an independent scan of the module.
+    bases = {"Dataset", "Donor", "Sample", "Cell"}
+    expected = {
+        name
+        for name, obj in vars(core).items()
+        if isinstance(obj, type)
+        and issubclass(obj, BaseModel)
+        and (name in bases or bases & {b.__name__ for b in obj.__mro__})
+        and name not in ("ConfiguredBaseModel", "BaseModel")
+    }
+    assert derived == expected, f"unreachable entity classes: {expected - derived}"
+
+
 def test_bionetwork_only_required_columns_are_collected():
     """ambient_count_correction and doublet_detection live on the bionetwork
-    Dataset subclasses, not base Dataset. If _OBS_CLASSES stopped walking the
+    Dataset subclasses, not base Dataset. If the subclass walk stopped reaching
     subclasses these would silently vanish from the guard."""
     required = _required()
     assert "ambient_count_correction" in required

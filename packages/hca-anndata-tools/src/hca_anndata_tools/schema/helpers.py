@@ -7,25 +7,47 @@ from typing import Any
 
 from .core import (
     AdiposeDataset,
-    AdiposeSample,
     Cell,
     Dataset,
     Donor,
     GutDataset,
-    GutSample,
     MusculoskeletalDataset,
     Sample,
 )
 
 _BIONETWORK_CLASSES = [AdiposeDataset, GutDataset, MusculoskeletalDataset]
 
-# Every class contributing obs-located fields. Unlike uns — which lives
-# entirely on Dataset — obs fields are spread across the entity classes:
-# Dataset carries the per-library sequencing fields, Donor and Sample the
-# per-donor and per-sample ones. Bionetwork subclasses are included because
-# a field one of them marks required is still required for files in that
-# bionetwork.
-_OBS_CLASSES = [Dataset, Donor, Sample, Cell, AdiposeSample, GutSample, *_BIONETWORK_CLASSES]
+# The four HCA entity types. Bionetwork variants are subclasses of these.
+_ENTITY_BASE_CLASSES = [Dataset, Donor, Sample, Cell]
+
+
+def _entity_classes() -> list[type]:
+    """Every entity class, derived by walking subclasses rather than listed.
+
+    Obs fields are spread across the entity classes — Dataset carries the
+    per-library sequencing fields, Donor and Sample the per-donor and
+    per-sample ones — and each bionetwork subclasses those to add or tighten
+    requirements. A field one bionetwork marks required is still required for
+    files in that bionetwork, so all of them count.
+
+    Derived deliberately, not enumerated: ``allowed_bionetwork_names`` in
+    ``shared`` already declares 18 bionetworks against the 3 that currently
+    have schema classes, so this list would silently go stale the first time
+    one of the other 15 gains a subclass — and going stale here means a
+    required column quietly losing its guard in ``drop_obs_columns``. There
+    are already three hand-maintained bionetwork maps in ``shared`` that
+    disagree with each other; this is not a fourth.
+    """
+    seen: list[type] = []
+    stack = list(_ENTITY_BASE_CLASSES)
+    while stack:
+        cls = stack.pop()
+        if cls in seen:
+            continue
+        seen.append(cls)
+        stack.extend(cls.__subclasses__())
+    return seen
+
 
 # Fields that LinkML's Dataset model claims live in uns but that are not
 # actually uns fields per HCA Tier 1 / CELLxGENE. See issue #343. Dropping
@@ -142,7 +164,7 @@ def build_obs_column_tiers() -> tuple[frozenset[str], frozenset[str]]:
     """Collect obs column names the HCA schema names, split by requiredness.
 
     Returns ``(required, optional)`` as a union across every class in
-    ``_OBS_CLASSES``. Consumers get the two tiers separately rather than one
+    every entity class. Consumers get the two tiers separately rather than one
     combined set so they can say *which* tier a column offended — see
     :func:`~hca_anndata_tools.drop.drop_obs_columns`, whose guard refuses both
     but reports them apart.
@@ -158,7 +180,7 @@ def build_obs_column_tiers() -> tuple[frozenset[str], frozenset[str]]:
     """
     required: set[str] = set()
     optional: set[str] = set()
-    for cls in _OBS_CLASSES:
+    for cls in _entity_classes():
         for name, fi in cls.model_fields.items():
             if _get_ann_data_location(fi) != "obs":
                 continue
