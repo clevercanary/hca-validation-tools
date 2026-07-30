@@ -7,6 +7,7 @@ if TYPE_CHECKING:
     from .compress import compress_h5ad
     from .convert import convert_cellxgene_to_hca
     from .copy_cap import copy_cap_annotations
+    from .drop import drop_obs_columns
     from .edit import (
         list_uns_fields,
         replace_placeholder_values,
@@ -60,6 +61,7 @@ _LAZY_IMPORTS = {
     "compress_h5ad": ".compress",
     "normalize_raw": ".normalize",
     "strip_forbidden_obs_columns": ".strip",
+    "drop_obs_columns": ".drop",
     "check_x_normalization": ".inspect",
     "check_schema_type": ".inspect",
 }
