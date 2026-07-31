@@ -29,6 +29,7 @@ from ._io import (
     update_column_order,
     write_edit_log_h5py,
 )
+from .cap import CAP_METADATA_KEY, LEGACY_LAYOUT_DESCRIPTION, is_legacy_cap_layout
 from .schema.helpers import obs_column_tiers
 from .write import (
     build_edit_log,
@@ -62,7 +63,10 @@ def _read_batch_condition(uns: h5py.Group | None) -> list[str]:
 
 
 def _validate_request(obs: h5py.Group, uns: h5py.Group | None, columns: list[str]) -> list[str]:
-    """Collect every reason the requested columns cannot be dropped.
+    """Collect every reason the drop cannot proceed.
+
+    Most reasons are per-column, but not all: an unsupported file layout is a
+    verdict on the file and holds whatever the request names.
 
     Returns a list of human-readable problems, empty when the request is good.
     All checks run to completion rather than short-circuiting: a caller who
@@ -113,6 +117,14 @@ def _validate_request(obs: h5py.Group, uns: h5py.Group | None, columns: list[str
             f"the declaration. Edit uns['batch_condition'] first if that is intended"
         )
 
+    # The deprecated top-level CAP layout is refused outright, matching
+    # copy_cap_annotations. Rejecting the whole file regardless of what the
+    # request names is the point: the check below reads uns['cap_metadata'], so
+    # in this layout it sees no declaration and every CAP column looks
+    # droppable — the bug this exists to close (#552).
+    if uns is not None and is_legacy_cap_layout(uns):
+        problems.append(f"the file uses {LEGACY_LAYOUT_DESCRIPTION}, which is not supported")
+
     # CAP annotation sets declare themselves in uns['cap_metadata'] and require
     # obs columns named '<set>--<suffix>'. Those names are not schema-named, so
     # nothing above catches them, and dropping one leaves the declared set
@@ -120,12 +132,18 @@ def _validate_request(obs: h5py.Group, uns: h5py.Group | None, columns: list[str
     # which may be stored as either a group or a JSON string: over-refusing a
     # '--' name in a CAP file is the safe direction, and no column this tool
     # targets uses that separator.
-    if uns is not None and "cap_metadata" in uns:
+    #
+    # Keyed on CAP_METADATA_KEY rather than the literal, because this check and
+    # the legacy one above are a pair: between them they must cover both layouts.
+    # Renaming the canonical key would move cap.py and the check above together
+    # and leave a literal here still testing the old name — which is #552 again,
+    # in the other direction.
+    if uns is not None and CAP_METADATA_KEY in uns:
         cap_cols = sorted(c for c in columns if "--" in c)
         if cap_cols:
             problems.append(
                 f"look like CAP annotation-set columns: {cap_cols} — the set is declared "
-                f"in uns['cap_metadata'], which would still require them. Remove the "
+                f"in uns[{CAP_METADATA_KEY!r}], which would still require them. Remove the "
                 f"annotation set instead of its columns"
             )
 
@@ -189,9 +207,13 @@ def drop_obs_columns(path: str, columns: list[str] | tuple[str, ...]) -> dict:
 
     Args:
         path: Path to an .h5ad file. Auto-resolves to the latest timestamped
-            edit snapshot before operating. Either layout is fine — unlike
-            ``strip_forbidden_obs_columns``, this makes no CellxGENE-layout
-            refusal, because removing an arbitrary column is layout-agnostic.
+            edit snapshot before operating. CellxGENE and HCA layouts are both
+            fine — unlike ``strip_forbidden_obs_columns``, this makes no
+            CellxGENE-layout refusal, because removing an arbitrary column is
+            layout-agnostic. A file using the deprecated top-level CAP layout
+            (``uns['cellannotation_metadata']`` /
+            ``uns['cellannotation_schema_version']``) *is* refused outright,
+            whatever columns are named, because that layout is not supported.
         columns: Obs column names to drop. Duplicates are ignored; order is
             preserved in the result. Annotated as list-or-tuple rather than
             ``Sequence[str]`` deliberately: ``str`` satisfies ``Sequence[str]``,

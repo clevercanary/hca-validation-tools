@@ -34,9 +34,16 @@ _UNS_OPTIONAL_KEYS = [
 # rather than normalized (issue #452).
 _LEGACY_CAP_MARKERS = ("cellannotation_metadata", "cellannotation_schema_version")
 
+# Rendered from the marker tuple rather than retyped, so the keys a message
+# names stay the keys the predicate detects. Subject-free and remedy-free on
+# purpose: each refusal site supplies its own, and they differ — copy_cap tells
+# the caller to re-export, drop_obs_columns deliberately points nowhere.
+LEGACY_LAYOUT_DESCRIPTION = "the deprecated top-level CAP layout ({})".format(
+    " / ".join(f"uns[{k!r}]" for k in _LEGACY_CAP_MARKERS)
+)
+
 LEGACY_LAYOUT_ERROR = (
-    "Source uses the deprecated top-level CAP layout "
-    "(uns['cellannotation_metadata'] / uns['cellannotation_schema_version']). "
+    f"Source uses {LEGACY_LAYOUT_DESCRIPTION}. "
     "Only the nested uns['cap_metadata'] layout is accepted; re-export the CAP "
     "file with its metadata nested under uns['cap_metadata']."
 )

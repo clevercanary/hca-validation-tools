@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 
 from hca_anndata_tools._io import _decode_bytes, read_obs_column_names
+from hca_anndata_tools.cap import _LEGACY_CAP_MARKERS
 from hca_anndata_tools.drop import drop_obs_columns
 from hca_anndata_tools.write import EDIT_LOG_KEY, make_edit_entry
 
@@ -24,6 +25,26 @@ def _add_obs_cols(path, *names):
     for name in names:
         adata.obs[name] = pd.Categorical(["value"] * adata.n_obs)
     adata.write_h5ad(path)
+
+
+def _set_uns(path, **entries):
+    """Set uns keys on the fixture file, in place.
+
+    Written through anndata rather than h5py so nested dicts land as real groups,
+    which is how a CAP block arrives in practice.
+    """
+    adata = ad.read_h5ad(path)
+    adata.uns.update(entries)
+    adata.write_h5ad(path)
+
+
+# The CAP block the legacy tests start from. Written nested and then downgraded
+# by the `downgrade_cap_to_legacy` fixture, so its keys become the deprecated
+# top-level ones.
+_LEGACY_CAP_BLOCK = {
+    "cellannotation_metadata": {"myset": {}},
+    "cellannotation_schema_version": "0.2.0",
+}
 
 
 def _no_snapshot_written(path):
@@ -484,9 +505,7 @@ def test_drop_refuses_cap_annotation_set_columns(sample_h5ad_for_write):
     nothing else catches them. uns['cap_metadata'] would still declare the set,
     leaving it broken — the set has to go, not its columns."""
     _add_obs_cols(sample_h5ad_for_write, "myset--cell_type")
-    adata = ad.read_h5ad(sample_h5ad_for_write)
-    adata.uns["cap_metadata"] = {"cellannotation_schema_version": "1.0.0"}
-    adata.write_h5ad(sample_h5ad_for_write)
+    _set_uns(sample_h5ad_for_write, cap_metadata={"cellannotation_schema_version": "1.0.0"})
 
     result = drop_obs_columns(str(sample_h5ad_for_write), ["myset--cell_type"])
 
@@ -503,6 +522,101 @@ def test_drop_allows_double_dash_when_no_cap_metadata(sample_h5ad_for_write):
     result = drop_obs_columns(str(sample_h5ad_for_write), ["odd--name"])
 
     assert "error" not in result
+
+
+def test_drop_still_works_on_a_nested_cap_file(sample_h5ad_for_write):
+    """The nested layout is supported, so a plain producer column drops from a
+    CAP file exactly as it would from a file with no CAP at all.
+
+    Paired with the legacy tests below: together they pin that the refusal keys
+    on the *layout* and not merely on CAP being present, which is the way an
+    over-broad guard would break the use case this tool exists for."""
+    _add_obs_cols(sample_h5ad_for_write, "race", "myset--cell_type")
+    _set_uns(sample_h5ad_for_write, cap_metadata={"cellannotation_schema_version": "1.0.0"})
+
+    result = drop_obs_columns(str(sample_h5ad_for_write), ["race"])
+
+    assert "error" not in result
+    obs = ad.read_h5ad(result["output_path"]).obs
+    assert "race" not in obs.columns
+    # The CAP column is untouched, so the drop was surgical rather than the
+    # guard simply having nothing to protect.
+    assert "myset--cell_type" in obs.columns
+
+
+# --- legacy CAP layout: the file is refused, not the columns (#552) ----------
+#
+# Built through the `downgrade_cap_to_legacy` fixture, which is the suite's one
+# spelling of "a legacy-layout file" (test_cap.py and test_copy_cap.py use it
+# too). Going nested-then-downgrade rather than writing the top-level keys by
+# hand also mirrors how these files really arose.
+
+
+def test_drop_refuses_legacy_cap_layout_for_any_column(sample_h5ad_for_write, downgrade_cap_to_legacy):
+    """The bug this closes. The '--' guard reads uns['cap_metadata'], so in the
+    top-level layout it sees no declaration and every CAP column looks
+    droppable — `race` here proves the refusal is not keyed on the request:
+    naming an ordinary producer column is refused too, because it is the file
+    that is unsupported."""
+    _add_obs_cols(sample_h5ad_for_write, "race")
+    _set_uns(sample_h5ad_for_write, cap_metadata=_LEGACY_CAP_BLOCK)
+    downgrade_cap_to_legacy(sample_h5ad_for_write)
+
+    result = drop_obs_columns(str(sample_h5ad_for_write), ["race"])
+
+    assert "error" in result
+    assert "not supported" in result["error"]
+    # The message names the keys actually detected. Asserted because
+    # LEGACY_LAYOUT_DESCRIPTION renders them from _LEGACY_CAP_MARKERS, and the
+    # whole point of deriving it is that the two cannot drift — a broken join
+    # would render "the deprecated top-level CAP layout ()" and every other
+    # assertion in this file would still pass.
+    for marker in _LEGACY_CAP_MARKERS:
+        assert f"uns[{marker!r}]" in result["error"]
+    assert _no_snapshot_written(sample_h5ad_for_write)
+    assert "race" in ad.read_h5ad(sample_h5ad_for_write).obs.columns
+
+
+def test_drop_refuses_legacy_cap_annotation_columns(sample_h5ad_for_write, downgrade_cap_to_legacy):
+    """The data actually at risk: hand-curated CAP columns in the legacy layout,
+    which deleted silently before #552."""
+    _add_obs_cols(sample_h5ad_for_write, "myset--cell_type", "myset--rationale")
+    _set_uns(sample_h5ad_for_write, cap_metadata=_LEGACY_CAP_BLOCK)
+    downgrade_cap_to_legacy(sample_h5ad_for_write)
+
+    result = drop_obs_columns(
+        str(sample_h5ad_for_write),
+        ["myset--cell_type", "myset--rationale"],
+    )
+
+    assert "error" in result
+    assert "not supported" in result["error"]
+    assert _no_snapshot_written(sample_h5ad_for_write)
+    obs = ad.read_h5ad(sample_h5ad_for_write).obs
+    assert {"myset--cell_type", "myset--rationale"} <= set(obs.columns)
+
+
+def test_drop_refuses_mixed_cap_layout(sample_h5ad_for_write):
+    """A file carrying both layouts is refused on the legacy keys rather than
+    letting the nested block win — the same clean-break rule `copy_cap` applies.
+
+    Worth its own test because the tempting refactor is to make the legacy check
+    conditional on `cap_metadata` being absent, which reads as tidier and would
+    let every mixed file through. Hand-rolled rather than fixture-built because
+    `downgrade_cap_to_legacy` removes the nested block by design, as the mixed
+    cases in test_cap.py and test_copy_cap.py also do."""
+    _add_obs_cols(sample_h5ad_for_write, "race")
+    _set_uns(
+        sample_h5ad_for_write,
+        cap_metadata={"cellannotation_schema_version": "1.0.0"},
+        **_LEGACY_CAP_BLOCK,
+    )
+
+    result = drop_obs_columns(str(sample_h5ad_for_write), ["race"])
+
+    assert "error" in result
+    assert "not supported" in result["error"]
+    assert _no_snapshot_written(sample_h5ad_for_write)
 
 
 # --- R5/R6: result shape and mechanics ---------------------------------------
