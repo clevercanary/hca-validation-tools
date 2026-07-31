@@ -803,13 +803,58 @@ good_uns_with_slide_seqV2_spatial = {
 
 # ---
 # 4. Creating expression matrix,
-# X has integer values and non_raw_X has real values
+# X holds raw integer counts; non_raw_X holds the standard normalization of it
 X = from_array(sparse.csr_matrix((good_obs.shape[0], good_var.shape[0]), dtype=numpy.float32))
 for i in range(good_obs.shape[0]):
     for j in range(good_var.shape[0]):
         X[i, j] = i + j
-non_raw_X = X.copy()
-non_raw_X[0, 0] = 1.5
+
+
+# non_raw_X is `log1p(normalize_total(X))` — a real normalization of X, because
+# the fixtures pair them as raw.X and X and are asserted to be *valid*.
+#
+# It used to be `X.copy()` with a single cell set to 1.5. That was enough for the
+# upstream question ("does X hold raw counts?") to answer no, but it left X as
+# raw counts wearing a disguise, not a normalization of anything. #524 added a
+# check that X is derived from raw.X, which correctly rejected it — six tests
+# asserting `is_valid is True` began failing on a file that was never valid
+# under that rule. Keep this a genuine normalization: nudging a value again
+# would reintroduce the same false fixture.
+def normalize_counts(counts, target_sum=1e4):
+    """log1p(normalize_total(counts)) — the transform X is required to hold.
+
+    Shared with the tests so the fixture and the checks that judge it cannot
+    define "normalized" differently and drift apart.
+    """
+    dense = numpy.asarray(counts, dtype=numpy.float64)
+    row_sums = dense.sum(axis=1, keepdims=True)
+    row_sums[row_sums == 0] = 1.0
+    return sparse.csr_matrix(numpy.log1p(dense / row_sums * target_sum).astype(numpy.float32))
+
+
+def make_adata(x, raw_x, obs=None, uns=None, obsm=None, var=None):
+    """Build an AnnData whose raw.X is `raw_x` and X is `x`.
+
+    Wraps the raw-wiring incantation, including the non-obvious
+    `feature_is_filtered` drop that raw.var must not carry. The module-level
+    fixtures below still inline their own copies; converting them is a separate
+    change, so treat this as the form new callers should use rather than as the
+    single source of truth it is not yet.
+    """
+    built = anndata.AnnData(
+        X=raw_x.copy(),
+        obs=good_obs if obs is None else obs,
+        uns=good_uns if uns is None else uns,
+        obsm=good_obsm if obsm is None else obsm,
+        var=good_var if var is None else var,
+    )
+    built.raw = built.copy()
+    built.X = x
+    built.raw.var.drop("feature_is_filtered", axis=1, inplace=True)
+    return built
+
+
+non_raw_X = from_array(normalize_counts(X.compute().toarray()))
 
 # ---
 # 5.Creating valid obsm

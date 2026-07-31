@@ -1095,3 +1095,193 @@ class TestCLOntologyOverlay:
 
         assert ONTOLOGY_PARSER.is_valid_term_id("EFO:0010961")
         assert ONTOLOGY_PARSER.is_valid_term_id("UBERON:0000955")
+
+
+# --- #524: X must hold a normalization of raw.X ------------------------------
+#
+# The gap these close: the vendored validator checks that raw.X *is* raw
+# (`_has_valid_raw`) and that the two matrices agree on shape and indices
+# (`_validate_x_raw_x_dimensions`), but never that X differs from raw.X or is
+# derived from it. All seven breast-v1 source datasets ship X byte-identical to
+# raw.X and validated clean before this.
+
+
+def _raw_counts():
+    """The fixture's raw count matrix, as a concrete sparse matrix."""
+    from .fixtures.hca_fixtures import X
+
+    return X.compute()
+
+
+def _normalize_counts(counts, target_sum=1e4):
+    from .fixtures.hca_fixtures import normalize_counts
+
+    return normalize_counts(counts, target_sum)
+
+
+def _make_adata(x, raw_x):
+    from .fixtures.hca_fixtures import make_adata
+
+    return make_adata(x, raw_x)
+
+
+def _x_normalization_errors(validator):
+    """Validator errors raised by the X/raw.X checks.
+
+    Matched on the message *subject* — all three lead with "X" — rather than on
+    interior wording, so rewording a message cannot silently turn an `== []`
+    assertion into a vacuous pass. Keying on "raw.X" would not work: the
+    magnitude check never mentions raw.X, since it is a statement about X alone.
+
+    The vendored errors that discuss both matrices lead with their own subjects
+    ("Number of genes in X ...", "Cells in X and raw.X ..."), so they do not
+    collide.
+    """
+    return [e for e in validator.errors if e.removeprefix("ERROR: ").startswith("X ")]
+
+
+def test_x_identical_to_raw_x_errors():
+    """The breast-v1 defect: normalization never ran, so X *is* the count matrix.
+
+    Reported as its own error rather than being left to the profile check, which
+    would also fire but describe the symptom instead of the cause.
+    """
+    counts = _raw_counts()
+    is_valid, validator = _validate_from_fixture(_make_adata(counts.copy(), counts))
+
+    assert is_valid is False
+    errors = _x_normalization_errors(validator)
+    assert len(errors) == 1, errors
+    assert "identical to raw.X" in errors[0]
+
+
+def test_x_holding_raw_counts_errors_before_expm1_overflows():
+    """Raw counts in X that are *not* byte-identical to raw.X.
+
+    Scaled counts stay integral and far above the log1p ceiling. This is the
+    guard that keeps expm1 from overflowing float64 on real count magnitudes —
+    without it the profile check returns inf and blames the wrong thing.
+    """
+    from scipy import sparse
+
+    counts = _raw_counts()
+    inflated = (counts.toarray() * 100.0).astype("float32")
+    is_valid, validator = _validate_from_fixture(_make_adata(sparse.csr_matrix(inflated), counts))
+
+    assert is_valid is False
+    errors = _x_normalization_errors(validator)
+    assert len(errors) == 1, errors
+    assert "too large to be log1p output" in errors[0]
+
+
+def test_x_normalized_from_a_different_matrix_errors():
+    """The check no heuristic can make: X is plausibly normalized — fractional,
+    correctly scaled, right shape — but derived from the wrong counts."""
+    counts = _raw_counts()
+    other = counts.toarray() + 1.0  # same shape, different counts
+    is_valid, validator = _validate_from_fixture(_make_adata(_normalize_counts(other), counts))
+
+    assert is_valid is False
+    errors = _x_normalization_errors(validator)
+    assert len(errors) == 1, errors
+    assert "not a normalization of raw.X" in errors[0]
+
+
+def test_x_normalization_accepts_any_target_sum():
+    """The positive control, and the guard against over-firing.
+
+    `scanpy.pp.normalize_total` defaults to `target_sum=None`, which scales to
+    the median of per-cell totals rather than 1e4. The check compares per-cell
+    *profiles*, so the target cancels — a check written against an assumed 1e4
+    would reject every file that took the default."""
+    counts = _raw_counts()
+    for target_sum in (1e4, 1e6, 42.0):
+        _, validator = _validate_from_fixture(_make_adata(_normalize_counts(counts.toarray(), target_sum), counts))
+        assert _x_normalization_errors(validator) == [], f"target_sum={target_sum}"
+
+
+def test_x_normalization_silent_without_raw_x():
+    """With no raw.X there is nothing to compare against, and the vendored
+    `_validate_raw` already reports that case. A second message here would be
+    noise, so all three checks stay silent."""
+    import anndata
+
+    from .fixtures.hca_fixtures import good_obs, good_obsm, good_uns, good_var
+
+    counts = _raw_counts()
+    adata = anndata.AnnData(X=counts.copy(), obs=good_obs, uns=good_uns, obsm=good_obsm, var=good_var)
+    _, validator = _validate_from_fixture(adata)
+    assert _x_normalization_errors(validator) == []
+
+
+def test_identical_and_max_reduces_every_block_in_either_grid():
+    """Unit-level, because the fixture h5ad is a single 2x7 block and so
+    exercises no multi-chunk path at all.
+
+    Dask reassembles the per-block ``(1, 2)`` results along the *grid* axes: a
+    row-chunked grid ``(k, 1)`` gives ``(k, 2)``, but a column-chunked grid
+    ``(1, m)`` gives ``(1, 2m)``. Reading that as rows would report block 0's
+    verdict for the whole matrix — claiming "identical" off one block and a
+    maximum blind to every column past the first chunk. Column-chunked grids
+    are reachable: ``read_backed`` chunks a CSC matrix as ``(n_obs, chunk_size)``.
+    """
+    import dask.array as da
+    from scipy import sparse
+
+    from hca_schema_validator.validator import _identical_and_max
+
+    base = np.arange(60, dtype=np.float32).reshape(4, 15)
+    differs_late = base.copy()
+    differs_late[0, 14] = 999.0  # only in the final column chunk
+
+    x = sparse.csr_matrix(differs_late)
+    raw = sparse.csr_matrix(base)
+
+    for chunks in ((4, 5), (2, 15)):  # column-chunked grid (1, 3), then row-chunked (2, 1)
+        dask_x = da.from_array(x, chunks=chunks)
+        dask_raw = da.from_array(raw, chunks=chunks)
+
+        assert _identical_and_max(dask_x, dask_raw) == (False, 999.0), chunks
+        # And the same matrix against itself still reads as identical.
+        assert _identical_and_max(dask_x, da.from_array(x, chunks=chunks)) == (True, 999.0), chunks
+
+
+def test_x_with_no_positive_values_errors():
+    """An emptied X. Nothing else catches this.
+
+    The vendored validator emits only a warning, and a misleading one — it
+    frames all-zero columns as a `feature_is_filtered` problem rather than an
+    empty matrix — so before this the file validated `is_valid is True`. The
+    profile check cannot see it either: every row divides out as unusable and
+    returns no verdict.
+    """
+    from scipy import sparse
+
+    counts = _raw_counts()
+    zeros = sparse.csr_matrix(np.zeros(counts.shape, dtype=np.float32))
+    is_valid, validator = _validate_from_fixture(_make_adata(zeros, counts))
+
+    assert is_valid is False
+    errors = _x_normalization_errors(validator)
+    assert len(errors) == 1, errors
+    assert "no positive values" in errors[0]
+
+
+def test_x_log_transformed_without_normalize_total_errors():
+    """`log1p(raw.X)` with the `normalize_total` step skipped.
+
+    The profile identity holds *exactly* here — expm1 inverts log1p and the
+    profile is scale-free — so this passes every other check. What separates it
+    is the recovered per-cell total: constant after normalize_total, equal to
+    each cell's own depth without it.
+    """
+    from scipy import sparse
+
+    counts = _raw_counts()
+    log_only = sparse.csr_matrix(np.log1p(counts.toarray()).astype(np.float32))
+    is_valid, validator = _validate_from_fixture(_make_adata(log_only, counts))
+
+    assert is_valid is False
+    errors = _x_normalization_errors(validator)
+    assert len(errors) == 1, errors
+    assert "not total-normalized" in errors[0]
