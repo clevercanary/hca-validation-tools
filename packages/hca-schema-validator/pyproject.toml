@@ -1,6 +1,6 @@
 [project]
 name = "hca-schema-validator"
-version = "0.14.1"
+version = "0.14.2"
 description = "HCA schema validation for single-cell datasets"
 authors = [{ name = "Clever Canary", email = "dave@clevercanary.com" }]
 license = "MIT"

@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.6.2](https://github.com/clevercanary/hca-validation-tools/compare/hca-anndata-tools-v0.6.1...hca-anndata-tools-v0.6.2) (2026-07-31)
+
+
+### Features
+
+* **anndata-tools:** add drop_obs_columns for removing obs columns by name ([#539](https://github.com/clevercanary/hca-validation-tools/issues/539)) ([71b43a1](https://github.com/clevercanary/hca-validation-tools/commit/71b43a1b8f867611a83e682ac005c6cc35b669fb))
+
+
+### Bug Fixes
+
+* **anndata-tools:** refuse legacy-CAP-layout files in drop_obs_columns ([#554](https://github.com/clevercanary/hca-validation-tools/issues/554)) ([d6d712d](https://github.com/clevercanary/hca-validation-tools/commit/d6d712dadfff831840f5563321bd9e8c90a0f32b))
+* **schema:** make three obs columns visible to annDataLocation discovery ([#545](https://github.com/clevercanary/hca-validation-tools/issues/545)) ([2f4679b](https://github.com/clevercanary/hca-validation-tools/commit/2f4679b87424e3c2c6ea0c5f408106c466843b36))
+
+
+### Styles
+
+* ruff format + lint sweep, enforce in CI ([#313](https://github.com/clevercanary/hca-validation-tools/issues/313)) ([#499](https://github.com/clevercanary/hca-validation-tools/issues/499)) ([d414d30](https://github.com/clevercanary/hca-validation-tools/commit/d414d309117c284a90cb32266d5c4b8036a86b3f))
+* **ruff:** enable flake8-bugbear (B) and fix violations ([#467](https://github.com/clevercanary/hca-validation-tools/issues/467)) ([#502](https://github.com/clevercanary/hca-validation-tools/issues/502)) ([bbb8cb9](https://github.com/clevercanary/hca-validation-tools/commit/bbb8cb953b691b41b73c76bbe70faae8addbd87a))
+* **ruff:** enable PTH (pathlib) and migrate os.path → pathlib (closes [#467](https://github.com/clevercanary/hca-validation-tools/issues/467)) ([#509](https://github.com/clevercanary/hca-validation-tools/issues/509)) ([383a5a8](https://github.com/clevercanary/hca-validation-tools/commit/383a5a80b880a92e7e6b2398d1ac0b675e66ac3b))
+* **ruff:** enable RET/SIM/C4/PIE/RUF small families ([#503](https://github.com/clevercanary/hca-validation-tools/issues/503)) ([#506](https://github.com/clevercanary/hca-validation-tools/issues/506)) ([52657cf](https://github.com/clevercanary/hca-validation-tools/commit/52657cf97a0315a1cf5bd988fecce42dd04bc207))
+* **ruff:** enable UP (pyupgrade) and apply autofixes (part of [#467](https://github.com/clevercanary/hca-validation-tools/issues/467)) ([#508](https://github.com/clevercanary/hca-validation-tools/issues/508)) ([e1f162f](https://github.com/clevercanary/hca-validation-tools/commit/e1f162f01f92b022b55c7e866c7723d1f02146af))
+
+
+### Build System
+
+* **packages:** stop tracking packages/*/uv.lock ([#483](https://github.com/clevercanary/hca-validation-tools/issues/483)) ([#490](https://github.com/clevercanary/hca-validation-tools/issues/490)) ([021e5ac](https://github.com/clevercanary/hca-validation-tools/commit/021e5accce76677389e60f998e2f743320d93ed7))
+
 ## [0.6.1](https://github.com/clevercanary/hca-validation-tools/compare/hca-anndata-tools-v0.6.0...hca-anndata-tools-v0.6.1) (2026-07-14)
 
 
