@@ -8,6 +8,9 @@ import numpy as np
 import pandas as pd
 import yaml
 from anndata.compat import DaskArray
+
+# dask re-exports map_blocks without listing it in __all__, so pyright treats
+# it as private. The vendored validator imports it the same way (validate.py:14).
 from dask.array import map_blocks  # pyright: ignore[reportPrivateImportUsage]
 from scipy import sparse
 
@@ -399,12 +402,15 @@ def _max_finite(values, floor=0.0):
 
 
 def _chunk_stats(x_chunk, raw_chunk):
-    """Per-chunk reduction for the identical-matrix and magnitude checks.
+    """Per-chunk reduction over X and raw.X.
 
-    Returns ``[[identical, max_value]]`` for the chunk. Shaped as a 1-element
-    object array because that is what ``map_blocks`` expects back from a
-    blockwise reduction here — matching ``_validate_raw_data`` in the vendored
-    validator, which is the established idiom in this file's base class.
+    Returns ``[[identical, max_value, has_non_finite]]`` for the chunk. Shaped
+    as a 1-element object array because that is what ``map_blocks`` expects back
+    from a blockwise reduction here — matching ``_validate_raw_data`` in the
+    vendored validator, which is the established idiom in this file's base class.
+
+    ``has_non_finite`` rides along on this pass rather than costing a scan of
+    its own: the finiteness mask is already computed for the maximum.
 
     Sparse chunks are reduced through their CSR arrays rather than densified.
     That is not a micro-optimization: a 5000-row chunk of a 36,788-gene matrix
@@ -426,7 +432,8 @@ def _chunk_stats(x_chunk, raw_chunk):
             and np.array_equal(x_chunk.indices, raw_chunk.indices)
             and np.array_equal(x_chunk.data, raw_chunk.data)
         )
-        return np.array([np.array([identical, _max_finite(x_chunk.data)], dtype=object)])
+        has_non_finite = not bool(np.all(np.isfinite(x_chunk.data)))
+        return np.array([np.array([identical, _max_finite(x_chunk.data), has_non_finite], dtype=object)])
 
     x_dense = _densify(x_chunk)
     raw_dense = _densify(raw_chunk)
@@ -434,7 +441,8 @@ def _chunk_stats(x_chunk, raw_chunk):
     # No implicit-zero floor here: a dense array stores every entry, so its own
     # maximum is the true one.
     max_value = _max_finite(x_dense, floor=float("-inf"))
-    return np.array([np.array([identical, max_value if np.isfinite(max_value) else 0.0], dtype=object)])
+    has_non_finite = not bool(np.all(np.isfinite(x_dense)))
+    return np.array([np.array([identical, max_value if np.isfinite(max_value) else 0.0, has_non_finite], dtype=object)])
 
 
 def _densify(block):
@@ -453,8 +461,8 @@ def _materialize(block):
     return block.compute() if isinstance(block, DaskArray) else block
 
 
-def _identical_and_max(x, raw_x):
-    """Return ``(x_is_identical_to_raw_x, max_finite_value_in_x)``.
+def _scan_x_against_raw(x, raw_x):
+    """Return ``(identical, max_finite_value_in_x, x_has_non_finite)``.
 
     Returns ``None`` when the two cannot be compared without materializing a
     whole backed matrix, which the caller treats as "no verdict".
@@ -476,23 +484,24 @@ def _identical_and_max(x, raw_x):
         if x.chunks != raw_x.chunks:
             return None
         results = map_blocks(_chunk_stats, x, raw_x, dtype=object).compute()
-        # Reshaped, not iterated as rows. Dask reassembles the per-block (1, 2)
+        # Reshaped, not iterated as rows. Dask reassembles the per-block (1, 3)
         # results along the *grid* axes: a row-chunked grid (k, 1) concatenates
-        # to (k, 2), but a column-chunked grid (1, m) concatenates to (1, 2m).
+        # to (k, 3), but a column-chunked grid (1, m) concatenates to (1, 3m).
         # Iterating rows there would read block 0 and silently discard the rest
         # — reporting "identical" off one block and a maximum blind to every
         # column past the first chunk. Column-chunked grids are reachable:
         # `read_backed` chunks a CSC matrix as (n_obs, chunk_size).
-        pairs = np.asarray(results, dtype=object).reshape(-1, 2)
-        identical = all(bool(flag) for flag in pairs[:, 0])
-        max_value = max((float(value) for value in pairs[:, 1]), default=0.0)
-        return identical, max_value
+        rows = np.asarray(results, dtype=object).reshape(-1, 3)
+        identical = all(bool(flag) for flag in rows[:, 0])
+        max_value = max((float(value) for value in rows[:, 1]), default=0.0)
+        has_non_finite = any(bool(flag) for flag in rows[:, 2])
+        return identical, max_value, has_non_finite
 
     if isinstance(x, DaskArray) or isinstance(raw_x, DaskArray):
         return None
 
     stats = _chunk_stats(x, raw_x)[0]
-    return bool(stats[0]), float(stats[1])
+    return bool(stats[0]), float(stats[1]), bool(stats[2])
 
 
 def _profile_mismatch(x_rows, raw_rows):
@@ -560,13 +569,18 @@ def check_x_normalization(adata):
     datasets ship ``X`` byte-identical to ``raw.X`` and validate clean today
     (see #524).
 
-    Three checks, cheapest first, each short-circuiting: once one fires the
+    Six checks, cheapest first, each short-circuiting: once one fires the
     later ones would only restate the same defect in vaguer terms.
 
     1. ``X`` identical to ``raw.X`` → normalization never ran.
-    2. ``X`` holds values too large to be ``log1p`` output → raw counts in X.
-    3. ``X`` is not a total-normalization of ``raw.X`` → the two are unrelated,
+    2. ``X`` holds NaN or infinite values → not expression data at all, and it
+       makes every check below unreliable rather than merely wrong.
+    3. ``X`` holds values too large to be ``log1p`` output → raw counts, or a
+       normalization that was never log-transformed.
+    4. ``X`` holds no positive values → the matrix was emptied or dropped.
+    5. ``X`` is not a total-normalization of ``raw.X`` → the two are unrelated,
        or a non-standard transform was used.
+    6. ``X`` was log-transformed but never total-normalized.
 
     Silent when ``raw.X`` is absent: the vendored ``_validate_raw`` already owns
     that case and reports it, and a second message would not add anything.
@@ -583,12 +597,12 @@ def check_x_normalization(adata):
     if x.shape != raw_x.shape:
         return [], []
 
-    verdict = _identical_and_max(x, raw_x)
+    verdict = _scan_x_against_raw(x, raw_x)
     if verdict is None:
         # Not comparable without materializing a backed matrix; see
-        # _identical_and_max. The file has other errors by construction.
+        # _scan_x_against_raw. The file has other errors by construction.
         return [], []
-    identical, max_value = verdict
+    identical, max_value, has_non_finite = verdict
 
     errors: list[str] = []
 
@@ -596,6 +610,18 @@ def check_x_normalization(adata):
         errors.append(
             "X is identical to raw.X, so normalization has not been applied. "
             "X must hold normalized values and raw.X the raw counts."
+        )
+        return [], errors
+
+    if has_non_finite:
+        # Reported before the checks below because a NaN or inf makes them
+        # unreliable rather than merely wrong: `_profile_mismatch` skips any row
+        # whose expanded total is non-finite, so a partially-NaN X would be
+        # judged on its remaining rows and reported clean — success claimed over
+        # a matrix that was never fully evaluated. The maximum ignores
+        # non-finite entries for the same reason.
+        errors.append(
+            "X contains NaN or infinite values, which cannot be normalized expression. Every entry in X must be finite."
         )
         return [], errors
 

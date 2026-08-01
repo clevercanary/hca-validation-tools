@@ -1214,7 +1214,7 @@ def test_x_normalization_silent_without_raw_x():
     assert _x_normalization_errors(validator) == []
 
 
-def test_identical_and_max_reduces_every_block_in_either_grid():
+def test_scan_x_against_raw_reduces_every_block_in_either_grid():
     """Unit-level, because the fixture h5ad is a single 2x7 block and so
     exercises no multi-chunk path at all.
 
@@ -1228,7 +1228,7 @@ def test_identical_and_max_reduces_every_block_in_either_grid():
     import dask.array as da
     from scipy import sparse
 
-    from hca_schema_validator.validator import _identical_and_max
+    from hca_schema_validator.validator import _scan_x_against_raw
 
     base = np.arange(60, dtype=np.float32).reshape(4, 15)
     differs_late = base.copy()
@@ -1241,9 +1241,9 @@ def test_identical_and_max_reduces_every_block_in_either_grid():
         dask_x = da.from_array(x, chunks=chunks)
         dask_raw = da.from_array(raw, chunks=chunks)
 
-        assert _identical_and_max(dask_x, dask_raw) == (False, 999.0), chunks
+        assert _scan_x_against_raw(dask_x, dask_raw) == (False, 999.0, False), chunks
         # And the same matrix against itself still reads as identical.
-        assert _identical_and_max(dask_x, da.from_array(x, chunks=chunks)) == (True, 999.0), chunks
+        assert _scan_x_against_raw(dask_x, da.from_array(x, chunks=chunks)) == (True, 999.0, False), chunks
 
 
 def test_x_with_no_positive_values_errors():
@@ -1285,3 +1285,25 @@ def test_x_log_transformed_without_normalize_total_errors():
     errors = _x_normalization_errors(validator)
     assert len(errors) == 1, errors
     assert "not total-normalized" in errors[0]
+
+
+def test_x_with_non_finite_values_errors():
+    """NaN in X, on rows that are otherwise correctly normalized.
+
+    Nothing caught this before: the vendored validator says nothing about
+    non-finite X, and the profile check *skips* any row whose expanded total is
+    non-finite — so the file was judged on its remaining rows and reported
+    clean. That is worse than a miss: success claimed over a matrix that was
+    never fully evaluated. Verified as `is_valid is True` before this check.
+    """
+    from scipy import sparse
+
+    counts = _raw_counts()
+    partial = _normalize_counts(counts.toarray()).toarray()
+    partial[0, 0] = np.nan  # a single bad entry in an otherwise valid matrix
+    is_valid, validator = _validate_from_fixture(_make_adata(sparse.csr_matrix(partial), counts))
+
+    assert is_valid is False
+    errors = _x_normalization_errors(validator)
+    assert len(errors) == 1, errors
+    assert "NaN or infinite" in errors[0]
