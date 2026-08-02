@@ -374,12 +374,27 @@ _PROFILE_RTOL = 1e-5
 # makes a systematic normalization error overwhelmingly likely to surface.
 _PROFILE_SAMPLE_ROWS = 200
 
-# Relative spread allowed between the per-cell totals recovered from X. On the
-# curated breast integrated object these land within 1.4e-07 of each other
-# (9999.9993 to 10000.0007), so this leaves four orders of headroom while still
-# separating a log1p-only file, whose recovered totals are the raw per-cell
-# depths and so vary by whole multiples.
-_TARGET_SUM_RTOL = 1e-3
+# How far a cell's recovered rescale factor may sit from 1.0 and still count as
+# "this cell was never rescaled". Measured across 69 real gut and breast files,
+# the two populations are perfectly bimodal on this test — a log1p-only file
+# scores 100% of sampled cells, a normalized one 0% — so the threshold has
+# enormous margin and is not a tuned knob.
+_DEPTH_MATCH_RTOL = 1e-3
+
+# Fraction of sampled cells that must sit at factor 1.0 before X is called
+# un-normalized. It has to be a fraction rather than `any`, because
+# ``normalize_total`` defaults to ``target_sum=None`` — the *median* per-cell
+# depth — so on a correctly normalized file every cell whose depth is near that
+# median legitimately scores 1.0. `all` fails the other way: the sample is taken
+# from the head of the file, so a concatenated object whose first component was
+# log1p-only would slip through on one atypical cell.
+_DEPTH_MATCH_FRACTION = 0.5
+
+# Cells needed before the un-normalized verdict is trustworthy. With
+# ``target_sum=None`` the target is the *median* per-cell depth, so on a
+# one-cell object the target is that cell's own depth and its factor is exactly
+# 1.0 — a correctly normalized file would be condemned by a sample of one.
+_DEPTH_MATCH_MIN_CELLS = 2
 
 
 def _max_finite(values, floor=0.0):
@@ -409,8 +424,9 @@ def _chunk_stats(x_chunk, raw_chunk):
     from a blockwise reduction here — matching ``_validate_raw_data`` in the
     vendored validator, which is the established idiom in this file's base class.
 
-    ``has_non_finite`` rides along on this pass rather than costing a scan of
-    its own: the finiteness mask is already computed for the maximum.
+    ``has_non_finite`` rides along on this pass rather than costing a traversal
+    of the matrix elsewhere. It does evaluate ``isfinite`` a second time over
+    the chunk's stored values, which is far cheaper than another full pass.
 
     Sparse chunks are reduced through their CSR arrays rather than densified.
     That is not a micro-optimization: a 5000-row chunk of a 36,788-gene matrix
@@ -425,7 +441,13 @@ def _chunk_stats(x_chunk, raw_chunk):
     pair falls through to the profile check, which still errors, just with the
     more general message.
     """
-    if sparse.issparse(x_chunk) and sparse.issparse(raw_chunk):
+    # `format` rather than `issparse`: a COO matrix is sparse but has no
+    # indptr/indices, so the comparison below would raise AttributeError, which
+    # validate_adata's blanket handler turns into "Unexpected validation error"
+    # and abandons the remaining deep checks. Falling through to the dense path
+    # keeps the verdict correct on formats h5ad never stores but in-memory
+    # callers can still hand us.
+    if getattr(x_chunk, "format", None) in ("csr", "csc") and getattr(raw_chunk, "format", None) in ("csr", "csc"):
         identical = (
             x_chunk.shape == raw_chunk.shape
             and np.array_equal(x_chunk.indptr, raw_chunk.indptr)
@@ -522,9 +544,11 @@ def _profile_mismatch(x_rows, raw_rows):
     division by zero; the vendored ``_has_valid_raw`` already errors on
     all-zero rows, so reporting them here would duplicate that.
 
-    Returns ``(worst_deviation, target_sums)``. ``worst_deviation`` is None when
-    no row could be compared; ``target_sums`` holds the recovered per-cell total
-    for each comparable row, which the caller uses to check the
+    Returns ``(worst_deviation, rescale_factors)``. ``worst_deviation`` is None
+    when no row could be compared. ``rescale_factors`` holds, per comparable
+    row, the factor ``normalize_total`` must have applied to it — the total
+    recovered from X over the row's own count total. A factor of 1.0 means the
+    row was never rescaled, which is how the caller checks the
     ``normalize_total`` half of the transform.
     """
     # Densified once for the whole sample rather than per row: these are at most
@@ -533,22 +557,47 @@ def _profile_mismatch(x_rows, raw_rows):
     raw_dense = _densify(raw_rows).astype(np.float64)
 
     worst = None
-    target_sums: list[float] = []
+    rescale_factors: list[float] = []
     for i in range(x_dense.shape[0]):
         x_row = x_dense[i]
         raw_row = raw_dense[i]
 
-        raw_total = raw_row.sum()
+        # A non-finite raw value would make raw_total NaN, and NaN passes the
+        # `<= 0` test below. The row's deviation would then be NaN, and `max`
+        # keeps NaN once it appears — after which `worst > _PROFILE_RTOL` is
+        # False forever and the whole check goes quiet. One NaN anywhere in
+        # raw.X would disable it for the entire file.
+        if not np.all(np.isfinite(raw_row)):
+            continue
+
+        # Restricted to the genes X actually carries. `feature_is_filtered` is a
+        # schema-supported var flag whose defined meaning is "zero in X, present
+        # in raw.X" — the vendored validator's own remediation message tells
+        # curators to set it — so those genes are legitimately absent from X and
+        # must not read as a mismatch. The arithmetic still works out exactly:
+        # normalize_total scaled the row by target/sum(raw), so over any subset
+        # of genes both the target and the full total cancel from the profile,
+        # and dividing the recovered total by the same subset's raw total gives
+        # back the same rescale factor an unfiltered row would report.
+        #
+        # The cost is that genes present in raw.X but zeroed in X are ignored
+        # rather than compared, which is what makes the check tolerant of an X
+        # that dropped genes it should have kept.
+        support = x_row != 0
+        if not support.any():
+            continue
+        raw_support = raw_row[support]
+        raw_total = raw_support.sum()
         if raw_total <= 0:
             continue
 
-        expanded = np.expm1(x_row)
+        expanded = np.expm1(x_row[support])
         expanded_total = expanded.sum()
         if not np.isfinite(expanded_total) or expanded_total <= 0:
             continue
-        target_sums.append(float(expanded_total))
+        rescale_factors.append(float(expanded_total / raw_total))
 
-        raw_profile = raw_row / raw_total
+        raw_profile = raw_support / raw_total
         deviation = np.abs(expanded / expanded_total - raw_profile)
         # Relative to the raw profile, so a large absolute deviation on a
         # near-zero entry doesn't dominate. Compared against the raw profile
@@ -556,7 +605,7 @@ def _profile_mismatch(x_rows, raw_rows):
         scale = np.maximum(raw_profile, np.finfo(np.float64).tiny)
         row_worst = float((deviation / scale).max())
         worst = row_worst if worst is None else max(worst, row_worst)
-    return worst, target_sums
+    return worst, rescale_factors
 
 
 def check_x_normalization(adata):
@@ -647,7 +696,7 @@ def check_x_normalization(adata):
         return [], errors
 
     n_rows = min(_PROFILE_SAMPLE_ROWS, x.shape[0])
-    worst, target_sums = _profile_mismatch(_materialize(x[:n_rows]), _materialize(raw_x[:n_rows]))
+    worst, rescale_factors = _profile_mismatch(_materialize(x[:n_rows]), _materialize(raw_x[:n_rows]))
 
     if worst is not None and worst > _PROFILE_RTOL:
         errors.append(
@@ -658,21 +707,27 @@ def check_x_normalization(adata):
         return [], errors
 
     # The profile identity alone does not prove `normalize_total` ran: it holds
-    # exactly for a plain `log1p(raw.X)` too, because expm1 inverts log1p and
-    # the profile is scale-free. What separates them is the recovered per-cell
-    # total — constant across cells after normalize_total (whatever target it
-    # used), but equal to each cell's own sequencing depth without it.
-    if len(target_sums) > 1:
-        low, high = min(target_sums), max(target_sums)
-        spread = (high - low) / high if high > 0 else 0.0
-        if spread > _TARGET_SUM_RTOL:
-            errors.append(
-                f"X was log-transformed but not total-normalized: the per-cell sums recovered "
-                f"from X vary by a relative {spread:.3g} across {len(target_sums)} sampled cells "
-                f"(from {low:.6g} to {high:.6g}, tolerance {_TARGET_SUM_RTOL:g}). "
-                f"normalize_total makes these equal; without it they track each cell's "
-                f"sequencing depth. X should be log1p(normalize_total(raw.X))."
-            )
+    # exactly for a plain `log1p(raw.X)` too, because expm1 inverts log1p and the
+    # profile is scale-free. What separates them is whether each cell's recovered
+    # total is its *own* raw depth — which is what a cell that was never rescaled
+    # reports back.
+    #
+    # Asked per cell rather than as a spread across cells. An earlier version
+    # flagged X whenever the recovered totals varied by more than a tolerance,
+    # and that misread float32 error as evidence: on a correctly normalized file
+    # a deep cell's log1p/expm1 round trip loses enough precision to move its
+    # recovered total off the target by ~0.1%. Run across 69 real gut and breast
+    # files, the spread test produced 6 false positives out of 15 candidates,
+    # with correctly-normalized files spanning 1e-07 to 3.5e-01 — no threshold
+    # separates them.
+    unscaled = sum(1 for factor in rescale_factors if abs(factor - 1.0) < _DEPTH_MATCH_RTOL)
+    if len(rescale_factors) >= _DEPTH_MATCH_MIN_CELLS and unscaled / len(rescale_factors) > _DEPTH_MATCH_FRACTION:
+        errors.append(
+            f"X was log-transformed but never total-normalized: for {unscaled} of "
+            f"{len(rescale_factors)} sampled cells the total recovered from X is that cell's own "
+            f"raw count depth, so no rescaling was applied. normalize_total makes every cell "
+            f"sum to a common target. X should be log1p(normalize_total(raw.X))."
+        )
 
     return [], errors
 

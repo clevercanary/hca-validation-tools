@@ -1218,9 +1218,9 @@ def test_scan_x_against_raw_reduces_every_block_in_either_grid():
     """Unit-level, because the fixture h5ad is a single 2x7 block and so
     exercises no multi-chunk path at all.
 
-    Dask reassembles the per-block ``(1, 2)`` results along the *grid* axes: a
-    row-chunked grid ``(k, 1)`` gives ``(k, 2)``, but a column-chunked grid
-    ``(1, m)`` gives ``(1, 2m)``. Reading that as rows would report block 0's
+    Dask reassembles the per-block ``(1, 3)`` results along the *grid* axes: a
+    row-chunked grid ``(k, 1)`` gives ``(k, 3)``, but a column-chunked grid
+    ``(1, m)`` gives ``(1, 3m)``. Reading that as rows would report block 0's
     verdict for the whole matrix — claiming "identical" off one block and a
     maximum blind to every column past the first chunk. Column-chunked grids
     are reachable: ``read_backed`` chunks a CSC matrix as ``(n_obs, chunk_size)``.
@@ -1284,7 +1284,7 @@ def test_x_log_transformed_without_normalize_total_errors():
     assert is_valid is False
     errors = _x_normalization_errors(validator)
     assert len(errors) == 1, errors
-    assert "not total-normalized" in errors[0]
+    assert "never total-normalized" in errors[0]
 
 
 def test_x_with_non_finite_values_errors():
@@ -1307,3 +1307,49 @@ def test_x_with_non_finite_values_errors():
     errors = _x_normalization_errors(validator)
     assert len(errors) == 1, errors
     assert "NaN or infinite" in errors[0]
+
+
+def test_x_normalization_allows_genes_zeroed_in_x():
+    """`feature_is_filtered` means "zero in X, present in raw.X" — a state the
+    vendored validator actively tells curators to create.
+
+    Comparing full rows made every such gene read as a total mismatch
+    (deviation/scale == 1.0), so following the existing remediation produced a
+    hard error from this check. The comparison is restricted to the genes X
+    carries, which is exact rather than lenient: normalize_total scaled the row
+    by a constant, so both the target and the full total cancel from a profile
+    taken over any subset.
+    """
+    from scipy import sparse
+
+    counts = _raw_counts()
+    normalized = _normalize_counts(counts.toarray()).toarray()
+    normalized[:, 1] = 0.0  # one gene filtered out of X
+
+    _, validator = _validate_from_fixture(_make_adata(sparse.csr_matrix(normalized), counts))
+    assert _x_normalization_errors(validator) == []
+
+
+def test_non_finite_raw_x_does_not_disable_the_profile_check():
+    """One NaN in raw.X used to silence the check for the whole file.
+
+    A NaN raw total passes a `<= 0` test, so that row's deviation became NaN;
+    `max` keeps NaN once it appears, and `nan > tolerance` is False, so no error
+    was raised however badly the other rows disagreed. Rows with non-finite raw
+    values are skipped instead. Nothing upstream catches this either — the
+    vendored `_matrix_has_invalid_nonzero_values` tests `(data % 1 > 0) | (data < 0)`,
+    both False for NaN.
+    """
+    from scipy import sparse
+
+    counts = _raw_counts()
+    wrong_source = _normalize_counts(counts.toarray() + 3.0)  # normalized from other counts
+    poisoned = counts.toarray().astype(np.float32)
+    poisoned[0, 0] = np.nan
+
+    is_valid, validator = _validate_from_fixture(_make_adata(wrong_source, sparse.csr_matrix(poisoned)))
+
+    assert is_valid is False
+    errors = _x_normalization_errors(validator)
+    assert len(errors) == 1, errors
+    assert "not a normalization of raw.X" in errors[0]
