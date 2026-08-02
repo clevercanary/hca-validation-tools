@@ -4,8 +4,15 @@ import functools
 import re
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import yaml
+from anndata.compat import DaskArray
+
+# dask re-exports map_blocks without listing it in __all__, so pyright treats
+# it as private. The vendored validator imports it the same way (validate.py:14).
+from dask.array import map_blocks  # pyright: ignore[reportPrivateImportUsage]
+from scipy import sparse
 
 from hca_schema_validator._vendored.cellxgene_schema import gencode
 from hca_schema_validator._vendored.cellxgene_schema.gencode import get_gene_checker
@@ -78,6 +85,11 @@ class HCAValidator(Validator):
         self.warnings.extend(warnings)
         self.errors.extend(errors)
 
+    def _check_x_normalization(self):
+        warnings, errors = check_x_normalization(self.adata)
+        self.warnings.extend(warnings)
+        self.errors.extend(errors)
+
     def _deep_check(self):
         """
         The base class skips raw validation when *any* errors exist, but raw
@@ -94,6 +106,7 @@ class HCAValidator(Validator):
             self._validate_raw()
 
         self._check_cosmetic_label_columns()
+        self._check_x_normalization()
 
     def _validate_list(self, list_name, current_list, element_type):
         """
@@ -340,6 +353,433 @@ class HCAValidator(Validator):
                             f"Column '{column_name}' in dataframe '{df_name}' contains a value "
                             f"'{value}' that does not match the required pattern '{column_def['pattern']}'."
                         )
+
+
+# Above this, a value in X cannot plausibly be log1p-normalized: exp(20) is
+# ~4.8e8 counts for a single gene in a single cell. Used to catch raw counts in
+# X before expm1 is applied — expm1 overflows float64 on real count values, so
+# without this guard the profile check below returns inf and reports a
+# mismatch, which is true but names the wrong cause.
+_MAX_PLAUSIBLE_LOG1P_VALUE = 20.0
+
+# Relative tolerance for the profile identity. The worst error measured on a
+# correctly-normalized 2.1M-cell object was 3.0e-07 (float32 eps is 1.19e-07),
+# and the seven breast-v1 files that fail the check land around 4e+01. Anything
+# from 1e-6 to 1e-2 separates those cleanly; 1e-5 leaves ~33x headroom over
+# observed noise while staying six orders below a real failure.
+_PROFILE_RTOL = 1e-5
+
+# Rows sampled for the profile check. The identity is per-cell and independent
+# across cells, so this does not need to scale with n_obs; a few hundred rows
+# makes a systematic normalization error overwhelmingly likely to surface.
+_PROFILE_SAMPLE_ROWS = 200
+
+# How far a cell's recovered rescale factor may sit from 1.0 and still count as
+# "this cell was never rescaled". Measured across 69 real gut and breast files,
+# the two populations are perfectly bimodal on this test — a log1p-only file
+# scores 100% of sampled cells, a normalized one 0% — so the threshold has
+# enormous margin and is not a tuned knob.
+_DEPTH_MATCH_RTOL = 1e-3
+
+# Fraction of sampled cells that must sit at factor 1.0 before X is called
+# un-normalized. It has to be a fraction rather than `any`, because
+# ``normalize_total`` defaults to ``target_sum=None`` — the *median* per-cell
+# depth — so on a correctly normalized file every cell whose depth is near that
+# median legitimately scores 1.0. `all` fails the other way: the sample is taken
+# from the head of the file, so a concatenated object whose first component was
+# log1p-only would slip through on one atypical cell.
+_DEPTH_MATCH_FRACTION = 0.5
+
+# Cells needed before the un-normalized verdict is trustworthy. With
+# ``target_sum=None`` the target is the *median* per-cell depth, so on a
+# one-cell object the target is that cell's own depth and its factor is exactly
+# 1.0 — a correctly normalized file would be condemned by a sample of one.
+_DEPTH_MATCH_MIN_CELLS = 2
+
+
+def _max_finite(values, floor=0.0):
+    """Largest finite entry in ``values``, or ``floor`` when there is none.
+
+    ``floor`` defaults to 0.0 so a sparse matrix's implicit zeros are accounted
+    for: reducing over the stored values alone would report a negative maximum
+    for an all-negative matrix that also has implicit zeros.
+
+    Reduced with ``where=`` rather than by boolean-indexing the finite entries.
+    On the dense path ``values[np.isfinite(values)]`` would allocate a full-size
+    mask plus a full-size copy — on a 5000-row chunk of a 36,788-gene matrix
+    that is ~184 MB and up to ~736 MB, which is the cost this module goes out of
+    its way to avoid elsewhere.
+    """
+    if values.size == 0:
+        return floor
+    largest = np.max(values, initial=floor, where=np.isfinite(values))
+    return float(largest)
+
+
+def _chunk_stats(x_chunk, raw_chunk):
+    """Per-chunk reduction over X and raw.X.
+
+    Returns ``[[identical, max_value, has_non_finite]]`` for the chunk. Shaped
+    as a 1-element object array because that is what ``map_blocks`` expects back
+    from a blockwise reduction here — matching ``_validate_raw_data`` in the
+    vendored validator, which is the established idiom in this file's base class.
+
+    ``has_non_finite`` rides along on this pass rather than costing a traversal
+    of the matrix elsewhere. It does evaluate ``isfinite`` a second time over
+    the chunk's stored values, which is far cheaper than another full pass.
+
+    Sparse chunks are reduced through their CSR arrays rather than densified.
+    That is not a micro-optimization: a 5000-row chunk of a 36,788-gene matrix
+    densifies to 736 MB, and holding both chunks plus the finite mask peaks at
+    ~2.4 GB *per dask task*. The Batch job runs 8 concurrent tasks on a 60 GB
+    box, so the dense form transiently needs ~19 GB, scaling linearly with
+    n_vars. The sparse form measures at 49 MB.
+
+    Comparing the CSR arrays makes "identical" mean *identically stored*, which
+    is narrower than *numerically equal* — two matrices can encode the same
+    values with different explicit zeros. That is the safe direction: such a
+    pair falls through to the profile check, which still errors, just with the
+    more general message.
+    """
+    # `format` rather than `issparse`: a COO matrix is sparse but has no
+    # indptr/indices, so the comparison below would raise AttributeError, which
+    # validate_adata's blanket handler turns into "Unexpected validation error"
+    # and abandons the remaining deep checks. Falling through to the dense path
+    # keeps the verdict correct on formats h5ad never stores but in-memory
+    # callers can still hand us.
+    if getattr(x_chunk, "format", None) in ("csr", "csc") and getattr(raw_chunk, "format", None) in ("csr", "csc"):
+        identical = (
+            x_chunk.shape == raw_chunk.shape
+            and np.array_equal(x_chunk.indptr, raw_chunk.indptr)
+            and np.array_equal(x_chunk.indices, raw_chunk.indices)
+            and np.array_equal(x_chunk.data, raw_chunk.data)
+        )
+        has_non_finite = not bool(np.all(np.isfinite(x_chunk.data)))
+        return np.array([np.array([identical, _max_finite(x_chunk.data), has_non_finite], dtype=object)])
+
+    if sparse.issparse(x_chunk) != sparse.issparse(raw_chunk):
+        # Mixed storage — anndata allows X and raw.X to use different encodings,
+        # so a dense X beside a CSR raw.X is a legitimate file. Densifying the
+        # sparse side to compare would allocate ~736 MB per block on a
+        # 5000 x 36,788 chunk, which is exactly the cost the sparse path above
+        # exists to avoid, and it would be paid on valid files.
+        #
+        # Reported as not identical, which is consistent rather than a
+        # concession: "identical" here means identically *stored* (see above),
+        # and two different encodings never are. A value-equal pair still falls
+        # through to the profile check.
+        values = x_chunk.data if sparse.issparse(x_chunk) else np.asarray(x_chunk)
+        floor = 0.0 if sparse.issparse(x_chunk) else float("-inf")
+        max_value = _max_finite(values, floor=floor)
+        has_non_finite = not bool(np.all(np.isfinite(values)))
+        return np.array([np.array([False, max_value if np.isfinite(max_value) else 0.0, has_non_finite], dtype=object)])
+
+    x_dense = _densify(x_chunk)
+    raw_dense = _densify(raw_chunk)
+    identical = x_dense.shape == raw_dense.shape and np.array_equal(x_dense, raw_dense)
+    # No implicit-zero floor here: a dense array stores every entry, so its own
+    # maximum is the true one.
+    max_value = _max_finite(x_dense, floor=float("-inf"))
+    has_non_finite = not bool(np.all(np.isfinite(x_dense)))
+    return np.array([np.array([identical, max_value if np.isfinite(max_value) else 0.0, has_non_finite], dtype=object)])
+
+
+def _densify(block):
+    """Return ``block`` as a dense ndarray, whether it is sparse or already dense."""
+    return block.toarray() if sparse.issparse(block) else np.asarray(block)
+
+
+def _materialize(block):
+    """Realize a matrix block, whether it is dask-backed or already concrete.
+
+    ``read_h5ad`` in the vendored utils opens files with ``read_backed``, so
+    ``adata.X`` is a chunked DaskArray on real files — but the test fixtures
+    build AnnData directly and hold plain numpy or scipy matrices. Both reach
+    this module, so neither can be assumed.
+    """
+    return block.compute() if isinstance(block, DaskArray) else block
+
+
+def _scan_x_against_raw(x, raw_x):
+    """Return ``(identical, max_finite_value_in_x, x_has_non_finite)``.
+
+    Returns ``None`` when the two cannot be compared without materializing a
+    whole backed matrix, which the caller treats as "no verdict".
+
+    One pass over both matrices via ``map_blocks`` when they are dask-backed
+    with aligned chunks — the same idiom as ``_validate_raw_data`` in the
+    vendored validator. When neither is dask-backed they are already resident,
+    so a direct comparison costs nothing; that is the test-fixture case.
+
+    The mixed case — one dask, one not, or two dask arrays chunked differently
+    — is refused rather than materialized. It is reachable on a real file:
+    ``read_backed`` chunks a CSC matrix as ``(n_obs, 5000)`` against CSR's
+    ``(5000, n_vars)``, so an X stored CSC beside a CSR raw.X lands here. The
+    vendored ``_validate_sparsity`` records an error for that file and
+    continues, so materializing both 4.25-billion-nonzero matrices to add a
+    second opinion would risk an OOM on a file already known to be invalid.
+    """
+    if isinstance(x, DaskArray) and isinstance(raw_x, DaskArray):
+        if x.chunks != raw_x.chunks:
+            return None
+        results = map_blocks(_chunk_stats, x, raw_x, dtype=object).compute()
+        # Reshaped, not iterated as rows. Dask reassembles the per-block (1, 3)
+        # results along the *grid* axes: a row-chunked grid (k, 1) concatenates
+        # to (k, 3), but a column-chunked grid (1, m) concatenates to (1, 3m).
+        # Iterating rows there would read block 0 and silently discard the rest
+        # — reporting "identical" off one block and a maximum blind to every
+        # column past the first chunk. Column-chunked grids are reachable:
+        # `read_backed` chunks a CSC matrix as (n_obs, chunk_size).
+        rows = np.asarray(results, dtype=object).reshape(-1, 3)
+        identical = all(bool(flag) for flag in rows[:, 0])
+        max_value = max((float(value) for value in rows[:, 1]), default=0.0)
+        has_non_finite = any(bool(flag) for flag in rows[:, 2])
+        return identical, max_value, has_non_finite
+
+    if isinstance(x, DaskArray) or isinstance(raw_x, DaskArray):
+        return None
+
+    stats = _chunk_stats(x, raw_x)[0]
+    return bool(stats[0]), float(stats[1]), bool(stats[2])
+
+
+def _profile_mismatch(x_rows, raw_rows):
+    """Largest relative deviation from the normalization identity, or None.
+
+    ``normalize_total`` scales each cell by a constant and ``log1p`` is applied
+    elementwise, so for every cell::
+
+        expm1(X[i]) / sum(expm1(X[i]))  ==  raw.X[i] / sum(raw.X[i])
+
+    The target sum cancels, which is what makes this checkable without knowing
+    it. That matters because ``scanpy.pp.normalize_total`` defaults to
+    ``target_sum=None`` — normalizing to the *median* of per-cell totals, not
+    to 1e4 — so a check written against an assumed constant would fire on every
+    file that took the default.
+
+    Rows whose raw counts sum to zero are skipped rather than guarded against
+    division by zero; the vendored ``_has_valid_raw`` already errors on
+    all-zero rows, so reporting them here would duplicate that.
+
+    Returns ``(worst_deviation, rescale_factors)``. ``worst_deviation`` is None
+    when no row could be compared. ``rescale_factors`` holds, per comparable
+    row, the factor ``normalize_total`` must have applied to it — the total
+    recovered from X over the row's own count total. A factor of 1.0 means the
+    row was never rescaled, which is how the caller checks the
+    ``normalize_total`` half of the transform.
+    """
+    # Densified once for the whole sample rather than per row: these are at most
+    # _PROFILE_SAMPLE_ROWS rows, already materialized by the caller.
+    x_dense = _densify(x_rows).astype(np.float64)
+    raw_dense = _densify(raw_rows).astype(np.float64)
+
+    worst = None
+    rescale_factors: list[float] = []
+    for i in range(x_dense.shape[0]):
+        x_row = x_dense[i]
+        raw_row = raw_dense[i]
+
+        # A non-finite raw value would make raw_total NaN, and NaN passes the
+        # `<= 0` test below. The row's deviation would then be NaN, and `max`
+        # keeps NaN once it appears — after which `worst > _PROFILE_RTOL` is
+        # False forever and the whole check goes quiet. One NaN anywhere in
+        # raw.X would disable it for the entire file.
+        if not np.all(np.isfinite(raw_row)):
+            continue
+
+        # Restricted to the genes X actually carries. `feature_is_filtered` is a
+        # schema-supported var flag whose defined meaning is "zero in X, present
+        # in raw.X" — the vendored validator's own remediation message tells
+        # curators to set it — so those genes are legitimately absent from X and
+        # must not read as a mismatch. The arithmetic still works out exactly:
+        # normalize_total scaled the row by target/sum(raw), so over any subset
+        # of genes both the target and the full total cancel from the profile,
+        # and dividing the recovered total by the same subset's raw total gives
+        # back the same rescale factor an unfiltered row would report.
+        #
+        # The cost is that genes present in raw.X but zeroed in X are ignored
+        # rather than compared, which is what makes the check tolerant of an X
+        # that dropped genes it should have kept.
+        support = x_row != 0
+        if not support.any():
+            continue
+        raw_support = raw_row[support]
+        raw_total = raw_support.sum()
+        if raw_total <= 0:
+            continue
+
+        expanded = np.expm1(x_row[support])
+        expanded_total = expanded.sum()
+        if not np.isfinite(expanded_total) or expanded_total <= 0:
+            continue
+        rescale_factors.append(float(expanded_total / raw_total))
+
+        raw_profile = raw_support / raw_total
+        deviation = np.abs(expanded / expanded_total - raw_profile)
+        # Relative to the raw profile, so a large absolute deviation on a
+        # near-zero entry doesn't dominate. Compared against the raw profile
+        # rather than the X profile because raw is the reference here.
+        scale = np.maximum(raw_profile, np.finfo(np.float64).tiny)
+        row_worst = float((deviation / scale).max())
+        worst = row_worst if worst is None else max(worst, row_worst)
+    return worst, rescale_factors
+
+
+def check_x_normalization(adata):
+    """Check that X holds a normalization of raw.X, and return (warnings, errors).
+
+    HCA requires raw counts in ``raw.X`` and normalized values in ``X``. The
+    vendored validator checks that ``raw.X`` *is* raw, and that the two
+    matrices agree on shape and indices — but never that ``X`` differs from
+    ``raw.X``, nor that it is derived from it. All seven breast-v1 source
+    datasets ship ``X`` byte-identical to ``raw.X`` and validate clean today
+    (see #524).
+
+    Six checks, cheapest first, each short-circuiting: once one fires the
+    later ones would only restate the same defect in vaguer terms.
+
+    1. ``X`` identical to ``raw.X`` → **warning only**, pending a spec change
+       that removes the sentence making this a documented state (#562).
+    2. ``X`` holds NaN or infinite values → not expression data at all, and it
+       makes every check below unreliable rather than merely wrong.
+    3. ``X`` holds values too large to be ``log1p`` output → raw counts, or a
+       normalization that was never log-transformed.
+    4. ``X`` holds no positive values → the matrix was emptied or dropped.
+    5. ``X`` is not a total-normalization of ``raw.X`` → **warning only**. When
+       ambient RNA removal was applied, X is normalized from the desouped
+       counts rather than from ``raw.X``, so the disagreement is specified
+       behaviour rather than a defect. Becomes an error once ``desouped_counts``
+       is a required layer and X can be compared against its real source
+       (#562).
+    6. ``X`` was log-transformed but never total-normalized.
+
+    Silent when ``raw.X`` is absent: the vendored ``_validate_raw`` already owns
+    that case and reports it, and a second message would not add anything.
+    """
+    if adata.raw is None:
+        return [], []
+
+    x = adata.X
+    raw_x = adata.raw.X
+
+    # Shape disagreement is already an error from _validate_x_raw_x_dimensions
+    # (which also checks var.index and obs_names). Bail rather than report it
+    # again — and because the comparisons below assume aligned shapes.
+    if x.shape != raw_x.shape:
+        return [], []
+
+    verdict = _scan_x_against_raw(x, raw_x)
+    if verdict is None:
+        # Not comparable without materializing a backed matrix; see
+        # _scan_x_against_raw. The file has other errors by construction.
+        return [], []
+    identical, max_value, has_non_finite = verdict
+
+    warnings: list[str] = []
+    errors: list[str] = []
+
+    if identical:
+        # A warning for now, pending a spec change. The h5ad structure spec
+        # currently says that for an author-provided dataset with no normalized
+        # matrix, `adata.X` = the raw matrix — which, since `raw.X` is also
+        # required, makes X == raw.X a documented state. CELLxGENE has no such
+        # state: raw goes in `raw.X` when a normalized matrix exists, otherwise
+        # in X with `raw.X` absent, so location alone says which is which. That
+        # third state is precisely why `_has_valid_raw` walks past these files —
+        # it validates `raw.X`, finds valid counts, and nothing looks at X.
+        #
+        # The spec sentence is expected to be removed, at which point this
+        # becomes an error again. Warning until then so the 7 breast source
+        # datasets in this state are flagged rather than blocked. See #562.
+        warnings.append(
+            "X is identical to raw.X, so normalization has not been applied. X should hold "
+            "normalized values and raw.X the raw counts; run normalize_raw to derive X."
+        )
+        return warnings, errors
+
+    if has_non_finite:
+        # Reported before the checks below because a NaN or inf makes them
+        # unreliable rather than merely wrong: `_profile_mismatch` skips any row
+        # whose expanded total is non-finite, so a partially-NaN X would be
+        # judged on its remaining rows and reported clean — success claimed over
+        # a matrix that was never fully evaluated. The maximum ignores
+        # non-finite entries for the same reason.
+        errors.append(
+            "X contains NaN or infinite values, which cannot be normalized expression. Every entry in X must be finite."
+        )
+        return warnings, errors
+
+    if max_value > _MAX_PLAUSIBLE_LOG1P_VALUE:
+        errors.append(
+            f"X contains values up to {max_value:.4g}, which is too large to be log1p output "
+            f"(log1p of 10,000 counts is about 9.2). X may hold raw counts, or a normalization "
+            f"that was never log-transformed."
+        )
+        return warnings, errors
+
+    if max_value <= 0:
+        # Every stored value is zero (or negative). raw.X is non-empty, since a
+        # matching all-zero raw.X would have been caught as identical above and
+        # the vendored _has_valid_raw errors on all-zero rows regardless. The
+        # profile check cannot see this — every row divides out as unusable and
+        # returns no verdict — so without this an emptied X validates clean,
+        # which is the class of defect this whole check exists to catch.
+        errors.append(
+            "X contains no positive values, so it cannot hold normalized expression. "
+            "Confirm X was not emptied or dropped during processing."
+        )
+        return warnings, errors
+
+    n_rows = min(_PROFILE_SAMPLE_ROWS, x.shape[0])
+    worst, rescale_factors = _profile_mismatch(_materialize(x[:n_rows]), _materialize(raw_x[:n_rows]))
+
+    if worst is not None and worst > _PROFILE_RTOL:
+        # A warning, not an error, and deliberately so. The h5ad structure spec
+        # says that when ambient RNA removal (desouping) was applied, X is a
+        # normalization of the *desouped* counts, not of raw.X — so this
+        # disagreement is the specified outcome for those files, not a defect.
+        # 18 of the 71 prod files carrying a raw.X are in that state (17 eye
+        # integrated-objects and one msk source dataset, the latter still
+        # carrying its `soupX` layer). Erroring would block all of them.
+        #
+        # Distinguishing desouping from a genuine mismatch is possible — counts
+        # can only be removed, never invented, so an implied count *exceeding*
+        # raw.X is unambiguous — but it needs `desouped_counts` to be a required
+        # layer before X can be checked against the matrix it really came from.
+        # See #562; this becomes an error once that lands.
+        warnings.append(
+            f"X does not appear to be a normalization of raw.X: the per-cell expression profile "
+            f"of X disagrees with raw.X by a relative error of {worst:.3g} (tolerance "
+            f"{_PROFILE_RTOL:g}), sampled over {n_rows} cells. This is expected when ambient RNA "
+            f"removal was applied, since X is then normalized from the desouped counts rather "
+            f"than from raw.X; otherwise X should be log1p(normalize_total(raw.X))."
+        )
+        return warnings, errors
+
+    # The profile identity alone does not prove `normalize_total` ran: it holds
+    # exactly for a plain `log1p(raw.X)` too, because expm1 inverts log1p and the
+    # profile is scale-free. What separates them is whether each cell's recovered
+    # total is its *own* raw depth — which is what a cell that was never rescaled
+    # reports back.
+    #
+    # Asked per cell rather than as a spread across cells. An earlier version
+    # flagged X whenever the recovered totals varied by more than a tolerance,
+    # and that misread float32 error as evidence: on a correctly normalized file
+    # a deep cell's log1p/expm1 round trip loses enough precision to move its
+    # recovered total off the target by ~0.1%. Run across 69 real gut and breast
+    # files, the spread test produced 6 false positives out of 15 candidates,
+    # with correctly-normalized files spanning 1e-07 to 3.5e-01 — no threshold
+    # separates them.
+    unscaled = sum(1 for factor in rescale_factors if abs(factor - 1.0) < _DEPTH_MATCH_RTOL)
+    if len(rescale_factors) >= _DEPTH_MATCH_MIN_CELLS and unscaled / len(rescale_factors) > _DEPTH_MATCH_FRACTION:
+        errors.append(
+            f"X was log-transformed but never total-normalized: for {unscaled} of "
+            f"{len(rescale_factors)} sampled cells the total recovered from X is that cell's own "
+            f"raw count depth, so no rescaling was applied. normalize_total makes every cell "
+            f"sum to a common target. X should be log1p(normalize_total(raw.X))."
+        )
+
+    return warnings, errors
 
 
 def check_cosmetic_labels(adata, schema_def=None):
