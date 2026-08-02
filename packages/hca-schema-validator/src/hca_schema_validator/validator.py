@@ -457,6 +457,23 @@ def _chunk_stats(x_chunk, raw_chunk):
         has_non_finite = not bool(np.all(np.isfinite(x_chunk.data)))
         return np.array([np.array([identical, _max_finite(x_chunk.data), has_non_finite], dtype=object)])
 
+    if sparse.issparse(x_chunk) != sparse.issparse(raw_chunk):
+        # Mixed storage — anndata allows X and raw.X to use different encodings,
+        # so a dense X beside a CSR raw.X is a legitimate file. Densifying the
+        # sparse side to compare would allocate ~736 MB per block on a
+        # 5000 x 36,788 chunk, which is exactly the cost the sparse path above
+        # exists to avoid, and it would be paid on valid files.
+        #
+        # Reported as not identical, which is consistent rather than a
+        # concession: "identical" here means identically *stored* (see above),
+        # and two different encodings never are. A value-equal pair still falls
+        # through to the profile check.
+        values = x_chunk.data if sparse.issparse(x_chunk) else np.asarray(x_chunk)
+        floor = 0.0 if sparse.issparse(x_chunk) else float("-inf")
+        max_value = _max_finite(values, floor=floor)
+        has_non_finite = not bool(np.all(np.isfinite(values)))
+        return np.array([np.array([False, max_value if np.isfinite(max_value) else 0.0, has_non_finite], dtype=object)])
+
     x_dense = _densify(x_chunk)
     raw_dense = _densify(raw_chunk)
     identical = x_dense.shape == raw_dense.shape and np.array_equal(x_dense, raw_dense)
