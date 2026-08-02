@@ -1140,19 +1140,25 @@ def _x_normalization_errors(validator):
     return [e for e in validator.errors if e.removeprefix("ERROR: ").startswith("X ")]
 
 
-def test_x_identical_to_raw_x_errors():
-    """The breast-v1 defect: normalization never ran, so X *is* the count matrix.
+def test_x_identical_to_raw_x_warns():
+    """The breast-v1 case: normalization never ran, so X *is* the count matrix.
 
-    Reported as its own error rather than being left to the profile check, which
-    would also fire but describe the symptom instead of the cause.
+    Reported on its own rather than left to the profile check, which would also
+    fire but describe the symptom instead of the cause.
+
+    A warning rather than an error for now: the h5ad structure spec says an
+    author-provided dataset with no normalized matrix has `adata.X` = the raw
+    matrix, and `raw.X` is required regardless, so X == raw.X is currently a
+    documented state. CELLxGENE has no such state. Becomes an error when that
+    sentence is removed (#562).
     """
     counts = _raw_counts()
     is_valid, validator = _validate_from_fixture(_make_adata(counts.copy(), counts))
 
-    assert is_valid is False
-    errors = _x_normalization_errors(validator)
-    assert len(errors) == 1, errors
-    assert "identical to raw.X" in errors[0]
+    assert _x_normalization_errors(validator) == []
+    hits = [w for w in validator.warnings if "identical to raw.X" in w]
+    assert len(hits) == 1, validator.warnings
+    assert is_valid is True
 
 
 def test_x_holding_raw_counts_errors_before_expm1_overflows():

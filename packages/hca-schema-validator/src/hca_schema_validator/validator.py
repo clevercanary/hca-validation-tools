@@ -638,7 +638,8 @@ def check_x_normalization(adata):
     Six checks, cheapest first, each short-circuiting: once one fires the
     later ones would only restate the same defect in vaguer terms.
 
-    1. ``X`` identical to ``raw.X`` → normalization never ran.
+    1. ``X`` identical to ``raw.X`` → **warning only**, pending a spec change
+       that removes the sentence making this a documented state (#562).
     2. ``X`` holds NaN or infinite values → not expression data at all, and it
        makes every check below unreliable rather than merely wrong.
     3. ``X`` holds values too large to be ``log1p`` output → raw counts, or a
@@ -678,9 +679,21 @@ def check_x_normalization(adata):
     errors: list[str] = []
 
     if identical:
-        errors.append(
-            "X is identical to raw.X, so normalization has not been applied. "
-            "X must hold normalized values and raw.X the raw counts."
+        # A warning for now, pending a spec change. The h5ad structure spec
+        # currently says that for an author-provided dataset with no normalized
+        # matrix, `adata.X` = the raw matrix — which, since `raw.X` is also
+        # required, makes X == raw.X a documented state. CELLxGENE has no such
+        # state: raw goes in `raw.X` when a normalized matrix exists, otherwise
+        # in X with `raw.X` absent, so location alone says which is which. That
+        # third state is precisely why `_has_valid_raw` walks past these files —
+        # it validates `raw.X`, finds valid counts, and nothing looks at X.
+        #
+        # The spec sentence is expected to be removed, at which point this
+        # becomes an error again. Warning until then so the 7 breast source
+        # datasets in this state are flagged rather than blocked. See #562.
+        warnings.append(
+            "X is identical to raw.X, so normalization has not been applied. X should hold "
+            "normalized values and raw.X the raw counts; run normalize_raw to derive X."
         )
         return warnings, errors
 
