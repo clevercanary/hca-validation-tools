@@ -1174,17 +1174,25 @@ def test_x_holding_raw_counts_errors_before_expm1_overflows():
     assert "too large to be log1p output" in errors[0]
 
 
-def test_x_normalized_from_a_different_matrix_errors():
-    """The check no heuristic can make: X is plausibly normalized — fractional,
-    correctly scaled, right shape — but derived from the wrong counts."""
+def test_x_normalized_from_a_different_matrix_warns():
+    """X is plausibly normalized — fractional, correctly scaled, right shape —
+    but derived from the wrong counts.
+
+    A warning rather than an error: the h5ad structure spec says X is normalized
+    from the *desouped* counts when ambient RNA removal was applied, so this
+    disagreement is the specified outcome for such files. 18 of the 71 prod
+    files carrying a raw.X are in that state. It becomes an error once
+    `desouped_counts` is required and X can be checked against its real source
+    (#562).
+    """
     counts = _raw_counts()
     other = counts.toarray() + 1.0  # same shape, different counts
     is_valid, validator = _validate_from_fixture(_make_adata(_normalize_counts(other), counts))
 
-    assert is_valid is False
-    errors = _x_normalization_errors(validator)
-    assert len(errors) == 1, errors
-    assert "not a normalization of raw.X" in errors[0]
+    assert _x_normalization_errors(validator) == []
+    hits = [w for w in validator.warnings if "does not appear to be a normalization of raw.X" in w]
+    assert len(hits) == 1, validator.warnings
+    assert is_valid is True
 
 
 def test_x_normalization_accepts_any_target_sum():
@@ -1347,9 +1355,9 @@ def test_non_finite_raw_x_does_not_disable_the_profile_check():
     poisoned = counts.toarray().astype(np.float32)
     poisoned[0, 0] = np.nan
 
-    is_valid, validator = _validate_from_fixture(_make_adata(wrong_source, sparse.csr_matrix(poisoned)))
+    _, validator = _validate_from_fixture(_make_adata(wrong_source, sparse.csr_matrix(poisoned)))
 
-    assert is_valid is False
-    errors = _x_normalization_errors(validator)
-    assert len(errors) == 1, errors
-    assert "not a normalization of raw.X" in errors[0]
+    # Reported as a warning since #562 — what matters here is that the NaN row
+    # no longer suppresses the verdict for the rows that do disagree.
+    hits = [w for w in validator.warnings if "does not appear to be a normalization of raw.X" in w]
+    assert len(hits) == 1, validator.warnings

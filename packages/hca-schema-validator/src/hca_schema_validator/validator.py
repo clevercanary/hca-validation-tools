@@ -627,8 +627,12 @@ def check_x_normalization(adata):
     3. ``X`` holds values too large to be ``log1p`` output → raw counts, or a
        normalization that was never log-transformed.
     4. ``X`` holds no positive values → the matrix was emptied or dropped.
-    5. ``X`` is not a total-normalization of ``raw.X`` → the two are unrelated,
-       or a non-standard transform was used.
+    5. ``X`` is not a total-normalization of ``raw.X`` → **warning only**. When
+       ambient RNA removal was applied, X is normalized from the desouped
+       counts rather than from ``raw.X``, so the disagreement is specified
+       behaviour rather than a defect. Becomes an error once ``desouped_counts``
+       is a required layer and X can be compared against its real source
+       (#562).
     6. ``X`` was log-transformed but never total-normalized.
 
     Silent when ``raw.X`` is absent: the vendored ``_validate_raw`` already owns
@@ -653,6 +657,7 @@ def check_x_normalization(adata):
         return [], []
     identical, max_value, has_non_finite = verdict
 
+    warnings: list[str] = []
     errors: list[str] = []
 
     if identical:
@@ -660,7 +665,7 @@ def check_x_normalization(adata):
             "X is identical to raw.X, so normalization has not been applied. "
             "X must hold normalized values and raw.X the raw counts."
         )
-        return [], errors
+        return warnings, errors
 
     if has_non_finite:
         # Reported before the checks below because a NaN or inf makes them
@@ -672,7 +677,7 @@ def check_x_normalization(adata):
         errors.append(
             "X contains NaN or infinite values, which cannot be normalized expression. Every entry in X must be finite."
         )
-        return [], errors
+        return warnings, errors
 
     if max_value > _MAX_PLAUSIBLE_LOG1P_VALUE:
         errors.append(
@@ -680,7 +685,7 @@ def check_x_normalization(adata):
             f"(log1p of 10,000 counts is about 9.2). X may hold raw counts, or a normalization "
             f"that was never log-transformed."
         )
-        return [], errors
+        return warnings, errors
 
     if max_value <= 0:
         # Every stored value is zero (or negative). raw.X is non-empty, since a
@@ -693,18 +698,33 @@ def check_x_normalization(adata):
             "X contains no positive values, so it cannot hold normalized expression. "
             "Confirm X was not emptied or dropped during processing."
         )
-        return [], errors
+        return warnings, errors
 
     n_rows = min(_PROFILE_SAMPLE_ROWS, x.shape[0])
     worst, rescale_factors = _profile_mismatch(_materialize(x[:n_rows]), _materialize(raw_x[:n_rows]))
 
     if worst is not None and worst > _PROFILE_RTOL:
-        errors.append(
-            f"X is not a normalization of raw.X: the per-cell expression profile of X "
-            f"disagrees with raw.X by a relative error of {worst:.3g} (tolerance {_PROFILE_RTOL:g}), "
-            f"sampled over {n_rows} cells. X should be log1p(normalize_total(raw.X))."
+        # A warning, not an error, and deliberately so. The h5ad structure spec
+        # says that when ambient RNA removal (desouping) was applied, X is a
+        # normalization of the *desouped* counts, not of raw.X — so this
+        # disagreement is the specified outcome for those files, not a defect.
+        # 18 of the 71 prod files carrying a raw.X are in that state (17 eye
+        # integrated-objects and one msk source dataset, the latter still
+        # carrying its `soupX` layer). Erroring would block all of them.
+        #
+        # Distinguishing desouping from a genuine mismatch is possible — counts
+        # can only be removed, never invented, so an implied count *exceeding*
+        # raw.X is unambiguous — but it needs `desouped_counts` to be a required
+        # layer before X can be checked against the matrix it really came from.
+        # See #562; this becomes an error once that lands.
+        warnings.append(
+            f"X does not appear to be a normalization of raw.X: the per-cell expression profile "
+            f"of X disagrees with raw.X by a relative error of {worst:.3g} (tolerance "
+            f"{_PROFILE_RTOL:g}), sampled over {n_rows} cells. This is expected when ambient RNA "
+            f"removal was applied, since X is then normalized from the desouped counts rather "
+            f"than from raw.X; otherwise X should be log1p(normalize_total(raw.X))."
         )
-        return [], errors
+        return warnings, errors
 
     # The profile identity alone does not prove `normalize_total` ran: it holds
     # exactly for a plain `log1p(raw.X)` too, because expm1 inverts log1p and the
@@ -729,7 +749,7 @@ def check_x_normalization(adata):
             f"sum to a common target. X should be log1p(normalize_total(raw.X))."
         )
 
-    return [], errors
+    return warnings, errors
 
 
 def check_cosmetic_labels(adata, schema_def=None):
