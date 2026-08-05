@@ -956,9 +956,14 @@ def _whole_matrix_error(identical, max_value, has_non_finite):
         # which. That third state is precisely why `_has_valid_raw` walks past
         # these files — it validates raw.X, finds valid counts, and nothing ever
         # looks at X. The sentence is gone (#562), so this is an error.
+        # Named no source, deliberately. This check runs in the whole-matrix
+        # pass, before layers are read, so it cannot know whether the file
+        # carries desouped counts — and naming raw.X would point a curator who
+        # does carry them at the wrong matrix.
         return (
-            "X is identical to raw.X, so normalization has not been applied. X must hold "
-            "normalized values — log1p(normalize_total(raw.X)) — and raw.X the raw counts."
+            "X is identical to raw.X, so normalization has not been applied. X must hold the "
+            "normalized values and raw.X the raw counts. Normalize X from raw.X, or from "
+            f"layers['{DESOUPED_COUNTS_LAYER}'] if ambient RNA removal was applied."
         )
 
     if has_non_finite:
