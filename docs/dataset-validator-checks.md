@@ -64,6 +64,8 @@ Three matrices, and no more. Everything else in circulation — `normalized_coun
 | `layers['desouped_counts']` | when ambient RNA removal was applied | counts surviving removal, float32 |
 | `X` | yes | `log1p(normalize_total(desouped_counts if present else raw.X))` |
 
+The table is the contract, not the check list. `raw.X`'s dtype and integrality are enforced (by the vendored raw-layer validation); `desouped_counts`' are **not** — check 5 below establishes only that the layer is usable as a reference, and check 6 that it does not exceed `raw.X`. Validating the layer as counts in its own right is open work.
+
 `desouped_counts` is required rather than optional because it cannot be recovered: ambient RNA removal is parameterised and often stochastic, so discarding it leaves `X` an assertion no one can check. `normalize_total`'s target sum is *not* pinned — the checks compare per-cell profiles, in which the target cancels, so `scanpy`'s `target_sum=None` default is accepted.
 
 Checks run cheapest first and short-circuit, so one defect yields one message:

@@ -402,10 +402,21 @@ _DEPTH_MATCH_MIN_CELLS = 2
 DESOUPED_COUNTS_LAYER = "desouped_counts"
 
 # How far a recovered count may sit from a whole number, or from its raw
-# counterpart, and still be treated as equal. X is stored float32, so a count
-# recovered through log1p/expm1 carries a relative error of roughly 1e-6; the
-# absolute term dominates for the small counts that make up almost every entry,
-# and the relative term keeps deep genes from drifting into a false verdict.
+# counterpart, and still be treated as equal. The absolute term dominates for the
+# small counts that make up almost every entry; the relative term keeps deep
+# genes from drifting into a false verdict.
+#
+# The relative term is set three orders above what the round trip alone costs. X
+# is stored float32, so recovering a count through log1p/expm1 carries a relative
+# error of roughly 1e-6 — but the recovery also divides by a scale estimated as a
+# median over the row, which carries the spread of whatever that row disagrees
+# about, and that is the larger of the two errors on exactly the rows this has to
+# judge.
+#
+# The margin is affordable because the populations it separates sit nowhere near
+# it. Measured across the 140-file local prod corpus: genuinely desouped files
+# score 0.0000% of entries above raw.X and 0.00% non-integral, while files whose
+# X is not a normalization of any count matrix score 19.5-40.2% non-integral.
 _IMPLIED_COUNT_ATOL = 0.05
 _IMPLIED_COUNT_RTOL = 1e-3
 
