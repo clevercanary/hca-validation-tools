@@ -774,6 +774,9 @@ def _implied_counts_verdict(x_rows, raw_rows):
         excess += int((differs & (implied > raw_support)).sum())
         deficit += int((differs & (implied < raw_support)).sum())
 
+    # The entry-count test guards the division as well as the verdict: it can
+    # only pass when `testable` is at least _MIN_NON_INTEGRAL_ENTRIES, since
+    # `integral` is counted over the same entries `testable` is.
     non_integral = testable - integral
     if non_integral >= _MIN_NON_INTEGRAL_ENTRIES and non_integral / testable > 1 - _INTEGRAL_FRACTION:
         return _VERDICT_NOT_COUNTS
@@ -829,6 +832,18 @@ def _unusable_layer_error(declared_rows):
             f"layers['{DESOUPED_COUNTS_LAYER}'] contains NaN or infinite values, which cannot be "
             f"counts. That layer must hold the counts left behind by ambient RNA removal, so every "
             f"entry in it must be a finite count."
+        )
+
+    if bool((values < 0).any()):
+        # Same failure shape as the two above, reached differently: a row whose
+        # negatives cancel its positives has a non-positive total, which
+        # `_profile_mismatch` skips. Enough such rows and the sample empties out.
+        # raw.X is spared this only because the vendored `_validate_raw_data`
+        # rejects its non-positive values as non-counts; nothing does that here.
+        return (
+            f"layers['{DESOUPED_COUNTS_LAYER}'] contains negative values, which cannot be counts. "
+            f"That layer must hold the counts left behind by ambient RNA removal, so every entry "
+            f"in it must be zero or a positive count."
         )
 
     if not bool((values > 0).any()):
@@ -1008,9 +1023,9 @@ def check_x_normalization(adata):
     3. ``X`` holds values too large to be ``log1p`` output → raw counts, or a
        normalization that was never log-transformed.
     4. ``X`` holds no positive values → the matrix was emptied or dropped.
-    5. ``layers['desouped_counts']`` holds NaN, infinities, or no counts at all →
-       it cannot serve as the source, and left unchecked it would switch the two
-       checks below off rather than fail them.
+    5. ``layers['desouped_counts']`` holds NaN, infinities, negatives, or no
+       counts at all → it cannot serve as the source, and left unchecked it would
+       switch the two checks below off rather than fail them.
     6. ``layers['desouped_counts']`` holds more counts than ``raw.X`` → the
        layer is not what it claims to be, so it cannot be trusted as the source.
     7. ``X`` is not a total-normalization of its source. When the source is

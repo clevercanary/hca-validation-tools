@@ -1500,6 +1500,7 @@ def test_desouped_counts_layer_holding_more_than_raw_x_errors():
         (np.nan, "NaN or infinite"),
         (np.inf, "NaN or infinite"),
         (0.0, "holds no counts"),
+        (-3.0, "contains negative values"),
     ],
 )
 def test_unusable_desouped_counts_layer_cannot_switch_the_contract_off(poison, fragment):
@@ -1507,8 +1508,9 @@ def test_unusable_desouped_counts_layer_cannot_switch_the_contract_off(poison, f
 
     The layer is trusted as the reference on presence, and every downstream row
     comparison drops out on it: `_comparable_row` refuses a row with a non-finite
-    source value, and a row with nothing positive divides out as unusable. So
-    without this guard a layer that is entirely NaN, infinite, or zero makes
+    source value, and a row whose total is not positive — nothing in it, or
+    negatives cancelling its positives — divides out as unusable. So without this
+    guard a layer that is entirely NaN, infinite, zero, or negative makes
     `_profile_mismatch` return no verdict and no rescale factors, both remaining
     checks are skipped, and an X that is a normalization of *nothing* validates
     clean. Nothing else in the stack would catch it: the vendored sparsity check

@@ -58,7 +58,7 @@ All other rules come from the vendored base class (§5).
 
 Three matrices, and no more. Everything else in circulation — `normalized_counts`, `desouped_normalized_counts`, `logcounts` — is recomputable from these, so storing it buys no information and silently goes stale when the file is edited.
 
-| | required | holds |
+| matrix | required | holds |
 |---|---|---|
 | `raw.X` | yes | raw counts, float32, empty droplets removed only |
 | `layers['desouped_counts']` | when ambient RNA removal was applied | counts surviving removal, float32 |
@@ -72,7 +72,7 @@ Checks run cheapest first and short-circuit, so one defect yields one message:
 2. **`X` holds NaN or infinite values** — reported before the rest, which a non-finite entry makes unreliable rather than merely wrong.
 3. **`X` above the `log1p` ceiling** (~20; `exp(20)` is 4.8e8 counts in one cell) — raw counts in `X`, or a normalization that was never log-transformed.
 4. **`X` holds no positive values** — the matrix was emptied or dropped.
-5. **`layers['desouped_counts']` holds NaN, infinities, or no counts** — it cannot serve as the reference. Checked before it is trusted, because such a layer does not make checks 7–8 fail, it makes them silently not happen: every sampled row drops out of the comparison and the file reports clean. Nothing else would catch it — no vendored check reads layer *values*, only their encoding.
+5. **`layers['desouped_counts']` holds NaN, infinities, negatives, or no counts** — it cannot serve as the reference. Checked before it is trusted, because such a layer does not make checks 7–8 fail, it makes them silently not happen: every sampled row drops out of the comparison and the file reports clean. Nothing else would catch it — no vendored check reads layer *values*, only their encoding.
 6. **`layers['desouped_counts']` exceeds `raw.X`** — the layer is not a desouped version of `raw.X`, so it cannot be trusted as the reference.
 7. **`X` disagrees with its source.** With the layer present that is the whole finding. Against `raw.X`, the recovered counts name the cause — a pipeline can remove counts but never invent them:
 
