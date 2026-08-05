@@ -396,6 +396,51 @@ _DEPTH_MATCH_FRACTION = 0.5
 # 1.0 — a correctly normalized file would be condemned by a sample of one.
 _DEPTH_MATCH_MIN_CELLS = 2
 
+# The layer holding the counts that remain after ambient RNA removal. When it is
+# present it — not raw.X — is the matrix X must be a normalization of, because
+# desouping is what stands between the two.
+DESOUPED_COUNTS_LAYER = "desouped_counts"
+
+# How far a recovered count may sit from a whole number, or from its raw
+# counterpart, and still be treated as equal. X is stored float32, so a count
+# recovered through log1p/expm1 carries a relative error of roughly 1e-6; the
+# absolute term dominates for the small counts that make up almost every entry,
+# and the relative term keeps deep genes from drifting into a false verdict.
+_IMPLIED_COUNT_ATOL = 0.05
+_IMPLIED_COUNT_RTOL = 1e-3
+
+# Recovered counts above this are not tested for integrality. The float32 round
+# trip costs more than half a count somewhere above ~1e5, at which point the
+# question stops being answerable rather than merely noisy; this sits an order of
+# magnitude below that. Almost every entry in a count matrix is far smaller, so
+# the test still sees the overwhelming majority of the sample.
+#
+# The integrality test uses _IMPLIED_COUNT_ATOL alone, not _counts_equal. A
+# relative term makes the test vacuous long before this ceiling: the furthest a
+# value can sit from the nearest whole number is 0.5, which 1e-3 * count passes
+# at a count of 450. Every entry above that would score integral unconditionally
+# while still counting toward the sample, diluting the non-integral fraction on
+# deep data until the verdict could not fire at all.
+_INTEGRAL_TEST_MAX_COUNT = 1e4
+
+# Fraction of testable entries that must recover to whole numbers before X is
+# accepted as a normalization of *some* count matrix.
+_INTEGRAL_FRACTION = 0.95
+
+# Non-integral entries needed before that fraction is acted on. The fraction
+# alone is unsafe on a small sample — on a 13-entry object a single noisy value
+# clears 5% on its own — while a genuinely non-count X puts most of its entries
+# on the wrong side. Requiring both keeps the verdict honest at either size.
+_MIN_NON_INTEGRAL_ENTRIES = 3
+
+# Why X and its source disagree. NOT_COUNTS says X is not a normalization of any
+# count matrix; EXCESS that it came from a different one; DESOUPED that it came
+# from this one with counts removed; MIXED that both are true at once.
+_VERDICT_NOT_COUNTS = "not_counts"
+_VERDICT_EXCESS = "excess"
+_VERDICT_DESOUPED = "desouped"
+_VERDICT_MIXED = "mixed"
+
 
 def _max_finite(values, floor=0.0):
     """Largest finite entry in ``values``, or ``floor`` when there is none.
@@ -543,13 +588,56 @@ def _scan_x_against_raw(x, raw_x):
     return bool(stats[0]), float(stats[1]), bool(stats[2])
 
 
-def _profile_mismatch(x_rows, raw_rows):
+def _comparable_row(x_row, source_row):
+    """``(expm1(X), source)`` over the genes X carries, or None if unusable.
+
+    The one place the comparison's gene set is decided. Both ``_profile_mismatch``
+    and ``_implied_counts`` need it, and they run back to back on the same rows —
+    the second explains why the first failed — so a divergence between them would
+    have the verdict reasoning over a different set of genes than the check that
+    raised the alarm, with nothing to catch it.
+
+    Restricted to the genes X actually carries. `feature_is_filtered` is a
+    schema-supported var flag whose defined meaning is "zero in X, present in
+    raw.X" — the vendored validator's own remediation message tells curators to
+    set it — so those genes are legitimately absent from X and must not read as a
+    mismatch. The arithmetic still works out exactly: normalize_total scaled the
+    row by target/sum(source), so over any subset of genes both the target and
+    the full total cancel from the profile, and dividing the recovered total by
+    the same subset's source total gives back the same rescale factor an
+    unfiltered row would report.
+
+    The cost is that genes present in the source but zeroed in X are ignored
+    rather than compared, which is what makes the check tolerant of an X that
+    dropped genes it should have kept.
+
+    Rows carrying a non-finite source value are refused outright. Such a value
+    would make the row's total NaN, NaN passes a ``<= 0`` test, the deviation
+    computed from it would be NaN, and ``max`` keeps NaN once it appears — after
+    which ``worst > _PROFILE_RTOL`` is False forever. One NaN anywhere in the
+    source matrix would otherwise silence the check for the entire file.
+    """
+    if not np.all(np.isfinite(source_row)):
+        return None
+
+    support = x_row != 0
+    if not support.any():
+        return None
+
+    return np.expm1(x_row[support]), source_row[support]
+
+
+def _profile_mismatch(x_rows, source_rows):
     """Largest relative deviation from the normalization identity, or None.
+
+    ``source_rows`` is the matrix X should be derived from — ``raw.X``, or
+    ``layers['desouped_counts']`` when ambient RNA removal was applied and the
+    counts it left were retained.
 
     ``normalize_total`` scales each cell by a constant and ``log1p`` is applied
     elementwise, so for every cell::
 
-        expm1(X[i]) / sum(expm1(X[i]))  ==  raw.X[i] / sum(raw.X[i])
+        expm1(X[i]) / sum(expm1(X[i]))  ==  source[i] / sum(source[i])
 
     The target sum cancels, which is what makes this checkable without knowing
     it. That matters because ``scanpy.pp.normalize_total`` defaults to
@@ -557,7 +645,7 @@ def _profile_mismatch(x_rows, raw_rows):
     to 1e4 — so a check written against an assumed constant would fire on every
     file that took the default.
 
-    Rows whose raw counts sum to zero are skipped rather than guarded against
+    Rows whose source counts sum to zero are skipped rather than guarded against
     division by zero; the vendored ``_has_valid_raw`` already errors on
     all-zero rows, so reporting them here would duplicate that.
 
@@ -571,87 +659,365 @@ def _profile_mismatch(x_rows, raw_rows):
     # Densified once for the whole sample rather than per row: these are at most
     # _PROFILE_SAMPLE_ROWS rows, already materialized by the caller.
     x_dense = _densify(x_rows).astype(np.float64)
-    raw_dense = _densify(raw_rows).astype(np.float64)
+    source_dense = _densify(source_rows).astype(np.float64)
 
     worst = None
     rescale_factors: list[float] = []
     for i in range(x_dense.shape[0]):
-        x_row = x_dense[i]
-        raw_row = raw_dense[i]
+        comparable = _comparable_row(x_dense[i], source_dense[i])
+        if comparable is None:
+            continue
+        expanded, source_support = comparable
 
-        # A non-finite raw value would make raw_total NaN, and NaN passes the
-        # `<= 0` test below. The row's deviation would then be NaN, and `max`
-        # keeps NaN once it appears — after which `worst > _PROFILE_RTOL` is
-        # False forever and the whole check goes quiet. One NaN anywhere in
-        # raw.X would disable it for the entire file.
-        if not np.all(np.isfinite(raw_row)):
+        source_total = source_support.sum()
+        if source_total <= 0:
             continue
 
-        # Restricted to the genes X actually carries. `feature_is_filtered` is a
-        # schema-supported var flag whose defined meaning is "zero in X, present
-        # in raw.X" — the vendored validator's own remediation message tells
-        # curators to set it — so those genes are legitimately absent from X and
-        # must not read as a mismatch. The arithmetic still works out exactly:
-        # normalize_total scaled the row by target/sum(raw), so over any subset
-        # of genes both the target and the full total cancel from the profile,
-        # and dividing the recovered total by the same subset's raw total gives
-        # back the same rescale factor an unfiltered row would report.
-        #
-        # The cost is that genes present in raw.X but zeroed in X are ignored
-        # rather than compared, which is what makes the check tolerant of an X
-        # that dropped genes it should have kept.
-        support = x_row != 0
-        if not support.any():
-            continue
-        raw_support = raw_row[support]
-        raw_total = raw_support.sum()
-        if raw_total <= 0:
-            continue
-
-        expanded = np.expm1(x_row[support])
         expanded_total = expanded.sum()
         if not np.isfinite(expanded_total) or expanded_total <= 0:
             continue
-        rescale_factors.append(float(expanded_total / raw_total))
+        rescale_factors.append(float(expanded_total / source_total))
 
-        raw_profile = raw_support / raw_total
-        deviation = np.abs(expanded / expanded_total - raw_profile)
+        source_profile = source_support / source_total
+        deviation = np.abs(expanded / expanded_total - source_profile)
         # Relative to the raw profile, so a large absolute deviation on a
         # near-zero entry doesn't dominate. Compared against the raw profile
         # rather than the X profile because raw is the reference here.
-        scale = np.maximum(raw_profile, np.finfo(np.float64).tiny)
+        scale = np.maximum(source_profile, np.finfo(np.float64).tiny)
         row_worst = float((deviation / scale).max())
         worst = row_worst if worst is None else max(worst, row_worst)
     return worst, rescale_factors
 
 
+def _counts_equal(left, right):
+    """Entrywise "these two recovered counts are the same", within tolerance."""
+    return np.isclose(left, right, rtol=_IMPLIED_COUNT_RTOL, atol=_IMPLIED_COUNT_ATOL)
+
+
+def _implied_counts(x_row, source_row):
+    """Counts recovered from one row of X, and the source counts beside them.
+
+    ``normalize_total`` multiplied the cell by one constant, so undoing ``log1p``
+    leaves every gene scaled by that same constant. Recovering it does not need
+    the target sum: the ratio ``expm1(X)/source`` is that constant at every gene
+    the two matrices agree on, so its **median** recovers it even when a minority
+    of genes disagree — which is exactly the case desouping produces, and is why
+    the median is load-bearing here rather than a robustness flourish.
+
+    Returns ``(implied, source)`` over the genes X carries, or ``None`` when the
+    row cannot be used. Both are count-scale vectors, directly comparable.
+    """
+    comparable = _comparable_row(x_row, source_row)
+    if comparable is None:
+        return None
+    expanded, source_support = comparable
+
+    scaled = source_support > 0
+    if not scaled.any():
+        return None
+    scale = float(np.median(expanded[scaled] / source_support[scaled]))
+    if not np.isfinite(scale) or scale <= 0:
+        return None
+
+    return expanded / scale, source_support
+
+
+def _implied_counts_verdict(x_rows, raw_rows):
+    """Why X disagrees with the counts it should have come from, or None.
+
+    Called only once the profile identity has already failed, so this decides
+    *what to say*, not *whether* to say it. Every verdict rests on one physical
+    invariant: a pipeline can remove counts but never invent them.
+
+    - **NOT_COUNTS** — the recovered values are not whole numbers, so X is not a
+      normalization of any count matrix.
+    - **EXCESS** — they are whole numbers, but exceed the raw counts somewhere.
+      Nothing adds counts, so X came from a different matrix.
+    - **DESOUPED** — whole numbers, never above the raw counts, below them
+      somewhere. Counts were removed between the two, which is what ambient RNA
+      removal does.
+    - **MIXED** — both directions at once, which is neither of the above and is
+      reported as neither. Measured across the prod corpus, this is a real
+      population rather than a tolerance artifact: all 31 genuinely-desouped
+      files score *exactly* zero entries above raw.X, while four eye objects
+      carry heavy removal (12-13% of entries) alongside a trace of genes that X
+      has and raw.X does not. Float error would appear in all of them or none.
+
+    Returns None when none of these fits — the sample recovers to whole numbers
+    that match the raw counts, yet the profile still disagreed. That leaves the
+    caller to report the disagreement without naming a cause, which is the
+    honest outcome rather than a fallback.
+    """
+    x_dense = _densify(x_rows).astype(np.float64)
+    raw_dense = _densify(raw_rows).astype(np.float64)
+
+    testable = 0
+    integral = 0
+    excess = 0
+    deficit = 0
+
+    for i in range(x_dense.shape[0]):
+        recovered = _implied_counts(x_dense[i], raw_dense[i])
+        if recovered is None:
+            continue
+        implied, raw_support = recovered
+
+        # Above the ceiling the float32 round trip is worth more than half a
+        # count, so integrality stops being decidable. Excluded from the test
+        # rather than allowed to answer it wrongly.
+        decidable = implied <= _INTEGRAL_TEST_MAX_COUNT
+        testable += int(decidable.sum())
+        candidates = implied[decidable]
+        integral += int((np.abs(candidates - np.rint(candidates)) <= _IMPLIED_COUNT_ATOL).sum())
+
+        differs = ~_counts_equal(implied, raw_support)
+        excess += int((differs & (implied > raw_support)).sum())
+        deficit += int((differs & (implied < raw_support)).sum())
+
+    non_integral = testable - integral
+    if non_integral >= _MIN_NON_INTEGRAL_ENTRIES and non_integral / testable > 1 - _INTEGRAL_FRACTION:
+        return _VERDICT_NOT_COUNTS
+    if excess and deficit:
+        return _VERDICT_MIXED
+    if excess:
+        return _VERDICT_EXCESS
+    if deficit:
+        return _VERDICT_DESOUPED
+    return None
+
+
+def _layer_chunks_align(layer, x):
+    """True when the layer can be row-sliced without reading matrices whole.
+
+    ``read_backed`` chunks a CSC matrix as ``(n_obs, chunk_size)`` against CSR's
+    ``(5000, n_vars)``, so slicing the first 200 rows off a CSC layer beside a
+    CSR X touches every chunk in the grid — the entire layer read to sample 200
+    rows, at a per-chunk peak of ``n_obs x 5000``.
+
+    Refused for the same reason ``_scan_x_against_raw`` refuses the mixed case:
+    the vendored ``_validate_sparsity`` inspects layers too and records an error
+    for any non-CSR encoding, so the file is already known invalid and a second
+    opinion is not worth the OOM.
+    """
+    if isinstance(layer, DaskArray) != isinstance(x, DaskArray):
+        return False
+    if isinstance(layer, DaskArray):
+        return layer.chunks == x.chunks
+    return True
+
+
+def _unusable_layer_error(declared_rows):
+    """The error from the declared layer being unfit as the source, or None.
+
+    Asked before the layer is trusted, because an unusable layer does not make
+    the comparison below fail — it makes it silently not happen. ``_comparable_row``
+    refuses any row carrying a non-finite source value, and a row with nothing
+    positive in it divides out as unusable, so a layer that is entirely NaN or
+    entirely zero across the sample drops every row: ``_profile_mismatch`` returns
+    no verdict and no rescale factors, checks 6 and 7 are both skipped, and the
+    file is reported clean. Attaching such a layer would otherwise switch the
+    whole contract off, which is the one outcome this check must never produce.
+
+    No vendored check reads layer *values* — ``_validate_sparsity`` only inspects
+    the encoding — so unlike ``raw.X``, whose non-finite entries ``_validate_raw_data``
+    already rejects as non-integer, nothing else would catch this.
+    """
+    values = _densify(declared_rows)
+
+    if not np.all(np.isfinite(values)):
+        return (
+            f"layers['{DESOUPED_COUNTS_LAYER}'] contains NaN or infinite values, which cannot be "
+            f"counts. That layer must hold the counts left behind by ambient RNA removal, so every "
+            f"entry in it must be a finite count."
+        )
+
+    if not bool((values > 0).any()):
+        return (
+            f"layers['{DESOUPED_COUNTS_LAYER}'] holds no counts. That layer must hold the counts "
+            f"left behind by ambient RNA removal, and X must be a normalization of them. Populate "
+            f"it with those counts, or remove it if ambient RNA removal was not applied."
+        )
+
+    return None
+
+
+def _exceeds_counts(candidate_rows, ceiling_rows):
+    """True when ``candidate_rows`` holds more counts than ``ceiling_rows`` anywhere.
+
+    The same invariant ``_implied_counts_verdict`` applies to recovered counts,
+    but asked of two matrices as stored — no log1p/expm1 round trip stands
+    between them, so a single entry over the ceiling is decisive here in a way it
+    is not there.
+
+    The cheap comparison runs first and the tolerance only on the entries that
+    survive it. That ordering is what keeps this the cheap check its position in
+    ``check_x_normalization`` claims: applying ``_counts_equal`` to the whole
+    sample builds four full-width float64 temporaries, ~260 MB at 200 x 36,788,
+    to answer a question that is False everywhere on a valid file. Restricted to
+    the exceeding entries — of which a valid file has none — it allocates
+    nothing.
+    """
+    candidate = _densify(candidate_rows)
+    ceiling = _densify(ceiling_rows)
+
+    # False wherever either side is NaN, so those entries drop out here rather
+    # than needing a mask of their own. An infinity does compare greater, and is
+    # excluded below.
+    over = candidate > ceiling
+    if not over.any():
+        return False
+
+    above = candidate[over].astype(np.float64)
+    limit = ceiling[over].astype(np.float64)
+    return bool((np.isfinite(above) & np.isfinite(limit) & ~_counts_equal(above, limit)).any())
+
+
+def _source_mismatch_error(verdict, worst, n_rows):
+    """The message for an X that disagrees with raw.X, chosen by verdict.
+
+    The generic form is the fallback rather than the norm: it says only that the
+    two disagree, which is all that can be claimed when the sample was too small
+    to classify.
+    """
+    if verdict == _VERDICT_NOT_COUNTS:
+        return (
+            "X is not a normalization of any count matrix: undoing log1p and the per-cell scaling "
+            "recovers values that are not whole numbers. Either X was produced by a different "
+            "transform — scran, SCTransform, TPM, log2(CPM+1) — or it was altered after "
+            "normalization, which is what rounding or truncating to an integer dtype does."
+        )
+
+    if verdict == _VERDICT_EXCESS:
+        return (
+            "X was normalized from a different matrix than raw.X: undoing the normalization "
+            "recovers more counts than raw.X holds. No processing step adds counts — filtering, QC "
+            "and ambient RNA removal can only take them away — so X cannot have been derived from "
+            "raw.X. raw.X must hold the counts that X was normalized from."
+        )
+
+    if verdict == _VERDICT_MIXED:
+        return (
+            f"X disagrees with raw.X in both directions: counts were removed across most of the "
+            f"genes that differ, which is the signature of ambient RNA removal, but X also holds "
+            f"counts that raw.X does not. Nothing adds counts, so raw.X cannot be the matrix X was "
+            f"normalized from even though desouping evidently ran. Retain the counts X was derived "
+            f"from as layers['{DESOUPED_COUNTS_LAYER}'], and confirm raw.X holds the counts those "
+            f"were removed from."
+        )
+
+    if verdict == _VERDICT_DESOUPED:
+        return (
+            f"X appears to be normalized from desouped counts, but layers['{DESOUPED_COUNTS_LAYER}'] "
+            f"is missing. Undoing the normalization recovers fewer counts than raw.X and never "
+            f"more, which is the signature of ambient RNA removal. Desouped counts cannot be "
+            f"recomputed from raw.X, so they must be retained as layers['{DESOUPED_COUNTS_LAYER}'] "
+            f"— float32 counts, same shape as raw.X. Without them X can be neither verified nor "
+            f"re-derived."
+        )
+
+    return (
+        f"X is not a normalization of raw.X: the per-cell expression profile of X disagrees with "
+        f"raw.X by a relative error of {worst:.3g} (tolerance {_PROFILE_RTOL:g}), sampled over "
+        f"{n_rows} cells. X should be log1p(normalize_total(raw.X)), or "
+        f"log1p(normalize_total(layers['{DESOUPED_COUNTS_LAYER}'])) when ambient RNA removal was "
+        f"applied and those counts were retained."
+    )
+
+
+def _whole_matrix_error(identical, max_value, has_non_finite):
+    """The error from the checks that read both matrices in full, or None.
+
+    These four are answered by a single pass over X and raw.X, before any
+    row is sampled, and each short-circuits the rest: once X is known to hold
+    raw counts or a NaN, the sampled comparisons below would only restate
+    that in vaguer terms.
+    """
+    if identical:
+        # The spec used to say that an author-provided dataset with no
+        # normalized matrix has `adata.X` = the raw matrix — which, since raw.X
+        # is required regardless, made X == raw.X a documented state. CELLxGENE
+        # has no such state: raw goes in raw.X when a normalized matrix exists,
+        # otherwise in X with raw.X absent, so location alone says which is
+        # which. That third state is precisely why `_has_valid_raw` walks past
+        # these files — it validates raw.X, finds valid counts, and nothing ever
+        # looks at X. The sentence is gone (#562), so this is an error.
+        return (
+            "X is identical to raw.X, so normalization has not been applied. X must hold "
+            "normalized values — log1p(normalize_total(raw.X)) — and raw.X the raw counts."
+        )
+
+    if has_non_finite:
+        # Reported before the checks below because a NaN or inf makes them
+        # unreliable rather than merely wrong: `_profile_mismatch` skips any row
+        # whose expanded total is non-finite, so a partially-NaN X would be
+        # judged on its remaining rows and reported clean — success claimed over
+        # a matrix that was never fully evaluated. The maximum ignores
+        # non-finite entries for the same reason.
+        return (
+            "X contains NaN or infinite values, which cannot be normalized expression. Every entry in X must be finite."
+        )
+
+    if max_value > _MAX_PLAUSIBLE_LOG1P_VALUE:
+        return (
+            f"X contains values up to {max_value:.4g}, which is too large to be log1p output "
+            f"(log1p of 10,000 counts is about 9.2). X may hold raw counts, or a normalization "
+            f"that was never log-transformed."
+        )
+
+    if max_value <= 0:
+        # Every stored value is zero (or negative). raw.X is non-empty, since a
+        # matching all-zero raw.X would have been caught as identical above and
+        # the vendored _has_valid_raw errors on all-zero rows regardless. The
+        # profile check cannot see this — every row divides out as unusable and
+        # returns no verdict — so without this an emptied X validates clean,
+        # which is the class of defect this whole check exists to catch.
+        return (
+            "X contains no positive values, so it cannot hold normalized expression. "
+            "Confirm X was not emptied or dropped during processing."
+        )
+
+    return None
+
+
 def check_x_normalization(adata):
-    """Check that X holds a normalization of raw.X, and return (warnings, errors).
+    """Check that X holds a normalization of its source counts, and return (warnings, errors).
 
     HCA requires raw counts in ``raw.X`` and normalized values in ``X``. The
-    vendored validator checks that ``raw.X`` *is* raw, and that the two
-    matrices agree on shape and indices — but never that ``X`` differs from
-    ``raw.X``, nor that it is derived from it. All seven breast-v1 source
-    datasets ship ``X`` byte-identical to ``raw.X`` and validate clean today
-    (see #524).
+    vendored validator checks that ``raw.X`` *is* raw, and that the two matrices
+    agree on shape and indices — but never that ``X`` differs from ``raw.X``,
+    nor that it is derived from it. All seven breast-v1 source datasets ship
+    ``X`` byte-identical to ``raw.X`` and validated clean before #524.
 
-    Six checks, cheapest first, each short-circuiting: once one fires the
-    later ones would only restate the same defect in vaguer terms.
+    The matrix X must be derived from is not always ``raw.X``. When ambient RNA
+    removal was applied, the counts that survive it are what X was normalized
+    from, and they cannot be recomputed from ``raw.X`` — the removal is
+    parameterised and often stochastic. So the contract is three matrices
+    (#562)::
 
-    1. ``X`` identical to ``raw.X`` → **warning only**, pending a spec change
-       that removes the sentence making this a documented state (#562).
+        raw.X                      raw counts
+        layers['desouped_counts']  counts after ambient RNA removal, when it ran
+        X                          log1p(normalize_total( desouped_counts
+                                                          if present else raw.X ))
+
+    Checks run cheapest first and short-circuit: once one fires the later ones
+    would only restate the same defect in vaguer terms.
+
+    1. ``X`` identical to ``raw.X`` → normalization never ran.
     2. ``X`` holds NaN or infinite values → not expression data at all, and it
        makes every check below unreliable rather than merely wrong.
     3. ``X`` holds values too large to be ``log1p`` output → raw counts, or a
        normalization that was never log-transformed.
     4. ``X`` holds no positive values → the matrix was emptied or dropped.
-    5. ``X`` is not a total-normalization of ``raw.X`` → **warning only**. When
-       ambient RNA removal was applied, X is normalized from the desouped
-       counts rather than from ``raw.X``, so the disagreement is specified
-       behaviour rather than a defect. Becomes an error once ``desouped_counts``
-       is a required layer and X can be compared against its real source
-       (#562).
-    6. ``X`` was log-transformed but never total-normalized.
+    5. ``layers['desouped_counts']`` holds NaN, infinities, or no counts at all →
+       it cannot serve as the source, and left unchecked it would switch the two
+       checks below off rather than fail them.
+    6. ``layers['desouped_counts']`` holds more counts than ``raw.X`` → the
+       layer is not what it claims to be, so it cannot be trusted as the source.
+    7. ``X`` is not a total-normalization of its source. When the source is
+       ``desouped_counts`` that is the whole finding; when it is ``raw.X``,
+       ``_implied_counts_verdict`` names the cause — including the case where
+       desouping evidently ran but its counts were not retained.
+    8. ``X`` was log-transformed but never total-normalized.
 
     Silent when ``raw.X`` is absent: the vendored ``_validate_raw`` already owns
     that case and reports it, and a second message would not add anything.
@@ -673,88 +1039,66 @@ def check_x_normalization(adata):
         # Not comparable without materializing a backed matrix; see
         # _scan_x_against_raw. The file has other errors by construction.
         return [], []
-    identical, max_value, has_non_finite = verdict
 
-    warnings: list[str] = []
-    errors: list[str] = []
-
-    if identical:
-        # A warning for now, pending a spec change. The h5ad structure spec
-        # currently says that for an author-provided dataset with no normalized
-        # matrix, `adata.X` = the raw matrix — which, since `raw.X` is also
-        # required, makes X == raw.X a documented state. CELLxGENE has no such
-        # state: raw goes in `raw.X` when a normalized matrix exists, otherwise
-        # in X with `raw.X` absent, so location alone says which is which. That
-        # third state is precisely why `_has_valid_raw` walks past these files —
-        # it validates `raw.X`, finds valid counts, and nothing looks at X.
-        #
-        # The spec sentence is expected to be removed, at which point this
-        # becomes an error again. Warning until then so the 7 breast source
-        # datasets in this state are flagged rather than blocked. See #562.
-        warnings.append(
-            "X is identical to raw.X, so normalization has not been applied. X should hold "
-            "normalized values and raw.X the raw counts; run normalize_raw to derive X."
-        )
-        return warnings, errors
-
-    if has_non_finite:
-        # Reported before the checks below because a NaN or inf makes them
-        # unreliable rather than merely wrong: `_profile_mismatch` skips any row
-        # whose expanded total is non-finite, so a partially-NaN X would be
-        # judged on its remaining rows and reported clean — success claimed over
-        # a matrix that was never fully evaluated. The maximum ignores
-        # non-finite entries for the same reason.
-        errors.append(
-            "X contains NaN or infinite values, which cannot be normalized expression. Every entry in X must be finite."
-        )
-        return warnings, errors
-
-    if max_value > _MAX_PLAUSIBLE_LOG1P_VALUE:
-        errors.append(
-            f"X contains values up to {max_value:.4g}, which is too large to be log1p output "
-            f"(log1p of 10,000 counts is about 9.2). X may hold raw counts, or a normalization "
-            f"that was never log-transformed."
-        )
-        return warnings, errors
-
-    if max_value <= 0:
-        # Every stored value is zero (or negative). raw.X is non-empty, since a
-        # matching all-zero raw.X would have been caught as identical above and
-        # the vendored _has_valid_raw errors on all-zero rows regardless. The
-        # profile check cannot see this — every row divides out as unusable and
-        # returns no verdict — so without this an emptied X validates clean,
-        # which is the class of defect this whole check exists to catch.
-        errors.append(
-            "X contains no positive values, so it cannot hold normalized expression. "
-            "Confirm X was not emptied or dropped during processing."
-        )
-        return warnings, errors
+    scan_error = _whole_matrix_error(*verdict)
+    if scan_error is not None:
+        return [], [scan_error]
 
     n_rows = min(_PROFILE_SAMPLE_ROWS, x.shape[0])
-    worst, rescale_factors = _profile_mismatch(_materialize(x[:n_rows]), _materialize(raw_x[:n_rows]))
+    x_rows = _materialize(x[:n_rows])
+    raw_rows = _materialize(raw_x[:n_rows])
+
+    # When ambient RNA removal ran, the counts it left behind — not raw.X — are
+    # what X was normalized from, so they are what X must be checked against.
+    # Resolved once, into the matrix and the name it goes by, because every
+    # decision below turns on it: which matrix to compare against, whether a
+    # cause can be inferred, and what to call the source when reporting.
+    #
+    # anndata aligns layers to X's shape on construction, so no shape guard is
+    # needed here; a layer of the wrong shape cannot be loaded in the first place.
+    declared = adata.layers.get(DESOUPED_COUNTS_LAYER)
+
+    if declared is not None and not _layer_chunks_align(declared, x):
+        # Sampling the layer would cost the whole layer; see _layer_chunks_align.
+        # The file has other errors by construction.
+        return [], []
+
+    declared_rows = None if declared is None else _materialize(declared[:n_rows])
+    source_rows = raw_rows if declared_rows is None else declared_rows
+    source_name = "raw.X" if declared_rows is None else f"layers['{DESOUPED_COUNTS_LAYER}']"
+
+    if declared_rows is not None:
+        unusable = _unusable_layer_error(declared_rows)
+        if unusable is not None:
+            return [], [unusable]
+
+    if declared_rows is not None and _exceeds_counts(declared_rows, raw_rows):
+        # Checked before the layer is trusted as the source. If it holds more
+        # counts than raw.X it is not a desouped version of raw.X at all, and
+        # comparing X against it would report on a relationship between two
+        # matrices that are not the ones the contract describes.
+        return [], [
+            f"layers['{DESOUPED_COUNTS_LAYER}'] holds more counts than raw.X. Ambient RNA removal "
+            f"only removes counts, so the desouped matrix must be everywhere less than or equal to "
+            f"raw.X. Check that raw.X holds the pre-desouping counts, and that the layer was not "
+            f"populated from a different matrix."
+        ]
+
+    worst, rescale_factors = _profile_mismatch(x_rows, source_rows)
 
     if worst is not None and worst > _PROFILE_RTOL:
-        # A warning, not an error, and deliberately so. The h5ad structure spec
-        # says that when ambient RNA removal (desouping) was applied, X is a
-        # normalization of the *desouped* counts, not of raw.X — so this
-        # disagreement is the specified outcome for those files, not a defect.
-        # 18 of the 71 prod files carrying a raw.X are in that state (17 eye
-        # integrated-objects and one msk source dataset, the latter still
-        # carrying its `soupX` layer). Erroring would block all of them.
-        #
-        # Distinguishing desouping from a genuine mismatch is possible — counts
-        # can only be removed, never invented, so an implied count *exceeding*
-        # raw.X is unambiguous — but it needs `desouped_counts` to be a required
-        # layer before X can be checked against the matrix it really came from.
-        # See #562; this becomes an error once that lands.
-        warnings.append(
-            f"X does not appear to be a normalization of raw.X: the per-cell expression profile "
-            f"of X disagrees with raw.X by a relative error of {worst:.3g} (tolerance "
-            f"{_PROFILE_RTOL:g}), sampled over {n_rows} cells. This is expected when ambient RNA "
-            f"removal was applied, since X is then normalized from the desouped counts rather "
-            f"than from raw.X; otherwise X should be log1p(normalize_total(raw.X))."
-        )
-        return warnings, errors
+        if declared_rows is not None:
+            # The layer is present and X does not match it. There is no further
+            # cause to name: the file states which matrix X came from, and X did
+            # not come from it.
+            return [], [
+                f"X is not a normalization of {source_name}. When that layer is present it is the "
+                f"matrix X must be derived from, so X should be "
+                f"log1p(normalize_total({source_name})). Re-derive X from the desouped counts, or "
+                f"correct the layer if it does not hold the counts X was built from."
+            ]
+
+        return [], [_source_mismatch_error(_implied_counts_verdict(x_rows, raw_rows), worst, n_rows)]
 
     # The profile identity alone does not prove `normalize_total` ran: it holds
     # exactly for a plain `log1p(raw.X)` too, because expm1 inverts log1p and the
@@ -772,14 +1116,14 @@ def check_x_normalization(adata):
     # separates them.
     unscaled = sum(1 for factor in rescale_factors if abs(factor - 1.0) < _DEPTH_MATCH_RTOL)
     if len(rescale_factors) >= _DEPTH_MATCH_MIN_CELLS and unscaled / len(rescale_factors) > _DEPTH_MATCH_FRACTION:
-        errors.append(
+        return [], [
             f"X was log-transformed but never total-normalized: for {unscaled} of "
             f"{len(rescale_factors)} sampled cells the total recovered from X is that cell's own "
-            f"raw count depth, so no rescaling was applied. normalize_total makes every cell "
-            f"sum to a common target. X should be log1p(normalize_total(raw.X))."
-        )
+            f"count depth in {source_name}, so no rescaling was applied. normalize_total makes "
+            f"every cell sum to a common target. X should be log1p(normalize_total({source_name}))."
+        ]
 
-    return warnings, errors
+    return [], []
 
 
 def check_cosmetic_labels(adata, schema_def=None):

@@ -832,7 +832,7 @@ def normalize_counts(counts, target_sum=1e4):
     return sparse.csr_matrix(numpy.log1p(dense / row_sums * target_sum).astype(numpy.float32))
 
 
-def make_adata(x, raw_x, obs=None, uns=None, obsm=None, var=None):
+def make_adata(x, raw_x, obs=None, uns=None, obsm=None, var=None, layers=None):
     """Build an AnnData whose raw.X is `raw_x` and X is `x`.
 
     Wraps the raw-wiring incantation, including the non-obvious
@@ -840,6 +840,9 @@ def make_adata(x, raw_x, obs=None, uns=None, obsm=None, var=None):
     fixtures below still inline their own copies; converting them is a separate
     change, so treat this as the form new callers should use rather than as the
     single source of truth it is not yet.
+
+    `layers` is applied after `raw` is wired, so the layers belong to the object
+    under test and are not copied into `raw` along with everything else.
     """
     built = anndata.AnnData(
         X=raw_x.copy(),
@@ -851,6 +854,8 @@ def make_adata(x, raw_x, obs=None, uns=None, obsm=None, var=None):
     built.raw = built.copy()
     built.X = x
     built.raw.var.drop("feature_is_filtered", axis=1, inplace=True)
+    for name, matrix in (layers or {}).items():
+        built.layers[name] = matrix
     return built
 
 
