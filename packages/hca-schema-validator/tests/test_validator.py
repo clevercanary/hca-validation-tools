@@ -8,6 +8,7 @@ import pandas as pd
 import pytest
 
 from hca_schema_validator import HCA_DERIVED_OBS_LABELS, HCAValidator
+from hca_schema_validator.validator import DESOUPED_COUNTS_LAYER
 
 # Test fixtures directory
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "h5ads"
@@ -1119,46 +1120,86 @@ def _normalize_counts(counts, target_sum=1e4):
     return normalize_counts(counts, target_sum)
 
 
-def _make_adata(x, raw_x):
+def _make_adata(x, raw_x, layers=None):
     from .fixtures.hca_fixtures import make_adata
 
-    return make_adata(x, raw_x)
+    return make_adata(x, raw_x, layers=layers)
 
 
 def _x_normalization_errors(validator):
-    """Validator errors raised by the X/raw.X checks.
+    """Validator errors raised by the X/source-matrix checks.
 
-    Matched on the message *subject* — all three lead with "X" — rather than on
-    interior wording, so rewording a message cannot silently turn an `== []`
-    assertion into a vacuous pass. Keying on "raw.X" would not work: the
-    magnitude check never mentions raw.X, since it is a statement about X alone.
+    Matched on the message *subject* — every message leads with either "X" or
+    the layer it is about — rather than on interior wording, so rewording a
+    message cannot silently turn an `== []` assertion into a vacuous pass.
+    Keying on "raw.X" would not work: the magnitude check never mentions raw.X,
+    since it is a statement about X alone.
 
     The vendored errors that discuss both matrices lead with their own subjects
     ("Number of genes in X ...", "Cells in X and raw.X ..."), so they do not
     collide.
     """
-    return [e for e in validator.errors if e.removeprefix("ERROR: ").startswith("X ")]
+    subjects = ("X ", f"layers['{DESOUPED_COUNTS_LAYER}'] ")
+    return [e for e in validator.errors if e.removeprefix("ERROR: ").startswith(subjects)]
 
 
-def test_x_identical_to_raw_x_warns():
+def _assert_only_x_error(is_valid, validator, fragment):
+    """The X checks produced exactly one error, and it is the expected one.
+
+    The `len(errors) == 1` half is the part that proves short-circuiting works —
+    each check returns rather than accumulating — so it is asserted through one
+    helper rather than restated at every call site, where a new test could copy
+    the substring check alone and quietly drop the guarantee.
+    """
+    assert is_valid is False
+    errors = _x_normalization_errors(validator)
+    assert len(errors) == 1, errors
+    assert fragment in errors[0]
+
+
+def _log2_cpm(counts):
+    """log2(CPM+1) — a real normalization this contract does not accept.
+
+    The log base was never 'e', so undoing log1p recovers values off the integer
+    grid. Shared by the two tests that pin the NOT_COUNTS verdict, so they cannot
+    disagree about what the rejected transform is.
+    """
+    dense = np.asarray(counts, dtype=np.float64)
+    row_sums = dense.sum(axis=1, keepdims=True)
+    row_sums[row_sums == 0] = 1.0
+    return np.log2(dense / row_sums * 1e4 + 1.0).astype(np.float32)
+
+
+def _desouped(counts, gene, value):
+    """The fixture's counts with one gene in the second cell set to `value`.
+
+    Below the raw count it stands in for ambient RNA removal; above it, for a
+    layer that cannot be a desouped version of raw.X at all. Only the second
+    cell is touched because the first carries a zero in the fixture, and a gene
+    absent from X is outside every comparison here.
+    """
+    from scipy import sparse
+
+    altered = counts.toarray().astype(np.float32)
+    altered[1, gene] = value
+    return sparse.csr_matrix(altered)
+
+
+def test_x_identical_to_raw_x_errors():
     """The breast-v1 case: normalization never ran, so X *is* the count matrix.
 
     Reported on its own rather than left to the profile check, which would also
     fire but describe the symptom instead of the cause.
 
-    A warning rather than an error for now: the h5ad structure spec says an
-    author-provided dataset with no normalized matrix has `adata.X` = the raw
-    matrix, and `raw.X` is required regardless, so X == raw.X is currently a
-    documented state. CELLxGENE has no such state. Becomes an error when that
-    sentence is removed (#562).
+    An error since #562 removed the spec sentence that made X == raw.X a
+    documented state ("if no normalized matrix is provided, adata.X = the raw
+    matrix", with raw.X required regardless). CELLxGENE has no such state, which
+    is why its `_has_valid_raw` walks straight past these files.
     """
     counts = _raw_counts()
     is_valid, validator = _validate_from_fixture(_make_adata(counts.copy(), counts))
 
-    assert _x_normalization_errors(validator) == []
-    hits = [w for w in validator.warnings if "identical to raw.X" in w]
-    assert len(hits) == 1, validator.warnings
-    assert is_valid is True
+    _assert_only_x_error(is_valid, validator, "identical to raw.X")
 
 
 def test_x_holding_raw_counts_errors_before_expm1_overflows():
@@ -1174,31 +1215,53 @@ def test_x_holding_raw_counts_errors_before_expm1_overflows():
     inflated = (counts.toarray() * 100.0).astype("float32")
     is_valid, validator = _validate_from_fixture(_make_adata(sparse.csr_matrix(inflated), counts))
 
-    assert is_valid is False
-    errors = _x_normalization_errors(validator)
-    assert len(errors) == 1, errors
-    assert "too large to be log1p output" in errors[0]
+    _assert_only_x_error(is_valid, validator, "too large to be log1p output")
 
 
-def test_x_normalized_from_a_different_matrix_warns():
+def test_x_normalized_from_a_matrix_holding_more_counts_errors():
     """X is plausibly normalized — fractional, correctly scaled, right shape —
-    but derived from the wrong counts.
+    and its implied counts are whole numbers, but one of them exceeds raw.X.
 
-    A warning rather than an error: the h5ad structure spec says X is normalized
-    from the *desouped* counts when ambient RNA removal was applied, so this
-    disagreement is the specified outcome for such files. 18 of the 71 prod
-    files carrying a raw.X are in that state. It becomes an error once
-    `desouped_counts` is required and X can be checked against its real source
-    (#562).
+    That single entry settles it without any appeal to tolerances: filtering, QC
+    and ambient RNA removal all take counts away, and nothing puts them back, so
+    a matrix holding *more* than raw.X cannot have been derived from it.
     """
     counts = _raw_counts()
-    other = counts.toarray() + 1.0  # same shape, different counts
-    is_valid, validator = _validate_from_fixture(_make_adata(_normalize_counts(other), counts))
+    inflated = _desouped(counts, gene=3, value=9)  # raw holds 4 there
+    is_valid, validator = _validate_from_fixture(_make_adata(_normalize_counts(inflated.toarray()), counts))
 
-    assert _x_normalization_errors(validator) == []
-    hits = [w for w in validator.warnings if "does not appear to be a normalization of raw.X" in w]
-    assert len(hits) == 1, validator.warnings
-    assert is_valid is True
+    _assert_only_x_error(is_valid, validator, "normalized from a different matrix than raw.X")
+
+
+def test_x_normalized_from_desouped_counts_without_the_layer_errors():
+    """The eye case: ambient RNA removal ran and its output was discarded.
+
+    The implied counts are whole numbers that sit at or below raw.X and never
+    above it — counts were removed between the two. Those removed counts cannot
+    be recomputed, so the file is unverifiable until the layer is retained.
+    """
+    counts = _raw_counts()
+    desouped = _desouped(counts, gene=3, value=3)  # raw holds 4 there
+    is_valid, validator = _validate_from_fixture(_make_adata(_normalize_counts(desouped.toarray()), counts))
+
+    _assert_only_x_error(is_valid, validator, f"layers['{DESOUPED_COUNTS_LAYER}'] is missing")
+
+
+def test_x_from_a_non_count_transform_errors():
+    """log2(CPM+1) — a real normalization, of a real count matrix, that this
+    contract does not accept.
+
+    Undoing log1p and the per-cell scaling recovers values that are not whole
+    numbers, because the log base was never 'e'. Distinguished from the two
+    verdicts above precisely so the message does not accuse the file of coming
+    from the wrong matrix when the transform is what differs.
+    """
+    from scipy import sparse
+
+    counts = _raw_counts()
+    is_valid, validator = _validate_from_fixture(_make_adata(sparse.csr_matrix(_log2_cpm(counts.toarray())), counts))
+
+    _assert_only_x_error(is_valid, validator, "not a normalization of any count matrix")
 
 
 def test_x_normalization_accepts_any_target_sum():
@@ -1275,10 +1338,7 @@ def test_x_with_no_positive_values_errors():
     zeros = sparse.csr_matrix(np.zeros(counts.shape, dtype=np.float32))
     is_valid, validator = _validate_from_fixture(_make_adata(zeros, counts))
 
-    assert is_valid is False
-    errors = _x_normalization_errors(validator)
-    assert len(errors) == 1, errors
-    assert "no positive values" in errors[0]
+    _assert_only_x_error(is_valid, validator, "no positive values")
 
 
 def test_x_log_transformed_without_normalize_total_errors():
@@ -1295,10 +1355,7 @@ def test_x_log_transformed_without_normalize_total_errors():
     log_only = sparse.csr_matrix(np.log1p(counts.toarray()).astype(np.float32))
     is_valid, validator = _validate_from_fixture(_make_adata(log_only, counts))
 
-    assert is_valid is False
-    errors = _x_normalization_errors(validator)
-    assert len(errors) == 1, errors
-    assert "never total-normalized" in errors[0]
+    _assert_only_x_error(is_valid, validator, "never total-normalized")
 
 
 def test_x_with_non_finite_values_errors():
@@ -1317,10 +1374,7 @@ def test_x_with_non_finite_values_errors():
     partial[0, 0] = np.nan  # a single bad entry in an otherwise valid matrix
     is_valid, validator = _validate_from_fixture(_make_adata(sparse.csr_matrix(partial), counts))
 
-    assert is_valid is False
-    errors = _x_normalization_errors(validator)
-    assert len(errors) == 1, errors
-    assert "NaN or infinite" in errors[0]
+    _assert_only_x_error(is_valid, validator, "NaN or infinite")
 
 
 def test_x_normalization_allows_genes_zeroed_in_x():
@@ -1363,7 +1417,230 @@ def test_non_finite_raw_x_does_not_disable_the_profile_check():
 
     _, validator = _validate_from_fixture(_make_adata(wrong_source, sparse.csr_matrix(poisoned)))
 
-    # Reported as a warning since #562 — what matters here is that the NaN row
-    # no longer suppresses the verdict for the rows that do disagree.
-    hits = [w for w in validator.warnings if "does not appear to be a normalization of raw.X" in w]
-    assert len(hits) == 1, validator.warnings
+    # Which of the mismatch messages fires is not the point here — that the NaN
+    # row no longer suppresses the verdict for the rows that do disagree is.
+    assert len(_x_normalization_errors(validator)) == 1, validator.errors
+
+
+# --- #562: X is verified against the matrix it was actually normalized from ---
+#
+# When ambient RNA removal ran, raw.X is not that matrix. The counts it left
+# behind are, they cannot be recomputed from raw.X, and so they have to be kept.
+
+
+def test_x_normalized_from_the_desouped_counts_layer_passes():
+    """The state #562 exists to make possible.
+
+    X disagrees with raw.X — counts were removed — but agrees exactly with the
+    layer holding what survived, so the file is complete and verifiable. Without
+    the layer this same X is the error two tests above.
+    """
+    counts = _raw_counts()
+    desouped = _desouped(counts, gene=3, value=3)
+
+    is_valid, validator = _validate_from_fixture(
+        _make_adata(
+            _normalize_counts(desouped.toarray()),
+            counts,
+            layers={DESOUPED_COUNTS_LAYER: desouped},
+        )
+    )
+
+    assert _x_normalization_errors(validator) == [], validator.errors
+    assert is_valid is True
+
+
+def test_x_not_normalized_from_the_desouped_counts_layer_errors():
+    """The layer is present and X did not come from it.
+
+    No cause is named here, unlike the raw.X path: the file states which matrix
+    X was derived from, so there is nothing left to infer when X disagrees with
+    it. X here is a normalization of raw.X, which the layer says is the wrong
+    source.
+    """
+    counts = _raw_counts()
+    desouped = _desouped(counts, gene=3, value=3)
+
+    is_valid, validator = _validate_from_fixture(
+        _make_adata(
+            _normalize_counts(counts.toarray()),
+            counts,
+            layers={DESOUPED_COUNTS_LAYER: desouped},
+        )
+    )
+
+    _assert_only_x_error(is_valid, validator, f"not a normalization of layers['{DESOUPED_COUNTS_LAYER}']")
+
+
+def test_desouped_counts_layer_holding_more_than_raw_x_errors():
+    """The layer is checked before it is trusted as the reference.
+
+    A desouped matrix holding more counts than raw.X is not a desouped version
+    of raw.X, so judging X against it would report on a relationship between two
+    matrices the contract does not describe. Reported instead of the mismatch
+    that X would otherwise be blamed for.
+    """
+    counts = _raw_counts()
+    inflated = _desouped(counts, gene=3, value=9)
+
+    is_valid, validator = _validate_from_fixture(
+        _make_adata(
+            _normalize_counts(inflated.toarray()),
+            counts,
+            layers={DESOUPED_COUNTS_LAYER: inflated},
+        )
+    )
+
+    _assert_only_x_error(is_valid, validator, "holds more counts than raw.X")
+
+
+@pytest.mark.parametrize(
+    "poison, fragment",
+    [
+        (np.nan, "NaN or infinite"),
+        (np.inf, "NaN or infinite"),
+        (0.0, "holds no counts"),
+        (-3.0, "contains negative values"),
+    ],
+)
+def test_unusable_desouped_counts_layer_cannot_switch_the_contract_off(poison, fragment):
+    """A degenerate layer must fail the checks, not disable them.
+
+    The layer is trusted as the reference on presence, and every downstream row
+    comparison drops out on it: `_comparable_row` refuses a row with a non-finite
+    source value, and a row whose total is not positive — nothing in it, or
+    negatives cancelling its positives — divides out as unusable. So without this
+    guard a layer that is entirely NaN, infinite, zero, or negative makes
+    `_profile_mismatch` return no verdict and no rescale factors, both remaining
+    checks are skipped, and an X that is a normalization of *nothing* validates
+    clean. Nothing else in the stack would catch it: the vendored sparsity check
+    reads layer encodings, never layer values.
+
+    X here is deliberately unrelated to raw.X, so a passing result would mean the
+    contract was switched off rather than satisfied.
+    """
+    counts = _raw_counts()
+    unrelated = np.full(counts.shape, 0.5, dtype=np.float32)
+    layer = np.full(counts.shape, poison, dtype=np.float32)
+
+    is_valid, validator = _validate_from_fixture(_make_adata(unrelated, counts, layers={DESOUPED_COUNTS_LAYER: layer}))
+
+    _assert_only_x_error(is_valid, validator, fragment)
+
+
+def test_a_sample_with_nothing_to_compare_is_an_error_not_a_pass():
+    """ "The check never ran" must not look like "the check found nothing wrong".
+
+    The whole-matrix checks ask about X and raw.X as a whole, so they clear an X
+    whose *sampled* cells are all unusable while later cells are fine. Here the
+    layer clears its own guard — finite, non-negative, and carrying counts in row
+    0 — but row 0 of X has no support and row 1 of the layer has no counts, so
+    every sampled row drops out and the comparison has nothing left to judge.
+    Without this check the file validates clean on a sample that proved nothing.
+    """
+    counts = _raw_counts()
+    dense = counts.toarray()
+
+    layer = dense.copy()
+    layer[1, :] = 0  # row 1 contributes no counts to compare against
+
+    x = _normalize_counts(dense).toarray()
+    x[0, :] = 0  # row 0 of X carries nothing to compare
+
+    is_valid, validator = _validate_from_fixture(
+        _make_adata(x.astype(np.float32), counts, layers={DESOUPED_COUNTS_LAYER: layer.astype(np.float32)})
+    )
+
+    _assert_only_x_error(is_valid, validator, "could not be checked against")
+
+
+def test_integrality_is_decidable_up_to_the_documented_ceiling():
+    """The ceiling is the ceiling — no relative term retires the test early.
+
+    Scoring integrality with `_counts_equal` would carry its 1e-3 relative term,
+    and the furthest a value can sit from a whole number is 0.5, so every count
+    above 450 would score integral unconditionally while still counting toward
+    the sample. Deep data would dilute the non-integral fraction below the
+    threshold and NOT_COUNTS could not fire at all — well under the 1e4 ceiling
+    that is supposed to govern.
+    """
+    from hca_schema_validator.validator import _VERDICT_NOT_COUNTS, _implied_counts_verdict
+
+    rng = np.random.default_rng(1)
+    raw = rng.integers(600, 5000, size=(40, 60)).astype(np.float64)
+
+    # Whole-number counts offset by a constant fraction: integral nowhere, and
+    # every entry sits between 450 and _INTEGRAL_TEST_MAX_COUNT.
+    fractional = raw + 0.37
+    assert _implied_counts_verdict(_normalize_counts(fractional).toarray(), raw) == _VERDICT_NOT_COUNTS
+
+    # The control at the same depth: genuine counts still recover as integral.
+    assert _implied_counts_verdict(_normalize_counts(raw).toarray(), raw) is None
+
+
+def test_implied_counts_verdict_separates_the_failure_modes():
+    """Unit-level, on a matrix large enough to be classified.
+
+    The fixture h5ad is 2x7, which is thirteen usable entries — enough to reach
+    every branch, but not enough to show that the classification holds up at a
+    realistic width. These are the same shapes at 40x60.
+    """
+    from hca_schema_validator.validator import (
+        _VERDICT_DESOUPED,
+        _VERDICT_EXCESS,
+        _VERDICT_MIXED,
+        _VERDICT_NOT_COUNTS,
+        _implied_counts_verdict,
+    )
+
+    rng = np.random.default_rng(0)
+    raw = rng.integers(1, 200, size=(40, 60)).astype(np.float64)
+
+    def normalized(source):
+        """Dense, because _implied_counts_verdict densifies its input anyway."""
+        return _normalize_counts(source).toarray()
+
+    desouped = raw.copy()
+    desouped[:, 7] -= 1  # one gene loses a count in every cell
+    assert _implied_counts_verdict(normalized(desouped), raw) == _VERDICT_DESOUPED
+
+    inflated = raw.copy()
+    inflated[:, 7] += 5
+    assert _implied_counts_verdict(normalized(inflated), raw) == _VERDICT_EXCESS
+
+    # Counts removed from most genes that differ, and a few appearing from
+    # nowhere — the shape of the four real objects `_implied_counts_verdict`
+    # documents. The removal is what a curator would act on, but raw.X still
+    # cannot be the source, so neither verdict alone would be honest.
+    both = raw.copy()
+    both[:, 7:20] -= 1
+    both[:, 3] += 2
+    assert _implied_counts_verdict(normalized(both), raw) == _VERDICT_MIXED
+
+    assert _implied_counts_verdict(_log2_cpm(raw), raw) == _VERDICT_NOT_COUNTS
+
+    # The control: a correct normalization recovers raw exactly, so nothing is
+    # claimed. `check_x_normalization` never asks in this case — the profile
+    # check has already passed — but a classifier that condemned it would make
+    # every verdict above suspect.
+    assert _implied_counts_verdict(normalized(raw), raw) is None
+
+
+def test_x_disagreeing_with_raw_x_in_both_directions_errors():
+    """Counts removed *and* counts invented, through the validator.
+
+    Reported as its own finding rather than collapsed into either neighbour:
+    naming only the removal would tell a curator to retain the desouped counts
+    while leaving raw.X unquestioned, and naming only the excess would bury the
+    signal they can actually act on.
+    """
+    counts = _raw_counts().toarray().astype(np.float32)
+    source = counts.copy()
+    source[1, 3] -= 1  # a count removed
+    source[1, 5] += 2  # a count that raw.X does not have
+
+    is_valid, validator = _validate_from_fixture(
+        _make_adata(_normalize_counts(source), _raw_counts()),
+    )
+
+    _assert_only_x_error(is_valid, validator, "in both directions")

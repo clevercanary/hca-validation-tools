@@ -50,8 +50,51 @@ Runs the full vendored schema validator against the unmodified CELLxGENE schema 
 - **Raw-layer retry** — re-runs `_validate_raw()` if the base class skipped it but `assay_ontology_term_id` exists.
 - **GENCODE-aware feature-ID warnings** — warning text includes a GENCODE version label, plus a dataset-organism vs. feature-ID-organism mismatch warning (excluding exempt organisms).
 - **Warning reordering** — feature-ID warnings pushed to the end.
+- **Expression matrix contract** — see §4.1. Not inherited from CELLxGENE, which checks that `raw.X` is raw but never looks at `X`.
 
 All other rules come from the vendored base class (§5).
+
+### 4.1 Expression matrix contract (`check_x_normalization`)
+
+Three matrices, and no more. Everything else in circulation — `normalized_counts`, `desouped_normalized_counts`, `logcounts` — is recomputable from these, so storing it buys no information and silently goes stale when the file is edited.
+
+| matrix | required | holds |
+|---|---|---|
+| `raw.X` | yes | raw counts, float32, empty droplets removed only |
+| `layers['desouped_counts']` | when ambient RNA removal was applied | counts surviving removal, float32 |
+| `X` | yes | `log1p(normalize_total(desouped_counts if present else raw.X))` |
+
+The table is the contract, not the check list. `raw.X`'s dtype and integrality are enforced (by the vendored raw-layer validation); `desouped_counts`' are **not** — check 5 below establishes only that the layer is usable as a reference, and check 6 that it does not exceed `raw.X`. Validating the layer as counts in its own right is open work.
+
+`desouped_counts` is required rather than optional because it cannot be recovered: ambient RNA removal is parameterised and often stochastic, so discarding it leaves `X` an assertion no one can check. `normalize_total`'s target sum is *not* pinned — the checks compare per-cell profiles, in which the target cancels, so `scanpy`'s `target_sum=None` default is accepted.
+
+Checks run cheapest first and short-circuit, so one defect yields one message:
+
+1. **`X` identical to `raw.X`** — normalization never ran. The two-matrix layout means `raw.X` present implies `X` is the normalized one; CELLxGENE has no state where both are present and equal, which is why its `_has_valid_raw` walks past such files without inspecting `X`.
+2. **`X` holds NaN or infinite values** — reported before the rest, which a non-finite entry makes unreliable rather than merely wrong.
+3. **`X` above the `log1p` ceiling** (~20; `exp(20)` is 4.8e8 counts in one cell) — raw counts in `X`, or a normalization that was never log-transformed.
+4. **`X` holds no positive values** — the matrix was emptied or dropped.
+5. **`layers['desouped_counts']` holds NaN, infinities, negatives, or no counts** — it cannot serve as the reference. Checked before it is trusted, because such a layer does not make checks 8–9 fail, it makes them silently not happen: every sampled row drops out of the comparison and the file reports clean. Nothing else would catch it — no vendored check reads layer *values*, only their encoding.
+6. **`layers['desouped_counts']` exceeds `raw.X`** — the layer is not a desouped version of `raw.X`, so it cannot be trusted as the reference.
+7. **No sampled cell could be compared** — the checks below would not run, and passing on that is indistinguishable from passing on a clean file. The whole-matrix checks do not cover it: they ask about `X` and `raw.X` as a whole, so an `X` whose first cells are empty or negative while later ones are not clears all four and still leaves the sample with nothing to compare.
+8. **`X` disagrees with its source.** With the layer present that is the whole finding. Against `raw.X`, the recovered counts name the cause — a pipeline can remove counts but never invent them:
+
+   | recovered counts | verdict |
+   |---|---|
+   | not whole numbers | `X` is not a normalization of any count matrix (a different transform, or altered afterwards) |
+   | whole, only above `raw.X` | `X` came from a different matrix |
+   | whole, only below `raw.X` | desouping ran and `layers['desouped_counts']` is missing |
+   | whole, both above and below | both at once — desouping ran, *and* `raw.X` cannot be its source |
+
+   The last row is a real population rather than a tolerance artifact; the corpus measurement that establishes that is recorded on `_implied_counts_verdict`.
+
+9. **`X` log-transformed but never total-normalized** — every cell's recovered total is its own depth, so no rescaling was applied.
+
+Silent when `raw.X` is absent: the vendored `_validate_raw` owns that case. Also silent when the layer's chunking does not match `X`'s — `read_backed` chunks CSC as `(n_obs, chunk_size)`, so sampling 200 rows off a CSC layer would read the layer whole; the vendored sparsity check has already errored on that encoding, so the file fails regardless.
+
+Sampling: checks 1–4 scan both matrices in full; 5–9 use the first 200 cells, since the identity is per-cell and independent across cells.
+
+Assay coverage: these run on every file, and do **not** yet inherit the ATAC-seq / Methyl-seq / methylation-profiling / snmC-seq exemptions that `hca_schema_definition.yaml` declares for raw-layer validation. HCA does not currently accept those assays; see the open issue before it does.
 
 ---
 
