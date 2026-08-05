@@ -74,9 +74,10 @@ Checks run cheapest first and short-circuit, so one defect yields one message:
 2. **`X` holds NaN or infinite values** — reported before the rest, which a non-finite entry makes unreliable rather than merely wrong.
 3. **`X` above the `log1p` ceiling** (~20; `exp(20)` is 4.8e8 counts in one cell) — raw counts in `X`, or a normalization that was never log-transformed.
 4. **`X` holds no positive values** — the matrix was emptied or dropped.
-5. **`layers['desouped_counts']` holds NaN, infinities, negatives, or no counts** — it cannot serve as the reference. Checked before it is trusted, because such a layer does not make checks 7–8 fail, it makes them silently not happen: every sampled row drops out of the comparison and the file reports clean. Nothing else would catch it — no vendored check reads layer *values*, only their encoding.
+5. **`layers['desouped_counts']` holds NaN, infinities, negatives, or no counts** — it cannot serve as the reference. Checked before it is trusted, because such a layer does not make checks 8–9 fail, it makes them silently not happen: every sampled row drops out of the comparison and the file reports clean. Nothing else would catch it — no vendored check reads layer *values*, only their encoding.
 6. **`layers['desouped_counts']` exceeds `raw.X`** — the layer is not a desouped version of `raw.X`, so it cannot be trusted as the reference.
-7. **`X` disagrees with its source.** With the layer present that is the whole finding. Against `raw.X`, the recovered counts name the cause — a pipeline can remove counts but never invent them:
+7. **No sampled cell could be compared** — the checks below would not run, and passing on that is indistinguishable from passing on a clean file. The whole-matrix checks do not cover it: they ask about `X` and `raw.X` as a whole, so an `X` whose first cells are empty or negative while later ones are not clears all four and still leaves the sample with nothing to compare.
+8. **`X` disagrees with its source.** With the layer present that is the whole finding. Against `raw.X`, the recovered counts name the cause — a pipeline can remove counts but never invent them:
 
    | recovered counts | verdict |
    |---|---|
@@ -87,11 +88,11 @@ Checks run cheapest first and short-circuit, so one defect yields one message:
 
    The last row is a real population rather than a tolerance artifact; the corpus measurement that establishes that is recorded on `_implied_counts_verdict`.
 
-8. **`X` log-transformed but never total-normalized** — every cell's recovered total is its own depth, so no rescaling was applied.
+9. **`X` log-transformed but never total-normalized** — every cell's recovered total is its own depth, so no rescaling was applied.
 
 Silent when `raw.X` is absent: the vendored `_validate_raw` owns that case. Also silent when the layer's chunking does not match `X`'s — `read_backed` chunks CSC as `(n_obs, chunk_size)`, so sampling 200 rows off a CSC layer would read the layer whole; the vendored sparsity check has already errored on that encoding, so the file fails regardless.
 
-Sampling: checks 1–4 scan both matrices in full; 5–8 use the first 200 cells, since the identity is per-cell and independent across cells.
+Sampling: checks 1–4 scan both matrices in full; 5–9 use the first 200 cells, since the identity is per-cell and independent across cells.
 
 Assay coverage: these run on every file, and do **not** yet inherit the ATAC-seq / Methyl-seq / methylation-profiling / snmC-seq exemptions that `hca_schema_definition.yaml` declares for raw-layer validation. HCA does not currently accept those assays; see the open issue before it does.
 

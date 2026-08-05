@@ -1528,6 +1528,32 @@ def test_unusable_desouped_counts_layer_cannot_switch_the_contract_off(poison, f
     _assert_only_x_error(is_valid, validator, fragment)
 
 
+def test_a_sample_with_nothing_to_compare_is_an_error_not_a_pass():
+    """ "The check never ran" must not look like "the check found nothing wrong".
+
+    The whole-matrix checks ask about X and raw.X as a whole, so they clear an X
+    whose *sampled* cells are all unusable while later cells are fine. Here the
+    layer clears its own guard — finite, non-negative, and carrying counts in row
+    0 — but row 0 of X has no support and row 1 of the layer has no counts, so
+    every sampled row drops out and the comparison has nothing left to judge.
+    Without this check the file validates clean on a sample that proved nothing.
+    """
+    counts = _raw_counts()
+    dense = counts.toarray()
+
+    layer = dense.copy()
+    layer[1, :] = 0  # row 1 contributes no counts to compare against
+
+    x = _normalize_counts(dense).toarray()
+    x[0, :] = 0  # row 0 of X carries nothing to compare
+
+    is_valid, validator = _validate_from_fixture(
+        _make_adata(x.astype(np.float32), counts, layers={DESOUPED_COUNTS_LAYER: layer.astype(np.float32)})
+    )
+
+    _assert_only_x_error(is_valid, validator, "could not be checked against")
+
+
 def test_integrality_is_decidable_up_to_the_documented_ceiling():
     """The ceiling is the ceiling — no relative term retires the test early.
 

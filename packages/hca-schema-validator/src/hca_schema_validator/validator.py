@@ -828,7 +828,7 @@ def _unusable_layer_error(declared_rows):
     refuses any row carrying a non-finite source value, and a row with nothing
     positive in it divides out as unusable, so a layer that is entirely NaN or
     entirely zero across the sample drops every row: ``_profile_mismatch`` returns
-    no verdict and no rescale factors, checks 6 and 7 are both skipped, and the
+    no verdict and no rescale factors, checks 8 and 9 are both skipped, and the
     file is reported clean. Attaching such a layer would otherwise switch the
     whole contract off, which is the one outcome this check must never produce.
 
@@ -1041,14 +1041,16 @@ def check_x_normalization(adata):
     4. ``X`` holds no positive values → the matrix was emptied or dropped.
     5. ``layers['desouped_counts']`` holds NaN, infinities, negatives, or no
        counts at all → it cannot serve as the source, and left unchecked it would
-       switch the two checks below off rather than fail them.
+       switch the comparisons below off rather than fail them.
     6. ``layers['desouped_counts']`` holds more counts than ``raw.X`` → the
        layer is not what it claims to be, so it cannot be trusted as the source.
-    7. ``X`` is not a total-normalization of its source. When the source is
+    7. No sampled cell could be compared at all → the checks below would not run,
+       and passing on that is indistinguishable from passing on a clean file.
+    8. ``X`` is not a total-normalization of its source. When the source is
        ``desouped_counts`` that is the whole finding; when it is ``raw.X``,
        ``_implied_counts_verdict`` names the cause — including the case where
        desouping evidently ran but its counts were not retained.
-    8. ``X`` was log-transformed but never total-normalized.
+    9. ``X`` was log-transformed but never total-normalized.
 
     Silent when ``raw.X`` is absent: the vendored ``_validate_raw`` already owns
     that case and reports it, and a second message would not add anything.
@@ -1117,7 +1119,21 @@ def check_x_normalization(adata):
 
     worst, rescale_factors = _profile_mismatch(x_rows, source_rows)
 
-    if worst is not None and worst > _PROFILE_RTOL:
+    if worst is None:
+        # Not one sampled cell could be compared. Reported rather than passed
+        # over, because "the check found nothing wrong" and "the check never ran"
+        # are the same return value otherwise — the failure the layer guard above
+        # exists to prevent, reached by a different route. The whole-matrix checks
+        # do not cover it: they ask about X and raw.X as a whole, so an X whose
+        # first cells are empty or negative while later ones are not clears all
+        # four and still leaves the sample with nothing to compare.
+        return [], [
+            f"X could not be checked against {source_name}: none of the first {n_rows} cells hold "
+            f"values that can be compared. X must hold normalized expression for every cell. "
+            f"Confirm X was not partly emptied or overwritten."
+        ]
+
+    if worst > _PROFILE_RTOL:
         if declared_rows is not None:
             # The layer is present and X does not match it. There is no further
             # cause to name: the file states which matrix X came from, and X did
