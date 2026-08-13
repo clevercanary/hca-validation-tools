@@ -93,9 +93,9 @@ def _matrices_equal(path: str, a_key: str, b_key: str) -> bool:
     rows would catch that. So this answers "the same, as far as several hundred
     rows can show" rather than "provably identical".
 
-    Exhaustive comparison is deliberately not offered. ``reed2024`` carries 1.65
-    billion nonzeros, so full equality means reading ~13 GB; callers that need
-    that guarantee should say so at their own layer.
+    Exhaustive comparison is deliberately not offered. A source dataset can carry
+    well over a billion nonzeros, where full equality means reading tens of GB;
+    callers that need that guarantee should say so at their own layer.
 
     Returns False for any layout this cannot speak to — mismatched encodings,
     dense against sparse, a malformed sparse group — so callers refuse rather

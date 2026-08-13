@@ -70,8 +70,8 @@ def normalize_raw(path: str) -> dict:
     simply never ran. raw.X is already correct, so it is left untouched and
     only X is transformed — which also skips the `adata.copy()`. Reading a file
     that already carries raw.X makes two matrices resident; copying it to build
-    raw would make four, which is the difference between feasible and not on the
-    22 GB and 25 GB files this was written for.
+    raw would make four, which is the difference between feasible and not on a
+    file of tens of GB.
 
     A raw.X that *differs* from X is a genuinely different file and still
     refuses. The X sample check is a fail-fast heuristic, not a full-matrix
