@@ -115,7 +115,22 @@ def test_normalize_raw_refuses_when_raw_x_differs_from_x(tmp_path):
 
     result = normalize_raw(str(path))
     assert "error" in result
-    assert "differs" in result["error"].lower()
+    assert "could not be confirmed to hold the same counts" in result["error"].lower()
+
+
+def test_normalize_raw_refuses_when_the_two_cannot_be_compared(tmp_path):
+    """A sparse X against a dense raw.X is not a difference — it is no answer.
+
+    The refusal is the same either way, but the message must not claim the two
+    were compared and found to differ when the comparison never ran.
+    """
+    rng = np.random.default_rng(28)
+    x = _counts(rng, n_obs=20, n_vars=8)
+    path = _write(tmp_path / "layout_mismatch.h5ad", x, raw_x=np.asarray(x.todense()))
+
+    result = normalize_raw(str(path))
+    assert "error" in result
+    assert "could not be confirmed to hold the same counts" in result["error"].lower()
 
 
 def test_normalize_raw_refuses_when_raw_x_is_not_counts(tmp_path):
@@ -232,7 +247,7 @@ def test_normalize_raw_refuses_when_shapes_differ(tmp_path):
 
     result = normalize_raw(str(path))
     assert "error" in result
-    assert "differs" in result["error"].lower()
+    assert "could not be confirmed to hold the same counts" in result["error"].lower()
 
 
 def test_normalize_raw_edit_log_records_the_duplicate_verification(duplicate_raw_h5ad):

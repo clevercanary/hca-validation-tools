@@ -139,7 +139,14 @@ def _matrices_equal(path: str, a_key: str, b_key: str) -> bool:
         if isinstance(a, h5py.Dataset) and isinstance(b, h5py.Dataset):
             if a.shape != b.shape:
                 return False
-            return all(np.array_equal(a[i, :], b[i, :]) for i in _sampled_positions(a.shape[0]))
+            # One fancy-indexed read per matrix rather than one per row: h5py
+            # accepts a sorted unique index array, which is what
+            # _sampled_positions returns, and 400 round trips through h5py cost
+            # far more than the single read does.
+            rows = _sampled_positions(a.shape[0])
+            if rows.size == 0:
+                return True
+            return np.array_equal(a[rows, :], b[rows, :])
 
         return False
 

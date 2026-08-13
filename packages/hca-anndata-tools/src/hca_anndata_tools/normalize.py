@@ -125,7 +125,16 @@ def normalize_raw(path: str) -> dict:
             # new <stem>-edit-<ts>.h5ad and never modifies the original, so being
             # wrong here cannot destroy data.
             if not _matrices_equal(path, "X", "raw/X"):
-                return {"error": "raw.X exists and differs from X — refusing to overwrite"}
+                # Not "differs": _matrices_equal also returns False when the two
+                # cannot be compared at all — mismatched encodings, dense against
+                # sparse — and naming a difference there would describe a
+                # comparison that never happened.
+                return {
+                    "error": (
+                        "raw.X could not be confirmed to hold the same counts as X — refusing to "
+                        "normalize. X is only safe to overwrite when raw.X already holds those counts."
+                    )
+                }
             mode = _NORMALIZE_ONLY
 
         plan = _MODES[mode]
