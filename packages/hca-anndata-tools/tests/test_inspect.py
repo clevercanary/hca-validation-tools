@@ -109,6 +109,23 @@ def test_check_x_normalization_custom_sample_size(tmp_path):
     assert result["sample_size"] <= 5
 
 
+def test_check_x_normalization_small_sample_size_still_spans_a_dense_matrix(tmp_path):
+    """A small budget must shrink the sample, not pull it toward the top.
+
+    The dense sample is built row by row, so trimming it to the budget afterwards
+    would drop the later rows and leave a sample drawn entirely from the head.
+    Here only the final row carries data, so a head-biased sample reports an
+    empty matrix.
+    """
+    X = np.zeros((40, 12), dtype=np.float32)
+    X[39, :] = 7
+    path = _write_h5ad(tmp_path / "tail_only.h5ad", X)
+
+    result = check_x_normalization(str(path), sample_size=5)
+    assert result["verdict"] == "raw_counts"
+    assert result["nonzero_count"] > 0
+
+
 def test_check_x_normalization_missing_file():
     result = check_x_normalization("/nonexistent/does-not-exist.h5ad")
     assert "error" in result

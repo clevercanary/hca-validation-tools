@@ -59,11 +59,18 @@ def _sample_matrix(f: h5py.File, key: str, sample_size: int) -> np.ndarray:
     if n_rows == 0 or n_cols == 0:
         return np.asarray([])
 
-    rows = _sampled_positions(n_rows, _DENSE_SAMPLE_ROWS)
-    # _sampled_positions returns sorted unique indices, which is what h5py
-    # requires of a fancy-index selection.
-    cols = _sampled_positions(n_cols, max(1, sample_size // len(rows)))
-    return np.concatenate([np.asarray(x[i, cols]) for i in rows])[:sample_size]  # pyright: ignore[reportIndexIssue]
+    # Row count is capped by the budget as well as by _DENSE_SAMPLE_ROWS: asking
+    # for fewer values than there are rows would otherwise build the sample and
+    # then truncate it, which throws away the later rows and leaves a sample
+    # drawn from the top of the matrix — the bias this spreads rows to avoid.
+    rows = _sampled_positions(n_rows, max(1, min(_DENSE_SAMPLE_ROWS, sample_size)))
+    # Ceiling division, so the budget is met rather than floored away: 50 across
+    # 20 rows is 3 each, not 2. _sampled_positions returns sorted unique indices,
+    # which is what h5py requires of a fancy-index selection.
+    cols = _sampled_positions(n_cols, -(-sample_size // len(rows)))
+    # Not truncated to sample_size: every sampled row contributes equally, and a
+    # sample slightly over budget costs nothing. The dict reports the size drawn.
+    return np.concatenate([np.asarray(x[i, cols]) for i in rows])  # pyright: ignore[reportIndexIssue]
 
 
 def _sparse_parts(group: h5py.Group) -> tuple[h5py.Dataset, h5py.Dataset, np.ndarray] | None:
