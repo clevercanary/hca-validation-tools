@@ -12,14 +12,33 @@ from .write import resolve_latest
 
 _DEFAULT_SAMPLE_SIZE = 2000
 
+# Rows compared when deciding whether two matrices are the same. Spread across
+# the whole matrix rather than taken from the head, so a file that diverges only
+# in its tail is still caught.
+_DUP_SAMPLE_ROWS = 400
+
+# Rows a dense matrix is classified from. Sparse matrices sample `data`, which is
+# nonzero by construction, but a dense sample has to pick rows — and picking only
+# the first made an all-zero leading cell, which is ordinary in an unfiltered
+# matrix, look like an empty matrix.
+_DENSE_SAMPLE_ROWS = 20
+
+
+def _sampled_positions(n: int, limit: int = _DUP_SAMPLE_ROWS) -> np.ndarray:
+    """Up to ``limit`` indices spread evenly across ``range(n)``."""
+    if n <= 0:
+        return np.asarray([], dtype=int)
+    return np.unique(np.linspace(0, n - 1, min(limit, n)).astype(int))
+
 
 def _sample_matrix(f: h5py.File, key: str, sample_size: int) -> np.ndarray:
     """Return a 1-D numpy array sample of the matrix at ``key``.
 
     ``key`` is an h5ad matrix path — "X" or "raw/X". Sparse: first
-    ``sample_size`` entries of ``<key>/data``. Dense: first ``sample_size``
-    entries of row 0. Returns an empty array if the matrix is absent or
-    either dimension is zero (degenerate 0-cell or 0-gene file).
+    ``sample_size`` entries of ``<key>/data``. Dense: an even share of
+    ``sample_size`` taken from each of up to ``_DENSE_SAMPLE_ROWS`` rows spread
+    across the matrix. Returns an empty array if the matrix is absent or either
+    dimension is zero (degenerate 0-cell or 0-gene file).
     """
     if key not in f:
         return np.asarray([])
@@ -29,14 +48,87 @@ def _sample_matrix(f: h5py.File, key: str, sample_size: int) -> np.ndarray:
         data = x["data"]
         n = min(sample_size, len(data))  # pyright: ignore[reportArgumentType]
         return np.asarray(data[:n])  # pyright: ignore[reportIndexIssue]
-    if x.shape[0] == 0 or x.shape[1] == 0:  # pyright: ignore[reportAttributeAccessIssue]
+
+    n_rows, n_cols = x.shape[0], x.shape[1]  # pyright: ignore[reportAttributeAccessIssue]
+    if n_rows == 0 or n_cols == 0:
         return np.asarray([])
-    return np.asarray(x[0, :sample_size])  # pyright: ignore[reportIndexIssue]
+
+    rows = _sampled_positions(n_rows, _DENSE_SAMPLE_ROWS)
+    per_row = max(1, sample_size // len(rows))
+    return np.concatenate([np.asarray(x[i, :per_row]) for i in rows])[:sample_size]  # pyright: ignore[reportIndexIssue]
 
 
-def _sample_x(f: h5py.File, sample_size: int) -> np.ndarray:
-    """Return a 1-D numpy array sample of X from an open h5py File."""
-    return _sample_matrix(f, "X", sample_size)
+def _sparse_parts(group: h5py.Group) -> tuple[h5py.Dataset, h5py.Dataset, np.ndarray] | None:
+    """``(data, indices, indptr)`` for a sparse matrix group, or None if malformed.
+
+    ``data`` and ``indices`` stay unread dataset handles — only ``indptr`` is
+    materialized, which is one int per row rather than one per nonzero.
+    """
+    data, indices, indptr = (group.get(name) for name in ("data", "indices", "indptr"))
+    if not (isinstance(data, h5py.Dataset) and isinstance(indices, h5py.Dataset) and isinstance(indptr, h5py.Dataset)):
+        return None
+    return data, indices, np.asarray(indptr[:])
+
+
+def _matrices_equal(path: str, a_key: str, b_key: str) -> bool:
+    """Are the two matrices at these keys the same matrix?
+
+    Sampled, not exhaustive: ``indptr`` is compared in full, then ``data`` and
+    ``indices`` over ``_DUP_SAMPLE_ROWS`` rows spread across the whole matrix.
+    ``indptr`` is the load-bearing half — two matrices with identical row
+    boundaries and identical values across those rows are the same matrix in
+    every way a caller here cares about, and two that differ in structure
+    anywhere differ in ``indptr``.
+
+    Exhaustive comparison is deliberately not offered. ``reed2024`` carries 1.65
+    billion nonzeros, so full equality means reading ~13 GB; callers that need
+    that guarantee should say so at their own layer.
+
+    Returns False for any layout this cannot speak to — mismatched encodings,
+    dense against sparse, a malformed sparse group — so callers refuse rather
+    than act on a comparison that never happened.
+    """
+    with h5py.File(path, "r") as f:
+        if a_key not in f or b_key not in f:
+            return False
+        a, b = f[a_key], f[b_key]
+
+        if a.attrs.get("encoding-type") != b.attrs.get("encoding-type"):
+            return False
+
+        if isinstance(a, h5py.Group) and isinstance(b, h5py.Group):
+            # indptr pins the row count but says nothing about the column count,
+            # so two matrices differing only in trailing all-zero columns carry
+            # byte-identical indptr, indices and data. Shape is what separates
+            # them, and h5ad records it on the group.
+            a_shape, b_shape = a.attrs.get("shape"), b.attrs.get("shape")
+            if a_shape is None or b_shape is None or not np.array_equal(a_shape, b_shape):
+                return False
+
+            a_parts, b_parts = _sparse_parts(a), _sparse_parts(b)
+            if a_parts is None or b_parts is None:
+                return False
+            a_data, a_indices, indptr = a_parts
+            b_data, b_indices, b_indptr = b_parts
+            if not np.array_equal(indptr, b_indptr):
+                return False
+
+            for i in _sampled_positions(len(indptr) - 1):
+                start, stop = int(indptr[i]), int(indptr[i + 1])
+                if stop <= start:
+                    continue
+                if not np.array_equal(a_data[start:stop], b_data[start:stop]):
+                    return False
+                if not np.array_equal(a_indices[start:stop], b_indices[start:stop]):
+                    return False
+            return True
+
+        if isinstance(a, h5py.Dataset) and isinstance(b, h5py.Dataset):
+            if a.shape != b.shape:
+                return False
+            return all(np.array_equal(a[i, :], b[i, :]) for i in _sampled_positions(a.shape[0]))
+
+        return False
 
 
 def _verdict_from_sample(sample: np.ndarray) -> dict:
@@ -109,7 +201,7 @@ def _classify_x_at_path(path: str, sample_size: int) -> dict:
             else x.dtype  # pyright: ignore[reportAttributeAccessIssue]
         )
         dtype = str(stored_dtype)
-        sample = _sample_x(f, sample_size)
+        sample = _sample_matrix(f, "X", sample_size)
 
     return {
         "filename": Path(path).name,

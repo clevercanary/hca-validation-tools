@@ -12,24 +12,44 @@ import scipy.sparse as sp
 from hca_anndata_tools.normalize import normalize_raw
 
 
+def _counts(rng, n_obs=40, n_vars=15, density=0.3):
+    """A sparse integer count matrix with at least one nonzero per row."""
+    dense = rng.integers(1, 10, size=(n_obs, n_vars)).astype(np.float32)
+    masked = dense * (rng.random((n_obs, n_vars)) < density)
+    # Guarantee at least one nonzero per row so normalize_total doesn't warn.
+    rows = np.arange(n_obs)
+    picks = rng.integers(0, n_vars, size=n_obs)
+    masked[rows, picks] = dense[rows, picks]
+    return sp.csr_matrix(masked)
+
+
+def _frame(n_obs, n_vars):
+    obs = pd.DataFrame(index=[f"c{i}" for i in range(n_obs)])  # pyright: ignore[reportArgumentType]
+    var = pd.DataFrame(index=[f"g{i}" for i in range(n_vars)])  # pyright: ignore[reportArgumentType]
+    return obs, var
+
+
+def _write(path, x, raw_x=None, obs=None):
+    """Write an h5ad with X, and optionally a raw whose X is ``raw_x``."""
+    n_obs, n_vars = x.shape
+    default_obs, var = _frame(n_obs, n_vars)
+    obs = default_obs if obs is None else obs
+    adata = ad.AnnData(X=x, obs=obs, var=var)
+    if raw_x is not None:
+        adata.raw = ad.AnnData(X=raw_x, obs=obs, var=var)
+    adata.write_h5ad(path)
+    return path
+
+
 def _write_raw_counts(path, *, density=0.3, n_obs=40, n_vars=15) -> None:
     """Write an h5ad with raw integer counts in X and no raw.X."""
     rng = np.random.default_rng(7)
-    dense = rng.integers(1, 10, size=(n_obs, n_vars)).astype(np.float32)
-    mask = rng.random((n_obs, n_vars)) < density
-    masked = dense * mask
-    # Guarantee at least one nonzero per row so normalize_total doesn't warn.
-    masked[np.arange(n_obs), rng.integers(0, n_vars, size=n_obs)] = dense[
-        np.arange(n_obs), rng.integers(0, n_vars, size=n_obs)
-    ]
-    X = sp.csr_matrix(masked)
+    x = _counts(rng, n_obs, n_vars, density)
     obs = pd.DataFrame(
         {"cell_type": pd.Categorical(rng.choice(["A", "B"], n_obs))},
         index=[f"c{i}" for i in range(n_obs)],  # pyright: ignore[reportArgumentType]
     )
-    var = pd.DataFrame(index=[f"g{i}" for i in range(n_vars)])  # pyright: ignore[reportArgumentType]
-    adata = ad.AnnData(X=X, obs=obs, var=var)
-    adata.write_h5ad(path)
+    _write(path, x, obs=obs)
 
 
 @pytest.fixture
@@ -56,33 +76,6 @@ def test_normalize_raw_moves_counts_and_normalizes(raw_counts_h5ad):
     x_dense = out.X.toarray()  # pyright: ignore[reportAttributeAccessIssue]
     assert (x_dense >= 0).all()
     assert not np.all(np.mod(x_dense[x_dense > 0], 1) == 0)
-
-
-def _counts(rng, n_obs=40, n_vars=15, density=0.3):
-    """A sparse integer count matrix with at least one nonzero per row."""
-    dense = rng.integers(1, 10, size=(n_obs, n_vars)).astype(np.float32)
-    masked = dense * (rng.random((n_obs, n_vars)) < density)
-    rows = np.arange(n_obs)
-    picks = rng.integers(0, n_vars, size=n_obs)
-    masked[rows, picks] = dense[rows, picks]
-    return sp.csr_matrix(masked)
-
-
-def _frame(n_obs, n_vars):
-    obs = pd.DataFrame(index=[f"c{i}" for i in range(n_obs)])  # pyright: ignore[reportArgumentType]
-    var = pd.DataFrame(index=[f"g{i}" for i in range(n_vars)])  # pyright: ignore[reportArgumentType]
-    return obs, var
-
-
-def _write(path, x, raw_x=None):
-    """Write an h5ad with X, and optionally a raw whose X is ``raw_x``."""
-    n_obs, n_vars = x.shape
-    obs, var = _frame(n_obs, n_vars)
-    adata = ad.AnnData(X=x, obs=obs, var=var)
-    if raw_x is not None:
-        adata.raw = ad.AnnData(X=raw_x, obs=obs, var=var)
-    adata.write_h5ad(path)
-    return path
 
 
 @pytest.fixture
@@ -173,6 +166,54 @@ def test_normalize_raw_duplicate_dense_x(tmp_path):
 
     out = ad.read_h5ad(result["output_path"])
     np.testing.assert_array_equal(np.asarray(out.raw.X), x)  # pyright: ignore[reportOptionalMemberAccess]
+
+
+# The all-zero cell this test is built around is exactly what scanpy warns on,
+# so the warning is the fixture working, not a defect to chase.
+@pytest.mark.filterwarnings("ignore:Some cells have zero counts")
+def test_normalize_raw_dense_x_with_an_empty_first_cell(tmp_path):
+    """A dense matrix must be judged on more than its first row.
+
+    Sampling row 0 alone made an all-zero leading cell — ordinary in an
+    unfiltered matrix — read as an empty matrix, which refused the file on the
+    plain path and, on the duplicate path, reported the counts in raw.X as "not
+    raw counts".
+    """
+    rng = np.random.default_rng(25)
+    x = rng.integers(1, 10, size=(20, 8)).astype(np.float32)
+    x[0, :] = 0
+
+    plain = _write(tmp_path / "dense_zero_first_row.h5ad", x)
+    assert "error" not in normalize_raw(str(plain))
+
+    duplicate = _write(tmp_path / "dense_zero_first_row_dup.h5ad", x, raw_x=x.copy())
+    assert "error" not in normalize_raw(str(duplicate))
+
+
+def test_normalize_raw_refuses_when_shapes_differ(tmp_path):
+    """Matrices of different width can still share indptr, indices and data.
+
+    Trailing all-zero columns contribute nothing to a CSR body, so shape is the
+    only thing that separates them — and calling them a verified duplicate would
+    put that claim in the provenance record.
+    """
+    rng = np.random.default_rng(26)
+    n_obs = 30
+    x = _counts(rng, n_obs=n_obs, n_vars=10)
+    wider = sp.csr_matrix((x.data, x.indices, x.indptr), shape=(n_obs, 13))
+
+    # Built directly rather than through _write: raw legitimately carries more
+    # genes than X (that is what gene filtering produces), so the two need
+    # different var frames.
+    obs = pd.DataFrame(index=[f"c{i}" for i in range(n_obs)])  # pyright: ignore[reportArgumentType]
+    adata = ad.AnnData(X=x, obs=obs, var=pd.DataFrame(index=[f"g{i}" for i in range(10)]))  # pyright: ignore[reportArgumentType]
+    adata.raw = ad.AnnData(X=wider, obs=obs, var=pd.DataFrame(index=[f"g{i}" for i in range(13)]))  # pyright: ignore[reportArgumentType]
+    path = tmp_path / "shape_mismatch.h5ad"
+    adata.write_h5ad(path)
+
+    result = normalize_raw(str(path))
+    assert "error" in result
+    assert "differs" in result["error"].lower()
 
 
 def test_normalize_raw_edit_log_records_the_duplicate_verification(duplicate_raw_h5ad):
