@@ -37,8 +37,14 @@ def _sample_matrix(f: h5py.File, key: str, sample_size: int) -> np.ndarray:
     ``key`` is an h5ad matrix path — "X" or "raw/X". Sparse: first
     ``sample_size`` entries of ``<key>/data``. Dense: an even share of
     ``sample_size`` taken from each of up to ``_DENSE_SAMPLE_ROWS`` rows spread
-    across the matrix. Returns an empty array if the matrix is absent or either
-    dimension is zero (degenerate 0-cell or 0-gene file).
+    across the matrix, and spread across its columns too. Returns an empty array
+    if the matrix is absent or either dimension is zero (degenerate 0-cell or
+    0-gene file).
+
+    Both axes are spread deliberately. A dense sample taken from one corner of
+    the matrix is judging the whole of it by whatever happens to sit there, and
+    all-zero leading rows *and* leading columns are both ordinary in an
+    unfiltered matrix — either one read as an empty matrix.
     """
     if key not in f:
         return np.asarray([])
@@ -54,8 +60,10 @@ def _sample_matrix(f: h5py.File, key: str, sample_size: int) -> np.ndarray:
         return np.asarray([])
 
     rows = _sampled_positions(n_rows, _DENSE_SAMPLE_ROWS)
-    per_row = max(1, sample_size // len(rows))
-    return np.concatenate([np.asarray(x[i, :per_row]) for i in rows])[:sample_size]  # pyright: ignore[reportIndexIssue]
+    # _sampled_positions returns sorted unique indices, which is what h5py
+    # requires of a fancy-index selection.
+    cols = _sampled_positions(n_cols, max(1, sample_size // len(rows)))
+    return np.concatenate([np.asarray(x[i, cols]) for i in rows])[:sample_size]  # pyright: ignore[reportIndexIssue]
 
 
 def _sparse_parts(group: h5py.Group) -> tuple[h5py.Dataset, h5py.Dataset, np.ndarray] | None:
@@ -73,12 +81,16 @@ def _sparse_parts(group: h5py.Group) -> tuple[h5py.Dataset, h5py.Dataset, np.nda
 def _matrices_equal(path: str, a_key: str, b_key: str) -> bool:
     """Are the two matrices at these keys the same matrix?
 
-    Sampled, not exhaustive: ``indptr`` is compared in full, then ``data`` and
-    ``indices`` over ``_DUP_SAMPLE_ROWS`` rows spread across the whole matrix.
-    ``indptr`` is the load-bearing half — two matrices with identical row
-    boundaries and identical values across those rows are the same matrix in
-    every way a caller here cares about, and two that differ in structure
-    anywhere differ in ``indptr``.
+    Sampled, not exhaustive: ``shape`` and ``indptr`` are compared in full, then
+    ``data`` and ``indices`` over ``_DUP_SAMPLE_ROWS`` rows spread across the
+    whole matrix.
+
+    ``shape`` and ``indptr`` together pin the dimensions and the nonzero count of
+    every row, which is what makes the sampled rows meaningful — but they do not
+    pin content. Two matrices can share both and still hold different ``indices``
+    or ``data`` within a row, and only the sampled rows would catch that. So this
+    answers "the same, as far as several hundred rows can show" rather than
+    "provably identical".
 
     Exhaustive comparison is deliberately not offered. ``reed2024`` carries 1.65
     billion nonzeros, so full equality means reading ~13 GB; callers that need

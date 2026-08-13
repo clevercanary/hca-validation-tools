@@ -190,6 +190,25 @@ def test_normalize_raw_dense_x_with_an_empty_first_cell(tmp_path):
     assert "error" not in normalize_raw(str(duplicate))
 
 
+@pytest.mark.filterwarnings("ignore:Some cells have zero counts")
+def test_normalize_raw_dense_x_with_empty_leading_columns(tmp_path):
+    """The column mirror of the row case above.
+
+    Sampling the first few columns of each row is the same blind spot rotated
+    ninety degrees: a matrix whose leading genes are all zero, which unfiltered
+    data routinely is, would read as empty.
+    """
+    rng = np.random.default_rng(27)
+    x = rng.integers(1, 10, size=(20, 40)).astype(np.float32)
+    x[:, :30] = 0
+
+    plain = _write(tmp_path / "dense_zero_lead_cols.h5ad", x)
+    assert "error" not in normalize_raw(str(plain))
+
+    duplicate = _write(tmp_path / "dense_zero_lead_cols_dup.h5ad", x, raw_x=x.copy())
+    assert "error" not in normalize_raw(str(duplicate))
+
+
 def test_normalize_raw_refuses_when_shapes_differ(tmp_path):
     """Matrices of different width can still share indptr, indices and data.
 
