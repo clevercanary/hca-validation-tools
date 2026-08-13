@@ -51,12 +51,16 @@ def normalize_raw(path: str) -> dict:
 
         raw.X     X            outcome
         --------  -----------  --------------------------------------------
-        empty     counts       promote + normalize
+        absent    counts       promote + normalize
         counts    counts       normalize X only when the two are the same
                                matrix, refuse when they differ
         counts    normalized   already the target layout — no-op
         counts    empty        rebuild X from raw.X — not supported (#572)
         every other combination refuses
+
+    "absent" in that first row, not "empty": a raw.X that is present but holds
+    no counts is refused rather than promoted over. Overwriting it would lose
+    nothing, but it is still an existing raw.X, and this has no force flag.
 
     **promote + normalize** is the original case: counts sit in X, raw.X is
     absent, so X is copied to raw.X before being overwritten.
