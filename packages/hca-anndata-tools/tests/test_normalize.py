@@ -157,7 +157,10 @@ def test_normalize_raw_is_a_noop_when_already_in_target_layout(raw_counts_h5ad):
 
     result2 = normalize_raw(result["output_path"])
     assert "error" not in result2
-    assert result2["already_normalized"] is True
+    # The same shape strip_forbidden_obs_columns and compress_h5ad use when
+    # there is nothing to do, so a caller can read one key across the tools.
+    assert result2["skipped"] is True
+    assert "target layout" in result2["reason"]
     assert "output_path" not in result2
 
 

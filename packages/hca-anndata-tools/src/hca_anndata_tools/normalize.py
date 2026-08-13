@@ -88,8 +88,9 @@ def normalize_raw(path: str) -> dict:
 
     Returns:
         Dict with 'output_path', 'n_obs', 'n_vars', 'target_sum', 'raw_x'
-        on success; {'already_normalized': True, ...} when the file is
-        already in the target layout and nothing was written; or
+        on success; {'skipped': True, 'reason': ...} when the file is
+        already in the target layout and nothing was written, matching
+        `strip_forbidden_obs_columns` and `compress_h5ad`; or
         {'error': ...} on failure.
     """
     try:
@@ -123,8 +124,10 @@ def normalize_raw(path: str) -> dict:
                 }
             if check["verdict"] == "normalized":
                 return {
-                    "already_normalized": True,
-                    "message": "raw.X holds counts and X is already normalized — file is in the target layout",
+                    "skipped": True,
+                    "reason": (
+                        "raw.X holds counts and X is already normalized — the file is already in the target layout."
+                    ),
                 }
             if check["verdict"] == "indeterminate":
                 return {"error": "X contains no data while raw.X holds counts — rebuilding X is not supported"}
