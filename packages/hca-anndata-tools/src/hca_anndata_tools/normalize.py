@@ -109,9 +109,12 @@ def normalize_raw(path: str) -> dict:
         else:
             raw_check = _classify_matrix_at_path(path, "raw/X", _DEFAULT_SAMPLE_SIZE)
             if raw_check["verdict"] != "raw_counts":
+                # "normalize", not "overwrite": what this path would rewrite is
+                # X, not raw.X. raw.X is only ever read here.
                 return {
                     "error": (
-                        f"raw.X does not hold raw counts (sample looks {raw_check['verdict']}) — refusing to overwrite"
+                        "raw.X does not hold raw counts — refusing to normalize. When raw.X is "
+                        "present it must hold the counts X is derived from."
                     )
                 }
             if check["verdict"] == "normalized":
