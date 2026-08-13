@@ -81,16 +81,17 @@ def _sparse_parts(group: h5py.Group) -> tuple[h5py.Dataset, h5py.Dataset, np.nda
 def _matrices_equal(path: str, a_key: str, b_key: str) -> bool:
     """Are the two matrices at these keys the same matrix?
 
-    Sampled, not exhaustive: ``shape`` and ``indptr`` are compared in full, then
-    ``data`` and ``indices`` over ``_DUP_SAMPLE_ROWS`` rows spread across the
-    whole matrix.
+    Sampled, not exhaustive, and the two layouts differ in what they compare in
+    full. Sparse: ``shape`` and ``indptr``, then ``data`` and ``indices`` over
+    ``_DUP_SAMPLE_ROWS`` rows spread across the matrix. Dense: ``shape`` alone,
+    then those same sampled rows in their entirety.
 
-    ``shape`` and ``indptr`` together pin the dimensions and the nonzero count of
-    every row, which is what makes the sampled rows meaningful — but they do not
-    pin content. Two matrices can share both and still hold different ``indices``
-    or ``data`` within a row, and only the sampled rows would catch that. So this
-    answers "the same, as far as several hundred rows can show" rather than
-    "provably identical".
+    Whatever is compared in full pins the dimensions — and for sparse, each row's
+    nonzero count — which is what makes the sampled rows meaningful. It does not
+    pin content: two sparse matrices can share shape and ``indptr`` and still
+    hold different ``indices`` or ``data`` within a row, and only the sampled
+    rows would catch that. So this answers "the same, as far as several hundred
+    rows can show" rather than "provably identical".
 
     Exhaustive comparison is deliberately not offered. ``reed2024`` carries 1.65
     billion nonzeros, so full equality means reading ~13 GB; callers that need
