@@ -28,10 +28,11 @@ _MODES = {
     },
     _NORMALIZE_ONLY: {
         "verb": "Normalized",
-        # "structure" rather than "indptr": the sparse comparison comes down to
-        # shape and indptr, the dense one to shape alone, and the edit log is the
-        # durable record of what was checked — it must not name evidence that
-        # does not exist for the layout it is describing.
+        # "structure" rather than "indptr": both layouts compare sampled rows,
+        # but the structure they compare in full differs — shape and indptr for
+        # sparse, shape alone for dense. The edit log is the durable record of
+        # what was checked, so it must not name evidence that does not exist for
+        # the layout it is describing.
         "raw_x": f"left unmodified — verified duplicate of X (structure in full, {_DUP_SAMPLE_ROWS} sampled rows)",
     },
 }
@@ -48,11 +49,14 @@ def normalize_raw(path: str) -> dict:
     nine states. Three are actionable and this handles two of them (#532);
     the third — counts in raw.X with an empty X — is #572::
 
-        raw.X \\ X   empty            counts               normalized
-        empty        error            promote+normalize    error
-        counts       error (#572)     duplicate? normalize error is wrong:
-                                      X only, else error   already correct
-        normalized   error            error                error
+        raw.X     X            outcome
+        --------  -----------  --------------------------------------------
+        empty     counts       promote + normalize
+        counts    counts       normalize X only when the two are the same
+                               matrix, refuse when they differ
+        counts    normalized   already the target layout — no-op
+        counts    empty        rebuild X from raw.X — not supported (#572)
+        every other combination refuses
 
     **promote + normalize** is the original case: counts sit in X, raw.X is
     absent, so X is copied to raw.X before being overwritten.
