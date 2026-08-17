@@ -65,8 +65,8 @@ Each row shows:
 |---|---|---|---|
 | `obs['library_id']` populated | ✗ Fail | Data generator | 28,633 / 50,296 cells NaN. Validator error. |
 | `obs['library_preparation_batch']` single-value | ✗ Fail | Data generator | Some rows hold semicolon-delimited lists. Validator error. |
-| Var feature_* labels populated | ✓ Fixed during curation | (curator) | `populate_labels` populated `var['feature_name']` + 4 sibling columns from Ensembl IDs (34,505 / 35,574 matched GENCODE). |
-| Obs ontology labels populated | ✓ Fixed during curation | (curator) | `populate_labels` wrote 8 derived obs labels from their `_ontology_term_id` columns. |
+| Var feature_* labels populated | ✓ Fixed during curation | (curator) | `populate_labels` filled `var['feature_name']` + 4 sibling columns from Ensembl IDs, and their `raw.var` mirrors. |
+| Obs ontology labels populated | ✓ Fixed during curation | (curator) | `populate_labels` filled 7 derived obs labels from their `_ontology_term_id` columns. |
 | `obs['library_preparation_batch']` placeholder values | ✓ Fixed during curation | (curator) | `replace_placeholder_values` removed 464 `'unknown'` cells. |
 | CAP marker symbols resolve in GENCODE | ⚠ Warn | Data generator | 2 markers (`H2*`, `STMN`) classified `not_in_gencode`. |
 | Var Ensembl IDs in current GENCODE | ⚠ Warn | Data generator | 1,069 IDs unmatched in GENCODE v48 / Ensembl 114 (mirrored in raw.var). |
@@ -180,8 +180,8 @@ Errors:
 | `obs['library_preparation_batch']` no placeholder values | ✓ Fixed during curation | (curator) | `replace_placeholder_values` removed 464 `'unknown'` cells (2026-04-21). |
 | `obs['library_sequencing_run']` no placeholder values | ✓ Fixed during curation | (curator) | `replace_placeholder_values` removed 464 `'unknown'` cells (2026-04-21). |
 | X is normalized | ✓ Fixed during curation | (curator) | `normalize_raw` moved raw counts to `raw.X` and applied `normalize_total(target_sum=10000) + log1p` (2026-04-21). |
-| Var feature_* columns populated | ✓ Fixed during curation | (curator) | `populate_labels` populated `var['feature_name']` and four sibling `feature_*` columns; 34,505 / 35,574 matched GENCODE (2026-04-21). |
-| Obs ontology label columns populated | ✓ Fixed during curation | (curator) | `populate_labels` wrote 8 obs labels (`tissue`, `cell_type`, `assay`, `disease`, `sex`, `organism`, `development_stage`, `self_reported_ethnicity`) from their `_ontology_term_id` columns (2026-04-21). |
+| Var feature_* columns populated | ✓ Fixed during curation | (curator) | `populate_labels` filled `var['feature_name']` and four sibling `feature_*` columns, plus their `raw.var` mirrors (2026-04-21). |
+| Obs ontology label columns populated | ✓ Fixed during curation | (curator) | `populate_labels` filled 7 obs labels (`tissue`, `cell_type`, `assay`, `disease`, `sex`, `organism`, `development_stage`) from their `_ontology_term_id` columns (2026-04-21). |
 | CAP annotations present | ✓ Fixed during curation | (curator) | `copy_cap_annotations` imported 1 annotation set (`Prelim annotation`) from `HCA Gut Cell Atlas v1 Myeloid Lineage.h5ad` (latest run 2026-05-07). |
 | Var Ensembl IDs match current GENCODE | ⚠ Warn | Data generator | 1,069 IDs unmatched in GENCODE v48 / Ensembl 114. |
 | CAP marker symbols resolve in GENCODE | ⚠ Warn | Data generator | 2 markers (`H2*`, `STMN`) classified `not_in_gencode`. |
@@ -233,7 +233,7 @@ Audit trail from `uns/provenance/edit_history`, oldest first.
 | 1 | 2026-04-21 04:19:10 | `normalize_raw` | Moved raw counts to raw.X and normalized X with normalize_total(target_sum=10000) + log1p |
 | 2 | 2026-04-21 04:19:51 | `replace_placeholder_values` | Replaced placeholder values with NaN in `library_preparation_batch` |
 | 3 | 2026-04-21 04:19:57 | `replace_placeholder_values` | Replaced placeholder values with NaN in `library_sequencing_run` |
-| 4 | 2026-04-21 04:20:03 | `populate_labels` | Filled var feature_* from Ensembl IDs (34505/35574 matched GENCODE) and 8 obs ontology labels |
+| 4 | 2026-04-21 04:20:03 | `populate_labels` | Populated 17 controlled column(s) from canonical sources; 0 already matched (skipped). observation_joinid not written. |
 | 5 | 2026-04-21 04:20:49 | `import_cap_annotations` | Copied CAP annotations from HCA Gut Cell Atlas v1 Myeloid Lineage.h5ad |
 | 6 | 2026-04-21 04:21:05 | `set_uns` | Set uns['default_embedding'] |
 | 7–14 | 2026-05-07 | `import_cap_annotations` | 8 re-runs (consolidating tooling iterations on the new shape). |
