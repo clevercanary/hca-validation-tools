@@ -15,9 +15,11 @@ def label_h5ad(path: str) -> dict:
 
     **Prefer :func:`populate_labels` for HCA curation.** This tool fills the
     same labels but also writes ``obs['observation_joinid']``, which HCA does
-    not use and which ``populate_labels`` treats as evidence of CellxGENE
-    origin — so once this has run, the populator refuses the file from then
-    on, and the labels cannot be refreshed after an ontology update. It also
+    not use and which ``populate_labels`` refuses on — so once this has run,
+    the populator rejects the file from then on, and the labels cannot be
+    refreshed after an ontology update. (The populator reads that column as a
+    CellxGENE marker, which is why running this on a plain HCA file locks it
+    out.) It also
     refuses outright if any controlled column is already populated, where
     ``populate_labels`` verifies those rows and fills the rest.
 

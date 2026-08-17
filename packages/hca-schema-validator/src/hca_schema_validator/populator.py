@@ -37,10 +37,15 @@ as ``fill`` throughout and needs no special handling.
   that aren't in its declared contract. If a file genuinely needs
   ``observation_joinid`` populated, that's ``label_h5ad``'s
   responsibility — and a deliberate one, since writing it is a one-way
-  door: ``populate_in_memory`` treats the column as evidence the file
-  came from CellxGENE and refuses it from then on, so the labels can
-  never be refreshed after an ontology update. That is why HCA curation
-  labels with this module rather than the labeler.
+  door: ``populate_in_memory`` refuses on the column from then on, so the
+  labels can never be refreshed after an ontology update. That is why HCA
+  curation labels with this module rather than the labeler.
+
+  Note what the column actually establishes, which is less than the
+  refusal assumes. It is written by ``cellxgene-schema add-labels`` *and*
+  by ``HCALabeler`` on a plain HCA-layout file, so its presence means
+  "some joinid-writing labeling pass has run", not "this file came from
+  CellxGENE". The refusal reads it as the latter.
 
 * Refuses outright (no per-column fallback) when:
 
