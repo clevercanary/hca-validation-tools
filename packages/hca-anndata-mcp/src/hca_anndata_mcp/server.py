@@ -70,9 +70,8 @@ mcp = FastMCP(
         "columns, skips columns already matching canonical, and writes nothing at all if any "
         "populated value mismatches, reporting row-level evidence. Never writes observation_joinid, "
         "and refuses on CellxGENE-imported files where add-labels already ran upstream, "
-        "label_h5ad fills the same labels but also writes observation_joinid — which makes "
-        "populate_labels refuse the file from then on — so it is for files bound for CellxGENE, "
-        "whose consumers require that column, not for HCA curation, "
+        "label_h5ad fills the same labels but also writes observation_joinid, which makes "
+        "populate_labels refuse the file from then on — prefer populate_labels for HCA curation, "
         "and view_edit_log to inspect the edit history recorded in a file."
     ),
 )

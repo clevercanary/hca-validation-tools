@@ -1,4 +1,4 @@
-"""Per-column fill/verify for HCA-tracker-imported h5ad files.
+"""Per-column fill/verify for the HCA label columns.
 
 The :class:`HCALabeler` ``label()`` flow has a hardline preflight that
 refuses if any controlled column is pre-populated. For files freshly
@@ -10,7 +10,10 @@ producer populated *some* cosmetic obs labels but left others empty
 and ``var['feature_name']`` missing — there's real per-column work to
 do, and the all-or-nothing refusal is wrong here.
 
-:func:`populate_in_memory` is the tracker-source counterpart:
+That case is what this module was written for, but it is not the limit
+of it: :func:`populate_in_memory` is the labeler for HCA-layout files
+generally, since a file with every controlled column absent classifies
+as ``fill`` throughout and needs no special handling.
 
 * Per-column logic — for each of the 5 var ``feature_*`` columns and 7
   obs ontology label columns:
@@ -35,10 +38,9 @@ do, and the all-or-nothing refusal is wrong here.
   ``observation_joinid`` populated, that's ``label_h5ad``'s
   responsibility — and a deliberate one, since writing it is a one-way
   door: ``populate_in_memory`` treats the column as evidence the file
-  came from CellxGENE and refuses it from then on.
-  That is why HCA curation labels with this module rather than the
-  labeler; ``label_h5ad`` is for files bound for CellxGENE, where
-  downstream consumers require the joinid.
+  came from CellxGENE and refuses it from then on, so the labels can
+  never be refreshed after an ontology update. That is why HCA curation
+  labels with this module rather than the labeler.
 
 * Refuses outright (no per-column fallback) when:
 

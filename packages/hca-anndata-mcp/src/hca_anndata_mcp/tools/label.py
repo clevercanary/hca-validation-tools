@@ -13,10 +13,18 @@ def label_h5ad(path: str) -> dict:
     Wraps :class:`hca_schema_validator.HCALabeler`. Writes a new timestamped
     edit snapshot and appends to ``uns['provenance']['edit_history']``.
 
-    Should run **before** :func:`copy_cap_annotations`: that tool calls
-    :func:`validate_marker_genes`, which reads ``var['feature_name']``.
-    Running the labeler first means marker-gene validation has the HCA
-    canonical gene symbols to match against.
+    **Prefer :func:`populate_labels` for HCA curation.** This tool fills the
+    same labels but also writes ``obs['observation_joinid']``, which HCA does
+    not use and which ``populate_labels`` treats as evidence of CellxGENE
+    origin — so once this has run, the populator refuses the file from then
+    on, and the labels cannot be refreshed after an ontology update. It also
+    refuses outright if any controlled column is already populated, where
+    ``populate_labels`` verifies those rows and fills the rest.
+
+    Whichever labeler runs should run **before** :func:`copy_cap_annotations`:
+    that tool calls :func:`validate_marker_genes`, which reads
+    ``var['feature_name']``. Labeling first means marker-gene validation has
+    the HCA canonical gene symbols to match against.
 
     The labeler populates these controlled columns:
 
