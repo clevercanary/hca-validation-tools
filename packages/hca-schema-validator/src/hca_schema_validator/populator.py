@@ -10,10 +10,12 @@ producer populated *some* cosmetic obs labels but left others empty
 and ``var['feature_name']`` missing — there's real per-column work to
 do, and the all-or-nothing refusal is wrong here.
 
-That case is what this module was written for, but it is not the limit
-of it: :func:`populate_in_memory` is the labeler for HCA-layout files
-generally, since a file with every controlled column absent classifies
-as ``fill`` throughout and needs no special handling.
+That case is what this module was written for, but it is not the limit of
+it: :func:`populate_in_memory` is the labeler for HCA-layout files
+generally. A file with every label column absent needs no special handling
+— each one classifies as ``fill`` wherever its ``*_ontology_term_id``
+source is present, and as ``skip-no-source`` where the source is absent
+too, which is a no-op rather than an error.
 
 * Per-column logic — for each of the 5 var ``feature_*`` columns and 7
   obs ontology label columns:

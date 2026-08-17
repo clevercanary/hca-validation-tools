@@ -65,7 +65,7 @@ Each row shows:
 |---|---|---|---|
 | `obs['library_id']` populated | ✗ Fail | Data generator | 28,633 / 50,296 cells NaN. Validator error. |
 | `obs['library_preparation_batch']` single-value | ✗ Fail | Data generator | Some rows hold semicolon-delimited lists. Validator error. |
-| Var feature_* labels populated | ✓ Fixed during curation | (curator) | `populate_labels` filled `var['feature_name']` + 4 sibling columns from Ensembl IDs, and their `raw.var` mirrors. |
+| Var feature_* labels populated | ✓ Fixed during curation | (curator) | `populate_labels` filled `var['feature_name']` + 4 sibling columns from Ensembl IDs, and, since `raw` is present, their `raw.var` mirrors. |
 | Obs ontology labels populated | ✓ Fixed during curation | (curator) | `populate_labels` filled 7 derived obs labels from their `_ontology_term_id` columns. |
 | `obs['library_preparation_batch']` placeholder values | ✓ Fixed during curation | (curator) | `replace_placeholder_values` removed 464 `'unknown'` cells. |
 | CAP marker symbols resolve in GENCODE | ⚠ Warn | Data generator | 2 markers (`H2*`, `STMN`) classified `not_in_gencode`. |
@@ -180,7 +180,7 @@ Errors:
 | `obs['library_preparation_batch']` no placeholder values | ✓ Fixed during curation | (curator) | `replace_placeholder_values` removed 464 `'unknown'` cells (2026-04-21). |
 | `obs['library_sequencing_run']` no placeholder values | ✓ Fixed during curation | (curator) | `replace_placeholder_values` removed 464 `'unknown'` cells (2026-04-21). |
 | X is normalized | ✓ Fixed during curation | (curator) | `normalize_raw` moved raw counts to `raw.X` and applied `normalize_total(target_sum=10000) + log1p` (2026-04-21). |
-| Var feature_* columns populated | ✓ Fixed during curation | (curator) | `populate_labels` filled `var['feature_name']` and four sibling `feature_*` columns, plus their `raw.var` mirrors (2026-04-21). |
+| Var feature_* columns populated | ✓ Fixed during curation | (curator) | `populate_labels` filled `var['feature_name']` and four sibling `feature_*` columns, plus their `raw.var` mirrors, `raw` being present (2026-04-21). |
 | Obs ontology label columns populated | ✓ Fixed during curation | (curator) | `populate_labels` filled 7 obs labels (`tissue`, `cell_type`, `assay`, `disease`, `sex`, `organism`, `development_stage`) from their `_ontology_term_id` columns (2026-04-21). |
 | CAP annotations present | ✓ Fixed during curation | (curator) | `copy_cap_annotations` imported 1 annotation set (`Prelim annotation`) from `HCA Gut Cell Atlas v1 Myeloid Lineage.h5ad` (latest run 2026-05-07). |
 | Var Ensembl IDs match current GENCODE | ⚠ Warn | Data generator | 1,069 IDs unmatched in GENCODE v48 / Ensembl 114. |
