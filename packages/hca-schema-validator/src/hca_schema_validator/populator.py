@@ -33,8 +33,12 @@ do, and the all-or-nothing refusal is wrong here.
   column-fill tool shouldn't quietly start writing reserved columns
   that aren't in its declared contract. If a file genuinely needs
   ``observation_joinid`` populated, that's ``label_h5ad``'s
-  responsibility (and ``label_h5ad`` only runs cleanly on files with
-  all controlled columns absent — currently a niche case).
+  responsibility — and a deliberate one, since writing it is a one-way
+  door: ``populate_in_memory`` treats the column as evidence the file
+  came from CellxGENE and refuses it from then on.
+  That is why HCA curation labels with this module rather than the
+  labeler; ``label_h5ad`` is for files bound for CellxGENE, where
+  downstream consumers require the joinid.
 
 * Refuses outright (no per-column fallback) when:
 
