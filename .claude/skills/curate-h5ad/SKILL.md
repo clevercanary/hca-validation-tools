@@ -107,7 +107,7 @@ Order:
    **Labeling decision tree** — exactly one branch fires (or zero, when no labeling is needed):
 
    * **CellxGENE-derived file** (any of: `uns['schema_version']` present, `uns['provenance']['cellxgene']` present, `obs['observation_joinid']` present, `import_cellxgene` in edit log) → **skip labeling**. The file's controlled label columns were already populated canonically by `cellxgene-schema add-labels` upstream and preserved through any conversion, and `populate_labels` correctly refuses on these files.
-   * **Any other HCA-layout file** → run **`populate_labels`**, whether the controlled columns are partly filled or absent entirely. The distinction does not change what the tool does: a missing column and an all-NaN column both classify as `fill`, and a partly-filled one is verified row by row before its NaN rows are filled.
+   * **Any other HCA-layout file** → run **`populate_labels`**, whether the controlled columns are partly filled or absent entirely. You do not need to classify the file first — the tool decides per column: it fills from canonical wherever the `*_ontology_term_id` source carries values, verifies a partly-filled column row by row before filling only its NaN rows, and no-ops on a column it can neither verify nor fill.
 
    If neither branch fits cleanly (e.g. file has SRE present), `populate_labels` surfaces a refusal pointing at the prerequisite (`strip_forbidden_obs_columns` etc.) — handle that first and re-classify.
 

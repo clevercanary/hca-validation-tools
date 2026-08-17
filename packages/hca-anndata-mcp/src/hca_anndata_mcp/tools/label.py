@@ -19,9 +19,9 @@ def label_h5ad(path: str) -> dict:
     the populator rejects the file from then on, and the labels cannot be
     refreshed after an ontology update. (The populator reads that column as a
     CellxGENE marker, which is why running this on a plain HCA file locks it
-    out.) It also
-    refuses outright if any controlled column is already populated, where
-    ``populate_labels`` verifies those rows and fills the rest.
+    out.) It also refuses outright if any controlled column is already
+    populated, where ``populate_labels`` verifies those rows and fills the
+    rest.
 
     Whichever labeler runs should run **before** :func:`copy_cap_annotations`:
     that tool calls :func:`validate_marker_genes`, which reads
