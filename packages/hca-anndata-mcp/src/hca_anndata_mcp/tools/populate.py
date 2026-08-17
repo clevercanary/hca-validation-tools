@@ -1,9 +1,11 @@
 """MCP wrapper for hca_schema_validator.populate_in_memory.
 
-Per-column fill/verify for HCA-tracker-imported h5ad files — the
-tracker-source counterpart to ``label_h5ad`` (which hardline-refuses on
-any pre-populated controlled column, the right behavior for
-CellxGENE-converted files).
+Per-column fill/verify, and the labeler for HCA-layout h5ad files
+generally — not only tracker-imported ones. ``label_h5ad`` fills the same
+labels but also writes ``obs['observation_joinid']``, which this module
+then treats as evidence of CellxGENE origin and refuses on, so labeling
+with it is a one-way door; it is for files bound for CellxGENE, whose
+consumers require that column.
 
 The substantive analysis lives in
 :func:`hca_schema_validator.populator.populate_in_memory`. This wrapper

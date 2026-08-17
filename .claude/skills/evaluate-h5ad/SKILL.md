@@ -38,7 +38,7 @@ One compact block (bullets or a short table) with:
 - Schema type (from `check_schema_type`) — include the version only when schema is CellxGENE (HCA is unversioned)
 - X verdict (from `check_x_normalization`: `raw_counts` / `normalized` / `indeterminate`) + whether `raw.X` is present
 - Provenance: render `N donors · M samples · K libraries` from `get_descriptive_stats.columns[<col>].unique` for `donor_id` / `sample_id` / `library_id`. Skip any metric whose column wasn't returned or whose `unique` is 0.
-- Labels: is `feature_name` in `var_columns`? which of the derived HCA obs labels (`tissue`, `cell_type`, `assay`, `disease`, `sex`, `organism`, `development_stage`) appear in `obs_columns`? Also note whether any `label_h5ad` entry exists in the edit log. If derived label columns are present but no `label_h5ad` entry is logged and their `*_ontology_term_id` counterparts also exist, flag as "possible producer drift — values may disagree with `_ontology_term_id`" (don't quantify drift here; `/curate-h5ad` handles that when `label_h5ad` runs). Separately flag `obs['self_reported_ethnicity']` / `obs['self_reported_ethnicity_ontology_term_id']` if either is present — HCA forbids these for privacy. On a CellxGENE-layout input the next step (`convert_cellxgene_to_hca`) strips both columns automatically as a side-effect of converting; on an HCA-layout input run `strip_forbidden_obs_columns` to remove them mechanically.
+- Labels: is `feature_name` in `var_columns`? which of the derived HCA obs labels (`tissue`, `cell_type`, `assay`, `disease`, `sex`, `organism`, `development_stage`) appear in `obs_columns`? Also note whether any labeling entry (`populate_labels`, or the older `label_h5ad`) exists in the edit log. If derived label columns are present but no labeling entry is logged and their `*_ontology_term_id` counterparts also exist, flag as "possible producer drift — values may disagree with `_ontology_term_id`" (don't quantify drift here; `/curate-h5ad` handles that when `populate_labels` runs, which verifies every populated row against canonical and reports each disagreement with row counts). Separately flag `obs['self_reported_ethnicity']` / `obs['self_reported_ethnicity_ontology_term_id']` if either is present — HCA forbids these for privacy. On a CellxGENE-layout input the next step (`convert_cellxgene_to_hca`) strips both columns automatically as a side-effect of converting; on an HCA-layout input run `strip_forbidden_obs_columns` to remove them mechanically.
 
 ## 2. HCA metadata readiness
 
@@ -127,7 +127,7 @@ Format the timestamp as `YYYY-MM-DD HH:MM:SS` (drop the `T` and the fractional s
 - One-line readiness verdict: ready / needs work / not started.
 - Prioritized list of next actions, most important first.
 - If `check_schema_type` reported `cellxgene`, the first action is `convert_cellxgene_to_hca`.
-- If the file is HCA-layout and has no `label_h5ad` edit-log entry, recommend running `/curate-h5ad` so `label_h5ad` populates `var['feature_name']` and regenerates the obs ontology labels before CAP handoff or marker-gene validation.
+- If the file is HCA-layout and has no labeling edit-log entry (`populate_labels`, or the older `label_h5ad`), recommend running `/curate-h5ad` so `populate_labels` fills `var['feature_name']` and the obs ontology labels before CAP handoff or marker-gene validation.
 
 ## Save the report
 

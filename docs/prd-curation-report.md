@@ -74,7 +74,7 @@ Each row shows:
 Status symbols (5 values, picked to be both color-blind safe and skim-able):
 
 - ✓ **Pass** — currently meets the check.
-- ✓ **Fixed during curation** — was failing on the file we received; the curator's tools made it pass. The "during curation" annotation comes from any `import_*` / `label_h5ad` / `replace_placeholder_values` / `set_uns` / `normalize_raw` / `compress_h5ad` entry in `uns/provenance/edit_history`. *Not session-bounded* — if a previous curation session fixed it, it still shows here.
+- ✓ **Fixed during curation** — was failing on the file we received; the curator's tools made it pass. The "during curation" annotation comes from any `import_*` / `populate_labels` / `label_h5ad` / `replace_placeholder_values` / `set_uns` / `normalize_raw` / `compress_h5ad` entry in `uns/provenance/edit_history`. *Not session-bounded* — if a previous curation session fixed it, it still shows here.
 - ✗ **Fail** — currently failing. Validator error.
 - ⚠ **Warn** — validator warning that isn't expected schema noise (CAP zero-observation warnings, for example, are filtered out and counted separately).
 - ➖ **Skipped** — check didn't apply (e.g. CAP marker validation when CAP isn't present).
