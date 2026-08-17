@@ -36,8 +36,16 @@ def populate_labels(path: str) -> dict:
     The labeler for HCA curation, whatever state the controlled columns are
     in: it fills missing and all-NaN columns from canonical, and on a partly
     filled one it verifies every populated row first, filling only the NaN
-    rows. Writes nothing at all if any populated value disagrees with its
-    ontology term ID, reporting each disagreement with row counts.
+    rows.
+
+    Canonical means two different sources. The 7 obs label columns are
+    checked against the ontology label for their ``*_ontology_term_id``; the
+    5 ``var['feature_*']`` columns, and their ``raw.var`` mirrors, against
+    GENCODE via the Ensembl ID in the index. A populated value disagreeing
+    with either one is a refusal, and the refusal is total — every column is
+    classified before anything is written, so one mismatch withholds the
+    fills that would have succeeded. Each disagreement is reported with row
+    counts.
 
     Unlike ``label_h5ad`` it never writes ``obs['observation_joinid']``, and
     that matters in one direction: a file carrying that column is refused
