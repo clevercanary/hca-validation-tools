@@ -1,9 +1,12 @@
 """MCP wrapper for hca_schema_validator.populate_in_memory.
 
-Per-column fill/verify for HCA-tracker-imported h5ad files — the
-tracker-source counterpart to ``label_h5ad`` (which hardline-refuses on
-any pre-populated controlled column, the right behavior for
-CellxGENE-converted files).
+Per-column fill/verify, and the labeler for HCA-layout h5ad files
+generally — not only tracker-imported ones. ``label_h5ad`` fills the same
+labels but also writes ``obs['observation_joinid']``, which this module
+refuses on from then on — so labeling with it is a one-way door. The
+column marks that a joinid-writing labeling pass has run, whether that
+was ``cellxgene-schema add-labels`` upstream or ``label_h5ad`` here; it
+does not by itself establish CellxGENE origin.
 
 The substantive analysis lives in
 :func:`hca_schema_validator.populator.populate_in_memory`. This wrapper
@@ -30,7 +33,25 @@ from hca_schema_validator import populate_in_memory
 
 
 def populate_labels(path: str) -> dict:
-    """Per-column fill/verify for HCA-tracker-imported h5ad files.
+    """Fill the HCA label columns on an HCA-layout h5ad, verifying as it goes.
+
+    The labeler for HCA curation, whatever state the controlled columns are
+    in: it fills missing and all-NaN columns from canonical, and on a partly
+    filled one it verifies every populated row first, filling only the NaN
+    rows.
+
+    Canonical means two different sources. The 7 obs label columns are
+    checked against the ontology label for their ``*_ontology_term_id``; the
+    5 ``var['feature_*']`` columns, and their ``raw.var`` mirrors, against
+    GENCODE via the Ensembl ID in the index. A populated value disagreeing
+    with either one is a refusal, and the refusal is total — every column is
+    classified before anything is written, so one mismatch withholds the
+    fills that would have succeeded. Each disagreement is reported with row
+    counts.
+
+    Unlike ``label_h5ad`` it never writes ``obs['observation_joinid']``, and
+    that matters in one direction: a file carrying that column is refused
+    here from then on.
 
     See :func:`hca_schema_validator.populator.populate_in_memory` for the
     per-column logic and refusal rules. This wrapper adds:

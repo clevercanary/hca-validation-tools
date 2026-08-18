@@ -1,4 +1,4 @@
-"""Per-column fill/verify for HCA-tracker-imported h5ad files.
+"""Per-column fill/verify for the HCA label columns.
 
 The :class:`HCALabeler` ``label()`` flow has a hardline preflight that
 refuses if any controlled column is pre-populated. For files freshly
@@ -10,7 +10,12 @@ producer populated *some* cosmetic obs labels but left others empty
 and ``var['feature_name']`` missing — there's real per-column work to
 do, and the all-or-nothing refusal is wrong here.
 
-:func:`populate_in_memory` is the tracker-source counterpart:
+That case is what this module was written for, but it is not the limit of
+it: :func:`populate_in_memory` is the labeler for HCA-layout files
+generally. A file with every label column absent needs no special handling
+— each one classifies as ``fill`` wherever its ``*_ontology_term_id``
+source is present, and as ``skip-no-source`` where the source is absent
+too, which is a no-op rather than an error.
 
 * Per-column logic — for each of the 5 var ``feature_*`` columns and 7
   obs ontology label columns:
@@ -33,8 +38,16 @@ do, and the all-or-nothing refusal is wrong here.
   column-fill tool shouldn't quietly start writing reserved columns
   that aren't in its declared contract. If a file genuinely needs
   ``observation_joinid`` populated, that's ``label_h5ad``'s
-  responsibility (and ``label_h5ad`` only runs cleanly on files with
-  all controlled columns absent — currently a niche case).
+  responsibility — and a deliberate one, since writing it is a one-way
+  door: ``populate_in_memory`` refuses on the column from then on, so the
+  labels can never be refreshed after an ontology update. That is why HCA
+  curation labels with this module rather than the labeler.
+
+  Note what the column actually establishes, which is less than the
+  refusal assumes. It is written by ``cellxgene-schema add-labels`` *and*
+  by ``HCALabeler`` on a plain HCA-layout file, so its presence means
+  "some joinid-writing labeling pass has run", not "this file came from
+  CellxGENE". The refusal reads it as the latter.
 
 * Refuses outright (no per-column fallback) when:
 
