@@ -185,14 +185,14 @@ One short paragraph or bullet block with: final file path, shape (`n_obs × n_va
 
 ### Mechanical fixes applied
 
-| # | Operation | Effect |
-|---|---|---|
-| 0 | `drop_obs_columns` | Name every column dropped, from the tool's own `obs_columns_dropped`, and say why — e.g. "Dropped `ethnicity_verbatim`, `ethnicity_grouped`, `self_reported_ethnicity_label` — privacy-sensitive ethnicity data under non-canonical names, approved individually." Name the columns; there is no need to restate their values, which the punch list already covered. If the wrangler declined a candidate, record that too, so a deliberate keep is distinguishable from a column nobody looked at. (The "not thereby cleared" caveat lives in the Summary, which ships whether or not this row does.) |
-| 1 | `normalize_raw` | e.g. "Moved raw counts → raw.X; normalized X with `normalize_total(target_sum=10000)` + log1p", or "raw.X already held the same counts and was left unmodified; normalized X with `normalize_total(target_sum=10000)` + log1p". The tool's `raw_x` field says which. |
-| 2 | `replace_placeholder_values` (`library_preparation_batch`) | e.g. "N cells: `'unknown'` → NaN" |
-| 3 | `populate_labels` | Name the columns from the tool's own `filled` and `matched` lists — e.g. "Filled `var['feature_name']`, `feature_reference`, `cell_type`, `tissue`; `assay` and `sex` already matched". The tool returns column names, not row counts, so do not quote per-row figures here unless another tool supplied them. Populated rows are verified against canonical before anything is written, so this step never overwrites producer text. |
-| 4 | `copy_cap_annotations` | name the CAP source file |
-| 5 | `compress_h5ad` | e.g. "Skipped — already gzipped" or "Rewrote X with gzip level 4" |
+| Operation | Effect |
+|---|---|
+| `drop_obs_columns` | Name every column dropped, from the tool's own `obs_columns_dropped`, and say why — e.g. "Dropped `ethnicity_verbatim`, `ethnicity_grouped`, `self_reported_ethnicity_label` — privacy-sensitive ethnicity data under non-canonical names, approved individually." Name the columns; there is no need to restate their values, which the punch list already covered. If the wrangler declined a candidate, record that too, so a deliberate keep is distinguishable from a column nobody looked at. (The "not thereby cleared" caveat lives in the Summary, which ships whether or not this row does.) |
+| `normalize_raw` | e.g. "Moved raw counts → raw.X; normalized X with `normalize_total(target_sum=10000)` + log1p", or "raw.X already held the same counts and was left unmodified; normalized X with `normalize_total(target_sum=10000)` + log1p". The tool's `raw_x` field says which. |
+| `replace_placeholder_values` (`library_preparation_batch`) | e.g. "N cells: `'unknown'` → NaN" |
+| `populate_labels` | Name the columns from the tool's own `filled` and `matched` lists — e.g. "Filled `var['feature_name']`, `feature_reference`, `cell_type`, `tissue`; `assay` and `sex` already matched". The tool returns column names, not row counts, so do not quote per-row figures here unless another tool supplied them. Populated rows are verified against canonical before anything is written, so this step never overwrites producer text. |
+| `copy_cap_annotations` | name the CAP source file |
+| `compress_h5ad` | e.g. "Skipped — already gzipped" or "Rewrote X with gzip level 4" |
 
 Only include the rows for tools that actually ran this session.
 
