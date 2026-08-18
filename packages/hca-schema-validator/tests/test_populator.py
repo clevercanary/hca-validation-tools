@@ -233,6 +233,100 @@ def test_skipped_when_everything_matched(tmp_path):
     assert "matched" in result
 
 
+# --- Refuse when canonical resolves nothing (#585) ---
+
+
+def test_obs_all_nan_source_refuses(tmp_path):
+    """Source term-ID column present but entirely NaN, label column absent.
+
+    Filling would write an all-NaN column and report it under 'filled',
+    telling the curator a column was populated when it got nothing. The
+    source is unusable and the file needs an upstream fix, so refuse.
+    """
+    adata = _load(create_labelable_h5ad(tmp_path / "empty_source.h5ad"))
+    adata.obs["tissue_ontology_term_id"] = pd.Categorical([None] * adata.n_obs)
+
+    result = populate_in_memory(adata)
+
+    assert "error" in result, result
+    joined = " ".join(result["details"]["errors"])
+    assert "tissue_ontology_term_id" in joined, joined
+    # Refusal is all-or-nothing: no column is written, not even the ones
+    # whose sources resolve fine.
+    assert "tissue" not in adata.obs.columns, "an all-NaN column was written"
+    assert "cell_type" not in adata.obs.columns, "wrote despite refusing"
+
+
+def test_obs_unrecognized_term_ids_refuse(tmp_path):
+    """Source holds values, but none are terms the ontology knows."""
+    adata = _load(create_labelable_h5ad(tmp_path / "bogus_source.h5ad"))
+    adata.obs["tissue_ontology_term_id"] = pd.Categorical(["UBERON:9999999"] * adata.n_obs)
+
+    result = populate_in_memory(adata)
+
+    assert "error" in result, result
+    assert "tissue" not in adata.obs.columns
+
+
+def test_raw_var_refusal_does_not_name_the_wrong_axis(tmp_path):
+    """`_classify_var_column` serves both var and raw.var, and the caller
+    rewrites only the `var['col']` prefix — so the message must not name a
+    specific index, or a raw.var refusal sends the curator to var.index."""
+    adata = _load(create_labelable_h5ad(tmp_path / "raw_no_ensembl.h5ad"))
+    raw = adata.raw.to_adata()
+    raw.var.index = pd.Index([f"SYM{i}" for i in range(raw.n_vars)])
+    adata.raw = raw
+
+    result = populate_in_memory(adata)
+
+    assert "error" in result, result
+    raw_errors = [e for e in result["details"]["errors"] if e.startswith("raw.var[")]
+    assert raw_errors, result["details"]["errors"]
+    for e in raw_errors:
+        assert "var.index" not in e, e
+
+
+def test_zero_row_file_is_not_refused(tmp_path):
+    """`isna().all()` is vacuously True on an empty series, so a 0-obs file
+    must not trip the refusal — there is nothing wrong with it."""
+    adata = _load(create_labelable_h5ad(tmp_path / "zero_rows.h5ad"))[:0].copy()
+
+    result = populate_in_memory(adata)
+
+    assert "error" not in result, result
+    assert "tissue" in result["filled"], result
+
+
+def test_var_unresolvable_index_refuses(tmp_path):
+    """var.index holds gene symbols, not Ensembl IDs, so GENCODE resolves
+    nothing — refuse rather than create all-NaN feature_* columns."""
+    adata = _load(create_labelable_h5ad(tmp_path / "no_ensembl.h5ad"))
+    adata.var.index = pd.Index([f"SYMBOL{i}" for i in range(adata.n_vars)])
+
+    result = populate_in_memory(adata)
+
+    assert "error" in result, result
+    joined = " ".join(result["details"]["errors"])
+    assert "GENCODE resolves no value" in joined, joined
+    for col in ("feature_name", "feature_reference", "feature_biotype", "feature_length", "feature_type"):
+        assert col not in adata.var.columns, f"an all-NaN var['{col}'] was written"
+
+
+def test_partially_resolvable_source_still_fills(tmp_path):
+    """Guard against an over-broad skip: canonical empty for *some* rows
+    is still a fill, with NaN left in the rows it can't resolve."""
+    adata = _load(create_labelable_h5ad(tmp_path / "partial_source.h5ad"))
+    # Row 0 keeps a resolvable term ID; the rest have none.
+    adata.obs["tissue_ontology_term_id"] = pd.Categorical(["UBERON:0002048"] + [None] * (adata.n_obs - 1))
+
+    result = populate_in_memory(adata)
+
+    assert "error" not in result, result
+    assert "tissue" in result["filled"], result
+    assert adata.obs["tissue"].iloc[0] == _FIXTURE_CANONICAL["tissue"]
+    assert pd.isna(adata.obs["tissue"].iloc[1])
+
+
 # --- Mismatch errors ---
 
 
