@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.7.3](https://github.com/clevercanary/hca-validation-tools/compare/hca-anndata-mcp-v0.7.2...hca-anndata-mcp-v0.7.3) (2026-08-18)
+
+
+### Features
+
+* **tools:** let normalize_raw proceed when raw.X duplicates X ([#573](https://github.com/clevercanary/hca-validation-tools/issues/573)) ([3e4adfc](https://github.com/clevercanary/hca-validation-tools/commit/3e4adfc6f71ce226ff4934d26bb0d2dee53a9f38))
+
+
+### Bug Fixes
+
+* **populator:** refuse instead of writing an all-NaN label column ([#586](https://github.com/clevercanary/hca-validation-tools/issues/586)) ([26a8539](https://github.com/clevercanary/hca-validation-tools/commit/26a8539223a5e97fe60f44e89e008673db6abb41))
+
+
+### Documentation
+
+* **curate-h5ad:** label with populate_labels, not label_h5ad ([#577](https://github.com/clevercanary/hca-validation-tools/issues/577)) ([863cd7f](https://github.com/clevercanary/hca-validation-tools/commit/863cd7fde8a841cb6f41921b9b06a5f847dd1758))
+
 ## [0.7.2](https://github.com/clevercanary/hca-validation-tools/compare/hca-anndata-mcp-v0.7.1...hca-anndata-mcp-v0.7.2) (2026-07-31)
 
 

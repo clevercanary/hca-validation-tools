@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.3](https://github.com/clevercanary/hca-validation-tools/compare/hca-anndata-tools-v0.6.2...hca-anndata-tools-v0.6.3) (2026-08-18)
+
+
+### Features
+
+* **tools:** let normalize_raw proceed when raw.X duplicates X ([#573](https://github.com/clevercanary/hca-validation-tools/issues/573)) ([3e4adfc](https://github.com/clevercanary/hca-validation-tools/commit/3e4adfc6f71ce226ff4934d26bb0d2dee53a9f38))
+
 ## [0.6.2](https://github.com/clevercanary/hca-validation-tools/compare/hca-anndata-tools-v0.6.1...hca-anndata-tools-v0.6.2) (2026-07-31)
 
 

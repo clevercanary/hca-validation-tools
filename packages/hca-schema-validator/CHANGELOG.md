@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.15.0](https://github.com/clevercanary/hca-validation-tools/compare/hca-schema-validator-v0.14.2...hca-schema-validator-v0.15.0) (2026-08-18)
+
+
+### ⚠ BREAKING CHANGES
+
+* **hca-schema-validator:** verify X against layers['desouped_counts'] ([#571](https://github.com/clevercanary/hca-validation-tools/issues/571))
+* **hca-schema-validator:** check that X holds a normalization of raw.X ([#560](https://github.com/clevercanary/hca-validation-tools/issues/560))
+
+### Features
+
+* **hca-schema-validator:** check that X holds a normalization of raw.X ([#560](https://github.com/clevercanary/hca-validation-tools/issues/560)) ([628394f](https://github.com/clevercanary/hca-validation-tools/commit/628394f04042b13c9709ee9cedd0b8b1f6561d55)), closes [#524](https://github.com/clevercanary/hca-validation-tools/issues/524)
+* **hca-schema-validator:** verify X against layers['desouped_counts'] ([#571](https://github.com/clevercanary/hca-validation-tools/issues/571)) ([5f1a7ae](https://github.com/clevercanary/hca-validation-tools/commit/5f1a7ae71a8bb89b7176c89b8e4dad8ff3e95003))
+
+
+### Bug Fixes
+
+* **populator:** refuse instead of writing an all-NaN label column ([#586](https://github.com/clevercanary/hca-validation-tools/issues/586)) ([26a8539](https://github.com/clevercanary/hca-validation-tools/commit/26a8539223a5e97fe60f44e89e008673db6abb41))
+
+
+### Documentation
+
+* **curate-h5ad:** label with populate_labels, not label_h5ad ([#577](https://github.com/clevercanary/hca-validation-tools/issues/577)) ([863cd7f](https://github.com/clevercanary/hca-validation-tools/commit/863cd7fde8a841cb6f41921b9b06a5f847dd1758))
+
 ## [0.14.2](https://github.com/clevercanary/hca-validation-tools/compare/hca-schema-validator-v0.14.1...hca-schema-validator-v0.14.2) (2026-07-31)
 
 
