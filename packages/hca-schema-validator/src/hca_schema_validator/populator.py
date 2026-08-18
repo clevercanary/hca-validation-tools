@@ -182,7 +182,7 @@ def _classify_obs_column(
                     f"obs['{source_col}'] is present but resolves no canonical "
                     f"label for any row — every value is either empty or not a "
                     f"recognized ontology term, so obs['{cosmetic_col}'] cannot "
-                    f"be filled. Supply the term IDs upstream."
+                    f"be filled. Provide valid ontology term IDs upstream."
                 ],
                 None,
             )
