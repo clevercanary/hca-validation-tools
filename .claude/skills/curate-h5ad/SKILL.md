@@ -38,7 +38,9 @@ No pattern finds these. Across the breast-v1 source datasets the same data appea
 
 So: read `obs_columns` from the evaluator's summary and identify any column that appears to carry **ethnicity or race tied to a subject**.
 
-**Exclude the two canonical names.** `self_reported_ethnicity` and `self_reported_ethnicity_ontology_term_id` are handled by `strip_forbidden_obs_columns`, which is Bucket A and runs earlier. Do not list them here as well. They are not schema-named — `requirement_level: forbidden` keeps them out of the tiers `drop_obs_columns` checks — so the tool will accept them, then refuse the whole request on the absent-name check once strip has removed them. Because the tool is all-or-nothing, that refusal drops **nothing**, and the non-canonical columns this scan exists for would ship. This scan covers only the names strip cannot see.
+**Exclude the two canonical names.** `self_reported_ethnicity` and `self_reported_ethnicity_ontology_term_id` are `strip_forbidden_obs_columns`'s job — Bucket A, and it runs earlier. Do not list them here as well.
+
+The reason is worth knowing, because getting it wrong fails silently. `drop_obs_columns` guards the schema's **required and optional** tiers, and `requirement_level: forbidden` puts these two in neither — so the tool does not refuse them on schema grounds. It accepts the names. By then strip has already removed the columns, so the request fails the absent-name check instead, and the tool is all-or-nothing: that failure drops **nothing**. The non-canonical columns this scan exists for would ship, in a run that otherwise looked like it did its job. This scan covers only the names strip cannot see.
 
 For each remaining candidate, call `get_descriptive_stats` on it and build the case:
 
@@ -58,7 +60,7 @@ Two practical notes, neither about disclosure:
 
 Candidates go to **B1** — they block, and each needs approve-or-strike from the wrangler individually. Never propose a glob or a name pattern; always enumerate.
 
-**Scoped to ethnicity and race, and nothing else.** Do not extend it by analogy to other fields that feel sensitive — `donor_id`, `age_*`, `disease`, geography, clinical notes. Those are legitimate HCA metadata, several are required, and proposing them for deletion is out of scope for this skill. HCA forbids self-reported ethnicity specifically; that is the whole of what this scan is for. Note the tool will not save you here: it refuses columns the schema names, but a clinical field under a producer name — `dx_notes`, `donor_origin_country` — is not schema-named and would drop if you asked.
+**Scoped to ethnicity and race, and nothing else.** Do not extend it by analogy to other fields that feel sensitive — `donor_id`, `age_*`, `disease`, geography, clinical notes. Those are legitimate HCA metadata, several are required, and proposing them for deletion is out of scope for this skill. HCA forbids self-reported ethnicity specifically; that is the whole of what this scan is for. Note the tool will not save you here: it refuses columns in the schema's required and optional tiers, but a clinical field under a producer name — `dx_notes`, `donor_origin_country` — is in neither and would drop if you asked.
 
 **Flag liberally within that scope.** A false positive costs one struck line; a false negative ships ethnicity data.
 
@@ -143,7 +145,7 @@ Order:
 2. `strip_forbidden_obs_columns` next if applicable (HCA-layout input with SRE columns present) — must run before `populate_labels`, which refuses while SRE is present. On CellxGENE-layout inputs this is unnecessary; the convert step above already stripped them.
 3. `drop_obs_columns` if the wrangler approved any privacy columns in Step 3 — one call, approved names enumerated. **This step is independent of step 2**: a file with no canonical SRE columns skips that step and still reaches this one, which is the normal shape for the producer-named columns this targets. Removal belongs ahead of the content edits so labeling and CAP see the column set the file actually ships. It does not shrink the file; `compress_h5ad` at the end repacks.
 
-   Every refusal leaves the file untouched — that is the tool working, not a failure to route around. Its checks on the names themselves (a schema-named column, the obs index, a name that isn't present, an outside reference to the column) are listed with the tool in Bucket A; three more can fire at this step:
+   Every refusal leaves the file untouched — that is the tool working, not a failure to route around. Its checks on the names themselves (a required or optional schema column, the obs index, a name that isn't present) are listed with the tool in Bucket A; three more can fire at this step:
    - `uns['batch_condition']` names one of the columns → resolving that is a Bucket C decision for the wrangler, not a reason to drop fewer columns.
    - The file uses the deprecated legacy CAP layout → refused wholesale regardless of which columns were named (see Bucket C). Report it as a CAP-layout problem, not a column problem.
    - A requested name contains `--` while `uns['cap_metadata']` is present → that is a CAP annotation-set column; bring it to the CAP curator.
@@ -177,7 +179,7 @@ For the Provenance line below, re-run `get_summary` on the final file to fetch i
 
 Two or three sentences distilling the session: which Bucket A operations actually ran, the validator delta in one phrase (e.g. "errors went 4 → 2; remaining errors are Bucket C upstream-data issues"), and a one-clause hand-off (e.g. "Bucket B1 awaiting wrangler input on `study_pi`"). Tight prose paragraph, no nested headings.
 
-End the paragraph with the privacy-scan line, **always, including when the scan found nothing and no column was dropped**: "A privacy scan for ethnicity and race columns was run; columns not flagged by it are not thereby cleared — it reduces privacy risk, it does not eliminate it." A clean file is exactly the case a reader is most likely to mistake for a clearance, and it is the case where every other trace of the scan is omitted: report row 0 only appears when `drop_obs_columns` ran. This sentence is the one that always ships.
+End the paragraph with the privacy-scan line, **always, including when the scan found nothing and no column was dropped**: "A privacy scan for ethnicity and race columns was run; columns not flagged by it are not thereby cleared — it reduces privacy risk, it does not eliminate it." A clean file is exactly the case a reader is most likely to mistake for a clearance, and it is the case where every other trace of the scan is omitted: the report's `drop_obs_columns` row only appears when that tool ran. This sentence is the one that always ships.
 
 Then add an **Outstanding issues** bullet list pulled from Buckets B1, B2, and C — one line per item, no bucket-label prefixes (the reader doesn't need our internal taxonomy). Order: validator errors first, then warnings, then non-validator items. The full detail with action questions lives in the *Still to do* section near the bottom — keep this list tight: one line per item, no inline tables. If all three buckets are empty, replace the bullet list with a single line: "Outstanding issues: none."
 
@@ -256,7 +258,7 @@ Report each missing marker by **symbol and classification only**. Do not specula
 
 ### Still to do
 
-**Bucket B1 — blocking (validator errors or unset `required: true` fields)**
+**Bucket B1 — blocking (validator errors, unset `required: true` fields, or a privacy finding)**
 
 | Field | Question |
 |---|---|
