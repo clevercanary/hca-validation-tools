@@ -30,6 +30,25 @@ Start with the evaluator, then gate the HCA validator on the schema it reports:
 - If the evaluator reports `schema: "hca"`, run `validate_schema $ARGUMENTS` — the HCA schema validator (`is_valid`, full `errors` and `warnings` lists). These are the authoritative blocking/advisory signals for Bucket A decisions. Feature-ID warnings are ordered last; summarize repeated shapes in the punch list rather than pasting thousands of lines verbatim.
 - If the evaluator reports `schema: "cellxgene"`, **do not** run `validate_schema` yet — the HCA validator would report a large, mostly irrelevant error list. `convert_cellxgene_to_hca` moves into Bucket A; after it runs, re-enter Step 1 on the converted file to get the accurate HCA findings.
 
+### Privacy scan — read the obs column list yourself
+
+Neither validator finds privacy-sensitive columns under non-canonical names. The schema's `forbidden_columns` and `strip_forbidden_obs_columns` both match two exact strings — `self_reported_ethnicity` and `self_reported_ethnicity_ontology_term_id` — so anything carrying the same information under another name passes both untouched. HCA forbids self-reported ethnicity for privacy, so a file can reach `is_valid: true` still carrying it.
+
+No pattern finds these. Across the breast-v1 source datasets the same data appears as `ethnicity_verbatim`, `ethnicity_grouped`, `reported_ethnicity`, `race` and `self_reported_ethnicity_label` — names sharing no prefix, no suffix and no common substring. They are found by reading the column list and recognising what the words mean, which is your job here rather than a tool's.
+
+So: read `obs_columns` from the evaluator's summary and identify any column that appears to carry **ethnicity or race tied to a subject**. For each candidate, call `get_descriptive_stats` on it and build the case:
+
+| | |
+|---|---|
+| column | the exact name |
+| dtype and unique count | from `get_descriptive_stats` |
+| category vocabulary | the category names, which are aggregate vocabulary rather than per-donor values |
+| why | what about the name and values reads as ethnicity or race |
+
+Candidates go to **B1** — they block, and each needs approve-or-strike from the wrangler individually. Never propose a glob or a name pattern; always enumerate.
+
+**Flag liberally.** A false positive costs one struck line; a false negative ships ethnicity data. And state the limit plainly in your report: **a column you did not flag is not thereby cleared.** This step reduces the risk, it does not eliminate it — an obscurely-named column will produce a clean-looking report on a file that still carries the data.
+
 ## Step 2 — Classify every finding into one bucket
 
 ### Bucket A — Mechanical (safe to run after approval)
@@ -38,6 +57,7 @@ Only these are in Bucket A. Nothing else. A row belongs in A only when its preco
 
 - **`convert_cellxgene_to_hca`** — when `check_schema_type` reports `schema: "cellxgene"`. Must run **first**: it reshapes the file into HCA layout before any other fix makes sense, and the other tools (including `validate_schema`) assume HCA layout. Strips the HCA-forbidden SRE columns (`self_reported_ethnicity_ontology_term_id`, `self_reported_ethnicity`) as a side-effect — so for CellxGENE-layout inputs, the SRE problem is handled here. After conversion, re-enter Step 1 on the converted file to get an accurate Bucket A/B/C list.
 - **`strip_forbidden_obs_columns`** — when the file is **HCA-layout** AND either `obs['self_reported_ethnicity']` or `obs['self_reported_ethnicity_ontology_term_id']` is present. Mechanically removes the privacy-forbidden columns and updates `obs[column-order]`. Required prerequisite for `populate_labels` (which refuses while SRE is present), so this should run early in the Bucket A sequence on HCA-layout inputs. On CellxGENE-layout inputs the tool refuses — `convert_cellxgene_to_hca` is the correct entry point there.
+- **`drop_obs_columns`** — only for privacy-sensitive columns the wrangler approved individually in Step 3 (see the privacy scan in Step 1). Takes an **enumerated list of column names** — never a glob, never a pattern. The tool is all-or-nothing: the whole request is validated before anything is written, so if any name fails a check the file is untouched and every problem is reported together. It refuses any column the HCA schema names (required or optional) and the obs index, refuses a name that isn't present, and refuses when anything else references the column — so an approved list cannot quietly break the file. It deletes `uns['<column>_colors']` alongside each dropped column, since an orphaned palette is a validator error. Note it does **not** shrink the file: HDF5 doesn't reclaim freed space in place, which is one reason `compress_h5ad` runs last.
 - **`normalize_raw`** — when `check_x_normalization` reports `verdict: "raw_counts"`, whether or not `has_raw_x` is true. Deterministic, and which of two things it does depends on `raw.X`. With **no `raw.X`**, it moves X→raw.X and normalizes X with `normalize_total(target_sum=10000) + log1p`. With a **`raw.X` that is the same matrix as X** — normalization never ran, so both hold the raw counts — it leaves `raw.X` untouched and normalizes X alone. A `raw.X` that *differs* from X is a genuinely different file and the tool refuses. It also refuses when `raw.X` does not itself hold counts, and reports a no-op (writing nothing) when `raw.X` holds counts and X is already normalized, which is the target layout.
 - **`replace_placeholder_values` on `library_preparation_batch`** — only if the column actually contains placeholder values flagged by the validator.
 - **`replace_placeholder_values` on `library_sequencing_run`** — same condition.
@@ -56,12 +76,13 @@ For each item, write a concrete question. For **B1** items, do not include a sug
 **B1 — Blocking (validator errors or unset `required: true` fields)**
 
 - Missing required `uns` fields (e.g. `study_pi`) — ask for the value(s).
+- **Privacy-sensitive obs columns found by the Step 1 scan.** One row per column, each awaiting approve-or-strike on its own — approving one is not approving the rest. Give the case, not just the name: dtype, unique count, the category vocabulary, and what reads as ethnicity or race. Ask plainly whether to drop each; approved columns become a single `drop_obs_columns` call in Step 4 with those names enumerated. Do not drop anything the wrangler didn't name back to you, and do not treat silence as approval. If the wrangler declines a column, record that in the report — a deliberate keep and an unnoticed column should not look the same to the next reader.
 - **No CAP annotation set present** — the file must ship with at least one CAP annotation set (see the [HCA Cell Annotation schema](https://data.humancellatlas.org/metadata/cell-annotation)). Ask the wrangler to provide a local path to a CAP-exported version of this file (same cells, with CAP annotation sets populated) — `copy_cap_annotations` reads the source via AnnData/h5py so a URL must be downloaded locally first. If supplied, `copy_cap_annotations` becomes a mechanical fix for Step 4.
 - Any other `uns` field the validator flags as missing.
 
 **B2 — Recommended (optional fields the wrangler may want to set)**
 
-Only the fields explicitly named below belong in B2. Do **not** scan `list_uns_fields` for other unset optional fields and invent questions about them — a field being optional-and-unset is not itself a reason to ask. The skill's scope is the explicit tool list (`convert_cellxgene_to_hca`, `strip_forbidden_obs_columns`, `normalize_raw`, `replace_placeholder_values`, `populate_labels`, `copy_cap_annotations`, `set_uns` on the named fields here, `compress_h5ad`); everything else is the wrangler's call, unprompted.
+Only the fields explicitly named below belong in B2. Do **not** scan `list_uns_fields` for other unset optional fields and invent questions about them — a field being optional-and-unset is not itself a reason to ask. The skill's scope is the explicit tool list (`convert_cellxgene_to_hca`, `strip_forbidden_obs_columns`, `drop_obs_columns`, `normalize_raw`, `replace_placeholder_values`, `populate_labels`, `copy_cap_annotations`, `set_uns` on the named fields here, `compress_h5ad`); everything else is the wrangler's call, unprompted.
 
 - `default_embedding` — list the obsm keys and ask which one. Optional per schema, but a file shipped without it will display in CELLxGENE Explorer with no default scatter. Must name a 2D embedding to actually plot; 30D latents (e.g. `X_scVI`) are valid per schema but won't display. If only one 2D embedding exists, surface that — the wrangler will almost certainly pick it.
 
@@ -102,6 +123,7 @@ Order:
 
 1. `convert_cellxgene_to_hca` first if applicable — then stop, re-run Steps 1–3 on the converted file before continuing (conversion changes the layout enough that the prior punch list is stale).
 2. `strip_forbidden_obs_columns` next if applicable (HCA-layout input with SRE columns present) — must run before `populate_labels`, which refuses while SRE is present. On CellxGENE-layout inputs this is unnecessary; the convert step above already stripped them.
+   Then `drop_obs_columns` for any privacy-sensitive columns approved in Step 3, in one call with the approved names enumerated. Column removal belongs here with the other removals and ahead of the content edits, so the labeling and CAP steps run on the column set the file is actually shipping. It does not shrink the file — `compress_h5ad` at the end repacks.
 3. Content edits, in this order: `normalize_raw`, each `replace_placeholder_values`, **labeling step** (decision tree below), `copy_cap_annotations` (if a source was supplied), and any `set_uns` approved in Step 3. Whichever labeling tool ran (if any) must precede `copy_cap_annotations` — `copy_cap_annotations` calls `validate_marker_genes`, which reads `var['feature_name']`; populating it first gives marker-gene validation canonical gene symbols to match against.
 
    **Labeling decision tree** — exactly one branch fires (or zero, when no labeling is needed):
@@ -139,6 +161,7 @@ One short paragraph or bullet block with: final file path, shape (`n_obs × n_va
 
 | # | Operation | Effect |
 |---|---|---|
+| 0 | `drop_obs_columns` | Name every column dropped and say why, e.g. "Dropped `ethnicity_verbatim`, `ethnicity_grouped`, `self_reported_ethnicity_label` — privacy-sensitive ethnicity data under non-canonical names, approved individually". If the wrangler declined any candidate, record that here too, so a deliberate keep is distinguishable from a column nobody looked at. |
 | 1 | `normalize_raw` | e.g. "Moved raw counts → raw.X; normalized X with `normalize_total(target_sum=10000)` + log1p", or "raw.X already held the same counts and was left unmodified; normalized X with `normalize_total(target_sum=10000)` + log1p". The tool's `raw_x` field says which. |
 | 2 | `replace_placeholder_values` (`library_preparation_batch`) | e.g. "N cells: `'unknown'` → NaN" |
 | 3 | `populate_labels` | Name the columns from the tool's own `filled` and `matched` lists — e.g. "Filled `var['feature_name']`, `feature_reference`, `cell_type`, `tissue`; `assay` and `sex` already matched". The tool returns column names, not row counts, so do not quote per-row figures here unless another tool supplied them. Populated rows are verified against canonical before anything is written, so this step never overwrites producer text. |
