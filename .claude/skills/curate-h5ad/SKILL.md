@@ -47,7 +47,7 @@ For each remaining candidate, call `get_descriptive_stats` with `attribute="obs"
 | Field | What to report |
 |---|---|
 | column | the exact name |
-| dtype and unique count | `dtype` and `unique` from the result |
+| dtype and unique count | `dtype` always; `unique` on categorical columns only (see the numeric note below) |
 | the values | the category vocabulary, from `value_counts=True` |
 | why | what about the name reads as ethnicity or race |
 
