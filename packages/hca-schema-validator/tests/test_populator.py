@@ -268,6 +268,24 @@ def test_obs_unrecognized_term_ids_refuse(tmp_path):
     assert "tissue" not in adata.obs.columns
 
 
+def test_raw_var_refusal_does_not_name_the_wrong_axis(tmp_path):
+    """`_classify_var_column` serves both var and raw.var, and the caller
+    rewrites only the `var['col']` prefix — so the message must not name a
+    specific index, or a raw.var refusal sends the curator to var.index."""
+    adata = _load(create_labelable_h5ad(tmp_path / "raw_no_ensembl.h5ad"))
+    raw = adata.raw.to_adata()
+    raw.var.index = pd.Index([f"SYM{i}" for i in range(raw.n_vars)])
+    adata.raw = raw
+
+    result = populate_in_memory(adata)
+
+    assert "error" in result, result
+    raw_errors = [e for e in result["details"]["errors"] if e.startswith("raw.var[")]
+    assert raw_errors, result["details"]["errors"]
+    for e in raw_errors:
+        assert "var.index" not in e, e
+
+
 def test_zero_row_file_is_not_refused(tmp_path):
     """`isna().all()` is vacuously True on an empty series, so a 0-obs file
     must not trip the refusal — there is nothing wrong with it."""
@@ -289,7 +307,7 @@ def test_var_unresolvable_index_refuses(tmp_path):
 
     assert "error" in result, result
     joined = " ".join(result["details"]["errors"])
-    assert "var.index" in joined, joined
+    assert "GENCODE resolves no value" in joined, joined
     for col in ("feature_name", "feature_reference", "feature_biotype", "feature_length", "feature_type"):
         assert col not in adata.var.columns, f"an all-NaN var['{col}'] was written"
 

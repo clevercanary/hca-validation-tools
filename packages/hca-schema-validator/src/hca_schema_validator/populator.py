@@ -268,9 +268,13 @@ def _classify_var_column(
             return (
                 "errored",
                 [
+                    # Index is named as "its index", not "var.index": the
+                    # caller reuses this classifier for raw.var and rewrites
+                    # only the "var['col']" prefix, so a hard-coded var.index
+                    # would point a raw.var refusal at the wrong axis.
                     f"var['{col}'] cannot be filled: GENCODE resolves no value "
-                    f"for any ID in var.index. Check that var.index holds "
-                    f"Ensembl gene IDs valid for the GENCODE version in use."
+                    f"for any ID in its index. Check that it holds Ensembl "
+                    f"gene IDs valid for the GENCODE version in use."
                 ],
                 None,
             )
