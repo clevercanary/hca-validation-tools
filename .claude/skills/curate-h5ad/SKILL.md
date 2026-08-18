@@ -46,26 +46,15 @@ For each remaining candidate, call `get_descriptive_stats` on it and build the c
 |---|---|
 | column | the exact name |
 | dtype and unique count | `dtype` and `unique` from the result |
-| shape of the values | see the disclosure rule below |
+| the values | the category vocabulary, from `value_counts=True` |
 | why | what about the name reads as ethnicity or race |
 
-**Do not reproduce the data you are trying to remove.** Reading values is how you judge, but every value you write down survives in the curation report saved to disk beside the h5ad — a file `drop_obs_columns` never touches, and which outlives the column you dropped. So:
+Show the values. The wrangler is the curator and is authorised to see the file's contents — that is the job — and the unedited source dataset retains the column regardless of what this run drops. Withholding the vocabulary from the curator making the call would only make the decision harder to judge.
 
-- **Low-cardinality categorical** (roughly ≤20 categories, and every category passes the donor test below): call `get_descriptive_stats` with `value_counts=True` and list the category names. A closed vocabulary like `White, Asian, Black or African American` is aggregate and safe to show.
-- **High-cardinality or free text**: do **not** pass `value_counts=True`, and do not quote values. Report the unique count and characterise the shape — "free-text ethnicity descriptions, most unique to one donor". `value_counts=True` there returns nearly the whole column, which would copy the data into the report wholesale. **The default response is not safe to paste either**: `top` and `freq` come back on any non-numeric column that has at least one non-null value, without asking for them, and `top` is a verbatim value — one real donor's ethnicity string. Quote neither.
-- **Numeric dtype** (e.g. race stored as integer codes): the numeric branch returns quartiles and no `unique`, so the fields above are unavailable. Report that the column is numeric-coded and say you could not characterise it without reading values — do not read them to fill the table in.
-- **A rare category that identifies one or two donors** is not aggregate. Say a rare category exists and give its donor count; do not name it.
+Two practical notes, neither about disclosure:
 
-**The donor test — count donors, never cells.** `value_counts` returns cells, and cell counts do not answer the question. A category can span tens of thousands of cells and still be two people, because cells per donor vary by orders of magnitude. Naming such a category names those donors' ethnicity in a report that outlives the file. So for each category, count the distinct donors:
-
-```
-get_descriptive_stats(path, columns=["donor_id"],
-                      filter_column="<candidate>", filter_operator="==", filter_value="<category>")
-```
-
-and read `unique` from the result. Fewer than roughly 5 donors: do not name that category — say a category with that donor count exists. This is not hypothetical: on the worked-example file, an ethnicity category holding **8,616 cells** — abundant by any cell-count reading — resolves to **2 donors**.
-
-If you cannot run the donor test (no `donor_id`, or the file uses another subject key you are unsure of), do not name any category. Default to not quoting whenever the case is unclear.
+- **High-cardinality or free text**: skip `value_counts=True`. It returns close to the whole column, which buries the punch list in thousands of lines. Report the unique count and characterise the shape instead — "free-text ethnicity descriptions, most unique to one donor".
+- **Numeric dtype** (e.g. race stored as integer codes): the numeric branch returns quartiles and no `unique` or `value_counts`, so use `view_data` if you need to see the codes.
 
 Candidates go to **B1** — they block, and each needs approve-or-strike from the wrangler individually. Never propose a glob or a name pattern; always enumerate.
 
@@ -102,7 +91,7 @@ For each item, write a concrete question. For **B1** items, do not include a sug
 **B1 — Blocking (validator errors or unset `required: true` fields)**
 
 - Missing required `uns` fields (e.g. `study_pi`) — ask for the value(s).
-- **Privacy-sensitive obs columns found by the Step 1 scan.** One row per column, each awaiting approve-or-strike on its own — approving one is not approving the rest. Give the case, not just the name: dtype, unique count, the value shape **as the disclosure rule in Step 1 permits it**, and what reads as ethnicity or race. That rule governs here too, and it matters more than it looks: declined and unresolved B1 items are re-rendered in the saved report's *Still to do* table, so anything quoted here lands on disk even for a column the wrangler chose to keep. Ask plainly whether to drop each; approved columns become a single `drop_obs_columns` call in Step 4 with those names enumerated. **Before that call, restate the exact column list and require an explicit yes to that list.** A general "drop the ones you flagged" is not naming — echo the names back and wait. Silence is never approval. If the wrangler declines a column, record that in the report — a deliberate keep and an unnoticed column should not look the same to the next reader.
+- **Privacy-sensitive obs columns found by the Step 1 scan.** One row per column, each awaiting approve-or-strike on its own — approving one is not approving the rest. Give the case, not just the name: dtype, unique count, the category vocabulary, and what reads as ethnicity or race. Ask plainly whether to drop each; approved columns become a single `drop_obs_columns` call in Step 4 with those names enumerated. **Before that call, restate the exact column list and require an explicit yes to that list.** A general "drop the ones you flagged" is not naming — echo the names back and wait. Silence is never approval. If the wrangler declines a column, record that in the report — a deliberate keep and an unnoticed column should not look the same to the next reader.
 - **No CAP annotation set present** — the file must ship with at least one CAP annotation set (see the [HCA Cell Annotation schema](https://data.humancellatlas.org/metadata/cell-annotation)). Ask the wrangler to provide a local path to a CAP-exported version of this file (same cells, with CAP annotation sets populated) — `copy_cap_annotations` reads the source via AnnData/h5py so a URL must be downloaded locally first. If supplied, `copy_cap_annotations` becomes a mechanical fix for Step 4.
 - Any other `uns` field the validator flags as missing.
 
@@ -196,7 +185,7 @@ One short paragraph or bullet block with: final file path, shape (`n_obs × n_va
 
 | # | Operation | Effect |
 |---|---|---|
-| 0 | `drop_obs_columns` | Name every column dropped, from the tool's own `obs_columns_dropped`, and say why — e.g. "Dropped `ethnicity_verbatim`, `ethnicity_grouped`, `self_reported_ethnicity_label` — privacy-sensitive ethnicity data under non-canonical names, approved individually." Name the columns, never their values. If the wrangler declined a candidate, record that too, so a deliberate keep is distinguishable from a column nobody looked at. (The "not thereby cleared" caveat lives in the Summary, which ships whether or not this row does.) |
+| 0 | `drop_obs_columns` | Name every column dropped, from the tool's own `obs_columns_dropped`, and say why — e.g. "Dropped `ethnicity_verbatim`, `ethnicity_grouped`, `self_reported_ethnicity_label` — privacy-sensitive ethnicity data under non-canonical names, approved individually." Name the columns; there is no need to restate their values, which the punch list already covered. If the wrangler declined a candidate, record that too, so a deliberate keep is distinguishable from a column nobody looked at. (The "not thereby cleared" caveat lives in the Summary, which ships whether or not this row does.) |
 | 1 | `normalize_raw` | e.g. "Moved raw counts → raw.X; normalized X with `normalize_total(target_sum=10000)` + log1p", or "raw.X already held the same counts and was left unmodified; normalized X with `normalize_total(target_sum=10000)` + log1p". The tool's `raw_x` field says which. |
 | 2 | `replace_placeholder_values` (`library_preparation_batch`) | e.g. "N cells: `'unknown'` → NaN" |
 | 3 | `populate_labels` | Name the columns from the tool's own `filled` and `matched` lists — e.g. "Filled `var['feature_name']`, `feature_reference`, `cell_type`, `tissue`; `assay` and `sex` already matched". The tool returns column names, not row counts, so do not quote per-row figures here unless another tool supplied them. Populated rows are verified against canonical before anything is written, so this step never overwrites producer text. |
