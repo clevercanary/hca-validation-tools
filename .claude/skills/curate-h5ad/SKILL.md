@@ -51,12 +51,21 @@ For each remaining candidate, call `get_descriptive_stats` on it and build the c
 
 **Do not reproduce the data you are trying to remove.** Reading values is how you judge, but every value you write down survives in the curation report saved to disk beside the h5ad — a file `drop_obs_columns` never touches, and which outlives the column you dropped. So:
 
-- **Low-cardinality categorical** (roughly ≤20 categories, none rare enough to single out a donor): call `get_descriptive_stats` with `value_counts=True` and list the category names. A closed vocabulary like `White, Asian, Black or African American` is aggregate and safe to show.
+- **Low-cardinality categorical** (roughly ≤20 categories, and every category passes the donor test below): call `get_descriptive_stats` with `value_counts=True` and list the category names. A closed vocabulary like `White, Asian, Black or African American` is aggregate and safe to show.
 - **High-cardinality or free text**: do **not** pass `value_counts=True`, and do not quote values. Report the unique count and characterise the shape — "free-text ethnicity descriptions, most unique to one donor". `value_counts=True` there returns nearly the whole column, which would copy the data into the report wholesale. **The default response is not safe to paste either**: `top` and `freq` come back on any non-numeric column that has at least one non-null value, without asking for them, and `top` is a verbatim value — one real donor's ethnicity string. Quote neither.
 - **Numeric dtype** (e.g. race stored as integer codes): the numeric branch returns quartiles and no `unique`, so the fields above are unavailable. Report that the column is numeric-coded and say you could not characterise it without reading values — do not read them to fill the table in.
-- **A rare category that identifies one or two donors** is not aggregate. Say a rare category exists and give its count; do not name it.
+- **A rare category that identifies one or two donors** is not aggregate. Say a rare category exists and give its donor count; do not name it.
 
-If you are unsure which case applies, compare `unique` against the row count — `n_rows` in this tool's result, or `n_obs` from `get_summary` — and default to not quoting.
+**The donor test — count donors, never cells.** `value_counts` returns cells, and cell counts do not answer the question. A category can span tens of thousands of cells and still be two people, because cells per donor vary by orders of magnitude. Naming such a category names those donors' ethnicity in a report that outlives the file. So for each category, count the distinct donors:
+
+```
+get_descriptive_stats(path, columns=["donor_id"],
+                      filter_column="<candidate>", filter_operator="==", filter_value="<category>")
+```
+
+and read `unique` from the result. Fewer than roughly 5 donors: do not name that category — say a category with that donor count exists. This is not hypothetical: on the worked-example file, an ethnicity category holding **8,616 cells** — abundant by any cell-count reading — resolves to **2 donors**.
+
+If you cannot run the donor test (no `donor_id`, or the file uses another subject key you are unsure of), do not name any category. Default to not quoting whenever the case is unclear.
 
 Candidates go to **B1** — they block, and each needs approve-or-strike from the wrangler individually. Never propose a glob or a name pattern; always enumerate.
 
