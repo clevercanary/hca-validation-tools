@@ -42,7 +42,7 @@ So: read `obs_columns` from the evaluator's summary and identify any column that
 
 For each remaining candidate, call `get_descriptive_stats` on it and build the case:
 
-| | |
+| Field | What to report |
 |---|---|
 | column | the exact name |
 | dtype and unique count | `dtype` and `unique` from the result |
