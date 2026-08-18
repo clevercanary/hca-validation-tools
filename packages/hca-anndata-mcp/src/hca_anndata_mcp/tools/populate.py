@@ -44,10 +44,13 @@ def populate_labels(path: str) -> dict:
     checked against the ontology label for their ``*_ontology_term_id``; the
     5 ``var['feature_*']`` columns, and their ``raw.var`` mirrors, against
     GENCODE via the Ensembl ID in the index. A populated value disagreeing
-    with either one is a refusal, and the refusal is total — every column is
-    classified before anything is written, so one mismatch withholds the
-    fills that would have succeeded. Each disagreement is reported with row
-    counts.
+    with either one is a refusal, as is a source that resolves no canonical
+    value for any row (an empty ``*_ontology_term_id``, term IDs the ontology
+    doesn't recognize, or a ``var.index`` that isn't Ensembl IDs) — filling
+    there would write an all-NaN column and report it as filled. Refusal is
+    total: every column is classified before anything is written, so one bad
+    column withholds the fills that would have succeeded. Each disagreement
+    is reported with row counts.
 
     Unlike ``label_h5ad`` it never writes ``obs['observation_joinid']``, and
     that matters in one direction: a file carrying that column is refused
