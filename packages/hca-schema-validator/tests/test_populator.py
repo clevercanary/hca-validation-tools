@@ -268,6 +268,17 @@ def test_obs_unrecognized_term_ids_refuse(tmp_path):
     assert "tissue" not in adata.obs.columns
 
 
+def test_zero_row_file_is_not_refused(tmp_path):
+    """`isna().all()` is vacuously True on an empty series, so a 0-obs file
+    must not trip the refusal — there is nothing wrong with it."""
+    adata = _load(create_labelable_h5ad(tmp_path / "zero_rows.h5ad"))[:0].copy()
+
+    result = populate_in_memory(adata)
+
+    assert "error" not in result, result
+    assert "tissue" in result["filled"], result
+
+
 def test_var_unresolvable_index_refuses(tmp_path):
     """var.index holds gene symbols, not Ensembl IDs, so GENCODE resolves
     nothing — refuse rather than create all-NaN feature_* columns."""

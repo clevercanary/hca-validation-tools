@@ -44,10 +44,11 @@ def populate_labels(path: str) -> dict:
     checked against the ontology label for their ``*_ontology_term_id``; the
     5 ``var['feature_*']`` columns, and their ``raw.var`` mirrors, against
     GENCODE via the Ensembl ID in the index. A populated value disagreeing
-    with either one is a refusal, as is a source that resolves no canonical
-    value for any row (an empty ``*_ontology_term_id``, term IDs the ontology
-    doesn't recognize, or a ``var.index`` that isn't Ensembl IDs) — filling
-    there would write an all-NaN column and report it as filled. Refusal is
+    with either one is a refusal, as is a *missing* column whose source
+    resolves no canonical value for any row (an empty ``*_ontology_term_id``,
+    term IDs the ontology doesn't recognize, or a ``var.index`` that isn't
+    Ensembl IDs) — filling there would write an all-NaN column and report it
+    as filled. Refusal is
     total: every column is classified before anything is written, so one bad
     column withholds the fills that would have succeeded. Each disagreement
     is reported with row counts.

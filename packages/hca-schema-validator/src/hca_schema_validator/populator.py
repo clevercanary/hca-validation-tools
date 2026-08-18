@@ -15,9 +15,11 @@ it: :func:`populate_in_memory` is the labeler for HCA-layout files
 generally. A file with every label column absent needs no special handling
 — each one classifies as ``fill`` wherever its ``*_ontology_term_id``
 source resolves a canonical value, and as ``skip-no-source`` where the
-source is absent too, which is a no-op rather than an error. A source
-that is present but resolves nothing is an error, not a skip: the file
-needs an upstream fix (see the per-column logic below).
+source is absent too, which is a no-op rather than an error. A *missing*
+column whose source is present but resolves nothing is an error, not a
+skip: the file needs an upstream fix (see the per-column logic below).
+A column that already exists is never refused on those grounds — it is
+verified as usual, and matches vacuously when canonical is empty.
 
 * Per-column logic — for each of the 5 var ``feature_*`` columns and 7
   obs ontology label columns:
@@ -169,16 +171,18 @@ def _classify_obs_column(
         # Nothing to fill *from*. Filling would write an all-NaN column and
         # report it as filled. Both causes — an empty source, and term IDs
         # the ontology doesn't recognize — are hard HCA validator errors, so
-        # the file needs an upstream fix rather than a silent pass.
-        if canonical.isna().all():
+        # the file needs an upstream fix rather than a silent pass. The
+        # ``len`` guard keeps a 0-row file out of this: ``isna().all()`` is
+        # vacuously true on an empty series, and there is nothing wrong with
+        # a 0-row file.
+        if len(canonical) and canonical.isna().all():
             return (
                 "errored",
                 [
                     f"obs['{source_col}'] is present but resolves no canonical "
                     f"label for any row — every value is either empty or not a "
                     f"recognized ontology term, so obs['{cosmetic_col}'] cannot "
-                    f"be filled. Supply the term IDs upstream, or drop "
-                    f"obs['{source_col}']."
+                    f"be filled. Supply the term IDs upstream."
                 ],
                 None,
             )
@@ -258,8 +262,9 @@ def _classify_var_column(
     if col not in var.columns:
         # Same rule as the obs side: GENCODE resolves nothing for any
         # Ensembl ID (e.g. var.index holds gene symbols, not IDs), so a
-        # fill would write an all-NaN column and report it as filled.
-        if canonical_series.isna().all():
+        # fill would write an all-NaN column and report it as filled. The
+        # ``len`` guard excludes a 0-var file, where the check is vacuous.
+        if len(canonical_series) and canonical_series.isna().all():
             return (
                 "errored",
                 [
