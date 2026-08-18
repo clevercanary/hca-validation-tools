@@ -86,9 +86,11 @@ Only these are in Bucket A. Nothing else. A row belongs in A only when its preco
 
 Split these into two classes so the wrangler sees which items actually block validation vs. which are recommended-but-optional. The primary blocking signal is `validate_schema` — any error it reports (on `obs`, `var`, or `uns`) blocks. Use `list_uns_fields` as a secondary signal for missing `uns` fields specifically: `required: true` fields that are unset are blocking; `required: false` fields that are unset are recommended at most.
 
+The privacy scan is the one B1 source that does not come from a validator. A file carrying ethnicity under a producer name reaches `is_valid: true` — that is the whole defect the scan exists for — so those items block on HCA policy while every validator signal reads clean. Do not downgrade them to B2 on the grounds that nothing flagged them.
+
 For each item, write a concrete question. For **B1** items, do not include a suggested answer — ask only for the missing required value. For **B2** items, if there's an obvious single valid option (e.g. only one 2D embedding exists), you may phrase it as a confirmation question ("`X_umap` — confirm?") rather than silently deciding.
 
-**B1 — Blocking (validator errors or unset `required: true` fields)**
+**B1 — Blocking (validator errors, unset `required: true` fields, or a privacy finding)**
 
 - Missing required `uns` fields (e.g. `study_pi`) — ask for the value(s).
 - **Privacy-sensitive obs columns found by the Step 1 scan.** One row per column, each awaiting approve-or-strike on its own — approving one is not approving the rest. Give the case, not just the name: dtype, unique count, the category vocabulary, and what reads as ethnicity or race. Ask plainly whether to drop each; approved columns become a single `drop_obs_columns` call in Step 4 with those names enumerated. **Before that call, restate the exact column list and require an explicit yes to that list.** A general "drop the ones you flagged" is not naming — echo the names back and wait. Silence is never approval. If the wrangler declines a column, record that in the report — a deliberate keep and an unnoticed column should not look the same to the next reader.
