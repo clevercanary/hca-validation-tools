@@ -63,6 +63,11 @@ jobs:
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
         with:
           packages-dir: packages/hca-schema-validator/dist/
+          # Makes a workflow_dispatch retry safe: dispatch runs all three
+          # publish jobs, so a retry after a partial success would otherwise
+          # fail on "File already exists" — and publish-hca-anndata-mcp gates
+          # on the other two succeeding, locking it out of dispatch entirely.
+          skip-existing: true
 
   publish-hca-anndata-tools:
     needs: release-please
@@ -106,6 +111,11 @@ jobs:
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
         with:
           packages-dir: packages/hca-anndata-tools/dist/
+          # Makes a workflow_dispatch retry safe: dispatch runs all three
+          # publish jobs, so a retry after a partial success would otherwise
+          # fail on "File already exists" — and publish-hca-anndata-mcp gates
+          # on the other two succeeding, locking it out of dispatch entirely.
+          skip-existing: true
 
   publish-hca-anndata-mcp:
     needs: [release-please, publish-hca-anndata-tools, publish-hca-schema-validator]
@@ -155,3 +165,8 @@ jobs:
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
         with:
           packages-dir: packages/hca-anndata-mcp/dist/
+          # Makes a workflow_dispatch retry safe: dispatch runs all three
+          # publish jobs, so a retry after a partial success would otherwise
+          # fail on "File already exists" — and publish-hca-anndata-mcp gates
+          # on the other two succeeding, locking it out of dispatch entirely.
+          skip-existing: true
