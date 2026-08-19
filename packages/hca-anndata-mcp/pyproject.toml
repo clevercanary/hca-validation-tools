@@ -16,7 +16,7 @@ requires-python = ">=3.10,<4.0"
 dependencies = [
     "fastmcp>=2,<3",
     "hca-anndata-tools>=0.6,<0.7",
-    "hca-schema-validator>=0.14,<0.15",
+    "hca-schema-validator>=0.15,<0.16",
 ]
 
 [project.urls]
