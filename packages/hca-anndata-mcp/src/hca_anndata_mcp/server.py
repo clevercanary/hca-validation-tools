@@ -6,6 +6,7 @@ from hca_anndata_mcp.tools.drop import drop_obs_columns
 from hca_anndata_mcp.tools.label import label_h5ad
 from hca_anndata_mcp.tools.plot import plot_embedding_mcp
 from hca_anndata_mcp.tools.populate import populate_labels
+from hca_anndata_mcp.tools.rename import rename_cell_ids
 from hca_anndata_mcp.tools.strip import strip_forbidden_obs_columns
 from hca_anndata_mcp.tools.validate import validate_cell_annotation, validate_schema
 from hca_anndata_tools import (
@@ -51,6 +52,14 @@ mcp = FastMCP(
         "under a non-canonical name (cell_type_label, ...); it refuses any "
         "column the HCA schema names and drops all or nothing, and refuses "
         "outright any file using the deprecated top-level CAP layout, "
+        "rename_cell_ids to rename the cell IDs (obs index) of rows selected by an obs "
+        "column value, substituting one ID prefix for another — the remedy for a sample "
+        "whose IDs lost a distinguishing segment in a pipeline; HCA-layout files only "
+        "(refuses CellxGENE-layout files such as CAP exports — renaming an export forks a "
+        "record its source system would overwrite), errors on zero matches, on selected "
+        "IDs not carrying the expected prefix, and on any rename that would produce "
+        "duplicate IDs, and note it renames only this file: a renamed file no longer "
+        "joins against unrenamed copies elsewhere (e.g. copy_cap_annotations sources), "
         "validate_marker_genes to check CAP marker genes against var, "
         "copy_cap_annotations to copy CAP annotations from a source into an HCA target file, "
         "replace_placeholder_values to replace banned placeholder values with NaN in obs columns, "
@@ -90,6 +99,7 @@ mcp.tool()(set_uns)
 mcp.tool()(convert_cellxgene_to_hca)
 mcp.tool()(strip_forbidden_obs_columns)
 mcp.tool()(drop_obs_columns)
+mcp.tool()(rename_cell_ids)
 mcp.tool()(validate_marker_genes)
 mcp.tool()(copy_cap_annotations)
 mcp.tool()(replace_placeholder_values)
