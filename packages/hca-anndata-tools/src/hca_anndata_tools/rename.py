@@ -20,6 +20,7 @@ from pathlib import Path
 
 import h5py
 import numpy as np
+import pandas as pd
 
 from ._io import (
     _decode_bytes,
@@ -29,6 +30,7 @@ from ._io import (
 )
 from .inspect import _read_schema_version
 from .write import (
+    _compute_sha256,
     build_edit_log,
     cleanup_previous_version,
     generate_output_path,
@@ -41,25 +43,21 @@ from .write import (
 _N_EXAMPLES = 5
 
 
-def _check_arguments(where, prefix_from, prefix_to) -> list[str]:
+def _check_arguments(column, value, prefix_from, prefix_to) -> list[str]:
     """Collect every problem with the call's arguments.
 
     Shape-checks everything before any file is opened. This is an MCP-exposed
-    tool, so the arguments arrive as decoded JSON and may hold numbers, nulls,
-    or the wrong containers; everything downstream assumes strings.
+    tool, so the arguments arrive as decoded JSON and may hold numbers or
+    nulls; everything downstream assumes strings.
     """
     problems: list[str] = []
 
-    if not isinstance(where, dict) or len(where) != 1:
-        problems.append("where must be a dict with exactly one {column: value} pair")
-    else:
-        column, value = next(iter(where.items()))
-        if not isinstance(column, str) or not isinstance(value, str):
-            problems.append(f"where must map a column name to a string value; got {{{column!r}: {value!r}}}")
-        # h5py resolves a name containing '/' as an HDF5 link path, not a dict
-        # key (see drop.py for the full trap) — reject before any lookup.
-        elif "/" in column or not column.strip():
-            problems.append(f"not a valid obs column name (cannot contain '/' or be blank): {column!r}")
+    if not isinstance(column, str) or not isinstance(value, str):
+        problems.append(f"column and value must be strings; got {column!r} and {value!r}")
+    # h5py resolves a name containing '/' as an HDF5 link path, not a dict
+    # key (see drop.py for the full trap) — reject before any lookup.
+    elif "/" in column or not column.strip():
+        problems.append(f"not a valid obs column name (cannot contain '/' or be blank): {column!r}")
 
     if not isinstance(prefix_from, str) or not prefix_from:
         problems.append("prefix_from must be a non-empty string")
@@ -75,7 +73,9 @@ def _selection_mask(obs: h5py.Group, column: str, value: str) -> np.ndarray:
     """Boolean mask of the rows whose ``column`` equals ``value``.
 
     Categorical columns are matched through their codes without materializing
-    a per-row string array; anything else is read and decoded in full.
+    a per-row string array; plain string datasets are decoded by h5py in C via
+    ``asstr()``. A non-string, non-categorical column can never equal a string
+    value, so it selects nothing rather than erroring mid-read.
     """
     item = obs[column]
     if isinstance(item, h5py.Group) and "categories" in item:
@@ -83,39 +83,35 @@ def _selection_mask(obs: h5py.Group, column: str, value: str) -> np.ndarray:
         if value not in categories:
             return np.zeros(codes.shape, dtype=bool)
         return codes == categories.get_loc(value)
-    values = np.array([_decode_bytes(v) for v in item[:]], dtype=object)
-    return values == value
+    if h5py.check_string_dtype(item.dtype) is None:  # pyright: ignore[reportAttributeAccessIssue]
+        return np.zeros(item.shape, dtype=bool)  # pyright: ignore[reportAttributeAccessIssue]
+    return np.asarray(item.asstr()[:] == value)  # pyright: ignore[reportAttributeAccessIssue]
 
 
 def _compute_new_ids(
-    ids: list[str], mask: np.ndarray, prefix_from: str, prefix_to: str
-) -> tuple[list[str], list[list[str]]]:
+    ids: np.ndarray, selected: np.ndarray, prefix_from: str, prefix_to: str
+) -> tuple[np.ndarray, list[list[str]]]:
     """Apply the prefix substitution to the selected rows.
 
     Pure function, separable from the gates on purpose (see the module
     docstring): a future operation mode supplies a different version of this
     step and inherits every gate unchanged.
 
-    Returns the full new ID list and the before/after example pairs.
+    Returns the full new ID array and the before/after example pairs.
     """
-    new_ids = list(ids)
-    examples: list[list[str]] = []
-    for i in np.flatnonzero(mask):
-        old = ids[i]
-        new_ids[i] = prefix_to + old[len(prefix_from) :]
-        if len(examples) < _N_EXAMPLES:
-            examples.append([old, new_ids[i]])
+    new_ids = ids.copy()
+    new_ids[selected] = [prefix_to + cell_id[len(prefix_from) :] for cell_id in ids[selected]]
+    examples = [[str(ids[i]), str(new_ids[i])] for i in selected[:_N_EXAMPLES]]
     return new_ids, examples
 
 
-def rename_cell_ids(path: str, where: dict, prefix_from: str, prefix_to: str) -> dict:
+def rename_cell_ids(path: str, column: str, value: str, prefix_from: str, prefix_to: str) -> dict:
     """Rename the cell IDs of rows selected by an obs column value.
 
-    Selects the rows whose obs ``column`` equals ``value`` (the single pair in
-    ``where``) and rewrites their obs-index entries from
-    ``prefix_from + <rest>`` to ``prefix_to + <rest>``. All-or-nothing: every
-    gate runs before anything is written, and any failure leaves the file
-    untouched with all problems reported together.
+    Selects the rows whose obs ``column`` equals ``value`` and rewrites their
+    obs-index entries from ``prefix_from + <rest>`` to ``prefix_to + <rest>``.
+    All-or-nothing: every gate runs before anything is written, and any
+    failure leaves the file untouched with all problems reported together.
 
     The gates, in the order a caller hits them:
 
@@ -152,24 +148,23 @@ def rename_cell_ids(path: str, where: dict, prefix_from: str, prefix_to: str) ->
     Args:
         path: Path to an .h5ad file. Auto-resolves to the latest timestamped
             edit snapshot before operating.
-        where: Exactly one ``{column: value}`` pair naming the obs column and
-            the value that selects the rows to rename. The obs index itself
-            is not a column and is refused as a selector.
+        column: The obs column whose value selects the rows to rename. The
+            obs index itself is not a column and is refused as a selector.
+        value: The value that selects the rows.
         prefix_from: The prefix every selected ID must currently start with.
         prefix_to: Its replacement.
 
     Returns:
         Dict with ``output_path``, ``n_selected``, ``n_renamed`` (always equal
-        to ``n_selected`` for this operation, reported separately so a future
-        mode where they can differ keeps the same shape), and ``examples``
-        (up to five ``[before, after]`` pairs), or ``{"error": ...}``.
+        to ``n_selected`` for this operation; the issue asks for both so a
+        broader-than-intended selector stays visible), and ``examples`` (up to
+        five ``[before, after]`` pairs), or ``{"error": ...}``.
     """
     output_path = None
     try:
-        problems = _check_arguments(where, prefix_from, prefix_to)
+        problems = _check_arguments(column, value, prefix_from, prefix_to)
         if problems:
             return {"error": "Refusing to rename: " + "; ".join(problems)}
-        column, value = next(iter(where.items()))
 
         path = resolve_latest(path)
         if not Path(path).is_file():
@@ -205,45 +200,52 @@ def rename_cell_ids(path: str, where: dict, prefix_from: str, prefix_to: str) ->
             if column not in set(obs.keys()):
                 return {"error": f"Refusing to rename: obs column not present: '{column}'"}
 
-            ids = [_decode_bytes(v) for v in obs[index_name][:]]  # pyright: ignore[reportIndexIssue]
             mask = _selection_mask(obs, column, value)
+            n_selected = int(mask.sum())
+            if n_selected == 0:
+                # Gated before the index read: a mistyped selector should not
+                # pay for decoding 2M IDs it will never use.
+                return {"error": f"Refusing to rename: no rows match obs['{column}'] == {value!r}"}
+            ids = np.asarray(obs[index_name].asstr()[:])  # pyright: ignore[reportAttributeAccessIssue, reportIndexIssue]
 
-        n_selected = int(mask.sum())
-        if n_selected == 0:
-            return {"error": f"Refusing to rename: no rows match obs['{column}'] == {value!r}"}
-
-        bad_prefix = [ids[i] for i in np.flatnonzero(mask) if not ids[i].startswith(prefix_from)]
-        if bad_prefix:
-            shown = bad_prefix[:_N_EXAMPLES]
+        selected = np.flatnonzero(mask)
+        # Count and sample the disagreements rather than materializing them
+        # all — on a wrong-prefix call the offenders can be the whole sample.
+        bad_count = 0
+        bad_examples: list[str] = []
+        for cell_id in ids[selected]:
+            if not cell_id.startswith(prefix_from):
+                bad_count += 1
+                if len(bad_examples) < _N_EXAMPLES:
+                    bad_examples.append(cell_id)
+        if bad_count:
             return {
                 "error": (
-                    f"Refusing to rename: {len(bad_prefix)} of {n_selected} selected rows do not start "
-                    f"with {prefix_from!r} (e.g. {shown}) — the selector and the prefix disagree about "
-                    f"which rows are being renamed"
+                    f"Refusing to rename: {bad_count} of {n_selected} selected rows do not start "
+                    f"with {prefix_from!r} (e.g. {bad_examples}) — the selector and the prefix "
+                    f"disagree about which rows are being renamed"
                 )
             }
 
-        new_ids, examples = _compute_new_ids(ids, mask, prefix_from, prefix_to)
+        new_ids, examples = _compute_new_ids(ids, selected, prefix_from, prefix_to)
 
-        if len(set(new_ids)) != len(new_ids):
-            seen: set[str] = set()
-            collisions: list[str] = []
-            for cell_id in new_ids:
-                if cell_id in seen:
-                    collisions.append(cell_id)
-                else:
-                    seen.add(cell_id)
-            shown = sorted(set(collisions))[:_N_EXAMPLES]
+        duplicated = pd.Index(new_ids).duplicated()
+        if duplicated.any():
+            colliding = sorted(set(new_ids[duplicated]))
             return {
                 "error": (
-                    f"Refusing to rename: the result would contain {len(collisions)} duplicate cell "
-                    f"IDs (e.g. {shown}) — a rename that introduces collisions is the defect this "
-                    f"tool exists to fix, not something it will write"
+                    f"Refusing to rename: the result would contain {len(colliding)} duplicate cell "
+                    f"IDs (e.g. {colliding[:_N_EXAMPLES]}) — a rename that introduces collisions is "
+                    f"the defect this tool exists to fix, not something it will write"
                 )
             }
 
         output_path = generate_output_path(path)
         shutil.copy2(path, output_path)
+
+        # Hash the source before opening the output: build_edit_log would
+        # otherwise re-read the whole file while the output handle is open.
+        source_sha256 = _compute_sha256(path)
 
         log_error = None
         with h5py.File(output_path, "a") as f_out:
@@ -255,7 +257,7 @@ def rename_cell_ids(path: str, where: dict, prefix_from: str, prefix_to: str) ->
             del f_out["obs"][index_name]  # pyright: ignore[reportIndexIssue]
             new_ds = f_out["obs"].create_dataset(  # pyright: ignore[reportAttributeAccessIssue]
                 index_name,
-                data=np.array(new_ids, dtype=object),
+                data=new_ids,
                 dtype=h5py.string_dtype(encoding="utf-8"),
                 compression=compression,
                 compression_opts=compression_opts,
@@ -271,7 +273,8 @@ def rename_cell_ids(path: str, where: dict, prefix_from: str, prefix_to: str) ->
                     f"for rows where obs['{column}'] == {value!r}"
                 ),
                 details={
-                    "where": {column: value},
+                    "column": column,
+                    "value": value,
                     "prefix_from": prefix_from,
                     "prefix_to": prefix_to,
                     "n_selected": n_selected,
@@ -280,12 +283,16 @@ def rename_cell_ids(path: str, where: dict, prefix_from: str, prefix_to: str) ->
                 },
             )
             existing_log = read_edit_log_h5py(f_out)
-            log_result = build_edit_log(existing_log, [entry], path)
+            log_result = build_edit_log(existing_log, [entry], path, source_sha256)
             if "error" in log_result:
                 log_error = log_result
             else:
                 write_edit_log_h5py(f_out, log_result["json"])
 
+        # Deferred until the with-block has closed the output handle,
+        # matching drop.py: unlinking an open HDF5 file works on POSIX but
+        # raises on Windows, and the context __exit__ flush would hit a
+        # removed inode either way.
         if log_error is not None:
             Path(output_path).unlink()
             return log_error

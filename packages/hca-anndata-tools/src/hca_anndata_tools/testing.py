@@ -144,3 +144,62 @@ def create_cellxgene_h5ad(path: Path) -> Path:
 
     adata.write_h5ad(path)
     return path
+
+
+# The two-family ID shape from the breast-v1 pal2021 collapse (#533): three
+# "B1_0023" cells wearing the "N_0123" family's prefix, interleaved so a
+# correct row selection must go by column value, not by position, plus two
+# N cells under an unrelated prefix so a selector/prefix disagreement is
+# observable.
+HCA_TEST_ROWS = [
+    ("MH_mix_AAA", "B1_0023"),
+    ("MH_mix_TTT", "N_0123"),
+    ("MH_mix_CCC", "B1_0023"),
+    ("MH_mix_ACG", "N_0123"),
+    ("MH_mix_GGG", "B1_0023"),
+    ("N1105_epi_AAA", "N_0123"),
+    ("N1105_epi_CCC", "N_0123"),
+]
+
+
+def create_hca_h5ad(
+    path: Path,
+    index_name: str | None = "cellID",
+    extra_rows: list[tuple[str, str]] | None = None,
+    categorical_sample: bool = True,
+) -> Path:
+    """Create a small HCA-layout h5ad file (no ``uns['schema_version']``).
+
+    The other factories here both declare a CellxGENE ``schema_version``, so
+    tools gated to HCA-layout files refuse them; this is the HCA counterpart.
+    Rows are ``HCA_TEST_ROWS`` — cell IDs and their ``sample_id`` values —
+    with the index named ``cellID`` by default, matching the breast-v1
+    integrated object rather than anndata's ``_index`` default.
+
+    Args:
+        path: Where to write the .h5ad file.
+        index_name: Name for the obs index (None for anndata's default).
+        extra_rows: Extra ``(cell_id, sample_id)`` rows to append — lets a
+            test plant a pre-existing ID that a rename would collide with.
+        categorical_sample: Write ``sample_id`` as categorical (True) or as a
+            plain string column (False).
+
+    Returns:
+        The path to the written file.
+    """
+    rows = HCA_TEST_ROWS + (extra_rows or [])
+    ids = [cell_id for cell_id, _ in rows]
+    samples = [sample for _, sample in rows]
+
+    n_obs = len(rows)
+    rng = np.random.default_rng(7)
+    obs = pd.DataFrame(
+        {"sample_id": pd.Categorical(samples) if categorical_sample else samples},
+        index=pd.Index(ids, name=index_name),
+    )
+    var = pd.DataFrame(index=pd.Index([f"ENSG{i:011d}" for i in range(5)]))
+    adata = ad.AnnData(X=rng.standard_normal((n_obs, 5)).astype(np.float32), obs=obs, var=var)
+    adata.obsm["X_umap"] = rng.standard_normal((n_obs, 2)).astype(np.float32)
+    adata.uns["title"] = "Test HCA file"
+    adata.write_h5ad(path)
+    return path
