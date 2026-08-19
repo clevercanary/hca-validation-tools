@@ -52,8 +52,13 @@ jobs:
       - name: Check sibling dependency bounds
         run: uv run --no-project --with packaging python scripts/check_sibling_deps.py packages/hca-schema-validator/dist/*
 
+      # Do not pin below v1.14.2. This action bundles twine, and the
+      # metadata validation comes from the `packaging` that image ships.
+      # v1.14.0 carried packaging 25.0, which rejects Metadata-Version 2.5
+      # — what hatchling >=1.32.0 emits — and that failed the 0.15.0
+      # release (#588). packaging >=26.1 accepts it; v1.14.2 ships 26.2.
       - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # v1.14.0
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
         with:
           packages-dir: packages/hca-schema-validator/dist/
 
@@ -88,8 +93,13 @@ jobs:
       - name: Check sibling dependency bounds
         run: uv run --no-project --with packaging python scripts/check_sibling_deps.py packages/hca-anndata-tools/dist/*
 
+      # Do not pin below v1.14.2. This action bundles twine, and the
+      # metadata validation comes from the `packaging` that image ships.
+      # v1.14.0 carried packaging 25.0, which rejects Metadata-Version 2.5
+      # — what hatchling >=1.32.0 emits — and that failed the 0.15.0
+      # release (#588). packaging >=26.1 accepts it; v1.14.2 ships 26.2.
       - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # v1.14.0
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
         with:
           packages-dir: packages/hca-anndata-tools/dist/
 
@@ -130,7 +140,12 @@ jobs:
       - name: Check sibling dependency bounds
         run: uv run --no-project --with packaging python scripts/check_sibling_deps.py packages/hca-anndata-mcp/dist/*
 
+      # Do not pin below v1.14.2. This action bundles twine, and the
+      # metadata validation comes from the `packaging` that image ships.
+      # v1.14.0 carried packaging 25.0, which rejects Metadata-Version 2.5
+      # — what hatchling >=1.32.0 emits — and that failed the 0.15.0
+      # release (#588). packaging >=26.1 accepts it; v1.14.2 ships 26.2.
       - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # v1.14.0
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
         with:
           packages-dir: packages/hca-anndata-mcp/dist/
