@@ -295,25 +295,28 @@ def rename_cell_ids(path: str, column: str, value: str, prefix_from: str, prefix
                 )
             }
 
+        # The pre-existing check runs unconditionally, before the rename is
+        # even computed: a file whose IDs already collide is refused outright,
+        # including when this rename would happen to make the index unique —
+        # resolving a collision by renaming one side of it is a curation
+        # decision a human must take, not a side effect this tool may write.
+        # The two refusals also carry different remedies: repair the file
+        # versus change the arguments.
+        pre_existing = pd.Index(ids).duplicated()
+        if pre_existing.any():
+            already = sorted(set(ids[pre_existing]))
+            return {
+                "error": (
+                    f"Refusing to rename: the file already contains {len(already)} duplicate cell "
+                    f"IDs before any rename (e.g. {already[:_N_EXAMPLES]}) — repair the file's "
+                    f"pre-existing collisions first"
+                )
+            }
+
         new_ids, examples = _compute_new_ids(ids, selected, prefix_from, prefix_to)
 
         duplicated = pd.Index(new_ids).duplicated()
         if duplicated.any():
-            # Name the right culprit: duplicates the file already had are not
-            # the rename's doing, and the remedy (repair the file) differs
-            # from the remedy for a bad prefix choice (change the arguments).
-            # Either way the gate stays hard — writing into a file whose IDs
-            # already collide would paper over a defect this tool exists to fix.
-            pre_existing = pd.Index(ids).duplicated()
-            if pre_existing.any():
-                already = sorted(set(ids[pre_existing]))
-                return {
-                    "error": (
-                        f"Refusing to rename: the file already contains {len(already)} duplicate cell "
-                        f"IDs before any rename (e.g. {already[:_N_EXAMPLES]}) — repair the file's "
-                        f"pre-existing collisions first"
-                    )
-                }
             colliding = sorted(set(new_ids[duplicated]))
             return {
                 "error": (

@@ -221,6 +221,23 @@ def test_rename_refuses_pre_existing_duplicates(tmp_path):
     assert_no_snapshot_written(path)
 
 
+def test_rename_refuses_pre_existing_duplicates_the_rename_would_resolve(tmp_path):
+    """The pre-existing gate fires even when the rename would make the index
+    unique — resolving a collision by renaming one side of it is a curation
+    decision, not a side effect this tool may write."""
+    with pytest.warns(UserWarning, match="Observation names are not unique"):
+        # Duplicate of a selected B1 ID: renaming the B1 copy would de-collide.
+        path = create_hca_h5ad(tmp_path / "test.h5ad", extra_rows=[("MH_mix_AAA", "N_0123")])
+
+    result = rename_cell_ids(
+        str(path), column="sample_id", value="B1_0023", prefix_from="MH_mix_", prefix_to="MH_mix_BR1_"
+    )
+
+    assert "before any rename" in result["error"]
+    assert "MH_mix_AAA" in result["error"]
+    assert_no_snapshot_written(path)
+
+
 def test_rename_refuses_legacy_cap_layout(tmp_path):
     """The deprecated top-level CAP layout marks a CAP export even when
     uns['schema_version'] is absent — parity with drop.py / copy_cap.py (#552)."""
