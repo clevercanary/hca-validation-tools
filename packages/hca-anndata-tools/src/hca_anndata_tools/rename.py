@@ -75,21 +75,42 @@ def _selection_mask(obs: h5py.Group, column: str, value: str) -> np.ndarray:
 
     Categorical columns are matched through their codes without materializing
     a per-row string array; plain string datasets are decoded by h5py in C via
-    ``asstr()``. A non-string, non-categorical column can never equal a string
-    value, so it selects nothing rather than erroring mid-read.
+    ``asstr()``; nullable string columns (values+mask groups) match on their
+    values with nulls masked out. A non-string, non-categorical column can
+    never equal a string value, so it selects nothing rather than erroring
+    mid-read.
     """
     item = obs[column]
     if isinstance(item, h5py.Group) and "categories" in item:
+        cats = item["categories"]
+        if isinstance(cats, h5py.Group):
+            # A pandas StringDtype column lands on disk (anndata >= 0.11) as
+            # a categorical whose category labels are themselves a nullable
+            # values+mask group — read_categorical_data assumes a dataset and
+            # would crash on it. A masked label can never equal the value.
+            labels = np.asarray(cats["values"].asstr()[:])  # pyright: ignore[reportAttributeAccessIssue, reportIndexIssue]
+            label_matches = labels == value
+            if "mask" in cats:
+                label_matches &= ~np.asarray(cats["mask"][:]).astype(bool)  # pyright: ignore[reportIndexIssue]
+            eligible = np.flatnonzero(label_matches)
+            return np.isin(np.asarray(item["codes"][:]), eligible)  # pyright: ignore[reportIndexIssue]
         categories, codes = read_categorical_data(item)
         if value not in categories:
             return np.zeros(codes.shape, dtype=bool)
         return codes == categories.get_loc(value)
     if isinstance(item, h5py.Group):
         # Nullable-dtype columns (pandas boolean / Int64 / string) are stored
-        # as values+mask groups with no categories; they have no `.dtype`, so
-        # without this branch the string check below would crash instead of
-        # honoring the select-nothing contract above.
+        # as values+mask groups with no categories, and have no `.dtype`. A
+        # nullable *string* column can genuinely match, so compare its values
+        # with nulls masked out; the non-string nullables fall through to the
+        # select-nothing contract above.
         values = item.get("values")
+        if isinstance(values, h5py.Dataset) and h5py.check_string_dtype(values.dtype) is not None:
+            matches = np.asarray(values.asstr()[:] == value)
+            null_mask = item.get("mask")
+            if isinstance(null_mask, h5py.Dataset):
+                matches &= ~null_mask[:].astype(bool)
+            return matches
         shape = values.shape if isinstance(values, h5py.Dataset) else (0,)
         return np.zeros(shape, dtype=bool)
     if h5py.check_string_dtype(item.dtype) is None:  # pyright: ignore[reportAttributeAccessIssue]
