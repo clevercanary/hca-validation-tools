@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import os
 import re
 import shutil
 from pathlib import Path
@@ -418,5 +419,19 @@ def test_copy_with_sha256_refuses_same_path(tmp_path):
 
     with pytest.raises(shutil.SameFileError):
         _copy_with_sha256(str(src), str(src))
+
+    assert src.read_bytes() == b"do not truncate"
+
+
+def test_copy_with_sha256_refuses_hard_link(tmp_path):
+    """Two hard links share an inode but not a resolved path — the guard
+    must compare filesystem identity, not path strings."""
+    src = tmp_path / "src.bin"
+    src.write_bytes(b"do not truncate")
+    link = tmp_path / "link.bin"
+    os.link(src, link)
+
+    with pytest.raises(shutil.SameFileError):
+        _copy_with_sha256(str(src), str(link))
 
     assert src.read_bytes() == b"do not truncate"
