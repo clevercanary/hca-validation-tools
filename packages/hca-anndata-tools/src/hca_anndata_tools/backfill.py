@@ -18,7 +18,6 @@ repeated runs chain without accumulating file copies.
 from __future__ import annotations
 
 import contextlib
-import shutil
 from pathlib import Path
 
 import h5py
@@ -26,8 +25,9 @@ import numpy as np
 import pandas as pd
 
 from ._io import (
+    DEFAULT_PLACEHOLDERS,
     _decode_bytes,
-    check_duplicate_ids,
+    compact_categories,
     read_categorical_data,
     read_edit_log_h5py,
     replace_categorical_column,
@@ -36,9 +36,9 @@ from ._io import (
     write_edit_log_h5py,
 )
 from .cap import LEGACY_LAYOUT_DESCRIPTION, is_legacy_cap_layout
-from .edit import _DEFAULT_PLACEHOLDERS
 from .write import (
     _compute_sha256,
+    _copy_with_sha256,
     build_edit_log,
     cleanup_previous_version,
     generate_output_path,
@@ -46,8 +46,8 @@ from .write import (
     resolve_latest,
 )
 
-# Cap on the conflict examples quoted per column, so a large disagreement
-# stays readable in the result and the edit log.
+# Cap on the conflict examples quoted per column, and on the duplicate IDs
+# quoted in error messages, so a large disagreement stays readable.
 _N_EXAMPLES = 5
 
 
@@ -85,6 +85,10 @@ def _read_column(obs: h5py.Group, col: str, placeholders: set[str], side: str) -
     empty, or placeholder). Categorical columns also carry ``cats``/``codes``.
     Any other layout (numeric, boolean, nullable-dtype groups) has no missing
     vocabulary this tool understands, so it is refused rather than guessed at.
+
+    The missing predicate runs once per distinct value, never per row — the
+    categorical branch works on the categories, the string branch factorizes
+    first (a metadata column on a 2M-cell file has few distinct values).
     """
     item = obs[col]
     if isinstance(item, h5py.Group) and "categories" in item:
@@ -93,12 +97,9 @@ def _read_column(obs: h5py.Group, col: str, placeholders: set[str], side: str) -
         cat_missing = np.array([_is_missing_str(c, placeholders) for c in cats], dtype=bool)
         valid = codes >= 0
         values = np.full(len(codes), None, dtype=object)
+        values[valid] = cat_values[codes[valid]]
         missing = ~valid
-        if len(cats):
-            values[valid] = cat_values[codes[valid]]
-            hit = np.zeros(len(codes), dtype=bool)
-            hit[valid] = cat_missing[codes[valid]]
-            missing = missing | hit
+        missing[valid] = cat_missing[codes[valid]]
         return {"kind": "categorical", "cats": list(cats), "codes": codes, "values": values, "missing": missing}, None
     if isinstance(item, h5py.Group):
         return None, (
@@ -110,24 +111,30 @@ def _read_column(obs: h5py.Group, col: str, placeholders: set[str], side: str) -
             f"{side} column '{col}' is not categorical or string — only those obs column types can be backfilled"
         )
     values = np.asarray(item.asstr()[:], dtype=object)  # pyright: ignore[reportAttributeAccessIssue]
-    missing = np.fromiter((_is_missing_str(v, placeholders) for v in values), dtype=bool, count=len(values))
+    codes, uniques = pd.factorize(values)
+    uniq_missing = np.array([_is_missing_str(u, placeholders) for u in uniques], dtype=bool)
+    valid = codes >= 0
+    missing = ~valid
+    missing[valid] = uniq_missing[codes[valid]]
     return {"kind": "string", "values": values, "missing": missing}, None
 
 
 def _read_obs_for_backfill(
-    path: str, columns: list[str], placeholders: set[str], side: str
+    path: str, columns: list[str], placeholders: set[str], side: str, is_target: bool = False
 ) -> tuple[dict | None, dict | None]:
     """Read the obs index and the requested columns from one file.
 
-    Returns (data, error_result); exactly one is set. ``data`` holds ``ids``
-    (list of cell IDs), ``columns`` (column name → the dict from
-    :func:`_read_column`), and for the target side ``raw_log``.
+    Returns (data, error_result); exactly one is set. ``data`` holds ``index``
+    (a pandas Index of cell IDs) and ``columns`` (column name → the dict from
+    :func:`_read_column`). ``is_target`` marks the mutation candidate: it adds
+    the legacy-CAP-layout refusal and the edit-log read (``raw_log``); ``side``
+    is display text for messages only.
     """
     with h5py.File(path, "r") as f:
         obs = f.get("obs")
         if not isinstance(obs, h5py.Group):
             return None, {"error": f"{side} file has no obs group: {path}"}
-        if side == "Target":
+        if is_target:
             uns = f.get("uns")
             if isinstance(uns, h5py.Group) and is_legacy_cap_layout(uns):
                 # Parity with drop.py / rename.py (#552): mutating tools
@@ -146,31 +153,24 @@ def _read_obs_for_backfill(
                 }
             if col not in obs_keys:
                 return None, {"error": f"{side} file has no obs column '{col}'"}
-        ids = [_decode_bytes(v) for v in obs[index_name][:]]  # pyright: ignore[reportIndexIssue]
-        dupe_err = check_duplicate_ids(ids, f"{side} cells")
-        if dupe_err:
-            return None, {"error": dupe_err}
+        # asstr() decodes in C; dtype=object avoids a fixed-width unicode
+        # dtype (see rename.py). The pandas Index is built once and reused
+        # for the duplicate check and the join.
+        ids = np.asarray(obs[index_name].asstr()[:], dtype=object)  # pyright: ignore[reportAttributeAccessIssue, reportIndexIssue]
+        index = pd.Index(ids)
+        if index.has_duplicates:
+            dupes = index[index.duplicated()].unique()[:_N_EXAMPLES].tolist()
+            return None, {"error": f"{side} cells have duplicate IDs (first {_N_EXAMPLES}): {dupes}"}
         col_data = {}
         for col in columns:
             data, err = _read_column(obs, col, placeholders, side)
             if err:
                 return None, {"error": err}
             col_data[col] = data
-        result = {"ids": ids, "columns": col_data}
-        if side == "Target":
+        result = {"index": index, "columns": col_data}
+        if is_target:
             result["raw_log"] = read_edit_log_h5py(f)
         return result, None
-
-
-def _codes_dtype(n_categories: int, original: np.dtype) -> np.dtype:
-    """Smallest signed dtype holding the new category count, never narrower
-    than the original codes dtype (extending categories can overflow int8)."""
-    if np.iinfo(original).max >= max(n_categories - 1, 0):
-        return original
-    for dt in (np.int8, np.int16, np.int32):
-        if np.iinfo(dt).max >= n_categories - 1 and np.dtype(dt).itemsize >= original.itemsize:
-            return np.dtype(dt)
-    return np.dtype(np.int64)
 
 
 def _fill_categorical(obs: h5py.Group, col: str, data: dict, fill_rows: np.ndarray, fill_values: np.ndarray) -> None:
@@ -183,22 +183,12 @@ def _fill_categorical(obs: h5py.Group, col: str, data: dict, fill_rows: np.ndarr
     cats: list[str] = data["cats"]
     codes: np.ndarray = data["codes"]
     new_cats = cats + sorted(set(fill_values) - set(cats))
-    cat_pos = {c: i for i, c in enumerate(new_cats)}
     # Work in int64: the new category positions can overflow the original
-    # codes dtype before the unused-category remap shrinks the range.
+    # codes dtype before the unused-category compaction shrinks the range.
     work = codes.astype(np.int64)
-    work[fill_rows] = [cat_pos[v] for v in fill_values]
-
-    used = sorted(set(work[work >= 0]))
-    final_cats = [new_cats[i] for i in used]
-    lookup = np.full(len(new_cats), -1, dtype=np.int64)
-    for new_idx, old_idx in enumerate(used):
-        lookup[old_idx] = new_idx
-    valid = work >= 0
-    final_codes = np.full_like(work, -1)
-    final_codes[valid] = lookup[work[valid]]
-
-    replace_categorical_column(obs, col, final_cats, final_codes.astype(_codes_dtype(len(final_cats), codes.dtype)))
+    work[fill_rows] = pd.Index(new_cats).get_indexer(fill_values)
+    final_cats, final_codes = compact_categories(new_cats, work)
+    replace_categorical_column(obs, col, final_cats, final_codes)
 
 
 def _verify_backfill(f: h5py.File, per_column: dict, fills: dict, placeholders: set[str]) -> str | None:
@@ -211,12 +201,10 @@ def _verify_backfill(f: h5py.File, per_column: dict, fills: dict, placeholders: 
     obs = f["obs"]
     for col, (fill_rows, fill_values) in fills.items():
         data, err = _read_column(obs, col, placeholders, "Output")  # pyright: ignore[reportArgumentType]
-        if err:
+        if err is not None:
             return err
-        if data is None:
-            return f"Verification failed: could not re-read column '{col}'"
-        written = data["values"][fill_rows]
-        if not (written == fill_values).all():
+        assert data is not None
+        if not (data["values"][fill_rows] == fill_values).all():
             return f"Verification failed: column '{col}' does not hold the filled values"
         actual_missing = int(data["missing"].sum())
         expected_missing = per_column[col]["missing_after"]
@@ -287,23 +275,25 @@ def backfill_obs_from_source(target_path: str, source_path: str, columns: list[s
         if Path(target_path).resolve() == Path(source_path).resolve():
             return {"error": "Source and target are the same file"}
 
-        placeholders = {v.lower() for v in _DEFAULT_PLACEHOLDERS}
+        placeholders = {v.lower() for v in DEFAULT_PLACEHOLDERS}
 
-        target, err = _read_obs_for_backfill(target_path, columns, placeholders, "Target")
-        if err or target is None:
-            return err or {"error": "Failed to read target"}
+        target, err = _read_obs_for_backfill(target_path, columns, placeholders, "Target", is_target=True)
+        if err is not None:
+            return err
+        assert target is not None
         source, err = _read_obs_for_backfill(source_path, columns, placeholders, "Source")
-        if err or source is None:
-            return err or {"error": "Failed to read source"}
+        if err is not None:
+            return err
+        assert source is not None
 
-        target_ids: list[str] = target["ids"]
-        n_target = len(target_ids)
-        n_source = len(source["ids"])
+        target_index: pd.Index = target["index"]
+        n_target = len(target_index)
+        n_source = len(source["index"])
 
         # --- Join on cell ID ---
-        indexer = pd.Index(source["ids"]).get_indexer(pd.Index(target_ids))
-        matched = indexer >= 0
-        n_matched = int(matched.sum())
+        indexer = source["index"].get_indexer(target_index)
+        matched_rows = np.flatnonzero(indexer >= 0)
+        n_matched = len(matched_rows)
         if n_matched == 0:
             return {
                 "error": (
@@ -311,55 +301,51 @@ def backfill_obs_from_source(target_path: str, source_path: str, columns: list[s
                     f"target has {n_target}, 0 shared) — is this the right source file?"
                 )
             }
-        matched_rows = np.flatnonzero(matched)
         source_rows = indexer[matched_rows]
 
         # --- Per-column stats and fill plan (nothing written yet) ---
         per_column: dict[str, dict] = {}
         fills: dict[str, tuple[np.ndarray, np.ndarray]] = {}
-        expected_valid_counts: dict[str, int] = {}
-        total_filled = 0
         for col in columns:
             tgt = target["columns"][col]
             src = source["columns"][col]
-
-            src_missing_at = np.ones(n_target, dtype=bool)
-            src_values_at = np.full(n_target, None, dtype=object)
-            src_missing_at[matched_rows] = src["missing"][source_rows]
-            src_values_at[matched_rows] = src["values"][source_rows]
-
             tgt_missing: np.ndarray = tgt["missing"]
-            fill_mask = matched & tgt_missing & ~src_missing_at
-            already_set_mask = matched & ~tgt_missing
-            conflict_rows = np.flatnonzero(already_set_mask & ~src_missing_at)
-            conflict_rows = conflict_rows[tgt["values"][conflict_rows] != src_values_at[conflict_rows]]
 
-            fill_rows = np.flatnonzero(fill_mask)
+            # Work in matched-row space: an integrated target dwarfs any one
+            # source, so target-length scatter arrays would mostly hold air.
+            tgt_missing_m = tgt_missing[matched_rows]
+            src_missing_m = src["missing"][source_rows]
+            src_values_m = src["values"][source_rows]
+
+            fill_m = tgt_missing_m & ~src_missing_m
+            fill_rows = matched_rows[fill_m]
+            fill_values = src_values_m[fill_m]
+
+            conflict_m = np.flatnonzero(~tgt_missing_m & ~src_missing_m)
+            conflict_m = conflict_m[tgt["values"][matched_rows[conflict_m]] != src_values_m[conflict_m]]
+
             filled = len(fill_rows)
             missing_before = int(tgt_missing.sum())
+            matched_missing = int(tgt_missing_m.sum())
             missing_after = missing_before - filled
             per_column[col] = {
                 "filled": filled,
-                "already_set": int(already_set_mask.sum()),
-                "conflicts": len(conflict_rows),
+                "already_set": n_matched - matched_missing,
+                "conflicts": len(conflict_m),
                 "conflict_examples": [
-                    [target_ids[i], tgt["values"][i], src_values_at[i]] for i in conflict_rows[:_N_EXAMPLES]
+                    [target_index[matched_rows[i]], tgt["values"][matched_rows[i]], src_values_m[i]]
+                    for i in conflict_m[:_N_EXAMPLES]
                 ],
-                "source_missing": int((matched & tgt_missing & src_missing_at).sum()),
-                "unmatched": int((~matched & tgt_missing).sum()),
+                "source_missing": int((tgt_missing_m & src_missing_m).sum()),
+                "unmatched": missing_before - matched_missing,
                 "missing_before": missing_before,
                 "missing_after": missing_after,
-                "pct_full_after": round(100.0 * (n_target - missing_after) / n_target, 1) if n_target else 0.0,
+                "pct_full_after": round(100.0 * (n_target - missing_after) / n_target, 1),
             }
             if filled:
-                total_filled += filled
-                fills[col] = (fill_rows, src_values_at[fill_rows])
-                if tgt["kind"] == "categorical":
-                    # Fills onto placeholder-coded rows don't change the
-                    # valid-code count; fills onto NaN (code -1) rows do.
-                    codes: np.ndarray = tgt["codes"]
-                    expected_valid_counts[col] = int((codes >= 0).sum()) + int((codes[fill_rows] < 0).sum())
+                fills[col] = (fill_rows, fill_values)
 
+        total_filled = sum(stats["filled"] for stats in per_column.values())
         overlap = {
             "n_source_cells": n_source,
             "n_target_cells": n_target,
@@ -375,8 +361,18 @@ def backfill_obs_from_source(target_path: str, source_path: str, columns: list[s
                 "per_column": per_column,
             }
 
-        # --- Edit log, then copy-and-patch ---
+        # --- Copy (hashing the target in the same read), then patch ---
         source_basename = Path(source_path).name
+        source_sha256 = _compute_sha256(source_path)
+
+        output_path = generate_output_path(target_path)
+        if output_path == target_path:
+            # generate_output_path timestamps to the second (see rename.py):
+            # a second edit within the same second would name the output after
+            # its own source. Refuse before touching anything.
+            return {"error": "An edit snapshot for this second already exists — retry in a moment."}
+        target_sha256 = _copy_with_sha256(target_path, output_path)
+
         entry = make_edit_entry(
             operation="backfill_obs_from_source",
             description=(
@@ -385,24 +381,17 @@ def backfill_obs_from_source(target_path: str, source_path: str, columns: list[s
             ),
             details={
                 "backfill_source_file": source_basename,
-                "backfill_source_sha256": _compute_sha256(source_path),
+                "backfill_source_sha256": source_sha256,
                 "columns": columns,
                 **overlap,
                 "total_filled": total_filled,
                 "per_column": per_column,
             },
         )
-        log_result = build_edit_log(target["raw_log"], [entry], target_path, _compute_sha256(target_path))
+        log_result = build_edit_log(target["raw_log"], [entry], target_path, target_sha256)
         if "error" in log_result:
+            Path(output_path).unlink()
             return log_result
-
-        output_path = generate_output_path(target_path)
-        if output_path == target_path:
-            # generate_output_path timestamps to the second (see rename.py):
-            # a second edit within the same second would name the output after
-            # its own source. Refuse before touching anything.
-            return {"error": "An edit snapshot for this second already exists — retry in a moment."}
-        shutil.copy2(target_path, output_path)
 
         with h5py.File(output_path, "a") as f_out:
             obs_out = f_out["obs"]
@@ -416,7 +405,7 @@ def backfill_obs_from_source(target_path: str, source_path: str, columns: list[s
                     replace_string_dataset(obs_out, col, new_values)  # pyright: ignore[reportArgumentType]
             write_edit_log_h5py(f_out, log_result["json"])
 
-            verify_err = verify_categorical_integrity(f_out, list(fills), expected_valid_counts)
+            verify_err = verify_categorical_integrity(f_out, list(fills))
             verify_err = verify_err or _verify_backfill(f_out, per_column, fills, placeholders)
             if verify_err:
                 raise RuntimeError(verify_err)

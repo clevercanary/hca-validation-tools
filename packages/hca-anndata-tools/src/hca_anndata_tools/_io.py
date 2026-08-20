@@ -18,6 +18,22 @@ import pandas as pd
 if TYPE_CHECKING:
     import numpy as np
 
+# The HCA placeholder vocabulary (case-insensitive): obs values that mean
+# "no data". Shared by replace_placeholder_values (which blanks them) and
+# backfill_obs_from_source (which treats them as fillable).
+DEFAULT_PLACEHOLDERS = [
+    "unknown",
+    "na",
+    "n/a",
+    "none",
+    "not available",
+    "not applicable",
+    "tbd",
+    "todo",
+    "null",
+    "undefined",
+]
+
 
 @contextmanager
 def open_h5ad(path: str, backed: Literal["r", "r+"] | None = "r"):
@@ -267,12 +283,43 @@ def replace_string_dataset(parent: h5py.Group, name: str, data: np.ndarray) -> N
         new_ds.attrs[key] = attr_value
 
 
+def compact_categories(categories: list[str], codes: np.ndarray) -> tuple[list[str], np.ndarray]:
+    """Drop categories no code references and remap the codes accordingly.
+
+    Codes below 0 (NaN) stay -1. Returns the kept categories and the remapped
+    codes as int64 — :func:`replace_categorical_column` sizes the on-disk
+    dtype itself.
+    """
+    import numpy as np
+
+    valid = codes >= 0
+    used = np.flatnonzero(np.bincount(codes[valid], minlength=len(categories)))
+    kept = [categories[i] for i in used]
+    lookup = np.full(len(categories), -1, dtype=np.int64)
+    lookup[used] = np.arange(len(used))
+    new_codes = np.full(codes.shape, -1, dtype=np.int64)
+    new_codes[valid] = lookup[codes[valid]]
+    return kept, new_codes
+
+
+def _codes_dtype(n_categories: int, original: np.dtype) -> np.dtype:
+    """Smallest signed dtype holding the category count, never narrower than
+    the original codes dtype (extending categories can overflow int8)."""
+    import numpy as np
+
+    for dt in (np.int8, np.int16, np.int32, np.int64):
+        if np.iinfo(dt).max >= n_categories - 1 and np.dtype(dt).itemsize >= original.itemsize:
+            return np.dtype(dt)
+    return np.dtype(np.int64)
+
+
 def replace_categorical_column(parent: h5py.Group, col: str, categories: list[str], codes: np.ndarray) -> None:
     """Delete and recreate a categorical column group, preserving its encoding
     attrs and the codes dataset's storage settings (compression, chunks).
 
-    The codes array is written with the dtype it arrives in — the caller
-    decides whether the original dtype still fits the new category count.
+    The codes are written at the smallest dtype that holds the new category
+    count without narrowing the original — a caller that extended the
+    categories does not have to know about int8 overflow.
     """
     import numpy as np
 
@@ -283,6 +330,7 @@ def replace_categorical_column(parent: h5py.Group, col: str, categories: list[st
     codes_compression = item["codes"].compression
     codes_compression_opts = item["codes"].compression_opts
     codes_chunks = item["codes"].chunks
+    codes = codes.astype(_codes_dtype(len(categories), item["codes"].dtype))
 
     del parent[col]
     grp = parent.create_group(col)

@@ -7,6 +7,7 @@ import glob
 import hashlib
 import json
 import re
+import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
@@ -29,6 +30,21 @@ def _compute_sha256(path: str) -> str:
     with Path(path).open("rb") as f:
         for chunk in iter(lambda: f.read(_HASH_CHUNK_SIZE), b""):
             h.update(chunk)
+    return h.hexdigest()
+
+
+def _copy_with_sha256(source_path: str, dest_path: str) -> str:
+    """Copy source to dest and return the source's SHA-256 hex digest.
+
+    One streaming pass instead of a hash read followed by a copy read —
+    on a multi-GB h5ad that halves the read I/O of a copy-and-patch tool.
+    """
+    h = hashlib.sha256()
+    with Path(source_path).open("rb") as src, Path(dest_path).open("wb") as dst:
+        for chunk in iter(lambda: src.read(_HASH_CHUNK_SIZE), b""):
+            h.update(chunk)
+            dst.write(chunk)
+    shutil.copystat(source_path, dest_path)
     return h.hexdigest()
 
 

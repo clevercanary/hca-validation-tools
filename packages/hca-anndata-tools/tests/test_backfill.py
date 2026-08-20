@@ -7,7 +7,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from hca_anndata_tools.backfill import _codes_dtype, backfill_obs_from_source
+from hca_anndata_tools._io import _codes_dtype
+from hca_anndata_tools.backfill import backfill_obs_from_source
 
 # The canonical scenario, one row per case the tool must handle:
 #
@@ -26,18 +27,16 @@ SOURCE_IDS = ["c1", "c2", "c3", "c4", "c7", "x1"]
 SOURCE_LIB = ["L1", "L2", "unknown", "L2", "na", "L5"]
 
 
-def _make_h5ad(path, ids, columns, categorical=True, index_name="cellID", uns=None):
-    """Write a minimal h5ad with the given obs columns.
+def _make_h5ad(path, ids, columns, categorical=True, uns=None):
+    """Write a minimal h5ad with the given obs columns (index named cellID).
 
     Categorical columns represent NaN as None; string columns cannot hold
     NaN, so string variants substitute "" (which the tool treats as missing).
     """
-    obs = pd.DataFrame(index=pd.Index(ids, name=index_name))
+    obs = pd.DataFrame(index=pd.Index(ids, name="cellID"))
     for name, values in columns.items():
-        if categorical and not all(isinstance(v, int | float) for v in values):
+        if categorical:
             obs[name] = pd.Categorical(values)
-        elif categorical:
-            obs[name] = np.asarray(values, dtype=np.float32)
         else:
             obs[name] = ["" if v is None else v for v in values]
     adata = ad.AnnData(X=np.zeros((len(ids), 2), dtype=np.float32), obs=obs)
@@ -203,8 +202,15 @@ def test_backfill_column_missing_from_target(target_source):
 
 
 def test_backfill_numeric_column_refused(tmp_path):
-    target = _make_h5ad(tmp_path / "target.h5ad", ["c1", "c2"], {"n_counts": [1.0, 2.0]})
-    source = _make_h5ad(tmp_path / "source.h5ad", ["c1", "c2"], {"n_counts": [1.0, 2.0]})
+    def make_numeric(path):
+        obs = pd.DataFrame(
+            {"n_counts": np.array([1.0, 2.0], dtype=np.float32)}, index=pd.Index(["c1", "c2"], name="cellID")
+        )
+        ad.AnnData(X=np.zeros((2, 2), dtype=np.float32), obs=obs).write_h5ad(path)
+        return str(path)
+
+    target = make_numeric(tmp_path / "target.h5ad")
+    source = make_numeric(tmp_path / "source.h5ad")
 
     result = backfill_obs_from_source(target, source, columns=["n_counts"])
 

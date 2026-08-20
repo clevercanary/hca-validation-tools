@@ -10,11 +10,12 @@ import typing
 from pathlib import Path
 
 import h5py
-import numpy as np
 from pydantic import TypeAdapter, ValidationError
 
 from ._io import (
+    DEFAULT_PLACEHOLDERS,
     _decode_bytes,
+    compact_categories,
     open_h5ad,
     read_categorical_data,
     read_edit_log_h5py,
@@ -33,20 +34,6 @@ from .write import (
     resolve_latest,
     write_h5ad,
 )
-
-# Default HCA placeholder values (case-insensitive)
-_DEFAULT_PLACEHOLDERS = [
-    "unknown",
-    "na",
-    "n/a",
-    "none",
-    "not available",
-    "not applicable",
-    "tbd",
-    "todo",
-    "null",
-    "undefined",
-]
 
 
 def _type_display(annotation) -> str:
@@ -295,7 +282,7 @@ def replace_placeholder_values(
         if not columns:
             return {"error": "columns must not be empty"}
 
-        bl = {v.lower() for v in (placeholders or _DEFAULT_PLACEHOLDERS)}
+        bl = {v.lower() for v in (placeholders or DEFAULT_PLACEHOLDERS)}
 
         # Scan for placeholder values and read edit log in one pass
         columns_fixed = {}
@@ -358,18 +345,8 @@ def replace_placeholder_values(
                 for i in blocked:
                     codes[codes == i] = -1
 
-                # Remove unused categories and remap codes
-                used = sorted(set(codes[codes >= 0]))
-                new_cats = [cats[i] for i in used]
-                # Vectorized remap via lookup table
-                lookup = np.full(len(cats), -1, dtype=codes.dtype)
-                for new_idx, old_idx in enumerate(used):
-                    lookup[old_idx] = new_idx
-                mask = codes >= 0
-                new_codes = np.full_like(codes, -1)
-                new_codes[mask] = lookup[codes[mask]]
-
-                replace_categorical_column(f["obs"], col, new_cats, new_codes.astype(codes.dtype))  # pyright: ignore[reportArgumentType]
+                new_cats, new_codes = compact_categories(list(cats), codes)
+                replace_categorical_column(f["obs"], col, new_cats, new_codes)  # pyright: ignore[reportArgumentType]
 
             write_edit_log_h5py(f, log_result["json"])
 
