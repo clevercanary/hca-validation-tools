@@ -234,6 +234,76 @@ def transplant_obs_columns(
     return deleted
 
 
+def check_duplicate_ids(index: list[str], label: str) -> str | None:
+    """Return an error message if index has duplicates, else None."""
+    if len(set(index)) == len(index):
+        return None
+    seen, dupes = set(), []
+    for x in index:
+        if x in seen and x not in dupes:
+            dupes.append(x)
+            if len(dupes) >= 5:
+                break
+        seen.add(x)
+    return f"{label} have duplicate IDs (first 5): {dupes}"
+
+
+def replace_string_dataset(parent: h5py.Group, name: str, data: np.ndarray) -> None:
+    """Delete and recreate a string dataset, preserving its attrs and storage
+    properties (compression, chunks, shuffle, fletcher32, maxshape)."""
+    ds = parent[name]
+    attrs = dict(ds.attrs)
+    storage = {
+        "compression": ds.compression,
+        "compression_opts": ds.compression_opts,
+        "chunks": ds.chunks,
+        "shuffle": ds.shuffle,
+        "fletcher32": ds.fletcher32,
+        "maxshape": ds.maxshape,
+    }
+    del parent[name]
+    new_ds = parent.create_dataset(name, data=data, dtype=h5py.string_dtype(encoding="utf-8"), **storage)
+    for key, attr_value in attrs.items():
+        new_ds.attrs[key] = attr_value
+
+
+def replace_categorical_column(parent: h5py.Group, col: str, categories: list[str], codes: np.ndarray) -> None:
+    """Delete and recreate a categorical column group, preserving its encoding
+    attrs and the codes dataset's storage settings (compression, chunks).
+
+    The codes array is written with the dtype it arrives in — the caller
+    decides whether the original dtype still fits the new category count.
+    """
+    import numpy as np
+
+    item = parent[col]
+    encoding_type = item.attrs["encoding-type"]
+    encoding_version = item.attrs["encoding-version"]
+    ordered = bool(item.attrs["ordered"])
+    codes_compression = item["codes"].compression
+    codes_compression_opts = item["codes"].compression_opts
+    codes_chunks = item["codes"].chunks
+
+    del parent[col]
+    grp = parent.create_group(col)
+    grp.attrs["encoding-type"] = encoding_type
+    grp.attrs["encoding-version"] = encoding_version
+    grp.attrs["ordered"] = ordered
+    cat_data = np.array(categories, dtype=object) if categories else np.array([], dtype=h5py.string_dtype())
+    cat_ds = grp.create_dataset("categories", data=cat_data)
+    cat_ds.attrs["encoding-type"] = "string-array"
+    cat_ds.attrs["encoding-version"] = "0.2.0"
+    codes_ds = grp.create_dataset(
+        "codes",
+        data=codes,
+        compression=codes_compression,
+        compression_opts=codes_compression_opts,
+        chunks=codes_chunks,
+    )
+    codes_ds.attrs["encoding-type"] = "array"
+    codes_ds.attrs["encoding-version"] = "0.2.0"
+
+
 def verify_categorical_integrity(
     f: h5py.File,
     columns: list[str],

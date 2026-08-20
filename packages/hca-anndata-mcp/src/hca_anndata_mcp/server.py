@@ -2,6 +2,7 @@
 
 from fastmcp import FastMCP
 
+from hca_anndata_mcp.tools.backfill import backfill_obs_from_source
 from hca_anndata_mcp.tools.drop import drop_obs_columns
 from hca_anndata_mcp.tools.label import label_h5ad
 from hca_anndata_mcp.tools.plot import plot_embedding_mcp
@@ -60,6 +61,14 @@ mcp = FastMCP(
         "IDs not carrying the expected prefix, and on any rename that would produce "
         "duplicate IDs, and note it renames only this file: a renamed file no longer "
         "joins against unrenamed copies elsewhere (e.g. copy_cap_annotations sources), "
+        "backfill_obs_from_source to copy obs values from a source h5ad into a target joined "
+        "on cell ID, filling only cells whose target value is missing (NaN, empty, or a "
+        "placeholder like 'unknown') — the remedy for metadata lost in integration; it never "
+        "overwrites a set value (disagreements are counted and reported as conflicts, not "
+        "written), silently skips source cells absent from the target (integration filters "
+        "cells), reports per-column filled counts and how full each column is afterward, and "
+        "writes nothing when there is nothing to fill; run it once per source dataset, and "
+        "run any rename_cell_ids repair first — it joins by cell identity and trusts the join, "
         "validate_marker_genes to check CAP marker genes against var, "
         "copy_cap_annotations to copy CAP annotations from a source into an HCA target file, "
         "replace_placeholder_values to replace banned placeholder values with NaN in obs columns, "
@@ -100,6 +109,7 @@ mcp.tool()(convert_cellxgene_to_hca)
 mcp.tool()(strip_forbidden_obs_columns)
 mcp.tool()(drop_obs_columns)
 mcp.tool()(rename_cell_ids)
+mcp.tool()(backfill_obs_from_source)
 mcp.tool()(validate_marker_genes)
 mcp.tool()(copy_cap_annotations)
 mcp.tool()(replace_placeholder_values)

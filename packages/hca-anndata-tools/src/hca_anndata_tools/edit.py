@@ -18,6 +18,7 @@ from ._io import (
     open_h5ad,
     read_categorical_data,
     read_edit_log_h5py,
+    replace_categorical_column,
     verify_categorical_integrity,
     write_edit_log_h5py,
 )
@@ -352,14 +353,6 @@ def replace_placeholder_values(
                 item = f["obs"][col]
                 cats, codes = read_categorical_data(item)  # pyright: ignore[reportArgumentType]
 
-                # Preserve original settings
-                encoding_type = item.attrs["encoding-type"]
-                encoding_version = item.attrs["encoding-version"]
-                ordered = bool(item.attrs["ordered"])
-                codes_compression = item["codes"].compression
-                codes_compression_opts = item["codes"].compression_opts
-                codes_chunks = item["codes"].chunks
-
                 # Set blocked codes to -1 (NaN)
                 blocked = {i for i in range(len(cats)) if cats[i].lower() in bl}
                 for i in blocked:
@@ -376,25 +369,7 @@ def replace_placeholder_values(
                 new_codes = np.full_like(codes, -1)
                 new_codes[mask] = lookup[codes[mask]]
 
-                # Rewrite the column preserving compression settings
-                del f["obs"][col]
-                grp = f["obs"].create_group(col)
-                grp.attrs["encoding-type"] = encoding_type
-                grp.attrs["encoding-version"] = encoding_version
-                grp.attrs["ordered"] = ordered
-                cat_data = np.array(new_cats, dtype=object) if new_cats else np.array([], dtype=h5py.string_dtype())
-                cat_ds = grp.create_dataset("categories", data=cat_data)
-                cat_ds.attrs["encoding-type"] = "string-array"
-                cat_ds.attrs["encoding-version"] = "0.2.0"
-                codes_ds = grp.create_dataset(
-                    "codes",
-                    data=new_codes.astype(codes.dtype),
-                    compression=codes_compression,
-                    compression_opts=codes_compression_opts,
-                    chunks=codes_chunks,
-                )
-                codes_ds.attrs["encoding-type"] = "array"
-                codes_ds.attrs["encoding-version"] = "0.2.0"
+                replace_categorical_column(f["obs"], col, new_cats, new_codes.astype(codes.dtype))  # pyright: ignore[reportArgumentType]
 
             write_edit_log_h5py(f, log_result["json"])
 

@@ -16,6 +16,7 @@ import pandas as pd
 
 from ._io import (
     _decode_bytes,
+    check_duplicate_ids,
     ensure_provenance_group,
     open_h5ad,
     read_categorical_data,
@@ -82,20 +83,6 @@ def _compute_axis_overlap(cap_ids: set[str], hca_ids: set[str]) -> dict:
             "pct": round(100.0 * n_missing_from_cap / n_hca, 1) if n_hca else 0.0,
         },
     }
-
-
-def _check_duplicate_ids(index: list[str], label: str) -> str | None:
-    """Return an error message if index has duplicates, else None."""
-    if len(set(index)) == len(index):
-        return None
-    seen, dupes = set(), []
-    for x in index:
-        if x in seen and x not in dupes:
-            dupes.append(x)
-            if len(dupes) >= 5:
-                break
-        seen.add(x)
-    return f"{label} have duplicate IDs (first 5): {dupes}"
 
 
 def _get_annotation_sets(cap_block: Mapping[str, Any]) -> list[str]:
@@ -218,7 +205,7 @@ def copy_cap_annotations(
             return {"error": "No CAP obs columns found to copy"}
 
         source_index = set(source_index_list)
-        dupe_err = _check_duplicate_ids(source_index_list, "CAP cells") or _check_duplicate_ids(
+        dupe_err = check_duplicate_ids(source_index_list, "CAP cells") or check_duplicate_ids(
             source_var_list, "CAP genes"
         )
         if dupe_err:
@@ -243,7 +230,7 @@ def copy_cap_annotations(
             raw_log = read_edit_log_h5py(f)
 
         target_index_set = set(target_index)
-        dupe_err = _check_duplicate_ids(target_index, "HCA cells") or _check_duplicate_ids(target_var_list, "HCA genes")
+        dupe_err = check_duplicate_ids(target_index, "HCA cells") or check_duplicate_ids(target_var_list, "HCA genes")
         if dupe_err:
             return {"error": dupe_err}
         target_var_set = set(target_var_list)

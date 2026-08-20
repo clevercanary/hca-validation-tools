@@ -26,6 +26,7 @@ from ._io import (
     _decode_bytes,
     read_categorical_data,
     read_edit_log_h5py,
+    replace_string_dataset,
     write_edit_log_h5py,
 )
 from .cap import LEGACY_LAYOUT_DESCRIPTION, is_legacy_cap_layout
@@ -112,25 +113,6 @@ def _compute_new_ids(
     new_ids[selected] = [prefix_to + cell_id[len(prefix_from) :] for cell_id in ids[selected]]
     examples = [[str(ids[i]), str(new_ids[i])] for i in selected[:_N_EXAMPLES]]
     return new_ids, examples
-
-
-def _replace_string_dataset(parent: h5py.Group, name: str, data: np.ndarray) -> None:
-    """Delete and recreate a string dataset, preserving its attrs and storage
-    properties (compression, chunks, shuffle, fletcher32, maxshape)."""
-    ds = parent[name]
-    attrs = dict(ds.attrs)  # pyright: ignore[reportAttributeAccessIssue]
-    storage = {
-        "compression": ds.compression,  # pyright: ignore[reportAttributeAccessIssue]
-        "compression_opts": ds.compression_opts,  # pyright: ignore[reportAttributeAccessIssue]
-        "chunks": ds.chunks,  # pyright: ignore[reportAttributeAccessIssue]
-        "shuffle": ds.shuffle,  # pyright: ignore[reportAttributeAccessIssue]
-        "fletcher32": ds.fletcher32,  # pyright: ignore[reportAttributeAccessIssue]
-        "maxshape": ds.maxshape,  # pyright: ignore[reportAttributeAccessIssue]
-    }
-    del parent[name]
-    new_ds = parent.create_dataset(name, data=data, dtype=h5py.string_dtype(encoding="utf-8"), **storage)
-    for key, attr_value in attrs.items():
-        new_ds.attrs[key] = attr_value
 
 
 def rename_cell_ids(path: str, column: str, value: str, prefix_from: str, prefix_to: str) -> dict:
@@ -345,9 +327,9 @@ def rename_cell_ids(path: str, column: str, value: str, prefix_from: str, prefix
 
         log_error = None
         with h5py.File(output_path, "a") as f_out:
-            _replace_string_dataset(f_out["obs"], index_name, new_ids)  # pyright: ignore[reportArgumentType]
+            replace_string_dataset(f_out["obs"], index_name, new_ids)  # pyright: ignore[reportArgumentType]
             for obsm_key, sub_name in obsm_df_indexes:
-                _replace_string_dataset(f_out["obsm"][obsm_key], sub_name, new_ids)  # pyright: ignore[reportArgumentType, reportIndexIssue]
+                replace_string_dataset(f_out["obsm"][obsm_key], sub_name, new_ids)  # pyright: ignore[reportArgumentType, reportIndexIssue]
 
             entry = make_edit_entry(
                 operation="rename_cell_ids",
