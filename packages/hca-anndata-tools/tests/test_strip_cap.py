@@ -12,30 +12,34 @@ from hca_anndata_tools.strip_cap import strip_cap_annotations
 _CAP_COLUMNS = ["Prelim annotation--cell_fullname", "Prelim annotation--cell_ontology_term_id"]
 
 
-def _make_cap_file(path, layout="legacy", prior_log_entry=None):
-    """Write a small HCA-layout h5ad carrying CAP material in the given layout.
+def _make_cap_file(path, uns_layout="legacy", cap_columns=True, prior_log_entry=None, extra_uns=None):
+    """Write a small HCA-layout h5ad carrying CAP material.
 
-    ``layout``: 'legacy' (top-level keys), 'nested' (uns['cap_metadata']),
-    'mixed' (both), or 'none' (no CAP uns keys and no ``--`` columns).
+    ``uns_layout``: 'legacy' (top-level keys), 'nested' (uns['cap_metadata']),
+    'mixed' (both), or 'none'. ``cap_columns`` controls the ``--`` obs
+    columns independently of the uns keys.
     """
     columns = {
         "sample_id": pd.Categorical(["s1", "s2", "s3"]),
         "junk_col": pd.Categorical(["a", "b", "a"]),
     }
-    if layout != "none":
+    if cap_columns:
         for col in _CAP_COLUMNS:
             columns[col] = pd.Categorical(["T cell", "B cell", "T cell"])
     obs = pd.DataFrame(columns, index=pd.Index(["c1", "c2", "c3"], name="cellID"))
     adata = ad.AnnData(X=np.zeros((3, 2), dtype=np.float32), obs=obs)
     adata.uns["title"] = "Test file"
-    cap_block = {
-        "cellannotation_schema_version": "1.0.0",
-        "cellannotation_metadata": {"Prelim annotation": {}},
-    }
-    if layout in ("legacy", "mixed"):
-        adata.uns.update(cap_block)
-    if layout in ("nested", "mixed"):
-        adata.uns["cap_metadata"] = dict(cap_block)
+    if uns_layout != "none":
+        cap_block = {
+            "cellannotation_schema_version": "1.0.0",
+            "cellannotation_metadata": {"Prelim annotation": {}},
+        }
+        if uns_layout in ("legacy", "mixed"):
+            adata.uns.update(cap_block)
+        if uns_layout in ("nested", "mixed"):
+            adata.uns["cap_metadata"] = dict(cap_block)
+    if extra_uns:
+        adata.uns.update(extra_uns)
     if prior_log_entry is not None:
         adata.uns["provenance"] = {"edit_history": json.dumps([prior_log_entry])}
     adata.write_h5ad(path)
@@ -43,7 +47,7 @@ def _make_cap_file(path, layout="legacy", prior_log_entry=None):
 
 
 def test_strip_legacy_layout(tmp_path):
-    path = _make_cap_file(tmp_path / "legacy.h5ad", layout="legacy")
+    path = _make_cap_file(tmp_path / "legacy.h5ad", uns_layout="legacy")
 
     result = strip_cap_annotations(path)
 
@@ -62,7 +66,7 @@ def test_strip_legacy_layout(tmp_path):
 
 
 def test_strip_nested_layout(tmp_path):
-    path = _make_cap_file(tmp_path / "nested.h5ad", layout="nested")
+    path = _make_cap_file(tmp_path / "nested.h5ad", uns_layout="nested")
 
     result = strip_cap_annotations(path)
 
@@ -73,7 +77,7 @@ def test_strip_nested_layout(tmp_path):
 
 
 def test_strip_mixed_layout(tmp_path):
-    path = _make_cap_file(tmp_path / "mixed.h5ad", layout="mixed")
+    path = _make_cap_file(tmp_path / "mixed.h5ad", uns_layout="mixed")
 
     result = strip_cap_annotations(path)
 
@@ -87,18 +91,32 @@ def test_strip_mixed_layout(tmp_path):
 
 def test_strip_columns_only(tmp_path):
     """A file with '--' columns but no CAP uns keys still strips."""
-    path = _make_cap_file(tmp_path / "colsonly.h5ad", layout="none")
-    # Re-add just the columns without the uns keys
-    adata = ad.read_h5ad(path)
-    for col in _CAP_COLUMNS:
-        adata.obs[col] = pd.Categorical(["x", "y", "x"])
-    adata.write_h5ad(path)
+    path = _make_cap_file(tmp_path / "colsonly.h5ad", uns_layout="none", cap_columns=True)
 
     result = strip_cap_annotations(path)
 
     assert "error" not in result
     assert result["uns_keys_removed"] == []
     assert result["obs_columns_removed"] == _CAP_COLUMNS
+
+
+def test_strip_removes_orphaned_color_palettes(tmp_path):
+    """A removed categorical column's scanpy palette must go with it — an
+    orphaned uns['<col>_colors'] fails the schema validator."""
+    palette_key = _CAP_COLUMNS[0] + "_colors"
+    path = _make_cap_file(
+        tmp_path / "palette.h5ad",
+        uns_layout="legacy",
+        extra_uns={palette_key: np.array(["#1f77b4", "#ff7f0e"]), "junk_col_colors": np.array(["#aaaaaa"])},
+    )
+
+    result = strip_cap_annotations(path)
+
+    assert "error" not in result
+    assert palette_key in result["uns_keys_removed"]
+    out = ad.read_h5ad(result["output_path"])
+    assert palette_key not in out.uns
+    assert "junk_col_colors" in out.uns  # a kept column keeps its palette
 
 
 def test_strip_preserves_existing_edit_history(tmp_path):
@@ -109,7 +127,7 @@ def test_strip_preserves_existing_edit_history(tmp_path):
         "operation": "import_cap_annotations",
         "description": "old import",
     }
-    path = _make_cap_file(tmp_path / "history.h5ad", layout="legacy", prior_log_entry=prior)
+    path = _make_cap_file(tmp_path / "history.h5ad", uns_layout="legacy", prior_log_entry=prior)
 
     result = strip_cap_annotations(path)
 
@@ -124,7 +142,7 @@ def test_strip_unblocks_the_mutating_toolkit(tmp_path, monkeypatch):
     # guard (#598/#600), so back-to-back edits in one second collide.
     ticks = iter(["2026-08-21-00-00-01", "2026-08-21-00-00-02"])
     monkeypatch.setattr("hca_anndata_tools.write.generate_timestamp", lambda: next(ticks))
-    path = _make_cap_file(tmp_path / "locked.h5ad", layout="legacy")
+    path = _make_cap_file(tmp_path / "locked.h5ad", uns_layout="legacy")
 
     refused = drop_obs_columns(path, columns=["junk_col"])
     assert "error" in refused
@@ -139,7 +157,7 @@ def test_strip_unblocks_the_mutating_toolkit(tmp_path, monkeypatch):
 
 
 def test_strip_nothing_to_strip_is_an_error(tmp_path):
-    path = _make_cap_file(tmp_path / "clean.h5ad", layout="none")
+    path = _make_cap_file(tmp_path / "clean.h5ad", uns_layout="none", cap_columns=False)
 
     result = strip_cap_annotations(path)
 
@@ -156,7 +174,7 @@ def test_strip_refuses_cellxgene_layout(sample_h5ad):
 
 def test_strip_same_second_snapshot_refused(tmp_path, monkeypatch):
     monkeypatch.setattr("hca_anndata_tools.strip_cap.generate_output_path", lambda p: p)
-    path = _make_cap_file(tmp_path / "guard.h5ad", layout="legacy")
+    path = _make_cap_file(tmp_path / "guard.h5ad", uns_layout="legacy")
 
     result = strip_cap_annotations(path)
 

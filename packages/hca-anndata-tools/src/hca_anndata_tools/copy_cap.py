@@ -20,6 +20,7 @@ from ._io import (
     ensure_provenance_group,
     open_h5ad,
     read_categorical_data,
+    read_column_order,
     read_edit_log_h5py,
     update_column_order,
     verify_obs_transplant,
@@ -30,6 +31,7 @@ from .cap import (
     _REQUIRED_SUFFIXES,
     CAP_METADATA_KEY,
     LEGACY_LAYOUT_ERROR,
+    cap_obs_columns,
     is_legacy_cap_layout,
     resolve_cap_block,
 )
@@ -173,7 +175,7 @@ def copy_cap_annotations(
         # Read source obs via h5py (avoids slow backed-mode column access)
         with h5py.File(source_path, "r") as f:
             obs_group = f["obs"]
-            source_obs_columns = [_decode_bytes(c) for c in obs_group.attrs["column-order"]]
+            source_obs_columns = read_column_order(obs_group)  # pyright: ignore[reportArgumentType]
             obs_cols_to_copy = _get_obs_columns_to_copy(annotation_sets, source_obs_columns)
 
             idx_key = _decode_bytes(obs_group.attrs.get("_index", "_index"))
@@ -217,7 +219,7 @@ def copy_cap_annotations(
         # --- Step 2: Validate target via h5py (no AnnData load) ---
         with h5py.File(target_path, "r") as f:
             obs_group = f["obs"]
-            target_obs_columns = [_decode_bytes(c) for c in obs_group.attrs["column-order"]]
+            target_obs_columns = read_column_order(obs_group)  # pyright: ignore[reportArgumentType]
             idx_key = _decode_bytes(obs_group.attrs.get("_index", "_index"))
             target_index = [_decode_bytes(v) for v in obs_group[idx_key][:]]
 
@@ -250,7 +252,7 @@ def copy_cap_annotations(
             }
 
         # Detect existing CAP obs columns: any column with "--" separator
-        existing_cap_cols = [c for c in target_obs_columns if "--" in c]
+        existing_cap_cols = cap_obs_columns(target_obs_columns)
 
         existing_cap_uns = [k for k in _OVERWRITE_UNS_KEYS if k in target_uns_keys]
 

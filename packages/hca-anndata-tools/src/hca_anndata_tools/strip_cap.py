@@ -18,19 +18,20 @@ replaces rather than removes).
 from __future__ import annotations
 
 import contextlib
-import shutil
 from pathlib import Path
 
 import h5py
 
 from ._io import (
-    _decode_bytes,
+    read_column_order,
     read_edit_log_h5py,
     update_column_order,
     write_edit_log_h5py,
 )
-from .cap import _LEGACY_CAP_MARKERS, CAP_METADATA_KEY
+from .cap import _LEGACY_CAP_MARKERS, CAP_METADATA_KEY, cap_obs_columns
+from .inspect import _read_schema_version
 from .write import (
+    _copy_with_sha256,
     build_edit_log,
     cleanup_previous_version,
     generate_output_path,
@@ -53,9 +54,11 @@ def strip_cap_annotations(path: str) -> dict:
     nested ``cap_metadata`` block, or (on a mixed-layout file) both — and
     every obs column whose name contains ``--``, the separator CAP annotation
     columns carry (the same detection ``copy_cap_annotations`` uses for its
-    overwrite mode). Everything else is untouched: all other obs columns and
-    uns fields ride along unchanged, and the existing edit-log history stays
-    — the original ``import_cap_annotations`` entry is history, not debris.
+    overwrite mode), along with any ``uns['<column>_colors']`` palette a
+    removed column owns (an orphaned palette breaks the schema validator).
+    Everything else is untouched: all other obs columns and uns fields ride
+    along unchanged, and the existing edit-log history stays — the original
+    ``import_cap_annotations`` entry is history, not debris.
 
     The gates, in the order a caller hits them:
 
@@ -96,22 +99,27 @@ def strip_cap_annotations(path: str) -> dict:
         # Peek first via h5py: layout check + inventory of what is present,
         # without loading the full anndata just to decide whether to mutate.
         with h5py.File(path, "r") as f_in:
-            uns = f_in.get("uns")
-            if uns is not None and "schema_version" in uns:
+            version = _read_schema_version(f_in)
+            if version:
                 return {
                     "error": (
-                        "Refusing to strip: the file declares a CellxGENE "
-                        "uns['schema_version'] (e.g. a CAP export). CAP is the system "
-                        "of record for its exports — strip CAP material only from "
-                        "HCA-layout curation targets."
+                        f"Refusing to strip: the file declares CellxGENE schema {version} "
+                        f"(e.g. a CAP export). CAP is the system of record for its exports "
+                        f"— strip CAP material only from HCA-layout curation targets."
                     )
                 }
             obs = f_in.get("obs")
-            if not isinstance(obs, h5py.Group):
+            if obs is None:
                 return {"error": "File has no obs group"}
-            uns_keys_present = [k for k in _CAP_UNS_KEYS if uns is not None and k in uns]
-            all_columns = [_decode_bytes(c) for c in obs.attrs["column-order"]]
-            obs_columns_present = [c for c in all_columns if "--" in c]
+            if not isinstance(obs, h5py.Group):
+                return {"error": "obs is not a group — the file predates the modern h5ad layout"}
+            uns = f_in.get("uns")
+            uns_keys_present = [k for k in _CAP_UNS_KEYS if k in uns] if uns is not None else []
+            obs_columns_present = cap_obs_columns(read_column_order(obs))
+            # A removed categorical column's scanpy palette would be orphaned
+            # (the validator flags colors without a matching obs column).
+            if uns is not None:
+                uns_keys_present += [c + "_colors" for c in obs_columns_present if c + "_colors" in uns]
 
         if not uns_keys_present and not obs_columns_present:
             return {
@@ -128,7 +136,9 @@ def strip_cap_annotations(path: str) -> dict:
             # a second edit within the same second would name the output after
             # its own source. Refuse before touching anything.
             return {"error": "An edit snapshot for this second already exists — retry in a moment."}
-        shutil.copy2(path, output_path)
+        # Hash the source in the same streaming read as the snapshot copy;
+        # a separate hash pass would re-read the whole multi-GB file.
+        source_sha256 = _copy_with_sha256(path, output_path)
 
         # Defer the malformed-log cleanup until after the with-block closes
         # the output handle (see strip.py for the POSIX/Windows rationale).
@@ -136,9 +146,9 @@ def strip_cap_annotations(path: str) -> dict:
         with h5py.File(output_path, "a") as f_out:
             for key in uns_keys_present:
                 del f_out["uns"][key]
-            for col in obs_columns_present:
-                del f_out["obs"][col]
             if obs_columns_present:
+                for col in obs_columns_present:
+                    del f_out["obs"][col]
                 update_column_order(f_out, [], set(obs_columns_present))
 
             entry = make_edit_entry(
@@ -153,7 +163,7 @@ def strip_cap_annotations(path: str) -> dict:
                 },
             )
             existing_log = read_edit_log_h5py(f_out)
-            log_result = build_edit_log(existing_log, [entry], path)
+            log_result = build_edit_log(existing_log, [entry], path, source_sha256)
             if "error" in log_result:
                 log_error = log_result
             else:

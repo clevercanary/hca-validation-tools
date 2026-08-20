@@ -95,14 +95,19 @@ _OPTIONAL_SUFFIXES = [
 ]
 
 
+def cap_obs_columns(obs_columns: list[str]) -> list[str]:
+    """Return the subset of obs column names that are CAP annotation columns.
+
+    CAP serializes annotation columns as ``<set>--<suffix>``; the ``--``
+    separator is the convention. Owned here so the tools that detect,
+    replace, or remove CAP columns all share one definition.
+    """
+    return [c for c in obs_columns if "--" in c]
+
+
 def _find_annotation_sets(obs_columns: list[str]) -> list[str]:
     """Identify CAP annotation set names from obs columns with -- separator."""
-    sets = set()
-    for col in obs_columns:
-        if "--" in col:
-            setname = col.split("--")[0]
-            sets.add(setname)
-    return sorted(sets)
+    return sorted({col.split("--")[0] for col in cap_obs_columns(obs_columns)})
 
 
 def _get_unique_values(series, max_values: int = 50) -> list:
