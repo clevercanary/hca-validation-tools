@@ -10,14 +10,16 @@ import typing
 from pathlib import Path
 
 import h5py
-import numpy as np
 from pydantic import TypeAdapter, ValidationError
 
 from ._io import (
+    DEFAULT_PLACEHOLDERS,
     _decode_bytes,
+    compact_categories,
     open_h5ad,
     read_categorical_data,
     read_edit_log_h5py,
+    replace_categorical_column,
     verify_categorical_integrity,
     write_edit_log_h5py,
 )
@@ -32,20 +34,6 @@ from .write import (
     resolve_latest,
     write_h5ad,
 )
-
-# Default HCA placeholder values (case-insensitive)
-_DEFAULT_PLACEHOLDERS = [
-    "unknown",
-    "na",
-    "n/a",
-    "none",
-    "not available",
-    "not applicable",
-    "tbd",
-    "todo",
-    "null",
-    "undefined",
-]
 
 
 def _type_display(annotation) -> str:
@@ -294,7 +282,7 @@ def replace_placeholder_values(
         if not columns:
             return {"error": "columns must not be empty"}
 
-        bl = {v.lower() for v in (placeholders or _DEFAULT_PLACEHOLDERS)}
+        bl = {v.lower() for v in (placeholders or DEFAULT_PLACEHOLDERS)}
 
         # Scan for placeholder values and read edit log in one pass
         columns_fixed = {}
@@ -345,6 +333,12 @@ def replace_placeholder_values(
 
         # Copy and patch
         output_path = generate_output_path(path)
+        if output_path == path:
+            # generate_output_path timestamps to the second (see rename.py):
+            # a second edit within the same second names the output after its
+            # own source, and the failure path would then unlink that source
+            # snapshot. Refuse before touching anything.
+            return {"error": "An edit snapshot for this second already exists — retry in a moment."}
         shutil.copy2(path, output_path)
 
         with h5py.File(output_path, "a") as f:
@@ -352,49 +346,13 @@ def replace_placeholder_values(
                 item = f["obs"][col]
                 cats, codes = read_categorical_data(item)  # pyright: ignore[reportArgumentType]
 
-                # Preserve original settings
-                encoding_type = item.attrs["encoding-type"]
-                encoding_version = item.attrs["encoding-version"]
-                ordered = bool(item.attrs["ordered"])
-                codes_compression = item["codes"].compression
-                codes_compression_opts = item["codes"].compression_opts
-                codes_chunks = item["codes"].chunks
-
                 # Set blocked codes to -1 (NaN)
                 blocked = {i for i in range(len(cats)) if cats[i].lower() in bl}
                 for i in blocked:
                     codes[codes == i] = -1
 
-                # Remove unused categories and remap codes
-                used = sorted(set(codes[codes >= 0]))
-                new_cats = [cats[i] for i in used]
-                # Vectorized remap via lookup table
-                lookup = np.full(len(cats), -1, dtype=codes.dtype)
-                for new_idx, old_idx in enumerate(used):
-                    lookup[old_idx] = new_idx
-                mask = codes >= 0
-                new_codes = np.full_like(codes, -1)
-                new_codes[mask] = lookup[codes[mask]]
-
-                # Rewrite the column preserving compression settings
-                del f["obs"][col]
-                grp = f["obs"].create_group(col)
-                grp.attrs["encoding-type"] = encoding_type
-                grp.attrs["encoding-version"] = encoding_version
-                grp.attrs["ordered"] = ordered
-                cat_data = np.array(new_cats, dtype=object) if new_cats else np.array([], dtype=h5py.string_dtype())
-                cat_ds = grp.create_dataset("categories", data=cat_data)
-                cat_ds.attrs["encoding-type"] = "string-array"
-                cat_ds.attrs["encoding-version"] = "0.2.0"
-                codes_ds = grp.create_dataset(
-                    "codes",
-                    data=new_codes.astype(codes.dtype),
-                    compression=codes_compression,
-                    compression_opts=codes_compression_opts,
-                    chunks=codes_chunks,
-                )
-                codes_ds.attrs["encoding-type"] = "array"
-                codes_ds.attrs["encoding-version"] = "0.2.0"
+                new_cats, new_codes = compact_categories(list(cats), codes)
+                replace_categorical_column(f["obs"], col, new_cats, new_codes)  # pyright: ignore[reportArgumentType]
 
             write_edit_log_h5py(f, log_result["json"])
 

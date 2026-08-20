@@ -339,6 +339,20 @@ def test_replace_placeholder_all_values_replaced(tmp_path):
     assert len(written.obs["test_col"].cat.categories) == 0
 
 
+def test_replace_placeholder_same_second_snapshot_refused(tmp_path, monkeypatch):
+    """A second edit within the same second would name the output after its
+    own source and the failure path would unlink that source snapshot; the
+    guard refuses before touching anything (mirrors rename/backfill)."""
+    monkeypatch.setattr("hca_anndata_tools.edit.generate_output_path", lambda p: p)
+    path = _make_placeholder_h5ad(tmp_path, ["valid", "unknown"])
+
+    result = replace_placeholder_values(str(path), ["test_col"])
+
+    assert "error" in result
+    assert "already exists" in result["error"]
+    assert path.is_file()  # the source snapshot was not unlinked
+
+
 def test_replace_placeholder_edit_log(tmp_path):
     path = _make_placeholder_h5ad(tmp_path, ["valid", "unknown"])
     result = replace_placeholder_values(str(path), ["test_col"])

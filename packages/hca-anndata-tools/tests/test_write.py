@@ -2,13 +2,17 @@
 
 import hashlib
 import json
+import os
 import re
+import shutil
 from pathlib import Path
 
 import anndata as ad
+import pytest
 
 from hca_anndata_tools.write import (
     EDIT_LOG_KEY,
+    _copy_with_sha256,
     generate_output_path,
     resolve_latest,
     strip_timestamp,
@@ -391,3 +395,43 @@ def test_has_edit_log_operation_accepts_list_shape(sample_h5ad_for_write):
 
     assert has_edit_log_operation(adata, "import_cellxgene") is True
     assert has_edit_log_operation(adata, "normalize_raw") is False
+
+
+# --- _copy_with_sha256 ---
+
+
+def test_copy_with_sha256_copies_and_hashes_in_one_pass(tmp_path):
+    src = tmp_path / "src.bin"
+    src.write_bytes(b"hello h5ad")
+    dst = tmp_path / "dst.bin"
+
+    digest = _copy_with_sha256(str(src), str(dst))
+
+    assert dst.read_bytes() == b"hello h5ad"
+    assert digest == hashlib.sha256(b"hello h5ad").hexdigest()
+
+
+def test_copy_with_sha256_refuses_same_path(tmp_path):
+    """Opening dest with 'wb' would truncate the source before reading it —
+    a same-path call must fail like shutil.copy2, not zero out the file."""
+    src = tmp_path / "src.bin"
+    src.write_bytes(b"do not truncate")
+
+    with pytest.raises(shutil.SameFileError):
+        _copy_with_sha256(str(src), str(src))
+
+    assert src.read_bytes() == b"do not truncate"
+
+
+def test_copy_with_sha256_refuses_hard_link(tmp_path):
+    """Two hard links share an inode but not a resolved path — the guard
+    must compare filesystem identity, not path strings."""
+    src = tmp_path / "src.bin"
+    src.write_bytes(b"do not truncate")
+    link = tmp_path / "link.bin"
+    os.link(src, link)
+
+    with pytest.raises(shutil.SameFileError):
+        _copy_with_sha256(str(src), str(link))
+
+    assert src.read_bytes() == b"do not truncate"

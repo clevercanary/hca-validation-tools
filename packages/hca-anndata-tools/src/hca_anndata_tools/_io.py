@@ -18,6 +18,30 @@ import pandas as pd
 if TYPE_CHECKING:
     import numpy as np
 
+# The HCA placeholder vocabulary (case-insensitive): obs values that mean
+# "no data". replace_placeholder_values blanks exact (lowercased) matches of
+# these; backfill_obs_from_source additionally treats empty/whitespace values
+# as missing, via is_missing_value below.
+DEFAULT_PLACEHOLDERS = [
+    "unknown",
+    "na",
+    "n/a",
+    "none",
+    "not available",
+    "not applicable",
+    "tbd",
+    "todo",
+    "null",
+    "undefined",
+]
+
+
+def is_missing_value(value: str, placeholders: set[str]) -> bool:
+    """True if a string value means "no data": empty/whitespace or a
+    placeholder (compare against a pre-lowercased set)."""
+    s = value.strip()
+    return not s or s.lower() in placeholders
+
 
 @contextmanager
 def open_h5ad(path: str, backed: Literal["r", "r+"] | None = "r"):
@@ -232,6 +256,130 @@ def transplant_obs_columns(
 
     update_column_order(f_out, copied, deleted)
     return deleted
+
+
+def check_duplicate_ids(index, label: str) -> str | None:
+    """Return an error message if index has duplicates, else None.
+
+    Accepts anything pd.Index accepts (list, ndarray, or an existing Index,
+    which passes through without a copy); the check runs in pandas' C
+    hashtable rather than a per-element Python loop.
+    """
+    idx = pd.Index(index)
+    if not idx.has_duplicates:
+        return None
+    dupes = idx[idx.duplicated()].unique()[:5].tolist()
+    return f"{label} have duplicate IDs (first 5): {dupes}"
+
+
+def read_string_dataset(group: h5py.Group, name: str) -> np.ndarray:
+    """Read a string dataset as an object array of str.
+
+    asstr() decodes in C (vlen and fixed-width alike); dtype=object matters —
+    a fixed-width unicode dtype would silently clip longer values assigned
+    into the array later (see rename_cell_ids).
+    """
+    import numpy as np
+
+    return np.asarray(group[name].asstr()[:], dtype=object)
+
+
+def replace_string_dataset(parent: h5py.Group, name: str, data: np.ndarray) -> None:
+    """Delete and recreate a string dataset, preserving its attrs and storage
+    properties (compression, chunks, shuffle, fletcher32, maxshape)."""
+    ds = parent[name]
+    attrs = dict(ds.attrs)
+    storage = {
+        "compression": ds.compression,
+        "compression_opts": ds.compression_opts,
+        "chunks": ds.chunks,
+        "shuffle": ds.shuffle,
+        "fletcher32": ds.fletcher32,
+        # A contiguous dataset reports maxshape == shape; passing any
+        # non-None maxshape to create_dataset forces chunked layout, so
+        # only carry it when the dataset is actually resizable.
+        "maxshape": ds.maxshape if ds.maxshape != ds.shape else None,
+    }
+    del parent[name]
+    new_ds = parent.create_dataset(name, data=data, dtype=h5py.string_dtype(encoding="utf-8"), **storage)
+    for key, attr_value in attrs.items():
+        new_ds.attrs[key] = attr_value
+
+
+def compact_categories(categories: list[str], codes: np.ndarray) -> tuple[list[str], np.ndarray]:
+    """Drop categories no code references and remap the codes accordingly.
+
+    Codes below 0 (NaN) stay -1. Returns the kept categories and the remapped
+    codes as int64 — :func:`replace_categorical_column` sizes the on-disk
+    dtype itself.
+    """
+    import numpy as np
+
+    valid = codes >= 0
+    # Range-check before bincount: one corrupt out-of-range code would
+    # otherwise size the bincount allocation to max(code)+1 entries.
+    if valid.any() and int(codes[valid].max()) >= len(categories):
+        raise ValueError(
+            f"categorical codes reference category {int(codes[valid].max())} "
+            f"but only {len(categories)} categories exist — the column is corrupt"
+        )
+    used = np.flatnonzero(np.bincount(codes[valid], minlength=len(categories)))
+    kept = [categories[i] for i in used]
+    lookup = np.full(len(categories), -1, dtype=np.int64)
+    lookup[used] = np.arange(len(used))
+    new_codes = np.full(codes.shape, -1, dtype=np.int64)
+    new_codes[valid] = lookup[codes[valid]]
+    return kept, new_codes
+
+
+def _codes_dtype(n_categories: int, original: np.dtype) -> np.dtype:
+    """Smallest signed dtype holding the category count, never narrower than
+    the original codes dtype (extending categories can overflow int8)."""
+    import numpy as np
+
+    for dt in (np.int8, np.int16, np.int32, np.int64):
+        if np.iinfo(dt).max >= n_categories - 1 and np.dtype(dt).itemsize >= original.itemsize:
+            return np.dtype(dt)
+    return np.dtype(np.int64)
+
+
+def replace_categorical_column(parent: h5py.Group, col: str, categories: list[str], codes: np.ndarray) -> None:
+    """Delete and recreate a categorical column group, preserving its encoding
+    attrs and the codes dataset's storage settings (compression, chunks).
+
+    The codes are written at the smallest dtype that holds the new category
+    count without narrowing the original — a caller that extended the
+    categories does not have to know about int8 overflow.
+    """
+    import numpy as np
+
+    item = parent[col]
+    encoding_type = item.attrs["encoding-type"]
+    encoding_version = item.attrs["encoding-version"]
+    ordered = bool(item.attrs["ordered"])
+    codes_compression = item["codes"].compression
+    codes_compression_opts = item["codes"].compression_opts
+    codes_chunks = item["codes"].chunks
+    codes = codes.astype(_codes_dtype(len(categories), item["codes"].dtype))
+
+    del parent[col]
+    grp = parent.create_group(col)
+    grp.attrs["encoding-type"] = encoding_type
+    grp.attrs["encoding-version"] = encoding_version
+    grp.attrs["ordered"] = ordered
+    cat_data = np.array(categories, dtype=object) if categories else np.array([], dtype=h5py.string_dtype())
+    cat_ds = grp.create_dataset("categories", data=cat_data)
+    cat_ds.attrs["encoding-type"] = "string-array"
+    cat_ds.attrs["encoding-version"] = "0.2.0"
+    codes_ds = grp.create_dataset(
+        "codes",
+        data=codes,
+        compression=codes_compression,
+        compression_opts=codes_compression_opts,
+        chunks=codes_chunks,
+    )
+    codes_ds.attrs["encoding-type"] = "array"
+    codes_ds.attrs["encoding-version"] = "0.2.0"
 
 
 def verify_categorical_integrity(
