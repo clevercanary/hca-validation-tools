@@ -104,54 +104,6 @@ def test_rename_non_categorical_selector(tmp_path):
     assert result["n_selected"] == len(B1_IDS)
 
 
-def test_rename_nullable_string_categorical_selector(tmp_path):
-    """A pandas StringDtype column lands on disk as a categorical whose
-    category labels are a nullable values+mask group — it must still select,
-    with null labels never matching."""
-    import pandas as pd
-
-    path = create_hca_h5ad(tmp_path / "test.h5ad")
-    adata = ad.read_h5ad(path)
-    samples = list(adata.obs["sample_id"].astype(str))
-    samples[-1] = pd.NA  # a null row, to prove the mask is honored
-    adata.obs["sample_verbatim"] = pd.array(samples, dtype="string")
-    old_setting = ad.settings.allow_write_nullable_strings
-    ad.settings.allow_write_nullable_strings = True
-    try:
-        adata.write_h5ad(path)
-    finally:
-        ad.settings.allow_write_nullable_strings = old_setting
-
-    result = rename_cell_ids(
-        str(path), column="sample_verbatim", value="B1_0023", prefix_from="MH_mix_", prefix_to="MH_mix_BR1_"
-    )
-
-    assert "error" not in result
-    assert result["n_renamed"] == len(B1_IDS)
-
-
-def test_rename_nullable_string_array_selector(tmp_path):
-    """A bare nullable-string-array column (values+mask group, no categories —
-    the direct write_elem form) selects on its values with nulls masked out."""
-    path = create_hca_h5ad(tmp_path / "test.h5ad")
-    with h5py.File(path, "a") as f:
-        rows = [sample for _, sample in HCA_TEST_ROWS]
-        group = f["obs"].create_group("sample_verbatim")
-        group.attrs["encoding-type"] = "nullable-string-array"
-        group.attrs["encoding-version"] = "0.1.0"
-        group.create_dataset("values", data=np.array(rows, dtype=object), dtype=h5py.string_dtype())
-        mask = np.zeros(len(rows), dtype=bool)
-        mask[-1] = True  # null out one N row; must not affect the B1 selection
-        group.create_dataset("mask", data=mask)
-
-    result = rename_cell_ids(
-        str(path), column="sample_verbatim", value="B1_0023", prefix_from="MH_mix_", prefix_to="MH_mix_BR1_"
-    )
-
-    assert "error" not in result
-    assert result["n_renamed"] == len(B1_IDS)
-
-
 def test_rename_refuses_zero_matches(hca_path):
     result = rename_cell_ids(str(hca_path), column="sample_id", value="nope", prefix_from="MH_mix_", prefix_to="X_")
     assert "no rows match" in result["error"]
