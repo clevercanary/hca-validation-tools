@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from .marker_genes import validate_marker_genes
     from .normalize import normalize_raw
     from .plot import plot_embedding
+    from .rename import rename_cell_ids
     from .stats import get_descriptive_stats
     from .storage import get_storage_info
     from .strip import strip_forbidden_obs_columns
@@ -62,6 +63,7 @@ _LAZY_IMPORTS = {
     "normalize_raw": ".normalize",
     "strip_forbidden_obs_columns": ".strip",
     "drop_obs_columns": ".drop",
+    "rename_cell_ids": ".rename",
     "check_x_normalization": ".inspect",
     "check_schema_type": ".inspect",
 }
