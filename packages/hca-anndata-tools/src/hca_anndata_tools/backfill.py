@@ -88,6 +88,14 @@ def _read_column(obs: h5py.Group, col: str, placeholders: set[str], side: str) -
     """
     item = obs[col]
     if isinstance(item, h5py.Group) and "categories" in item:
+        # A numeric/boolean pandas Categorical is stored the same way; its
+        # values have no missing vocabulary here either, so refuse it with
+        # the clear error rather than tripping over .strip() on a non-string.
+        if h5py.check_string_dtype(item["categories"].dtype) is None:  # pyright: ignore[reportAttributeAccessIssue]
+            return None, (
+                f"{side} column '{col}' is a categorical of non-string values — "
+                "only string-valued categorical and string obs columns can be backfilled"
+            )
         cats, codes = read_categorical_data(item)  # pyright: ignore[reportArgumentType]
         cat_values = np.array(list(cats), dtype=object)
         cat_missing = np.array([is_missing_value(c, placeholders) for c in cats], dtype=bool)

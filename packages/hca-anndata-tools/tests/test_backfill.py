@@ -218,6 +218,24 @@ def test_backfill_numeric_column_refused(tmp_path):
     assert "not categorical or string" in result["error"]
 
 
+def test_backfill_non_string_categorical_refused(tmp_path):
+    """A numeric pandas Categorical is stored as a categories-group too; it
+    must get the clear unsupported-column refusal, not a .strip() crash."""
+
+    def make_numeric_categorical(path):
+        obs = pd.DataFrame({"n_reads": pd.Categorical([1, 2])}, index=pd.Index(["c1", "c2"], name="cellID"))
+        ad.AnnData(X=np.zeros((2, 2), dtype=np.float32), obs=obs).write_h5ad(path)
+        return str(path)
+
+    target = make_numeric_categorical(tmp_path / "target.h5ad")
+    source = make_numeric_categorical(tmp_path / "source.h5ad")
+
+    result = backfill_obs_from_source(target, source, columns=["n_reads"])
+
+    assert "error" in result
+    assert "categorical of non-string values" in result["error"]
+
+
 def test_backfill_index_is_not_a_column(target_source):
     target, source = target_source
     result = backfill_obs_from_source(target, source, columns=["cellID"])
