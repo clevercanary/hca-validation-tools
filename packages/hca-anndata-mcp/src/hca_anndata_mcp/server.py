@@ -9,6 +9,7 @@ from hca_anndata_mcp.tools.plot import plot_embedding_mcp
 from hca_anndata_mcp.tools.populate import populate_labels
 from hca_anndata_mcp.tools.rename import rename_cell_ids
 from hca_anndata_mcp.tools.strip import strip_forbidden_obs_columns
+from hca_anndata_mcp.tools.strip_cap import strip_cap_annotations
 from hca_anndata_mcp.tools.validate import validate_cell_annotation, validate_schema
 from hca_anndata_tools import (
     check_schema_type,
@@ -71,6 +72,12 @@ mcp = FastMCP(
         "run any rename_cell_ids repair first — it joins by cell identity and trusts the join, "
         "validate_marker_genes to check CAP marker genes against var, "
         "copy_cap_annotations to copy CAP annotations from a source into an HCA target file, "
+        "strip_cap_annotations to remove ALL CAP annotation material from an HCA-layout file — "
+        "the deprecated top-level uns keys, a nested uns['cap_metadata'] block, and every '--' obs "
+        "column; the remediation for files the toolkit refuses as deprecated-top-level-CAP-layout, "
+        "and the precursor to a fresh copy_cap_annotations run from a current CAP export (refuses "
+        "CellxGENE-layout files such as CAP exports, and errors without writing when the file has "
+        "no CAP material), "
         "replace_placeholder_values to replace banned placeholder values with NaN in obs columns, "
         "compress_h5ad to rewrite a file with HDF5 gzip compression applied, "
         "normalize_raw to normalize raw counts in X (normalize_total + log1p) — moving them to raw.X "
@@ -112,6 +119,7 @@ mcp.tool()(rename_cell_ids)
 mcp.tool()(backfill_obs_from_source)
 mcp.tool()(validate_marker_genes)
 mcp.tool()(copy_cap_annotations)
+mcp.tool()(strip_cap_annotations)
 mcp.tool()(replace_placeholder_values)
 mcp.tool()(compress_h5ad)
 mcp.tool()(normalize_raw)
