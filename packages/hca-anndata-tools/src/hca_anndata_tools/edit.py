@@ -333,6 +333,12 @@ def replace_placeholder_values(
 
         # Copy and patch
         output_path = generate_output_path(path)
+        if output_path == path:
+            # generate_output_path timestamps to the second (see rename.py):
+            # a second edit within the same second names the output after its
+            # own source, and the failure path would then unlink that source
+            # snapshot. Refuse before touching anything.
+            return {"error": "An edit snapshot for this second already exists — retry in a moment."}
         shutil.copy2(path, output_path)
 
         with h5py.File(output_path, "a") as f:

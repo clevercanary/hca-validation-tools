@@ -27,9 +27,11 @@ import pandas as pd
 from ._io import (
     DEFAULT_PLACEHOLDERS,
     _decode_bytes,
-    compact_categories,
+    check_duplicate_ids,
+    is_missing_value,
     read_categorical_data,
     read_edit_log_h5py,
+    read_string_dataset,
     replace_categorical_column,
     replace_string_dataset,
     verify_categorical_integrity,
@@ -71,12 +73,6 @@ def _check_arguments(columns) -> list[str]:
     return problems
 
 
-def _is_missing_str(value: str, placeholders: set[str]) -> bool:
-    """True if a string value means "no data": empty/whitespace or a placeholder."""
-    s = value.strip()
-    return not s or s.lower() in placeholders
-
-
 def _read_column(obs: h5py.Group, col: str, placeholders: set[str], side: str) -> tuple[dict | None, str | None]:
     """Read one obs column into a uniform shape: (column dict, error).
 
@@ -94,13 +90,20 @@ def _read_column(obs: h5py.Group, col: str, placeholders: set[str], side: str) -
     if isinstance(item, h5py.Group) and "categories" in item:
         cats, codes = read_categorical_data(item)  # pyright: ignore[reportArgumentType]
         cat_values = np.array(list(cats), dtype=object)
-        cat_missing = np.array([_is_missing_str(c, placeholders) for c in cats], dtype=bool)
+        cat_missing = np.array([is_missing_value(c, placeholders) for c in cats], dtype=bool)
         valid = codes >= 0
         values = np.full(len(codes), None, dtype=object)
         values[valid] = cat_values[codes[valid]]
         missing = ~valid
         missing[valid] = cat_missing[codes[valid]]
-        return {"kind": "categorical", "cats": list(cats), "codes": codes, "values": values, "missing": missing}, None
+        return {
+            "kind": "categorical",
+            "cats": list(cats),
+            "codes": codes,
+            "ordered": bool(item.attrs["ordered"]),
+            "values": values,
+            "missing": missing,
+        }, None
     if isinstance(item, h5py.Group):
         return None, (
             f"{side} column '{col}' uses a nullable-dtype layout, which is not supported — "
@@ -110,9 +113,9 @@ def _read_column(obs: h5py.Group, col: str, placeholders: set[str], side: str) -
         return None, (
             f"{side} column '{col}' is not categorical or string — only those obs column types can be backfilled"
         )
-    values = np.asarray(item.asstr()[:], dtype=object)  # pyright: ignore[reportAttributeAccessIssue]
+    values = read_string_dataset(obs, col)
     codes, uniques = pd.factorize(values)
-    uniq_missing = np.array([_is_missing_str(u, placeholders) for u in uniques], dtype=bool)
+    uniq_missing = np.array([is_missing_value(u, placeholders) for u in uniques], dtype=bool)
     valid = codes >= 0
     missing = ~valid
     missing[valid] = uniq_missing[codes[valid]]
@@ -153,14 +156,12 @@ def _read_obs_for_backfill(
                 }
             if col not in obs_keys:
                 return None, {"error": f"{side} file has no obs column '{col}'"}
-        # asstr() decodes in C; dtype=object avoids a fixed-width unicode
-        # dtype (see rename.py). The pandas Index is built once and reused
-        # for the duplicate check and the join.
-        ids = np.asarray(obs[index_name].asstr()[:], dtype=object)  # pyright: ignore[reportAttributeAccessIssue, reportIndexIssue]
-        index = pd.Index(ids)
-        if index.has_duplicates:
-            dupes = index[index.duplicated()].unique()[:_N_EXAMPLES].tolist()
-            return None, {"error": f"{side} cells have duplicate IDs (first {_N_EXAMPLES}): {dupes}"}
+        # The pandas Index is built once and reused for the duplicate check
+        # and the join.
+        index = pd.Index(read_string_dataset(obs, index_name))
+        dupe_err = check_duplicate_ids(index, f"{side} cells")
+        if dupe_err:
+            return None, {"error": dupe_err}
         col_data = {}
         for col in columns:
             data, err = _read_column(obs, col, placeholders, side)
@@ -176,18 +177,31 @@ def _read_obs_for_backfill(
 def _fill_categorical(obs: h5py.Group, col: str, data: dict, fill_rows: np.ndarray, fill_values: np.ndarray) -> None:
     """Rewrite a categorical column with the fills applied.
 
-    Extends the categories with any new fill values, then drops categories
-    the fills left unused (the placeholder being replaced, typically) —
-    matching replace_placeholder_values' cleanup behavior.
+    Extends the categories with any new fill values, then drops exactly the
+    categories the fills left unused (the placeholder being replaced,
+    typically). A category that was already unused before the fill is kept —
+    the declared vocabulary is set data this tool must not touch.
     """
     cats: list[str] = data["cats"]
     codes: np.ndarray = data["codes"]
     new_cats = cats + sorted(set(fill_values) - set(cats))
     # Work in int64: the new category positions can overflow the original
-    # codes dtype before the unused-category compaction shrinks the range.
+    # codes dtype before the unused-category drop shrinks the range.
     work = codes.astype(np.int64)
     work[fill_rows] = pd.Index(new_cats).get_indexer(fill_values)
-    final_cats, final_codes = compact_categories(new_cats, work)
+
+    used_before = np.zeros(len(new_cats), dtype=bool)
+    used_before[codes[codes >= 0]] = True
+    used_after = np.zeros(len(new_cats), dtype=bool)
+    used_after[work[work >= 0]] = True
+    keep = np.flatnonzero(used_after | ~used_before)
+
+    final_cats = [new_cats[i] for i in keep]
+    lookup = np.full(len(new_cats), -1, dtype=np.int64)
+    lookup[keep] = np.arange(len(keep))
+    valid = work >= 0
+    final_codes = np.full(work.shape, -1, dtype=np.int64)
+    final_codes[valid] = lookup[work[valid]]
     replace_categorical_column(obs, col, final_cats, final_codes)
 
 
@@ -325,6 +339,17 @@ def backfill_obs_from_source(target_path: str, source_path: str, columns: list[s
             conflict_m = conflict_m[tgt["values"][matched_rows[conflict_m]] != src_values_m[conflict_m]]
 
             filled = len(fill_rows)
+            if filled and tgt["kind"] == "categorical" and tgt["ordered"]:
+                new_categories = sorted(set(fill_values) - set(tgt["cats"]))
+                if new_categories:
+                    return {
+                        "error": (
+                            f"Column '{col}' is an ordered categorical and the fill would introduce "
+                            f"new categories {new_categories[:_N_EXAMPLES]} — appending to an ordered "
+                            f"vocabulary silently corrupts its ordering. Make the column unordered or "
+                            f"re-derive the ordering upstream first."
+                        )
+                    }
             missing_before = int(tgt_missing.sum())
             matched_missing = int(tgt_missing_m.sum())
             missing_after = missing_before - filled
@@ -362,15 +387,15 @@ def backfill_obs_from_source(target_path: str, source_path: str, columns: list[s
             }
 
         # --- Copy (hashing the target in the same read), then patch ---
-        source_basename = Path(source_path).name
-        source_sha256 = _compute_sha256(source_path)
-
         output_path = generate_output_path(target_path)
         if output_path == target_path:
             # generate_output_path timestamps to the second (see rename.py):
             # a second edit within the same second would name the output after
-            # its own source. Refuse before touching anything.
+            # its own source. Refuse before touching anything — and before the
+            # source hash below, which reads the whole source file.
             return {"error": "An edit snapshot for this second already exists — retry in a moment."}
+        source_basename = Path(source_path).name
+        source_sha256 = _compute_sha256(source_path)
         target_sha256 = _copy_with_sha256(target_path, output_path)
 
         entry = make_edit_entry(

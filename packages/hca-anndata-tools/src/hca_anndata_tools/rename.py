@@ -26,6 +26,7 @@ from ._io import (
     _decode_bytes,
     read_categorical_data,
     read_edit_log_h5py,
+    read_string_dataset,
     replace_string_dataset,
     write_edit_log_h5py,
 )
@@ -229,11 +230,10 @@ def rename_cell_ids(path: str, column: str, value: str, prefix_from: str, prefix
                 # Gated before the index read: a mistyped selector should not
                 # pay for decoding 2M IDs it will never use.
                 return {"error": f"Refusing to rename: no rows match obs['{column}'] == {value!r}"}
-            # dtype=object pins what asstr() already returns (verified for
-            # both vlen and fixed-width string datasets): a fixed-width
-            # unicode dtype here would silently clip the longer renamed IDs
-            # on assignment in _compute_new_ids.
-            ids = np.asarray(obs[index_name].asstr()[:], dtype=object)  # pyright: ignore[reportAttributeAccessIssue, reportIndexIssue]
+            # dtype=object (inside read_string_dataset) pins what asstr()
+            # already returns: a fixed-width unicode dtype here would silently
+            # clip the longer renamed IDs on assignment in _compute_new_ids.
+            ids = read_string_dataset(obs, index_name)
 
             # A DataFrame in obsm carries its own duplicate copy of the cell
             # IDs (anndata writes the frame's index alongside the parent's),
@@ -251,7 +251,7 @@ def rename_cell_ids(path: str, column: str, value: str, prefix_from: str, prefix
                     ):
                         continue
                     sub_name = _decode_bytes(member.attrs.get("_index", "_index"))
-                    sub_ids = np.asarray(member[sub_name].asstr()[:], dtype=object)  # pyright: ignore[reportAttributeAccessIssue, reportIndexIssue]
+                    sub_ids = read_string_dataset(member, sub_name)
                     if sub_ids.shape != ids.shape or not (sub_ids == ids).all():
                         return {
                             "error": (

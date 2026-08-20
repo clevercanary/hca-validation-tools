@@ -38,7 +38,13 @@ def _copy_with_sha256(source_path: str, dest_path: str) -> str:
 
     One streaming pass instead of a hash read followed by a copy read —
     on a multi-GB h5ad that halves the read I/O of a copy-and-patch tool.
+
+    Refuses same-path calls: opening dest with 'wb' would truncate the
+    source to zero bytes before reading it, so this must fail the way
+    shutil.copy2 does rather than trust every caller's same-second guard.
     """
+    if Path(source_path).resolve() == Path(dest_path).resolve():
+        raise shutil.SameFileError(f"{source_path!r} and {dest_path!r} are the same file")
     h = hashlib.sha256()
     with Path(source_path).open("rb") as src, Path(dest_path).open("wb") as dst:
         for chunk in iter(lambda: src.read(_HASH_CHUNK_SIZE), b""):

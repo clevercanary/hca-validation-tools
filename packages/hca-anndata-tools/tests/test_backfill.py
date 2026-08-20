@@ -332,6 +332,51 @@ def test_backfill_extends_categories_without_disturbing_existing(tmp_path):
     assert set(out.obs["library_id"].cat.categories) == {"L_existing", "L_new_1", "L_new_2"}
 
 
+def test_backfill_keeps_preexisting_unused_categories(tmp_path):
+    """The declared category vocabulary is set data: only categories the fill
+    itself left unused (the replaced placeholder) are dropped."""
+    obs = pd.DataFrame(
+        {"library_id": pd.Categorical(["unknown", None], categories=["unknown", "L_unused"])},
+        index=pd.Index(["c1", "c2"], name="cellID"),
+    )
+    ad.AnnData(X=np.zeros((2, 2), dtype=np.float32), obs=obs).write_h5ad(tmp_path / "target.h5ad")
+    source = _make_h5ad(tmp_path / "source.h5ad", ["c1", "c2"], {"library_id": ["L1", "L2"]})
+
+    result = backfill_obs_from_source(str(tmp_path / "target.h5ad"), source, columns=["library_id"])
+
+    assert "error" not in result
+    out = ad.read_h5ad(result["output_path"])
+    assert list(out.obs["library_id"]) == ["L1", "L2"]
+    # "unknown" became unused through the fill — dropped; "L_unused" was
+    # already unused before the fill — kept.
+    assert set(out.obs["library_id"].cat.categories) == {"L_unused", "L1", "L2"}
+
+
+def test_backfill_refuses_new_categories_on_ordered_categorical(tmp_path):
+    """Appending to an ordered vocabulary would corrupt its ordering; a fill
+    that stays inside the existing vocabulary is fine."""
+    obs = pd.DataFrame(
+        {"stage": pd.Categorical([None, "E10", "E12"], categories=["E10", "E12"], ordered=True)},
+        index=pd.Index(["c1", "c2", "c3"], name="cellID"),
+    )
+    ad.AnnData(X=np.zeros((3, 2), dtype=np.float32), obs=obs).write_h5ad(tmp_path / "target.h5ad")
+    target = str(tmp_path / "target.h5ad")
+
+    new_cat_source = _make_h5ad(tmp_path / "source-new.h5ad", ["c1"], {"stage": ["E09"]})
+    result = backfill_obs_from_source(target, new_cat_source, columns=["stage"])
+    assert "error" in result
+    assert "ordered categorical" in result["error"]
+    assert not list(tmp_path.glob("*-edit-*.h5ad"))
+
+    in_vocab_source = _make_h5ad(tmp_path / "source-ok.h5ad", ["c1"], {"stage": ["E10"]})
+    result = backfill_obs_from_source(target, in_vocab_source, columns=["stage"])
+    assert "error" not in result
+    out = ad.read_h5ad(result["output_path"])
+    assert out.obs["stage"]["c1"] == "E10"
+    assert out.obs["stage"].cat.ordered
+    assert list(out.obs["stage"].cat.categories) == ["E10", "E12"]
+
+
 def test_codes_dtype_upcasts_when_categories_outgrow_int8():
     assert _codes_dtype(100, np.dtype(np.int8)) == np.dtype(np.int8)
     assert _codes_dtype(200, np.dtype(np.int8)) == np.dtype(np.int16)

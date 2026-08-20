@@ -19,8 +19,9 @@ if TYPE_CHECKING:
     import numpy as np
 
 # The HCA placeholder vocabulary (case-insensitive): obs values that mean
-# "no data". Shared by replace_placeholder_values (which blanks them) and
-# backfill_obs_from_source (which treats them as fillable).
+# "no data". replace_placeholder_values blanks exact (lowercased) matches of
+# these; backfill_obs_from_source additionally treats empty/whitespace values
+# as missing, via is_missing_value below.
 DEFAULT_PLACEHOLDERS = [
     "unknown",
     "na",
@@ -33,6 +34,13 @@ DEFAULT_PLACEHOLDERS = [
     "null",
     "undefined",
 ]
+
+
+def is_missing_value(value: str, placeholders: set[str]) -> bool:
+    """True if a string value means "no data": empty/whitespace or a
+    placeholder (compare against a pre-lowercased set)."""
+    s = value.strip()
+    return not s or s.lower() in placeholders
 
 
 @contextmanager
@@ -250,18 +258,30 @@ def transplant_obs_columns(
     return deleted
 
 
-def check_duplicate_ids(index: list[str], label: str) -> str | None:
-    """Return an error message if index has duplicates, else None."""
-    if len(set(index)) == len(index):
+def check_duplicate_ids(index, label: str) -> str | None:
+    """Return an error message if index has duplicates, else None.
+
+    Accepts anything pd.Index accepts (list, ndarray, or an existing Index,
+    which passes through without a copy); the check runs in pandas' C
+    hashtable rather than a per-element Python loop.
+    """
+    idx = pd.Index(index)
+    if not idx.has_duplicates:
         return None
-    seen, dupes = set(), []
-    for x in index:
-        if x in seen and x not in dupes:
-            dupes.append(x)
-            if len(dupes) >= 5:
-                break
-        seen.add(x)
+    dupes = idx[idx.duplicated()].unique()[:5].tolist()
     return f"{label} have duplicate IDs (first 5): {dupes}"
+
+
+def read_string_dataset(group: h5py.Group, name: str) -> np.ndarray:
+    """Read a string dataset as an object array of str.
+
+    asstr() decodes in C (vlen and fixed-width alike); dtype=object matters —
+    a fixed-width unicode dtype would silently clip longer values assigned
+    into the array later (see rename_cell_ids).
+    """
+    import numpy as np
+
+    return np.asarray(group[name].asstr()[:], dtype=object)
 
 
 def replace_string_dataset(parent: h5py.Group, name: str, data: np.ndarray) -> None:
@@ -275,7 +295,10 @@ def replace_string_dataset(parent: h5py.Group, name: str, data: np.ndarray) -> N
         "chunks": ds.chunks,
         "shuffle": ds.shuffle,
         "fletcher32": ds.fletcher32,
-        "maxshape": ds.maxshape,
+        # A contiguous dataset reports maxshape == shape; passing any
+        # non-None maxshape to create_dataset forces chunked layout, so
+        # only carry it when the dataset is actually resizable.
+        "maxshape": ds.maxshape if ds.maxshape != ds.shape else None,
     }
     del parent[name]
     new_ds = parent.create_dataset(name, data=data, dtype=h5py.string_dtype(encoding="utf-8"), **storage)
@@ -293,6 +316,13 @@ def compact_categories(categories: list[str], codes: np.ndarray) -> tuple[list[s
     import numpy as np
 
     valid = codes >= 0
+    # Range-check before bincount: one corrupt out-of-range code would
+    # otherwise size the bincount allocation to max(code)+1 entries.
+    if valid.any() and int(codes[valid].max()) >= len(categories):
+        raise ValueError(
+            f"categorical codes reference category {int(codes[valid].max())} "
+            f"but only {len(categories)} categories exist — the column is corrupt"
+        )
     used = np.flatnonzero(np.bincount(codes[valid], minlength=len(categories)))
     kept = [categories[i] for i in used]
     lookup = np.full(len(categories), -1, dtype=np.int64)
