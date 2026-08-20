@@ -91,7 +91,9 @@ def _read_column(obs: h5py.Group, col: str, placeholders: set[str], side: str) -
         # A numeric/boolean pandas Categorical is stored the same way; its
         # values have no missing vocabulary here either, so refuse it with
         # the clear error rather than tripping over .strip() on a non-string.
-        if h5py.check_string_dtype(item["categories"].dtype) is None:  # pyright: ignore[reportAttributeAccessIssue]
+        # An EMPTY categories array (an all-NaN column) is fine — anndata
+        # writes it with a non-string dtype, but there is nothing to compare.
+        if len(item["categories"]) and h5py.check_string_dtype(item["categories"].dtype) is None:  # pyright: ignore[reportAttributeAccessIssue, reportArgumentType]
             return None, (
                 f"{side} column '{col}' is a categorical of non-string values — "
                 "only string-valued categorical and string obs columns can be backfilled"
