@@ -28,6 +28,7 @@ from ._io import (
     read_edit_log_h5py,
     write_edit_log_h5py,
 )
+from .cap import LEGACY_LAYOUT_DESCRIPTION, is_legacy_cap_layout
 from .inspect import _read_schema_version
 from .write import (
     _compute_sha256,
@@ -83,6 +84,14 @@ def _selection_mask(obs: h5py.Group, column: str, value: str) -> np.ndarray:
         if value not in categories:
             return np.zeros(codes.shape, dtype=bool)
         return codes == categories.get_loc(value)
+    if isinstance(item, h5py.Group):
+        # Nullable-dtype columns (pandas boolean / Int64 / string) are stored
+        # as values+mask groups with no categories; they have no `.dtype`, so
+        # without this branch the string check below would crash instead of
+        # honoring the select-nothing contract above.
+        values = item.get("values")
+        shape = values.shape if isinstance(values, h5py.Dataset) else (0,)
+        return np.zeros(shape, dtype=bool)
     if h5py.check_string_dtype(item.dtype) is None:  # pyright: ignore[reportAttributeAccessIssue]
         return np.zeros(item.shape, dtype=bool)  # pyright: ignore[reportAttributeAccessIssue]
     return np.asarray(item.asstr()[:] == value)  # pyright: ignore[reportAttributeAccessIssue]
@@ -103,6 +112,25 @@ def _compute_new_ids(
     new_ids[selected] = [prefix_to + cell_id[len(prefix_from) :] for cell_id in ids[selected]]
     examples = [[str(ids[i]), str(new_ids[i])] for i in selected[:_N_EXAMPLES]]
     return new_ids, examples
+
+
+def _replace_string_dataset(parent: h5py.Group, name: str, data: np.ndarray) -> None:
+    """Delete and recreate a string dataset, preserving its attrs and storage
+    properties (compression, chunks, shuffle, fletcher32, maxshape)."""
+    ds = parent[name]
+    attrs = dict(ds.attrs)  # pyright: ignore[reportAttributeAccessIssue]
+    storage = {
+        "compression": ds.compression,  # pyright: ignore[reportAttributeAccessIssue]
+        "compression_opts": ds.compression_opts,  # pyright: ignore[reportAttributeAccessIssue]
+        "chunks": ds.chunks,  # pyright: ignore[reportAttributeAccessIssue]
+        "shuffle": ds.shuffle,  # pyright: ignore[reportAttributeAccessIssue]
+        "fletcher32": ds.fletcher32,  # pyright: ignore[reportAttributeAccessIssue]
+        "maxshape": ds.maxshape,  # pyright: ignore[reportAttributeAccessIssue]
+    }
+    del parent[name]
+    new_ds = parent.create_dataset(name, data=data, dtype=h5py.string_dtype(encoding="utf-8"), **storage)
+    for key, attr_value in attrs.items():
+        new_ds.attrs[key] = attr_value
 
 
 def rename_cell_ids(path: str, column: str, value: str, prefix_from: str, prefix_to: str) -> dict:
@@ -131,11 +159,14 @@ def rename_cell_ids(path: str, column: str, value: str, prefix_from: str, prefix
       rename that introduces duplicate cell IDs is the exact defect this tool
       exists to fix.
 
-    Only the index dataset is rewritten — no rows move. Everything row-shaped
-    (obs columns, ``X``, ``raw.X``, ``obsm``/``obsp``) aligns to cells by
-    position, not by ID, so it all rides along untouched; the IDs exist in
-    exactly one place in the file. ``raw`` needs nothing: it has no ``obs`` of
-    its own. The index dataset's name is read from ``obs.attrs['_index']``
+    No rows move — everything row-shaped (obs columns, ``X``, ``raw.X``,
+    ``obsm``/``obsp``) aligns to cells by position, not by ID, so it all rides
+    along untouched, and ``raw`` needs nothing: it has no ``obs`` of its own.
+    The IDs live in the obs index plus one duplicate copy inside each
+    DataFrame stored in ``obsm`` (anndata writes the frame's own index and
+    refuses to read a file where the copies disagree), so those are rewritten
+    in the same pass — and a file whose copies *already* disagree is refused
+    as broken. The index dataset's name is read from ``obs.attrs['_index']``
     rather than assumed — HCA-layout files are not uniform here (``cellID``
     on the breast integrated object).
 
@@ -188,6 +219,16 @@ def rename_cell_ids(path: str, column: str, value: str, prefix_from: str, prefix
                     )
                 }
 
+            uns = f_in.get("uns")
+            if isinstance(uns, h5py.Group) and is_legacy_cap_layout(uns):
+                # Parity with drop.py / copy_cap.py (#552): the legacy layout
+                # marks a CAP export even when uns['schema_version'] is absent,
+                # and renaming a CAP export is exactly what the gate above
+                # exists to prevent.
+                return {
+                    "error": f"Refusing to rename: the file uses {LEGACY_LAYOUT_DESCRIPTION}, which is not supported"
+                }
+
             index_name = _decode_bytes(obs.attrs.get("_index", "_index"))
             if column == index_name:
                 return {
@@ -207,6 +248,33 @@ def rename_cell_ids(path: str, column: str, value: str, prefix_from: str, prefix
                 # pay for decoding 2M IDs it will never use.
                 return {"error": f"Refusing to rename: no rows match obs['{column}'] == {value!r}"}
             ids = np.asarray(obs[index_name].asstr()[:])  # pyright: ignore[reportAttributeAccessIssue, reportIndexIssue]
+
+            # A DataFrame in obsm carries its own duplicate copy of the cell
+            # IDs (anndata writes the frame's index alongside the parent's),
+            # and anndata refuses to read a file where the two disagree. So
+            # every such copy must be renamed in the same pass — and if one
+            # already disagrees, the file is broken in a way a rename would
+            # only paper over.
+            obsm_df_indexes: list[tuple[str, str]] = []  # (obsm key, index dataset name)
+            obsm = f_in.get("obsm")
+            if isinstance(obsm, h5py.Group):
+                for obsm_key, member in obsm.items():
+                    if not (
+                        isinstance(member, h5py.Group)
+                        and _decode_bytes(member.attrs.get("encoding-type", "")) == "dataframe"
+                    ):
+                        continue
+                    sub_name = _decode_bytes(member.attrs.get("_index", "_index"))
+                    sub_ids = np.asarray(member[sub_name].asstr()[:])  # pyright: ignore[reportAttributeAccessIssue, reportIndexIssue]
+                    if sub_ids.shape != ids.shape or not (sub_ids == ids).all():
+                        return {
+                            "error": (
+                                f"Refusing to rename: obsm[{obsm_key!r}] is a DataFrame whose index "
+                                f"does not match the obs index — the file is internally inconsistent "
+                                f"and must be repaired before any rename"
+                            )
+                        }
+                    obsm_df_indexes.append((obsm_key, sub_name))
 
         selected = np.flatnonzero(mask)
         # Count and sample the disagreements rather than materializing them
@@ -231,6 +299,21 @@ def rename_cell_ids(path: str, column: str, value: str, prefix_from: str, prefix
 
         duplicated = pd.Index(new_ids).duplicated()
         if duplicated.any():
+            # Name the right culprit: duplicates the file already had are not
+            # the rename's doing, and the remedy (repair the file) differs
+            # from the remedy for a bad prefix choice (change the arguments).
+            # Either way the gate stays hard — writing into a file whose IDs
+            # already collide would paper over a defect this tool exists to fix.
+            pre_existing = pd.Index(ids).duplicated()
+            if pre_existing.any():
+                already = sorted(set(ids[pre_existing]))
+                return {
+                    "error": (
+                        f"Refusing to rename: the file already contains {len(already)} duplicate cell "
+                        f"IDs before any rename (e.g. {already[:_N_EXAMPLES]}) — repair the file's "
+                        f"pre-existing collisions first"
+                    )
+                }
             colliding = sorted(set(new_ids[duplicated]))
             return {
                 "error": (
@@ -241,6 +324,12 @@ def rename_cell_ids(path: str, column: str, value: str, prefix_from: str, prefix
             }
 
         output_path = generate_output_path(path)
+        if output_path == path:
+            # generate_output_path timestamps to the second, so a second edit
+            # within the same second names the output after its own source;
+            # copying would raise SameFileError and the failure path would
+            # then unlink the source snapshot. Refuse before touching anything.
+            return {"error": "An edit snapshot for this second already exists — retry in a moment."}
         shutil.copy2(path, output_path)
 
         # Hash the source before opening the output: build_edit_log would
@@ -249,22 +338,9 @@ def rename_cell_ids(path: str, column: str, value: str, prefix_from: str, prefix
 
         log_error = None
         with h5py.File(output_path, "a") as f_out:
-            index_ds = f_out["obs"][index_name]  # pyright: ignore[reportIndexIssue]
-            attrs = dict(index_ds.attrs)  # pyright: ignore[reportAttributeAccessIssue]
-            compression = index_ds.compression  # pyright: ignore[reportAttributeAccessIssue]
-            compression_opts = index_ds.compression_opts  # pyright: ignore[reportAttributeAccessIssue]
-            chunks = index_ds.chunks  # pyright: ignore[reportAttributeAccessIssue]
-            del f_out["obs"][index_name]  # pyright: ignore[reportIndexIssue]
-            new_ds = f_out["obs"].create_dataset(  # pyright: ignore[reportAttributeAccessIssue]
-                index_name,
-                data=new_ids,
-                dtype=h5py.string_dtype(encoding="utf-8"),
-                compression=compression,
-                compression_opts=compression_opts,
-                chunks=chunks,
-            )
-            for key, attr_value in attrs.items():
-                new_ds.attrs[key] = attr_value
+            _replace_string_dataset(f_out["obs"], index_name, new_ids)  # pyright: ignore[reportArgumentType]
+            for obsm_key, sub_name in obsm_df_indexes:
+                _replace_string_dataset(f_out["obsm"][obsm_key], sub_name, new_ids)  # pyright: ignore[reportArgumentType, reportIndexIssue]
 
             entry = make_edit_entry(
                 operation="rename_cell_ids",
@@ -280,6 +356,7 @@ def rename_cell_ids(path: str, column: str, value: str, prefix_from: str, prefix
                     "n_selected": n_selected,
                     "n_renamed": n_selected,
                     "examples": examples,
+                    "obsm_dataframes_updated": [obsm_key for obsm_key, _ in obsm_df_indexes],
                 },
             )
             existing_log = read_edit_log_h5py(f_out)

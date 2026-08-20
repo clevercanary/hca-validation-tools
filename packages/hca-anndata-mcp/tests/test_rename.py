@@ -12,8 +12,9 @@ def test_rename_missing_file():
 
 
 def test_rename_through_wrapper(tmp_path):
-    """Happy path through the wrapper: selected rows renamed, counts reported."""
-    from hca_anndata_tools.testing import HCA_TEST_ROWS, create_hca_h5ad
+    """Happy path through the wrapper: pins the wiring only — result keys and
+    one cheap observable. Rename semantics are the tools layer's tests."""
+    from hca_anndata_tools.testing import create_hca_h5ad
 
     path = create_hca_h5ad(tmp_path / "test.h5ad")
 
@@ -22,12 +23,9 @@ def test_rename_through_wrapper(tmp_path):
     )
 
     assert "error" not in result
-    assert result["n_renamed"] == sum(1 for _, sample in HCA_TEST_ROWS if sample == "B1_0023")
-    expected = [
-        "MH_mix_BR1_" + cell_id[len("MH_mix_") :] if sample == "B1_0023" else cell_id
-        for cell_id, sample in HCA_TEST_ROWS
-    ]
-    assert list(ad.read_h5ad(result["output_path"]).obs_names) == expected
+    assert result["n_renamed"] == result["n_selected"] > 0
+    assert result["examples"][0] == ["MH_mix_AAA", "MH_mix_BR1_AAA"]
+    assert "MH_mix_BR1_AAA" in ad.read_h5ad(result["output_path"]).obs_names
 
 
 def test_rename_refuses_cellxgene_through_wrapper(sample_h5ad):

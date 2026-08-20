@@ -152,6 +152,106 @@ def test_rename_refuses_cellxgene_layout(sample_h5ad):
     assert "CellxGENE" in result["error"]
 
 
+def test_rename_updates_obsm_dataframe_index(tmp_path):
+    """A DataFrame in obsm carries a duplicate copy of the cell IDs; renaming
+    only the obs index would leave a file anndata refuses to read."""
+    path = create_hca_h5ad(tmp_path / "test.h5ad", obsm_dataframe=True)
+
+    result = rename_cell_ids(
+        str(path), column="sample_id", value="B1_0023", prefix_from="MH_mix_", prefix_to="MH_mix_BR1_"
+    )
+
+    assert "error" not in result
+    after = ad.read_h5ad(result["output_path"])  # raises if the copies diverged
+    assert list(after.obsm["per_cell_scores"].index) == list(after.obs_names)
+    assert "MH_mix_BR1_AAA" in after.obsm["per_cell_scores"].index
+
+
+def test_rename_refuses_mismatched_obsm_dataframe_index(tmp_path):
+    """An obsm DataFrame index that already disagrees with the obs index marks
+    a broken file — refuse rather than paper over it."""
+    path = create_hca_h5ad(tmp_path / "test.h5ad", obsm_dataframe=True)
+    with h5py.File(path, "a") as f:
+        sub = f["obsm"]["per_cell_scores"]
+        index_name = sub.attrs["_index"]
+        broken = sub[index_name].asstr()[:]
+        broken[0] = "someone_else_entirely"
+        del sub[index_name]
+        f["obsm"]["per_cell_scores"].create_dataset(index_name, data=broken.astype(object))
+
+    result = rename_cell_ids(
+        str(path), column="sample_id", value="B1_0023", prefix_from="MH_mix_", prefix_to="MH_mix_BR1_"
+    )
+
+    assert "internally inconsistent" in result["error"]
+    assert_no_snapshot_written(path)
+
+
+def test_rename_same_second_snapshot_refused(tmp_path, monkeypatch):
+    """generate_output_path timestamps to the second; when a second edit would
+    name the output after its own source, refuse — the failure path used to
+    unlink the source snapshot (SameFileError -> except -> unlink)."""
+    path = create_hca_h5ad(tmp_path / "test.h5ad")
+    first = rename_cell_ids(
+        str(path), column="sample_id", value="B1_0023", prefix_from="MH_mix_", prefix_to="MH_mix_BR1_"
+    )
+    snapshot = Path(first["output_path"])
+
+    monkeypatch.setattr("hca_anndata_tools.rename.generate_output_path", lambda p: p)
+    result = rename_cell_ids(
+        str(snapshot), column="sample_id", value="B1_0023", prefix_from="MH_mix_BR1_", prefix_to="Z_"
+    )
+
+    assert "already exists" in result["error"]
+    assert snapshot.is_file()  # the source snapshot survived
+
+
+def test_rename_refuses_pre_existing_duplicates(tmp_path):
+    """Duplicates the file already had are named as such — the remedy (repair
+    the file) differs from the remedy for a collision the rename would cause."""
+    with pytest.warns(UserWarning, match="Observation names are not unique"):
+        path = create_hca_h5ad(tmp_path / "test.h5ad", extra_rows=[("N1105_epi_AAA", "N_0123")])
+
+    result = rename_cell_ids(
+        str(path), column="sample_id", value="B1_0023", prefix_from="MH_mix_", prefix_to="MH_mix_BR1_"
+    )
+
+    assert "before any rename" in result["error"]
+    assert "N1105_epi_AAA" in result["error"]
+    assert_no_snapshot_written(path)
+
+
+def test_rename_refuses_legacy_cap_layout(tmp_path):
+    """The deprecated top-level CAP layout marks a CAP export even when
+    uns['schema_version'] is absent — parity with drop.py / copy_cap.py (#552)."""
+    path = create_hca_h5ad(tmp_path / "legacy.h5ad")
+    adata = ad.read_h5ad(path)
+    adata.uns["cellannotation_schema_version"] = "1.0.0"
+    adata.write_h5ad(path)
+
+    result = rename_cell_ids(
+        str(path), column="sample_id", value="B1_0023", prefix_from="MH_mix_", prefix_to="MH_mix_BR1_"
+    )
+
+    assert "deprecated top-level CAP layout" in result["error"]
+    assert_no_snapshot_written(path)
+
+
+def test_rename_nullable_dtype_selector_selects_nothing(tmp_path):
+    """A pandas nullable-dtype column (values+mask group, no categories) can
+    never equal a string value; it must refuse cleanly, not crash on .dtype."""
+    import pandas as pd
+
+    path = create_hca_h5ad(tmp_path / "nullable.h5ad")
+    adata = ad.read_h5ad(path)
+    adata.obs["qc_flag"] = pd.array([True, False] * (adata.n_obs // 2) + [True] * (adata.n_obs % 2), dtype="boolean")
+    adata.write_h5ad(path)
+
+    result = rename_cell_ids(str(path), column="qc_flag", value="True", prefix_from="MH_mix_", prefix_to="X_")
+
+    assert "no rows match" in result["error"]
+
+
 def test_rename_missing_file():
     result = rename_cell_ids("/nonexistent/file.h5ad", column="a", value="b", prefix_from="x_", prefix_to="y_")
     assert "File not found" in result["error"]

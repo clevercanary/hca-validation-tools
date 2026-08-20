@@ -167,6 +167,7 @@ def create_hca_h5ad(
     index_name: str | None = "cellID",
     extra_rows: list[tuple[str, str]] | None = None,
     categorical_sample: bool = True,
+    obsm_dataframe: bool = False,
 ) -> Path:
     """Create a small HCA-layout h5ad file (no ``uns['schema_version']``).
 
@@ -183,6 +184,9 @@ def create_hca_h5ad(
             test plant a pre-existing ID that a rename would collide with.
         categorical_sample: Write ``sample_id`` as categorical (True) or as a
             plain string column (False).
+        obsm_dataframe: Also store a per-cell-scores DataFrame in obsm (a
+            common scanpy output) — anndata then writes a duplicate copy of
+            the cell IDs as the frame's own index.
 
     Returns:
         The path to the written file.
@@ -200,6 +204,10 @@ def create_hca_h5ad(
     var = pd.DataFrame(index=pd.Index([f"ENSG{i:011d}" for i in range(5)]))
     adata = ad.AnnData(X=rng.standard_normal((n_obs, 5)).astype(np.float32), obs=obs, var=var)
     adata.obsm["X_umap"] = rng.standard_normal((n_obs, 2)).astype(np.float32)
+    if obsm_dataframe:
+        adata.obsm["per_cell_scores"] = pd.DataFrame(
+            {"score": rng.standard_normal(n_obs).astype(np.float32)}, index=adata.obs_names
+        )
     adata.uns["title"] = "Test HCA file"
     adata.write_h5ad(path)
     return path
