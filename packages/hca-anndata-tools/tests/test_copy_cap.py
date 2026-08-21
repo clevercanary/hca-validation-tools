@@ -467,6 +467,15 @@ def test_copy_no_cap_source_fails(hca_target, tmp_path):
     assert "cap_metadata" in result["error"]
 
 
+def test_copy_same_file_refused(cap_source):
+    """source == target is refused before anything runs — with overwrite=True
+    the pre-strip would otherwise destroy the CAP source it is reading."""
+    for overwrite in (False, True):
+        result = copy_cap_annotations(str(cap_source), str(cap_source), overwrite=overwrite)
+        assert "error" in result, overwrite
+        assert "same file" in result["error"], overwrite
+
+
 def test_copy_target_has_cap_fails(cap_source, hca_target_with_cap):
     result = copy_cap_annotations(str(cap_source), str(hca_target_with_cap))
     assert "error" in result
