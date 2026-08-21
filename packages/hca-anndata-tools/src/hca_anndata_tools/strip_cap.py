@@ -146,6 +146,17 @@ def strip_cap_annotations(path: str) -> dict:
             if not isinstance(obs, h5py.Group):
                 return {"error": "obs is not a group — the file predates the modern h5ad layout"}
             obs_columns_present = cap_obs_columns(read_column_order(obs))
+            # h5py resolves a name containing '/' as an HDF5 link path, not a
+            # dict key (see drop.py) — a malformed column-order entry could
+            # make the deletion below unlink outside obs. Refuse the file.
+            bad_names = [c for c in obs_columns_present if "/" in c]
+            if bad_names:
+                return {
+                    "error": (
+                        f"Refusing to strip: obs column-order contains names with '/' "
+                        f"({bad_names[:5]}) — the file is malformed"
+                    )
+                }
             unknown_suffixes = unknown_cap_suffix_columns(obs_columns_present)
             uns = f_in.get("uns")
             uns_keys_present: list[str] = []
@@ -196,10 +207,12 @@ def strip_cap_annotations(path: str) -> dict:
             }
 
         output_path = generate_output_path(path)
-        if output_path == path:
+        if output_path == path or (Path(output_path).exists() and Path(output_path).samefile(path)):
             # generate_output_path timestamps to the second (see rename.py):
             # a second edit within the same second would name the output after
-            # its own source. Refuse before touching anything.
+            # its own source. samefile() also catches aliases of the same
+            # snapshot ('./'-prefixed paths, hard links) that string equality
+            # misses. Refuse before touching anything.
             return {"error": "An edit snapshot for this second already exists — retry in a moment."}
         # Hash the source in the same streaming read as the snapshot copy;
         # a separate hash pass would re-read the whole multi-GB file.
@@ -258,5 +271,9 @@ def strip_cap_annotations(path: str) -> dict:
     except Exception as e:
         if output_path and Path(output_path).is_file():
             with contextlib.suppress(OSError):
-                Path(output_path).unlink()
+                # Never unlink an alias of the input: if output_path reaches
+                # the same inode (hard link, path alias), deleting it deletes
+                # the source snapshot.
+                if not Path(output_path).samefile(path):
+                    Path(output_path).unlink()
         return {"error": str(e)}

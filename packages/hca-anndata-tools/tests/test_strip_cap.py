@@ -1,6 +1,7 @@
 """Tests for strip_cap_annotations."""
 
 import json
+from pathlib import Path
 
 import anndata as ad
 import numpy as np
@@ -129,6 +130,56 @@ def test_strip_warns_on_unknown_cap_suffix(tmp_path):
     assert result["unknown_cap_suffix_columns"] == ["Prelim annotation--brand_new_field"]
     assert "add them to the suffix lists" in result["warning"]
     assert "Prelim annotation--brand_new_field" not in ad.read_h5ad(result["output_path"]).obs.columns
+
+
+def test_strip_warns_on_double_separator_suffix(tmp_path):
+    """The suffix is everything after the FIRST '--' (CAP's parse): a name
+    like set--new_field--cell_fullname must be flagged, not mistaken for a
+    known suffix by its tail."""
+    path = _make_cap_file(tmp_path / "double.h5ad", uns_layout="legacy")
+    adata = ad.read_h5ad(path)
+    adata.obs["Prelim annotation--new_field--cell_fullname"] = pd.Categorical(["x", "y", "x"])
+    adata.write_h5ad(path)
+
+    result = strip_cap_annotations(path)
+
+    assert "error" not in result
+    assert result["unknown_cap_suffix_columns"] == ["Prelim annotation--new_field--cell_fullname"]
+
+
+def test_strip_refuses_slash_in_column_order(tmp_path):
+    """A '/' in a column-order entry would make h5py resolve a link path on
+    deletion — a malformed file is refused before any write."""
+    path = _make_cap_file(tmp_path / "slash.h5ad", uns_layout="legacy")
+    import h5py
+
+    with h5py.File(path, "a") as f:
+        cols = [c.decode() if isinstance(c, bytes) else c for c in f["obs"].attrs["column-order"]]
+        f["obs"].attrs["column-order"] = [*cols, "bad/name--cell_fullname"]
+
+    result = strip_cap_annotations(path)
+
+    assert "error" in result
+    assert "malformed" in result["error"]
+    assert not list(tmp_path.glob("*-edit-*.h5ad"))
+
+
+def test_strip_alias_output_does_not_unlink_source(tmp_path, monkeypatch):
+    """An output path that aliases the source through a hard link must be
+    refused by the identity-aware guard — never copied over or unlinked."""
+    import os
+
+    path = _make_cap_file(tmp_path / "aliased.h5ad", uns_layout="legacy")
+    alias = tmp_path / "alias-of-source.h5ad"
+    os.link(path, alias)
+    monkeypatch.setattr("hca_anndata_tools.strip_cap.generate_output_path", lambda p: str(alias))
+
+    result = strip_cap_annotations(path)
+
+    assert "error" in result
+    assert "already exists" in result["error"]
+    assert Path(path).is_file() and Path(alias).is_file()  # nothing unlinked
+    assert ad.read_h5ad(path).uns["cellannotation_schema_version"] == "1.0.0"
 
 
 def test_strip_no_warning_for_known_suffixes(tmp_path):

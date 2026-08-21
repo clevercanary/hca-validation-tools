@@ -278,13 +278,18 @@ def copy_cap_annotations(
         if not overwrite:
             # Detect existing CAP data for the refusal: annotation columns
             # ('--' is CAP's separator) and CAP uns material from any era —
-            # the nested block, older top-level cap_* keys, provenance/cap.
+            # the nested block, older top-level cap_* keys, provenance/cap,
+            # and CAP-shaped palettes (possibly orphaned by the old overwrite
+            # era) — mirroring strip_cap_annotations' inventory.
             existing_cap_cols = cap_obs_columns(target_obs_columns)
             existing_cap_uns = [
                 k for k in (*_OVERWRITE_UNS_KEYS, *_LEGACY_TOP_LEVEL_PROVENANCE) if k in target_uns_keys
             ]
             if target_has_prov_cap:
                 existing_cap_uns.append("provenance/cap")
+            existing_cap_uns += [
+                k for k in target_uns_keys if k.endswith("_colors") and "--" in k.removesuffix("_colors")
+            ]
             if existing_cap_cols or existing_cap_uns:
                 return {
                     "error": (
@@ -392,15 +397,20 @@ def copy_cap_annotations(
         del aligned_obs
 
         # --- Step 4: Write temp, copy target, transplant via h5py ---
+        def is_target_alias(candidate: str) -> bool:
+            # String equality misses aliases of the same snapshot ('./'-
+            # prefixed paths, hard links); samefile() catches them.
+            return candidate == target_path or (Path(candidate).exists() and Path(candidate).samefile(target_path))
+
         output_path = generate_output_path(target_path)
-        if output_path == target_path:
+        if is_target_alias(output_path):
             # generate_output_path timestamps to the second, and the overwrite
             # path chains a strip and this import within one second — wait out
             # the boundary rather than failing the run (see rename.py for the
             # hazard the equality signals).
             time.sleep(1)
             output_path = generate_output_path(target_path)
-        if output_path == target_path:
+        if is_target_alias(output_path):
             return {"error": "An edit snapshot for this second already exists — retry in a moment."}
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -463,5 +473,8 @@ def copy_cap_annotations(
     except Exception as e:
         if output_path and Path(output_path).is_file():
             with contextlib.suppress(OSError):
-                Path(output_path).unlink()
+                # Never unlink an alias of the target snapshot: same-inode
+                # output would delete the source (see strip_cap.py).
+                if not Path(output_path).samefile(target_path):
+                    Path(output_path).unlink()
         return {"error": str(e)}

@@ -117,9 +117,13 @@ def unknown_cap_suffix_columns(obs_columns: list[str]) -> list[str]:
 
     These are removed/handled as CAP material like any other ``--`` column;
     the point of flagging them is maintenance — a new CAP schema field should
-    be added to the suffix lists above.
+    be added to the suffix lists above. The suffix is everything after the
+    FIRST separator, matching :func:`_find_annotation_sets`' parse — so
+    ``set--new_field--cell_fullname`` is flagged (unknown suffix
+    ``new_field--cell_fullname``), not mistaken for a known one.
     """
-    return [c for c in cap_obs_columns(obs_columns) if not c.endswith(_ALL_CAP_SUFFIXES)]
+    known = {s.removeprefix("--") for s in _ALL_CAP_SUFFIXES}
+    return [c for c in cap_obs_columns(obs_columns) if c.split("--", 1)[1] not in known]
 
 
 def _find_annotation_sets(obs_columns: list[str]) -> list[str]:

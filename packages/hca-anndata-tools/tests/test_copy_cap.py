@@ -551,6 +551,21 @@ def test_copy_overwrite_strips_older_era_provenance(cap_source, tmp_path):
     assert "cap_metadata" in written.uns
 
 
+def test_copy_refuses_target_with_only_orphan_palette(cap_source, tmp_path):
+    """A target whose only CAP trace is an orphaned '<set>--<suffix>_colors'
+    palette (old overwrite era) counts as already annotated — importing onto
+    it would ship a validator-failing file."""
+    target = _make_hca_target(tmp_path / "orphan-palette.h5ad", CELL_IDS)
+    adata = ad.read_h5ad(target)
+    adata.uns["gone--cell_fullname_colors"] = np.array(["#ff0000"])
+    adata.write_h5ad(target)
+
+    result = copy_cap_annotations(str(cap_source), str(target))
+
+    assert "error" in result
+    assert "overwrite" in result["error"].lower()
+
+
 def test_copy_refuses_target_with_older_era_provenance(cap_source, tmp_path):
     """A target whose only CAP material is uns['provenance']['cap'] still
     counts as already annotated — a plain import must refuse rather than
