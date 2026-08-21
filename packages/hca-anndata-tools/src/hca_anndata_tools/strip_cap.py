@@ -24,6 +24,7 @@ from pathlib import Path
 import h5py
 
 from ._io import (
+    _decode_bytes,
     read_column_order,
     read_edit_log_h5py,
     update_column_order,
@@ -146,15 +147,18 @@ def strip_cap_annotations(path: str) -> dict:
             if not isinstance(obs, h5py.Group):
                 return {"error": "obs is not a group — the file predates the modern h5ad layout"}
             obs_columns_present = cap_obs_columns(read_column_order(obs))
-            # h5py resolves a name containing '/' as an HDF5 link path, not a
-            # dict key (see drop.py) — a malformed column-order entry could
-            # make the deletion below unlink outside obs. Refuse the file.
-            bad_names = [c for c in obs_columns_present if "/" in c]
+            # Guard the attr-driven deletion (parity with drop.py/rename.py):
+            # a malformed column-order entry could name an HDF5 link path
+            # ('/'), the obs index (deleting the cell IDs), or a non-child.
+            index_name = _decode_bytes(obs.attrs.get("_index", "_index"))
+            obs_children = set(obs.keys())
+            bad_names = [c for c in obs_columns_present if "/" in c or c == index_name or c not in obs_children]
             if bad_names:
                 return {
                     "error": (
-                        f"Refusing to strip: obs column-order contains names with '/' "
-                        f"({bad_names[:5]}) — the file is malformed"
+                        f"Refusing to strip: obs column-order contains invalid entries "
+                        f"(a '/', the obs index, or a missing column: {bad_names[:5]}) "
+                        f"— the file is malformed"
                     )
                 }
             unknown_suffixes = unknown_cap_suffix_columns(obs_columns_present)

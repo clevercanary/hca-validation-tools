@@ -164,6 +164,37 @@ def test_strip_refuses_slash_in_column_order(tmp_path):
     assert not list(tmp_path.glob("*-edit-*.h5ad"))
 
 
+def test_strip_refuses_index_or_ghost_in_column_order(tmp_path):
+    """A malformed column-order listing the obs index (here named with '--')
+    or a non-existent column is refused — deleting either would corrupt the
+    output (parity with drop.py/rename.py's validators)."""
+    import h5py
+
+    obs = pd.DataFrame(
+        {"set--cell_fullname": pd.Categorical(["a", "b"])},
+        index=pd.Index(["c1", "c2"], name="cell--id"),
+    )
+    adata = ad.AnnData(X=np.zeros((2, 2), dtype=np.float32), obs=obs)
+    adata.uns["cellannotation_metadata"] = {"set": {}}
+    adata.uns["cellannotation_schema_version"] = "1.0.0"
+    adata.uns["provenance"] = {"edit_history": json.dumps([_IMPORT_ENTRY])}
+    path = str(tmp_path / "badindex.h5ad")
+    adata.write_h5ad(path)
+
+    for extra in ("cell--id", "ghost--cell_fullname"):
+        with h5py.File(path, "a") as f:
+            cols = [c.decode() if isinstance(c, bytes) else c for c in f["obs"].attrs["column-order"]]
+            f["obs"].attrs["column-order"] = [c for c in cols if c not in ("cell--id", "ghost--cell_fullname")] + [
+                extra
+            ]
+
+        result = strip_cap_annotations(path)
+
+        assert "error" in result, extra
+        assert "malformed" in result["error"], extra
+    assert not list(tmp_path.glob("*-edit-*.h5ad"))
+
+
 def test_strip_alias_output_does_not_unlink_source(tmp_path, monkeypatch):
     """An output path that aliases the source through a hard link must be
     refused by the identity-aware guard — never copied over or unlinked."""
