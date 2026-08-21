@@ -181,3 +181,19 @@ async def test_error_handling(client):
     """Verify errors propagate cleanly through MCP."""
     data = await _call(client, "get_summary", {"path": "/nonexistent/file.h5ad"})
     assert "error" in data
+
+
+@pytest.mark.asyncio
+async def test_registered_tool_names(client):
+    """Registration smoke test: the wrapper unit tests import the functions
+    directly, so only this catches a tool missing from server.py's
+    mcp.tool() registration."""
+    names = {t.name for t in await client.list_tools()}
+    assert {
+        "strip_cap_annotations",
+        "backfill_obs_from_source",
+        "copy_cap_annotations",
+        "rename_cell_ids",
+        "drop_obs_columns",
+        "strip_forbidden_obs_columns",
+    } <= names

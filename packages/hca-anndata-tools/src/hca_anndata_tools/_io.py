@@ -85,10 +85,21 @@ def read_obs_index(path: str) -> list[str]:
         return [_decode_bytes(v) for v in f["obs"][idx_key][:]]
 
 
+def read_column_order(obs: h5py.Group | h5py.Dataset | h5py.Datatype) -> list[str]:
+    """Decode a dataframe group's ``column-order`` attribute to str names.
+
+    The group-level core for callers already holding an open handle;
+    :func:`read_obs_column_names` is the path-based wrapper. Accepts the
+    ``Group | Dataset | Datatype`` union ``f["obs"]`` is typed as, so call
+    sites need neither an isinstance dance nor a pyright suppression.
+    """
+    return [_decode_bytes(c) for c in obs.attrs["column-order"]]
+
+
 def read_obs_column_names(path: str) -> list[str]:
     """Read obs column names from an h5ad file via h5py (no AnnData load)."""
     with h5py.File(path, "r") as f:
-        return [_decode_bytes(c) for c in f["obs"].attrs["column-order"]]
+        return read_column_order(f["obs"])
 
 
 def read_obs_categorical_values(path: str, column: str) -> set[str]:

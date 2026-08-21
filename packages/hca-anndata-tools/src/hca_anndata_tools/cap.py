@@ -88,6 +88,7 @@ _OPTIONAL_SUFFIXES = [
     "--canonical_marker_genes",
     "--synonyms",
     "--category_fullname",
+    "--category_cell_ontology_exists",
     "--category_cell_ontology_term_id",
     "--category_cell_ontology_term",
     "--cell_ontology_assessment",
@@ -95,14 +96,39 @@ _OPTIONAL_SUFFIXES = [
 ]
 
 
+def cap_obs_columns(obs_columns: list[str]) -> list[str]:
+    """Return the subset of obs column names that are CAP annotation columns.
+
+    CAP serializes annotation columns as ``<set>--<suffix>``; the ``--``
+    separator is the convention. Owned here so the tools that detect,
+    replace, or remove CAP columns all share one definition.
+    """
+    return [c for c in obs_columns if "--" in c]
+
+
+# The full known CAP suffix vocabulary (maintained here, never supplied by
+# callers). A '--' column outside it is still CAP material — but it means CAP
+# grew a field this list hasn't learned yet, which tools surface as a warning.
+_ALL_CAP_SUFFIXES: tuple[str, ...] = tuple(s for s in (*_REQUIRED_SUFFIXES, *_OPTIONAL_SUFFIXES) if s)
+
+
+def unknown_cap_suffix_columns(obs_columns: list[str]) -> list[str]:
+    """Return the ``--`` columns whose suffix is not in the known vocabulary.
+
+    These are removed/handled as CAP material like any other ``--`` column;
+    the point of flagging them is maintenance — a new CAP schema field should
+    be added to the suffix lists above. The suffix is everything after the
+    FIRST separator, matching :func:`_find_annotation_sets`' parse — so
+    ``set--new_field--cell_fullname`` is flagged (unknown suffix
+    ``new_field--cell_fullname``), not mistaken for a known one.
+    """
+    known = {s.removeprefix("--") for s in _ALL_CAP_SUFFIXES}
+    return [c for c in cap_obs_columns(obs_columns) if c.split("--", 1)[1] not in known]
+
+
 def _find_annotation_sets(obs_columns: list[str]) -> list[str]:
     """Identify CAP annotation set names from obs columns with -- separator."""
-    sets = set()
-    for col in obs_columns:
-        if "--" in col:
-            setname = col.split("--")[0]
-            sets.add(setname)
-    return sorted(sets)
+    return sorted({col.split("--")[0] for col in cap_obs_columns(obs_columns)})
 
 
 def _get_unique_values(series, max_values: int = 50) -> list:

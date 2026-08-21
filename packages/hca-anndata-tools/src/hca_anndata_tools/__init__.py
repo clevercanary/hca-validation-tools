@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from .stats import get_descriptive_stats
     from .storage import get_storage_info
     from .strip import strip_forbidden_obs_columns
+    from .strip_cap import strip_cap_annotations
     from .summary import get_summary
     from .view import view_data
     from .write import (
@@ -63,6 +64,7 @@ _LAZY_IMPORTS = {
     "compress_h5ad": ".compress",
     "normalize_raw": ".normalize",
     "strip_forbidden_obs_columns": ".strip",
+    "strip_cap_annotations": ".strip_cap",
     "drop_obs_columns": ".drop",
     "rename_cell_ids": ".rename",
     "backfill_obs_from_source": ".backfill",

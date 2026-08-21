@@ -14,10 +14,10 @@ from pydantic import TypeAdapter, ValidationError
 
 from ._io import (
     DEFAULT_PLACEHOLDERS,
-    _decode_bytes,
     compact_categories,
     open_h5ad,
     read_categorical_data,
+    read_column_order,
     read_edit_log_h5py,
     replace_categorical_column,
     verify_categorical_integrity,
@@ -289,7 +289,7 @@ def replace_placeholder_values(
         expected_valid_counts = {}
         with h5py.File(path, "r") as f:
             obs = f["obs"]
-            obs_col_names = [_decode_bytes(c) for c in obs.attrs["column-order"]]
+            obs_col_names = read_column_order(obs)
             for col in columns:
                 if col not in obs_col_names:
                     return {"error": f"Column '{col}' not found in obs"}

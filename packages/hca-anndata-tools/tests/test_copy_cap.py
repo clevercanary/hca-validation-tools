@@ -43,6 +43,7 @@ def _make_cap_source(
             "author_cell_type--canonical_marker_genes": pd.Categorical(["unknown"] * n),
             "author_cell_type--synonyms": pd.Categorical(["unknown"] * n),
             "author_cell_type--category_fullname": pd.Categorical(["neural cell"] * n),
+            "author_cell_type--category_cell_ontology_exists": pd.Categorical(["True"] * n),
             "author_cell_type--category_cell_ontology_term_id": pd.Categorical(["CL:0002319"] * n),
             "author_cell_type--category_cell_ontology_term": pd.Categorical(["neural cell"] * n),
             # Demographic columns (should NOT be copied)
@@ -153,6 +154,9 @@ def test_copy_obs_columns_present(cap_source, hca_target):
     assert "author_cell_type--marker_gene_evidence" in written.obs.columns
     assert "author_cell_type--rationale" in written.obs.columns
     assert "author_cell_type--category_fullname" in written.obs.columns
+    # PRD-required field that was missing from the suffix vocabulary and
+    # silently dropped on import until the vocabulary learned it
+    assert "author_cell_type--category_cell_ontology_exists" in written.obs.columns
 
 
 def test_copy_marker_gene_validation(cap_source, hca_target):
@@ -463,6 +467,15 @@ def test_copy_no_cap_source_fails(hca_target, tmp_path):
     assert "cap_metadata" in result["error"]
 
 
+def test_copy_same_file_refused(cap_source):
+    """source == target is refused before anything runs — with overwrite=True
+    the pre-strip would otherwise destroy the CAP source it is reading."""
+    for overwrite in (False, True):
+        result = copy_cap_annotations(str(cap_source), str(cap_source), overwrite=overwrite)
+        assert "error" in result, overwrite
+        assert "same file" in result["error"], overwrite
+
+
 def test_copy_target_has_cap_fails(cap_source, hca_target_with_cap):
     result = copy_cap_annotations(str(cap_source), str(hca_target_with_cap))
     assert "error" in result
@@ -507,10 +520,127 @@ def test_copy_overwrite(cap_source, hca_target_with_cap):
     result = copy_cap_annotations(str(cap_source), str(hca_target_with_cap), overwrite=True)
     assert "error" not in result
     written = ad.read_h5ad(result["output_path"])
-    # Old CAP column removed
+    # Old CAP column removed (by the pre-strip), and reported
     assert "existing--cell_ontology_term_id" not in written.obs.columns
+    assert result["overwrite_strip"]["obs_columns_removed"] == ["existing--cell_ontology_term_id"]
     # New CAP columns present
     assert "author_cell_type--cell_ontology_term_id" in written.obs.columns
+    # Two audit entries: the strip, then the import
+    entries = json.loads(written.uns["provenance"]["edit_history"])
+    assert [e["operation"] for e in entries] == ["strip_cap_annotations", "import_cap_annotations"]
+
+
+def test_copy_overwrite_strips_older_era_provenance(cap_source, tmp_path):
+    """The pre-strip trigger is the strip tool's own inventory: CAP material
+    the old detection missed (uns['provenance']['cap']) is still removed."""
+    target = _make_hca_target(tmp_path / "prov-target.h5ad", CELL_IDS)
+    adata = ad.read_h5ad(target)
+    adata.uns["provenance"] = {
+        "cap": {"cap_dataset_url": "https://celltype.info/x"},
+        "edit_history": json.dumps(
+            [
+                {
+                    "timestamp": "2026-05-27T00:00:00Z",
+                    "tool": "hca-anndata-tools",
+                    "tool_version": "0.0.1",
+                    "operation": "import_cap_annotations",
+                    "description": "old import",
+                }
+            ]
+        ),
+    }
+    adata.write_h5ad(target)
+
+    result = copy_cap_annotations(str(cap_source), str(target), overwrite=True)
+
+    assert "error" not in result
+    assert result["overwrite_strip"]["uns_keys_removed"] == ["provenance/cap"]
+    written = ad.read_h5ad(result["output_path"])
+    assert "cap" not in written.uns["provenance"]
+    assert "cap_metadata" in written.uns
+
+
+def test_copy_refuses_target_with_only_orphan_palette(cap_source, tmp_path):
+    """A target whose only CAP trace is an orphaned '<set>--<suffix>_colors'
+    palette (old overwrite era) counts as already annotated — importing onto
+    it would ship a validator-failing file."""
+    target = _make_hca_target(tmp_path / "orphan-palette.h5ad", CELL_IDS)
+    adata = ad.read_h5ad(target)
+    adata.uns["gone--cell_fullname_colors"] = np.array(["#ff0000"])
+    adata.write_h5ad(target)
+
+    result = copy_cap_annotations(str(cap_source), str(target))
+
+    assert "error" in result
+    assert "overwrite" in result["error"].lower()
+
+
+def test_copy_refuses_target_with_older_era_provenance(cap_source, tmp_path):
+    """A target whose only CAP material is uns['provenance']['cap'] still
+    counts as already annotated — a plain import must refuse rather than
+    stack a new cap_metadata on stale provenance."""
+    target = _make_hca_target(tmp_path / "stale-prov.h5ad", CELL_IDS)
+    adata = ad.read_h5ad(target)
+    adata.uns["provenance"] = {"cap": {"cap_dataset_url": "https://celltype.info/x"}}
+    adata.write_h5ad(target)
+
+    result = copy_cap_annotations(str(cap_source), str(target))
+
+    assert "error" in result
+    assert "overwrite" in result["error"].lower()
+
+
+def test_copy_overwrite_overlap_failure_does_not_mutate(cap_source, tmp_path):
+    """A run that fails the overlap gate must not have pre-stripped the
+    target — the non-mutating validation runs first."""
+    target = _make_hca_target(tmp_path / "mismatch-target.h5ad", [f"other_{i}" for i in range(10)])
+    adata = ad.read_h5ad(target)
+    adata.obs["existing--cell_ontology_term_id"] = pd.Categorical(["CL:0000000"] * 10)
+    adata.write_h5ad(target)
+
+    result = copy_cap_annotations(str(cap_source), str(target), overwrite=True)
+
+    assert "error" in result
+    assert "mismatch" in result["error"].lower()
+    assert not list(tmp_path.glob("mismatch-target-edit-*.h5ad"))
+    assert "existing--cell_ontology_term_id" in ad.read_h5ad(target).obs.columns
+
+
+def test_copy_overwrite_same_second_snapshot_is_safe(cap_source, tmp_path, monkeypatch):
+    """With timestamps pinned to one wall-clock second, the chained
+    strip+import must fail cleanly (via the identity guards) rather than
+    copy over — and lose — the target snapshot."""
+    monkeypatch.setattr("hca_anndata_tools.write.generate_timestamp", lambda: "2026-08-21-00-00-00")
+    monkeypatch.setattr("hca_anndata_tools.copy_cap.time", type("T", (), {"sleep": staticmethod(lambda s: None)}))
+    target = tmp_path / "snap-edit-2026-08-21-00-00-00.h5ad"
+    _make_hca_target(target, CELL_IDS)
+    adata = ad.read_h5ad(target)
+    adata.obs["existing--cell_ontology_term_id"] = pd.Categorical(["CL:0000000"] * len(CELL_IDS))
+    adata.write_h5ad(target)
+
+    result = copy_cap_annotations(str(cap_source), str(target), overwrite=True)
+
+    assert "error" in result
+    assert "already exists" in result["error"]
+    assert target.is_file()  # the snapshot survived
+    assert "existing--cell_ontology_term_id" in ad.read_h5ad(target).obs.columns
+
+
+def test_copy_overwrite_removes_orphaned_palette(cap_source, tmp_path):
+    """Overwrite must not leave a deleted CAP column's scanpy palette behind —
+    an orphaned uns['<col>_colors'] fails the schema validator."""
+    target = _make_hca_target(tmp_path / "palette-target.h5ad", CELL_IDS)
+    adata = ad.read_h5ad(target)
+    adata.obs["existing--cell_ontology_term_id"] = pd.Categorical(["CL:0000000"] * len(CELL_IDS))
+    adata.uns["existing--cell_ontology_term_id_colors"] = np.array(["#1f77b4"])
+    adata.write_h5ad(target)
+
+    result = copy_cap_annotations(str(cap_source), str(target), overwrite=True)
+
+    assert "error" not in result
+    written = ad.read_h5ad(result["output_path"])
+    assert "existing--cell_ontology_term_id_colors" not in written.uns
+    assert "existing--cell_ontology_term_id_colors" in result["overwrite_strip"]["uns_keys_removed"]
 
 
 # --- Index ordering ---
