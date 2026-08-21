@@ -136,6 +136,10 @@ def copy_cap_annotations(
         overwrite: If True, existing CAP data in the target is first removed
             by strip_cap_annotations (its own edit-log entry, owned palettes
             included), then the import proceeds on the stripped snapshot.
+            The strip is a complete, logged edit in its own right: if the
+            import stage then fails, the target legitimately remains at the
+            stripped snapshot (auditable via its edit log), and retrying the
+            overwrite proceeds as a clean import.
 
     Returns:
         Dict with output_path, copied columns/keys, and marker gene
