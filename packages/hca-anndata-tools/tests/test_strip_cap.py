@@ -351,6 +351,19 @@ def test_strip_refuses_cap_export_without_our_import(tmp_path):
     assert not list(tmp_path.glob("*-edit-*.h5ad"))
 
 
+def test_strip_refuses_foreign_tool_import_entry(tmp_path):
+    """The gate requires OUR import: an externally authored log entry with
+    the right operation name but a different tool does not authorize it."""
+    foreign = dict(_IMPORT_ENTRY, tool="someone-elses-tool")
+    path = _make_cap_file(tmp_path / "foreign.h5ad", uns_layout="legacy", prior_log_entry=foreign)
+
+    result = strip_cap_annotations(path)
+
+    assert "error" in result
+    assert "import_cap_annotations" in result["error"]
+    assert not list(tmp_path.glob("*-edit-*.h5ad"))
+
+
 def test_strip_columns_only_needs_no_import_entry(tmp_path):
     """The provenance gate covers CAP uns metadata only: '--' columns without
     the uns block (e.g. convert-era files) strip without an import entry."""

@@ -153,11 +153,15 @@ def strip_cap_annotations(path: str) -> dict:
             index_name = _decode_bytes(obs.attrs.get("_index", "_index"))
             obs_children = set(obs.keys())
             bad_names = [c for c in obs_columns_present if "/" in c or c == index_name or c not in obs_children]
+            # Symmetric check: a CAP-shaped direct child missing from
+            # column-order would silently survive an attr-driven strip.
+            listed = set(obs_columns_present)
+            bad_names += [c for c in sorted(obs_children) if "--" in c and c != index_name and c not in listed]
             if bad_names:
                 return {
                     "error": (
-                        f"Refusing to strip: obs column-order contains invalid entries "
-                        f"(a '/', the obs index, or a missing column: {bad_names[:5]}) "
+                        f"Refusing to strip: obs column-order and the obs group disagree "
+                        f"(a '/', the obs index, or an unlisted/missing column: {bad_names[:5]}) "
                         f"— the file is malformed"
                     )
                 }
@@ -180,7 +184,12 @@ def strip_cap_annotations(path: str) -> dict:
                 # for its exports. Legacy exports have no schema_version, so
                 # the CellxGENE gate above cannot catch them; this one does.
                 entries = json.loads(read_edit_log_h5py(f_in))
-                if not any(isinstance(e, dict) and e.get("operation") == "import_cap_annotations" for e in entries):
+                if not any(
+                    isinstance(e, dict)
+                    and e.get("operation") == "import_cap_annotations"
+                    and e.get("tool") == "hca-anndata-tools"
+                    for e in entries
+                ):
                     return {
                         "error": (
                             "Refusing to strip: the file carries CAP uns metadata but its edit log "

@@ -597,6 +597,26 @@ def test_copy_overwrite_overlap_failure_does_not_mutate(cap_source, tmp_path):
     assert "existing--cell_ontology_term_id" in ad.read_h5ad(target).obs.columns
 
 
+def test_copy_overwrite_same_second_snapshot_is_safe(cap_source, tmp_path, monkeypatch):
+    """With timestamps pinned to one wall-clock second, the chained
+    strip+import must fail cleanly (via the identity guards) rather than
+    copy over — and lose — the target snapshot."""
+    monkeypatch.setattr("hca_anndata_tools.write.generate_timestamp", lambda: "2026-08-21-00-00-00")
+    monkeypatch.setattr("hca_anndata_tools.copy_cap.time", type("T", (), {"sleep": staticmethod(lambda s: None)}))
+    target = tmp_path / "snap-edit-2026-08-21-00-00-00.h5ad"
+    _make_hca_target(target, CELL_IDS)
+    adata = ad.read_h5ad(target)
+    adata.obs["existing--cell_ontology_term_id"] = pd.Categorical(["CL:0000000"] * len(CELL_IDS))
+    adata.write_h5ad(target)
+
+    result = copy_cap_annotations(str(cap_source), str(target), overwrite=True)
+
+    assert "error" in result
+    assert "already exists" in result["error"]
+    assert target.is_file()  # the snapshot survived
+    assert "existing--cell_ontology_term_id" in ad.read_h5ad(target).obs.columns
+
+
 def test_copy_overwrite_removes_orphaned_palette(cap_source, tmp_path):
     """Overwrite must not leave a deleted CAP column's scanpy palette behind —
     an orphaned uns['<col>_colors'] fails the schema validator."""
