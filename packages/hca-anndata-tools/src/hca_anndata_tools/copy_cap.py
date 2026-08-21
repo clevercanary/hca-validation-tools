@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import shutil
 import tempfile
+import time
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -31,11 +32,12 @@ from .cap import (
     _REQUIRED_SUFFIXES,
     CAP_METADATA_KEY,
     LEGACY_LAYOUT_ERROR,
-    cap_obs_columns,
+    cap_annotation_columns,
     is_legacy_cap_layout,
     resolve_cap_block,
 )
 from .marker_genes import validate_marker_genes
+from .strip_cap import strip_cap_annotations
 from .write import (
     EDIT_LOG_KEY,
     _compute_sha256,
@@ -131,7 +133,9 @@ def copy_cap_annotations(
     Args:
         source_path: Path to source h5ad with CAP annotations.
         target_path: Path to target HCA h5ad to receive annotations.
-        overwrite: If True, replace existing CAP data in target.
+        overwrite: If True, existing CAP data in the target is first removed
+            by strip_cap_annotations (its own edit-log entry, owned palettes
+            included), then the import proceeds on the stripped snapshot.
 
     Returns:
         Dict with output_path, copied columns/keys, and marker gene
@@ -217,54 +221,79 @@ def copy_cap_annotations(
         source_obs_subset = pd.DataFrame(source_obs_data, index=source_index_list)  # pyright: ignore[reportArgumentType]
 
         # --- Step 2: Validate target via h5py (no AnnData load) ---
-        with h5py.File(target_path, "r") as f:
-            obs_group = f["obs"]
-            target_obs_columns = read_column_order(obs_group)
-            idx_key = _decode_bytes(obs_group.attrs.get("_index", "_index"))
-            target_index = [_decode_bytes(v) for v in obs_group[idx_key][:]]
+        def read_target(path: str) -> tuple[list[str], list[str], list[str], set[str], str]:
+            with h5py.File(path, "r") as f:
+                obs_group = f["obs"]
+                obs_columns = read_column_order(obs_group)
+                idx_key = _decode_bytes(obs_group.attrs.get("_index", "_index"))
+                index = [_decode_bytes(v) for v in obs_group[idx_key][:]]
 
-            var_group = f["var"]
-            var_idx_key = _decode_bytes(var_group.attrs.get("_index", "_index"))
-            target_var_list = [_decode_bytes(v) for v in var_group[var_idx_key][:]]
+                var_group = f["var"]
+                var_idx_key = _decode_bytes(var_group.attrs.get("_index", "_index"))
+                var_list = [_decode_bytes(v) for v in var_group[var_idx_key][:]]
 
-            uns = f.get("uns")
-            target_uns_keys = set(uns.keys()) if uns else set()
-            raw_log = read_edit_log_h5py(f)
+                uns = f.get("uns")
+                uns_keys = set(uns.keys()) if uns else set()
+                log = read_edit_log_h5py(f)
+            return obs_columns, index, var_list, uns_keys, log
 
-        target_index_set = set(target_index)
+        target_obs_columns, target_index, target_var_list, target_uns_keys, raw_log = read_target(target_path)
+
         dupe_err = check_duplicate_ids(target_index, "HCA cells") or check_duplicate_ids(target_var_list, "HCA genes")
         if dupe_err:
             return {"error": dupe_err}
-        target_var_set = set(target_var_list)
 
         # Refuse a target carrying deprecated top-level CAP (from older tooling)
         # rather than silently overwriting it into a mixed-layout file. Symmetric
-        # with the legacy-source refusal above (issue #452).
+        # with the legacy-source refusal above (issue #452). Remediation is an
+        # explicit strip_cap_annotations run, not a silent normalization.
         if is_legacy_cap_layout(target_uns_keys):
             return {
                 "error": (
                     "Target uses the deprecated top-level CAP layout "
                     "(uns['cellannotation_metadata'] / "
                     "uns['cellannotation_schema_version']). Only the nested "
-                    "uns['cap_metadata'] layout is accepted; re-curate the target "
-                    "into the nested layout before copying CAP into it."
+                    "uns['cap_metadata'] layout is accepted; run "
+                    "strip_cap_annotations on the target before copying CAP into it."
                 )
             }
 
-        # Detect existing CAP obs columns: any column with "--" separator
-        existing_cap_cols = cap_obs_columns(target_obs_columns)
-
+        # Detect existing CAP data: recognized annotation columns (a producer
+        # column merely containing '--' does not count) and the CAP uns block.
+        existing_cap_cols, _ = cap_annotation_columns(target_obs_columns)
         existing_cap_uns = [k for k in _OVERWRITE_UNS_KEYS if k in target_uns_keys]
 
-        if (existing_cap_cols or existing_cap_uns) and not overwrite:
-            return {
-                "error": (
-                    f"Target already has CAP data "
-                    f"({len(existing_cap_cols)} obs columns, "
-                    f"{len(existing_cap_uns)} uns keys). "
-                    f"Use overwrite=True to replace."
-                )
+        overwrite_strip = None
+        if existing_cap_cols or existing_cap_uns:
+            if not overwrite:
+                return {
+                    "error": (
+                        f"Target already has CAP data "
+                        f"({len(existing_cap_cols)} obs columns, "
+                        f"{len(existing_cap_uns)} uns keys). "
+                        f"Use overwrite=True to replace."
+                    )
+                }
+            # Overwrite = strip, then a clean import: one shared removal
+            # implementation (owned palettes, every CAP era) and two audit
+            # entries in the edit log instead of an implicit deletion.
+            # The strip refuses a same-second snapshot collision (its output
+            # would be named after its input); if the target snapshot was
+            # written this very second, wait out the boundary first.
+            if generate_output_path(target_path) == target_path:
+                time.sleep(1)
+            strip_result = strip_cap_annotations(target_path)
+            if "error" in strip_result:
+                return {"error": f"Overwrite pre-strip failed: {strip_result['error']}"}
+            overwrite_strip = {
+                "uns_keys_removed": strip_result["uns_keys_removed"],
+                "obs_columns_removed": strip_result["obs_columns_removed"],
             }
+            target_path = strip_result["output_path"]
+            target_obs_columns, target_index, target_var_list, target_uns_keys, raw_log = read_target(target_path)
+
+        target_index_set = set(target_index)
+        target_var_set = set(target_var_list)
 
         cell_stats = _compute_axis_overlap(source_index, target_index_set)
         gene_stats = _compute_axis_overlap(source_var_set, target_var_set)
@@ -333,6 +362,15 @@ def copy_cap_annotations(
 
         # --- Step 4: Write temp, copy target, transplant via h5py ---
         output_path = generate_output_path(target_path)
+        if output_path == target_path:
+            # generate_output_path timestamps to the second, and the overwrite
+            # path chains a strip and this import within one second — wait out
+            # the boundary rather than failing the run (see rename.py for the
+            # hazard the equality signals).
+            time.sleep(1)
+            output_path = generate_output_path(target_path)
+        if output_path == target_path:
+            return {"error": "An edit snapshot for this second already exists — retry in a moment."}
 
         with tempfile.TemporaryDirectory() as tmpdir:
             temp_path = str(Path(tmpdir) / "cap_temp.h5ad")
@@ -341,25 +379,17 @@ def copy_cap_annotations(
 
             shutil.copy2(target_path, output_path)
 
-            # Transplant from temp into output
+            # Transplant from temp into output. Any pre-existing CAP data was
+            # removed by the overwrite pre-strip above, so this is always a
+            # clean addition.
             with h5py.File(temp_path, "r") as f_temp, h5py.File(output_path, "a") as f_out:
                 f_out.require_group("uns")
-
-                deleted_cols = set()
-                if (existing_cap_cols or existing_cap_uns) and overwrite:
-                    for col in existing_cap_cols:
-                        if col in f_out["obs"]:
-                            del f_out["obs"][col]
-                            deleted_cols.add(col)
-                    for key in list(f_out["uns"].keys()):
-                        if key in _OVERWRITE_UNS_KEYS:
-                            del f_out["uns"][key]
 
                 # Transplant new obs columns from temp
                 for col in obs_cols_to_copy:
                     if col in f_temp["obs"]:
                         f_temp.copy(f"obs/{col}", f_out["obs"])
-                update_column_order(f_out, obs_cols_to_copy, deleted_cols)
+                update_column_order(f_out, obs_cols_to_copy)
 
                 for key in uns_keys_added:
                     if key in f_temp["uns"]:
@@ -385,7 +415,7 @@ def copy_cap_annotations(
 
         marker_validation = validate_marker_genes(output_path)
 
-        return {
+        result = {
             "output_path": output_path,
             "source": source_basename,
             "annotation_sets": annotation_sets,
@@ -395,6 +425,9 @@ def copy_cap_annotations(
             "cells": cell_stats,
             "genes": gene_stats,
         }
+        if overwrite_strip is not None:
+            result["overwrite_strip"] = overwrite_strip
+        return result
 
     except Exception as e:
         if output_path and Path(output_path).is_file():

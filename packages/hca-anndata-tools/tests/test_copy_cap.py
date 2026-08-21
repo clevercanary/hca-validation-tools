@@ -507,10 +507,31 @@ def test_copy_overwrite(cap_source, hca_target_with_cap):
     result = copy_cap_annotations(str(cap_source), str(hca_target_with_cap), overwrite=True)
     assert "error" not in result
     written = ad.read_h5ad(result["output_path"])
-    # Old CAP column removed
+    # Old CAP column removed (by the pre-strip), and reported
     assert "existing--cell_ontology_term_id" not in written.obs.columns
+    assert result["overwrite_strip"]["obs_columns_removed"] == ["existing--cell_ontology_term_id"]
     # New CAP columns present
     assert "author_cell_type--cell_ontology_term_id" in written.obs.columns
+    # Two audit entries: the strip, then the import
+    entries = json.loads(written.uns["provenance"]["edit_history"])
+    assert [e["operation"] for e in entries] == ["strip_cap_annotations", "import_cap_annotations"]
+
+
+def test_copy_overwrite_removes_orphaned_palette(cap_source, tmp_path):
+    """Overwrite must not leave a deleted CAP column's scanpy palette behind —
+    an orphaned uns['<col>_colors'] fails the schema validator."""
+    target = _make_hca_target(tmp_path / "palette-target.h5ad", CELL_IDS)
+    adata = ad.read_h5ad(target)
+    adata.obs["existing--cell_ontology_term_id"] = pd.Categorical(["CL:0000000"] * len(CELL_IDS))
+    adata.uns["existing--cell_ontology_term_id_colors"] = np.array(["#1f77b4"])
+    adata.write_h5ad(target)
+
+    result = copy_cap_annotations(str(cap_source), str(target), overwrite=True)
+
+    assert "error" not in result
+    written = ad.read_h5ad(result["output_path"])
+    assert "existing--cell_ontology_term_id_colors" not in written.uns
+    assert "existing--cell_ontology_term_id_colors" in result["overwrite_strip"]["uns_keys_removed"]
 
 
 # --- Index ordering ---

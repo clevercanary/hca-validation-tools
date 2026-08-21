@@ -18,6 +18,7 @@ replaces rather than removes).
 from __future__ import annotations
 
 import contextlib
+import json
 from pathlib import Path
 
 import h5py
@@ -83,6 +84,11 @@ def strip_cap_annotations(path: str) -> dict:
       exported file — is the system of record for its annotations, so
       stripping an export mutilates a file CAP would overwrite on its next
       export. Strip CAP material only from HCA curation targets.
+    * **Our imports only.** CAP uns metadata is stripped only when the edit
+      log carries an ``import_cap_annotations`` entry — this tool undoes what
+      our own import wrote. Legacy CAP exports carry the same uns keys but no
+      edit history (and no ``schema_version`` for the gate above to catch),
+      so this is what keeps a raw export from being mutilated by accident.
     * **Nothing CAP-shaped is an error, not a no-op.** This tool is targeted
       remediation — absence of CAP material signals the wrong file was
       supplied, so it errors without writing rather than producing a
@@ -144,6 +150,24 @@ def strip_cap_annotations(path: str) -> dict:
                 prov = uns.get("provenance")
                 if isinstance(prov, h5py.Group) and "cap" in prov:
                     uns_keys_present.append("provenance/cap")
+            if uns_keys_present:
+                # This tool only undoes what our own import wrote. A file
+                # carrying CAP uns metadata without an import_cap_annotations
+                # edit-log entry did not get it from us — it is a CAP export
+                # (or externally annotated), and CAP is the system of record
+                # for its exports. Legacy exports have no schema_version, so
+                # the CellxGENE gate above cannot catch them; this one does.
+                entries = json.loads(read_edit_log_h5py(f_in))
+                if not any(isinstance(e, dict) and e.get("operation") == "import_cap_annotations" for e in entries):
+                    return {
+                        "error": (
+                            "Refusing to strip: the file carries CAP uns metadata but its edit log "
+                            "has no 'import_cap_annotations' entry, so this toolkit did not put it "
+                            "there. The file looks like a CAP export or an externally annotated file "
+                            "— strip only removes what our own import wrote."
+                        )
+                    }
+            if uns is not None:
                 # A removed categorical column's scanpy palette would be
                 # orphaned (the validator flags colors without a matching
                 # obs column).

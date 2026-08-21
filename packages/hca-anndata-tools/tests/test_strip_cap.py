@@ -12,13 +12,26 @@ from hca_anndata_tools.strip_cap import strip_cap_annotations
 _CAP_COLUMNS = ["Prelim annotation--cell_fullname", "Prelim annotation--cell_ontology_term_id"]
 
 
-def _make_cap_file(path, uns_layout="legacy", cap_columns=True, prior_log_entry=None, extra_uns=None):
+_IMPORT_ENTRY = {
+    "timestamp": "2026-05-27T00:00:00Z",
+    "tool": "hca-anndata-tools",
+    "tool_version": "0.0.1",
+    "operation": "import_cap_annotations",
+    "description": "test import",
+}
+
+
+def _make_cap_file(path, uns_layout="legacy", cap_columns=True, imported=True, prior_log_entry=None, extra_uns=None):
     """Write a small HCA-layout h5ad carrying CAP material.
 
     ``uns_layout``: 'legacy' (top-level keys), 'nested' (uns['cap_metadata']),
     'mixed' (both), or 'none'. ``cap_columns`` controls the ``--`` obs
-    columns independently of the uns keys.
+    columns independently of the uns keys. ``imported`` stamps the
+    import_cap_annotations edit-log entry the provenance gate requires;
+    ``imported=False`` models a raw CAP export (no edit history).
     """
+    if prior_log_entry is None and imported and uns_layout != "none":
+        prior_log_entry = _IMPORT_ENTRY
     columns = {
         "sample_id": pd.Categorical(["s1", "s2", "s3"]),
         "junk_col": pd.Categorical(["a", "b", "a"]),
@@ -61,8 +74,8 @@ def test_strip_legacy_layout(tmp_path):
     assert "cellannotation_schema_version" not in out.uns
     assert out.uns["title"] == "Test file"
     entries = json.loads(out.uns["provenance"]["edit_history"])
-    assert [e["operation"] for e in entries] == ["strip_cap_annotations"]
-    assert entries[0]["details"]["obs_columns_removed"] == _CAP_COLUMNS
+    assert [e["operation"] for e in entries] == ["import_cap_annotations", "strip_cap_annotations"]
+    assert entries[-1]["details"]["obs_columns_removed"] == _CAP_COLUMNS
 
 
 def test_strip_nested_layout(tmp_path):
@@ -214,6 +227,30 @@ def test_strip_nothing_to_strip_is_an_error(tmp_path):
     assert "error" in result
     assert "Nothing to strip" in result["error"]
     assert not list(tmp_path.glob("*-edit-*.h5ad"))
+
+
+def test_strip_refuses_cap_export_without_our_import(tmp_path):
+    """A raw legacy CAP export carries the same uns keys but no edit history —
+    the provenance gate keeps it from being mutilated (the CellxGENE gate
+    can't: legacy exports declare no schema_version)."""
+    path = _make_cap_file(tmp_path / "export.h5ad", uns_layout="legacy", imported=False)
+
+    result = strip_cap_annotations(path)
+
+    assert "error" in result
+    assert "import_cap_annotations" in result["error"]
+    assert not list(tmp_path.glob("*-edit-*.h5ad"))
+
+
+def test_strip_columns_only_needs_no_import_entry(tmp_path):
+    """The provenance gate covers CAP uns metadata only: '--' columns without
+    the uns block (e.g. convert-era files) strip without an import entry."""
+    path = _make_cap_file(tmp_path / "cols.h5ad", uns_layout="none", cap_columns=True, imported=False)
+
+    result = strip_cap_annotations(path)
+
+    assert "error" not in result
+    assert result["obs_columns_removed"] == _CAP_COLUMNS
 
 
 def test_strip_refuses_cellxgene_layout(sample_h5ad):
