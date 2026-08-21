@@ -322,6 +322,11 @@ def copy_cap_annotations(
                 "cells": cell_stats,
             }
 
+        def is_target_alias(candidate: str) -> bool:
+            # String equality misses aliases of the same snapshot ('./'-
+            # prefixed paths, hard links); samefile() catches them.
+            return candidate == target_path or (Path(candidate).exists() and Path(candidate).samefile(target_path))
+
         if overwrite:
             # Overwrite = strip, then a clean import: one shared removal
             # implementation and two audit entries in the edit log instead of
@@ -333,7 +338,7 @@ def copy_cap_annotations(
             # The strip refuses a same-second snapshot collision (its output
             # would be named after its input); if the target snapshot was
             # written this very second, wait out the boundary first.
-            if generate_output_path(target_path) == target_path:
+            if is_target_alias(generate_output_path(target_path)):
                 time.sleep(1)
             strip_result = strip_cap_annotations(target_path)
             if "error" in strip_result:
@@ -397,11 +402,6 @@ def copy_cap_annotations(
         del aligned_obs
 
         # --- Step 4: Write temp, copy target, transplant via h5py ---
-        def is_target_alias(candidate: str) -> bool:
-            # String equality misses aliases of the same snapshot ('./'-
-            # prefixed paths, hard links); samefile() catches them.
-            return candidate == target_path or (Path(candidate).exists() and Path(candidate).samefile(target_path))
-
         output_path = generate_output_path(target_path)
         if is_target_alias(output_path):
             # generate_output_path timestamps to the second, and the overwrite
