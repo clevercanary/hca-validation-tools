@@ -289,7 +289,7 @@ def replace_placeholder_values(
         expected_valid_counts = {}
         with h5py.File(path, "r") as f:
             obs = f["obs"]
-            obs_col_names = read_column_order(obs)  # pyright: ignore[reportArgumentType]
+            obs_col_names = read_column_order(obs)
             for col in columns:
                 if col not in obs_col_names:
                     return {"error": f"Column '{col}' not found in obs"}

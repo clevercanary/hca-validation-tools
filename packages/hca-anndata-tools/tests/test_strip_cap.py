@@ -119,6 +119,39 @@ def test_strip_removes_orphaned_color_palettes(tmp_path):
     assert "junk_col_colors" in out.uns  # a kept column keeps its palette
 
 
+def test_strip_removes_legacy_cap_provenance(tmp_path):
+    """The pre-#452 copy_cap eras also wrote uns['provenance']['cap'] and
+    top-level cap_* keys (the gut-v1 objects carry the former); 'remove ALL
+    CAP material' must cover them — while edit_history survives untouched."""
+    prior = {
+        "timestamp": "2026-05-27T00:00:00Z",
+        "tool": "hca-anndata-tools",
+        "tool_version": "0.0.1",
+        "operation": "import_cap_annotations",
+        "description": "old import",
+    }
+    path = _make_cap_file(
+        tmp_path / "provenance.h5ad",
+        uns_layout="legacy",
+        prior_log_entry=prior,
+        extra_uns={"cap_dataset_url": "https://celltype.info/x"},
+    )
+    adata = ad.read_h5ad(path)
+    adata.uns["provenance"]["cap"] = {"cap_publication_title": "Old Pub", "authors_list": "A, B"}
+    adata.write_h5ad(path)
+
+    result = strip_cap_annotations(path)
+
+    assert "error" not in result
+    assert "provenance/cap" in result["uns_keys_removed"]
+    assert "cap_dataset_url" in result["uns_keys_removed"]
+    out = ad.read_h5ad(result["output_path"])
+    assert "cap" not in out.uns["provenance"]
+    assert "cap_dataset_url" not in out.uns
+    entries = json.loads(out.uns["provenance"]["edit_history"])
+    assert [e["operation"] for e in entries] == ["import_cap_annotations", "strip_cap_annotations"]
+
+
 def test_strip_preserves_existing_edit_history(tmp_path):
     prior = {
         "timestamp": "2026-05-27T00:00:00Z",

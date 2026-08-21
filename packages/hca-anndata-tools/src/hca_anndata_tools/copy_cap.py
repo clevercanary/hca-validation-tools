@@ -175,7 +175,7 @@ def copy_cap_annotations(
         # Read source obs via h5py (avoids slow backed-mode column access)
         with h5py.File(source_path, "r") as f:
             obs_group = f["obs"]
-            source_obs_columns = read_column_order(obs_group)  # pyright: ignore[reportArgumentType]
+            source_obs_columns = read_column_order(obs_group)
             obs_cols_to_copy = _get_obs_columns_to_copy(annotation_sets, source_obs_columns)
 
             idx_key = _decode_bytes(obs_group.attrs.get("_index", "_index"))
@@ -219,7 +219,7 @@ def copy_cap_annotations(
         # --- Step 2: Validate target via h5py (no AnnData load) ---
         with h5py.File(target_path, "r") as f:
             obs_group = f["obs"]
-            target_obs_columns = read_column_order(obs_group)  # pyright: ignore[reportArgumentType]
+            target_obs_columns = read_column_order(obs_group)
             idx_key = _decode_bytes(obs_group.attrs.get("_index", "_index"))
             target_index = [_decode_bytes(v) for v in obs_group[idx_key][:]]
 

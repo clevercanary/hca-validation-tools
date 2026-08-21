@@ -45,13 +45,27 @@ from .write import (
 # the refusal predicates detect.
 _CAP_UNS_KEYS: tuple[str, ...] = (*_LEGACY_CAP_MARKERS, CAP_METADATA_KEY)
 
+# CAP provenance from still-older copy_cap eras: unambiguously CAP-named
+# top-level keys (pre-#292 imports), and the whole uns['provenance']['cap']
+# block (later legacy imports — the gut-v1 objects carry this). Ambiguous
+# legacy keys (description, publication_timestamp, ...) are deliberately NOT
+# removed from the top level: they collide with HCA's own uns vocabulary.
+_LEGACY_TOP_LEVEL_PROVENANCE: tuple[str, ...] = (
+    "cap_dataset_url",
+    "cap_publication_title",
+    "cap_publication_description",
+    "cap_publication_url",
+)
+
 
 def strip_cap_annotations(path: str) -> dict:
     """Remove all CAP annotation material from an HCA-layout h5ad file.
 
     Deletes whichever CAP-written uns keys are present — the legacy top-level
     ``cellannotation_metadata`` / ``cellannotation_schema_version`` pair, the
-    nested ``cap_metadata`` block, or (on a mixed-layout file) both — and
+    nested ``cap_metadata`` block, the still-older CAP provenance
+    (``uns['provenance']['cap']`` and unambiguous top-level ``cap_*`` keys),
+    or any mix of those eras — and
     every obs column whose name contains ``--``, the separator CAP annotation
     columns carry (the same detection ``copy_cap_annotations`` uses for its
     overwrite mode), along with any ``uns['<column>_colors']`` palette a
@@ -75,7 +89,9 @@ def strip_cap_annotations(path: str) -> dict:
 
     Writes a new timestamped snapshot with an edit-log entry listing exactly
     which uns keys and obs columns were removed, and deletes the previous
-    snapshot (never the original), like every other mutating tool.
+    snapshot (never the original), like every other mutating tool. The
+    snapshot is not smaller than the input — HDF5 does not reclaim freed
+    space in place — so run ``compress_h5ad`` afterwards if size matters.
 
     The intended sequel is a fresh ``copy_cap_annotations`` run with a
     current nested-layout CAP export as the source; the stripped file is also
@@ -113,12 +129,20 @@ def strip_cap_annotations(path: str) -> dict:
                 return {"error": "File has no obs group"}
             if not isinstance(obs, h5py.Group):
                 return {"error": "obs is not a group — the file predates the modern h5ad layout"}
-            uns = f_in.get("uns")
-            uns_keys_present = [k for k in _CAP_UNS_KEYS if k in uns] if uns is not None else []
             obs_columns_present = cap_obs_columns(read_column_order(obs))
-            # A removed categorical column's scanpy palette would be orphaned
-            # (the validator flags colors without a matching obs column).
+            uns = f_in.get("uns")
+            uns_keys_present: list[str] = []
             if uns is not None:
+                uns_keys_present += [k for k in _CAP_UNS_KEYS if k in uns]
+                uns_keys_present += [k for k in _LEGACY_TOP_LEVEL_PROVENANCE if k in uns]
+                # 'provenance/cap' is an HDF5 path, so the shared deletion
+                # loop below removes the nested block like any other key.
+                prov = uns.get("provenance")
+                if isinstance(prov, h5py.Group) and "cap" in prov:
+                    uns_keys_present.append("provenance/cap")
+                # A removed categorical column's scanpy palette would be
+                # orphaned (the validator flags colors without a matching
+                # obs column).
                 uns_keys_present += [c + "_colors" for c in obs_columns_present if c + "_colors" in uns]
 
         if not uns_keys_present and not obs_columns_present:
