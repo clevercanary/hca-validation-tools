@@ -173,7 +173,7 @@ def test_strip_removes_legacy_cap_provenance(tmp_path):
         tmp_path / "provenance.h5ad",
         uns_layout="legacy",
         prior_log_entry=prior,
-        extra_uns={"cap_dataset_url": "https://celltype.info/x"},
+        extra_uns={"cap_dataset_url": "https://celltype.info/x", "cap_authors_list": "A, B"},
     )
     adata = ad.read_h5ad(path)
     adata.uns["provenance"]["cap"] = {"cap_publication_title": "Old Pub", "authors_list": "A, B"}
@@ -184,9 +184,11 @@ def test_strip_removes_legacy_cap_provenance(tmp_path):
     assert "error" not in result
     assert "provenance/cap" in result["uns_keys_removed"]
     assert "cap_dataset_url" in result["uns_keys_removed"]
+    assert "cap_authors_list" in result["uns_keys_removed"]  # collision-safe renamed era
     out = ad.read_h5ad(result["output_path"])
     assert "cap" not in out.uns["provenance"]
     assert "cap_dataset_url" not in out.uns
+    assert "cap_authors_list" not in out.uns
     entries = json.loads(out.uns["provenance"]["edit_history"])
     assert [e["operation"] for e in entries] == ["import_cap_annotations", "strip_cap_annotations"]
 

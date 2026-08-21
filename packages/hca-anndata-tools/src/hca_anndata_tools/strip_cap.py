@@ -47,15 +47,22 @@ from .write import (
 _CAP_UNS_KEYS: tuple[str, ...] = (*_LEGACY_CAP_MARKERS, CAP_METADATA_KEY)
 
 # CAP provenance from still-older copy_cap eras: unambiguously CAP-named
-# top-level keys (pre-#292 imports), and the whole uns['provenance']['cap']
-# block (later legacy imports — the gut-v1 objects carry this). Ambiguous
-# legacy keys (description, publication_timestamp, ...) are deliberately NOT
-# removed from the top level: they collide with HCA's own uns vocabulary.
+# top-level keys (the as-is and collision-safe-renamed sets from
+# docs/prd-cap-annotations-and-gene-validation.md), and the whole
+# uns['provenance']['cap'] block (later legacy imports — the gut-v1 objects
+# carry this). Ambiguous un-prefixed legacy keys (description,
+# publication_timestamp, ...) are deliberately NOT removed from the top
+# level: they collide with HCA's own uns vocabulary.
 _LEGACY_TOP_LEVEL_PROVENANCE: tuple[str, ...] = (
     "cap_dataset_url",
     "cap_publication_title",
     "cap_publication_description",
     "cap_publication_url",
+    "cap_authors_list",
+    "cap_hierarchy",
+    "cap_description",
+    "cap_publication_timestamp",
+    "cap_publication_version",
 )
 
 
