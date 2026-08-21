@@ -37,7 +37,7 @@ from .cap import (
     resolve_cap_block,
 )
 from .marker_genes import validate_marker_genes
-from .strip_cap import strip_cap_annotations
+from .strip_cap import _LEGACY_TOP_LEVEL_PROVENANCE, strip_cap_annotations
 from .write import (
     EDIT_LOG_KEY,
     _compute_sha256,
@@ -221,7 +221,7 @@ def copy_cap_annotations(
         source_obs_subset = pd.DataFrame(source_obs_data, index=source_index_list)  # pyright: ignore[reportArgumentType]
 
         # --- Step 2: Validate target via h5py (no AnnData load) ---
-        def read_target(path: str) -> tuple[list[str], list[str], list[str], set[str], str]:
+        def read_target(path: str) -> tuple[list[str], list[str], list[str], set[str], bool, str]:
             with h5py.File(path, "r") as f:
                 obs_group = f["obs"]
                 obs_columns = read_column_order(obs_group)
@@ -234,10 +234,14 @@ def copy_cap_annotations(
 
                 uns = f.get("uns")
                 uns_keys = set(uns.keys()) if uns else set()
+                prov = uns.get("provenance") if uns is not None else None
+                has_prov_cap = isinstance(prov, h5py.Group) and "cap" in prov
                 log = read_edit_log_h5py(f)
-            return obs_columns, index, var_list, uns_keys, log
+            return obs_columns, index, var_list, uns_keys, has_prov_cap, log
 
-        target_obs_columns, target_index, target_var_list, target_uns_keys, raw_log = read_target(target_path)
+        target_obs_columns, target_index, target_var_list, target_uns_keys, target_has_prov_cap, raw_log = read_target(
+            target_path
+        )
 
         dupe_err = check_duplicate_ids(target_index, "HCA cells") or check_duplicate_ids(target_var_list, "HCA genes")
         if dupe_err:
@@ -269,9 +273,14 @@ def copy_cap_annotations(
         overwrite_strip = None
         if not overwrite:
             # Detect existing CAP data for the refusal: annotation columns
-            # ('--' is CAP's separator) and the CAP uns block.
+            # ('--' is CAP's separator) and CAP uns material from any era —
+            # the nested block, older top-level cap_* keys, provenance/cap.
             existing_cap_cols = cap_obs_columns(target_obs_columns)
-            existing_cap_uns = [k for k in _OVERWRITE_UNS_KEYS if k in target_uns_keys]
+            existing_cap_uns = [
+                k for k in (*_OVERWRITE_UNS_KEYS, *_LEGACY_TOP_LEVEL_PROVENANCE) if k in target_uns_keys
+            ]
+            if target_has_prov_cap:
+                existing_cap_uns.append("provenance/cap")
             if existing_cap_cols or existing_cap_uns:
                 return {
                     "error": (
@@ -330,7 +339,7 @@ def copy_cap_annotations(
                 target_path = strip_result["output_path"]
                 # Cells and genes are untouched by a strip; only the column
                 # set, uns keys, and edit log need re-reading.
-                target_obs_columns, _, _, target_uns_keys, raw_log = read_target(target_path)
+                target_obs_columns, _, _, target_uns_keys, _, raw_log = read_target(target_path)
 
         # --- Step 3: Build aligned temp AnnData ---
         aligned_obs = source_obs_subset.reindex(target_index)

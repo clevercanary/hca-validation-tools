@@ -547,6 +547,21 @@ def test_copy_overwrite_strips_older_era_provenance(cap_source, tmp_path):
     assert "cap_metadata" in written.uns
 
 
+def test_copy_refuses_target_with_older_era_provenance(cap_source, tmp_path):
+    """A target whose only CAP material is uns['provenance']['cap'] still
+    counts as already annotated — a plain import must refuse rather than
+    stack a new cap_metadata on stale provenance."""
+    target = _make_hca_target(tmp_path / "stale-prov.h5ad", CELL_IDS)
+    adata = ad.read_h5ad(target)
+    adata.uns["provenance"] = {"cap": {"cap_dataset_url": "https://celltype.info/x"}}
+    adata.write_h5ad(target)
+
+    result = copy_cap_annotations(str(cap_source), str(target))
+
+    assert "error" in result
+    assert "overwrite" in result["error"].lower()
+
+
 def test_copy_overwrite_overlap_failure_does_not_mutate(cap_source, tmp_path):
     """A run that fails the overlap gate must not have pre-stripped the
     target — the non-mutating validation runs first."""
