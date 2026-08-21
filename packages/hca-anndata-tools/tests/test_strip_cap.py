@@ -100,6 +100,23 @@ def test_strip_columns_only(tmp_path):
     assert result["obs_columns_removed"] == _CAP_COLUMNS
 
 
+def test_strip_keeps_non_cap_columns_containing_separator(tmp_path):
+    """A producer column that merely contains '--' lacks a CAP suffix and
+    must be reported, never deleted."""
+    path = _make_cap_file(tmp_path / "impostor.h5ad", uns_layout="legacy")
+    adata = ad.read_h5ad(path)
+    adata.obs["CD4--CD8_ratio"] = pd.Categorical(["hi", "lo", "hi"])
+    adata.write_h5ad(path)
+
+    result = strip_cap_annotations(path)
+
+    assert "error" not in result
+    assert result["obs_columns_removed"] == _CAP_COLUMNS
+    assert result["unrecognized_cap_like_columns"] == ["CD4--CD8_ratio"]
+    out = ad.read_h5ad(result["output_path"])
+    assert list(out.obs["CD4--CD8_ratio"]) == ["hi", "lo", "hi"]
+
+
 def test_strip_removes_orphaned_color_palettes(tmp_path):
     """A removed categorical column's scanpy palette must go with it — an
     orphaned uns['<col>_colors'] fails the schema validator."""
