@@ -31,6 +31,7 @@ from ._io import (
     write_edit_log_h5py,
 )
 from .cap import _LEGACY_CAP_MARKERS, CAP_METADATA_KEY, cap_obs_columns, unknown_cap_suffix_columns
+from .drop import _read_batch_condition
 from .inspect import _read_schema_version
 from .write import (
     _copy_with_sha256,
@@ -166,6 +167,20 @@ def strip_cap_annotations(path: str) -> dict:
                     )
                 }
             unknown_suffixes = unknown_cap_suffix_columns(obs_columns_present)
+            uns_for_bc = f_in.get("uns")
+            batched = sorted(set(obs_columns_present) & set(_read_batch_condition(uns_for_bc)))  # pyright: ignore[reportArgumentType]
+            if batched:
+                # Parity with drop.py: a dangling batch_condition reference
+                # turns a valid file invalid, and rewriting the declaration
+                # is a curation decision, not this tool's to take.
+                return {
+                    "error": (
+                        f"Refusing to strip: uns['batch_condition'] references CAP column(s) "
+                        f"{batched} — that list declares the experiment's batch covariates, so "
+                        f"removing one changes the declaration. Edit uns['batch_condition'] "
+                        f"first if that is intended."
+                    )
+                }
             uns = f_in.get("uns")
             uns_keys_present: list[str] = []
             if uns is not None:

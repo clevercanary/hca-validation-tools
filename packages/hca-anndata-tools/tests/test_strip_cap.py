@@ -375,6 +375,22 @@ def test_strip_columns_only_needs_no_import_entry(tmp_path):
     assert result["obs_columns_removed"] == _CAP_COLUMNS
 
 
+def test_strip_refuses_batch_condition_reference(tmp_path):
+    """A CAP column referenced by uns['batch_condition'] is refused (drop.py
+    parity): removing it would leave the declaration dangling."""
+    path = _make_cap_file(
+        tmp_path / "batched.h5ad",
+        uns_layout="legacy",
+        extra_uns={"batch_condition": np.array([_CAP_COLUMNS[0]])},
+    )
+
+    result = strip_cap_annotations(path)
+
+    assert "error" in result
+    assert "batch_condition" in result["error"]
+    assert not list(tmp_path.glob("*-edit-*.h5ad"))
+
+
 def test_strip_refuses_cellxgene_layout(sample_h5ad):
     result = strip_cap_annotations(str(sample_h5ad))
     assert "error" in result
