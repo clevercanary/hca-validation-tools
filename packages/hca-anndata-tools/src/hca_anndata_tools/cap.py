@@ -105,6 +105,22 @@ def cap_obs_columns(obs_columns: list[str]) -> list[str]:
     return [c for c in obs_columns if "--" in c]
 
 
+# The full known CAP suffix vocabulary (maintained here, never supplied by
+# callers). A '--' column outside it is still CAP material — but it means CAP
+# grew a field this list hasn't learned yet, which tools surface as a warning.
+_ALL_CAP_SUFFIXES: tuple[str, ...] = tuple(s for s in (*_REQUIRED_SUFFIXES, *_OPTIONAL_SUFFIXES) if s)
+
+
+def unknown_cap_suffix_columns(obs_columns: list[str]) -> list[str]:
+    """Return the ``--`` columns whose suffix is not in the known vocabulary.
+
+    These are removed/handled as CAP material like any other ``--`` column;
+    the point of flagging them is maintenance — a new CAP schema field should
+    be added to the suffix lists above.
+    """
+    return [c for c in cap_obs_columns(obs_columns) if not c.endswith(_ALL_CAP_SUFFIXES)]
+
+
 def _find_annotation_sets(obs_columns: list[str]) -> list[str]:
     """Identify CAP annotation set names from obs columns with -- separator."""
     return sorted({col.split("--")[0] for col in cap_obs_columns(obs_columns)})

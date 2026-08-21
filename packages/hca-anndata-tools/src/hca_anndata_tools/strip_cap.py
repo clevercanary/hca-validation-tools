@@ -29,7 +29,7 @@ from ._io import (
     update_column_order,
     write_edit_log_h5py,
 )
-from .cap import _LEGACY_CAP_MARKERS, CAP_METADATA_KEY, cap_obs_columns
+from .cap import _LEGACY_CAP_MARKERS, CAP_METADATA_KEY, cap_obs_columns, unknown_cap_suffix_columns
 from .inspect import _read_schema_version
 from .write import (
     _copy_with_sha256,
@@ -70,6 +70,10 @@ def strip_cap_annotations(path: str) -> dict:
     every obs column whose name contains ``--``, the separator only CAP's
     serializer uses, along with any ``uns['<column>_colors']`` palette a
     removed column owns (an orphaned palette breaks the schema validator).
+    A removed ``--`` column whose suffix is not in the known CAP vocabulary
+    (maintained in ``cap.py``, never caller-supplied) is additionally
+    surfaced via ``unknown_cap_suffix_columns`` and a ``warning`` — the
+    signal that CAP grew a schema field the vocabulary should learn.
     Everything else is untouched: all other obs columns and uns fields ride
     along unchanged, and the existing edit-log history stays — the original
     ``import_cap_annotations`` entry is history, not debris.
@@ -135,6 +139,7 @@ def strip_cap_annotations(path: str) -> dict:
             if not isinstance(obs, h5py.Group):
                 return {"error": "obs is not a group — the file predates the modern h5ad layout"}
             obs_columns_present = cap_obs_columns(read_column_order(obs))
+            unknown_suffixes = unknown_cap_suffix_columns(obs_columns_present)
             uns = f_in.get("uns")
             uns_keys_present: list[str] = []
             if uns is not None:
@@ -211,6 +216,7 @@ def strip_cap_annotations(path: str) -> dict:
                 details={
                     "uns_keys_removed": uns_keys_present,
                     "obs_columns_removed": obs_columns_present,
+                    "unknown_cap_suffix_columns": unknown_suffixes,
                 },
             )
             existing_log = read_edit_log_h5py(f_out)
@@ -226,11 +232,19 @@ def strip_cap_annotations(path: str) -> dict:
 
         cleanup_previous_version(path, output_path)
 
-        return {
+        result = {
             "output_path": output_path,
             "uns_keys_removed": uns_keys_present,
             "obs_columns_removed": obs_columns_present,
         }
+        if unknown_suffixes:
+            result["unknown_cap_suffix_columns"] = unknown_suffixes
+            result["warning"] = (
+                f"{len(unknown_suffixes)} removed '--' column(s) carry a suffix not in the known "
+                f"CAP vocabulary (e.g. {unknown_suffixes[:5]}). If CAP added new schema fields, "
+                f"add them to the suffix lists in cap.py."
+            )
+        return result
 
     except Exception as e:
         if output_path and Path(output_path).is_file():

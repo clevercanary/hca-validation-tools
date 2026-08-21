@@ -323,8 +323,9 @@ def copy_cap_annotations(
                     return {"error": f"Overwrite pre-strip failed: {strip_result['error']}"}
             else:
                 overwrite_strip = {
-                    "uns_keys_removed": strip_result["uns_keys_removed"],
-                    "obs_columns_removed": strip_result["obs_columns_removed"],
+                    k: strip_result[k]
+                    for k in ("uns_keys_removed", "obs_columns_removed", "unknown_cap_suffix_columns", "warning")
+                    if k in strip_result
                 }
                 target_path = strip_result["output_path"]
                 # Cells and genes are untouched by a strip; only the column

@@ -113,6 +113,32 @@ def test_strip_columns_only(tmp_path):
     assert result["obs_columns_removed"] == _CAP_COLUMNS
 
 
+def test_strip_warns_on_unknown_cap_suffix(tmp_path):
+    """Every '--' column is CAP's and is removed, but a suffix outside the
+    known vocabulary is surfaced — the signal that CAP grew a schema field
+    cap.py should learn."""
+    path = _make_cap_file(tmp_path / "newsuffix.h5ad", uns_layout="legacy")
+    adata = ad.read_h5ad(path)
+    adata.obs["Prelim annotation--brand_new_field"] = pd.Categorical(["x", "y", "x"])
+    adata.write_h5ad(path)
+
+    result = strip_cap_annotations(path)
+
+    assert "error" not in result
+    assert "Prelim annotation--brand_new_field" in result["obs_columns_removed"]  # still removed
+    assert result["unknown_cap_suffix_columns"] == ["Prelim annotation--brand_new_field"]
+    assert "add them to the suffix lists" in result["warning"]
+    assert "Prelim annotation--brand_new_field" not in ad.read_h5ad(result["output_path"]).obs.columns
+
+
+def test_strip_no_warning_for_known_suffixes(tmp_path):
+    path = _make_cap_file(tmp_path / "known.h5ad", uns_layout="legacy")
+    result = strip_cap_annotations(path)
+    assert "error" not in result
+    assert "warning" not in result
+    assert "unknown_cap_suffix_columns" not in result
+
+
 def test_strip_removes_orphaned_color_palettes(tmp_path):
     """A removed categorical column's scanpy palette must go with it — an
     orphaned uns['<col>_colors'] fails the schema validator."""
