@@ -175,10 +175,12 @@ def strip_cap_annotations(path: str) -> dict:
                         )
                     }
             if uns is not None:
-                # A removed categorical column's scanpy palette would be
-                # orphaned (the validator flags colors without a matching
-                # obs column).
-                uns_keys_present += [c + "_colors" for c in obs_columns_present if c + "_colors" in uns]
+                # CAP-shaped palettes ('--' in the base name): both those
+                # paired with a present column — removing the column would
+                # orphan them (the validator flags colors without a matching
+                # obs column) — and those ALREADY orphaned by an earlier
+                # era's overwrite, which deleted columns but left palettes.
+                uns_keys_present += [k for k in uns if k.endswith("_colors") and "--" in k.removesuffix("_colors")]
 
         if not uns_keys_present and not obs_columns_present:
             # nothing_to_strip lets a caller composing this tool (copy_cap's

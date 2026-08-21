@@ -193,6 +193,22 @@ def test_strip_removes_legacy_cap_provenance(tmp_path):
     assert [e["operation"] for e in entries] == ["import_cap_annotations", "strip_cap_annotations"]
 
 
+def test_strip_removes_already_orphaned_cap_palettes(tmp_path):
+    """The old overwrite era deleted CAP columns but left their palettes;
+    a palette whose column is already gone must still be stripped."""
+    path = _make_cap_file(
+        tmp_path / "orphan.h5ad",
+        uns_layout="legacy",
+        extra_uns={"gone_set--cell_fullname_colors": np.array(["#ff0000"])},
+    )
+
+    result = strip_cap_annotations(path)
+
+    assert "error" not in result
+    assert "gone_set--cell_fullname_colors" in result["uns_keys_removed"]
+    assert "gone_set--cell_fullname_colors" not in ad.read_h5ad(result["output_path"]).uns
+
+
 def test_strip_preserves_existing_edit_history(tmp_path):
     prior = {
         "timestamp": "2026-05-27T00:00:00Z",

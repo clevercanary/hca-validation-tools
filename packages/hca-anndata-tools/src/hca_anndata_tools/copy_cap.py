@@ -330,6 +330,9 @@ def copy_cap_annotations(
             if "error" in strip_result:
                 if not strip_result.get("nothing_to_strip"):
                     return {"error": f"Overwrite pre-strip failed: {strip_result['error']}"}
+                # Clean target: keep the result shape consistent — overwrite
+                # always reports its strip summary, here an empty one.
+                overwrite_strip = {"uns_keys_removed": [], "obs_columns_removed": []}
             else:
                 overwrite_strip = {
                     k: strip_result[k]
