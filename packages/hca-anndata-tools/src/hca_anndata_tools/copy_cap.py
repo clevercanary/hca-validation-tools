@@ -32,7 +32,7 @@ from .cap import (
     _REQUIRED_SUFFIXES,
     CAP_METADATA_KEY,
     LEGACY_LAYOUT_ERROR,
-    cap_annotation_columns,
+    cap_obs_columns,
     is_legacy_cap_layout,
     resolve_cap_block,
 )
@@ -268,10 +268,9 @@ def copy_cap_annotations(
 
         overwrite_strip = None
         if not overwrite:
-            # Detect existing CAP data for the refusal: recognized annotation
-            # columns (a producer column merely containing '--' does not
-            # count) and the CAP uns block.
-            existing_cap_cols, _ = cap_annotation_columns(target_obs_columns)
+            # Detect existing CAP data for the refusal: annotation columns
+            # ('--' is CAP's separator) and the CAP uns block.
+            existing_cap_cols = cap_obs_columns(target_obs_columns)
             existing_cap_uns = [k for k in _OVERWRITE_UNS_KEYS if k in target_uns_keys]
             if existing_cap_cols or existing_cap_uns:
                 return {
@@ -326,7 +325,6 @@ def copy_cap_annotations(
                 overwrite_strip = {
                     "uns_keys_removed": strip_result["uns_keys_removed"],
                     "obs_columns_removed": strip_result["obs_columns_removed"],
-                    "unrecognized_cap_like_columns": strip_result["unrecognized_cap_like_columns"],
                 }
                 target_path = strip_result["output_path"]
                 # Cells and genes are untouched by a strip; only the column

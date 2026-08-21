@@ -105,23 +105,6 @@ def cap_obs_columns(obs_columns: list[str]) -> list[str]:
     return [c for c in obs_columns if "--" in c]
 
 
-_ALL_CAP_SUFFIXES: tuple[str, ...] = tuple(s for s in (*_REQUIRED_SUFFIXES, *_OPTIONAL_SUFFIXES) if s)
-
-
-def cap_annotation_columns(obs_columns: list[str]) -> tuple[list[str], list[str]]:
-    """Split the ``--`` columns into recognized CAP columns and impostors.
-
-    A column is recognized when it ends with a known CAP suffix. A producer
-    column that merely contains ``--`` (e.g. ``CD4--CD8_ratio``) lands in
-    the second list, so a removal tool can report it without deleting it.
-    """
-    recognized: list[str] = []
-    unrecognized: list[str] = []
-    for col in cap_obs_columns(obs_columns):
-        (recognized if col.endswith(_ALL_CAP_SUFFIXES) else unrecognized).append(col)
-    return recognized, unrecognized
-
-
 def _find_annotation_sets(obs_columns: list[str]) -> list[str]:
     """Identify CAP annotation set names from obs columns with -- separator."""
     return sorted({col.split("--")[0] for col in cap_obs_columns(obs_columns)})

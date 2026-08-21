@@ -29,7 +29,7 @@ from ._io import (
     update_column_order,
     write_edit_log_h5py,
 )
-from .cap import _LEGACY_CAP_MARKERS, CAP_METADATA_KEY, cap_annotation_columns
+from .cap import _LEGACY_CAP_MARKERS, CAP_METADATA_KEY, cap_obs_columns
 from .inspect import _read_schema_version
 from .write import (
     _copy_with_sha256,
@@ -67,12 +67,9 @@ def strip_cap_annotations(path: str) -> dict:
     nested ``cap_metadata`` block, the still-older CAP provenance
     (``uns['provenance']['cap']`` and unambiguous top-level ``cap_*`` keys),
     or any mix of those eras — and
-    every obs column whose name both contains ``--`` (CAP's separator) and
-    ends with a known CAP suffix, along with any ``uns['<column>_colors']``
-    palette a removed column owns (an orphaned palette breaks the schema
-    validator). A column that merely contains ``--`` without a CAP suffix
-    (a producer column like ``CD4--CD8_ratio``) is never deleted — it is
-    reported in ``unrecognized_cap_like_columns`` for the curator to judge.
+    every obs column whose name contains ``--``, the separator only CAP's
+    serializer uses, along with any ``uns['<column>_colors']`` palette a
+    removed column owns (an orphaned palette breaks the schema validator).
     Everything else is untouched: all other obs columns and uns fields ride
     along unchanged, and the existing edit-log history stays — the original
     ``import_cap_annotations`` entry is history, not debris.
@@ -111,10 +108,8 @@ def strip_cap_annotations(path: str) -> dict:
             timestamped edit snapshot before operating.
 
     Returns:
-        Dict with ``output_path``, ``uns_keys_removed``,
-        ``obs_columns_removed``, and ``unrecognized_cap_like_columns``
-        (``--`` columns left alone for lacking a CAP suffix) on success,
-        or ``{"error": ...}``.
+        Dict with ``output_path``, ``uns_keys_removed``, and
+        ``obs_columns_removed`` on success, or ``{"error": ...}``.
     """
     output_path = None
     try:
@@ -139,7 +134,7 @@ def strip_cap_annotations(path: str) -> dict:
                 return {"error": "File has no obs group"}
             if not isinstance(obs, h5py.Group):
                 return {"error": "obs is not a group — the file predates the modern h5ad layout"}
-            obs_columns_present, unrecognized_columns = cap_annotation_columns(read_column_order(obs))
+            obs_columns_present = cap_obs_columns(read_column_order(obs))
             uns = f_in.get("uns")
             uns_keys_present: list[str] = []
             if uns is not None:
@@ -235,7 +230,6 @@ def strip_cap_annotations(path: str) -> dict:
             "output_path": output_path,
             "uns_keys_removed": uns_keys_present,
             "obs_columns_removed": obs_columns_present,
-            "unrecognized_cap_like_columns": unrecognized_columns,
         }
 
     except Exception as e:
