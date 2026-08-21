@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.6.4](https://github.com/clevercanary/hca-validation-tools/compare/hca-anndata-tools-v0.6.3...hca-anndata-tools-v0.6.4) (2026-08-21)
+
+
+### Features
+
+* **hca-anndata-tools:** add backfill_obs_from_source to recover metadata lost in integration ([#601](https://github.com/clevercanary/hca-validation-tools/issues/601)) ([f8d4cd1](https://github.com/clevercanary/hca-validation-tools/commit/f8d4cd12267f84aa16b9bb23f09442f963781df9))
+* **hca-anndata-tools:** add rename_cell_ids to remedy collapsed cell IDs ([#599](https://github.com/clevercanary/hca-validation-tools/issues/599)) ([648fa95](https://github.com/clevercanary/hca-validation-tools/commit/648fa9517116630348d68a84e80b94bb782c9626))
+* **hca-anndata-tools:** add strip_cap_annotations so CAP can be re-copied onto legacy-annotated files ([#603](https://github.com/clevercanary/hca-validation-tools/issues/603)) ([2ceb499](https://github.com/clevercanary/hca-validation-tools/commit/2ceb499405e8df7251fbc8d364245a1f5cea5816))
+
 ## [0.6.3](https://github.com/clevercanary/hca-validation-tools/compare/hca-anndata-tools-v0.6.2...hca-anndata-tools-v0.6.3) (2026-08-18)
 
 
