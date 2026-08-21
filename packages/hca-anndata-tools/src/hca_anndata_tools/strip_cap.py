@@ -174,12 +174,16 @@ def strip_cap_annotations(path: str) -> dict:
                 uns_keys_present += [c + "_colors" for c in obs_columns_present if c + "_colors" in uns]
 
         if not uns_keys_present and not obs_columns_present:
+            # nothing_to_strip lets a caller composing this tool (copy_cap's
+            # overwrite pre-strip) tell "clean target" apart from a failure
+            # without matching on the message text.
             return {
                 "error": (
                     "Nothing to strip: the file has no CAP material (no legacy "
                     "top-level keys, no uns['cap_metadata'], no '--' obs columns) "
                     "— no file was written. Is this the right file?"
-                )
+                ),
+                "nothing_to_strip": True,
             }
 
         output_path = generate_output_path(path)

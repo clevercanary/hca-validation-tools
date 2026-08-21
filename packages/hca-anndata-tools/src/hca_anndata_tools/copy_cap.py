@@ -258,14 +258,22 @@ def copy_cap_annotations(
                 )
             }
 
-        # Detect existing CAP data: recognized annotation columns (a producer
-        # column merely containing '--' does not count) and the CAP uns block.
-        existing_cap_cols, _ = cap_annotation_columns(target_obs_columns)
-        existing_cap_uns = [k for k in _OVERWRITE_UNS_KEYS if k in target_uns_keys]
+        target_index_set = set(target_index)
+        target_var_set = set(target_var_list)
+
+        # The cell/gene overlap gate below is non-mutating and unaffected by
+        # a strip (the obs index and var never change), so it runs BEFORE the
+        # overwrite pre-strip — a run that is going to fail validation must
+        # not have already replaced the target's snapshot.
 
         overwrite_strip = None
-        if existing_cap_cols or existing_cap_uns:
-            if not overwrite:
+        if not overwrite:
+            # Detect existing CAP data for the refusal: recognized annotation
+            # columns (a producer column merely containing '--' does not
+            # count) and the CAP uns block.
+            existing_cap_cols, _ = cap_annotation_columns(target_obs_columns)
+            existing_cap_uns = [k for k in _OVERWRITE_UNS_KEYS if k in target_uns_keys]
+            if existing_cap_cols or existing_cap_uns:
                 return {
                     "error": (
                         f"Target already has CAP data "
@@ -274,26 +282,6 @@ def copy_cap_annotations(
                         f"Use overwrite=True to replace."
                     )
                 }
-            # Overwrite = strip, then a clean import: one shared removal
-            # implementation (owned palettes, every CAP era) and two audit
-            # entries in the edit log instead of an implicit deletion.
-            # The strip refuses a same-second snapshot collision (its output
-            # would be named after its input); if the target snapshot was
-            # written this very second, wait out the boundary first.
-            if generate_output_path(target_path) == target_path:
-                time.sleep(1)
-            strip_result = strip_cap_annotations(target_path)
-            if "error" in strip_result:
-                return {"error": f"Overwrite pre-strip failed: {strip_result['error']}"}
-            overwrite_strip = {
-                "uns_keys_removed": strip_result["uns_keys_removed"],
-                "obs_columns_removed": strip_result["obs_columns_removed"],
-            }
-            target_path = strip_result["output_path"]
-            target_obs_columns, target_index, target_var_list, target_uns_keys, raw_log = read_target(target_path)
-
-        target_index_set = set(target_index)
-        target_var_set = set(target_var_list)
 
         cell_stats = _compute_axis_overlap(source_index, target_index_set)
         gene_stats = _compute_axis_overlap(source_var_set, target_var_set)
@@ -316,6 +304,34 @@ def copy_cap_annotations(
                 ),
                 "cells": cell_stats,
             }
+
+        if overwrite:
+            # Overwrite = strip, then a clean import: one shared removal
+            # implementation and two audit entries in the edit log instead of
+            # an implicit deletion. The strip is attempted unconditionally —
+            # its inventory is the complete definition of CAP material
+            # (legacy keys, cap_metadata, provenance/cap, orphan palettes),
+            # so no separate detection can drift from it; a clean target
+            # reports nothing_to_strip and the import proceeds directly.
+            # The strip refuses a same-second snapshot collision (its output
+            # would be named after its input); if the target snapshot was
+            # written this very second, wait out the boundary first.
+            if generate_output_path(target_path) == target_path:
+                time.sleep(1)
+            strip_result = strip_cap_annotations(target_path)
+            if "error" in strip_result:
+                if not strip_result.get("nothing_to_strip"):
+                    return {"error": f"Overwrite pre-strip failed: {strip_result['error']}"}
+            else:
+                overwrite_strip = {
+                    "uns_keys_removed": strip_result["uns_keys_removed"],
+                    "obs_columns_removed": strip_result["obs_columns_removed"],
+                    "unrecognized_cap_like_columns": strip_result["unrecognized_cap_like_columns"],
+                }
+                target_path = strip_result["output_path"]
+                # Cells and genes are untouched by a strip; only the column
+                # set, uns keys, and edit log need re-reading.
+                target_obs_columns, _, _, target_uns_keys, raw_log = read_target(target_path)
 
         # --- Step 3: Build aligned temp AnnData ---
         aligned_obs = source_obs_subset.reindex(target_index)

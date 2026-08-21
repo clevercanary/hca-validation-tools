@@ -517,6 +517,52 @@ def test_copy_overwrite(cap_source, hca_target_with_cap):
     assert [e["operation"] for e in entries] == ["strip_cap_annotations", "import_cap_annotations"]
 
 
+def test_copy_overwrite_strips_older_era_provenance(cap_source, tmp_path):
+    """The pre-strip trigger is the strip tool's own inventory: CAP material
+    the old detection missed (uns['provenance']['cap']) is still removed."""
+    target = _make_hca_target(tmp_path / "prov-target.h5ad", CELL_IDS)
+    adata = ad.read_h5ad(target)
+    adata.uns["provenance"] = {
+        "cap": {"cap_dataset_url": "https://celltype.info/x"},
+        "edit_history": json.dumps(
+            [
+                {
+                    "timestamp": "2026-05-27T00:00:00Z",
+                    "tool": "hca-anndata-tools",
+                    "tool_version": "0.0.1",
+                    "operation": "import_cap_annotations",
+                    "description": "old import",
+                }
+            ]
+        ),
+    }
+    adata.write_h5ad(target)
+
+    result = copy_cap_annotations(str(cap_source), str(target), overwrite=True)
+
+    assert "error" not in result
+    assert result["overwrite_strip"]["uns_keys_removed"] == ["provenance/cap"]
+    written = ad.read_h5ad(result["output_path"])
+    assert "cap" not in written.uns["provenance"]
+    assert "cap_metadata" in written.uns
+
+
+def test_copy_overwrite_overlap_failure_does_not_mutate(cap_source, tmp_path):
+    """A run that fails the overlap gate must not have pre-stripped the
+    target — the non-mutating validation runs first."""
+    target = _make_hca_target(tmp_path / "mismatch-target.h5ad", [f"other_{i}" for i in range(10)])
+    adata = ad.read_h5ad(target)
+    adata.obs["existing--cell_ontology_term_id"] = pd.Categorical(["CL:0000000"] * 10)
+    adata.write_h5ad(target)
+
+    result = copy_cap_annotations(str(cap_source), str(target), overwrite=True)
+
+    assert "error" in result
+    assert "mismatch" in result["error"].lower()
+    assert not list(tmp_path.glob("mismatch-target-edit-*.h5ad"))
+    assert "existing--cell_ontology_term_id" in ad.read_h5ad(target).obs.columns
+
+
 def test_copy_overwrite_removes_orphaned_palette(cap_source, tmp_path):
     """Overwrite must not leave a deleted CAP column's scanpy palette behind —
     an orphaned uns['<col>_colors'] fails the schema validator."""
