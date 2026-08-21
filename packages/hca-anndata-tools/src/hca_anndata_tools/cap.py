@@ -88,6 +88,7 @@ _OPTIONAL_SUFFIXES = [
     "--canonical_marker_genes",
     "--synonyms",
     "--category_fullname",
+    "--category_cell_ontology_exists",
     "--category_cell_ontology_term_id",
     "--category_cell_ontology_term",
     "--cell_ontology_assessment",

@@ -43,6 +43,7 @@ def _make_cap_source(
             "author_cell_type--canonical_marker_genes": pd.Categorical(["unknown"] * n),
             "author_cell_type--synonyms": pd.Categorical(["unknown"] * n),
             "author_cell_type--category_fullname": pd.Categorical(["neural cell"] * n),
+            "author_cell_type--category_cell_ontology_exists": pd.Categorical(["True"] * n),
             "author_cell_type--category_cell_ontology_term_id": pd.Categorical(["CL:0002319"] * n),
             "author_cell_type--category_cell_ontology_term": pd.Categorical(["neural cell"] * n),
             # Demographic columns (should NOT be copied)
@@ -153,6 +154,9 @@ def test_copy_obs_columns_present(cap_source, hca_target):
     assert "author_cell_type--marker_gene_evidence" in written.obs.columns
     assert "author_cell_type--rationale" in written.obs.columns
     assert "author_cell_type--category_fullname" in written.obs.columns
+    # PRD-required field that was missing from the suffix vocabulary and
+    # silently dropped on import until the vocabulary learned it
+    assert "author_cell_type--category_cell_ontology_exists" in written.obs.columns
 
 
 def test_copy_marker_gene_validation(cap_source, hca_target):
