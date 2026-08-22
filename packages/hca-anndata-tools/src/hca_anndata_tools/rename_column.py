@@ -42,9 +42,11 @@ from .write import (
 # rewritten in place, so it has to be recreated the same way.
 _STR_DTYPE = h5py.string_dtype(encoding="utf-8")
 
-# Rows per read when scanning a column for emptiness. Bounds peak memory on a
-# 20-million-cell column without making the scan chatty.
-_SCAN_CHUNK_ROWS = 1 << 20
+# Rows per read when scanning a column for emptiness. Rows, not bytes — the
+# width depends on the column, so this is 64 KB of int8 categorical codes and
+# 512 KB of float64. Sized against the storage chunks anndata writes (a few
+# thousand rows), so a read spans a handful of them rather than hundreds.
+_SCAN_CHUNK_ROWS = 1 << 16
 
 
 def _all_rows(ds: h5py.Dataset, predicate) -> bool:
@@ -52,8 +54,8 @@ def _all_rows(ds: h5py.Dataset, predicate) -> bool:
 
     Short-circuits on the first row it does not hold for. A populated column is
     the refusal case and normally answers from the first chunk, so the common
-    path never reads more than a megabyte of a column that may hold tens of
-    millions of rows.
+    path reads well under a megabyte of a column that may hold tens of millions
+    of rows.
     """
     # all() short-circuits, so a populated column stops at its first chunk.
     return all(
