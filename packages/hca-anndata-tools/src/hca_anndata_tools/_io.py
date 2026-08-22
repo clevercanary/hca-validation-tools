@@ -188,7 +188,7 @@ def read_edit_log_h5py(f: h5py.File) -> str:
     # isinstance, not truthiness: a malformed file can hold a Dataset at "uns",
     # which is truthy and has no .get, so `if uns` would raise AttributeError
     # rather than falling through to the no-log answer.
-    if uns:
+    if isinstance(uns, h5py.Group):
         prov = uns.get("provenance")
         if prov and isinstance(prov, h5py.Group) and "edit_history" in prov:
             return _decode_bytes(prov["edit_history"][()])
