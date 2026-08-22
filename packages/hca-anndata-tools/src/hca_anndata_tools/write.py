@@ -72,43 +72,51 @@ def _copy_with_sha256(source_path: str, dest_path: str) -> str:
     return h.hexdigest()
 
 
+def _claim_snapshot_path(path: str) -> str:
+    """Return a snapshot path that no file currently occupies.
+
+    ``generate_output_path`` timestamps to the second, so a name can already be
+    taken — by the source itself (a snapshot edited within that same second),
+    by an alias of it, or by a sibling tool's snapshot from the same second.
+    All three are the same problem: the name is not ours to write. Waiting out
+    the boundary and regenerating resolves every one of them, which is cheaper
+    than failing a run the caller must then notice and retry.
+
+    Checking occupancy rather than comparing strings to ``path`` is what makes
+    the caller's cleanup unambiguous: the returned name held no file, so
+    anything there afterwards was written by us and is ours to remove.
+
+    Raises:
+        SameSecondSnapshotError: Still occupied after waiting out the boundary.
+    """
+    output_path = generate_output_path(path)
+    if Path(output_path).exists():
+        time.sleep(1)
+        output_path = generate_output_path(path)
+    if Path(output_path).exists():
+        raise SameSecondSnapshotError(SAME_SECOND_SNAPSHOT_ERROR)
+    return output_path
+
+
 @contextlib.contextmanager
 def snapshot_copy(path: str) -> Iterator[str]:
     """Yield the path of a fresh snapshot copy of ``path``, cleaning it up on error.
 
-    The copy-and-patch tools all need the same three things around
-    ``shutil.copy2``, and each of them is a way to lose data if omitted:
+    Wraps ``shutil.copy2`` with the three things every copy-and-patch tool
+    needs around it, each of which is a way to lose data if omitted:
 
-    * **A name that isn't the source.** ``generate_output_path`` timestamps to
-      the second, so a tool running on a snapshot and finishing within that same
-      second generates its own source's name. Rather than fail the run, this
-      waits out the boundary and regenerates — these tools are fast enough that
-      back-to-back curation steps collide routinely — and raises
-      :class:`SameSecondSnapshotError` only if the retry still collides.
-    * **Refusing a destination that already is the source.** A hard link or
-      ``./``-prefixed path has a different string form, so the equality check
-      above misses it. ``copy2`` compares inodes before opening the
-      destination, so catching ``SameFileError`` covers what string equality
-      cannot — and covers it atomically with the copy, rather than as a
-      separate check that can go stale between test and use. Such a
-      destination is never removed: it predates the call, and one naming the
-      source's own directory entry would take the source with it.
-    * **Removing a snapshot we wrote but could not finish.** ``shutil.copyfile``
-      opens the destination ``'wb'`` and does not remove it if the copy then
-      fails partway (ENOSPC on a multi-GB h5ad is the realistic case). A
-      leftover partial is worse than an error: it carries the newest ``-edit-``
-      timestamp, so :func:`resolve_latest` would hand that truncated file to
-      every later call on the dataset.
-
-    The distinction the failure paths turn on is whether *we* created the file
-    at the destination. ``SameFileError`` is the one failure that writes
-    nothing, and the one case where unlinking the destination would delete the
-    source — so it never reaches the cleanup. Everything else that fails after
-    the copy begins leaves a file that is ours to remove.
+    * a destination name no file already occupies — see
+      :func:`_claim_snapshot_path`;
+    * a refusal, rather than a silent overwrite, when that cannot be arranged;
+    * removal of the snapshot if the copy or the caller's body then fails.
+      ``shutil.copyfile`` opens the destination ``'wb'`` and leaves a partial
+      file behind on error, and a leftover partial is worse than an error: it
+      carries the newest ``-edit-`` timestamp, so :func:`resolve_latest` would
+      hand that truncated file to every later call on the dataset.
 
     Body exceptions propagate after the snapshot is removed, so a caller's own
     ``except`` still sees them. A caller that returns normally keeps the
-    snapshot, including a caller that unlinked it itself.
+    snapshot.
 
     Args:
         path: Path to the source file. Callers should pass a
@@ -118,24 +126,17 @@ def snapshot_copy(path: str) -> Iterator[str]:
         Path to the newly created snapshot copy.
 
     Raises:
-        SameSecondSnapshotError: The generated name is the source, or an alias
-            of it, and waiting out the second boundary did not help.
+        SameSecondSnapshotError: No free snapshot name was available, even
+            after waiting out the second boundary.
     """
-    output_path = generate_output_path(path)
-    if output_path == path:
-        time.sleep(1)
-        output_path = generate_output_path(path)
-    if output_path == path:
-        raise SameSecondSnapshotError(SAME_SECOND_SNAPSHOT_ERROR)
+    output_path = _claim_snapshot_path(path)
 
     try:
         shutil.copy2(path, output_path)
     except shutil.SameFileError as e:
-        # copy2 compares inodes before opening the destination, so nothing was
-        # written. The destination is the source or an alias of it, and either
-        # way it existed before this call and is not ours to remove — for an
-        # alias naming the same directory entry ('./'-prefixed), removing it
-        # would take the source with it.
+        # Only reachable if the destination appeared between the check above
+        # and here. Nothing was written — copy2 compares inodes before opening
+        # the destination — and the file is not ours, so it is not removed.
         raise SameSecondSnapshotError(SAME_SECOND_SNAPSHOT_ERROR) from e
     except BaseException:
         with contextlib.suppress(OSError):

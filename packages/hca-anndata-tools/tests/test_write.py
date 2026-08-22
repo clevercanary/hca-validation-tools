@@ -485,6 +485,28 @@ def test_snapshot_copy_refuses_an_unresolvable_collision(tmp_path, monkeypatch):
     assert src.read_bytes() == b"payload"
 
 
+def test_snapshot_copy_never_removes_a_file_it_did_not_create(tmp_path, monkeypatch):
+    """A destination that is already occupied — by a sibling tool's snapshot
+    from this same second, not by the source — is refused before the copy, so
+    the cleanup can never reach a file we did not write."""
+    src = tmp_path / "d.h5ad"
+    src.write_bytes(b"source")
+    occupied = tmp_path / "d-edit-2026-08-22-00-00-01.h5ad"
+    occupied.write_bytes(b"a sibling's snapshot")
+    monkeypatch.setattr("hca_anndata_tools.write.generate_output_path", lambda p: str(occupied))
+    monkeypatch.setattr("hca_anndata_tools.write.time.sleep", lambda _: None)
+
+    def must_not_run(*args, **kwargs):  # pragma: no cover - asserts unreachable
+        raise AssertionError("copy2 must not run against an occupied destination")
+
+    monkeypatch.setattr("hca_anndata_tools.write.shutil.copy2", must_not_run)
+
+    with pytest.raises(SameSecondSnapshotError), snapshot_copy(str(src)):
+        pass  # pragma: no cover - the context manager raises on entry
+
+    assert occupied.read_bytes() == b"a sibling's snapshot"
+
+
 def test_snapshot_copy_refuses_an_alias_without_unlinking_it(tmp_path, monkeypatch):
     """A hard link to the source has a different name, so the equality check
     misses it; copy2 compares inodes. The destination is left alone: it
