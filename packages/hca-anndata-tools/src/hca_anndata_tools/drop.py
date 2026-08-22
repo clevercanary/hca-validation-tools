@@ -17,9 +17,6 @@ per dataset.
 
 from __future__ import annotations
 
-import contextlib
-import shutil
-import time
 from pathlib import Path
 
 import h5py
@@ -35,9 +32,9 @@ from .schema.helpers import obs_column_tiers
 from .write import (
     build_edit_log,
     cleanup_previous_version,
-    generate_output_path,
     make_edit_entry,
     resolve_latest,
+    snapshot_copy,
 )
 
 
@@ -227,12 +224,6 @@ def drop_obs_columns(path: str, columns: list[str] | tuple[str, ...]) -> dict:
         ``uns_keys_dropped`` on success, or ``{"error": ...}`` if the request
         was rejected or the write failed.
     """
-    output_path = None
-    # Whether *we* created the file at output_path. The name is bound before
-    # the copy, so the failure path below must not delete a file it may never
-    # have written — that is what turned shutil.copy2's safe SameFileError
-    # into deletion of the source snapshot (#598).
-    snapshot_created = False
     try:
         # Shape-check the argument before anything reads it. This is an
         # MCP-exposed tool, so `columns` arrives as decoded JSON and may hold
@@ -281,81 +272,49 @@ def drop_obs_columns(path: str, columns: list[str] | tuple[str, ...]) -> dict:
         if problems:
             return {"error": "Refusing to drop: " + "; ".join(problems)}
 
-        output_path = generate_output_path(path)
-        if output_path == path:
-            # generate_output_path timestamps to the second (see rename.py):
-            # a second edit within the same second names the output after its
-            # own source. Wait out the boundary rather than failing the run,
-            # as copy_cap does — this tool is fast enough that back-to-back
-            # curation steps land in one second routinely.
-            time.sleep(1)
-            output_path = generate_output_path(path)
-        if output_path == path:
-            return {"error": "An edit snapshot for this second already exists — retry in a moment."}
-        # Set *before* the copy, not after: shutil.copyfile opens the
-        # destination for writing and does not remove it if the copy then
-        # fails partway (ENOSPC on a multi-GB h5ad is the realistic case), so
-        # a partial file at output_path is ours to clean up. Leaving it behind
-        # would be worse than the original bug — it carries the newest -edit-
-        # timestamp, so resolve_latest would hand that truncated file to every
-        # later call on the dataset.
-        snapshot_created = True
-        try:
-            shutil.copy2(path, output_path)
-        except shutil.SameFileError:
-            # The one failure that writes nothing: copy2 compares inodes before
-            # opening the destination. It is also the one case where unlinking
-            # output_path would delete the source, so return here rather than
-            # falling through to the handler. Catches what the equality check
-            # above cannot — aliases of the source ('./'-prefixed paths, hard
-            # links) whose string form differs (#598).
-            return {"error": "An edit snapshot for this second already exists — retry in a moment."}
+        with snapshot_copy(path) as output_path:
+            # Defer the malformed-log cleanup until after the with-block closes the
+            # output file, matching strip_forbidden_obs_columns: unlinking an open
+            # HDF5 handle works on POSIX but raises on Windows, and the context
+            # __exit__ flush would hit a removed inode either way.
+            log_error = None
+            with h5py.File(output_path, "a") as f_out:
+                for col in requested:
+                    del f_out["obs"][col]
+                update_column_order(f_out, [], set(requested))
+                for key in owned_uns_keys:
+                    del f_out["uns"][key]
 
-        # Defer the malformed-log cleanup until after the with-block closes the
-        # output file, matching strip_forbidden_obs_columns: unlinking an open
-        # HDF5 handle works on POSIX but raises on Windows, and the context
-        # __exit__ flush would hit a removed inode either way.
-        log_error = None
-        with h5py.File(output_path, "a") as f_out:
-            for col in requested:
-                del f_out["obs"][col]
-            update_column_order(f_out, [], set(requested))
-            for key in owned_uns_keys:
-                del f_out["uns"][key]
+                described = f"Dropped obs columns: {requested}"
+                if owned_uns_keys:
+                    described += f" (and the palettes they own: {owned_uns_keys})"
+                entry = make_edit_entry(
+                    operation="drop_obs_columns",
+                    description=described,
+                    details={
+                        "obs_columns_dropped": requested,
+                        "uns_keys_dropped": owned_uns_keys,
+                    },
+                )
 
-            described = f"Dropped obs columns: {requested}"
-            if owned_uns_keys:
-                described += f" (and the palettes they own: {owned_uns_keys})"
-            entry = make_edit_entry(
-                operation="drop_obs_columns",
-                description=described,
-                details={
-                    "obs_columns_dropped": requested,
-                    "uns_keys_dropped": owned_uns_keys,
-                },
-            )
+                existing_log = read_edit_log_h5py(f_out)
+                log_result = build_edit_log(existing_log, [entry], path)
+                if "error" in log_result:
+                    log_error = log_result
+                else:
+                    write_edit_log_h5py(f_out, log_result["json"])
 
-            existing_log = read_edit_log_h5py(f_out)
-            log_result = build_edit_log(existing_log, [entry], path)
-            if "error" in log_result:
-                log_error = log_result
-            else:
-                write_edit_log_h5py(f_out, log_result["json"])
+            if log_error is not None:
+                Path(output_path).unlink()
+                return log_error
 
-        if log_error is not None:
-            Path(output_path).unlink()
-            return log_error
+            cleanup_previous_version(path, output_path)
 
-        cleanup_previous_version(path, output_path)
-
-        return {
-            "output_path": output_path,
-            "obs_columns_dropped": requested,
-            "uns_keys_dropped": owned_uns_keys,
-        }
+            return {
+                "output_path": output_path,
+                "obs_columns_dropped": requested,
+                "uns_keys_dropped": owned_uns_keys,
+            }
 
     except Exception as e:
-        if snapshot_created and output_path and Path(output_path).is_file():
-            with contextlib.suppress(OSError):
-                Path(output_path).unlink()
         return {"error": str(e)}

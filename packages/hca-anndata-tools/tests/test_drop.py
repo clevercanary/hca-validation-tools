@@ -697,9 +697,9 @@ def test_drop_same_second_snapshot_refused(sample_h5ad_for_write, monkeypatch):
     failure path would unlink that source snapshot. Patching generate_output_path
     to the identity makes the retry collide too, which is the unresolvable case."""
     _add_obs_cols(sample_h5ad_for_write, "junk_col")
-    monkeypatch.setattr("hca_anndata_tools.drop.generate_output_path", lambda p: p)
+    monkeypatch.setattr("hca_anndata_tools.write.generate_output_path", lambda p: p)
     slept = []
-    monkeypatch.setattr("hca_anndata_tools.drop.time.sleep", slept.append)
+    monkeypatch.setattr("hca_anndata_tools.write.time.sleep", slept.append)
 
     result = drop_obs_columns(str(sample_h5ad_for_write), ["junk_col"])
 
@@ -719,9 +719,9 @@ def test_drop_same_second_collision_resolves_after_waiting(sample_h5ad_for_write
     _add_obs_cols(sample_h5ad_for_write, "junk_col")
     fresh = sample_h5ad_for_write.with_name("fresh-edit-2026-08-22-00-00-01.h5ad")
     names = iter([str(sample_h5ad_for_write), str(fresh)])
-    monkeypatch.setattr("hca_anndata_tools.drop.generate_output_path", lambda p: next(names))
+    monkeypatch.setattr("hca_anndata_tools.write.generate_output_path", lambda p: next(names))
     slept = []
-    monkeypatch.setattr("hca_anndata_tools.drop.time.sleep", slept.append)
+    monkeypatch.setattr("hca_anndata_tools.write.time.sleep", slept.append)
 
     result = drop_obs_columns(str(sample_h5ad_for_write), ["junk_col"])
 
@@ -743,7 +743,7 @@ def test_drop_failed_copy_leaves_no_partial_snapshot(sample_h5ad_for_write, monk
         written["dst"] = dst
         raise OSError(28, "No space left on device")
 
-    monkeypatch.setattr("hca_anndata_tools.drop.shutil.copy2", die_partway)
+    monkeypatch.setattr("hca_anndata_tools.write.shutil.copy2", die_partway)
 
     result = drop_obs_columns(str(sample_h5ad_for_write), ["junk_col"])
 
@@ -760,7 +760,7 @@ def test_drop_alias_of_source_is_refused_without_unlinking(sample_h5ad_for_write
     _add_obs_cols(sample_h5ad_for_write, "junk_col")
     alias = sample_h5ad_for_write.with_name("alias-edit-2026-08-22-00-00-01.h5ad")
     os.link(sample_h5ad_for_write, alias)
-    monkeypatch.setattr("hca_anndata_tools.drop.generate_output_path", lambda p: str(alias))
+    monkeypatch.setattr("hca_anndata_tools.write.generate_output_path", lambda p: str(alias))
 
     result = drop_obs_columns(str(sample_h5ad_for_write), ["junk_col"])
 

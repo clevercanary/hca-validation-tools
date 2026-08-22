@@ -8,6 +8,8 @@ import hashlib
 import json
 import re
 import shutil
+import time
+from collections.abc import Iterator
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
@@ -22,6 +24,19 @@ _TIMESTAMP_FORMAT = "%Y-%m-%d-%H-%M-%S"
 EDIT_LOG_KEY = "edit_history"
 _HASH_CHUNK_SIZE = 1 << 20  # 1 MB — keeps syscall count low on multi-GB files
 _REQUIRED_ENTRY_KEYS = {"timestamp", "tool", "tool_version", "operation", "description"}
+
+# The message every tool returns when a snapshot name collides with its own
+# source. Shared so the wording cannot drift between call sites — it contains
+# a non-ASCII em dash, which is exactly what drifts on a re-type.
+SAME_SECOND_SNAPSHOT_ERROR = "An edit snapshot for this second already exists — retry in a moment."
+
+
+class SameSecondSnapshotError(RuntimeError):
+    """A snapshot could not be named distinctly from the file it copies.
+
+    Carries :data:`SAME_SECOND_SNAPSHOT_ERROR` as its message, so a caller
+    whose handler returns ``{"error": str(e)}`` reports it unchanged.
+    """
 
 
 def _compute_sha256(path: str) -> str:
@@ -55,6 +70,78 @@ def _copy_with_sha256(source_path: str, dest_path: str) -> str:
             dst.write(chunk)
     shutil.copystat(source_path, dest_path)
     return h.hexdigest()
+
+
+@contextlib.contextmanager
+def snapshot_copy(path: str) -> Iterator[str]:
+    """Yield the path of a fresh snapshot copy of ``path``, cleaning it up on error.
+
+    The copy-and-patch tools all need the same three things around
+    ``shutil.copy2``, and each of them is a way to lose data if omitted:
+
+    * **A name that isn't the source.** ``generate_output_path`` timestamps to
+      the second, so a tool running on a snapshot and finishing within that same
+      second generates its own source's name. Rather than fail the run, this
+      waits out the boundary and regenerates — these tools are fast enough that
+      back-to-back curation steps collide routinely — and raises
+      :class:`SameSecondSnapshotError` only if the retry still collides.
+    * **Refusing an alias of the source.** A hard link or ``./``-prefixed path
+      has a different string form, so the equality check above misses it.
+      ``copy2`` compares inodes before opening the destination, so catching
+      ``SameFileError`` covers what string equality cannot — and covers it
+      atomically with the copy, rather than as a separate check that can go
+      stale between test and use.
+    * **Removing a snapshot we wrote but could not finish.** ``shutil.copyfile``
+      opens the destination ``'wb'`` and does not remove it if the copy then
+      fails partway (ENOSPC on a multi-GB h5ad is the realistic case). A
+      leftover partial is worse than an error: it carries the newest ``-edit-``
+      timestamp, so :func:`resolve_latest` would hand that truncated file to
+      every later call on the dataset.
+
+    The distinction the failure paths turn on is whether *we* created the file
+    at the destination. ``SameFileError`` is the one failure that writes
+    nothing, and the one case where unlinking the destination would delete the
+    source — so it never reaches the cleanup. Everything else that fails after
+    the copy begins leaves a file that is ours to remove.
+
+    Body exceptions propagate after the snapshot is removed, so a caller's own
+    ``except`` still sees them. A caller that returns normally keeps the
+    snapshot, including a caller that unlinked it itself.
+
+    Args:
+        path: Path to the source file. Callers should pass a
+            :func:`resolve_latest`-resolved path.
+
+    Yields:
+        Path to the newly created snapshot copy.
+
+    Raises:
+        SameSecondSnapshotError: The generated name is the source, or an alias
+            of it, and waiting out the second boundary did not help.
+    """
+    output_path = generate_output_path(path)
+    if output_path == path:
+        time.sleep(1)
+        output_path = generate_output_path(path)
+    if output_path == path:
+        raise SameSecondSnapshotError(SAME_SECOND_SNAPSHOT_ERROR)
+
+    try:
+        shutil.copy2(path, output_path)
+    except shutil.SameFileError as e:
+        # Nothing was written and output_path is the source: never unlink.
+        raise SameSecondSnapshotError(SAME_SECOND_SNAPSHOT_ERROR) from e
+    except BaseException:
+        with contextlib.suppress(OSError):
+            Path(output_path).unlink()
+        raise
+
+    try:
+        yield output_path
+    except BaseException:
+        with contextlib.suppress(OSError):
+            Path(output_path).unlink()
+        raise
 
 
 def strip_timestamp(filename: str) -> str:

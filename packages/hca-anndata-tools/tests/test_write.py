@@ -12,9 +12,11 @@ import pytest
 
 from hca_anndata_tools.write import (
     EDIT_LOG_KEY,
+    SameSecondSnapshotError,
     _copy_with_sha256,
     generate_output_path,
     resolve_latest,
+    snapshot_copy,
     strip_timestamp,
     write_h5ad,
 )
@@ -435,3 +437,100 @@ def test_copy_with_sha256_refuses_hard_link(tmp_path):
         _copy_with_sha256(str(src), str(link))
 
     assert src.read_bytes() == b"do not truncate"
+
+
+# --- snapshot_copy: the shared create-and-clean-up contract (#598) ------------
+
+
+def test_snapshot_copy_yields_a_distinct_copy(tmp_path):
+    """The happy path: a real copy under a fresh name, source untouched."""
+    src = tmp_path / "d.h5ad"
+    src.write_bytes(b"payload")
+
+    with snapshot_copy(str(src)) as out:
+        assert Path(out) != src
+        assert Path(out).read_bytes() == b"payload"
+
+    assert Path(out).is_file()  # a clean exit keeps the snapshot
+    assert src.read_bytes() == b"payload"
+
+
+def test_snapshot_copy_waits_out_a_collision(tmp_path, monkeypatch):
+    """A name equal to the source is retried after the second boundary rather
+    than failing the run — these tools collide routinely when chained."""
+    src = tmp_path / "d.h5ad"
+    src.write_bytes(b"payload")
+    fresh = tmp_path / "d-edit-2026-08-22-00-00-01.h5ad"
+    names = iter([str(src), str(fresh)])
+    monkeypatch.setattr("hca_anndata_tools.write.generate_output_path", lambda p: next(names))
+    slept = []
+    monkeypatch.setattr("hca_anndata_tools.write.time.sleep", slept.append)
+
+    with snapshot_copy(str(src)) as out:
+        assert Path(out) == fresh
+
+    assert slept == [1]
+
+
+def test_snapshot_copy_refuses_an_unresolvable_collision(tmp_path, monkeypatch):
+    """A collision that survives the wait raises, and the source is untouched."""
+    src = tmp_path / "d.h5ad"
+    src.write_bytes(b"payload")
+    monkeypatch.setattr("hca_anndata_tools.write.generate_output_path", lambda p: p)
+    monkeypatch.setattr("hca_anndata_tools.write.time.sleep", lambda _: None)
+
+    with pytest.raises(SameSecondSnapshotError), snapshot_copy(str(src)):
+        pass  # pragma: no cover - the context manager raises on entry
+
+    assert src.read_bytes() == b"payload"
+
+
+def test_snapshot_copy_refuses_an_alias_without_unlinking_it(tmp_path, monkeypatch):
+    """A hard link to the source has a different name, so the equality check
+    misses it; copy2 compares inodes. Unlinking here would delete the source."""
+    src = tmp_path / "d.h5ad"
+    src.write_bytes(b"payload")
+    alias = tmp_path / "d-edit-2026-08-22-00-00-01.h5ad"
+    os.link(src, alias)
+    monkeypatch.setattr("hca_anndata_tools.write.generate_output_path", lambda p: str(alias))
+
+    with pytest.raises(SameSecondSnapshotError), snapshot_copy(str(src)):
+        pass  # pragma: no cover - the context manager raises on entry
+
+    assert alias.is_file()
+    assert src.read_bytes() == b"payload"
+
+
+def test_snapshot_copy_removes_a_partially_written_snapshot(tmp_path, monkeypatch):
+    """copyfile opens the destination 'wb' and leaves it behind if the copy
+    dies partway. A leftover would win resolve_latest on the next call."""
+    src = tmp_path / "d.h5ad"
+    src.write_bytes(b"payload")
+    written = {}
+
+    def die_partway(s, dst, *args, **kwargs):
+        Path(dst).write_bytes(b"partial")
+        written["dst"] = dst
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr("hca_anndata_tools.write.shutil.copy2", die_partway)
+
+    with pytest.raises(OSError, match="No space left"), snapshot_copy(str(src)):
+        pass  # pragma: no cover - the context manager raises on entry
+
+    assert not Path(written["dst"]).exists()
+
+
+def test_snapshot_copy_removes_the_snapshot_when_the_body_fails(tmp_path):
+    """A body that raises leaves no half-edited snapshot behind, and the
+    exception still reaches the caller's own handler."""
+    src = tmp_path / "d.h5ad"
+    src.write_bytes(b"payload")
+    seen = {}
+
+    with pytest.raises(ValueError, match="boom"), snapshot_copy(str(src)) as out:
+        seen["out"] = out
+        raise ValueError("boom")
+
+    assert not Path(seen["out"]).exists()
+    assert src.read_bytes() == b"payload"
