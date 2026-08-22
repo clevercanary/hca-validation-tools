@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.5](https://github.com/clevercanary/hca-validation-tools/compare/hca-anndata-tools-v0.6.4...hca-anndata-tools-v0.6.5) (2026-08-22)
+
+
+### Bug Fixes
+
+* **hca-anndata-tools:** stop same-second snapshot collisions from destroying the previous snapshot ([#609](https://github.com/clevercanary/hca-validation-tools/issues/609)) ([4dd3dc4](https://github.com/clevercanary/hca-validation-tools/commit/4dd3dc406df6d3208629b845ab0f802e85018849)), closes [#598](https://github.com/clevercanary/hca-validation-tools/issues/598)
+
 ## [0.6.4](https://github.com/clevercanary/hca-validation-tools/compare/hca-anndata-tools-v0.6.3...hca-anndata-tools-v0.6.4) (2026-08-21)
 
 
