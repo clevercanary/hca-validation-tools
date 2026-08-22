@@ -164,11 +164,20 @@ def rename_obs_column(path: str, column: str, new_name: str) -> dict:
     validates entries against the obs columns present, so the new name cannot
     be written before the rename happens.
 
-    There is no rule yet for CAP annotation-set columns (the ``--`` names a set
-    declares in ``uns['cap_metadata']``) or for the deprecated top-level CAP
-    layout, both of which ``drop_obs_columns`` refuses. That gap is deliberate:
-    #614 settles what the rule should be across all the obs-mutating tools
-    rather than adding a sixth ad-hoc variant here.
+    Two gaps are open by decision rather than oversight, both left to #614,
+    which settles guard policy across all the obs-mutating tools rather than
+    growing a sixth ad-hoc variant here:
+
+    * CAP annotation-set columns (the ``--`` names a set declares in
+      ``uns['cap_metadata']``) and the deprecated top-level CAP layout, both of
+      which ``drop_obs_columns`` refuses. Renaming such a column breaks the
+      declared set exactly as dropping it would.
+    * Renaming a schema-*required* column **away**, which ``drop_obs_columns``
+      also refuses. The module docstring's argument covers renaming *into* a
+      canonical name and the fact that no value is lost; it does not cover
+      this, which leaves a file missing a column the schema requires.
+      ``validate_schema`` reports that loudly and renaming back undoes it, but
+      the asymmetry with drop is real rather than reasoned.
 
     On the module docstring's reversibility argument: overwriting an empty
     destination is the one thing renaming back does not undo — that column's
