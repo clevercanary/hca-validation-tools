@@ -137,3 +137,26 @@ def test_strip_missing_file():
     result = strip_forbidden_obs_columns("/nonexistent/path/file.h5ad")
     assert "error" in result
     assert "File not found" in result["error"]
+
+
+def test_strip_same_second_snapshot_refused(sample_h5ad_for_write, monkeypatch):
+    """A second edit within the same second would name the output after its
+    own source; the guard refuses before touching anything.
+
+    Without it, ``shutil.copy2`` raises ``SameFileError`` and the failure path
+    unlinks ``output_path`` — which *is* the source. The surviving-source
+    assertion is the one that pins the bug (#598)."""
+    _to_hca_layout(sample_h5ad_for_write, "self_reported_ethnicity")
+    monkeypatch.setattr("hca_anndata_tools.strip.generate_output_path", lambda p: p)
+    before = ad.read_h5ad(sample_h5ad_for_write)
+
+    result = strip_forbidden_obs_columns(str(sample_h5ad_for_write))
+
+    # Survival first: an unguarded run unlinks the source, and that is the
+    # defect. Asserting the message first would fail on wording instead.
+    assert Path(sample_h5ad_for_write).is_file(), "the source snapshot was deleted"
+    after = ad.read_h5ad(sample_h5ad_for_write)
+    assert after.n_obs == before.n_obs
+    assert "self_reported_ethnicity" in after.obs.columns, "the source was modified despite the refusal"
+    assert "error" in result
+    assert "already exists" in result["error"]

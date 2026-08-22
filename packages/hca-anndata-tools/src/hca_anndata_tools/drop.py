@@ -276,6 +276,12 @@ def drop_obs_columns(path: str, columns: list[str] | tuple[str, ...]) -> dict:
             return {"error": "Refusing to drop: " + "; ".join(problems)}
 
         output_path = generate_output_path(path)
+        if output_path == path:
+            # generate_output_path timestamps to the second, so a second edit
+            # within the same second names the output after its own source;
+            # copying would raise SameFileError and the failure path would
+            # then unlink the source snapshot. Refuse before touching anything.
+            return {"error": "An edit snapshot for this second already exists — retry in a moment."}
         shutil.copy2(path, output_path)
 
         # Defer the malformed-log cleanup until after the with-block closes the
