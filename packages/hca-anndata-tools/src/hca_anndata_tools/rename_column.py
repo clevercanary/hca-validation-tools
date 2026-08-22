@@ -224,7 +224,12 @@ def rename_obs_column(path: str, column: str, new_name: str) -> dict:
             # this discards nothing. Its palette goes too: left behind it would
             # describe the incoming column's data, which is worse than an
             # orphan because a length match makes it silently wrong.
+            # Mirrors the read phase's coercion: File.get can hand back a
+            # Dataset or Datatype on a malformed file, and every use below
+            # treats this as a mapping.
             uns_out = f_out.get("uns")
+            if not isinstance(uns_out, h5py.Group):
+                uns_out = None
             if new_name in f_out["obs"]:
                 del f_out["obs"][new_name]
                 if uns_out is not None and f"{new_name}_colors" in uns_out:

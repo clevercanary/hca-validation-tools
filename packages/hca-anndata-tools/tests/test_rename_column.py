@@ -408,3 +408,27 @@ def test_is_empty_column_short_circuits_on_the_first_populated_chunk(tmp_path, m
     # _all_rows defined but never called and every test still green.
     assert read, "_is_empty_column bypassed the chunked scanner"
     assert sum(read) <= rc._SCAN_CHUNK_ROWS, f"read {sum(read)} of {n} rows — the scan did not short-circuit"
+
+
+def test_rename_fails_legibly_on_a_malformed_uns(tmp_path):
+    """File.get("uns") can hand back a Dataset on a malformed file. Such a file
+    cannot take an edit log, so the rename legitimately fails — but it must say
+    something structural rather than raising AttributeError about .get, which is
+    what truthiness checks on the result produced."""
+    path = tmp_path / "t.h5ad"
+    obs = pd.DataFrame(
+        {"producer": pd.Categorical(["a", "b", "a"])},
+        index=pd.Index(["c0", "c1", "c2"], name="cellID"),
+    )
+    ad.AnnData(X=np.zeros((3, 2), dtype=np.float32), obs=obs).write_h5ad(path)
+    with h5py.File(path, "a") as f:
+        if "uns" in f:
+            del f["uns"]
+        f.create_dataset("uns", data=np.array([1, 2, 3]))  # a Dataset, not a Group
+
+    result = rename_obs_column(str(path), "producer", "renamed")
+
+    assert "error" in result
+    assert "has no attribute" not in result["error"], result["error"]
+    assert "Dataset" in result["error"]  # names the structural problem
+    assert not list(tmp_path.glob("*-edit-*.h5ad")), "no snapshot left behind"
