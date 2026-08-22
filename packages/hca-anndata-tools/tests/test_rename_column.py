@@ -432,3 +432,21 @@ def test_rename_fails_legibly_on_a_malformed_uns(tmp_path):
     assert "has no attribute" not in result["error"], result["error"]
     assert "Dataset" in result["error"]  # names the structural problem
     assert not list(tmp_path.glob("*-edit-*.h5ad")), "no snapshot left behind"
+
+
+def test_rename_discards_an_orphan_palette_when_the_source_owns_none(tmp_path):
+    """A stale palette under the destination name must not be adopted by the
+    renamed column. The danger is not a length mismatch, which the validator
+    reports — it is a length *match*, which nothing reports."""
+    path = _make(
+        tmp_path / "t.h5ad",
+        {"tissue_label": pd.Categorical(["a", "b", "c"])},  # source owns no palette
+        uns={"surgical_procedure_colors": np.array(["#999999"], dtype=object)},
+    )
+
+    result = rename_obs_column(path, "tissue_label", "surgical_procedure")
+
+    assert "error" not in result
+    assert result["uns_key_renamed"] is None
+    out = ad.read_h5ad(result["output_path"])
+    assert "surgical_procedure_colors" not in out.uns, "orphan palette adopted by the renamed column"

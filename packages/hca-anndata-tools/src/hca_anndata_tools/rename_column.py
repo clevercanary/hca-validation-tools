@@ -222,21 +222,37 @@ def rename_obs_column(path: str, column: str, new_name: str) -> dict:
         # h5py closes before snapshot_copy's cleanup runs, which is the ordering
         # the unlink needs: removing an open HDF5 handle raises on Windows.
         with snapshot_copy(path) as output_path, h5py.File(output_path, "a") as f_out:
-            # Validation established that an existing destination is empty, so
-            # this discards nothing. Its palette goes too: left behind it would
-            # describe the incoming column's data, which is worse than an
-            # orphan because a length match makes it silently wrong.
             # Mirrors the read phase's coercion: File.get can hand back a
-            # Dataset or Datatype on a malformed file, and every use below
-            # treats this as a mapping.
+            # Dataset on a malformed file, and every use below is a mapping.
             uns_out = f_out.get("uns")
             if not isinstance(uns_out, h5py.Group):
                 uns_out = None
+
+            # Anything already under the destination's palette key goes, whether
+            # it belonged to an empty column being replaced or was orphaned by an
+            # earlier edit. Unconditional, because the source owning a palette is
+            # not what makes a stale one dangerous: left in place it would
+            # describe the incoming column, and a length *match* is worse than a
+            # mismatch — the validator reports a mismatch and says nothing about
+            # colours that merely happen to fit.
+            new_palette = f"{new_name}_colors"
+            if uns_out is not None and new_palette in uns_out:
+                del uns_out[new_palette]
+
+            # Read before the move, next to the names it is about. Substituted in
+            # place rather than via update_column_order, which appends: a renamed
+            # column keeps its position, so a reader diffing two versions sees one
+            # name change and not a reordering. A replaced empty destination is
+            # dropped from the list first, so the name is not listed twice.
+            order = [c for c in read_column_order(f_out["obs"]) if c != new_name]
+            renamed_order = [new_name if c == column else c for c in order]
+
+            # Validation established that an existing destination is empty, so
+            # this discards nothing.
             if new_name in f_out["obs"]:
                 del f_out["obs"][new_name]
-                if uns_out is not None and f"{new_name}_colors" in uns_out:
-                    del uns_out[f"{new_name}_colors"]
             f_out["obs"].move(column, new_name)
+            f_out["obs"].attrs["column-order"] = renamed_order
 
             # uns['batch_condition'] names the columns that define the
             # experiment's batches. A rename leaves it pointing at a column the
@@ -256,19 +272,8 @@ def rename_obs_column(path: str, column: str, new_name: str) -> dict:
                 ds.attrs["encoding-type"] = "string-array"
                 ds.attrs["encoding-version"] = "0.2.0"
 
-            # Substituted in place rather than via update_column_order,
-            # which appends: a renamed column keeps its position, so a
-            # reader diffing two versions sees one name change and not a
-            # reordering. A replaced empty destination is dropped from the
-            # list first, so the renamed column lands at the source's position
-            # and the name is not left listed twice.
-            order = [c for c in read_column_order(f_out["obs"]) if c != new_name]
-            f_out["obs"].attrs["column-order"] = [new_name if c == column else c for c in order]
-
-            if palette:
-                if f"{new_name}_colors" in f_out["uns"]:
-                    del f_out["uns"][f"{new_name}_colors"]
-                f_out["uns"].move(palette, f"{new_name}_colors")
+            if palette and uns_out is not None:
+                uns_out.move(palette, new_palette)
 
             described = f"Renamed obs column '{column}' to '{new_name}'"
             if palette:
@@ -279,7 +284,7 @@ def rename_obs_column(path: str, column: str, new_name: str) -> dict:
                 details={
                     "column": column,
                     "new_name": new_name,
-                    "uns_key_renamed": f"{new_name}_colors" if palette else None,
+                    "uns_key_renamed": new_palette if palette else None,
                 },
             )
 
@@ -295,7 +300,7 @@ def rename_obs_column(path: str, column: str, new_name: str) -> dict:
             "output_path": output_path,
             "column": column,
             "new_name": new_name,
-            "uns_key_renamed": f"{new_name}_colors" if palette else None,
+            "uns_key_renamed": new_palette if palette else None,
             "batch_condition_updated": column in batch_condition,
         }
 
