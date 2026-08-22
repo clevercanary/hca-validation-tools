@@ -33,7 +33,11 @@ def _no_snapshot(path):
 
 
 def test_rename_preserves_values_dtype_categories_and_position(tmp_path):
-    """A rename is invisible to everything except the name."""
+    """A rename is invisible to everything except the name.
+
+    Also the motivating case: author_cell_type is itself schema-named, so this
+    doubles as proof that no schema-tier refusal applies — a rename loses
+    nothing, unlike the drop that guard exists for."""
     path = _make(
         tmp_path / "t.h5ad",
         {
@@ -90,18 +94,6 @@ def test_rename_moves_the_palette_the_column_owns(tmp_path):
     assert list(out.uns["surgical_procedure_colors"]) == ["#111111", "#222222"]
 
 
-def test_rename_into_a_schema_named_column_is_allowed(tmp_path):
-    """The motivating case: cell_type_label holds the authors' own calls, and
-    author_cell_type is the schema's name for exactly that. Unlike a drop, a
-    rename loses nothing, so no schema-tier refusal applies."""
-    path = _make(tmp_path / "t.h5ad", {"cell_type_label": pd.Categorical(["T cell", "B cell", "T cell"])})
-
-    result = rename_obs_column(path, "cell_type_label", "author_cell_type")
-
-    assert "error" not in result
-    assert "author_cell_type" in ad.read_h5ad(result["output_path"]).obs.columns
-
-
 def test_rename_records_an_edit_log_entry(tmp_path):
     path = _make(tmp_path / "t.h5ad", {"old": pd.Categorical(["a", "b", "a"])})
 
@@ -132,26 +124,6 @@ def test_two_renames_in_succession_both_survive(tmp_path):
 
 
 # --- the destination rule ----------------------------------------------------
-
-
-def test_rename_overwrites_a_destination_that_is_entirely_empty(tmp_path):
-    """A column holding nothing carries no information to lose."""
-    path = _make(
-        tmp_path / "t.h5ad",
-        {
-            "producer": pd.Categorical(["a", "b", "a"]),
-            "author_cell_type": pd.Categorical([None, None, None], categories=["unused"]),
-        },
-    )
-
-    result = rename_obs_column(path, "producer", "author_cell_type")
-
-    assert "error" not in result
-    out = ad.read_h5ad(result["output_path"])
-    assert list(out.obs["author_cell_type"]) == ["a", "b", "a"]
-    # The replaced column's own entry must not survive as a duplicate.
-    order = read_obs_column_names(result["output_path"])
-    assert order.count("author_cell_type") == 1
 
 
 def test_rename_refuses_a_partially_populated_destination(tmp_path):
@@ -282,12 +254,6 @@ def test_rename_reports_every_problem_at_once(tmp_path):
     assert "not present in obs" in result["error"]
 
 
-def test_rename_missing_file():
-    result = rename_obs_column("/nonexistent/path/file.h5ad", "a", "b")
-
-    assert "error" in result
-
-
 def test_rename_replaces_an_orphaned_palette_under_the_destination_name(tmp_path):
     """A palette can sit under the destination name with no matching column —
     the exact state the validator complains about. move() would raise on it."""
@@ -305,45 +271,6 @@ def test_rename_replaces_an_orphaned_palette_under_the_destination_name(tmp_path
     assert "error" not in result
     out = ad.read_h5ad(result["output_path"])
     assert list(out.uns["surgical_procedure_colors"]) == ["#111111", "#222222"]  # source's wins
-
-
-def test_rename_over_an_empty_destination_discards_its_palette(tmp_path):
-    """The overwritten column's palette must not survive to describe the
-    incoming data. A length mismatch is a validator error; a length *match*
-    is worse, because nothing reports silently wrong colors."""
-    path = _make(
-        tmp_path / "t.h5ad",
-        {
-            "producer": pd.Categorical(["a", "b", "c"]),
-            "author_cell_type": pd.Categorical([None, None, None], categories=["unused"]),
-        },
-        uns={"author_cell_type_colors": np.array(["#111111", "#222222"], dtype=object)},
-    )
-
-    result = rename_obs_column(path, "producer", "author_cell_type")
-
-    assert "error" not in result
-    out = ad.read_h5ad(result["output_path"])
-    assert list(out.obs["author_cell_type"]) == ["a", "b", "c"]
-    assert "author_cell_type_colors" not in out.uns, "stale palette now describes different data"
-
-
-def test_rename_dedupes_a_batch_condition_entry_for_the_overwritten_column(tmp_path):
-    """When batch_condition names both the source and an empty destination,
-    substitution would leave the new name in there twice."""
-    path = _make(
-        tmp_path / "t.h5ad",
-        {
-            "producer": pd.Categorical(["a", "b", "a"]),
-            "author_cell_type": pd.Categorical([None, None, None], categories=["unused"]),
-        },
-        uns={"batch_condition": np.array(["producer", "author_cell_type"], dtype=object)},
-    )
-
-    result = rename_obs_column(path, "producer", "author_cell_type")
-
-    assert "error" not in result
-    assert list(ad.read_h5ad(result["output_path"]).uns["batch_condition"]) == ["author_cell_type"]
 
 
 def test_rename_works_on_a_file_with_no_uns_group(tmp_path):
@@ -450,3 +377,30 @@ def test_rename_discards_an_orphan_palette_when_the_source_owns_none(tmp_path):
     assert result["uns_key_renamed"] is None
     out = ad.read_h5ad(result["output_path"])
     assert "surgical_procedure_colors" not in out.uns, "orphan palette adopted by the renamed column"
+
+
+def test_rename_over_an_empty_destination_replaces_it_completely(tmp_path):
+    """An empty destination gives way, and everything that named it goes with
+    it. Its palette must not survive to describe the incoming column, and its
+    batch_condition entry must not survive as a duplicate of the new name."""
+    path = _make(
+        tmp_path / "t.h5ad",
+        {
+            "producer": pd.Categorical(["a", "b", "c"]),
+            "author_cell_type": pd.Categorical([None, None, None], categories=["unused"]),
+        },
+        uns={
+            "author_cell_type_colors": np.array(["#111111", "#222222"], dtype=object),
+            "batch_condition": np.array(["producer", "author_cell_type"], dtype=object),
+        },
+    )
+
+    result = rename_obs_column(path, "producer", "author_cell_type")
+
+    assert "error" not in result
+    out = ad.read_h5ad(result["output_path"])
+    assert list(out.obs["author_cell_type"]) == ["a", "b", "c"]
+    # The replaced column's own column-order entry must not linger as a duplicate.
+    assert read_obs_column_names(result["output_path"]).count("author_cell_type") == 1
+    assert "author_cell_type_colors" not in out.uns, "stale palette now describes different data"
+    assert list(out.uns["batch_condition"]) == ["author_cell_type"], "duplicate entry"

@@ -77,10 +77,7 @@ def _is_empty_column(obs: h5py.Group, name: str) -> bool:
     item = obs[name]
     if isinstance(item, h5py.Group) and "categories" in item:  # a categorical
         codes = item["codes"]
-        # h5py types member access as Group | Dataset | Datatype; narrow it
-        # rather than suppressing, so a malformed categorical is refused here
-        # instead of raising inside the scan.
-        if not isinstance(codes, h5py.Dataset):
+        if not isinstance(codes, h5py.Dataset):  # narrows h5py's member union
             return False
         return _all_rows(codes, lambda a: a == -1)  # -1 is pandas' missing code
     if isinstance(item, h5py.Dataset) and item.dtype.kind == "f":
@@ -153,20 +150,13 @@ def rename_obs_column(path: str, column: str, new_name: str) -> dict:
     All-or-nothing: every check runs before anything is written, and any
     failure leaves the file untouched with all problems reported together.
 
-    The gates, in the order a caller hits them:
+    The gates:
 
     * **Neither name may be an HDF5 link path** (contain ``/``), be blank, or
       be the obs index.
     * **The source must exist**, and must differ from the new name.
     * **The destination must not already exist** — unless it is provably
       empty, in which case it is overwritten. See :func:`_is_empty_column`.
-    Note this has no rule yet for CAP annotation-set columns (the ``--`` names
-    a set declares in ``uns['cap_metadata']``) or for the deprecated top-level
-    CAP layout, both of which ``drop_obs_columns`` refuses. Renaming such a
-    column breaks the declared set the same way dropping it would. That gap is
-    deliberate rather than overlooked: what the rule should be is the subject
-    of #614, which rationalizes reference-integrity handling across all the
-    obs-mutating tools instead of adding a sixth ad-hoc variant here.
 
     A column named by ``uns['batch_condition']`` is not refused: that entry is
     rewritten to the new name, since the same column still defines the batches
@@ -174,15 +164,15 @@ def rename_obs_column(path: str, column: str, new_name: str) -> dict:
     validates entries against the obs columns present, so the new name cannot
     be written before the rename happens.
 
-    Note this carries no schema-tier refusal, unlike ``drop_obs_columns``.
-    Renaming preserves every value and is undone by renaming back, so
-    promoting a producer column into its canonical schema name is allowed and
-    is the motivating case. Renaming a schema-required column *away* is
-    likewise allowed and will fail validation loudly. Two caveats on that
-    reversibility: overwriting an empty destination does not restore that
-    column's entry or its declared categories on the way back, and a rename
-    followed by a drop reaches what ``drop_obs_columns`` alone refuses — both
-    operations land in the edit log, which is what keeps that accountable.
+    There is no rule yet for CAP annotation-set columns (the ``--`` names a set
+    declares in ``uns['cap_metadata']``) or for the deprecated top-level CAP
+    layout, both of which ``drop_obs_columns`` refuses. That gap is deliberate:
+    #614 settles what the rule should be across all the obs-mutating tools
+    rather than adding a sixth ad-hoc variant here.
+
+    On the module docstring's reversibility argument: overwriting an empty
+    destination is the one thing renaming back does not undo — that column's
+    entry and its declared categories do not return.
 
     Writes a new timestamped snapshot with an edit-log entry and deletes the
     previous snapshot (never the original), like every other mutating tool.
@@ -254,14 +244,7 @@ def rename_obs_column(path: str, column: str, new_name: str) -> dict:
             f_out["obs"].move(column, new_name)
             f_out["obs"].attrs["column-order"] = renamed_order
 
-            # uns['batch_condition'] names the columns that define the
-            # experiment's batches. A rename leaves it pointing at a column the
-            # file no longer has, and unlike a drop this knows exactly what to
-            # point it at instead — the same column still defines the batches,
-            # only its name changed. Refusing here would be a dead end: set_uns
-            # validates every entry against the obs columns present, so the new
-            # name cannot be written before the rename, and the rename cannot
-            # happen while the old name is referenced.
+            # Rewritten rather than refused — see the docstring for why.
             if column in batch_condition and uns_out is not None:
                 # dict.fromkeys dedupes while preserving order: renaming over an
                 # empty destination that was itself listed would otherwise leave
