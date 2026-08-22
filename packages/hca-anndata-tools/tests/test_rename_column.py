@@ -7,6 +7,7 @@ import h5py
 import numpy as np
 import pandas as pd
 
+import hca_anndata_tools.rename_column as rc
 from hca_anndata_tools._io import read_obs_column_names
 from hca_anndata_tools.rename_column import rename_obs_column
 from hca_anndata_tools.write import EDIT_LOG_KEY
@@ -372,3 +373,38 @@ def test_rename_missing_file_names_the_path(tmp_path):
 
     assert "error" in result
     assert "File not found" in result["error"]
+
+
+def test_is_empty_column_short_circuits_on_the_first_populated_chunk(tmp_path, monkeypatch):
+    """The scan must stop at the first row that disproves emptiness rather than
+    materializing the column. Asserted by counting rows read: a helper that is
+    defined but never called reads everything and still returns the right
+    answer, which is how this regressed once already."""
+    n = rc._SCAN_CHUNK_ROWS * 2 + 5
+    path = tmp_path / "t.h5ad"
+    obs = pd.DataFrame(
+        {"occupied": pd.Categorical(["v"] * n)},  # non-empty from row 0
+        index=pd.Index([f"c{i}" for i in range(n)], name="cellID"),
+    )
+    ad.AnnData(X=np.zeros((n, 1), dtype=np.float32), obs=obs).write_h5ad(path)
+
+    read = []
+    real_all_rows = rc._all_rows
+
+    def counting(ds, predicate):
+        def counted(chunk):
+            read.append(len(chunk))
+            return predicate(chunk)
+
+        return real_all_rows(ds, counted)
+
+    monkeypatch.setattr(rc, "_all_rows", counting)
+
+    with h5py.File(path, "r") as f:
+        assert rc._is_empty_column(f["obs"], "occupied") is False
+
+    # Both halves matter. Empty `read` means the column was materialized without
+    # going through the scanner at all — the exact way this regressed once, with
+    # _all_rows defined but never called and every test still green.
+    assert read, "_is_empty_column bypassed the chunked scanner"
+    assert sum(read) <= rc._SCAN_CHUNK_ROWS, f"read {sum(read)} of {n} rows — the scan did not short-circuit"

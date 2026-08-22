@@ -74,9 +74,9 @@ def _is_empty_column(obs: h5py.Group, name: str) -> bool:
     """
     item = obs[name]
     if isinstance(item, h5py.Group) and "categories" in item:  # a categorical
-        return bool((item["codes"][:] == -1).all())  # -1 is pandas' missing code
+        return _all_rows(item["codes"], lambda a: a == -1)  # -1 is pandas' missing code
     if isinstance(item, h5py.Dataset) and item.dtype.kind == "f":
-        return bool(np.isnan(item[:]).all())
+        return _all_rows(item, np.isnan)
     return False
 
 
@@ -246,9 +246,9 @@ def rename_obs_column(path: str, column: str, new_name: str) -> dict:
             # Substituted in place rather than via update_column_order,
             # which appends: a renamed column keeps its position, so a
             # reader diffing two versions sees one name change and not a
-            # reordering. When an empty destination was replaced, its own
-            # entry goes first — otherwise the substitution would leave the
-            # name listed twice.
+            # reordering. A replaced empty destination is dropped from the
+            # list first, so the renamed column lands at the source's position
+            # and the name is not left listed twice.
             order = [c for c in read_column_order(f_out["obs"]) if c != new_name]
             f_out["obs"].attrs["column-order"] = [new_name if c == column else c for c in order]
 
