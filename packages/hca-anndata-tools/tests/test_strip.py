@@ -204,8 +204,9 @@ def test_strip_failed_copy_leaves_no_partial_snapshot(sample_h5ad_for_write, mon
 def test_strip_alias_of_source_is_refused_without_unlinking(sample_h5ad_for_write, monkeypatch):
     """An alias of the source — a hard link, or a './'-prefixed path — is not
     caught by the string-equality guard, but copy2 compares inodes and refuses
-    before writing. That must return, not fall through to the unlink, or the
-    source is deleted (the #598 defect by another route)."""
+    before writing. The destination must survive: it predates the call, and an
+    alias naming the source's own directory entry would take the source with
+    it (the #598 defect by another route)."""
     _to_hca_layout(sample_h5ad_for_write, "self_reported_ethnicity")
     alias = sample_h5ad_for_write.with_name("alias-edit-2026-08-22-00-00-01.h5ad")
     os.link(sample_h5ad_for_write, alias)
@@ -215,6 +216,6 @@ def test_strip_alias_of_source_is_refused_without_unlinking(sample_h5ad_for_writ
 
     assert "error" in result
     assert "already exists" in result["error"]
-    assert alias.is_file(), "the source was unlinked through its alias"
+    assert alias.is_file(), "a pre-existing destination we did not create was unlinked"
     assert sample_h5ad_for_write.is_file()
     assert "self_reported_ethnicity" in ad.read_h5ad(sample_h5ad_for_write).obs.columns

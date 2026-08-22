@@ -487,7 +487,9 @@ def test_snapshot_copy_refuses_an_unresolvable_collision(tmp_path, monkeypatch):
 
 def test_snapshot_copy_refuses_an_alias_without_unlinking_it(tmp_path, monkeypatch):
     """A hard link to the source has a different name, so the equality check
-    misses it; copy2 compares inodes. Unlinking here would delete the source."""
+    misses it; copy2 compares inodes. The destination is left alone: it
+    predates the call, and an alias naming the source's own directory entry
+    (a './'-prefixed path) would take the source with it."""
     src = tmp_path / "d.h5ad"
     src.write_bytes(b"payload")
     alias = tmp_path / "d-edit-2026-08-22-00-00-01.h5ad"

@@ -85,12 +85,14 @@ def snapshot_copy(path: str) -> Iterator[str]:
       waits out the boundary and regenerates — these tools are fast enough that
       back-to-back curation steps collide routinely — and raises
       :class:`SameSecondSnapshotError` only if the retry still collides.
-    * **Refusing an alias of the source.** A hard link or ``./``-prefixed path
-      has a different string form, so the equality check above misses it.
-      ``copy2`` compares inodes before opening the destination, so catching
-      ``SameFileError`` covers what string equality cannot — and covers it
-      atomically with the copy, rather than as a separate check that can go
-      stale between test and use.
+    * **Refusing a destination that already is the source.** A hard link or
+      ``./``-prefixed path has a different string form, so the equality check
+      above misses it. ``copy2`` compares inodes before opening the
+      destination, so catching ``SameFileError`` covers what string equality
+      cannot — and covers it atomically with the copy, rather than as a
+      separate check that can go stale between test and use. Such a
+      destination is never removed: it predates the call, and one naming the
+      source's own directory entry would take the source with it.
     * **Removing a snapshot we wrote but could not finish.** ``shutil.copyfile``
       opens the destination ``'wb'`` and does not remove it if the copy then
       fails partway (ENOSPC on a multi-GB h5ad is the realistic case). A
@@ -129,7 +131,11 @@ def snapshot_copy(path: str) -> Iterator[str]:
     try:
         shutil.copy2(path, output_path)
     except shutil.SameFileError as e:
-        # Nothing was written and output_path is the source: never unlink.
+        # copy2 compares inodes before opening the destination, so nothing was
+        # written. The destination is the source or an alias of it, and either
+        # way it existed before this call and is not ours to remove — for an
+        # alias naming the same directory entry ('./'-prefixed), removing it
+        # would take the source with it.
         raise SameSecondSnapshotError(SAME_SECOND_SNAPSHOT_ERROR) from e
     except BaseException:
         with contextlib.suppress(OSError):
