@@ -292,8 +292,24 @@ def drop_obs_columns(path: str, columns: list[str] | tuple[str, ...]) -> dict:
             output_path = generate_output_path(path)
         if output_path == path:
             return {"error": "An edit snapshot for this second already exists — retry in a moment."}
-        shutil.copy2(path, output_path)
+        # Set *before* the copy, not after: shutil.copyfile opens the
+        # destination for writing and does not remove it if the copy then
+        # fails partway (ENOSPC on a multi-GB h5ad is the realistic case), so
+        # a partial file at output_path is ours to clean up. Leaving it behind
+        # would be worse than the original bug — it carries the newest -edit-
+        # timestamp, so resolve_latest would hand that truncated file to every
+        # later call on the dataset.
         snapshot_created = True
+        try:
+            shutil.copy2(path, output_path)
+        except shutil.SameFileError:
+            # The one failure that writes nothing: copy2 compares inodes before
+            # opening the destination. It is also the one case where unlinking
+            # output_path would delete the source, so return here rather than
+            # falling through to the handler. Catches what the equality check
+            # above cannot — aliases of the source ('./'-prefixed paths, hard
+            # links) whose string form differs (#598).
+            return {"error": "An edit snapshot for this second already exists — retry in a moment."}
 
         # Defer the malformed-log cleanup until after the with-block closes the
         # output file, matching strip_forbidden_obs_columns: unlinking an open

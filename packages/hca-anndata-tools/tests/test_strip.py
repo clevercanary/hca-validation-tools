@@ -1,6 +1,7 @@
 """Tests for strip_forbidden_obs_columns."""
 
 import json
+import os
 from pathlib import Path
 
 import anndata as ad
@@ -176,3 +177,43 @@ def test_strip_same_second_collision_resolves_after_waiting(sample_h5ad_for_writ
     assert "error" not in result
     assert result["obs_columns_stripped"] == ["self_reported_ethnicity"]
     assert Path(result["output_path"]).name == "fresh-edit-2026-08-22-00-00-01.h5ad"
+
+
+def test_strip_failed_copy_leaves_no_partial_snapshot(sample_h5ad_for_write, monkeypatch):
+    """A copy that dies partway (ENOSPC on a multi-GB h5ad) must not leave the
+    partial file behind: it carries the newest -edit- timestamp, so resolve_latest
+    would hand that truncated file to every later call on the dataset."""
+    _to_hca_layout(sample_h5ad_for_write, "self_reported_ethnicity")
+    written = {}
+
+    def die_partway(src, dst, *args, **kwargs):
+        Path(dst).write_bytes(b"partial")
+        written["dst"] = dst
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr("hca_anndata_tools.strip.shutil.copy2", die_partway)
+
+    result = strip_forbidden_obs_columns(str(sample_h5ad_for_write))
+
+    assert "error" in result
+    assert not Path(written["dst"]).exists(), "partial snapshot was left behind"
+    assert sample_h5ad_for_write.is_file()  # and the source is untouched
+
+
+def test_strip_alias_of_source_is_refused_without_unlinking(sample_h5ad_for_write, monkeypatch):
+    """An alias of the source — a hard link, or a './'-prefixed path — is not
+    caught by the string-equality guard, but copy2 compares inodes and refuses
+    before writing. That must return, not fall through to the unlink, or the
+    source is deleted (the #598 defect by another route)."""
+    _to_hca_layout(sample_h5ad_for_write, "self_reported_ethnicity")
+    alias = sample_h5ad_for_write.with_name("alias-edit-2026-08-22-00-00-01.h5ad")
+    os.link(sample_h5ad_for_write, alias)
+    monkeypatch.setattr("hca_anndata_tools.strip.generate_output_path", lambda p: str(alias))
+
+    result = strip_forbidden_obs_columns(str(sample_h5ad_for_write))
+
+    assert "error" in result
+    assert "already exists" in result["error"]
+    assert alias.is_file(), "the source was unlinked through its alias"
+    assert sample_h5ad_for_write.is_file()
+    assert "self_reported_ethnicity" in ad.read_h5ad(sample_h5ad_for_write).obs.columns
