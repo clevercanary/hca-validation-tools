@@ -42,6 +42,24 @@ from .write import (
 # rewritten in place, so it has to be recreated the same way.
 _STR_DTYPE = h5py.string_dtype(encoding="utf-8")
 
+# Rows per read when scanning a column for emptiness. Bounds peak memory on a
+# 20-million-cell column without making the scan chatty.
+_SCAN_CHUNK_ROWS = 1 << 20
+
+
+def _all_rows(ds: h5py.Dataset, predicate) -> bool:
+    """True when ``predicate`` holds for every row, read in bounded chunks.
+
+    Short-circuits on the first row it does not hold for. A populated column is
+    the refusal case and normally answers from the first chunk, so the common
+    path never reads more than a megabyte of a column that may hold tens of
+    millions of rows.
+    """
+    # all() short-circuits, so a populated column stops at its first chunk.
+    return all(
+        predicate(ds[start : start + _SCAN_CHUNK_ROWS]).all() for start in range(0, ds.shape[0], _SCAN_CHUNK_ROWS)
+    )
+
 
 def _is_empty_column(obs: h5py.Group, name: str) -> bool:
     """True when every value in an obs column is null.

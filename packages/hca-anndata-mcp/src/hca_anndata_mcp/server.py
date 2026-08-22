@@ -62,7 +62,7 @@ mcp = FastMCP(
         "compression, moves the column's color palette with it, and carries no schema-tier "
         "refusal because a rename loses nothing, so promoting a producer column into its "
         "canonical schema name is allowed; it refuses a destination that already holds "
-        "values (drop it first) but overwrites one that is entirely empty; it rewrites a "
+        "values (drop it first) but overwrites one that is entirely empty; it rewrites an "
         "uns['batch_condition'] entry naming the column, but has NO rule yet for CAP "
         "annotation-set columns (the '--' names declared in uns['cap_metadata']) — renaming "
         "one silently breaks the declared set, so do not use it on CAP columns, "
