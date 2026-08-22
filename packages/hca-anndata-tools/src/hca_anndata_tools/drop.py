@@ -308,13 +308,13 @@ def drop_obs_columns(path: str, columns: list[str] | tuple[str, ...]) -> dict:
                 Path(output_path).unlink()
                 return log_error
 
-            cleanup_previous_version(path, output_path)
+        cleanup_previous_version(path, output_path)
 
-            return {
-                "output_path": output_path,
-                "obs_columns_dropped": requested,
-                "uns_keys_dropped": owned_uns_keys,
-            }
+        return {
+            "output_path": output_path,
+            "obs_columns_dropped": requested,
+            "uns_keys_dropped": owned_uns_keys,
+        }
 
     except Exception as e:
         return {"error": str(e)}

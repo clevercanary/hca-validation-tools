@@ -34,6 +34,7 @@ from .cap import _LEGACY_CAP_MARKERS, CAP_METADATA_KEY, cap_obs_columns, unknown
 from .drop import _read_batch_condition
 from .inspect import _read_schema_version
 from .write import (
+    SAME_SECOND_SNAPSHOT_ERROR,
     _copy_with_sha256,
     build_edit_log,
     cleanup_previous_version,
@@ -241,7 +242,7 @@ def strip_cap_annotations(path: str) -> dict:
             # its own source. samefile() also catches aliases of the same
             # snapshot ('./'-prefixed paths, hard links) that string equality
             # misses. Refuse before touching anything.
-            return {"error": "An edit snapshot for this second already exists — retry in a moment."}
+            return {"error": SAME_SECOND_SNAPSHOT_ERROR}
         # Hash the source in the same streaming read as the snapshot copy;
         # a separate hash pass would re-read the whole multi-GB file.
         source_sha256 = _copy_with_sha256(path, output_path)

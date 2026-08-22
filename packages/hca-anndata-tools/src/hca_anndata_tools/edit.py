@@ -26,6 +26,7 @@ from ._io import (
 from ._serialize import make_serializable
 from .schema.helpers import uns_field_registry
 from .write import (
+    SAME_SECOND_SNAPSHOT_ERROR,
     _compute_sha256,
     build_edit_log,
     cleanup_previous_version,
@@ -338,7 +339,7 @@ def replace_placeholder_values(
             # a second edit within the same second names the output after its
             # own source, and the failure path would then unlink that source
             # snapshot. Refuse before touching anything.
-            return {"error": "An edit snapshot for this second already exists — retry in a moment."}
+            return {"error": SAME_SECOND_SNAPSHOT_ERROR}
         shutil.copy2(path, output_path)
 
         with h5py.File(output_path, "a") as f:

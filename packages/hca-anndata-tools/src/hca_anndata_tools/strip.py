@@ -163,12 +163,12 @@ def strip_forbidden_obs_columns(path: str) -> dict:
                 Path(output_path).unlink()
                 return log_error
 
-            cleanup_previous_version(path, output_path)
+        cleanup_previous_version(path, output_path)
 
-            return {
-                "output_path": output_path,
-                "obs_columns_stripped": stripped,
-            }
+        return {
+            "output_path": output_path,
+            "obs_columns_stripped": stripped,
+        }
 
     except Exception as e:
         return {"error": str(e)}
