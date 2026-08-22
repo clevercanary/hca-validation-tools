@@ -191,6 +191,18 @@ def rename_obs_column(path: str, column: str, new_name: str) -> dict:
         ``batch_condition_updated`` on success, or ``{"error": ...}``.
     """
     try:
+        # Shape-check before anything reads the arguments. This is MCP-exposed,
+        # so both names arrive as decoded JSON and may be null, a number, or a
+        # list; _validate_request assumes strings, and letting a non-string
+        # reach it surfaces "'list' object has no attribute 'strip'" instead of
+        # something a caller can act on. Same guard drop_obs_columns applies to
+        # its own argument, for the same reason.
+        non_str = {
+            label: value for label, value in (("column", column), ("new_name", new_name)) if not isinstance(value, str)
+        }
+        if non_str:
+            return {"error": f"column and new_name must both be strings; got: {non_str}"}
+
         path = resolve_latest(path)
         if not Path(path).is_file():
             return {"error": f"File not found: {path}"}

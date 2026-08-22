@@ -404,3 +404,21 @@ def test_rename_over_an_empty_destination_replaces_it_completely(tmp_path):
     assert read_obs_column_names(result["output_path"]).count("author_cell_type") == 1
     assert "author_cell_type_colors" not in out.uns, "stale palette now describes different data"
     assert list(out.uns["batch_condition"]) == ["author_cell_type"], "duplicate entry"
+
+
+def test_rename_refuses_non_string_names(tmp_path):
+    """MCP-exposed, so both names arrive as decoded JSON and may be anything.
+    Without a shape check _validate_request leaks "'list' object has no
+    attribute 'strip'", which tells a caller nothing.
+
+    The ignores are deliberate: the annotations already reject these
+    statically, and the point is the runtime guard protecting MCP callers, who
+    get no type checking at all."""
+    path = _make(tmp_path / "t.h5ad", {"producer": pd.Categorical(["a", "b", "a"])})
+
+    for column, new_name in (("producer", None), ("producer", 42), (["producer"], "x")):
+        result = rename_obs_column(path, column, new_name)  # pyright: ignore[reportArgumentType]
+
+        assert "error" in result, f"{column!r} -> {new_name!r} must be refused"
+        assert "must both be strings" in result["error"]
+        assert _no_snapshot(tmp_path / "t.h5ad")
