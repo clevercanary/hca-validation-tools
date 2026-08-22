@@ -507,9 +507,27 @@ def test_snapshot_copy_never_removes_a_file_it_did_not_create(tmp_path, monkeypa
     assert occupied.read_bytes() == b"a sibling's snapshot"
 
 
+def test_snapshot_copy_refuses_a_broken_symlink_destination(tmp_path, monkeypatch):
+    """A broken symlink occupies the name even though Path.exists() reports it
+    absent — exists() follows the link. Claiming that name would write through
+    the symlink and then unlink a symlink we did not create."""
+    src = tmp_path / "d.h5ad"
+    src.write_bytes(b"source")
+    dangling = tmp_path / "d-edit-2026-08-22-00-00-01.h5ad"
+    dangling.symlink_to(tmp_path / "gone.h5ad")
+    assert not dangling.exists() and dangling.is_symlink()  # the trap
+    monkeypatch.setattr("hca_anndata_tools.write.generate_output_path", lambda p: str(dangling))
+    monkeypatch.setattr("hca_anndata_tools.write.time.sleep", lambda _: None)
+
+    with pytest.raises(SameSecondSnapshotError), snapshot_copy(str(src)):
+        pass  # pragma: no cover - the context manager raises on entry
+
+    assert dangling.is_symlink()  # not ours to remove
+
+
 def test_snapshot_copy_refuses_an_alias_without_unlinking_it(tmp_path, monkeypatch):
-    """A hard link to the source has a different name, so the equality check
-    misses it; copy2 compares inodes. The destination is left alone: it
+    """A hard link to the source occupies the generated name, so the claim step
+    refuses it before any copy is attempted. The destination is left alone: it
     predates the call, and an alias naming the source's own directory entry
     (a './'-prefixed path) would take the source with it."""
     src = tmp_path / "d.h5ad"
@@ -517,6 +535,7 @@ def test_snapshot_copy_refuses_an_alias_without_unlinking_it(tmp_path, monkeypat
     alias = tmp_path / "d-edit-2026-08-22-00-00-01.h5ad"
     os.link(src, alias)
     monkeypatch.setattr("hca_anndata_tools.write.generate_output_path", lambda p: str(alias))
+    monkeypatch.setattr("hca_anndata_tools.write.time.sleep", lambda _: None)
 
     with pytest.raises(SameSecondSnapshotError), snapshot_copy(str(src)):
         pass  # pragma: no cover - the context manager raises on entry

@@ -6,6 +6,7 @@ import contextlib
 import glob
 import hashlib
 import json
+import os
 import re
 import shutil
 import time
@@ -72,6 +73,17 @@ def _copy_with_sha256(source_path: str, dest_path: str) -> str:
     return h.hexdigest()
 
 
+def _occupied(path: str) -> bool:
+    """True when anything at all sits at ``path``.
+
+    ``os.path.lexists`` rather than ``Path.exists``: the latter follows
+    symlinks and so reports a *broken* symlink as absent, which would let a
+    caller claim that name, write through it, and then unlink a symlink it did
+    not create.
+    """
+    return os.path.lexists(path)
+
+
 def _claim_snapshot_path(path: str) -> str:
     """Return a snapshot path that no file currently occupies.
 
@@ -90,10 +102,10 @@ def _claim_snapshot_path(path: str) -> str:
         SameSecondSnapshotError: Still occupied after waiting out the boundary.
     """
     output_path = generate_output_path(path)
-    if Path(output_path).exists():
+    if _occupied(output_path):
         time.sleep(1)
         output_path = generate_output_path(path)
-    if Path(output_path).exists():
+    if _occupied(output_path):
         raise SameSecondSnapshotError(SAME_SECOND_SNAPSHOT_ERROR)
     return output_path
 

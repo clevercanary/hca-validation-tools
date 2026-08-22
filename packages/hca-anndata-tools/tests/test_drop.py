@@ -753,15 +753,16 @@ def test_drop_failed_copy_leaves_no_partial_snapshot(sample_h5ad_for_write, monk
 
 
 def test_drop_alias_of_source_is_refused_without_unlinking(sample_h5ad_for_write, monkeypatch):
-    """An alias of the source — a hard link, or a './'-prefixed path — is not
-    caught by the string-equality guard, but copy2 compares inodes and refuses
-    before writing. The destination must survive: it predates the call, and an
-    alias naming the source's own directory entry would take the source with
-    it (the #598 defect by another route)."""
+    """An alias of the source — a hard link, or a './'-prefixed path — occupies
+    the generated name, so the claim step refuses it before any copy is
+    attempted. The destination must survive: it predates the call, and an alias
+    naming the source's own directory entry would take the source with it (the
+    #598 defect by another route)."""
     _add_obs_cols(sample_h5ad_for_write, "junk_col")
     alias = sample_h5ad_for_write.with_name("alias-edit-2026-08-22-00-00-01.h5ad")
     os.link(sample_h5ad_for_write, alias)
     monkeypatch.setattr("hca_anndata_tools.write.generate_output_path", lambda p: str(alias))
+    monkeypatch.setattr("hca_anndata_tools.write.time.sleep", lambda _: None)
 
     result = drop_obs_columns(str(sample_h5ad_for_write), ["junk_col"])
 
