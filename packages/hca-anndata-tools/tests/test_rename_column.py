@@ -325,3 +325,50 @@ def test_rename_over_an_empty_destination_discards_its_palette(tmp_path):
     out = ad.read_h5ad(result["output_path"])
     assert list(out.obs["author_cell_type"]) == ["a", "b", "c"]
     assert "author_cell_type_colors" not in out.uns, "stale palette now describes different data"
+
+
+def test_rename_dedupes_a_batch_condition_entry_for_the_overwritten_column(tmp_path):
+    """When batch_condition names both the source and an empty destination,
+    substitution would leave the new name in there twice."""
+    path = _make(
+        tmp_path / "t.h5ad",
+        {
+            "producer": pd.Categorical(["a", "b", "a"]),
+            "author_cell_type": pd.Categorical([None, None, None], categories=["unused"]),
+        },
+        uns={"batch_condition": np.array(["producer", "author_cell_type"], dtype=object)},
+    )
+
+    result = rename_obs_column(path, "producer", "author_cell_type")
+
+    assert "error" not in result
+    assert list(ad.read_h5ad(result["output_path"]).uns["batch_condition"]) == ["author_cell_type"]
+
+
+def test_rename_works_on_a_file_with_no_uns_group(tmp_path):
+    """The read phase tolerates a missing uns; the write phase must too."""
+    path = tmp_path / "t.h5ad"
+    obs = pd.DataFrame(
+        {
+            "producer": pd.Categorical(["a", "b", "a"]),
+            "empty_dest": pd.Categorical([None, None, None], categories=["unused"]),
+        },
+        index=pd.Index(["c0", "c1", "c2"], name="cellID"),
+    )
+    ad.AnnData(X=np.zeros((3, 2), dtype=np.float32), obs=obs).write_h5ad(path)
+    with h5py.File(path, "a") as f:
+        if "uns" in f:
+            del f["uns"]
+
+    result = rename_obs_column(str(path), "producer", "empty_dest")
+
+    assert "error" not in result
+    assert list(ad.read_h5ad(result["output_path"]).obs["empty_dest"]) == ["a", "b", "a"]
+
+
+def test_rename_missing_file_names_the_path(tmp_path):
+    """A mistyped path gets drop.py's message, not a raw multi-line HDF5 error."""
+    result = rename_obs_column(str(tmp_path / "nope.h5ad"), "a", "b")
+
+    assert "error" in result
+    assert "File not found" in result["error"]

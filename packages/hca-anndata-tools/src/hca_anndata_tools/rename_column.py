@@ -18,6 +18,8 @@ that (see clevercanary/hca-ingest-coordination#24).
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import h5py
 import numpy as np
 
@@ -60,7 +62,7 @@ def _is_empty_column(obs: h5py.Group, name: str) -> bool:
     return False
 
 
-def _validate_request(obs: h5py.Group, uns: h5py.Group | None, column: str, new_name: str) -> list[str]:
+def _validate_request(obs: h5py.Group, column: str, new_name: str) -> list[str]:
     """Collect every reason the rename cannot proceed.
 
     All checks run to completion rather than short-circuiting, so a caller who
@@ -174,6 +176,8 @@ def rename_obs_column(path: str, column: str, new_name: str) -> dict:
     """
     try:
         path = resolve_latest(path)
+        if not Path(path).is_file():
+            return {"error": f"File not found: {path}"}
 
         with h5py.File(path, "r") as f_in:
             obs = f_in.get("obs")
@@ -182,7 +186,7 @@ def rename_obs_column(path: str, column: str, new_name: str) -> dict:
             uns = f_in.get("uns")
             if not isinstance(uns, h5py.Group):
                 uns = None
-            problems = _validate_request(obs, uns, column, new_name)
+            problems = _validate_request(obs, column, new_name)
             palette = f"{column}_colors" if uns is not None and f"{column}_colors" in uns else None
             batch_condition = _read_batch_condition(uns)
 
@@ -196,10 +200,11 @@ def rename_obs_column(path: str, column: str, new_name: str) -> dict:
             # this discards nothing. Its palette goes too: left behind it would
             # describe the incoming column's data, which is worse than an
             # orphan because a length match makes it silently wrong.
+            uns_out = f_out.get("uns")
             if new_name in f_out["obs"]:
                 del f_out["obs"][new_name]
-                if f"{new_name}_colors" in f_out["uns"]:
-                    del f_out["uns"][f"{new_name}_colors"]
+                if uns_out is not None and f"{new_name}_colors" in uns_out:
+                    del uns_out[f"{new_name}_colors"]
             f_out["obs"].move(column, new_name)
 
             # uns['batch_condition'] names the columns that define the
@@ -210,12 +215,13 @@ def rename_obs_column(path: str, column: str, new_name: str) -> dict:
             # validates every entry against the obs columns present, so the new
             # name cannot be written before the rename, and the rename cannot
             # happen while the old name is referenced.
-            if column in batch_condition:
-                updated = [new_name if c == column else c for c in batch_condition]
-                del f_out["uns"]["batch_condition"]
-                ds = f_out["uns"].create_dataset(
-                    "batch_condition", data=np.array(updated, dtype=object), dtype=_STR_DTYPE
-                )
+            if column in batch_condition and uns_out is not None:
+                # dict.fromkeys dedupes while preserving order: renaming over an
+                # empty destination that was itself listed would otherwise leave
+                # the new name in there twice.
+                updated = list(dict.fromkeys(new_name if c == column else c for c in batch_condition))
+                del uns_out["batch_condition"]
+                ds = uns_out.create_dataset("batch_condition", data=np.array(updated, dtype=object), dtype=_STR_DTYPE)
                 ds.attrs["encoding-type"] = "string-array"
                 ds.attrs["encoding-version"] = "0.2.0"
 

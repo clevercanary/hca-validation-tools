@@ -162,7 +162,17 @@ def read_var_gene_names(path: str) -> tuple[set[str], dict[str, str]]:
 
 
 def ensure_provenance_group(f: h5py.File) -> h5py.Group:
-    """Get or create the uns/provenance group with correct encoding attrs."""
+    """Get or create the uns/provenance group with correct encoding attrs.
+
+    Stamps ``uns`` itself as well as the provenance group. ``require_group``
+    creates a missing parent implicitly and leaves it bare, and anndata reads a
+    group with no encoding metadata under an OldFormatWarning — so writing an
+    edit log to a file that has no ``uns`` would otherwise leave every later
+    read of it complaining.
+    """
+    uns = f.require_group("uns")
+    uns.attrs.setdefault("encoding-type", "dict")
+    uns.attrs.setdefault("encoding-version", "0.1.0")
     group = f.require_group("uns/provenance")
     group.attrs.setdefault("encoding-type", "dict")
     group.attrs.setdefault("encoding-version", "0.1.0")
