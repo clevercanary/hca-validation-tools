@@ -692,22 +692,38 @@ def test_drop_missing_file():
 
 def test_drop_same_second_snapshot_refused(sample_h5ad_for_write, monkeypatch):
     """A second edit within the same second would name the output after its
-    own source; the guard refuses before touching anything.
-
-    Without it, ``shutil.copy2`` raises ``SameFileError`` and the failure path
-    unlinks ``output_path`` — which *is* the source. The surviving-source
-    assertion is the one that pins the bug (#598)."""
+    own source and the failure path would unlink that source snapshot; the
+    guard refuses before touching anything (mirrors rename/backfill)."""
     _add_obs_cols(sample_h5ad_for_write, "junk_col")
     monkeypatch.setattr("hca_anndata_tools.drop.generate_output_path", lambda p: p)
-    before = ad.read_h5ad(sample_h5ad_for_write)
+    slept = []
+    monkeypatch.setattr("hca_anndata_tools.drop.time.sleep", slept.append)
 
     result = drop_obs_columns(str(sample_h5ad_for_write), ["junk_col"])
 
-    # Survival first: an unguarded run unlinks the source, and that is the
-    # defect. Asserting the message first would fail on wording instead.
-    assert Path(sample_h5ad_for_write).is_file(), "the source snapshot was deleted"
-    after = ad.read_h5ad(sample_h5ad_for_write)
-    assert after.n_obs == before.n_obs
-    assert "junk_col" in after.obs.columns, "the source was modified despite the refusal"
+    assert slept == [1], "the boundary wait should be attempted once before refusing"
+
+    # Asserted before the message: unguarded, this file is unlinked (#598).
+    assert sample_h5ad_for_write.is_file()
+    assert "junk_col" in ad.read_h5ad(sample_h5ad_for_write).obs.columns  # nor modified
     assert "error" in result
     assert "already exists" in result["error"]
+
+
+def test_drop_same_second_collision_resolves_after_waiting(sample_h5ad_for_write, monkeypatch):
+    """The common case: a snapshot written this second collides, the tool waits
+    out the boundary, and the retry gets a fresh name (mirrors copy_cap). Only a
+    collision that survives the wait is refused."""
+    _add_obs_cols(sample_h5ad_for_write, "junk_col")
+    fresh = sample_h5ad_for_write.with_name("fresh-edit-2026-08-22-00-00-01.h5ad")
+    names = iter([str(sample_h5ad_for_write), str(fresh)])
+    monkeypatch.setattr("hca_anndata_tools.drop.generate_output_path", lambda p: next(names))
+    slept = []
+    monkeypatch.setattr("hca_anndata_tools.drop.time.sleep", slept.append)
+
+    result = drop_obs_columns(str(sample_h5ad_for_write), ["junk_col"])
+
+    assert slept == [1]
+    assert "error" not in result
+    assert result["obs_columns_dropped"] == ["junk_col"]
+    assert Path(result["output_path"]).name == "fresh-edit-2026-08-22-00-00-01.h5ad"

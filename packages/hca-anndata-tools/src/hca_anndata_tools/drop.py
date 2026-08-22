@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import contextlib
 import shutil
+import time
 from pathlib import Path
 
 import h5py
@@ -227,6 +228,11 @@ def drop_obs_columns(path: str, columns: list[str] | tuple[str, ...]) -> dict:
         was rejected or the write failed.
     """
     output_path = None
+    # Whether *we* created the file at output_path. The name is bound before
+    # the copy, so the failure path below must not delete a file it may never
+    # have written — that is what turned shutil.copy2's safe SameFileError
+    # into deletion of the source snapshot (#598).
+    snapshot_created = False
     try:
         # Shape-check the argument before anything reads it. This is an
         # MCP-exposed tool, so `columns` arrives as decoded JSON and may hold
@@ -277,12 +283,17 @@ def drop_obs_columns(path: str, columns: list[str] | tuple[str, ...]) -> dict:
 
         output_path = generate_output_path(path)
         if output_path == path:
-            # generate_output_path timestamps to the second, so a second edit
-            # within the same second names the output after its own source;
-            # copying would raise SameFileError and the failure path would
-            # then unlink the source snapshot. Refuse before touching anything.
+            # generate_output_path timestamps to the second (see rename.py):
+            # a second edit within the same second names the output after its
+            # own source. Wait out the boundary rather than failing the run,
+            # as copy_cap does — this tool is fast enough that back-to-back
+            # curation steps land in one second routinely.
+            time.sleep(1)
+            output_path = generate_output_path(path)
+        if output_path == path:
             return {"error": "An edit snapshot for this second already exists — retry in a moment."}
         shutil.copy2(path, output_path)
+        snapshot_created = True
 
         # Defer the malformed-log cleanup until after the with-block closes the
         # output file, matching strip_forbidden_obs_columns: unlinking an open
@@ -328,7 +339,7 @@ def drop_obs_columns(path: str, columns: list[str] | tuple[str, ...]) -> dict:
         }
 
     except Exception as e:
-        if output_path and Path(output_path).is_file():
+        if snapshot_created and output_path and Path(output_path).is_file():
             with contextlib.suppress(OSError):
                 Path(output_path).unlink()
         return {"error": str(e)}

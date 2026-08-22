@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import contextlib
 import shutil
+import time
 from pathlib import Path
 
 import h5py
@@ -103,6 +104,11 @@ def strip_forbidden_obs_columns(path: str) -> dict:
         the CellxGENE-layout refusal).
     """
     output_path = None
+    # Whether *we* created the file at output_path. The name is bound before
+    # the copy, so the failure path below must not delete a file it may never
+    # have written — that is what turned shutil.copy2's safe SameFileError
+    # into deletion of the source snapshot (#598).
+    snapshot_created = False
     try:
         path = resolve_latest(path)
         if not Path(path).is_file():
@@ -137,12 +143,17 @@ def strip_forbidden_obs_columns(path: str) -> dict:
 
         output_path = generate_output_path(path)
         if output_path == path:
-            # generate_output_path timestamps to the second, so a second edit
-            # within the same second names the output after its own source;
-            # copying would raise SameFileError and the failure path would
-            # then unlink the source snapshot. Refuse before touching anything.
+            # generate_output_path timestamps to the second (see rename.py):
+            # a second edit within the same second names the output after its
+            # own source. Wait out the boundary rather than failing the run,
+            # as copy_cap does — this tool is fast enough that back-to-back
+            # curation steps land in one second routinely.
+            time.sleep(1)
+            output_path = generate_output_path(path)
+        if output_path == path:
             return {"error": "An edit snapshot for this second already exists — retry in a moment."}
         shutil.copy2(path, output_path)
+        snapshot_created = True
 
         # Defer the malformed-log cleanup until after the with-block closes
         # the output file — calling os.remove on an open HDF5 handle works
@@ -182,7 +193,7 @@ def strip_forbidden_obs_columns(path: str) -> dict:
         }
 
     except Exception as e:
-        if output_path and Path(output_path).is_file():
+        if snapshot_created and output_path and Path(output_path).is_file():
             with contextlib.suppress(OSError):
                 Path(output_path).unlink()
         return {"error": str(e)}
