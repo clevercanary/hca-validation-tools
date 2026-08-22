@@ -194,6 +194,7 @@ async def test_registered_tool_names(client):
         "backfill_obs_from_source",
         "copy_cap_annotations",
         "rename_cell_ids",
+        "rename_obs_column",
         "drop_obs_columns",
         "strip_forbidden_obs_columns",
     } <= names

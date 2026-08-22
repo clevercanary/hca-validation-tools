@@ -422,3 +422,25 @@ def test_rename_refuses_non_string_names(tmp_path):
         assert "error" in result, f"{column!r} -> {new_name!r} must be refused"
         assert "must both be strings" in result["error"]
         assert _no_snapshot(tmp_path / "t.h5ad")
+
+
+def test_rename_drops_a_batch_condition_entry_naming_only_the_replaced_column(tmp_path):
+    """batch_condition naming only the destination declared the column being
+    replaced. Left in place, the name still resolves — to different data — so
+    nothing reports it. Same reasoning as discarding the destination's palette."""
+    path = _make(
+        tmp_path / "t.h5ad",
+        {
+            "producer": pd.Categorical(["a", "b", "c"]),
+            "dest": pd.Categorical([None, None, None], categories=["unused"]),
+        },
+        uns={"batch_condition": np.array(["dest", "donor_id"], dtype=object)},
+    )
+
+    result = rename_obs_column(path, "producer", "dest")
+
+    assert "error" not in result
+    assert result["batch_condition_updated"] is True
+    out = ad.read_h5ad(result["output_path"])
+    assert list(out.obs["dest"]) == ["a", "b", "c"]
+    assert list(out.uns["batch_condition"]) == ["donor_id"], "stale entry now names different data"

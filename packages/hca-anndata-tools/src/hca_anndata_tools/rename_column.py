@@ -251,17 +251,23 @@ def rename_obs_column(path: str, column: str, new_name: str) -> dict:
 
             # Validation established that an existing destination is empty, so
             # this discards nothing.
-            if new_name in f_out["obs"]:
+            replaced_destination = new_name in f_out["obs"]
+            if replaced_destination:
                 del f_out["obs"][new_name]
             f_out["obs"].move(column, new_name)
             f_out["obs"].attrs["column-order"] = renamed_order
 
             # Rewritten rather than refused — see the docstring for why.
-            if column in batch_condition and uns_out is not None:
-                # dict.fromkeys dedupes while preserving order: renaming over an
-                # empty destination that was itself listed would otherwise leave
-                # the new name in there twice.
-                updated = list(dict.fromkeys(new_name if c == column else c for c in batch_condition))
+            #
+            # A replaced destination's own entry goes first. It declared the
+            # column just deleted, and the new name resolves to different data
+            # now, so leaving it is the batch_condition analogue of the stale
+            # palette above: nothing reports it, because the name still points
+            # at *a* column. Substituting afterwards then cannot leave the new
+            # name listed twice, so no dedupe is needed.
+            entries = [c for c in batch_condition if c != new_name] if replaced_destination else batch_condition
+            updated = [new_name if c == column else c for c in entries]
+            if updated != batch_condition and uns_out is not None:
                 del uns_out["batch_condition"]
                 ds = uns_out.create_dataset("batch_condition", data=np.array(updated, dtype=object), dtype=_STR_DTYPE)
                 ds.attrs["encoding-type"] = "string-array"
@@ -270,9 +276,12 @@ def rename_obs_column(path: str, column: str, new_name: str) -> dict:
             if palette and uns_out is not None:
                 uns_out.move(palette, new_palette)
 
+            batch_condition_updated = updated != batch_condition
             described = f"Renamed obs column '{column}' to '{new_name}'"
             if palette:
                 described += f" (and the palette it owns: '{palette}')"
+            if batch_condition_updated:
+                described += " (and the uns['batch_condition'] entry naming it)"
             entry = make_edit_entry(
                 operation="rename_obs_column",
                 description=described,
@@ -280,6 +289,7 @@ def rename_obs_column(path: str, column: str, new_name: str) -> dict:
                     "column": column,
                     "new_name": new_name,
                     "uns_key_renamed": new_palette if palette else None,
+                    "batch_condition_updated": batch_condition_updated,
                 },
             )
 
@@ -296,7 +306,7 @@ def rename_obs_column(path: str, column: str, new_name: str) -> dict:
             "column": column,
             "new_name": new_name,
             "uns_key_renamed": new_palette if palette else None,
-            "batch_condition_updated": column in batch_condition,
+            "batch_condition_updated": batch_condition_updated,
         }
 
     except Exception as e:
