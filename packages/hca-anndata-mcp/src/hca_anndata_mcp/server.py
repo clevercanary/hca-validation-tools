@@ -8,6 +8,7 @@ from hca_anndata_mcp.tools.label import label_h5ad
 from hca_anndata_mcp.tools.plot import plot_embedding_mcp
 from hca_anndata_mcp.tools.populate import populate_labels
 from hca_anndata_mcp.tools.rename import rename_cell_ids
+from hca_anndata_mcp.tools.rename_column import rename_obs_column
 from hca_anndata_mcp.tools.strip import strip_forbidden_obs_columns
 from hca_anndata_mcp.tools.strip_cap import strip_cap_annotations
 from hca_anndata_mcp.tools.validate import validate_cell_annotation, validate_schema
@@ -54,6 +55,17 @@ mcp = FastMCP(
         "under a non-canonical name (cell_type_label, ...); it refuses any "
         "column the HCA schema names and drops all or nothing, and refuses "
         "outright any file using the deprecated top-level CAP layout, "
+        "rename_obs_column to rename one obs column whose data is real but whose name "
+        "misdescribes it (nee2023's cell_type_label holds the authors' own cell-type "
+        "calls, not derived labels) — the counterpart to drop_obs_columns, which is for "
+        "columns whose data is redundant; it preserves position, dtype, categories and "
+        "compression, moves the column's color palette with it, and carries no schema-tier "
+        "refusal because a rename loses nothing, so promoting a producer column into its "
+        "canonical schema name is allowed; it refuses a destination that already holds "
+        "values (drop it first) but overwrites one that is entirely empty; it rewrites an "
+        "uns['batch_condition'] entry naming the column, but has NO rule yet for CAP "
+        "annotation-set columns (the '--' names declared in uns['cap_metadata']) — renaming "
+        "one silently breaks the declared set, so do not use it on CAP columns, "
         "rename_cell_ids to rename the cell IDs (obs index) of rows selected by an obs "
         "column value, substituting one ID prefix for another — the remedy for a sample "
         "whose IDs lost a distinguishing segment in a pipeline; HCA-layout files only "
@@ -118,6 +130,7 @@ mcp.tool()(set_uns)
 mcp.tool()(convert_cellxgene_to_hca)
 mcp.tool()(strip_forbidden_obs_columns)
 mcp.tool()(drop_obs_columns)
+mcp.tool()(rename_obs_column)
 mcp.tool()(rename_cell_ids)
 mcp.tool()(backfill_obs_from_source)
 mcp.tool()(validate_marker_genes)
