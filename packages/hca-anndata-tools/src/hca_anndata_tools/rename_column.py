@@ -74,7 +74,13 @@ def _is_empty_column(obs: h5py.Group, name: str) -> bool:
     """
     item = obs[name]
     if isinstance(item, h5py.Group) and "categories" in item:  # a categorical
-        return _all_rows(item["codes"], lambda a: a == -1)  # -1 is pandas' missing code
+        codes = item["codes"]
+        # h5py types member access as Group | Dataset | Datatype; narrow it
+        # rather than suppressing, so a malformed categorical is refused here
+        # instead of raising inside the scan.
+        if not isinstance(codes, h5py.Dataset):
+            return False
+        return _all_rows(codes, lambda a: a == -1)  # -1 is pandas' missing code
     if isinstance(item, h5py.Dataset) and item.dtype.kind == "f":
         return _all_rows(item, np.isnan)
     return False
