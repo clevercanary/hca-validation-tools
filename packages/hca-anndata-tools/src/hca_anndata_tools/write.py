@@ -73,19 +73,28 @@ def _copy_with_sha256(source_path: str, dest_path: str) -> str:
     return h.hexdigest()
 
 
-def _occupied(path: str) -> bool:
-    """True when anything at all sits at ``path``.
+def _try_claim(path: str) -> bool:
+    """Atomically create an empty file at ``path``; False if the name is taken.
 
-    ``os.path.lexists`` rather than ``Path.exists``: the latter follows
-    symlinks and so reports a *broken* symlink as absent, which would let a
-    caller claim that name, write through it, and then unlink a symlink it did
-    not create.
+    ``O_CREAT | O_EXCL`` is the whole point: testing occupancy and then copying
+    leaves a window in which another writer can take the name, and ``copy2``
+    would then silently overwrite their file. Creating the file *is* the claim,
+    so there is no window to lose.
+
+    It also settles the symlink case without a separate check — ``O_EXCL``
+    refuses a symlink at the path, including a broken one that
+    ``Path.exists()`` reports as absent.
     """
-    return os.path.lexists(path)
+    try:
+        fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+    except FileExistsError:
+        return False
+    os.close(fd)
+    return True
 
 
 def _claim_snapshot_path(path: str) -> str:
-    """Return a snapshot path that no file currently occupies.
+    """Claim, and return, a snapshot path that no other file holds.
 
     ``generate_output_path`` timestamps to the second, so a name can already be
     taken — by the source itself (a snapshot edited within that same second),
@@ -94,20 +103,21 @@ def _claim_snapshot_path(path: str) -> str:
     the boundary and regenerating resolves every one of them, which is cheaper
     than failing a run the caller must then notice and retry.
 
-    Checking occupancy rather than comparing strings to ``path`` is what makes
-    the caller's cleanup unambiguous: the returned name held no file, so
-    anything there afterwards was written by us and is ours to remove.
+    Returns with an empty file already created at the claimed path — that is
+    what makes the caller's cleanup unambiguous. The name was ours to take, so
+    whatever sits there afterwards is ours to remove.
 
     Raises:
-        SameSecondSnapshotError: Still occupied after waiting out the boundary.
+        SameSecondSnapshotError: Still taken after waiting out the boundary.
     """
     output_path = generate_output_path(path)
-    if _occupied(output_path):
-        time.sleep(1)
-        output_path = generate_output_path(path)
-    if _occupied(output_path):
-        raise SameSecondSnapshotError(SAME_SECOND_SNAPSHOT_ERROR)
-    return output_path
+    if _try_claim(output_path):
+        return output_path
+    time.sleep(1)
+    output_path = generate_output_path(path)
+    if _try_claim(output_path):
+        return output_path
+    raise SameSecondSnapshotError(SAME_SECOND_SNAPSHOT_ERROR)
 
 
 @contextlib.contextmanager

@@ -485,6 +485,30 @@ def test_snapshot_copy_refuses_an_unresolvable_collision(tmp_path, monkeypatch):
     assert src.read_bytes() == b"payload"
 
 
+def test_snapshot_copy_claim_beats_a_concurrent_writer(tmp_path, monkeypatch):
+    """Testing occupancy and then copying leaves a window: another writer can
+    take the name in between, and copy2 would overwrite their file. The claim
+    is the creation, so there is no window to lose."""
+    src = tmp_path / "d.h5ad"
+    src.write_bytes(b"source")
+    rival = tmp_path / "d-edit-2026-08-22-00-00-01.h5ad"
+    raced = {"done": False}
+
+    def generate_then_race(_):
+        if not raced["done"]:
+            raced["done"] = True
+            rival.write_bytes(b"rival process snapshot")  # lands post-generation
+        return str(rival)
+
+    monkeypatch.setattr("hca_anndata_tools.write.generate_output_path", generate_then_race)
+    monkeypatch.setattr("hca_anndata_tools.write.time.sleep", lambda _: None)
+
+    with pytest.raises(SameSecondSnapshotError), snapshot_copy(str(src)):
+        pass  # pragma: no cover - the context manager raises on entry
+
+    assert rival.read_bytes() == b"rival process snapshot"
+
+
 def test_snapshot_copy_never_removes_a_file_it_did_not_create(tmp_path, monkeypatch):
     """A destination that is already occupied — by a sibling tool's snapshot
     from this same second, not by the source — is refused before the copy, so
