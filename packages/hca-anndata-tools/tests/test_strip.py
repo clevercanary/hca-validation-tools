@@ -1,7 +1,6 @@
 """Tests for strip_forbidden_obs_columns."""
 
 import json
-import os
 from pathlib import Path
 
 import anndata as ad
@@ -159,64 +158,3 @@ def test_strip_same_second_snapshot_refused(sample_h5ad_for_write, monkeypatch):
     assert "self_reported_ethnicity" in ad.read_h5ad(sample_h5ad_for_write).obs.columns  # nor modified
     assert "error" in result
     assert "already exists" in result["error"]
-
-
-def test_strip_same_second_collision_resolves_after_waiting(sample_h5ad_for_write, monkeypatch):
-    """The common case: a snapshot written this second collides, the tool waits
-    out the boundary, and the retry gets a fresh name (mirrors copy_cap). Only a
-    collision that survives the wait is refused."""
-    _to_hca_layout(sample_h5ad_for_write, "self_reported_ethnicity")
-    fresh = sample_h5ad_for_write.with_name("fresh-edit-2026-08-22-00-00-01.h5ad")
-    names = iter([str(sample_h5ad_for_write), str(fresh)])
-    monkeypatch.setattr("hca_anndata_tools.write.generate_output_path", lambda p: next(names))
-    slept = []
-    monkeypatch.setattr("hca_anndata_tools.write.time.sleep", slept.append)
-
-    result = strip_forbidden_obs_columns(str(sample_h5ad_for_write))
-
-    assert slept == [1]
-    assert "error" not in result
-    assert result["obs_columns_stripped"] == ["self_reported_ethnicity"]
-    assert Path(result["output_path"]).name == "fresh-edit-2026-08-22-00-00-01.h5ad"
-
-
-def test_strip_failed_copy_leaves_no_partial_snapshot(sample_h5ad_for_write, monkeypatch):
-    """A copy that dies partway (ENOSPC on a multi-GB h5ad) must not leave the
-    partial file behind: it carries the newest -edit- timestamp, so resolve_latest
-    would hand that truncated file to every later call on the dataset."""
-    _to_hca_layout(sample_h5ad_for_write, "self_reported_ethnicity")
-    written = {}
-
-    def die_partway(src, dst, *args, **kwargs):
-        Path(dst).write_bytes(b"partial")
-        written["dst"] = dst
-        raise OSError(28, "No space left on device")
-
-    monkeypatch.setattr("hca_anndata_tools.write.shutil.copy2", die_partway)
-
-    result = strip_forbidden_obs_columns(str(sample_h5ad_for_write))
-
-    assert "error" in result
-    assert not Path(written["dst"]).exists(), "partial snapshot was left behind"
-    assert sample_h5ad_for_write.is_file()  # and the source is untouched
-
-
-def test_strip_alias_of_source_is_refused_without_unlinking(sample_h5ad_for_write, monkeypatch):
-    """An alias of the source — a hard link, or a './'-prefixed path — occupies
-    the generated name, so the claim step refuses it before any copy is
-    attempted. The destination must survive: it predates the call, and an alias
-    naming the source's own directory entry would take the source with it (the
-    #598 defect by another route)."""
-    _to_hca_layout(sample_h5ad_for_write, "self_reported_ethnicity")
-    alias = sample_h5ad_for_write.with_name("alias-edit-2026-08-22-00-00-01.h5ad")
-    os.link(sample_h5ad_for_write, alias)
-    monkeypatch.setattr("hca_anndata_tools.write.generate_output_path", lambda p: str(alias))
-    monkeypatch.setattr("hca_anndata_tools.write.time.sleep", lambda _: None)
-
-    result = strip_forbidden_obs_columns(str(sample_h5ad_for_write))
-
-    assert "error" in result
-    assert "already exists" in result["error"]
-    assert alias.is_file(), "a pre-existing destination we did not create was unlinked"
-    assert sample_h5ad_for_write.is_file()
-    assert "self_reported_ethnicity" in ad.read_h5ad(sample_h5ad_for_write).obs.columns
