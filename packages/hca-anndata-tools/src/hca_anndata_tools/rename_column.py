@@ -132,6 +132,14 @@ def rename_obs_column(path: str, column: str, new_name: str) -> dict:
     * **The source must exist**, and must differ from the new name.
     * **The destination must not already exist** — unless it is provably
       empty, in which case it is overwritten. See :func:`_is_empty_column`.
+    Note this has no rule yet for CAP annotation-set columns (the ``--`` names
+    a set declares in ``uns['cap_metadata']``) or for the deprecated top-level
+    CAP layout, both of which ``drop_obs_columns`` refuses. Renaming such a
+    column breaks the declared set the same way dropping it would. That gap is
+    deliberate rather than overlooked: what the rule should be is the subject
+    of #614, which rationalizes reference-integrity handling across all the
+    obs-mutating tools instead of adding a sixth ad-hoc variant here.
+
     A column named by ``uns['batch_condition']`` is not refused: that entry is
     rewritten to the new name, since the same column still defines the batches
     and only its name changed. Refusing would be a dead end — ``set_uns``
