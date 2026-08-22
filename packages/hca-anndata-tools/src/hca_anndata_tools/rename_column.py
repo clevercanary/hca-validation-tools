@@ -19,6 +19,7 @@ that (see clevercanary/hca-ingest-coordination#24).
 from __future__ import annotations
 
 import h5py
+import numpy as np
 
 from ._io import (
     _decode_bytes,
@@ -35,26 +36,27 @@ from .write import (
     snapshot_copy,
 )
 
+# anndata writes uns string arrays with this encoding; batch_condition is
+# rewritten in place, so it has to be recreated the same way.
+_STR_DTYPE = h5py.string_dtype(encoding="utf-8")
+
 
 def _is_empty_column(obs: h5py.Group, name: str) -> bool:
     """True when every value in an obs column is null.
 
-    Deliberately conservative: it answers "can this be overwritten without
-    losing anything", so it says yes only where nullness is representable and
-    provable. A categorical stores missing as code ``-1``, and a float array
-    stores it as NaN. Integer, boolean and string arrays have no null value,
-    so a caller who wants one of those gone should drop it first and see the
-    count they are discarding.
+    Deliberately narrow: it answers "can this be overwritten without losing
+    anything", so it recognizes only the two encodings where emptiness is
+    cheap to prove — a categorical whose codes are all ``-1``, and a float
+    array that is all NaN. Everything else counts as occupied, including
+    anndata's nullable-integer and nullable-boolean groups, which *do* carry a
+    null mask but are not worth a second decoder here. A caller who wants one
+    of those gone should drop it first and see the count they are discarding.
     """
     item = obs[name]
-    if isinstance(item, h5py.Group):  # categorical: categories + codes
-        codes = item.get("codes")
-        if not isinstance(codes, h5py.Dataset):
-            return False
-        return bool((codes[:] == -1).all())
+    if isinstance(item, h5py.Group) and "categories" in item:  # a categorical
+        return bool((item["codes"][:] == -1).all())  # -1 is pandas' missing code
     if isinstance(item, h5py.Dataset) and item.dtype.kind == "f":
-        values = item[:]
-        return bool((values != values).all())  # NaN is the only self-inequality
+        return bool(np.isnan(item[:]).all())
     return False
 
 
@@ -84,8 +86,14 @@ def _validate_request(obs: h5py.Group, uns: h5py.Group | None, column: str, new_
 
     # Membership against the group's direct children rather than `in obs`,
     # which would resolve link paths (see the malformed check above).
+    #
+    # A malformed name is excluded so each bad name is reported once. "/X" is
+    # necessarily absent from obs.keys() too, and listing it under both
+    # problems would imply its only fault was being missing — sending a caller
+    # to hunt for a typo rather than read the path-name rule. drop.py:155 makes
+    # the same exclusion for the same reason.
     members = set(obs.keys())
-    if column not in members:
+    if column not in members and column not in malformed:
         problems.append(f"not present in obs: '{column}'")
 
     # The one destination rule: an occupied name is refused, because silently
@@ -96,17 +104,6 @@ def _validate_request(obs: h5py.Group, uns: h5py.Group | None, column: str, new_
             f"'{new_name}' already exists in obs and holds values — drop it first if "
             f"replacing it is intended (a column that is entirely empty is overwritten "
             f"without complaint)"
-        )
-
-    # uns['batch_condition'] declares which columns define the experiment's
-    # batches, so a rename would leave it naming a column that no longer
-    # exists. Refused rather than rewritten: editing that declaration is a
-    # curation decision, not a side effect of renaming.
-    if column in _read_batch_condition(uns):
-        problems.append(
-            f"'{column}' is referenced by uns['batch_condition'] — renaming it would leave "
-            f"that declaration naming a column the file no longer has. Edit "
-            f"uns['batch_condition'] first if the rename is intended"
         )
 
     return problems
@@ -130,18 +127,26 @@ def rename_obs_column(path: str, column: str, new_name: str) -> dict:
 
     The gates, in the order a caller hits them:
 
-    * **Neither name may be an HDF5 link path** (contain ``/``) or be blank.
-    * **The source must exist**, and must not be the obs index.
+    * **Neither name may be an HDF5 link path** (contain ``/``), be blank, or
+      be the obs index.
+    * **The source must exist**, and must differ from the new name.
     * **The destination must not already exist** — unless it is provably
       empty, in which case it is overwritten. See :func:`_is_empty_column`.
-    * **The column must not be named by** ``uns['batch_condition']``, which
-      would be left referring to a column the file no longer has.
+    A column named by ``uns['batch_condition']`` is not refused: that entry is
+    rewritten to the new name, since the same column still defines the batches
+    and only its name changed. Refusing would be a dead end — ``set_uns``
+    validates entries against the obs columns present, so the new name cannot
+    be written before the rename happens.
 
     Note this carries no schema-tier refusal, unlike ``drop_obs_columns``.
     Renaming preserves every value and is undone by renaming back, so
     promoting a producer column into its canonical schema name is allowed and
     is the motivating case. Renaming a schema-required column *away* is
-    likewise allowed and will fail validation loudly.
+    likewise allowed and will fail validation loudly. Two caveats on that
+    reversibility: overwriting an empty destination does not restore that
+    column's entry or its declared categories on the way back, and a rename
+    followed by a drop reaches what ``drop_obs_columns`` alone refuses — both
+    operations land in the edit log, which is what keeps that accountable.
 
     Writes a new timestamped snapshot with an edit-log entry and deletes the
     previous snapshot (never the original), like every other mutating tool.
@@ -155,9 +160,9 @@ def rename_obs_column(path: str, column: str, new_name: str) -> dict:
         new_name: Its new name.
 
     Returns:
-        Dict with ``output_path``, ``column``, ``new_name`` and
-        ``uns_key_renamed`` (the palette that travelled, or None) on success,
-        or ``{"error": ...}``.
+        Dict with ``output_path``, ``column``, ``new_name``,
+        ``uns_key_renamed`` (the palette that travelled, or None) and
+        ``batch_condition_updated`` on success, or ``{"error": ...}``.
     """
     try:
         path = resolve_latest(path)
@@ -170,10 +175,8 @@ def rename_obs_column(path: str, column: str, new_name: str) -> dict:
             if not isinstance(uns, h5py.Group):
                 uns = None
             problems = _validate_request(obs, uns, column, new_name)
-            # Resolved from the same read that validated, so the write phase
-            # does no discovery.
             palette = f"{column}_colors" if uns is not None and f"{column}_colors" in uns else None
-            replacing_empty = new_name in set(obs.keys())
+            batch_condition = _read_batch_condition(uns)
 
         if problems:
             return {"error": "Refusing to rename: " + "; ".join(problems)}
@@ -181,9 +184,32 @@ def rename_obs_column(path: str, column: str, new_name: str) -> dict:
         # h5py closes before snapshot_copy's cleanup runs, which is the ordering
         # the unlink needs: removing an open HDF5 handle raises on Windows.
         with snapshot_copy(path) as output_path, h5py.File(output_path, "a") as f_out:
-            if replacing_empty:
+            # Validation established that an existing destination is empty, so
+            # this discards nothing. Its palette goes too: left behind it would
+            # describe the incoming column's data, which is worse than an
+            # orphan because a length match makes it silently wrong.
+            if new_name in f_out["obs"]:
                 del f_out["obs"][new_name]
+                if f"{new_name}_colors" in f_out["uns"]:
+                    del f_out["uns"][f"{new_name}_colors"]
             f_out["obs"].move(column, new_name)
+
+            # uns['batch_condition'] names the columns that define the
+            # experiment's batches. A rename leaves it pointing at a column the
+            # file no longer has, and unlike a drop this knows exactly what to
+            # point it at instead — the same column still defines the batches,
+            # only its name changed. Refusing here would be a dead end: set_uns
+            # validates every entry against the obs columns present, so the new
+            # name cannot be written before the rename, and the rename cannot
+            # happen while the old name is referenced.
+            if column in batch_condition:
+                updated = [new_name if c == column else c for c in batch_condition]
+                del f_out["uns"]["batch_condition"]
+                ds = f_out["uns"].create_dataset(
+                    "batch_condition", data=np.array(updated, dtype=object), dtype=_STR_DTYPE
+                )
+                ds.attrs["encoding-type"] = "string-array"
+                ds.attrs["encoding-version"] = "0.2.0"
 
             # Substituted in place rather than via update_column_order,
             # which appends: a renamed column keeps its position, so a
@@ -225,6 +251,7 @@ def rename_obs_column(path: str, column: str, new_name: str) -> dict:
             "column": column,
             "new_name": new_name,
             "uns_key_renamed": f"{new_name}_colors" if palette else None,
+            "batch_condition_updated": column in batch_condition,
         }
 
     except Exception as e:

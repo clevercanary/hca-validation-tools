@@ -20,7 +20,7 @@ def _make(path, columns=None, uns=None):
     obs = pd.DataFrame(base, index=pd.Index([f"c{i}" for i in range(n)], name="cellID"))
     adata = ad.AnnData(X=np.zeros((n, 2), dtype=np.float32), obs=obs)
     adata.uns.update(uns or {})
-    adata.write_h5ad(path)
+    adata.write_h5ad(path, compression="gzip")
     return str(path)
 
 
@@ -62,6 +62,7 @@ def test_rename_preserves_compression(tmp_path):
     path = _make(tmp_path / "t.h5ad", {"producer": pd.Categorical(["a", "b", "a"])})
     with h5py.File(path, "r") as f:
         before = f["obs"]["producer"]["codes"].compression
+    assert before == "gzip", "fixture must be compressed or this test proves nothing"
 
     result = rename_obs_column(path, "producer", "renamed")
 
@@ -152,19 +153,6 @@ def test_rename_overwrites_a_destination_that_is_entirely_empty(tmp_path):
     assert order.count("author_cell_type") == 1
 
 
-def test_rename_refuses_a_destination_holding_values(tmp_path):
-    path = _make(
-        tmp_path / "t.h5ad",
-        {"producer": pd.Categorical(["a", "b", "a"]), "occupied": pd.Categorical(["z", None, "z"])},
-    )
-
-    result = rename_obs_column(path, "producer", "occupied")
-
-    assert "error" in result
-    assert "already exists" in result["error"]
-    assert _no_snapshot(tmp_path / "t.h5ad")
-
-
 def test_rename_refuses_a_partially_populated_destination(tmp_path):
     """One value is enough to make it not-empty — the check answers 'can this
     be overwritten without losing anything', not 'is it mostly empty'."""
@@ -176,6 +164,7 @@ def test_rename_refuses_a_partially_populated_destination(tmp_path):
     result = rename_obs_column(path, "producer", "nearly")
 
     assert "error" in result
+    assert "already exists" in result["error"]
     assert _no_snapshot(tmp_path / "t.h5ad")
 
 
@@ -227,24 +216,49 @@ def test_rename_refuses_names_containing_a_slash(tmp_path):
         result = rename_obs_column(path, column, new_name)
         assert "error" in result, f"{column!r} -> {new_name!r} must be refused"
         assert "cannot contain" in result["error"]
+        # Reported once, not also as "not present in obs": a path-shaped name is
+        # necessarily absent too, and saying both sends the caller hunting for a
+        # typo instead of reading the path-name rule (drop.py makes the same
+        # exclusion, and this assertion is what keeps the two agreeing).
+        assert "not present in obs" not in result["error"]
 
     with h5py.File(path, "r") as f:
         assert "X" in f
 
 
-def test_rename_refuses_a_column_named_by_batch_condition(tmp_path):
-    """That declaration would be left naming a column the file no longer has."""
+def test_rename_updates_a_batch_condition_reference(tmp_path):
+    """uns['batch_condition'] names the columns defining the experiment's
+    batches. A rename knows exactly what to point it at — the same column still
+    defines the batches, only its name changed. Refusing would be a dead end:
+    set_uns validates entries against the obs columns present, so the new name
+    cannot be written before the rename, and the rename could not happen while
+    the old name was referenced."""
     path = _make(
         tmp_path / "t.h5ad",
         {"batchy": pd.Categorical(["a", "b", "a"])},
-        uns={"batch_condition": np.array(["batchy"], dtype=object)},
+        uns={"batch_condition": np.array(["batchy", "donor_id"], dtype=object)},
     )
 
     result = rename_obs_column(path, "batchy", "renamed")
 
-    assert "error" in result
-    assert "batch_condition" in result["error"]
-    assert _no_snapshot(tmp_path / "t.h5ad")
+    assert "error" not in result
+    assert result["batch_condition_updated"] is True
+    out = ad.read_h5ad(result["output_path"])
+    assert list(out.uns["batch_condition"]) == ["renamed", "donor_id"]  # order and siblings kept
+    assert "renamed" in out.obs.columns
+
+
+def test_rename_leaves_an_unrelated_batch_condition_alone(tmp_path):
+    path = _make(
+        tmp_path / "t.h5ad",
+        {"producer": pd.Categorical(["a", "b", "a"])},
+        uns={"batch_condition": np.array(["donor_id"], dtype=object)},
+    )
+
+    result = rename_obs_column(path, "producer", "renamed")
+
+    assert result["batch_condition_updated"] is False
+    assert list(ad.read_h5ad(result["output_path"]).uns["batch_condition"]) == ["donor_id"]
 
 
 def test_rename_refuses_a_no_op(tmp_path):
@@ -271,3 +285,43 @@ def test_rename_missing_file():
     result = rename_obs_column("/nonexistent/path/file.h5ad", "a", "b")
 
     assert "error" in result
+
+
+def test_rename_replaces_an_orphaned_palette_under_the_destination_name(tmp_path):
+    """A palette can sit under the destination name with no matching column —
+    the exact state the validator complains about. move() would raise on it."""
+    path = _make(
+        tmp_path / "t.h5ad",
+        {"tissue_label": pd.Categorical(["a", "b", "a"])},
+        uns={
+            "tissue_label_colors": np.array(["#111111", "#222222"], dtype=object),
+            "surgical_procedure_colors": np.array(["#999999"], dtype=object),  # orphan
+        },
+    )
+
+    result = rename_obs_column(path, "tissue_label", "surgical_procedure")
+
+    assert "error" not in result
+    out = ad.read_h5ad(result["output_path"])
+    assert list(out.uns["surgical_procedure_colors"]) == ["#111111", "#222222"]  # source's wins
+
+
+def test_rename_over_an_empty_destination_discards_its_palette(tmp_path):
+    """The overwritten column's palette must not survive to describe the
+    incoming data. A length mismatch is a validator error; a length *match*
+    is worse, because nothing reports silently wrong colors."""
+    path = _make(
+        tmp_path / "t.h5ad",
+        {
+            "producer": pd.Categorical(["a", "b", "c"]),
+            "author_cell_type": pd.Categorical([None, None, None], categories=["unused"]),
+        },
+        uns={"author_cell_type_colors": np.array(["#111111", "#222222"], dtype=object)},
+    )
+
+    result = rename_obs_column(path, "producer", "author_cell_type")
+
+    assert "error" not in result
+    out = ad.read_h5ad(result["output_path"])
+    assert list(out.obs["author_cell_type"]) == ["a", "b", "c"]
+    assert "author_cell_type_colors" not in out.uns, "stale palette now describes different data"
