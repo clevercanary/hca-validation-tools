@@ -141,9 +141,10 @@ def test_strip_missing_file():
 
 
 def test_strip_same_second_snapshot_refused(sample_h5ad_for_write, monkeypatch):
-    """A second edit within the same second would name the output after its
-    own source and the failure path would unlink that source snapshot; the
-    guard refuses before touching anything (mirrors rename/backfill)."""
+    """A collision that survives the boundary wait is refused before anything is
+    touched — otherwise the output would be named after its own source and the
+    failure path would unlink that source snapshot. Patching generate_output_path
+    to the identity makes the retry collide too, which is the unresolvable case."""
     _to_hca_layout(sample_h5ad_for_write, "self_reported_ethnicity")
     monkeypatch.setattr("hca_anndata_tools.strip.generate_output_path", lambda p: p)
     slept = []
