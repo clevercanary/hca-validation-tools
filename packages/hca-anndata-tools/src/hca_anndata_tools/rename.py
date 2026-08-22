@@ -33,6 +33,7 @@ from ._io import (
 from .cap import LEGACY_LAYOUT_DESCRIPTION, is_legacy_cap_layout
 from .inspect import _read_schema_version
 from .write import (
+    SAME_SECOND_SNAPSHOT_ERROR,
     _compute_sha256,
     build_edit_log,
     cleanup_previous_version,
@@ -318,7 +319,7 @@ def rename_cell_ids(path: str, column: str, value: str, prefix_from: str, prefix
             # within the same second names the output after its own source;
             # copying would raise SameFileError and the failure path would
             # then unlink the source snapshot. Refuse before touching anything.
-            return {"error": "An edit snapshot for this second already exists — retry in a moment."}
+            return {"error": SAME_SECOND_SNAPSHOT_ERROR}
         shutil.copy2(path, output_path)
 
         # Hash the source before opening the output: build_edit_log would

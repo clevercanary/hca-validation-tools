@@ -15,8 +15,6 @@ truth.
 
 from __future__ import annotations
 
-import contextlib
-import shutil
 from pathlib import Path
 
 import h5py
@@ -29,9 +27,9 @@ from ._io import (
 from .write import (
     build_edit_log,
     cleanup_previous_version,
-    generate_output_path,
     make_edit_entry,
     resolve_latest,
+    snapshot_copy,
 )
 
 # Obs columns that exist in CellxGENE files but are forbidden in HCA
@@ -102,7 +100,6 @@ def strip_forbidden_obs_columns(path: str) -> dict:
         were already absent; ``{"error": ...}`` on failure (including
         the CellxGENE-layout refusal).
     """
-    output_path = None
     try:
         path = resolve_latest(path)
         if not Path(path).is_file():
@@ -135,38 +132,36 @@ def strip_forbidden_obs_columns(path: str) -> dict:
                 ),
             }
 
-        output_path = generate_output_path(path)
-        shutil.copy2(path, output_path)
+        with snapshot_copy(path) as output_path:
+            # Defer the malformed-log cleanup until after the with-block closes
+            # the output file — calling os.remove on an open HDF5 handle works
+            # on POSIX (unlinked-but-open inode) but raises on Windows, and even
+            # on POSIX the subsequent context __exit__ flush hits a removed
+            # inode. Capture the error here, exit the context cleanly, then
+            # remove + return.
+            log_error = None
+            with h5py.File(output_path, "a") as f_out:
+                stripped = _strip_forbidden_obs_columns_h5py(f_out)
+                # `present` was computed before the copy, so it should match
+                # exactly. Use the post-strip return value as truth — that's
+                # what we actually mutated.
 
-        # Defer the malformed-log cleanup until after the with-block closes
-        # the output file — calling os.remove on an open HDF5 handle works
-        # on POSIX (unlinked-but-open inode) but raises on Windows, and even
-        # on POSIX the subsequent context __exit__ flush hits a removed
-        # inode. Capture the error here, exit the context cleanly, then
-        # remove + return.
-        log_error = None
-        with h5py.File(output_path, "a") as f_out:
-            stripped = _strip_forbidden_obs_columns_h5py(f_out)
-            # `present` was computed before the copy, so it should match
-            # exactly. Use the post-strip return value as truth — that's
-            # what we actually mutated.
+                entry = make_edit_entry(
+                    operation="strip_forbidden_obs_columns",
+                    description=(f"Stripped HCA-forbidden obs columns (privacy): {stripped}"),
+                    details={"obs_columns_stripped": stripped},
+                )
 
-            entry = make_edit_entry(
-                operation="strip_forbidden_obs_columns",
-                description=(f"Stripped HCA-forbidden obs columns (privacy): {stripped}"),
-                details={"obs_columns_stripped": stripped},
-            )
+                existing_log = read_edit_log_h5py(f_out)
+                log_result = build_edit_log(existing_log, [entry], path)
+                if "error" in log_result:
+                    log_error = log_result
+                else:
+                    write_edit_log_h5py(f_out, log_result["json"])
 
-            existing_log = read_edit_log_h5py(f_out)
-            log_result = build_edit_log(existing_log, [entry], path)
-            if "error" in log_result:
-                log_error = log_result
-            else:
-                write_edit_log_h5py(f_out, log_result["json"])
-
-        if log_error is not None:
-            Path(output_path).unlink()
-            return log_error
+            if log_error is not None:
+                Path(output_path).unlink()
+                return log_error
 
         cleanup_previous_version(path, output_path)
 
@@ -176,7 +171,4 @@ def strip_forbidden_obs_columns(path: str) -> dict:
         }
 
     except Exception as e:
-        if output_path and Path(output_path).is_file():
-            with contextlib.suppress(OSError):
-                Path(output_path).unlink()
         return {"error": str(e)}

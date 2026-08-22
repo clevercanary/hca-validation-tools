@@ -17,8 +17,6 @@ per dataset.
 
 from __future__ import annotations
 
-import contextlib
-import shutil
 from pathlib import Path
 
 import h5py
@@ -34,9 +32,9 @@ from .schema.helpers import obs_column_tiers
 from .write import (
     build_edit_log,
     cleanup_previous_version,
-    generate_output_path,
     make_edit_entry,
     resolve_latest,
+    snapshot_copy,
 )
 
 
@@ -226,7 +224,6 @@ def drop_obs_columns(path: str, columns: list[str] | tuple[str, ...]) -> dict:
         ``uns_keys_dropped`` on success, or ``{"error": ...}`` if the request
         was rejected or the write failed.
     """
-    output_path = None
     try:
         # Shape-check the argument before anything reads it. This is an
         # MCP-exposed tool, so `columns` arrives as decoded JSON and may hold
@@ -275,43 +272,41 @@ def drop_obs_columns(path: str, columns: list[str] | tuple[str, ...]) -> dict:
         if problems:
             return {"error": "Refusing to drop: " + "; ".join(problems)}
 
-        output_path = generate_output_path(path)
-        shutil.copy2(path, output_path)
+        with snapshot_copy(path) as output_path:
+            # Defer the malformed-log cleanup until after the with-block closes the
+            # output file, matching strip_forbidden_obs_columns: unlinking an open
+            # HDF5 handle works on POSIX but raises on Windows, and the context
+            # __exit__ flush would hit a removed inode either way.
+            log_error = None
+            with h5py.File(output_path, "a") as f_out:
+                for col in requested:
+                    del f_out["obs"][col]
+                update_column_order(f_out, [], set(requested))
+                for key in owned_uns_keys:
+                    del f_out["uns"][key]
 
-        # Defer the malformed-log cleanup until after the with-block closes the
-        # output file, matching strip_forbidden_obs_columns: unlinking an open
-        # HDF5 handle works on POSIX but raises on Windows, and the context
-        # __exit__ flush would hit a removed inode either way.
-        log_error = None
-        with h5py.File(output_path, "a") as f_out:
-            for col in requested:
-                del f_out["obs"][col]
-            update_column_order(f_out, [], set(requested))
-            for key in owned_uns_keys:
-                del f_out["uns"][key]
+                described = f"Dropped obs columns: {requested}"
+                if owned_uns_keys:
+                    described += f" (and the palettes they own: {owned_uns_keys})"
+                entry = make_edit_entry(
+                    operation="drop_obs_columns",
+                    description=described,
+                    details={
+                        "obs_columns_dropped": requested,
+                        "uns_keys_dropped": owned_uns_keys,
+                    },
+                )
 
-            described = f"Dropped obs columns: {requested}"
-            if owned_uns_keys:
-                described += f" (and the palettes they own: {owned_uns_keys})"
-            entry = make_edit_entry(
-                operation="drop_obs_columns",
-                description=described,
-                details={
-                    "obs_columns_dropped": requested,
-                    "uns_keys_dropped": owned_uns_keys,
-                },
-            )
+                existing_log = read_edit_log_h5py(f_out)
+                log_result = build_edit_log(existing_log, [entry], path)
+                if "error" in log_result:
+                    log_error = log_result
+                else:
+                    write_edit_log_h5py(f_out, log_result["json"])
 
-            existing_log = read_edit_log_h5py(f_out)
-            log_result = build_edit_log(existing_log, [entry], path)
-            if "error" in log_result:
-                log_error = log_result
-            else:
-                write_edit_log_h5py(f_out, log_result["json"])
-
-        if log_error is not None:
-            Path(output_path).unlink()
-            return log_error
+            if log_error is not None:
+                Path(output_path).unlink()
+                return log_error
 
         cleanup_previous_version(path, output_path)
 
@@ -322,7 +317,4 @@ def drop_obs_columns(path: str, columns: list[str] | tuple[str, ...]) -> dict:
         }
 
     except Exception as e:
-        if output_path and Path(output_path).is_file():
-            with contextlib.suppress(OSError):
-                Path(output_path).unlink()
         return {"error": str(e)}

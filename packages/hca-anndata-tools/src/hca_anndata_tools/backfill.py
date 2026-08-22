@@ -39,6 +39,7 @@ from ._io import (
 )
 from .cap import LEGACY_LAYOUT_DESCRIPTION, is_legacy_cap_layout
 from .write import (
+    SAME_SECOND_SNAPSHOT_ERROR,
     _compute_sha256,
     _copy_with_sha256,
     build_edit_log,
@@ -403,7 +404,7 @@ def backfill_obs_from_source(target_path: str, source_path: str, columns: list[s
             # a second edit within the same second would name the output after
             # its own source. Refuse before touching anything — and before the
             # source hash below, which reads the whole source file.
-            return {"error": "An edit snapshot for this second already exists — retry in a moment."}
+            return {"error": SAME_SECOND_SNAPSHOT_ERROR}
         source_basename = Path(source_path).name
         source_sha256 = _compute_sha256(source_path)
         target_sha256 = _copy_with_sha256(target_path, output_path)

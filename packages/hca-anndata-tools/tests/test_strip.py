@@ -137,3 +137,24 @@ def test_strip_missing_file():
     result = strip_forbidden_obs_columns("/nonexistent/path/file.h5ad")
     assert "error" in result
     assert "File not found" in result["error"]
+
+
+def test_strip_same_second_snapshot_refused(sample_h5ad_for_write, monkeypatch):
+    """A collision that survives the boundary wait is refused before anything is
+    touched — otherwise the output would be named after its own source and the
+    failure path would unlink that source snapshot. Patching generate_output_path
+    to the identity makes the retry collide too, which is the unresolvable case."""
+    _to_hca_layout(sample_h5ad_for_write, "self_reported_ethnicity")
+    monkeypatch.setattr("hca_anndata_tools.write.generate_output_path", lambda p: p)
+    slept = []
+    monkeypatch.setattr("hca_anndata_tools.write.time.sleep", slept.append)
+
+    result = strip_forbidden_obs_columns(str(sample_h5ad_for_write))
+
+    assert slept == [1], "the boundary wait should be attempted once before refusing"
+
+    # Asserted before the message: unguarded, this file is unlinked (#598).
+    assert sample_h5ad_for_write.is_file()
+    assert "self_reported_ethnicity" in ad.read_h5ad(sample_h5ad_for_write).obs.columns  # nor modified
+    assert "error" in result
+    assert "already exists" in result["error"]

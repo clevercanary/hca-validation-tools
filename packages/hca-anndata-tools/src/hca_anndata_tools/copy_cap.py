@@ -40,6 +40,7 @@ from .marker_genes import validate_marker_genes
 from .strip_cap import _LEGACY_TOP_LEVEL_PROVENANCE, strip_cap_annotations
 from .write import (
     EDIT_LOG_KEY,
+    SAME_SECOND_SNAPSHOT_ERROR,
     _compute_sha256,
     build_edit_log,
     cleanup_previous_version,
@@ -416,7 +417,7 @@ def copy_cap_annotations(
             time.sleep(1)
             output_path = generate_output_path(target_path)
         if is_target_alias(output_path):
-            return {"error": "An edit snapshot for this second already exists — retry in a moment."}
+            return {"error": SAME_SECOND_SNAPSHOT_ERROR}
 
         with tempfile.TemporaryDirectory() as tmpdir:
             temp_path = str(Path(tmpdir) / "cap_temp.h5ad")

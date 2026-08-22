@@ -310,8 +310,9 @@ def test_strip_preserves_existing_edit_history(tmp_path):
 
 def test_strip_unblocks_the_mutating_toolkit(tmp_path, monkeypatch):
     """The legacy layout locks out sibling tools; stripping clears the refusal."""
-    # Distinct timestamps for the two writes — drop.py lacks the same-second
-    # guard (#598/#600), so back-to-back edits in one second collide.
+    # Distinct timestamps for the two writes: on a collision drop.py sleeps out
+    # the second boundary before retrying (#598), and this test has no reason to
+    # pay that second.
     ticks = iter(["2026-08-21-00-00-01", "2026-08-21-00-00-02"])
     monkeypatch.setattr("hca_anndata_tools.write.generate_timestamp", lambda: next(ticks))
     path = _make_cap_file(tmp_path / "locked.h5ad", uns_layout="legacy")

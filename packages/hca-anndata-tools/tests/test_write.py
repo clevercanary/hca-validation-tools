@@ -12,9 +12,11 @@ import pytest
 
 from hca_anndata_tools.write import (
     EDIT_LOG_KEY,
+    SameSecondSnapshotError,
     _copy_with_sha256,
     generate_output_path,
     resolve_latest,
+    snapshot_copy,
     strip_timestamp,
     write_h5ad,
 )
@@ -435,3 +437,167 @@ def test_copy_with_sha256_refuses_hard_link(tmp_path):
         _copy_with_sha256(str(src), str(link))
 
     assert src.read_bytes() == b"do not truncate"
+
+
+# --- snapshot_copy: the shared create-and-clean-up contract (#598) ------------
+
+
+def test_snapshot_copy_yields_a_distinct_copy(tmp_path):
+    """The happy path: a real copy under a fresh name, source untouched."""
+    src = tmp_path / "d.h5ad"
+    src.write_bytes(b"payload")
+
+    with snapshot_copy(str(src)) as out:
+        assert Path(out) != src
+        assert Path(out).read_bytes() == b"payload"
+
+    assert Path(out).is_file()  # a clean exit keeps the snapshot
+    assert src.read_bytes() == b"payload"
+
+
+def test_snapshot_copy_waits_out_a_collision(tmp_path, monkeypatch):
+    """A name equal to the source is retried after the second boundary rather
+    than failing the run — these tools collide routinely when chained."""
+    src = tmp_path / "d.h5ad"
+    src.write_bytes(b"payload")
+    fresh = tmp_path / "d-edit-2026-08-22-00-00-01.h5ad"
+    names = iter([str(src), str(fresh)])
+    monkeypatch.setattr("hca_anndata_tools.write.generate_output_path", lambda p: next(names))
+    slept = []
+    monkeypatch.setattr("hca_anndata_tools.write.time.sleep", slept.append)
+
+    with snapshot_copy(str(src)) as out:
+        assert Path(out) == fresh
+
+    assert slept == [1]
+
+
+def test_snapshot_copy_refuses_an_unresolvable_collision(tmp_path, monkeypatch):
+    """A collision that survives the wait raises, and the source is untouched."""
+    src = tmp_path / "d.h5ad"
+    src.write_bytes(b"payload")
+    monkeypatch.setattr("hca_anndata_tools.write.generate_output_path", lambda p: p)
+    monkeypatch.setattr("hca_anndata_tools.write.time.sleep", lambda _: None)
+
+    with pytest.raises(SameSecondSnapshotError), snapshot_copy(str(src)):
+        pass  # pragma: no cover - the context manager raises on entry
+
+    assert src.read_bytes() == b"payload"
+
+
+def test_snapshot_copy_claim_beats_a_concurrent_writer(tmp_path, monkeypatch):
+    """Testing occupancy and then copying leaves a window: another writer can
+    take the name in between, and copy2 would overwrite their file. The claim
+    is the creation, so there is no window to lose."""
+    src = tmp_path / "d.h5ad"
+    src.write_bytes(b"source")
+    rival = tmp_path / "d-edit-2026-08-22-00-00-01.h5ad"
+    raced = {"done": False}
+
+    def generate_then_race(_):
+        if not raced["done"]:
+            raced["done"] = True
+            rival.write_bytes(b"rival process snapshot")  # lands post-generation
+        return str(rival)
+
+    monkeypatch.setattr("hca_anndata_tools.write.generate_output_path", generate_then_race)
+    monkeypatch.setattr("hca_anndata_tools.write.time.sleep", lambda _: None)
+
+    with pytest.raises(SameSecondSnapshotError), snapshot_copy(str(src)):
+        pass  # pragma: no cover - the context manager raises on entry
+
+    assert rival.read_bytes() == b"rival process snapshot"
+
+
+def test_snapshot_copy_never_removes_a_file_it_did_not_create(tmp_path, monkeypatch):
+    """A destination that is already occupied — by a sibling tool's snapshot
+    from this same second, not by the source — is refused before the copy, so
+    the cleanup can never reach a file we did not write."""
+    src = tmp_path / "d.h5ad"
+    src.write_bytes(b"source")
+    occupied = tmp_path / "d-edit-2026-08-22-00-00-01.h5ad"
+    occupied.write_bytes(b"a sibling's snapshot")
+    monkeypatch.setattr("hca_anndata_tools.write.generate_output_path", lambda p: str(occupied))
+    monkeypatch.setattr("hca_anndata_tools.write.time.sleep", lambda _: None)
+
+    def must_not_run(*args, **kwargs):  # pragma: no cover - asserts unreachable
+        raise AssertionError("copy2 must not run against an occupied destination")
+
+    monkeypatch.setattr("hca_anndata_tools.write.shutil.copy2", must_not_run)
+
+    with pytest.raises(SameSecondSnapshotError), snapshot_copy(str(src)):
+        pass  # pragma: no cover - the context manager raises on entry
+
+    assert occupied.read_bytes() == b"a sibling's snapshot"
+
+
+def test_snapshot_copy_refuses_a_broken_symlink_destination(tmp_path, monkeypatch):
+    """A broken symlink occupies the name even though Path.exists() reports it
+    absent — exists() follows the link. Claiming that name would write through
+    the symlink and then unlink a symlink we did not create."""
+    src = tmp_path / "d.h5ad"
+    src.write_bytes(b"source")
+    dangling = tmp_path / "d-edit-2026-08-22-00-00-01.h5ad"
+    dangling.symlink_to(tmp_path / "gone.h5ad")
+    assert not dangling.exists() and dangling.is_symlink()  # the trap
+    monkeypatch.setattr("hca_anndata_tools.write.generate_output_path", lambda p: str(dangling))
+    monkeypatch.setattr("hca_anndata_tools.write.time.sleep", lambda _: None)
+
+    with pytest.raises(SameSecondSnapshotError), snapshot_copy(str(src)):
+        pass  # pragma: no cover - the context manager raises on entry
+
+    assert dangling.is_symlink()  # not ours to remove
+
+
+def test_snapshot_copy_refuses_an_alias_without_unlinking_it(tmp_path, monkeypatch):
+    """A hard link to the source occupies the generated name, so the claim step
+    refuses it before any copy is attempted. The destination is left alone: it
+    predates the call, and an alias naming the source's own directory entry
+    (a './'-prefixed path) would take the source with it."""
+    src = tmp_path / "d.h5ad"
+    src.write_bytes(b"payload")
+    alias = tmp_path / "d-edit-2026-08-22-00-00-01.h5ad"
+    os.link(src, alias)
+    monkeypatch.setattr("hca_anndata_tools.write.generate_output_path", lambda p: str(alias))
+    monkeypatch.setattr("hca_anndata_tools.write.time.sleep", lambda _: None)
+
+    with pytest.raises(SameSecondSnapshotError), snapshot_copy(str(src)):
+        pass  # pragma: no cover - the context manager raises on entry
+
+    assert alias.is_file()
+    assert src.read_bytes() == b"payload"
+
+
+def test_snapshot_copy_removes_a_partially_written_snapshot(tmp_path, monkeypatch):
+    """copyfile opens the destination 'wb' and leaves it behind if the copy
+    dies partway. A leftover would win resolve_latest on the next call."""
+    src = tmp_path / "d.h5ad"
+    src.write_bytes(b"payload")
+    written = {}
+
+    def die_partway(s, dst, *args, **kwargs):
+        Path(dst).write_bytes(b"partial")
+        written["dst"] = dst
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr("hca_anndata_tools.write.shutil.copy2", die_partway)
+
+    with pytest.raises(OSError, match="No space left"), snapshot_copy(str(src)):
+        pass  # pragma: no cover - the context manager raises on entry
+
+    assert not Path(written["dst"]).exists()
+
+
+def test_snapshot_copy_removes_the_snapshot_when_the_body_fails(tmp_path):
+    """A body that raises leaves no half-edited snapshot behind, and the
+    exception still reaches the caller's own handler."""
+    src = tmp_path / "d.h5ad"
+    src.write_bytes(b"payload")
+    seen = {}
+
+    with pytest.raises(ValueError, match="boom"), snapshot_copy(str(src)) as out:
+        seen["out"] = out
+        raise ValueError("boom")
+
+    assert not Path(seen["out"]).exists()
+    assert src.read_bytes() == b"payload"

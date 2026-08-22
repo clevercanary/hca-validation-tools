@@ -6,8 +6,11 @@ import contextlib
 import glob
 import hashlib
 import json
+import os
 import re
 import shutil
+import time
+from collections.abc import Iterator
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
@@ -22,6 +25,19 @@ _TIMESTAMP_FORMAT = "%Y-%m-%d-%H-%M-%S"
 EDIT_LOG_KEY = "edit_history"
 _HASH_CHUNK_SIZE = 1 << 20  # 1 MB — keeps syscall count low on multi-GB files
 _REQUIRED_ENTRY_KEYS = {"timestamp", "tool", "tool_version", "operation", "description"}
+
+# The message every tool returns when a snapshot name collides with its own
+# source. Shared so the wording cannot drift between call sites — it contains
+# a non-ASCII em dash, which is exactly what drifts on a re-type.
+SAME_SECOND_SNAPSHOT_ERROR = "An edit snapshot for this second already exists — retry in a moment."
+
+
+class SameSecondSnapshotError(RuntimeError):
+    """A snapshot could not be named distinctly from the file it copies.
+
+    Carries :data:`SAME_SECOND_SNAPSHOT_ERROR` as its message, so a caller
+    whose handler returns ``{"error": str(e)}`` reports it unchanged.
+    """
 
 
 def _compute_sha256(path: str) -> str:
@@ -55,6 +71,106 @@ def _copy_with_sha256(source_path: str, dest_path: str) -> str:
             dst.write(chunk)
     shutil.copystat(source_path, dest_path)
     return h.hexdigest()
+
+
+def _try_claim(path: str) -> bool:
+    """Atomically create an empty file at ``path``; False if the name is taken.
+
+    ``O_CREAT | O_EXCL`` is the whole point: testing occupancy and then copying
+    leaves a window in which another writer can take the name, and ``copy2``
+    would then silently overwrite their file. Creating the file *is* the claim,
+    so there is no window to lose.
+
+    It also settles the symlink case without a separate check — ``O_EXCL``
+    refuses a symlink at the path, including a broken one that
+    ``Path.exists()`` reports as absent.
+    """
+    try:
+        fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+    except FileExistsError:
+        return False
+    os.close(fd)
+    return True
+
+
+def _claim_snapshot_path(path: str) -> str:
+    """Claim, and return, a snapshot path that no other file holds.
+
+    ``generate_output_path`` timestamps to the second, so a name can already be
+    taken — by the source itself (a snapshot edited within that same second),
+    by an alias of it, or by a sibling tool's snapshot from the same second.
+    All three are the same problem: the name is not ours to write. Waiting out
+    the boundary and regenerating resolves every one of them, which is cheaper
+    than failing a run the caller must then notice and retry.
+
+    Returns with an empty file already created at the claimed path — that is
+    what makes the caller's cleanup unambiguous. The name was ours to take, so
+    whatever sits there afterwards is ours to remove.
+
+    Raises:
+        SameSecondSnapshotError: Still taken after waiting out the boundary.
+    """
+    output_path = generate_output_path(path)
+    if _try_claim(output_path):
+        return output_path
+    time.sleep(1)
+    output_path = generate_output_path(path)
+    if _try_claim(output_path):
+        return output_path
+    raise SameSecondSnapshotError(SAME_SECOND_SNAPSHOT_ERROR)
+
+
+@contextlib.contextmanager
+def snapshot_copy(path: str) -> Iterator[str]:
+    """Yield the path of a fresh snapshot copy of ``path``, cleaning it up on error.
+
+    Wraps ``shutil.copy2`` with the three things every copy-and-patch tool
+    needs around it, each of which is a way to lose data if omitted:
+
+    * a destination name no file already occupies — see
+      :func:`_claim_snapshot_path`;
+    * a refusal, rather than a silent overwrite, when that cannot be arranged;
+    * removal of the snapshot if the copy or the caller's body then fails.
+      ``shutil.copyfile`` opens the destination ``'wb'`` and leaves a partial
+      file behind on error, and a leftover partial is worse than an error: it
+      carries the newest ``-edit-`` timestamp, so :func:`resolve_latest` would
+      hand that truncated file to every later call on the dataset.
+
+    Body exceptions propagate after the snapshot is removed, so a caller's own
+    ``except`` still sees them. A caller that returns normally keeps the
+    snapshot.
+
+    Args:
+        path: Path to the source file. Callers should pass a
+            :func:`resolve_latest`-resolved path.
+
+    Yields:
+        Path to the newly created snapshot copy.
+
+    Raises:
+        SameSecondSnapshotError: No free snapshot name was available, even
+            after waiting out the second boundary.
+    """
+    output_path = _claim_snapshot_path(path)
+
+    try:
+        shutil.copy2(path, output_path)
+    except shutil.SameFileError as e:
+        # Only reachable if the destination appeared between the check above
+        # and here. Nothing was written — copy2 compares inodes before opening
+        # the destination — and the file is not ours, so it is not removed.
+        raise SameSecondSnapshotError(SAME_SECOND_SNAPSHOT_ERROR) from e
+    except BaseException:
+        with contextlib.suppress(OSError):
+            Path(output_path).unlink()
+        raise
+
+    try:
+        yield output_path
+    except BaseException:
+        with contextlib.suppress(OSError):
+            Path(output_path).unlink()
+        raise
 
 
 def strip_timestamp(filename: str) -> str:
