@@ -52,12 +52,12 @@ _SCAN_CHUNK_ROWS = 1 << 16
 def _all_rows(ds: h5py.Dataset, predicate) -> bool:
     """True when ``predicate`` holds for every row, read in bounded chunks.
 
-    Short-circuits on the first row it does not hold for. A populated column is
+    Stops at the first chunk it does not hold for — chunk-level, not row-level:
+    each chunk is evaluated whole before ``all`` can bail. A populated column is
     the refusal case and normally answers from the first chunk, so the common
     path reads well under a megabyte of a column that may hold tens of millions
     of rows.
     """
-    # all() short-circuits, so a populated column stops at its first chunk.
     return all(
         predicate(ds[start : start + _SCAN_CHUNK_ROWS]).all() for start in range(0, ds.shape[0], _SCAN_CHUNK_ROWS)
     )
