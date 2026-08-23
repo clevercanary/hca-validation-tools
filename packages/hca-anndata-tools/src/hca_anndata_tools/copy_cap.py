@@ -38,6 +38,7 @@ from .cap import (
     is_legacy_cap_layout,
     resolve_cap_block,
 )
+from .guards import cap_palette_keys
 from .marker_genes import validate_marker_genes
 from .strip_cap import _LEGACY_TOP_LEVEL_PROVENANCE, strip_cap_annotations
 from .write import (
@@ -295,9 +296,7 @@ def copy_cap_annotations(
             ]
             if target_has_prov_cap:
                 existing_cap_uns.append("provenance/cap")
-            existing_cap_uns += [
-                k for k in target_uns_keys if k.endswith("_colors") and "--" in k.removesuffix("_colors")
-            ]
+            existing_cap_uns += cap_palette_keys(target_uns_keys)
             if existing_cap_cols or existing_cap_uns:
                 return {
                     "error": (

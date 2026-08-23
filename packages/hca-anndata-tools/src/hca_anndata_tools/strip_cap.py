@@ -24,8 +24,6 @@ from pathlib import Path
 import h5py
 
 from ._io import (
-    _decode_bytes,
-    read_batch_condition,
     read_column_order,
     read_edit_log_h5py,
     read_provenance,
@@ -34,6 +32,7 @@ from ._io import (
     write_edit_log_h5py,
 )
 from .cap import _LEGACY_CAP_MARKERS, CAP_METADATA_KEY, cap_obs_columns, unknown_cap_suffix_columns
+from .guards import cap_palette_keys, detect_obs_references, obs_index_name, require_obs_group
 from .inspect import _read_schema_version
 from .write import (
     SAME_SECOND_SNAPSHOT_ERROR,
@@ -145,16 +144,15 @@ def strip_cap_annotations(path: str) -> dict:
                         f"— strip CAP material only from HCA-layout curation targets."
                     )
                 }
-            obs = f_in.get("obs")
-            if obs is None:
-                return {"error": "File has no obs group"}
-            if not isinstance(obs, h5py.Group):
-                return {"error": "obs is not a group — the file predates the modern h5ad layout"}
+            obs, obs_error = require_obs_group(f_in)
+            if obs_error is not None:
+                return obs_error
+            assert obs is not None
             obs_columns_present = cap_obs_columns(read_column_order(obs))
             # Guard the attr-driven deletion (parity with drop.py/rename.py):
             # a malformed column-order entry could name an HDF5 link path
             # ('/'), the obs index (deleting the cell IDs), or a non-child.
-            index_name = _decode_bytes(obs.attrs.get("_index", "_index"))
+            index_name = obs_index_name(obs)
             obs_children = set(obs.keys())
             bad_names = [c for c in obs_columns_present if "/" in c or c == index_name or c not in obs_children]
             # Symmetric check: a CAP-shaped direct child missing from
@@ -171,17 +169,19 @@ def strip_cap_annotations(path: str) -> dict:
                 }
             unknown_suffixes = unknown_cap_suffix_columns(obs_columns_present)
             uns = read_uns(f_in)
-            batched = sorted(set(obs_columns_present) & set(read_batch_condition(uns)))
-            if batched:
-                # Parity with drop.py: a dangling batch_condition reference
-                # turns a valid file invalid, and rewriting the declaration
-                # is a curation decision, not this tool's to take.
+            # This tool's policy per reference mechanism (#614):
+            #   batch_condition -> REFUSE   (removing a CAP column it names
+            #                                would change the declaration)
+            #   palettes        -> CASCADE  (CAP-shaped ones go with the set)
+            #   CAP columns     -> the material being stripped, by definition
+            refs = detect_obs_references(uns, obs_columns_present)
+            if refs.batch_condition:
                 return {
                     "error": (
                         f"Refusing to strip: uns['batch_condition'] references CAP column(s) "
-                        f"{batched} — that list declares the experiment's batch covariates, so "
-                        f"removing one changes the declaration. Edit uns['batch_condition'] "
-                        f"first if that is intended."
+                        f"{refs.batch_condition} — that list declares the experiment's batch "
+                        f"covariates, so removing one changes the declaration. Edit "
+                        f"uns['batch_condition'] first if that is intended."
                     )
                 }
             uns_keys_present: list[str] = []
@@ -221,9 +221,7 @@ def strip_cap_annotations(path: str) -> dict:
                 # orphan them (the validator flags colors without a matching
                 # obs column) — and those ALREADY orphaned by an earlier
                 # era's overwrite, which deleted columns but left palettes.
-                uns_keys_present += [
-                    k for k in sorted(uns.keys()) if k.endswith("_colors") and "--" in k.removesuffix("_colors")
-                ]
+                uns_keys_present += cap_palette_keys(sorted(uns.keys()))
 
         if not uns_keys_present and not obs_columns_present:
             # nothing_to_strip lets a caller composing this tool (copy_cap's

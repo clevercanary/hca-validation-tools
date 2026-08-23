@@ -24,14 +24,21 @@ from pathlib import Path
 import h5py
 
 from ._io import (
-    _decode_bytes,
-    read_batch_condition,
     read_edit_log_h5py,
     read_uns,
     update_column_order,
     write_edit_log_h5py,
 )
-from .cap import CAP_METADATA_KEY, LEGACY_LAYOUT_DESCRIPTION, is_legacy_cap_layout
+from .cap import CAP_METADATA_KEY
+from .guards import (
+    batch_condition_refusal,
+    detect_obs_references,
+    direct_members,
+    legacy_layout_problems,
+    malformed_name_problems,
+    obs_index_problems,
+    require_obs_group,
+)
 from .write import (
     build_edit_log,
     cleanup_previous_version,
@@ -53,65 +60,26 @@ def _validate_request(obs: h5py.Group, uns: h5py.Group | None, columns: list[str
     """
     problems: list[str] = []
 
-    # h5py resolves a name containing '/' as an HDF5 link path, not as a dict
-    # key: a leading slash resolves from the file root, and inner slashes
-    # traverse subgroups. So `"/X" in obs` is True whenever the file has a root
-    # X, and `del obs["/X"]` unlinks the expression matrix. Rejecting these
-    # up front is what keeps every check below — which compares plain strings —
-    # from disagreeing with what the delete would actually do.
     malformed = [c for c in columns if "/" in c or not c.strip()]
-    if malformed:
-        problems.append(f"not valid obs column names (a column name cannot contain '/' or be blank): {malformed}")
+    problems += malformed_name_problems(columns)
+    problems += obs_index_problems(obs, columns, consequence="deleting it would destroy the file")
+    problems += legacy_layout_problems(uns)
 
-    # The index is a dataset in the obs group like any column, so a caller can
-    # name it. Deleting it destroys the file's cell identities.
-    index_name = _decode_bytes(obs.attrs.get("_index", "_index"))
-    if index_name in columns:
-        problems.append(f"'{index_name}' is the obs index, not a column — deleting it would destroy the file")
-
-    # Columns that something in uns *references*. A dropped column leaves the
-    # reference dangling — an incoherence this tool cannot repair, because
-    # rewriting uns['batch_condition'] means rewriting a claim the file makes,
-    # which is a curation decision and not this tool's to take (#614's
-    # repair-or-refuse rule). Contrast `uns['<col>_colors']`, which the column
-    # *owns* and which is therefore deleted alongside it (see
-    # :func:`drop_obs_columns`).
-    batched = sorted(set(columns) & set(read_batch_condition(uns)))
-    if batched:
+    # This tool's policy for each way something can reference a column
+    # (#614's repair-or-refuse rule):
+    #   batch_condition -> REFUSE   (a drop has no new name to re-point at)
+    #   palettes        -> CASCADE  (the column owns it; deleted alongside it
+    #                                in drop_obs_columns, not refused here)
+    #   CAP columns     -> REFUSE   (CAP material is never patched in place)
+    refs = detect_obs_references(uns, columns)
+    if refs.batch_condition:
+        problems.append(batch_condition_refusal(refs.batch_condition, verbing="dropping"))
+    if refs.cap_columns:
         problems.append(
-            f"referenced by uns['batch_condition']: {batched} — that list declares "
-            f"which columns define the experiment's batches, so dropping one changes "
-            f"the declaration. Edit uns['batch_condition'] first if that is intended"
+            f"look like CAP annotation-set columns: {refs.cap_columns} — the set is declared "
+            f"in uns[{CAP_METADATA_KEY!r}], which would still require them. Remove the "
+            f"annotation set instead of its columns"
         )
-
-    # The deprecated top-level CAP layout is refused outright, matching
-    # copy_cap_annotations. Rejecting the whole file regardless of what the
-    # request names is the point: the check below reads uns['cap_metadata'], so
-    # in this layout it sees no declaration and every CAP column looks
-    # droppable — the bug this exists to close (#552).
-    if is_legacy_cap_layout(uns):
-        problems.append(f"the file uses {LEGACY_LAYOUT_DESCRIPTION}, which is not supported")
-
-    # CAP annotation sets declare themselves in uns['cap_metadata'] and require
-    # obs columns named '<set>--<suffix>'; dropping one leaves the declared set
-    # broken. Keyed on the '--' convention rather than on parsing cap_metadata,
-    # which may be stored as either a group or a JSON string: over-refusing a
-    # '--' name in a CAP file is the safe direction, and no column this tool
-    # targets uses that separator.
-    #
-    # Keyed on CAP_METADATA_KEY rather than the literal, because this check and
-    # the legacy one above are a pair: between them they must cover both layouts.
-    # Renaming the canonical key would move cap.py and the check above together
-    # and leave a literal here still testing the old name — which is #552 again,
-    # in the other direction.
-    if uns is not None and CAP_METADATA_KEY in uns:
-        cap_cols = sorted(c for c in columns if "--" in c)
-        if cap_cols:
-            problems.append(
-                f"look like CAP annotation-set columns: {cap_cols} — the set is declared "
-                f"in uns[{CAP_METADATA_KEY!r}], which would still require them. Remove the "
-                f"annotation set instead of its columns"
-            )
 
     # Membership against the group's direct children, not `c in obs` — the
     # latter would resolve link paths and so accept names that point outside
@@ -124,7 +92,7 @@ def _validate_request(obs: h5py.Group, uns: h5py.Group | None, columns: list[str
     # "/X" is necessarily absent from `obs.keys()` too, and listing it under both
     # problems implied its only fault was being missing — which would have sent a
     # caller looking for a typo rather than reading the path-name rule above.
-    members = set(obs.keys())
+    members = direct_members(obs)
     absent = [c for c in columns if c not in members and c not in malformed]
     if absent:
         problems.append(f"not present in obs: {absent}")
@@ -218,16 +186,15 @@ def drop_obs_columns(path: str, columns: list[str] | tuple[str, ...]) -> dict:
             return {"error": f"File not found: {path}"}
 
         with h5py.File(path, "r") as f_in:
-            obs = f_in.get("obs")
-            if obs is None:
-                return {"error": "File has no obs group"}
-            if not isinstance(obs, h5py.Group):
-                return {"error": "obs is not a group — the file predates the modern h5ad layout"}
+            obs, obs_error = require_obs_group(f_in)
+            if obs_error is not None:
+                return obs_error
+            assert obs is not None
             uns = read_uns(f_in)
             problems = _validate_request(obs, uns, requested)
             # Palettes to remove with their columns. Resolved here, from the
             # same read that validated, so the write phase does no discovery.
-            owned_uns_keys = [k for c in requested if (k := f"{c}_colors") in (uns or {})]
+            owned_uns_keys = list(detect_obs_references(uns, requested).palettes.values())
 
         if problems:
             return {"error": "Refusing to drop: " + "; ".join(problems)}

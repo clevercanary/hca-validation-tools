@@ -186,16 +186,22 @@ def ensure_provenance_group(f: h5py.File) -> h5py.Group:
     return require_stamped_group(f, "uns/provenance")
 
 
-def read_uns(f: h5py.File) -> h5py.Group | None:
-    """The file's uns group, or None when it is absent or not a group.
+def read_group(parent: h5py.File | h5py.Group, name: str) -> h5py.Group | None:
+    """``parent[name]`` as a group, or None when absent or not a group.
 
-    ``File.get`` can hand back a Dataset on a malformed file, and every caller
-    treats uns as a mapping — where h5py's answers on a Dataset range from
+    ``get`` can hand back a Dataset on a malformed file, and callers treat
+    these nodes as mappings — where h5py's answers on a Dataset range from
     AttributeError to a silently wrong ``in`` (#617). Narrowing here, once,
-    is what keeps the call sites honest.
+    is what keeps the call sites honest; :func:`read_uns` and
+    :func:`read_provenance` are its two named shorthands.
     """
-    uns = f.get("uns")
-    return uns if isinstance(uns, h5py.Group) else None
+    node = parent.get(name)
+    return node if isinstance(node, h5py.Group) else None
+
+
+def read_uns(f: h5py.File) -> h5py.Group | None:
+    """The file's uns group, or None when it is absent or not a group."""
+    return read_group(f, "uns")
 
 
 def read_batch_condition(uns: h5py.Group | None) -> list[str]:
@@ -221,14 +227,10 @@ def read_batch_condition(uns: h5py.Group | None) -> list[str]:
 
 
 def read_provenance(uns: h5py.Group | None) -> h5py.Group | None:
-    """``uns['provenance']`` as a group, or None when absent or not a group.
-
-    The child-level twin of :func:`read_uns`, for the same reason.
-    """
+    """``uns['provenance']`` as a group, or None when absent or not a group."""
     if uns is None:
         return None
-    prov = uns.get("provenance")
-    return prov if isinstance(prov, h5py.Group) else None
+    return read_group(uns, "provenance")
 
 
 def read_edit_log_h5py(f: h5py.File) -> str:

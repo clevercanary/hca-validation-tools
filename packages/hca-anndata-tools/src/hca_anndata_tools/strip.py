@@ -21,6 +21,7 @@ import h5py
 
 from ._io import (
     read_edit_log_h5py,
+    read_group,
     update_column_order,
     write_edit_log_h5py,
 )
@@ -122,8 +123,8 @@ def strip_forbidden_obs_columns(path: str) -> dict:
                         "of converting to HCA layout."
                     )
                 }
-            obs = f_in.get("obs")
-            if not isinstance(obs, h5py.Group):
+            obs = read_group(f_in, "obs")
+            if obs is None:
                 return {"error": "File has no obs group"}
             present = [c for c in _OBS_COLUMNS_TO_STRIP if c in obs]
 
