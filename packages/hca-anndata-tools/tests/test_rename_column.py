@@ -35,9 +35,8 @@ def _no_snapshot(path):
 def test_rename_preserves_values_dtype_categories_and_position(tmp_path):
     """A rename is invisible to everything except the name.
 
-    Also the motivating case: author_cell_type is itself schema-named, so this
-    doubles as proof that no schema-tier refusal applies — a rename loses
-    nothing, unlike the drop that guard exists for."""
+    Also the motivating case: author_cell_type is itself schema-named, and
+    schema names carry no refusal here — a rename loses nothing."""
     path = _make(
         tmp_path / "t.h5ad",
         {

@@ -84,13 +84,15 @@ def test_drop_is_atomic_across_valid_and_invalid(sample_h5ad_for_write):
 
 
 def test_drop_reports_every_problem_at_once(sample_h5ad_for_write):
-    """A caller who names two bad columns learns about both in one round trip."""
-    result = drop_obs_columns(str(sample_h5ad_for_write), ["/obs/sex", "typo_column"])
+    """A caller who names two bad columns learns about both in one round trip:
+    a coherence refusal on a name they meant plus an absent name they fumbled."""
+    with h5py.File(sample_h5ad_for_write, "r") as f:
+        index_name = _decode_bytes(f["obs"].attrs.get("_index", "_index"))
+
+    result = drop_obs_columns(str(sample_h5ad_for_write), [index_name, "typo_column"])
 
     assert "error" in result
-    # The slash name is refused by the path-name rule; the absent list must
-    # still be populated by the other name rather than short-circuited away.
-    assert "/obs/sex" in result["error"]
+    assert "obs index" in result["error"]
     assert "typo_column" in result["error"]
 
 
@@ -241,10 +243,7 @@ def test_drop_reports_each_bad_name_once(sample_h5ad_for_write):
 
 
 def test_drop_permits_schema_required_column(sample_h5ad_for_write):
-    """donor_id is schema-required, and the drop proceeds anyway: whether the
-    result is valid is the validator's verdict, not this tool's (#614/#619).
-    The caller may be mid-sequence, and the original survives the snapshot
-    chain regardless."""
+    """donor_id is schema-required and drops anyway (#614/#619)."""
     _add_obs_cols(sample_h5ad_for_write, "donor_id")
 
     result = drop_obs_columns(str(sample_h5ad_for_write), ["donor_id"])
@@ -266,17 +265,17 @@ def test_drop_permits_schema_optional_column(sample_h5ad_for_write):
     assert result["obs_columns_dropped"] == ["author_batch_notes"]
 
 
-def test_drop_chain_keeps_the_original(sample_h5ad_for_write):
+def test_drop_chain_keeps_the_original(sample_h5ad_for_write, monkeypatch):
     """Two consecutive drops from the same lineage: the original file survives
     both, and exactly one (the latest) snapshot remains — the property the
     schema-guard removal leans on (#619)."""
     _add_obs_cols(sample_h5ad_for_write, "junk_a", "junk_b")
+    # Distinct timestamps without paying the real second (see test_strip_cap).
+    ticks = iter(["2026-08-23-00-00-01", "2026-08-23-00-00-02"])
+    monkeypatch.setattr("hca_anndata_tools.write.generate_timestamp", lambda: next(ticks))
 
     r1 = drop_obs_columns(str(sample_h5ad_for_write), ["junk_a"])
     assert "error" not in r1
-    import time
-
-    time.sleep(1.1)  # distinct snapshot timestamps (second resolution)
     r2 = drop_obs_columns(str(sample_h5ad_for_write), ["junk_b"])
     assert "error" not in r2
 
@@ -299,11 +298,8 @@ def test_drop_refuses_obs_index(sample_h5ad_for_write):
 
 
 def test_drop_permits_author_cell_type(sample_h5ad_for_write):
-    """The #605 case the old guard nearly blocked: renaming `cell_type_label`
-    to `author_cell_type` needs an existing (empty) `author_cell_type` dropped
-    first, and the schema guard refused it because the name is schema-named.
-    Under #614's principle the drop proceeds; whether the result is valid is
-    the validator's verdict."""
+    """The #605 case the old guard nearly blocked: dropping an (empty)
+    author_cell_type so cell_type_label can be renamed into it."""
     _add_obs_cols(sample_h5ad_for_write, "author_cell_type")
 
     result = drop_obs_columns(str(sample_h5ad_for_write), ["author_cell_type"])
@@ -312,7 +308,7 @@ def test_drop_permits_author_cell_type(sample_h5ad_for_write):
     assert result["obs_columns_dropped"] == ["author_cell_type"]
 
 
-# --- R3: derived labels are not guarded --------------------------------------
+# --- R3: derived and producer columns drop freely ----------------------------
 
 
 def test_drop_allows_canonical_derived_labels(sample_h5ad_for_write):
@@ -326,7 +322,7 @@ def test_drop_allows_canonical_derived_labels(sample_h5ad_for_write):
         assert col not in written.obs.columns
 
 
-# --- R4: the guard must not block the use case the tool exists for -----------
+# --- R4: the motivating use cases stay unblocked -----------------------------
 
 
 def test_drop_removes_ethnicity_under_noncanonical_names(sample_h5ad_for_write):

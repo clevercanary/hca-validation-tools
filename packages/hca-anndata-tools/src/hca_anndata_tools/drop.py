@@ -92,8 +92,7 @@ def _validate_request(obs: h5py.Group, uns: h5py.Group | None, columns: list[str
         problems.append(f"the file uses {LEGACY_LAYOUT_DESCRIPTION}, which is not supported")
 
     # CAP annotation sets declare themselves in uns['cap_metadata'] and require
-    # obs columns named '<set>--<suffix>'. Those names are not schema-named, so
-    # nothing above catches them, and dropping one leaves the declared set
+    # obs columns named '<set>--<suffix>'; dropping one leaves the declared set
     # broken. Keyed on the '--' convention rather than on parsing cap_metadata,
     # which may be stored as either a group or a JSON string: over-refusing a
     # '--' name in a CAP file is the safe direction, and no column this tool
@@ -117,8 +116,8 @@ def _validate_request(obs: h5py.Group, uns: h5py.Group | None, columns: list[str
     # latter would resolve link paths and so accept names that point outside
     # obs entirely (see the malformed check above).
     #
-    # Reported last: a caller reading the error wants the verdict on the
-    # names they meant more than the spelling of the ones they fumbled.
+    # Reported last: a refusal on a name the caller meant matters more than
+    # the spelling of one they fumbled.
     #
     # Malformed names are excluded so each bad name is reported once. A name like
     # "/X" is necessarily absent from `obs.keys()` too, and listing it under both
@@ -147,8 +146,8 @@ def drop_obs_columns(path: str, columns: list[str] | tuple[str, ...]) -> dict:
     dropped required column leaves a file the validator will reject, and that
     is the validator's verdict to deliver, not this tool's: the caller may be
     mid-sequence (dropping a column to regenerate it, say), and the original
-    file always survives the snapshot chain, so nothing is unrecoverable
-    (#614, #619). What *is* refused is anything that breaks coherence: the obs
+    (non-timestamped) file always survives the snapshot chain, so nothing is
+    unrecoverable (#614, #619). What *is* refused is anything that breaks coherence: the obs
     index (cell identities), names containing ``/`` (they resolve as HDF5 link
     paths), columns referenced by ``uns['batch_condition']``, CAP
     annotation-set columns, and the deprecated top-level CAP layout.
@@ -172,10 +171,8 @@ def drop_obs_columns(path: str, columns: list[str] | tuple[str, ...]) -> dict:
             edit snapshot before operating. CellxGENE and HCA layouts are both
             fine — unlike ``strip_forbidden_obs_columns``, this makes no
             CellxGENE-layout refusal, because removing an arbitrary column is
-            layout-agnostic. A file using the deprecated top-level CAP layout
-            (``uns['cellannotation_metadata']`` /
-            ``uns['cellannotation_schema_version']``) *is* refused outright,
-            whatever columns are named, because that layout is not supported.
+            layout-agnostic. (The deprecated top-level CAP layout is the one
+            file-shape refusal; see above.)
         columns: Obs column names to drop. Duplicates are ignored; order is
             preserved in the result. Annotated as list-or-tuple rather than
             ``Sequence[str]`` deliberately: ``str`` satisfies ``Sequence[str]``,

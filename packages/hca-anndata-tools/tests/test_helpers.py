@@ -365,6 +365,7 @@ def test_build_edit_log_corrupt_json(tmp_path):
 
 
 def test_cleanup_deletes_timestamped(tmp_path):
+    """A prior snapshot is reaped, keeping the lineage at original + latest."""
     old = tmp_path / "file-edit-2026-01-01-00-00-00.h5ad"
     new = tmp_path / "file-edit-2026-01-02-00-00-00.h5ad"
     old.write_bytes(b"old")
@@ -375,6 +376,11 @@ def test_cleanup_deletes_timestamped(tmp_path):
 
 
 def test_cleanup_preserves_original(tmp_path):
+    """The recoverability premise of #614/#619: only files wearing the
+    toolkit's own '-edit-<timestamp>' suffix are ever reaped, so the caller's
+    original survives every edit and any drop can be re-run from it.
+    (Corollary: an input file already named with that suffix is
+    indistinguishable from a snapshot and is reaped by the next edit.)"""
     original = tmp_path / "file.h5ad"
     new = tmp_path / "file-edit-2026-01-01-00-00-00.h5ad"
     original.write_bytes(b"original")

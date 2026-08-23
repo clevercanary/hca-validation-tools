@@ -7,11 +7,9 @@ stands: strip removes a fixed privacy list, drop removes caller-named columns
 whose data is redundant, and this renames a column whose *data* is real and
 whose *name* is wrong.
 
-That distinction is why this module carries none of drop's schema-tier
-refusals. Dropping an optional schema column discards producer data that
-cannot be reconstructed; renaming preserves every value and is reversible by
-renaming back. Promoting producer data into its canonical schema name is a
-normal curation act — nee2023's ``cell_type_label`` holds the authors' own
+Like drop, this tool guards coherence, not validity (#614): renaming
+preserves every value and is reversible by renaming back. Promoting producer
+data into its canonical schema name is a normal curation act — nee2023's ``cell_type_label`` holds the authors' own
 cell-type calls, and ``author_cell_type`` is the schema's name for exactly
 that (see clevercanary/hca-ingest-coordination#24).
 """
@@ -202,10 +200,10 @@ def rename_obs_column(path: str, column: str, new_name: str) -> dict:
     the system of record, and the workflow strips a set wholesale and re-copies
     it from a fresh export.
 
-    Renaming a schema-*required* column **away** is *not* refused, though
-    ``drop_obs_columns`` refuses its equivalent. That is deliberate: leaving the
-    file short of a required column makes it **invalid**, which is
-    ``validate_schema``'s verdict to deliver, not this tool's to pre-empt. The
+    Renaming a schema-*required* column **away** is *not* refused (nor is
+    dropping one, since #619). Leaving the file short of a required column
+    makes it **invalid**, which is ``validate_schema``'s verdict to deliver,
+    not this tool's to pre-empt. The
     caller's next move may well restore it, and a tool cannot see that far.
     What this tool does owe the caller is a **coherent** file — no dangling
     references, no destroyed cell identities — which is what every gate above
