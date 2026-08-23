@@ -24,6 +24,7 @@ import pandas as pd
 
 from ._io import (
     _decode_bytes,
+    direct_members,
     obs_index_name,
     read_categorical_data,
     read_edit_log_h5py,
@@ -33,7 +34,7 @@ from ._io import (
     replace_string_dataset,
     write_edit_log_h5py,
 )
-from .guards import direct_members, is_malformed_name, legacy_layout_problems, require_obs_group
+from .guards import is_malformed_name, legacy_layout_problems, require_obs_group
 from .inspect import _read_schema_version
 from .write import (
     SAME_SECOND_SNAPSHOT_ERROR,

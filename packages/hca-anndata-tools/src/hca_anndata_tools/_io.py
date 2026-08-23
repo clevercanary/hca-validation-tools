@@ -17,6 +17,8 @@ import pandas as pd
 from anndata.io import write_elem
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     import numpy as np
 
 # The HCA placeholder vocabulary (case-insensitive): obs values that mean
@@ -398,12 +400,13 @@ def replace_string_dataset(parent: h5py.Group, name: str, data: np.ndarray) -> N
         new_ds.attrs[key] = attr_value
 
 
-def compact_categories(categories: list[str], codes: np.ndarray) -> tuple[list[str], np.ndarray]:
+def compact_categories(categories: list[str], codes: np.ndarray) -> tuple[list[str], np.ndarray, list[int]]:
     """Drop categories no code references and remap the codes accordingly.
 
-    Codes below 0 (NaN) stay -1. Returns the kept categories and the remapped
-    codes as int64 — :func:`replace_categorical_column` sizes the on-disk
-    dtype itself.
+    Codes below 0 (NaN) stay -1. Returns the kept categories, the remapped
+    codes as int64 (:func:`replace_categorical_column` sizes the on-disk dtype
+    itself), and the *positions* the kept categories held before — which
+    :func:`remap_palette` needs to keep a per-category palette aligned.
     """
     import numpy as np
 
@@ -421,7 +424,55 @@ def compact_categories(categories: list[str], codes: np.ndarray) -> tuple[list[s
     lookup[used] = np.arange(len(used))
     new_codes = np.full(codes.shape, -1, dtype=np.int64)
     new_codes[valid] = lookup[codes[valid]]
-    return kept, new_codes
+    return kept, new_codes, used.tolist()
+
+
+def direct_members(group: h5py.Group) -> set[str]:
+    """A group's direct children, for membership tests.
+
+    Membership against this set, not ``name in group`` — h5py's
+    ``__contains__`` resolves link paths, so it accepts names that point
+    outside the group entirely (the ``/`` trap ``guards.is_malformed_name``
+    rejects). True of any group, which is why uns lookups use it too.
+    """
+    return set(group.keys())
+
+
+def remap_palette(uns: h5py.Group | None, key: str | None, kept: Sequence[int], n_before: int) -> str | None:
+    """Keep only the colours of the categories that survived, by position.
+
+    ``uns['<column>_colors']`` is positionally aligned to the column's
+    categories, so removing a category shifts every colour after it — and the
+    HCA validator checks only the palette's *length*, so a file whose lengths
+    happen to still agree is simply mis-coloured with nothing reported. Every
+    tool that removes a category owes this remap (#624).
+
+    Takes the surviving positions rather than calling
+    :func:`compact_categories` itself, because not every caller may use that
+    function: ``merge_obs_categories`` must not, since it drops every
+    unreferenced category and would discard one left empty for its own reasons.
+
+    Returns the key it rewrote, or None when there was nothing to do: no
+    palette, or one this function cannot safely interpret — a length that
+    already disagrees with ``n_before``, or a node that is not a string array.
+    An already-broken palette is the validator's to report, not this
+    function's to guess at.
+    """
+    import numpy as np
+
+    if uns is None or key is None or key not in direct_members(uns):
+        return None
+    node = uns[key]
+    # A palette that is not a string array is not one we can realign — and
+    # read_string_dataset's asstr() would raise on it, after the snapshot has
+    # already been copied. Treated like a mismatched length: left alone.
+    if not isinstance(node, h5py.Dataset) or node.ndim != 1 or not h5py.check_string_dtype(node.dtype):
+        return None
+    colors = list(read_string_dataset(uns, key))
+    if len(colors) != n_before:
+        return None
+    write_elem(uns, key, np.array([colors[i] for i in kept], dtype=object))
+    return key
 
 
 def _codes_dtype(n_categories: int, original: np.dtype) -> np.dtype:

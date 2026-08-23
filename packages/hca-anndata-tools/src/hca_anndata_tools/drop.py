@@ -24,6 +24,7 @@ from pathlib import Path
 import h5py
 
 from ._io import (
+    direct_members,
     read_edit_log_h5py,
     read_uns,
     update_column_order,
@@ -34,7 +35,6 @@ from .guards import (
     ObsColumnReferences,
     batch_condition_refusal,
     detect_obs_references,
-    direct_members,
     is_malformed_name,
     legacy_layout_problems,
     malformed_name_problems,

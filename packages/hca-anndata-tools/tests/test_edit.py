@@ -243,17 +243,18 @@ def test_set_uns_string_to_list_field_rejected(sample_h5ad_for_write):
 # --- replace_placeholder_values ---
 
 
-def _make_placeholder_h5ad(tmp_path, col_values, col_name="test_col"):
+def _make_placeholder_h5ad(tmp_path, col_values, col_name="test_col", uns=None, **extra_obs):
     """Create a test h5ad with a categorical column containing given values."""
     n = len(col_values)
     obs = pd.DataFrame(
-        {col_name: pd.Categorical(col_values)},
+        {col_name: pd.Categorical(col_values), **extra_obs},
         index=[f"cell_{i}" for i in range(n)],
     )
     adata = ad.AnnData(
         X=sp.csr_matrix((n, 2), dtype=np.float32),
         obs=obs,
     )
+    adata.uns.update(uns or {})
     path = tmp_path / "placeholders_test.h5ad"
     adata.write_h5ad(path)
     return path
@@ -403,3 +404,62 @@ def test_view_edit_log_auto_resolves_latest(sample_h5ad_for_write):
 def test_view_edit_log_bad_path():
     result = view_edit_log("/nonexistent/file.h5ad")
     assert "error" in result
+
+
+# --- #624: the palette must lose the positions the categories lost ----------
+
+
+_GRADES = ["a", "a", "b", "unknown", "z", "z"]  # sorted categories: a, b, unknown, z
+_GRADE_COLORS = np.array(["#aaa", "#bbb", "#unk", "#zzz"], dtype=object)
+
+
+def _graded(tmp_path, uns=None, **extra_obs):
+    return _make_placeholder_h5ad(
+        tmp_path, _GRADES, col_name="grade", uns={"grade_colors": _GRADE_COLORS, **(uns or {})}, **extra_obs
+    )
+
+
+def test_replace_placeholders_recolours_by_position(tmp_path):
+    """Blanking 'unknown' drops its category, so '#zzz' must move with 'z'
+    rather than shifting onto it. Asserted as a mapping, not a length — see
+    remap_palette for why the length is what made this silent."""
+    result = replace_placeholder_values(str(_graded(tmp_path)), ["grade"])
+
+    assert "error" not in result
+    assert result["palettes_remapped"] == ["grade_colors"]
+    out = ad.read_h5ad(result["output_path"])
+    cats = list(out.obs["grade"].cat.categories)
+    assert dict(zip(cats, out.uns["grade_colors"], strict=True)) == {"a": "#aaa", "b": "#bbb", "z": "#zzz"}
+
+
+def test_replace_placeholders_leaves_another_columns_palette_alone(tmp_path):
+    """Only the rewritten column's palette is positionally invalidated."""
+    path = _graded(
+        tmp_path,
+        uns={"other_colors": np.array(["#111", "#222"], dtype=object)},
+        other=pd.Categorical(["x", "y"] * 3),
+    )
+
+    result = replace_placeholder_values(str(path), ["grade"])
+
+    assert result["palettes_remapped"] == ["grade_colors"]
+    assert list(ad.read_h5ad(result["output_path"]).uns["other_colors"]) == ["#111", "#222"]
+
+
+def test_replace_placeholders_leaves_a_mismatched_palette_alone(tmp_path):
+    """An already-broken palette is the validator's to report, not ours."""
+    path = _graded(tmp_path, uns={"grade_colors": np.array(["#111", "#222"], dtype=object)})
+
+    result = replace_placeholder_values(str(path), ["grade"])
+
+    assert result["palettes_remapped"] == []
+    assert list(ad.read_h5ad(result["output_path"]).uns["grade_colors"]) == ["#111", "#222"]
+
+
+def test_replace_placeholders_reports_no_remap_without_a_palette(tmp_path):
+    path = _make_placeholder_h5ad(tmp_path, _GRADES, col_name="grade")
+
+    result = replace_placeholder_values(str(path), ["grade"])
+
+    assert "error" not in result
+    assert result["palettes_remapped"] == []

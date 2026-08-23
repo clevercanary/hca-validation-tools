@@ -18,12 +18,13 @@ from pathlib import Path
 
 import h5py
 import numpy as np
-from anndata.io import write_elem
 
 from ._io import (
+    direct_members,
     read_edit_log_h5py,
     read_string_dataset,
     read_uns,
+    remap_palette,
     replace_categorical_column,
     verify_categorical_integrity,
     write_edit_log_h5py,
@@ -31,7 +32,6 @@ from ._io import (
 from .guards import (
     ObsColumnReferences,
     detect_obs_references,
-    direct_members,
     legacy_layout_problems,
     obs_name_problems,
     require_obs_group,
@@ -223,12 +223,7 @@ def merge_obs_categories(path: str, column: str, from_value: str, to_value: str)
             stale_label_column = column.removesuffix(_TERM_ID_SUFFIX)
             if stale_label_column == column or stale_label_column not in direct_members(obs):
                 stale_label_column = None
-            # The palette's fate is decided here too: a length that already
-            # disagrees with the categories is not ours to interpret, so it is
-            # left for the validator to report rather than guessed at.
             palette = refs.palettes.get(column)
-            palette_colors = list(read_string_dataset(uns, palette)) if uns and palette else []
-            trim_palette = palette if len(palette_colors) == len(categories) else None
 
         from_index, to_index = categories.index(from_value), categories.index(to_value)
         new_categories = categories[:from_index] + categories[from_index + 1 :]
@@ -255,15 +250,12 @@ def merge_obs_categories(path: str, column: str, from_value: str, to_value: str)
 
             replace_categorical_column(obs_out, column, new_categories, codes)
 
-            # uns['<col>_colors'] is positionally aligned to the categories, so
-            # the entry to drop is exactly from_index — the cascade
-            # rename_obs_column performs by moving the key, expressed here on
-            # its contents. Left alone it would recolour every category after
-            # the merged-away one, and the validator checks only the palette's
-            # *length*, so the mis-colouring would pass silently.
-            if trim_palette:
-                trimmed = palette_colors[:from_index] + palette_colors[from_index + 1 :]
-                write_elem(f_out["uns"], trim_palette, np.array(trimmed, dtype=object))
+            # The merged-away category takes its colour with it: the palette is
+            # positionally aligned, so the surviving positions are every index
+            # but from_index. Shared with replace_placeholder_values, which
+            # removes categories the same way for a different reason (#624).
+            kept = [i for i in range(len(categories)) if i != from_index]
+            palette_trimmed = palette if remap_palette(read_uns(f_out), palette, kept, len(categories)) else None
 
             entry = make_edit_entry(
                 operation="merge_obs_categories",
@@ -301,7 +293,7 @@ def merge_obs_categories(path: str, column: str, from_value: str, to_value: str)
             "cells_recoded": cells_recoded,
             "categories_remaining": len(new_categories),
             "stale_label_column": stale_label_column,
-            "palette_trimmed": trim_palette,
+            "palette_trimmed": palette_trimmed,
         }
 
     except Exception as e:

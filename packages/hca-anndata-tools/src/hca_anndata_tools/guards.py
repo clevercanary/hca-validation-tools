@@ -30,7 +30,7 @@ from dataclasses import dataclass
 
 import h5py
 
-from ._io import obs_index_name, read_batch_condition
+from ._io import direct_members, obs_index_name, read_batch_condition
 from .cap import LEGACY_LAYOUT_DESCRIPTION, cap_obs_columns, is_cap_declared, is_legacy_cap_layout
 
 __all__ = [
@@ -38,7 +38,6 @@ __all__ = [
     "ObsColumnReferences",
     "batch_condition_refusal",
     "detect_obs_references",
-    "direct_members",
     "is_malformed_name",
     "legacy_layout_problems",
     "malformed_name_problems",
@@ -110,17 +109,6 @@ def obs_index_problems(obs: h5py.Group, names: Iterable[str], *, verbing: str) -
     if index_name in names:
         return [f"'{index_name}' is the obs index, not a column — {verbing} it would destroy the file"]
     return []
-
-
-def direct_members(group: h5py.Group) -> set[str]:
-    """A group's direct children, for membership tests.
-
-    Membership against this set, not ``name in group`` — h5py's
-    ``__contains__`` resolves link paths, so it accepts names that point
-    outside the group entirely (the ``/`` trap :func:`is_malformed_name`
-    rejects). True of any group, which is why uns lookups use it too.
-    """
-    return set(group.keys())
 
 
 def obs_name_problems(obs: h5py.Group, names: Iterable[str], *, verbing: str) -> list[str]:

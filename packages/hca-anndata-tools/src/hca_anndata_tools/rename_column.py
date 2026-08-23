@@ -23,6 +23,7 @@ import numpy as np
 from anndata.io import write_elem
 
 from ._io import (
+    direct_members,
     read_column_order,
     read_edit_log_h5py,
     read_uns,
@@ -32,7 +33,6 @@ from .cap import CAP_METADATA_KEY
 from .guards import (
     ObsColumnReferences,
     detect_obs_references,
-    direct_members,
     is_malformed_name,
     legacy_layout_problems,
     malformed_name_problems,

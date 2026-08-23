@@ -6,14 +6,13 @@ each tool's *policy* — what it does with what these find.
 
 import pytest
 
-from hca_anndata_tools._io import obs_index_name
+from hca_anndata_tools._io import direct_members, obs_index_name
 from hca_anndata_tools.cap import cap_palette_keys
 from hca_anndata_tools.guards import (
     GuardRefusal,
     ObsColumnReferences,
     batch_condition_refusal,
     detect_obs_references,
-    direct_members,
     is_malformed_name,
     legacy_layout_problems,
     malformed_name_problems,

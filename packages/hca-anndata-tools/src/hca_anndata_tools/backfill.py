@@ -27,6 +27,7 @@ import pandas as pd
 from ._io import (
     DEFAULT_PLACEHOLDERS,
     check_duplicate_ids,
+    direct_members,
     is_missing_value,
     obs_index_name,
     read_categorical_data,
@@ -39,7 +40,7 @@ from ._io import (
     verify_categorical_integrity,
     write_edit_log_h5py,
 )
-from .guards import direct_members, is_malformed_name, legacy_layout_problems
+from .guards import is_malformed_name, legacy_layout_problems
 from .write import (
     SAME_SECOND_SNAPSHOT_ERROR,
     _compute_sha256,
