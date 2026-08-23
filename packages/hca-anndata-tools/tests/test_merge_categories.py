@@ -162,20 +162,44 @@ def test_merge_refuses_a_derived_label_with_its_term_id_present(tmp_path, no_sna
     assert no_snapshot(path)
 
 
-def test_merge_refuses_a_column_carrying_a_palette(tmp_path, no_snapshot):
-    """uns['<col>_colors'] is positionally aligned to the categories, so
-    dropping one shifts every colour after it — and the validator only checks
-    the palette's length, so a silently recoloured file can still pass."""
+def test_merge_trims_the_palette_entry_the_category_owned(tmp_path):
+    """uns['<col>_colors'] is positionally aligned to the categories, so the
+    entry to drop is exactly the merged-away category's index. Left alone it
+    would recolour every category after it, and the validator only checks the
+    palette's length — so the mis-colouring would pass silently."""
     path = _make(tmp_path / "nee.h5ad")
     adata = ad.read_h5ad(path)
-    adata.uns["tissue_label_colors"] = np.array(["#111", "#222", "#333"], dtype=object)
+    # categories sort as: Contralateral, Prophylactic, Prophylatctic
+    adata.uns["tissue_label_colors"] = np.array(["#c0c0c0", "#good00", "#typo00"], dtype=object)
     adata.write_h5ad(path)
 
     result = merge_obs_categories(str(path), "tissue_label", _TYPO, _CORRECT)
 
-    assert "error" in result
-    assert "tissue_label_colors" in result["error"]
-    assert no_snapshot(path)
+    assert "error" not in result
+    assert result["palette_trimmed"] is True
+    out = ad.read_h5ad(result["output_path"])
+    colors = list(out.uns["tissue_label_colors"])
+    assert colors == ["#c0c0c0", "#good00"], "the typo's colour goes; the others keep theirs"
+    assert len(colors) == len(out.obs["tissue_label"].cat.categories)
+    assert dict(zip(out.obs["tissue_label"].cat.categories, colors, strict=True)) == {
+        "Contralateral": "#c0c0c0",
+        _CORRECT: "#good00",
+    }, "each surviving category keeps the colour it had"
+
+
+def test_merge_leaves_a_mismatched_palette_alone(tmp_path):
+    """A palette whose length already disagrees with the categories is not
+    ours to interpret — the validator reports it."""
+    path = _make(tmp_path / "nee.h5ad")
+    adata = ad.read_h5ad(path)
+    adata.uns["tissue_label_colors"] = np.array(["#111", "#222"], dtype=object)  # 2 vs 3 categories
+    adata.write_h5ad(path)
+
+    result = merge_obs_categories(str(path), "tissue_label", _TYPO, _CORRECT)
+
+    assert "error" not in result
+    assert result["palette_trimmed"] is False
+    assert list(ad.read_h5ad(result["output_path"]).uns["tissue_label_colors"]) == ["#111", "#222"]
 
 
 def test_merge_allows_a_column_named_by_batch_condition(tmp_path):
@@ -329,6 +353,7 @@ def test_merge_does_not_flag_regeneration_for_a_plain_column(tmp_path):
     result = merge_obs_categories(str(path), "tissue_label", _TYPO, _CORRECT)
 
     assert result["regenerate_labels_required"] is False
+    assert result["palette_trimmed"] is False
 
 
 def test_merge_refuses_a_non_string_categorical(tmp_path):

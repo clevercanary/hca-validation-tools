@@ -18,6 +18,7 @@ from pathlib import Path
 
 import h5py
 import numpy as np
+from anndata.io import write_elem
 
 from ._io import (
     _decode_bytes,
@@ -101,7 +102,9 @@ def _validate_request(
     #   batch_condition -> ALLOW    (the column keeps its name and identity, so
     #                                the declaration still names a real column;
     #                                nothing dangles)
-    #   palettes        -> REFUSE   (see below)
+    #   palettes        -> REPAIR   (positionally aligned to the categories, so
+    #                                the entry to drop is exactly from_index —
+    #                                trimmed in merge_obs_categories below)
     #   CAP columns     -> REFUSE   (CAP is the system of record; a set is
     #                                stripped and re-copied, never edited here)
     refs = detect_obs_references(uns, [column])
@@ -111,18 +114,6 @@ def _validate_request(
             f"exports, so strip the set and re-copy it from a fresh export rather than editing "
             f"its values here"
         )
-    if palette := refs.palettes.get(column):
-        # uns['<col>_colors'] is positionally aligned to the categories, so
-        # dropping one shifts every colour after it. This tool cannot repair
-        # that — it has no way to know which colour the merged-away category
-        # owned — and the validator only checks the palette's *length*, so a
-        # silently recoloured file can still pass.
-        problems.append(
-            f"uns[{palette!r}] is a per-category palette positionally aligned to '{column}', so "
-            f"removing a category would shift every colour after it. Drop the palette first "
-            f"(drop_obs_columns removes it with its column, or delete the uns key), then merge"
-        )
-
     # The coherence guard: a derived label and its term ID must agree. Merging
     # labels alone desyncs them, and the term IDs are the source populate_labels
     # regenerates the labels *from* — so editing the label here would be undone
@@ -160,9 +151,14 @@ def merge_obs_categories(path: str, column: str, from_value: str, to_value: str)
     (:func:`replace_categorical_column`), and the expression matrix is never
     loaded: only the one column group is rewritten in a snapshot copy.
 
+    ``uns['<column>_colors']`` travels with the column: the merged-away
+    category's entry is dropped, since the palette is positionally aligned to
+    the categories. A palette whose length already disagrees with the
+    categories is left alone for the validator to report.
+
     Refuses the obs index, names containing ``/``, a non-categorical column,
-    the deprecated top-level CAP layout, CAP annotation-set columns, a column
-    carrying a per-category palette, and a derived label whose
+    the deprecated top-level CAP layout, CAP annotation-set columns, and a
+    derived label whose
     ``*_ontology_term_id`` source is present. Whether the *result* is valid is
     ``validate_schema``'s verdict, not this tool's (#614).
 
@@ -175,8 +171,9 @@ def merge_obs_categories(path: str, column: str, from_value: str, to_value: str)
 
     Returns:
         Dict with ``output_path``, ``column``, ``from_value``, ``to_value``,
-        ``cells_recoded``, ``categories_remaining`` and
-        ``regenerate_labels_required``, or ``{"error": ...}``.
+        ``cells_recoded``, ``categories_remaining``,
+        ``regenerate_labels_required`` and ``palette_trimmed``, or
+        ``{"error": ...}``.
     """
     try:
         path = resolve_latest(path)
@@ -206,6 +203,7 @@ def merge_obs_categories(path: str, column: str, from_value: str, to_value: str)
             # no other way to know that.
             label_column = column.removesuffix(_TERM_ID_SUFFIX)
             regenerate_labels_required = label_column != column and label_column in direct_members(obs)
+            palette = detect_obs_references(read_uns(f_in), [column]).palettes.get(column)
 
         if problems:
             return {"error": "Refusing to merge: " + "; ".join(problems)}
@@ -218,6 +216,7 @@ def merge_obs_categories(path: str, column: str, from_value: str, to_value: str)
             codes = np.asarray(obs_out[column]["codes"][:])
             expected_valid = int((codes >= 0).sum())
 
+            palette_trimmed = False
             recoded = codes == from_index
             cells_recoded = int(recoded.sum())
             codes[recoded] = to_index
@@ -228,6 +227,22 @@ def merge_obs_categories(path: str, column: str, from_value: str, to_value: str)
             codes[codes > from_index] -= 1
 
             replace_categorical_column(obs_out, column, new_categories, codes)
+
+            # uns['<col>_colors'] is positionally aligned to the categories, so
+            # the entry to drop is exactly from_index — the same cascade
+            # rename_obs_column performs when a palette's column moves. Left
+            # alone it would recolour every category after the merged-away one,
+            # and the validator only checks the palette's *length*, so the
+            # mis-colouring would pass silently. A palette whose length already
+            # disagrees is not ours to interpret, so it is left for the
+            # validator to report.
+            if palette is not None:
+                colors = [_decode_bytes(c) for c in f_out["uns"][palette][:]]
+                if len(colors) == len(categories):
+                    write_elem(
+                        f_out["uns"], palette, np.array(colors[:from_index] + colors[from_index + 1 :], dtype=object)
+                    )
+                    palette_trimmed = True
 
             entry = make_edit_entry(
                 operation="merge_obs_categories",
@@ -269,6 +284,7 @@ def merge_obs_categories(path: str, column: str, from_value: str, to_value: str)
             "cells_recoded": cells_recoded,
             "categories_remaining": len(new_categories),
             "regenerate_labels_required": regenerate_labels_required,
+            "palette_trimmed": palette_trimmed,
         }
 
     except Exception as e:
