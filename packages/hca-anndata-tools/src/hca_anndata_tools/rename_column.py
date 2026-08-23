@@ -20,6 +20,7 @@ from pathlib import Path
 
 import h5py
 import numpy as np
+from anndata.io import write_elem
 
 from ._io import (
     read_batch_condition,
@@ -44,10 +45,6 @@ from .write import (
     resolve_latest,
     snapshot_copy,
 )
-
-# anndata writes uns string arrays with this encoding; batch_condition is
-# rewritten in place, so it has to be recreated the same way.
-_STR_DTYPE = h5py.string_dtype(encoding="utf-8")
 
 # Rows per read when scanning a column for emptiness. Rows, not bytes — the
 # width depends on the column, so this is 64 KB of int8 categorical codes and
@@ -286,10 +283,12 @@ def rename_obs_column(path: str, column: str, new_name: str) -> dict:
             entries = [c for c in batch_condition if c != new_name] if replaced_destination else batch_condition
             updated = [new_name if c == column else c for c in entries]
             if updated != batch_condition and uns_out is not None:
-                del uns_out["batch_condition"]
-                ds = uns_out.create_dataset("batch_condition", data=np.array(updated, dtype=object), dtype=_STR_DTYPE)
-                ds.attrs["encoding-type"] = "string-array"
-                ds.attrs["encoding-version"] = "0.2.0"
+                # write_elem, not a hand-rolled create_dataset: anndata owns the
+                # on-disk encoding of a string array (dtype, encoding-type and
+                # -version attrs) and overwrites the existing key itself. #622
+                # adopts it here — the one element this package rewrites by
+                # hand — rather than keeping a parallel encoder.
+                write_elem(uns_out, "batch_condition", np.array(updated, dtype=object))
 
             if palette and uns_out is not None:
                 uns_out.move(palette, new_palette)
