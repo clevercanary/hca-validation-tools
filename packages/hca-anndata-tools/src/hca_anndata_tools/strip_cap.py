@@ -24,6 +24,7 @@ from pathlib import Path
 import h5py
 
 from ._io import (
+    direct_members,
     obs_index_name,
     read_column_order,
     read_edit_log_h5py,
@@ -42,7 +43,6 @@ from .cap import (
 from .guards import (
     batch_condition_refusal,
     detect_obs_references,
-    direct_members,
     obs_name_problems,
     require_obs_group,
 )

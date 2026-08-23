@@ -38,7 +38,6 @@ __all__ = [
     "ObsColumnReferences",
     "batch_condition_refusal",
     "detect_obs_references",
-    "direct_members",
     "is_malformed_name",
     "legacy_layout_problems",
     "malformed_name_problems",

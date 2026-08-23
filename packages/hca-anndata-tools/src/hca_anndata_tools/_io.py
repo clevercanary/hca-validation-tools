@@ -8,7 +8,6 @@
 from __future__ import annotations
 
 import gc
-from collections.abc import Sequence
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Literal
 
@@ -18,6 +17,8 @@ import pandas as pd
 from anndata.io import write_elem
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     import numpy as np
 
 # The HCA placeholder vocabulary (case-insensitive): obs values that mean
@@ -423,7 +424,7 @@ def compact_categories(categories: list[str], codes: np.ndarray) -> tuple[list[s
     lookup[used] = np.arange(len(used))
     new_codes = np.full(codes.shape, -1, dtype=np.int64)
     new_codes[valid] = lookup[codes[valid]]
-    return kept, new_codes, [int(i) for i in used]
+    return kept, new_codes, used.tolist()
 
 
 def direct_members(group: h5py.Group) -> set[str]:
@@ -431,13 +432,13 @@ def direct_members(group: h5py.Group) -> set[str]:
 
     Membership against this set, not ``name in group`` — h5py's
     ``__contains__`` resolves link paths, so it accepts names that point
-    outside the group entirely (the ``/`` trap :func:`is_malformed_name`
+    outside the group entirely (the ``/`` trap ``guards.is_malformed_name``
     rejects). True of any group, which is why uns lookups use it too.
     """
     return set(group.keys())
 
 
-def remap_palette(uns: h5py.Group | None, key: str | None, kept: Sequence[int], n_before: int) -> bool:
+def remap_palette(uns: h5py.Group | None, key: str | None, kept: Sequence[int], n_before: int) -> str | None:
     """Keep only the colours of the categories that survived, by position.
 
     ``uns['<column>_colors']`` is positionally aligned to the column's
@@ -451,19 +452,27 @@ def remap_palette(uns: h5py.Group | None, key: str | None, kept: Sequence[int], 
     function: ``merge_obs_categories`` must not, since it drops every
     unreferenced category and would discard one left empty for its own reasons.
 
-    Does nothing, and returns False, when there is no palette to remap or when
-    its length already disagrees with ``n_before`` — an already-broken palette
-    is the validator's to report, not this function's to guess at.
+    Returns the key it rewrote, or None when there was nothing to do: no
+    palette, or one this function cannot safely interpret — a length that
+    already disagrees with ``n_before``, or a node that is not a string array.
+    An already-broken palette is the validator's to report, not this
+    function's to guess at.
     """
     import numpy as np
 
     if uns is None or key is None or key not in direct_members(uns):
-        return False
+        return None
+    node = uns[key]
+    # A palette that is not a string array is not one we can realign — and
+    # read_string_dataset's asstr() would raise on it, after the snapshot has
+    # already been copied. Treated like a mismatched length: left alone.
+    if not isinstance(node, h5py.Dataset) or not h5py.check_string_dtype(node.dtype):
+        return None
     colors = list(read_string_dataset(uns, key))
     if len(colors) != n_before:
-        return False
+        return None
     write_elem(uns, key, np.array([colors[i] for i in kept], dtype=object))
-    return True
+    return key
 
 
 def _codes_dtype(n_categories: int, original: np.dtype) -> np.dtype:

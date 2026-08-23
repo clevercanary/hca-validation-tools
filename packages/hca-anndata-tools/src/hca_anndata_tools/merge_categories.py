@@ -20,6 +20,7 @@ import h5py
 import numpy as np
 
 from ._io import (
+    direct_members,
     read_edit_log_h5py,
     read_string_dataset,
     read_uns,
@@ -31,7 +32,6 @@ from ._io import (
 from .guards import (
     ObsColumnReferences,
     detect_obs_references,
-    direct_members,
     legacy_layout_problems,
     obs_name_problems,
     require_obs_group,

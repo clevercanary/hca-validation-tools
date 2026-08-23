@@ -277,8 +277,9 @@ def replace_placeholder_values(
         placeholders: Values to replace. Defaults to the HCA placeholder list.
 
     Returns:
-        Dict with 'output_path', 'columns_fixed', 'total_cells_affected'
-        on success, or 'error' on failure.
+        Dict with 'output_path', 'columns_fixed', 'total_cells_affected' and
+        'palettes_remapped' (the uns palette keys realigned to the surviving
+        categories) on success, or 'error' on failure.
     """
     output_path = None
     try:

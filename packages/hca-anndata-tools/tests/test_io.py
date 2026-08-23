@@ -6,11 +6,11 @@ import pytest
 from anndata.io import write_elem
 
 from hca_anndata_tools._io import (
-    _decode_bytes,
     compact_categories,
     read_batch_condition,
     read_edit_log_h5py,
     read_provenance,
+    read_string_dataset,
     read_uns,
     remap_palette,
     require_stamped_group,
@@ -117,10 +117,8 @@ def test_read_schema_version_group_at_leaf(h5):
 
 # --- remap_palette (#624) ----------------------------------------------------
 #
-# uns['<col>_colors'] is positionally aligned to the categories, so every tool
-# that removes a category owes this remap. Asserted as which colours survive in
-# which order — the length is what the HCA validator already checks, and
-# checking only the length is what let the bug ship silently.
+# Asserted as which colours survive in which order, never as a length — see
+# remap_palette's docstring for why the length is what made the bug silent.
 
 _COLORS = ["#aaa", "#bbb", "#ccc", "#ddd"]
 
@@ -145,8 +143,8 @@ def _palette(h5, colors=_COLORS):
 def test_remap_palette_keeps_the_surviving_positions(h5, kept, expected):
     uns = _palette(h5)
 
-    assert remap_palette(uns, "grade_colors", kept, len(_COLORS)) is True
-    assert [_decode_bytes(c) for c in uns["grade_colors"][:]] == expected
+    assert remap_palette(uns, "grade_colors", kept, len(_COLORS)) == "grade_colors"
+    assert list(read_string_dataset(uns, "grade_colors")) == expected
 
 
 def test_remap_palette_leaves_a_mismatched_length_alone(h5):
@@ -154,20 +152,20 @@ def test_remap_palette_leaves_a_mismatched_length_alone(h5):
     guess at — we cannot know which position each colour was meant for."""
     uns = _palette(h5, ["#111", "#222"])  # 2 against 4 categories
 
-    assert remap_palette(uns, "grade_colors", [0, 2], 4) is False
-    assert [_decode_bytes(c) for c in uns["grade_colors"][:]] == ["#111", "#222"]
+    assert remap_palette(uns, "grade_colors", [0, 2], 4) is None
+    assert list(read_string_dataset(uns, "grade_colors")) == ["#111", "#222"]
 
 
 def test_remap_palette_no_palette_key(h5):
-    assert remap_palette(h5.require_group("uns"), "grade_colors", [0], 1) is False
+    assert remap_palette(h5.require_group("uns"), "grade_colors", [0], 1) is None
 
 
 def test_remap_palette_no_key_named(h5):
-    assert remap_palette(_palette(h5), None, [0], 4) is False
+    assert remap_palette(_palette(h5), None, [0], 4) is None
 
 
 def test_remap_palette_no_uns():
-    assert remap_palette(None, "grade_colors", [0], 4) is False
+    assert remap_palette(None, "grade_colors", [0], 4) is None
 
 
 def test_remap_palette_does_not_resolve_link_paths(h5):
@@ -176,8 +174,8 @@ def test_remap_palette_does_not_resolve_link_paths(h5):
     write_elem(h5, "grade_colors", np.array(["#zzz"], dtype=object))
     uns = h5.require_group("uns")
 
-    assert remap_palette(uns, "/grade_colors", [0], 1) is False
-    assert [_decode_bytes(c) for c in h5["grade_colors"][:]] == ["#zzz"]
+    assert remap_palette(uns, "/grade_colors", [0], 1) is None
+    assert list(read_string_dataset(h5, "grade_colors")) == ["#zzz"]
 
 
 def test_remap_palette_keeps_the_string_encoding(h5):
