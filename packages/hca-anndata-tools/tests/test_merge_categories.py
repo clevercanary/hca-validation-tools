@@ -20,9 +20,10 @@ _CORRECT = "Prophylactic Mastectomy"
 
 
 def _make(path, column="tissue_label", values=None, compression="gzip", **extra_obs):
+    values = _VALUES if values is None else values
     obs = pd.DataFrame(
-        {column: pd.Categorical(values if values is not None else _VALUES), **extra_obs},
-        index=pd.Index([f"c{i}" for i in range(len(values if values is not None else _VALUES))], name="cellID"),
+        {column: pd.Categorical(values), **extra_obs},
+        index=pd.Index([f"c{i}" for i in range(len(values))], name="cellID"),
     )
     n = len(obs)
     adata = ad.AnnData(X=np.zeros((n, 2), dtype=np.float32), obs=obs)
@@ -30,8 +31,18 @@ def _make(path, column="tissue_label", values=None, compression="gzip", **extra_
     return path
 
 
-def _no_snapshot(path):
-    return not any("-edit-" in p.name for p in Path(path).parent.iterdir())
+def _make_cap_file(path, legacy=False):
+    """A CAP-annotated file: an annotation set declared in uns, and the '--'
+    columns that set names (mirrors test_rename_column's builder)."""
+    obs = pd.DataFrame(
+        {"myset--cell_fullname": pd.Categorical(["T cell", "B cel", "T cell"])},
+        index=pd.Index(["c0", "c1", "c2"], name="cellID"),
+    )
+    adata = ad.AnnData(X=np.zeros((3, 2), dtype=np.float32), obs=obs)
+    block = {"cellannotation_schema_version": "1.0.0", "cellannotation_metadata": {"myset": {}}}
+    adata.uns.update(block) if legacy else adata.uns.update({"cap_metadata": dict(block)})
+    adata.write_h5ad(path, compression="gzip")
+    return str(path)
 
 
 # --- the happy path ----------------------------------------------------------
@@ -110,7 +121,7 @@ def test_merge_keeps_the_original(tmp_path):
         ("Nope", "Nope2", "Nope"),
     ],
 )
-def test_merge_refuses_an_absent_value(tmp_path, from_value, to_value, expected):
+def test_merge_refuses_an_absent_value(tmp_path, no_snapshot, from_value, to_value, expected):
     """Both must already exist: creating a category is a different operation,
     and a missing value is a caller mistake, not a silent no-op."""
     path = _make(tmp_path / "nee.h5ad")
@@ -119,10 +130,10 @@ def test_merge_refuses_an_absent_value(tmp_path, from_value, to_value, expected)
 
     assert "error" in result
     assert expected in result["error"]
-    assert _no_snapshot(path)
+    assert no_snapshot(path)
 
 
-def test_merge_refuses_a_non_categorical_column(tmp_path):
+def test_merge_refuses_a_non_categorical_column(tmp_path, no_snapshot):
     """This edits the categories array, not values row by row."""
     path = _make(tmp_path / "nee.h5ad", n_counts=np.arange(10, dtype=float))
 
@@ -130,10 +141,10 @@ def test_merge_refuses_a_non_categorical_column(tmp_path):
 
     assert "error" in result
     assert "not a categorical column" in result["error"]
-    assert _no_snapshot(path)
+    assert no_snapshot(path)
 
 
-def test_merge_refuses_a_derived_label_with_its_term_id_present(tmp_path):
+def test_merge_refuses_a_derived_label_with_its_term_id_present(tmp_path, no_snapshot):
     """The coherence guard: merging a label alone desyncs it from the term ID
     it is derived from, and populate_labels regenerates *from* the term ID."""
     path = _make(
@@ -148,10 +159,10 @@ def test_merge_refuses_a_derived_label_with_its_term_id_present(tmp_path):
     assert "error" in result
     assert "cell_type_ontology_term_id" in result["error"]
     assert "populate_labels" in result["error"]
-    assert _no_snapshot(path)
+    assert no_snapshot(path)
 
 
-def test_merge_refuses_a_column_carrying_a_palette(tmp_path):
+def test_merge_refuses_a_column_carrying_a_palette(tmp_path, no_snapshot):
     """uns['<col>_colors'] is positionally aligned to the categories, so
     dropping one shifts every colour after it — and the validator only checks
     the palette's length, so a silently recoloured file can still pass."""
@@ -164,7 +175,7 @@ def test_merge_refuses_a_column_carrying_a_palette(tmp_path):
 
     assert "error" in result
     assert "tissue_label_colors" in result["error"]
-    assert _no_snapshot(path)
+    assert no_snapshot(path)
 
 
 def test_merge_allows_a_column_named_by_batch_condition(tmp_path):
@@ -182,17 +193,17 @@ def test_merge_allows_a_column_named_by_batch_condition(tmp_path):
     assert list(out.uns["batch_condition"]) == ["tissue_label"], "declaration untouched"
 
 
-def test_merge_refuses_the_obs_index(tmp_path):
+def test_merge_refuses_the_obs_index(tmp_path, no_snapshot):
     path = _make(tmp_path / "nee.h5ad")
 
     result = merge_obs_categories(str(path), "cellID", "c1", "c2")
 
     assert "error" in result
     assert "obs index" in result["error"]
-    assert _no_snapshot(path)
+    assert no_snapshot(path)
 
 
-def test_merge_refuses_a_slash_name(tmp_path):
+def test_merge_refuses_a_slash_name(tmp_path, no_snapshot):
     """h5py resolves a '/' name as a link path — the check every obs mutation
     owes (guards.malformed_name_problems)."""
     path = _make(tmp_path / "nee.h5ad")
@@ -201,27 +212,27 @@ def test_merge_refuses_a_slash_name(tmp_path):
 
     assert "error" in result
     assert "/X" in result["error"]
-    assert _no_snapshot(path)
+    assert no_snapshot(path)
 
 
-def test_merge_refuses_identical_values(tmp_path):
+def test_merge_refuses_identical_values(tmp_path, no_snapshot):
     path = _make(tmp_path / "nee.h5ad")
 
     result = merge_obs_categories(str(path), "tissue_label", _CORRECT, _CORRECT)
 
     assert "error" in result
     assert "nothing to merge" in result["error"]
-    assert _no_snapshot(path)
+    assert no_snapshot(path)
 
 
-def test_merge_refuses_an_absent_column(tmp_path):
+def test_merge_refuses_an_absent_column(tmp_path, no_snapshot):
     path = _make(tmp_path / "nee.h5ad")
 
     result = merge_obs_categories(str(path), "no_such_column", "a", "b")
 
     assert "error" in result
     assert "not present in obs" in result["error"]
-    assert _no_snapshot(path)
+    assert no_snapshot(path)
 
 
 def test_merge_refuses_non_string_arguments(tmp_path):
@@ -238,3 +249,56 @@ def test_merge_missing_file():
     result = merge_obs_categories("/nonexistent/file.h5ad", "col", "a", "b")
     assert "error" in result
     assert "File not found" in result["error"]
+
+
+def test_merge_refuses_a_cap_annotation_column(tmp_path, no_snapshot):
+    """CAP is the system of record for its exports: a set is stripped and
+    re-copied wholesale, never edited value by value here."""
+    path = _make_cap_file(tmp_path / "cap.h5ad")
+
+    result = merge_obs_categories(path, "myset--cell_fullname", "B cel", "T cell")
+
+    assert "error" in result
+    assert "CAP annotation-set column" in result["error"]
+    assert no_snapshot(path)
+
+
+def test_merge_refuses_the_legacy_cap_layout(tmp_path, no_snapshot):
+    """The layout precondition every mutating tool carries (#552): in the
+    legacy layout uns['cap_metadata'] is absent, so CAP columns would look
+    editable — the whole file is refused instead."""
+    path = _make_cap_file(tmp_path / "legacy.h5ad", legacy=True)
+
+    result = merge_obs_categories(path, "myset--cell_fullname", "B cel", "T cell")
+
+    assert "error" in result
+    assert "deprecated" in result["error"] or "not supported" in result["error"]
+    assert no_snapshot(path)
+
+
+def test_merge_keeps_categories_that_are_empty_for_their_own_reasons(tmp_path):
+    """Exactly one category disappears: the merged-away one. A category left
+    empty by an earlier subset is the file's business, not this tool's."""
+    path = _make(tmp_path / "nee.h5ad")
+    adata = ad.read_h5ad(path)
+    adata.obs["tissue_label"] = adata.obs["tissue_label"].cat.add_categories(["Never Used"])
+    adata.write_h5ad(path)
+
+    result = merge_obs_categories(str(path), "tissue_label", _TYPO, _CORRECT)
+
+    assert "error" not in result
+    cats = list(ad.read_h5ad(result["output_path"]).obs["tissue_label"].cat.categories)
+    assert "Never Used" in cats, "an unrelated empty category must survive the merge"
+    assert _TYPO not in cats
+    assert result["categories_remaining"] == len(cats)
+
+
+def test_merge_reports_the_count_it_actually_wrote(tmp_path):
+    """categories_remaining comes from what was written, not from arithmetic
+    on the pre-merge list."""
+    path = _make(tmp_path / "nee.h5ad")
+
+    result = merge_obs_categories(str(path), "tissue_label", _TYPO, _CORRECT)
+
+    out = ad.read_h5ad(result["output_path"])
+    assert result["categories_remaining"] == len(out.obs["tissue_label"].cat.categories)

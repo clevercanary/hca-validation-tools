@@ -76,3 +76,14 @@ def h5(tmp_path):
     """A bare open h5py File, for unit tests below the h5ad layer."""
     with h5py.File(tmp_path / "f.h5", "a") as f:
         yield f
+
+
+@pytest.fixture
+def no_snapshot():
+    """Assert helper: True when no timestamped edit snapshot appeared beside
+    the given file — i.e. an all-or-nothing tool refused before writing."""
+
+    def _check(path) -> bool:
+        return not any("-edit-" in p.name for p in Path(path).parent.iterdir())
+
+    return _check
