@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from .normalize import normalize_raw
     from .plot import plot_embedding
     from .rename import rename_cell_ids
+    from .rename_column import rename_obs_column
     from .stats import get_descriptive_stats
     from .storage import get_storage_info
     from .strip import strip_forbidden_obs_columns
@@ -66,6 +67,7 @@ _LAZY_IMPORTS = {
     "strip_forbidden_obs_columns": ".strip",
     "strip_cap_annotations": ".strip_cap",
     "drop_obs_columns": ".drop",
+    "rename_obs_column": ".rename_column",
     "rename_cell_ids": ".rename",
     "backfill_obs_from_source": ".backfill",
     "check_x_normalization": ".inspect",
