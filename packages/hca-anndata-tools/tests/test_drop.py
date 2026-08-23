@@ -649,3 +649,21 @@ def test_drop_same_second_snapshot_refused(sample_h5ad_for_write, monkeypatch):
     assert "junk_col" in ad.read_h5ad(sample_h5ad_for_write).obs.columns  # nor modified
     assert "error" in result
     assert "already exists" in result["error"]
+
+
+def test_drop_refuses_a_rootless_snapshot(tmp_path):
+    """A lone edit snapshot — its original not beside it — is refused before
+    anything is written: proceeding would end with cleanup deleting the
+    directory's only copy of the lineage (#619)."""
+    from hca_anndata_tools.testing import create_sample_h5ad
+
+    path = tmp_path / "atlas-edit-2026-08-22-05-15-32.h5ad"
+    create_sample_h5ad(path)
+    _add_obs_cols(path, "junk_col")
+
+    result = drop_obs_columns(str(path), ["junk_col"])
+
+    assert "error" in result
+    assert "atlas.h5ad" in result["error"]
+    assert path.is_file()
+    assert ad.read_h5ad(path).obs["junk_col"] is not None  # untouched
