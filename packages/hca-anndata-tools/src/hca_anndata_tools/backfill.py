@@ -26,11 +26,12 @@ import pandas as pd
 
 from ._io import (
     DEFAULT_PLACEHOLDERS,
-    _decode_bytes,
     check_duplicate_ids,
     is_missing_value,
+    obs_index_name,
     read_categorical_data,
     read_edit_log_h5py,
+    read_group,
     read_string_dataset,
     read_uns,
     replace_categorical_column,
@@ -38,7 +39,7 @@ from ._io import (
     verify_categorical_integrity,
     write_edit_log_h5py,
 )
-from .cap import LEGACY_LAYOUT_DESCRIPTION, is_legacy_cap_layout
+from .guards import direct_members, is_malformed_name, legacy_layout_problems
 from .write import (
     SAME_SECOND_SNAPSHOT_ERROR,
     _compute_sha256,
@@ -68,7 +69,7 @@ def _check_arguments(columns) -> list[str]:
     for col in columns:
         # h5py resolves a name containing '/' as an HDF5 link path, not a
         # dict key (see drop.py for the full trap) — reject before any lookup.
-        if not isinstance(col, str) or "/" in col or not col.strip():
+        if not isinstance(col, str) or is_malformed_name(col):
             problems.append(f"not a valid obs column name (must be a non-blank string without '/'): {col!r}")
     if len(set(columns)) != len(columns):
         problems.append("columns contains duplicates")
@@ -146,21 +147,17 @@ def _read_obs_for_backfill(
     is display text for messages only.
     """
     with h5py.File(path, "r") as f:
-        obs = f.get("obs")
-        if not isinstance(obs, h5py.Group):
+        obs = read_group(f, "obs")
+        if obs is None:
             return None, {"error": f"{side} file has no obs group: {path}"}
         if is_target:
             uns = read_uns(f)
-            if is_legacy_cap_layout(uns):
-                # Parity with drop.py / rename.py (#552): mutating tools
-                # refuse the deprecated top-level CAP layout.
-                return None, {
-                    "error": (
-                        f"Refusing to backfill: the target uses {LEGACY_LAYOUT_DESCRIPTION}, which is not supported"
-                    )
-                }
-        index_name = _decode_bytes(obs.attrs.get("_index", "_index"))
-        obs_keys = set(obs.keys())
+            # Parity with drop.py / rename.py (#552): mutating tools refuse
+            # the deprecated top-level CAP layout.
+            if legacy_problems := legacy_layout_problems(uns):
+                return None, {"error": f"Refusing to backfill: the {side.lower()} file — {legacy_problems[0]}"}
+        index_name = obs_index_name(obs)
+        obs_keys = direct_members(obs)
         for col in columns:
             if col == index_name:
                 return None, {

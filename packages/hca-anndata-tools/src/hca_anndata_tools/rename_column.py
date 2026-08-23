@@ -20,16 +20,25 @@ from pathlib import Path
 
 import h5py
 import numpy as np
+from anndata.io import write_elem
 
 from ._io import (
-    _decode_bytes,
-    read_batch_condition,
     read_column_order,
     read_edit_log_h5py,
     read_uns,
     write_edit_log_h5py,
 )
-from .cap import CAP_METADATA_KEY, LEGACY_LAYOUT_DESCRIPTION, is_legacy_cap_layout
+from .cap import CAP_METADATA_KEY
+from .guards import (
+    ObsColumnReferences,
+    detect_obs_references,
+    direct_members,
+    is_malformed_name,
+    legacy_layout_problems,
+    malformed_name_problems,
+    obs_index_problems,
+    require_obs_group,
+)
 from .write import (
     build_edit_log,
     cleanup_previous_version,
@@ -37,10 +46,6 @@ from .write import (
     resolve_latest,
     snapshot_copy,
 )
-
-# anndata writes uns string arrays with this encoding; batch_condition is
-# rewritten in place, so it has to be recreated the same way.
-_STR_DTYPE = h5py.string_dtype(encoding="utf-8")
 
 # Rows per read when scanning a column for emptiness. Rows, not bytes — the
 # width depends on the column, so this is 64 KB of int8 categorical codes and
@@ -85,7 +90,9 @@ def _is_empty_column(obs: h5py.Group, name: str) -> bool:
     return False
 
 
-def _validate_request(obs: h5py.Group, uns: h5py.Group | None, column: str, new_name: str) -> list[str]:
+def _validate_request(
+    obs: h5py.Group, uns: h5py.Group | None, column: str, new_name: str, refs: ObsColumnReferences
+) -> list[str]:
     """Collect every reason the rename cannot proceed.
 
     All checks run to completion rather than short-circuiting, so a caller who
@@ -93,50 +100,26 @@ def _validate_request(obs: h5py.Group, uns: h5py.Group | None, column: str, new_
     """
     problems: list[str] = []
 
-    # The deprecated top-level CAP layout is refused outright, matching
-    # drop_obs_columns. Rejecting the whole file regardless of what the request
-    # names is the point: the CAP check below reads uns['cap_metadata'], so in
-    # this layout it sees no declaration and every CAP column looks renamable —
-    # the shape of #552.
-    if is_legacy_cap_layout(uns):
-        problems.append(f"the file uses {LEGACY_LAYOUT_DESCRIPTION}, which is not supported")
+    problems += legacy_layout_problems(uns)
 
-    # CAP annotation sets declare themselves in uns['cap_metadata'] and require
-    # obs columns named '<set>--<suffix>'. Renaming one leaves the declared set
-    # naming a column the file no longer has — a dangling reference this tool
-    # cannot repair, because CAP material is never patched in place: CAP is the
-    # system of record, and the workflow is to strip a set wholesale and re-copy
-    # it from a fresh export. Rewriting the declaration here would fork a record
-    # CAP overwrites on its next export.
-    #
-    # Keyed on the '--' convention rather than on parsing cap_metadata, which
-    # may be a group or a JSON string: over-refusing a '--' name in a CAP file
-    # is the safe direction, and no column this tool targets uses that
-    # separator.
-    if uns is not None and CAP_METADATA_KEY in uns:
-        cap_names = sorted(n for n in (column, new_name) if "--" in n)
-        if cap_names:
-            problems.append(
-                f"look like CAP annotation-set columns: {cap_names} — the set is declared "
-                f"in uns[{CAP_METADATA_KEY!r}], which names its columns. Strip the annotation "
-                f"set and re-copy it from CAP instead of renaming its columns"
-            )
+    # The one mechanism this tool refuses on: CAP is the system of record, so
+    # its columns are stripped and re-copied, never renamed in place. The other
+    # two are handled in rename_obs_column — batch_condition repaired (a rename
+    # knows the new name), the palette cascaded with its column.
+    if refs.cap_columns:
+        problems.append(
+            f"look like CAP annotation-set columns: {refs.cap_columns} — the set is declared "
+            f"in uns[{CAP_METADATA_KEY!r}], which names its columns. Strip the annotation "
+            f"set and re-copy it from CAP instead of renaming its columns"
+        )
 
-    # h5py resolves a name containing '/' as an HDF5 link path rather than a
-    # dict key: a leading slash resolves from the file root and inner slashes
-    # traverse subgroups, so `move("/X", ...)` would relocate the expression
-    # matrix. Every check below compares plain strings, so rejecting these up
-    # front is what keeps them agreeing with what the move would actually do.
-    malformed = [n for n in (column, new_name) if "/" in n or not n.strip()]
-    if malformed:
-        problems.append(f"not valid obs column names (a column name cannot contain '/' or be blank): {malformed}")
+    malformed = [n for n in (column, new_name) if is_malformed_name(n)]
+    problems += malformed_name_problems((column, new_name))
 
     if column == new_name:
         problems.append(f"'{column}' is already the column's name")
 
-    index_name = _decode_bytes(obs.attrs.get("_index", "_index"))
-    if index_name in (column, new_name):
-        problems.append(f"'{index_name}' is the obs index, not a column — renaming it would destroy the file")
+    problems += obs_index_problems(obs, (column, new_name), verbing="renaming")
 
     # Membership against the group's direct children rather than `in obs`,
     # which would resolve link paths (see the malformed check above).
@@ -144,9 +127,9 @@ def _validate_request(obs: h5py.Group, uns: h5py.Group | None, column: str, new_
     # A malformed name is excluded so each bad name is reported once. "/X" is
     # necessarily absent from obs.keys() too, and listing it under both
     # problems would imply its only fault was being missing — sending a caller
-    # to hunt for a typo rather than read the path-name rule. drop.py:155 makes
+    # to hunt for a typo rather than read the path-name rule. drop._validate_request makes
     # the same exclusion for the same reason.
-    members = set(obs.keys())
+    members = direct_members(obs)
     if column not in members and column not in malformed:
         problems.append(f"not present in obs: '{column}'")
 
@@ -247,13 +230,12 @@ def rename_obs_column(path: str, column: str, new_name: str) -> dict:
             return {"error": f"File not found: {path}"}
 
         with h5py.File(path, "r") as f_in:
-            obs = f_in.get("obs")
-            if not isinstance(obs, h5py.Group):
-                return {"error": "File has no obs group, or obs is not a group"}
+            obs = require_obs_group(f_in)
             uns = read_uns(f_in)
-            problems = _validate_request(obs, uns, column, new_name)
-            palette = f"{column}_colors" if uns is not None and f"{column}_colors" in uns else None
-            batch_condition = read_batch_condition(uns)
+            refs = detect_obs_references(uns, (column, new_name))
+            problems = _validate_request(obs, uns, column, new_name, refs)
+            palette = refs.palettes.get(column)
+            batch_condition = refs.batch_condition_declared
 
         if problems:
             return {"error": "Refusing to rename: " + "; ".join(problems)}
@@ -301,10 +283,12 @@ def rename_obs_column(path: str, column: str, new_name: str) -> dict:
             entries = [c for c in batch_condition if c != new_name] if replaced_destination else batch_condition
             updated = [new_name if c == column else c for c in entries]
             if updated != batch_condition and uns_out is not None:
-                del uns_out["batch_condition"]
-                ds = uns_out.create_dataset("batch_condition", data=np.array(updated, dtype=object), dtype=_STR_DTYPE)
-                ds.attrs["encoding-type"] = "string-array"
-                ds.attrs["encoding-version"] = "0.2.0"
+                # write_elem, not a hand-rolled create_dataset: anndata owns the
+                # on-disk encoding of a string array (dtype, encoding-type and
+                # -version attrs) and overwrites the existing key itself. #622
+                # adopts it here — the one element this package rewrites by
+                # hand — rather than keeping a parallel encoder.
+                write_elem(uns_out, "batch_condition", np.array(updated, dtype=object))
 
             if palette and uns_out is not None:
                 uns_out.move(palette, new_palette)

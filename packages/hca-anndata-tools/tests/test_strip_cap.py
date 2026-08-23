@@ -421,3 +421,23 @@ def test_strip_answers_legibly_with_dataset_at_uns(tmp_path, put_dataset_at_uns)
     result = strip_cap_annotations(path)
 
     assert result.get("nothing_to_strip") is True
+
+
+def test_strip_refuses_a_slash_past_the_report_cap(tmp_path):
+    """The guard checks every column-order entry, not just the first few it
+    would name in the message. Capping the checked list instead of the
+    reported one let a '/' name past position 5 reach the delete, where h5py
+    resolves it as a link path outside obs (#623)."""
+    path = _make_cap_file(tmp_path / "late-slash.h5ad", uns_layout="legacy")
+    with h5py.File(path, "a") as f:
+        cols = [c.decode() if isinstance(c, bytes) else c for c in f["obs"].attrs["column-order"]]
+        padding = [f"pad{i}--cell_fullname" for i in range(8)]
+        for name in padding:
+            f["obs"].create_dataset(name, data=[b"x", b"y", b"z"])
+        f["obs"].attrs["column-order"] = [*cols, *padding, "late/bad--cell_fullname"]
+
+    result = strip_cap_annotations(path)
+
+    assert "error" in result
+    assert "malformed" in result["error"]
+    assert not list(tmp_path.glob("*-edit-*.h5ad"))

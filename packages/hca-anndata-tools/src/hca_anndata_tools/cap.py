@@ -101,6 +101,27 @@ _OPTIONAL_SUFFIXES = [
 ]
 
 
+def is_cap_declared(uns) -> bool:
+    """True if the file declares CAP annotation sets the canonical way.
+
+    The declaration is what makes a ``--`` column part of a set rather than a
+    producer column that happens to contain the separator. Accepts None, like
+    :func:`is_legacy_cap_layout`, so callers can pass ``read_uns``'s result
+    without their own guard.
+    """
+    return uns is not None and CAP_METADATA_KEY in uns
+
+
+def cap_palette_keys(uns_keys) -> list[str]:
+    """CAP-shaped palette keys: ``<name>_colors`` whose base name is a CAP
+    ``--`` column.
+
+    Both those paired with a present column and those already orphaned by an
+    earlier era's overwrite, which deleted columns but left palettes.
+    """
+    return [k for k in uns_keys if k.endswith("_colors") and cap_obs_columns([k.removesuffix("_colors")])]
+
+
 def cap_obs_columns(obs_columns: list[str]) -> list[str]:
     """Return the subset of obs column names that are CAP annotation columns.
 

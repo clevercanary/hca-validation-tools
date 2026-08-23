@@ -24,14 +24,16 @@ import pandas as pd
 
 from ._io import (
     _decode_bytes,
+    obs_index_name,
     read_categorical_data,
     read_edit_log_h5py,
+    read_group,
     read_string_dataset,
     read_uns,
     replace_string_dataset,
     write_edit_log_h5py,
 )
-from .cap import LEGACY_LAYOUT_DESCRIPTION, is_legacy_cap_layout
+from .guards import direct_members, is_malformed_name, legacy_layout_problems, require_obs_group
 from .inspect import _read_schema_version
 from .write import (
     SAME_SECOND_SNAPSHOT_ERROR,
@@ -59,9 +61,9 @@ def _check_arguments(column, value, prefix_from, prefix_to) -> list[str]:
 
     if not isinstance(column, str) or not isinstance(value, str):
         problems.append(f"column and value must be strings; got {column!r} and {value!r}")
-    # h5py resolves a name containing '/' as an HDF5 link path, not a dict
-    # key (see drop.py for the full trap) — reject before any lookup.
-    elif "/" in column or not column.strip():
+    # h5py resolves a name containing '/' as an HDF5 link path (see guards.py);
+    # this tool takes one column, so it reports the singular form.
+    elif is_malformed_name(column):
         problems.append(f"not a valid obs column name (cannot contain '/' or be blank): {column!r}")
 
     if not isinstance(prefix_from, str) or not prefix_from:
@@ -187,11 +189,7 @@ def rename_cell_ids(path: str, column: str, value: str, prefix_from: str, prefix
             return {"error": f"File not found: {path}"}
 
         with h5py.File(path, "r") as f_in:
-            obs = f_in.get("obs")
-            if obs is None:
-                return {"error": "File has no obs group"}
-            if not isinstance(obs, h5py.Group):
-                return {"error": "obs is not a group — the file predates the modern h5ad layout"}
+            obs = require_obs_group(f_in)
 
             version = _read_schema_version(f_in)
             if version:
@@ -205,16 +203,13 @@ def rename_cell_ids(path: str, column: str, value: str, prefix_from: str, prefix
                 }
 
             uns = read_uns(f_in)
-            if is_legacy_cap_layout(uns):
-                # Parity with drop.py / copy_cap.py (#552): the legacy layout
-                # marks a CAP export even when uns['schema_version'] is absent,
-                # and renaming a CAP export is exactly what the gate above
-                # exists to prevent.
-                return {
-                    "error": f"Refusing to rename: the file uses {LEGACY_LAYOUT_DESCRIPTION}, which is not supported"
-                }
+            # Parity with drop.py / copy_cap.py (#552): the legacy layout marks
+            # a CAP export even when uns['schema_version'] is absent, and
+            # renaming a CAP export is what the gate above exists to prevent.
+            if legacy_problems := legacy_layout_problems(uns):
+                return {"error": f"Refusing to rename: {legacy_problems[0]}"}
 
-            index_name = _decode_bytes(obs.attrs.get("_index", "_index"))
+            index_name = obs_index_name(obs)
             if column == index_name:
                 return {
                     "error": (
@@ -223,7 +218,7 @@ def rename_cell_ids(path: str, column: str, value: str, prefix_from: str, prefix
                 }
             # Membership against direct children, not `column in obs`, which
             # would resolve link paths (the '/' trap checked above).
-            if column not in set(obs.keys()):
+            if column not in direct_members(obs):
                 return {"error": f"Refusing to rename: obs column not present: '{column}'"}
 
             mask = _selection_mask(obs, column, value)
@@ -244,15 +239,15 @@ def rename_cell_ids(path: str, column: str, value: str, prefix_from: str, prefix
             # already disagrees, the file is broken in a way a rename would
             # only paper over.
             obsm_df_indexes: list[tuple[str, str]] = []  # (obsm key, index dataset name)
-            obsm = f_in.get("obsm")
-            if isinstance(obsm, h5py.Group):
+            obsm = read_group(f_in, "obsm")
+            if obsm is not None:
                 for obsm_key, member in obsm.items():
                     if not (
                         isinstance(member, h5py.Group)
                         and _decode_bytes(member.attrs.get("encoding-type", "")) == "dataframe"
                     ):
                         continue
-                    sub_name = _decode_bytes(member.attrs.get("_index", "_index"))
+                    sub_name = obs_index_name(member)
                     sub_ids = read_string_dataset(member, sub_name)
                     if sub_ids.shape != ids.shape or not (sub_ids == ids).all():
                         return {

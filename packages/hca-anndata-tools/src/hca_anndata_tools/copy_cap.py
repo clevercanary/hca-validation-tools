@@ -19,6 +19,7 @@ from ._io import (
     _decode_bytes,
     check_duplicate_ids,
     ensure_provenance_group,
+    obs_index_name,
     open_h5ad,
     read_categorical_data,
     read_column_order,
@@ -35,9 +36,11 @@ from .cap import (
     CAP_METADATA_KEY,
     LEGACY_LAYOUT_ERROR,
     cap_obs_columns,
+    cap_palette_keys,
     is_legacy_cap_layout,
     resolve_cap_block,
 )
+from .guards import require_obs_group
 from .marker_genes import validate_marker_genes
 from .strip_cap import _LEGACY_TOP_LEVEL_PROVENANCE, strip_cap_annotations
 from .write import (
@@ -190,11 +193,11 @@ def copy_cap_annotations(
 
         # Read source obs via h5py (avoids slow backed-mode column access)
         with h5py.File(source_path, "r") as f:
-            obs_group = f["obs"]
+            obs_group = require_obs_group(f)
             source_obs_columns = read_column_order(obs_group)
             obs_cols_to_copy = _get_obs_columns_to_copy(annotation_sets, source_obs_columns)
 
-            idx_key = _decode_bytes(obs_group.attrs.get("_index", "_index"))
+            idx_key = obs_index_name(obs_group)
             source_index_list = [_decode_bytes(v) for v in obs_group[idx_key][:]]
 
             var_group = f["var"]
@@ -235,9 +238,9 @@ def copy_cap_annotations(
         # --- Step 2: Validate target via h5py (no AnnData load) ---
         def read_target(path: str) -> tuple[list[str], list[str], list[str], set[str], bool, str]:
             with h5py.File(path, "r") as f:
-                obs_group = f["obs"]
+                obs_group = require_obs_group(f)
                 obs_columns = read_column_order(obs_group)
-                idx_key = _decode_bytes(obs_group.attrs.get("_index", "_index"))
+                idx_key = obs_index_name(obs_group)
                 index = [_decode_bytes(v) for v in obs_group[idx_key][:]]
 
                 var_group = f["var"]
@@ -295,9 +298,7 @@ def copy_cap_annotations(
             ]
             if target_has_prov_cap:
                 existing_cap_uns.append("provenance/cap")
-            existing_cap_uns += [
-                k for k in target_uns_keys if k.endswith("_colors") and "--" in k.removesuffix("_colors")
-            ]
+            existing_cap_uns += cap_palette_keys(target_uns_keys)
             if existing_cap_cols or existing_cap_uns:
                 return {
                     "error": (
