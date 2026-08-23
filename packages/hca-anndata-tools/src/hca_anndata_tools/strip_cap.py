@@ -162,7 +162,10 @@ def strip_cap_annotations(path: str) -> dict:
             # The names come from the column-order attr rather than a caller,
             # but they are deleted the same way, so they owe the same three
             # structural invariants (guards.obs_name_problems).
-            if problems := obs_name_problems(obs, obs_columns_present, verbing="removing"):
+            # Capped like the symmetric refusal below: a malformed file can list
+            # hundreds of stale entries, and this string travels back through an
+            # MCP tool response.
+            if problems := obs_name_problems(obs, obs_columns_present[:5], verbing="removing"):
                 return {"error": "Refusing to strip: obs column-order is malformed — " + "; ".join(problems)}
 
             # The symmetric half, which is this tool's alone: an attr-driven

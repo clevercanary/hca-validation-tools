@@ -34,6 +34,7 @@ from ._io import obs_index_name, read_batch_condition
 from .cap import LEGACY_LAYOUT_DESCRIPTION, cap_obs_columns, is_cap_declared, is_legacy_cap_layout
 
 __all__ = [
+    "GuardRefusal",
     "ObsColumnReferences",
     "batch_condition_refusal",
     "detect_obs_references",
@@ -41,8 +42,8 @@ __all__ = [
     "is_malformed_name",
     "legacy_layout_problems",
     "malformed_name_problems",
-    "obs_index_name",
     "obs_index_problems",
+    "obs_name_problems",
     "require_obs_group",
 ]
 

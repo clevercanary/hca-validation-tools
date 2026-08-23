@@ -7,7 +7,9 @@ license = "MIT"
 readme = "README.md"
 requires-python = ">=3.10,<4.0"
 dependencies = [
-    "anndata>=0.10,<1",
+    # >=0.11: anndata.io (write_elem) does not exist in 0.10.x, and _io
+    # imports it, so a 0.10 resolution fails to import the whole package.
+    "anndata>=0.11,<1",
     "pandas>2,<3",
     "numpy<3",
     "h5py>=3.8",

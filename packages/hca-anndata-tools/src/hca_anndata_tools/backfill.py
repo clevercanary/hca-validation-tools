@@ -155,7 +155,7 @@ def _read_obs_for_backfill(
             # Parity with drop.py / rename.py (#552): mutating tools refuse
             # the deprecated top-level CAP layout.
             if legacy_problems := legacy_layout_problems(uns):
-                return None, {"error": f"Refusing to backfill: {legacy_problems[0]}"}
+                return None, {"error": f"Refusing to backfill: the {side.lower()} file — {legacy_problems[0]}"}
         index_name = obs_index_name(obs)
         obs_keys = direct_members(obs)
         for col in columns:

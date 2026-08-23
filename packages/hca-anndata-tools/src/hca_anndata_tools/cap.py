@@ -105,9 +105,11 @@ def is_cap_declared(uns) -> bool:
     """True if the file declares CAP annotation sets the canonical way.
 
     The declaration is what makes a ``--`` column part of a set rather than a
-    producer column that happens to contain the separator.
+    producer column that happens to contain the separator. Accepts None, like
+    :func:`is_legacy_cap_layout`, so callers can pass ``read_uns``'s result
+    without their own guard.
     """
-    return CAP_METADATA_KEY in uns
+    return uns is not None and CAP_METADATA_KEY in uns
 
 
 def cap_palette_keys(uns_keys) -> list[str]:
