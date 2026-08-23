@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from .files import locate_files
     from .inspect import check_schema_type, check_x_normalization
     from .marker_genes import validate_marker_genes
+    from .merge_categories import merge_obs_categories
     from .normalize import normalize_raw
     from .plot import plot_embedding
     from .rename import rename_cell_ids
@@ -67,6 +68,7 @@ _LAZY_IMPORTS = {
     "strip_forbidden_obs_columns": ".strip",
     "strip_cap_annotations": ".strip_cap",
     "drop_obs_columns": ".drop",
+    "merge_obs_categories": ".merge_categories",
     "rename_obs_column": ".rename_column",
     "rename_cell_ids": ".rename",
     "backfill_obs_from_source": ".backfill",

@@ -47,25 +47,20 @@ _LEGACY_CAP_BLOCK = {
 }
 
 
-def _no_snapshot_written(path):
-    """True when no timestamped edit snapshot appeared beside the source."""
-    return not any("-edit-" in p.name for p in Path(path).parent.iterdir())
-
-
 # --- R1: all-or-nothing ------------------------------------------------------
 
 
-def test_drop_absent_column_errors_and_writes_nothing(sample_h5ad_for_write):
+def test_drop_absent_column_errors_and_writes_nothing(sample_h5ad_for_write, no_snapshot):
     """A name that isn't in obs is a mistake, not a no-op. Nothing is written."""
     result = drop_obs_columns(str(sample_h5ad_for_write), ["nonexistent_column"])
 
     assert "error" in result
     assert "not present in obs" in result["error"]
     assert "nonexistent_column" in result["error"]
-    assert _no_snapshot_written(sample_h5ad_for_write)
+    assert no_snapshot(sample_h5ad_for_write)
 
 
-def test_drop_is_atomic_across_valid_and_invalid(sample_h5ad_for_write):
+def test_drop_is_atomic_across_valid_and_invalid(sample_h5ad_for_write, no_snapshot):
     """The load-bearing R1 case: one bad name in a list of good ones drops
     nothing at all. A partial drop would silently half-curate a file."""
     _add_obs_cols(sample_h5ad_for_write, "ethnicity_verbatim")
@@ -77,7 +72,7 @@ def test_drop_is_atomic_across_valid_and_invalid(sample_h5ad_for_write):
     )
 
     assert "error" in result
-    assert _no_snapshot_written(sample_h5ad_for_write)
+    assert no_snapshot(sample_h5ad_for_write)
     # The source file must be untouched, not merely un-snapshotted.
     assert Path(sample_h5ad_for_write).read_bytes() == before
     assert "ethnicity_verbatim" in ad.read_h5ad(sample_h5ad_for_write).obs.columns
@@ -96,12 +91,12 @@ def test_drop_reports_every_problem_at_once(sample_h5ad_for_write):
     assert "typo_column" in result["error"]
 
 
-def test_drop_empty_column_list_errors(sample_h5ad_for_write):
+def test_drop_empty_column_list_errors(sample_h5ad_for_write, no_snapshot):
     result = drop_obs_columns(str(sample_h5ad_for_write), [])
 
     assert "error" in result
     assert "No columns given" in result["error"]
-    assert _no_snapshot_written(sample_h5ad_for_write)
+    assert no_snapshot(sample_h5ad_for_write)
 
 
 def test_drop_dedupes_repeated_names(sample_h5ad_for_write):
@@ -120,7 +115,7 @@ def test_drop_dedupes_repeated_names(sample_h5ad_for_write):
 # --- R1: names must be plain column names, not HDF5 link paths ---------------
 
 
-def test_drop_refuses_names_containing_a_slash(sample_h5ad_for_write):
+def test_drop_refuses_names_containing_a_slash(sample_h5ad_for_write, no_snapshot):
     """h5py resolves '/X' from the file root and 'a/b' into subgroups, so an
     unguarded `c in obs` check accepts names pointing outside obs and the
     delete then unlinks them. Every other check here compares plain strings, so
@@ -130,7 +125,7 @@ def test_drop_refuses_names_containing_a_slash(sample_h5ad_for_write):
 
         assert "error" in result, f"{name!r} must be refused"
         assert "cannot contain" in result["error"]
-        assert _no_snapshot_written(sample_h5ad_for_write)
+        assert no_snapshot(sample_h5ad_for_write)
 
     # The matrix and the other top-level groups are still there.
     with h5py.File(sample_h5ad_for_write, "r") as f:
@@ -175,7 +170,7 @@ def test_drop_slash_path_cannot_erase_provenance(sample_h5ad_for_write):
     assert [e["operation"] for e in log] == ["prior_op"]
 
 
-def test_drop_refuses_a_bare_string_for_columns(sample_h5ad_for_write):
+def test_drop_refuses_a_bare_string_for_columns(sample_h5ad_for_write, no_snapshot):
     """columns="race" instead of ["race"] would iterate as characters and report
     'not present in obs: [r, a, c, e]' — a plausible slip from an MCP client
     with a useless error, so it is named explicitly.
@@ -187,10 +182,10 @@ def test_drop_refuses_a_bare_string_for_columns(sample_h5ad_for_write):
 
     assert "error" in result
     assert "not a single string" in result["error"]
-    assert _no_snapshot_written(sample_h5ad_for_write)
+    assert no_snapshot(sample_h5ad_for_write)
 
 
-def test_drop_refuses_non_string_entries(sample_h5ad_for_write):
+def test_drop_refuses_non_string_entries(sample_h5ad_for_write, no_snapshot):
     """This is an MCP-exposed tool, so columns arrives as decoded JSON and may
     hold numbers or nulls. Every check downstream assumes strings, so they are
     rejected up front with a message that says so rather than surfacing
@@ -200,7 +195,7 @@ def test_drop_refuses_non_string_entries(sample_h5ad_for_write):
 
         assert "error" in result
         assert "only strings" in result["error"], f"{bad!r} gave: {result['error']}"
-        assert _no_snapshot_written(sample_h5ad_for_write)
+        assert no_snapshot(sample_h5ad_for_write)
 
 
 def test_drop_accepts_a_tuple_of_names(sample_h5ad_for_write):
@@ -284,7 +279,7 @@ def test_drop_chain_keeps_the_original(sample_h5ad_for_write, monkeypatch):
     assert [str(p) for p in snapshots] == [r2["output_path"]]
 
 
-def test_drop_refuses_obs_index(sample_h5ad_for_write):
+def test_drop_refuses_obs_index(sample_h5ad_for_write, no_snapshot):
     """The index is a dataset in the obs group like any column, so a caller can
     name it. Deleting it would destroy the file's cell identities."""
     with h5py.File(sample_h5ad_for_write, "r") as f:
@@ -294,7 +289,7 @@ def test_drop_refuses_obs_index(sample_h5ad_for_write):
 
     assert "error" in result
     assert "obs index" in result["error"]
-    assert _no_snapshot_written(sample_h5ad_for_write)
+    assert no_snapshot(sample_h5ad_for_write)
 
 
 def test_drop_permits_author_cell_type(sample_h5ad_for_write):
@@ -492,7 +487,7 @@ def test_drop_still_works_on_a_nested_cap_file(sample_h5ad_for_write):
 # hand also mirrors how these files really arose.
 
 
-def test_drop_refuses_legacy_cap_layout_for_any_column(sample_h5ad_for_write, downgrade_cap_to_legacy):
+def test_drop_refuses_legacy_cap_layout_for_any_column(sample_h5ad_for_write, downgrade_cap_to_legacy, no_snapshot):
     """The bug this closes. The '--' guard reads uns['cap_metadata'], so in the
     top-level layout it sees no declaration and every CAP column looks
     droppable — `race` here proves the refusal is not keyed on the request:
@@ -513,11 +508,11 @@ def test_drop_refuses_legacy_cap_layout_for_any_column(sample_h5ad_for_write, do
     # assertion in this file would still pass.
     for marker in _LEGACY_CAP_MARKERS:
         assert f"uns[{marker!r}]" in result["error"]
-    assert _no_snapshot_written(sample_h5ad_for_write)
+    assert no_snapshot(sample_h5ad_for_write)
     assert "race" in ad.read_h5ad(sample_h5ad_for_write).obs.columns
 
 
-def test_drop_refuses_legacy_cap_annotation_columns(sample_h5ad_for_write, downgrade_cap_to_legacy):
+def test_drop_refuses_legacy_cap_annotation_columns(sample_h5ad_for_write, downgrade_cap_to_legacy, no_snapshot):
     """The data actually at risk: hand-curated CAP columns in the legacy layout,
     which deleted silently before #552."""
     _add_obs_cols(sample_h5ad_for_write, "myset--cell_type", "myset--rationale")
@@ -531,12 +526,12 @@ def test_drop_refuses_legacy_cap_annotation_columns(sample_h5ad_for_write, downg
 
     assert "error" in result
     assert "not supported" in result["error"]
-    assert _no_snapshot_written(sample_h5ad_for_write)
+    assert no_snapshot(sample_h5ad_for_write)
     obs = ad.read_h5ad(sample_h5ad_for_write).obs
     assert {"myset--cell_type", "myset--rationale"} <= set(obs.columns)
 
 
-def test_drop_refuses_mixed_cap_layout(sample_h5ad_for_write):
+def test_drop_refuses_mixed_cap_layout(sample_h5ad_for_write, no_snapshot):
     """A file carrying both layouts is refused on the legacy keys rather than
     letting the nested block win — the same clean-break rule `copy_cap` applies.
 
@@ -556,7 +551,7 @@ def test_drop_refuses_mixed_cap_layout(sample_h5ad_for_write):
 
     assert "error" in result
     assert "not supported" in result["error"]
-    assert _no_snapshot_written(sample_h5ad_for_write)
+    assert no_snapshot(sample_h5ad_for_write)
 
 
 # --- R5/R6: result shape and mechanics ---------------------------------------

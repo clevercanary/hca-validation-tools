@@ -5,6 +5,7 @@ from fastmcp import FastMCP
 from hca_anndata_mcp.tools.backfill import backfill_obs_from_source
 from hca_anndata_mcp.tools.drop import drop_obs_columns
 from hca_anndata_mcp.tools.label import label_h5ad
+from hca_anndata_mcp.tools.merge_categories import merge_obs_categories
 from hca_anndata_mcp.tools.plot import plot_embedding_mcp
 from hca_anndata_mcp.tools.populate import populate_labels
 from hca_anndata_mcp.tools.rename import rename_cell_ids
@@ -58,6 +59,20 @@ mcp = FastMCP(
         "by uns['batch_condition'], CAP annotation-set columns, any file "
         "using the deprecated top-level CAP layout — and, being all-or-"
         "nothing, a name absent from obs fails the whole request, "
+        "merge_obs_categories to fold one category of a categorical obs column into "
+        "another — the remedy for a typo-split value (nee2023's tissue_label carries "
+        "'Prophylatctic Mastectomy' beside the correctly spelled 'Prophylactic "
+        "Mastectomy'); both values must already be categories, every cell in from_value "
+        "is recoded to to_value and the empty category dropped, and the recoded cell "
+        "count is reported so you can confirm the split was the size you expected; it "
+        "refuses the obs index, names containing '/', a non-categorical column (or one "
+        "with non-string categories), a CAP annotation-set column, a file using the "
+        "deprecated top-level CAP layout, and a derived label whose "
+        "'<col>_ontology_term_id' is present (correct the term IDs and regenerate "
+        "instead); it trims the merged-away category's entry from uns['<col>_colors'] so "
+        "the surviving colours stay aligned, and returns stale_label_column when you "
+        "merged a term-ID column — drop that label column and run populate_labels to "
+        "rebuild it, "
         "rename_obs_column to rename one obs column whose data is real but whose name "
         "misdescribes it (nee2023's cell_type_label holds the authors' own cell-type "
         "calls, not derived labels) — the counterpart to drop_obs_columns, which is for "
@@ -132,6 +147,7 @@ mcp.tool()(set_uns)
 mcp.tool()(convert_cellxgene_to_hca)
 mcp.tool()(strip_forbidden_obs_columns)
 mcp.tool()(drop_obs_columns)
+mcp.tool()(merge_obs_categories)
 mcp.tool()(rename_obs_column)
 mcp.tool()(rename_cell_ids)
 mcp.tool()(backfill_obs_from_source)
