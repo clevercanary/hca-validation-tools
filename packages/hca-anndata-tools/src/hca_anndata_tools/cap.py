@@ -52,11 +52,16 @@ LEGACY_LAYOUT_ERROR = (
 def is_legacy_cap_layout(uns) -> bool:
     """True if the file carries any deprecated top-level CAP key.
 
+    Accepts None (a file with no uns is not legacy-layout), so callers can
+    pass ``read_uns``'s result without their own guard.
+
     Fires even when a nested ``cap_metadata`` block is also present (a
     mixed-layout file): the strict clean-break contract refuses anything
     carrying deprecated top-level keys rather than silently letting the nested
     block win.
     """
+    if uns is None:
+        return False
     return any(k in uns for k in _LEGACY_CAP_MARKERS)
 
 

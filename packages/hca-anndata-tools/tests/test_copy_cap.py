@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import anndata as ad
+import h5py
 import numpy as np
 import pandas as pd
 import pytest
@@ -433,8 +434,6 @@ def test_copy_rejects_non_categorical_source_column(cap_source, hca_target):
     # Rewrite one CAP column in the source as a plain string dataset (via h5py,
     # bypassing anndata's auto-coercion to categorical) to simulate a source
     # that violates CAP's categorical-everywhere serialization contract.
-    import h5py
-
     col = "author_cell_type--rationale"
     with h5py.File(cap_source, "a") as f:
         del f["obs"][col]
@@ -667,3 +666,18 @@ def test_copy_obs_index_reordered(cap_source, tmp_path):
 def test_missing_file():
     result = copy_cap_annotations("/nonexistent/source.h5ad", "/nonexistent/target.h5ad")
     assert "error" in result
+
+
+def test_copy_survives_dataset_at_uns_in_target(cap_source, hca_target, put_dataset_at_uns):
+    """A Dataset at the target's 'uns' used to crash inspection at uns.keys()
+    (#617); narrowed to None, the read phase completes and the failure moves
+    to the write boundary (require_group meeting the Dataset), with the
+    target file left byte-identical."""
+    put_dataset_at_uns(hca_target)
+    before = hca_target.read_bytes()
+
+    result = copy_cap_annotations(str(cap_source), str(hca_target))
+
+    assert "error" in result
+    assert "no attribute" not in result["error"]  # the pre-#617 crash shape
+    assert hca_target.read_bytes() == before

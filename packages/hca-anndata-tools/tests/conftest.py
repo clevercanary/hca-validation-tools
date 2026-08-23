@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import anndata as ad
+import h5py
 import pytest
 
 from hca_anndata_tools.testing import create_cellxgene_h5ad, create_sample_h5ad
@@ -53,3 +54,18 @@ def cellxgene_h5ad(tmp_path) -> Path:
     """Create a CellxGENE-style h5ad file in a writable tmp dir."""
     path = tmp_path / "d394204c-dc6f-4c82-ae66-c6d00addbf43.h5ad"
     return create_cellxgene_h5ad(path)
+
+
+@pytest.fixture
+def put_dataset_at_uns():
+    """Replace a file's uns group with a scalar string Dataset — the malformed
+    shape read_uns narrows to None (#617)."""
+
+    def _put(path):
+        with h5py.File(path, "a") as f:
+            if "uns" in f:
+                del f["uns"]
+            f["uns"] = "not a group"
+        return path
+
+    return _put

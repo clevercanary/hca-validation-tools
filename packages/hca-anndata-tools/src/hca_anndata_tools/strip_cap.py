@@ -25,13 +25,15 @@ import h5py
 
 from ._io import (
     _decode_bytes,
+    read_batch_condition,
     read_column_order,
     read_edit_log_h5py,
+    read_provenance,
+    read_uns,
     update_column_order,
     write_edit_log_h5py,
 )
 from .cap import _LEGACY_CAP_MARKERS, CAP_METADATA_KEY, cap_obs_columns, unknown_cap_suffix_columns
-from .drop import _read_batch_condition
 from .inspect import _read_schema_version
 from .write import (
     SAME_SECOND_SNAPSHOT_ERROR,
@@ -168,8 +170,8 @@ def strip_cap_annotations(path: str) -> dict:
                     )
                 }
             unknown_suffixes = unknown_cap_suffix_columns(obs_columns_present)
-            uns_for_bc = f_in.get("uns")
-            batched = sorted(set(obs_columns_present) & set(_read_batch_condition(uns_for_bc)))  # pyright: ignore[reportArgumentType]
+            uns = read_uns(f_in)
+            batched = sorted(set(obs_columns_present) & set(read_batch_condition(uns)))
             if batched:
                 # Parity with drop.py: a dangling batch_condition reference
                 # turns a valid file invalid, and rewriting the declaration
@@ -182,15 +184,14 @@ def strip_cap_annotations(path: str) -> dict:
                         f"first if that is intended."
                     )
                 }
-            uns = f_in.get("uns")
             uns_keys_present: list[str] = []
             if uns is not None:
                 uns_keys_present += [k for k in _CAP_UNS_KEYS if k in uns]
                 uns_keys_present += [k for k in _LEGACY_TOP_LEVEL_PROVENANCE if k in uns]
                 # 'provenance/cap' is an HDF5 path, so the shared deletion
                 # loop below removes the nested block like any other key.
-                prov = uns.get("provenance")
-                if isinstance(prov, h5py.Group) and "cap" in prov:
+                prov = read_provenance(uns)
+                if prov is not None and "cap" in prov:
                     uns_keys_present.append("provenance/cap")
             if uns_keys_present:
                 # This tool only undoes what our own import wrote. A file
@@ -220,7 +221,9 @@ def strip_cap_annotations(path: str) -> dict:
                 # orphan them (the validator flags colors without a matching
                 # obs column) — and those ALREADY orphaned by an earlier
                 # era's overwrite, which deleted columns but left palettes.
-                uns_keys_present += [k for k in uns if k.endswith("_colors") and "--" in k.removesuffix("_colors")]
+                uns_keys_present += [
+                    k for k in sorted(uns.keys()) if k.endswith("_colors") and "--" in k.removesuffix("_colors")
+                ]
 
         if not uns_keys_present and not obs_columns_present:
             # nothing_to_strip lets a caller composing this tool (copy_cap's

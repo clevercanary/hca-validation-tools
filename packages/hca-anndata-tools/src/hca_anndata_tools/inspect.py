@@ -7,7 +7,7 @@ from pathlib import Path
 import h5py
 import numpy as np
 
-from ._io import _decode_bytes
+from ._io import _decode_bytes, read_uns
 from .write import resolve_latest
 
 _DEFAULT_SAMPLE_SIZE = 2000
@@ -281,10 +281,13 @@ def _read_schema_version(f: h5py.File) -> str | None:
     ``schema_version`` is stored as a scalar string dataset in AnnData's
     h5ad format.
     """
-    uns = f.get("uns")
-    if not isinstance(uns, h5py.Group) or "schema_version" not in uns:
+    uns = read_uns(f)
+    if uns is None:
         return None
-    raw = uns["schema_version"][()]  # pyright: ignore[reportIndexIssue]
+    version = uns.get("schema_version")
+    if not isinstance(version, h5py.Dataset):
+        return None
+    raw = version[()]
     value = _decode_bytes(raw)
     if not isinstance(value, str):
         return None

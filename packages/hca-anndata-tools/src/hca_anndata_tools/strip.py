@@ -24,6 +24,7 @@ from ._io import (
     update_column_order,
     write_edit_log_h5py,
 )
+from .inspect import _read_schema_version
 from .write import (
     build_edit_log,
     cleanup_previous_version,
@@ -107,19 +108,22 @@ def strip_forbidden_obs_columns(path: str) -> dict:
 
         # Peek first: layout check + presence check. Both via h5py so we
         # don't load the full anndata just to decide whether to mutate.
+        # The layout gate matches rename.py / strip_cap.py: a file is
+        # CellxGENE when uns['schema_version'] holds a non-empty string, so
+        # an empty or non-string value no longer trips the refusal the way
+        # the old bare presence check did.
         with h5py.File(path, "r") as f_in:
-            uns = f_in.get("uns")
-            if uns is not None and "schema_version" in uns:
+            if _read_schema_version(f_in):
                 return {
                     "error": (
-                        "Input is CellxGENE-layout (uns['schema_version'] is "
-                        "present). Use convert_cellxgene_to_hca instead — "
-                        "it strips these columns as a side-effect of "
-                        "converting to HCA layout."
+                        "Input is CellxGENE-layout (uns['schema_version'] "
+                        "declares a version). Use convert_cellxgene_to_hca "
+                        "instead — it strips these columns as a side-effect "
+                        "of converting to HCA layout."
                     )
                 }
             obs = f_in.get("obs")
-            if obs is None:
+            if not isinstance(obs, h5py.Group):
                 return {"error": "File has no obs group"}
             present = [c for c in _OBS_COLUMNS_TO_STRIP if c in obs]
 
