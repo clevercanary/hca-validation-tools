@@ -302,3 +302,41 @@ def test_merge_reports_the_count_it_actually_wrote(tmp_path):
 
     out = ad.read_h5ad(result["output_path"])
     assert result["categories_remaining"] == len(out.obs["tissue_label"].cat.categories)
+
+
+def test_merge_flags_that_paired_labels_are_now_stale(tmp_path):
+    """Merging term IDs is the remedy the label-side guard recommends, so it is
+    allowed — but it leaves the paired label stale, and the caller has no other
+    way to know that."""
+    path = _make(
+        tmp_path / "nee.h5ad",
+        column="cell_type_ontology_term_id",
+        values=["CL:0000084"] * 5 + ["CL:0000236"] * 3 + ["CL:0000000"] * 2,
+        cell_type=pd.Categorical(["T cell"] * 5 + ["B cell"] * 3 + ["other"] * 2),
+    )
+
+    result = merge_obs_categories(str(path), "cell_type_ontology_term_id", "CL:0000236", "CL:0000084")
+
+    assert "error" not in result
+    assert result["regenerate_labels_required"] is True
+    with h5py.File(result["output_path"], "r") as f:
+        assert "populate_labels" in json.loads(read_edit_log_h5py(f))[-1]["description"]
+
+
+def test_merge_does_not_flag_regeneration_for_a_plain_column(tmp_path):
+    path = _make(tmp_path / "nee.h5ad")
+
+    result = merge_obs_categories(str(path), "tissue_label", _TYPO, _CORRECT)
+
+    assert result["regenerate_labels_required"] is False
+
+
+def test_merge_refuses_a_non_string_categorical(tmp_path):
+    """anndata writes int-backed categoricals (batch, cluster ids); the caller
+    is forced to pass strings, so those values can never match."""
+    path = _make(tmp_path / "nee.h5ad", column="batch", values=pd.Categorical([1, 2, 1, 2, 1] * 2))
+
+    result = merge_obs_categories(str(path), "batch", "2", "1")
+
+    assert "error" in result
+    assert "non-string categories" in result["error"]

@@ -61,12 +61,18 @@ def _column_problems(obs: h5py.Group, column: str, from_value: str, to_value: st
     is categorical — which is why it is one helper rather than three entries in
     the caller's problem list.
     """
-    if column not in direct_members(obs):
-        return [f"not present in obs: '{column}'"]
+    # Presence is already established by obs_name_problems, which is why this
+    # helper runs only when that returned nothing.
     item = obs[column]
     if not (isinstance(item, h5py.Group) and "categories" in item):
         return [f"'{column}' is not a categorical column — this tool edits the categories array, not values row by row"]
-    if missing := [v for v in (from_value, to_value) if v not in _read_categories(obs, column)]:
+    categories = _read_categories(obs, column)
+    if non_string := [c for c in categories if not isinstance(c, str)]:
+        return [
+            f"'{column}' has non-string categories (e.g. {non_string[0]!r}) — this tool "
+            f"matches by string value, so it cannot address them"
+        ]
+    if missing := [v for v in (from_value, to_value) if v not in categories]:
         return [
             f"not categories of '{column}': {missing} — both values must already "
             f"exist (creating a category is a different operation)"
@@ -169,7 +175,8 @@ def merge_obs_categories(path: str, column: str, from_value: str, to_value: str)
 
     Returns:
         Dict with ``output_path``, ``column``, ``from_value``, ``to_value``,
-        ``cells_recoded`` and ``categories_remaining``, or ``{"error": ...}``.
+        ``cells_recoded``, ``categories_remaining`` and
+        ``regenerate_labels_required``, or ``{"error": ...}``.
     """
     try:
         path = resolve_latest(path)
@@ -193,6 +200,12 @@ def merge_obs_categories(path: str, column: str, from_value: str, to_value: str)
             # Resolved from the same read that validated, so the write phase
             # does no discovery (drop.py's pattern).
             categories = [] if problems else _read_categories(obs, column)
+            # Merging term IDs is the *recommended* remedy when a label is
+            # wrong (see the guard above), so it is allowed — but it leaves the
+            # paired label stale until populate_labels runs, and the caller has
+            # no other way to know that.
+            label_column = column.removesuffix(_TERM_ID_SUFFIX)
+            regenerate_labels_required = label_column != column and label_column in direct_members(obs)
 
         if problems:
             return {"error": "Refusing to merge: " + "; ".join(problems)}
@@ -219,7 +232,13 @@ def merge_obs_categories(path: str, column: str, from_value: str, to_value: str)
             entry = make_edit_entry(
                 operation="merge_obs_categories",
                 description=(
-                    f"Merged obs['{column}'] category {from_value!r} into {to_value!r} ({cells_recoded} cells recoded)"
+                    f"Merged obs['{column}'] category {from_value!r} into {to_value!r} "
+                    f"({cells_recoded} cells recoded)"
+                    + (
+                        f" — obs['{label_column}'] is now stale; run populate_labels"
+                        if regenerate_labels_required
+                        else ""
+                    )
                 ),
                 details={
                     "column": column,
@@ -249,6 +268,7 @@ def merge_obs_categories(path: str, column: str, from_value: str, to_value: str)
             "to_value": to_value,
             "cells_recoded": cells_recoded,
             "categories_remaining": len(new_categories),
+            "regenerate_labels_required": regenerate_labels_required,
         }
 
     except Exception as e:
