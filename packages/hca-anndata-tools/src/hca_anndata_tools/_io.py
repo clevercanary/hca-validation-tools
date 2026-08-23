@@ -466,7 +466,7 @@ def remap_palette(uns: h5py.Group | None, key: str | None, kept: Sequence[int], 
     # A palette that is not a string array is not one we can realign — and
     # read_string_dataset's asstr() would raise on it, after the snapshot has
     # already been copied. Treated like a mismatched length: left alone.
-    if not isinstance(node, h5py.Dataset) or not h5py.check_string_dtype(node.dtype):
+    if not isinstance(node, h5py.Dataset) or node.ndim != 1 or not h5py.check_string_dtype(node.dtype):
         return None
     colors = list(read_string_dataset(uns, key))
     if len(colors) != n_before:

@@ -6,6 +6,7 @@ import pytest
 from anndata.io import write_elem
 
 from hca_anndata_tools._io import (
+    _decode_bytes,
     compact_categories,
     read_batch_condition,
     read_edit_log_h5py,
@@ -195,3 +196,13 @@ def test_compact_categories_reports_the_surviving_positions():
     assert kept_cats == ["a", "c"]
     assert kept == [0, 2]
     assert list(codes) == [0, 0, 1, -1]
+
+
+def test_remap_palette_leaves_a_scalar_palette_alone(h5):
+    """check_string_dtype passes for a shape-() dataset, but asstr()[:] raises
+    on it — so the scalar case needs its own rejection, not a crash."""
+    uns = h5.require_group("uns")
+    write_elem(uns, "grade_colors", "#aaa")
+
+    assert remap_palette(uns, "grade_colors", [0], 1) is None
+    assert _decode_bytes(uns["grade_colors"][()]) == "#aaa"
