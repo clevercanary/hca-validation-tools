@@ -45,11 +45,9 @@ def test_generated_classes():
 # the Cell pair had no home in the model at all, and the Sample pair carried no
 # annotation.
 #
-# The consumer that motivated this is `drop_obs_columns` (#531, landing in #539), whose
-# delete guard refuses any column the schema names — so while these four were invisible
-# it would happily delete columns the h5ad validator requires. Note that tool is not on
-# `main` yet, so grepping for it here will come up empty until #539 merges; the other
-# reader of this annotation today is `iter_coverage_slots` in schema_utils.
+# The consumer that motivated this was `drop_obs_columns`' schema guard (#531/#539),
+# removed in #619 when guards were rescoped to coherence-only (#614). The annotation
+# itself stays load-bearing: `iter_coverage_slots` in schema_utils reads it.
 _OBS_ANNOTATED_SLOTS = [
     ("Cell", "author_cell_type"),
     ("Cell", "cell_type_ontology_term_id"),

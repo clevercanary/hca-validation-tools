@@ -611,6 +611,7 @@ def test_copy_overwrite_same_second_snapshot_is_safe(cap_source, tmp_path, monke
     copy over — and lose — the target snapshot."""
     monkeypatch.setattr("hca_anndata_tools.write.generate_timestamp", lambda: "2026-08-21-00-00-00")
     monkeypatch.setattr("hca_anndata_tools.copy_cap.time", type("T", (), {"sleep": staticmethod(lambda s: None)}))
+    (tmp_path / "snap.h5ad").touch()  # lineage root, so only the same-second guard fires
     target = tmp_path / "snap-edit-2026-08-21-00-00-00.h5ad"
     _make_hca_target(target, CELL_IDS)
     adata = ad.read_h5ad(target)

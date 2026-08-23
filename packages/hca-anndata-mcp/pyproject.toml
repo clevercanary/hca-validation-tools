@@ -10,12 +10,14 @@ requires-python = ">=3.10,<4.0"
 # strips [tool.uv.sources] at build time, so a sibling listed without a version
 # constraint would publish as an unbounded Requires-Dist.
 #
-# The upper bound is the next minor, not <1. Per the release policy in
-# CLAUDE.md, 0.x packages signal breaking changes with a minor bump, so <1
-# would accept versions this package was never tested against.
+# The upper bound is the next unreleased minor, not <1. Per the release
+# policy in CLAUDE.md, 0.x packages signal breaking changes with a minor
+# bump, so <1 would accept versions this package was never tested against.
+# hca-anndata-tools admits 0.7 because this package was updated for the
+# 0.7 breaking change (#619) in the same PR that made it.
 dependencies = [
     "fastmcp>=2,<3",
-    "hca-anndata-tools>=0.6,<0.7",
+    "hca-anndata-tools>=0.6,<0.8",
     "hca-schema-validator>=0.15,<0.16",
 ]
 

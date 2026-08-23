@@ -32,6 +32,16 @@ _REQUIRED_ENTRY_KEYS = {"timestamp", "tool", "tool_version", "operation", "descr
 SAME_SECOND_SNAPSHOT_ERROR = "An edit snapshot for this second already exists — retry in a moment."
 
 
+class MissingLineageRootError(RuntimeError):
+    """The source is an edit snapshot whose original is not beside it.
+
+    Editing it anyway would end with :func:`cleanup_previous_version`
+    deleting the directory's only copy — refusing up front is what keeps
+    the recoverability premise (#614/#619) true: the original always
+    survives, and the chain never runs where there is no original.
+    """
+
+
 class SameSecondSnapshotError(RuntimeError):
     """A snapshot could not be named distinctly from the file it copies.
 
@@ -198,14 +208,33 @@ def generate_timestamp() -> str:
 def generate_output_path(source_path: str) -> str:
     """Generate a timestamped output path from a source h5ad path.
 
+    Refuses (:class:`MissingLineageRootError`) when ``source_path`` is itself
+    an edit snapshot and its original — the timestamp-stripped name — is not
+    beside it. Such a snapshot is the directory's only copy of the lineage:
+    the next edit's :func:`cleanup_previous_version` would delete it, which
+    is exactly the loss the snapshot chain exists to prevent. Every mutating
+    tool names its output through this function, so the refusal holds
+    chain-wide.
+
     Args:
         source_path: Path to the source .h5ad file.
 
     Returns:
         Path string in the same directory as source_path.
     """
+    source = Path(source_path)
+    if _is_timestamped(source_path):
+        root = source.with_name(strip_timestamp(source.name))
+        if not root.is_file():
+            raise MissingLineageRootError(
+                f"Refusing to edit: {source.name} is an edit snapshot but its "
+                f"original ({root.name}) is not beside it, so this is the "
+                f"directory's only copy of the lineage and the next cleanup "
+                f"would delete it. Copy the original into the directory, or "
+                f"rename this file to {root.name} to start a new lineage."
+            )
     stem = _base_stem(source_path)
-    return str(Path(source_path).parent / f"{stem}-edit-{generate_timestamp()}.h5ad")
+    return str(source.parent / f"{stem}-edit-{generate_timestamp()}.h5ad")
 
 
 def resolve_latest(path: str) -> str:

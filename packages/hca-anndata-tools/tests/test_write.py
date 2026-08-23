@@ -12,6 +12,7 @@ import pytest
 
 from hca_anndata_tools.write import (
     EDIT_LOG_KEY,
+    MissingLineageRootError,
     SameSecondSnapshotError,
     _copy_with_sha256,
     generate_output_path,
@@ -68,7 +69,9 @@ def test_generate_output_path_default_dir(sample_h5ad_for_write):
 
 
 def test_generate_output_path_strips_existing_timestamp(tmp_path):
-    # Simulate a file with an existing timestamp in the name
+    # Simulate a file with an existing timestamp in the name. The lineage
+    # root must sit beside it or naming the output refuses (#619).
+    (tmp_path / "data.h5ad").touch()
     source = tmp_path / "data-edit-2026-03-27-13-54-26.h5ad"
     source.touch()
     result = generate_output_path(str(source))
@@ -601,3 +604,14 @@ def test_snapshot_copy_removes_the_snapshot_when_the_body_fails(tmp_path):
 
     assert not Path(seen["out"]).exists()
     assert src.read_bytes() == b"payload"
+
+
+def test_generate_output_path_refuses_a_rootless_snapshot(tmp_path):
+    """An edit snapshot with no original beside it is the directory's only
+    copy of its lineage — the next cleanup would delete it, so the chain
+    refuses to start (#619)."""
+    source = tmp_path / "data-edit-2026-03-27-13-54-26.h5ad"
+    source.touch()
+
+    with pytest.raises(MissingLineageRootError, match="data.h5ad"):
+        generate_output_path(str(source))
