@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import anndata as ad
+import h5py
 import numpy as np
 import pandas as pd
 import pytest
@@ -667,3 +668,20 @@ def test_copy_obs_index_reordered(cap_source, tmp_path):
 def test_missing_file():
     result = copy_cap_annotations("/nonexistent/source.h5ad", "/nonexistent/target.h5ad")
     assert "error" in result
+
+
+def test_copy_survives_dataset_at_uns_in_target(cap_source, hca_target):
+    """A scalar Dataset at the target's 'uns' used to crash the read phase
+    with AttributeError at uns.keys() (#617). read_uns narrows it to None so
+    inspection completes; the write phase then refuses when require_group
+    meets the Dataset — a failure at the write boundary, with the target
+    left untouched, instead of a crash while merely reading."""
+    with h5py.File(hca_target, "a") as f:
+        del f["uns"]
+        f["uns"] = "not a group"
+
+    result = copy_cap_annotations(str(cap_source), str(hca_target))
+
+    assert "error" in result
+    assert "no attribute" not in result["error"]
+    assert hca_target.is_file()

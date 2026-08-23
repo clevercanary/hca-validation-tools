@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import anndata as ad
+import h5py
 import numpy as np
 import pandas as pd
 
@@ -413,3 +414,19 @@ def test_strip_missing_file():
     result = strip_cap_annotations("/nonexistent/file.h5ad")
     assert "error" in result
     assert "File not found" in result["error"]
+
+
+def test_strip_answers_legibly_with_dataset_at_uns(tmp_path):
+    """A scalar Dataset at 'uns' used to raise TypeError inside the
+    batch_condition read (`"batch_condition" not in <Dataset>`) and surface
+    as that exception's text; read_uns narrows it to None so the tool reaches
+    its normal nothing-to-strip answer (#617)."""
+    path = _make_cap_file(tmp_path / "clean.h5ad", uns_layout="none", cap_columns=False)
+    with h5py.File(path, "a") as f:
+        del f["uns"]
+        f["uns"] = "not a group"
+
+    result = strip_cap_annotations(path)
+
+    assert "error" in result
+    assert "Nothing to strip" in result["error"]

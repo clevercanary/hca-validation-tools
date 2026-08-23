@@ -27,6 +27,7 @@ from ._io import (
     read_categorical_data,
     read_edit_log_h5py,
     read_string_dataset,
+    read_uns,
     replace_string_dataset,
     write_edit_log_h5py,
 )
@@ -203,8 +204,8 @@ def rename_cell_ids(path: str, column: str, value: str, prefix_from: str, prefix
                     )
                 }
 
-            uns = f_in.get("uns")
-            if isinstance(uns, h5py.Group) and is_legacy_cap_layout(uns):
+            uns = read_uns(f_in)
+            if uns is not None and is_legacy_cap_layout(uns):
                 # Parity with drop.py / copy_cap.py (#552): the legacy layout
                 # marks a CAP export even when uns['schema_version'] is absent,
                 # and renaming a CAP export is exactly what the gate above

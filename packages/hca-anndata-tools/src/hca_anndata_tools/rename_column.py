@@ -25,12 +25,13 @@ import numpy as np
 
 from ._io import (
     _decode_bytes,
+    read_batch_condition,
     read_column_order,
     read_edit_log_h5py,
+    read_uns,
     write_edit_log_h5py,
 )
 from .cap import CAP_METADATA_KEY, LEGACY_LAYOUT_DESCRIPTION, is_legacy_cap_layout
-from .drop import _read_batch_condition
 from .write import (
     build_edit_log,
     cleanup_previous_version,
@@ -251,12 +252,10 @@ def rename_obs_column(path: str, column: str, new_name: str) -> dict:
             obs = f_in.get("obs")
             if not isinstance(obs, h5py.Group):
                 return {"error": "File has no obs group, or obs is not a group"}
-            uns = f_in.get("uns")
-            if not isinstance(uns, h5py.Group):
-                uns = None
+            uns = read_uns(f_in)
             problems = _validate_request(obs, uns, column, new_name)
             palette = f"{column}_colors" if uns is not None and f"{column}_colors" in uns else None
-            batch_condition = _read_batch_condition(uns)
+            batch_condition = read_batch_condition(uns)
 
         if problems:
             return {"error": "Refusing to rename: " + "; ".join(problems)}
@@ -264,11 +263,7 @@ def rename_obs_column(path: str, column: str, new_name: str) -> dict:
         # h5py closes before snapshot_copy's cleanup runs, which is the ordering
         # the unlink needs: removing an open HDF5 handle raises on Windows.
         with snapshot_copy(path) as output_path, h5py.File(output_path, "a") as f_out:
-            # Mirrors the read phase's coercion: File.get can hand back a
-            # Dataset on a malformed file, and every use below is a mapping.
-            uns_out = f_out.get("uns")
-            if not isinstance(uns_out, h5py.Group):
-                uns_out = None
+            uns_out = read_uns(f_out)
 
             # Anything already under the destination's palette key goes, whether
             # it belonged to an empty column being replaced or was orphaned by an

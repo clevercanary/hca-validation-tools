@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import anndata as ad
+import h5py
 import pandas as pd
 
 from hca_anndata_tools.strip import (
@@ -158,3 +159,20 @@ def test_strip_same_second_snapshot_refused(sample_h5ad_for_write, monkeypatch):
     assert "self_reported_ethnicity" in ad.read_h5ad(sample_h5ad_for_write).obs.columns  # nor modified
     assert "error" in result
     assert "already exists" in result["error"]
+
+
+def test_strip_skips_cleanly_with_dataset_at_uns(sample_h5ad_for_write):
+    """A malformed file can hold a scalar Dataset at 'uns'. The CellxGENE
+    gate used to ask `"schema_version" in <Dataset>`, which raises TypeError
+    on a scalar and silently answers False otherwise — read_uns narrows the
+    Dataset to None, so the gate falls through and the no-op path answers
+    normally (#617)."""
+    _to_hca_layout(sample_h5ad_for_write)  # HCA layout, no SRE columns
+    with h5py.File(sample_h5ad_for_write, "a") as f:
+        del f["uns"]
+        f["uns"] = "not a group"
+
+    result = strip_forbidden_obs_columns(str(sample_h5ad_for_write))
+
+    assert "error" not in result
+    assert result["skipped"] is True

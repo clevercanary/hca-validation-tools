@@ -32,6 +32,7 @@ from ._io import (
     read_categorical_data,
     read_edit_log_h5py,
     read_string_dataset,
+    read_uns,
     replace_categorical_column,
     replace_string_dataset,
     verify_categorical_integrity,
@@ -149,8 +150,8 @@ def _read_obs_for_backfill(
         if not isinstance(obs, h5py.Group):
             return None, {"error": f"{side} file has no obs group: {path}"}
         if is_target:
-            uns = f.get("uns")
-            if isinstance(uns, h5py.Group) and is_legacy_cap_layout(uns):
+            uns = read_uns(f)
+            if uns is not None and is_legacy_cap_layout(uns):
                 # Parity with drop.py / rename.py (#552): mutating tools
                 # refuse the deprecated top-level CAP layout.
                 return None, {

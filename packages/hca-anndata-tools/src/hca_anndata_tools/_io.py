@@ -161,22 +161,63 @@ def read_var_gene_names(path: str) -> tuple[set[str], dict[str, str]]:
         return gene_names, eid_to_var_name
 
 
-def ensure_provenance_group(f: h5py.File) -> h5py.Group:
-    """Get or create the uns/provenance group with correct encoding attrs.
+def require_stamped_group(f: h5py.File, path: str) -> h5py.Group:
+    """``require_group`` plus the dict encoding attrs anndata expects.
 
-    Stamps ``uns`` itself as well as the provenance group. ``require_group``
-    creates a missing parent implicitly and leaves it bare, and anndata reads a
-    group with no encoding metadata under an OldFormatWarning — so writing an
-    edit log to a file that has no ``uns`` would otherwise leave every later
-    read of it complaining.
+    ``require_group`` leaves a group it creates bare, and anndata reads a group
+    with no encoding metadata under an OldFormatWarning — so every site that
+    may create a group stamps it here, at the creation, rather than relying on
+    some later call to do it as a side effect. ``setdefault`` leaves the attrs
+    of an existing group untouched.
     """
-    uns = f.require_group("uns")
-    uns.attrs.setdefault("encoding-type", "dict")
-    uns.attrs.setdefault("encoding-version", "0.1.0")
-    group = f.require_group("uns/provenance")
+    group = f.require_group(path)
     group.attrs.setdefault("encoding-type", "dict")
     group.attrs.setdefault("encoding-version", "0.1.0")
     return group
+
+
+def ensure_provenance_group(f: h5py.File) -> h5py.Group:
+    """Get or create the uns/provenance group with correct encoding attrs.
+
+    Stamps ``uns`` itself as well as the provenance group: ``require_group``
+    creates a missing parent implicitly, so ``uns`` may be born here too.
+    """
+    require_stamped_group(f, "uns")
+    return require_stamped_group(f, "uns/provenance")
+
+
+def read_uns(f: h5py.File) -> h5py.Group | None:
+    """The file's uns group, or None when it is absent or not a group.
+
+    ``File.get`` can hand back a Dataset on a malformed file, and every caller
+    treats uns as a mapping — where h5py's answers on a Dataset range from
+    AttributeError to a silently wrong ``in`` (#617). Narrowing here, once,
+    is what keeps the call sites honest.
+    """
+    uns = f.get("uns")
+    return uns if isinstance(uns, h5py.Group) else None
+
+
+def read_batch_condition(uns: h5py.Group | None) -> list[str]:
+    """Read ``uns['batch_condition']`` as a list of obs column names.
+
+    The HCA schema types it ``element_type: match_obs_columns``, so every entry
+    must name an obs column. Returns an empty list when absent or unreadable —
+    an unreadable value is the validator's problem to report, not a reason for
+    a mutating tool to refuse.
+    """
+    if uns is None or "batch_condition" not in uns:
+        return []
+    try:
+        raw = uns["batch_condition"][()]  # pyright: ignore[reportIndexIssue]
+    except (OSError, TypeError, ValueError):
+        return []
+    if isinstance(raw, bytes | str):
+        return [_decode_bytes(raw)]
+    try:
+        return [_decode_bytes(v) for v in raw]
+    except TypeError:
+        return []
 
 
 def read_edit_log_h5py(f: h5py.File) -> str:
@@ -184,13 +225,10 @@ def read_edit_log_h5py(f: h5py.File) -> str:
 
     Returns "[]" if no edit log exists.
     """
-    uns = f.get("uns")
-    # isinstance, not truthiness: a malformed file can hold a Dataset at "uns",
-    # which is truthy and has no .get, so `if uns` would raise AttributeError
-    # rather than falling through to the no-log answer.
-    if isinstance(uns, h5py.Group):
+    uns = read_uns(f)
+    if uns is not None:
         prov = uns.get("provenance")
-        if prov and isinstance(prov, h5py.Group) and "edit_history" in prov:
+        if isinstance(prov, h5py.Group) and "edit_history" in prov:
             return _decode_bytes(prov["edit_history"][()])
     return "[]"
 

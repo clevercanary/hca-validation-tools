@@ -23,7 +23,9 @@ import h5py
 
 from ._io import (
     _decode_bytes,
+    read_batch_condition,
     read_edit_log_h5py,
+    read_uns,
     update_column_order,
     write_edit_log_h5py,
 )
@@ -36,28 +38,6 @@ from .write import (
     resolve_latest,
     snapshot_copy,
 )
-
-
-def _read_batch_condition(uns: h5py.Group | None) -> list[str]:
-    """Read ``uns['batch_condition']`` as a list of obs column names.
-
-    The HCA schema types it ``element_type: match_obs_columns``, so every entry
-    must name an obs column. Returns an empty list when absent or unreadable —
-    an unreadable value is the validator's problem to report, not a reason for
-    this tool to refuse a drop.
-    """
-    if uns is None or "batch_condition" not in uns:
-        return []
-    try:
-        raw = uns["batch_condition"][()]  # pyright: ignore[reportIndexIssue]
-    except (OSError, TypeError, ValueError):
-        return []
-    if isinstance(raw, bytes | str):
-        return [_decode_bytes(raw)]
-    try:
-        return [_decode_bytes(v) for v in raw]
-    except TypeError:
-        return []
 
 
 def _validate_request(obs: h5py.Group, uns: h5py.Group | None, columns: list[str]) -> list[str]:
@@ -107,7 +87,7 @@ def _validate_request(obs: h5py.Group, uns: h5py.Group | None, columns: list[str
     # claim the file makes, which is a curation decision and not this tool's
     # to take. Contrast `uns['<col>_colors']`, which the column *owns* and which
     # is therefore deleted alongside it (see :func:`drop_obs_columns`).
-    batched = sorted(set(columns) & set(_read_batch_condition(uns)))
+    batched = sorted(set(columns) & set(read_batch_condition(uns)))
     if batched:
         problems.append(
             f"referenced by uns['batch_condition']: {batched} — that list declares "
@@ -261,9 +241,7 @@ def drop_obs_columns(path: str, columns: list[str] | tuple[str, ...]) -> dict:
                 return {"error": "File has no obs group"}
             if not isinstance(obs, h5py.Group):
                 return {"error": "obs is not a group — the file predates the modern h5ad layout"}
-            uns = f_in.get("uns")
-            if not isinstance(uns, h5py.Group):
-                uns = None
+            uns = read_uns(f_in)
             problems = _validate_request(obs, uns, requested)
             # Palettes to remove with their columns. Resolved here, from the
             # same read that validated, so the write phase does no discovery.

@@ -21,6 +21,7 @@ import h5py
 
 from ._io import (
     read_edit_log_h5py,
+    read_uns,
     update_column_order,
     write_edit_log_h5py,
 )
@@ -108,7 +109,7 @@ def strip_forbidden_obs_columns(path: str) -> dict:
         # Peek first: layout check + presence check. Both via h5py so we
         # don't load the full anndata just to decide whether to mutate.
         with h5py.File(path, "r") as f_in:
-            uns = f_in.get("uns")
+            uns = read_uns(f_in)
             if uns is not None and "schema_version" in uns:
                 return {
                     "error": (
