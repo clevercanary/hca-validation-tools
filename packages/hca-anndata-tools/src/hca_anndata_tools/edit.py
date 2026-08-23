@@ -19,11 +19,14 @@ from ._io import (
     read_categorical_data,
     read_column_order,
     read_edit_log_h5py,
+    read_uns,
+    remap_palette,
     replace_categorical_column,
     verify_categorical_integrity,
     write_edit_log_h5py,
 )
 from ._serialize import make_serializable
+from .guards import detect_obs_references
 from .schema.helpers import uns_field_registry
 from .write import (
     SAME_SECOND_SNAPSHOT_ERROR,
@@ -342,7 +345,10 @@ def replace_placeholder_values(
             return {"error": SAME_SECOND_SNAPSHOT_ERROR}
         shutil.copy2(path, output_path)
 
+        palettes_remapped = []
         with h5py.File(output_path, "a") as f:
+            uns = read_uns(f)
+            palettes = detect_obs_references(uns, list(columns_fixed)).palettes
             for col in columns_fixed:
                 item = f["obs"][col]
                 cats, codes = read_categorical_data(item)  # pyright: ignore[reportArgumentType]
@@ -352,8 +358,13 @@ def replace_placeholder_values(
                 for i in blocked:
                     codes[codes == i] = -1
 
-                new_cats, new_codes = compact_categories(list(cats), codes)
+                new_cats, new_codes, kept = compact_categories(list(cats), codes)
                 replace_categorical_column(f["obs"], col, new_cats, new_codes)  # pyright: ignore[reportArgumentType]
+                # Blanking a placeholder empties its category, so compaction
+                # removes it — and the palette must lose the same position or
+                # every colour after it shifts onto the wrong category (#624).
+                if remap_palette(uns, palettes.get(col), kept, len(cats)):
+                    palettes_remapped.append(palettes[col])
 
             write_edit_log_h5py(f, log_result["json"])
 
@@ -368,6 +379,7 @@ def replace_placeholder_values(
             "output_path": output_path,
             "columns_fixed": {col: dict(vals) for col, vals in columns_fixed.items()},
             "total_cells_affected": total_affected,
+            "palettes_remapped": palettes_remapped,
         }
 
     except Exception as e:
