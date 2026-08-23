@@ -25,10 +25,6 @@ def _make(path, columns=None, uns=None):
     return str(path)
 
 
-def _no_snapshot(path):
-    return not any("-edit-" in p.name for p in path.parent.iterdir())
-
-
 # --- the happy path ----------------------------------------------------------
 
 
@@ -125,7 +121,7 @@ def test_two_renames_in_succession_both_survive(tmp_path):
 # --- the destination rule ----------------------------------------------------
 
 
-def test_rename_refuses_a_partially_populated_destination(tmp_path):
+def test_rename_refuses_a_partially_populated_destination(tmp_path, no_snapshot):
     """One value is enough to make it not-empty — the check answers 'can this
     be overwritten without losing anything', not 'is it mostly empty'."""
     path = _make(
@@ -137,7 +133,7 @@ def test_rename_refuses_a_partially_populated_destination(tmp_path):
 
     assert "error" in result
     assert "already exists" in result["error"]
-    assert _no_snapshot(tmp_path / "t.h5ad")
+    assert no_snapshot(tmp_path / "t.h5ad")
 
 
 def test_rename_refuses_an_int_destination_even_when_zeroed(tmp_path):
@@ -157,17 +153,17 @@ def test_rename_refuses_an_int_destination_even_when_zeroed(tmp_path):
 # --- the remaining guards ----------------------------------------------------
 
 
-def test_rename_refuses_a_missing_source(tmp_path):
+def test_rename_refuses_a_missing_source(tmp_path, no_snapshot):
     path = _make(tmp_path / "t.h5ad")
 
     result = rename_obs_column(path, "nonexistent", "whatever")
 
     assert "error" in result
     assert "not present in obs" in result["error"]
-    assert _no_snapshot(tmp_path / "t.h5ad")
+    assert no_snapshot(tmp_path / "t.h5ad")
 
 
-def test_rename_refuses_the_obs_index(tmp_path):
+def test_rename_refuses_the_obs_index(tmp_path, no_snapshot):
     """The index is a dataset in the obs group like any column, so a caller
     can name it; moving it destroys the file's cell identities."""
     path = _make(tmp_path / "t.h5ad")
@@ -176,7 +172,7 @@ def test_rename_refuses_the_obs_index(tmp_path):
 
     assert "error" in result
     assert "obs index" in result["error"]
-    assert _no_snapshot(tmp_path / "t.h5ad")
+    assert no_snapshot(tmp_path / "t.h5ad")
 
 
 def test_rename_refuses_names_containing_a_slash(tmp_path):
@@ -405,7 +401,7 @@ def test_rename_over_an_empty_destination_replaces_it_completely(tmp_path):
     assert list(out.uns["batch_condition"]) == ["author_cell_type"], "duplicate entry"
 
 
-def test_rename_refuses_non_string_names(tmp_path):
+def test_rename_refuses_non_string_names(tmp_path, no_snapshot):
     """MCP-exposed, so both names arrive as decoded JSON and may be anything.
     Without a shape check _validate_request leaks "'list' object has no
     attribute 'strip'", which tells a caller nothing.
@@ -420,7 +416,7 @@ def test_rename_refuses_non_string_names(tmp_path):
 
         assert "error" in result, f"{column!r} -> {new_name!r} must be refused"
         assert "must both be strings" in result["error"]
-        assert _no_snapshot(tmp_path / "t.h5ad")
+        assert no_snapshot(tmp_path / "t.h5ad")
 
 
 def test_rename_drops_a_batch_condition_entry_naming_only_the_replaced_column(tmp_path):
@@ -462,7 +458,7 @@ def _make_cap_file(path, legacy=False):
     return str(path)
 
 
-def test_rename_refuses_a_cap_annotation_column(tmp_path):
+def test_rename_refuses_a_cap_annotation_column(tmp_path, no_snapshot):
     """CAP material is never patched in place — CAP is the system of record and
     the workflow strips a set wholesale and re-copies it. So a rename cannot
     repair the declaration it would break, and must refuse."""
@@ -472,7 +468,7 @@ def test_rename_refuses_a_cap_annotation_column(tmp_path):
 
     assert "error" in result
     assert "CAP annotation-set columns" in result["error"]
-    assert _no_snapshot(tmp_path / "cap.h5ad")
+    assert no_snapshot(tmp_path / "cap.h5ad")
 
 
 def test_rename_refuses_a_cap_column_as_the_destination(tmp_path):
@@ -486,7 +482,7 @@ def test_rename_refuses_a_cap_column_as_the_destination(tmp_path):
     assert "CAP annotation-set columns" in result["error"]
 
 
-def test_rename_refuses_the_legacy_cap_layout(tmp_path):
+def test_rename_refuses_the_legacy_cap_layout(tmp_path, no_snapshot):
     """In the deprecated top-level layout the cap_metadata check sees no
     declaration, so every CAP column would look renamable — refuse the file."""
     path = _make_cap_file(tmp_path / "legacy.h5ad", legacy=True)
@@ -495,7 +491,7 @@ def test_rename_refuses_the_legacy_cap_layout(tmp_path):
 
     assert "error" in result
     assert "not supported" in result["error"]
-    assert _no_snapshot(tmp_path / "legacy.h5ad")
+    assert no_snapshot(tmp_path / "legacy.h5ad")
 
 
 def test_rename_allows_a_plain_column_on_a_cap_file(tmp_path):

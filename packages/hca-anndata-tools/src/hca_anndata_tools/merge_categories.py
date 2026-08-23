@@ -21,14 +21,15 @@ import numpy as np
 from anndata.io import write_elem
 
 from ._io import (
-    _decode_bytes,
     read_edit_log_h5py,
+    read_string_dataset,
     read_uns,
     replace_categorical_column,
     verify_categorical_integrity,
     write_edit_log_h5py,
 )
 from .guards import (
+    ObsColumnReferences,
     detect_obs_references,
     direct_members,
     legacy_layout_problems,
@@ -40,7 +41,7 @@ from .write import (
     cleanup_previous_version,
     make_edit_entry,
     resolve_latest,
-    snapshot_copy,
+    snapshot_copy_hashed,
 )
 
 _TERM_ID_SUFFIX = "_ontology_term_id"
@@ -52,7 +53,7 @@ def _read_categories(obs: h5py.Group, column: str) -> list[str]:
     Categories only: the codes array is the expensive half, and the write
     phase is the one place that needs it.
     """
-    return [_decode_bytes(v) for v in obs[column]["categories"][:]]
+    return list(read_string_dataset(obs[column], "categories"))  # pyright: ignore[reportArgumentType]
 
 
 def _column_problems(obs: h5py.Group, column: str, from_value: str, to_value: str) -> list[str]:
@@ -67,13 +68,16 @@ def _column_problems(obs: h5py.Group, column: str, from_value: str, to_value: st
     item = obs[column]
     if not (isinstance(item, h5py.Group) and "categories" in item):
         return [f"'{column}' is not a categorical column — this tool edits the categories array, not values row by row"]
-    categories = _read_categories(obs, column)
-    if non_string := [c for c in categories if not isinstance(c, str)]:
+    # Checked on the dtype, before any read: the caller is required to pass
+    # strings, so an int-backed categorical (anndata writes these for batch and
+    # cluster columns) could never be addressed — and _read_categories' asstr()
+    # would raise on it rather than return something to compare.
+    if not h5py.check_string_dtype(item["categories"].dtype):
         return [
-            f"'{column}' has non-string categories (e.g. {non_string[0]!r}) — this tool "
-            f"matches by string value, so it cannot address them"
+            f"'{column}' has non-string categories (dtype {item['categories'].dtype}) — this "
+            f"tool matches by string value, so it cannot address them"
         ]
-    if missing := [v for v in (from_value, to_value) if v not in categories]:
+    if missing := [v for v in (from_value, to_value) if v not in _read_categories(obs, column)]:
         return [
             f"not categories of '{column}': {missing} — both values must already "
             f"exist (creating a category is a different operation)"
@@ -82,7 +86,12 @@ def _column_problems(obs: h5py.Group, column: str, from_value: str, to_value: st
 
 
 def _validate_request(
-    obs: h5py.Group, uns: h5py.Group | None, column: str, from_value: str, to_value: str
+    obs: h5py.Group,
+    uns: h5py.Group | None,
+    refs: ObsColumnReferences,
+    column: str,
+    from_value: str,
+    to_value: str,
 ) -> list[str]:
     """Collect every reason the merge cannot proceed.
 
@@ -107,7 +116,6 @@ def _validate_request(
     #                                trimmed in merge_obs_categories below)
     #   CAP columns     -> REFUSE   (CAP is the system of record; a set is
     #                                stripped and re-copied, never edited here)
-    refs = detect_obs_references(uns, [column])
     if refs.cap_columns:
         problems.append(
             f"'{column}' is a CAP annotation-set column — CAP is the system of record for its "
@@ -127,8 +135,8 @@ def _validate_request(
         )
 
     # Gated on the *name* only, not on every problem: reading obs[column] needs
-    # a well-formed, non-index, present name, but a palette or term-ID refusal
-    # must not hide a misspelled value from the same report.
+    # a well-formed, non-index, present name, but a CAP or term-ID refusal must
+    # not hide a misspelled value from the same report.
     if not name_problems:
         problems += _column_problems(obs, column, from_value, to_value)
 
@@ -146,6 +154,13 @@ def merge_obs_categories(path: str, column: str, from_value: str, to_value: str)
     Exactly one category disappears: the merged-away one. Categories that are
     empty for their own reasons are left alone, so the result differs from the
     file only where the caller asked.
+
+    Merging a ``*_ontology_term_id`` column leaves its paired label column
+    disagreeing for the recoded rows; ``stale_label_column`` names it. Note the
+    recovery is to **drop that label column and then run ``populate_labels``** —
+    the labeller refuses a column whose populated values mismatch canonical, so
+    running it against the stale column alone would only report the
+    disagreement.
 
     The column's compression, chunking and encoding survive the rewrite
     (:func:`replace_categorical_column`), and the expression matrix is never
@@ -171,9 +186,9 @@ def merge_obs_categories(path: str, column: str, from_value: str, to_value: str)
 
     Returns:
         Dict with ``output_path``, ``column``, ``from_value``, ``to_value``,
-        ``cells_recoded``, ``categories_remaining``,
-        ``regenerate_labels_required`` and ``palette_trimmed``, or
-        ``{"error": ...}``.
+        ``cells_recoded``, ``categories_remaining``, ``stale_label_column``
+        (the paired label left disagreeing, or None) and ``palette_trimmed``
+        (the palette key trimmed, or None), or ``{"error": ...}``.
     """
     try:
         path = resolve_latest(path)
@@ -193,30 +208,42 @@ def merge_obs_categories(path: str, column: str, from_value: str, to_value: str)
 
         with h5py.File(path, "r") as f_in:
             obs = require_obs_group(f_in)
-            problems = _validate_request(obs, read_uns(f_in), column, from_value, to_value)
-            # Resolved from the same read that validated, so the write phase
-            # does no discovery (drop.py's pattern).
-            categories = [] if problems else _read_categories(obs, column)
-            # Merging term IDs is the *recommended* remedy when a label is
-            # wrong (see the guard above), so it is allowed — but it leaves the
-            # paired label stale until populate_labels runs, and the caller has
-            # no other way to know that.
-            label_column = column.removesuffix(_TERM_ID_SUFFIX)
-            regenerate_labels_required = label_column != column and label_column in direct_members(obs)
-            palette = detect_obs_references(read_uns(f_in), [column]).palettes.get(column)
+            uns = read_uns(f_in)
+            # Resolved once and threaded, as drop and rename_column do, so the
+            # policy decision is made in one place and the write phase does no
+            # discovery.
+            refs = detect_obs_references(uns, [column])
+            if problems := _validate_request(obs, uns, refs, column, from_value, to_value):
+                return {"error": "Refusing to merge: " + "; ".join(problems)}
 
-        if problems:
-            return {"error": "Refusing to merge: " + "; ".join(problems)}
+            categories = _read_categories(obs, column)
+            # Merging term IDs is the remedy the label-side guard recommends,
+            # so it is allowed — but it leaves the paired label disagreeing for
+            # the recoded rows, and the caller has no other way to know.
+            stale_label_column = column.removesuffix(_TERM_ID_SUFFIX)
+            if stale_label_column == column or stale_label_column not in direct_members(obs):
+                stale_label_column = None
+            # The palette's fate is decided here too: a length that already
+            # disagrees with the categories is not ours to interpret, so it is
+            # left for the validator to report rather than guessed at.
+            palette = refs.palettes.get(column)
+            palette_colors = list(read_string_dataset(uns, palette)) if uns and palette else []
+            trim_palette = palette if len(palette_colors) == len(categories) else None
 
         from_index, to_index = categories.index(from_value), categories.index(to_value)
         new_categories = categories[:from_index] + categories[from_index + 1 :]
 
-        with snapshot_copy(path) as output_path, h5py.File(output_path, "a") as f_out:
+        # Hashed variant: the edit log needs the source digest, and computing
+        # it during the copy saves reading the whole file again — measured 28%
+        # off the copy-plus-hash cost on a 6.7 GB file.
+        with (
+            snapshot_copy_hashed(path) as (output_path, source_sha256),
+            h5py.File(output_path, "a") as f_out,
+        ):
             obs_out = require_obs_group(f_out)
-            codes = np.asarray(obs_out[column]["codes"][:])
+            codes = np.asarray(obs_out[column]["codes"][:])  # pyright: ignore[reportIndexIssue]
             expected_valid = int((codes >= 0).sum())
 
-            palette_trimmed = False
             recoded = codes == from_index
             cells_recoded = int(recoded.sum())
             codes[recoded] = to_index
@@ -229,31 +256,21 @@ def merge_obs_categories(path: str, column: str, from_value: str, to_value: str)
             replace_categorical_column(obs_out, column, new_categories, codes)
 
             # uns['<col>_colors'] is positionally aligned to the categories, so
-            # the entry to drop is exactly from_index — the same cascade
-            # rename_obs_column performs when a palette's column moves. Left
-            # alone it would recolour every category after the merged-away one,
-            # and the validator only checks the palette's *length*, so the
-            # mis-colouring would pass silently. A palette whose length already
-            # disagrees is not ours to interpret, so it is left for the
-            # validator to report.
-            if palette is not None:
-                colors = [_decode_bytes(c) for c in f_out["uns"][palette][:]]
-                if len(colors) == len(categories):
-                    write_elem(
-                        f_out["uns"], palette, np.array(colors[:from_index] + colors[from_index + 1 :], dtype=object)
-                    )
-                    palette_trimmed = True
+            # the entry to drop is exactly from_index — the cascade
+            # rename_obs_column performs by moving the key, expressed here on
+            # its contents. Left alone it would recolour every category after
+            # the merged-away one, and the validator checks only the palette's
+            # *length*, so the mis-colouring would pass silently.
+            if trim_palette:
+                trimmed = palette_colors[:from_index] + palette_colors[from_index + 1 :]
+                write_elem(f_out["uns"], trim_palette, np.array(trimmed, dtype=object))
 
             entry = make_edit_entry(
                 operation="merge_obs_categories",
                 description=(
                     f"Merged obs['{column}'] category {from_value!r} into {to_value!r} "
                     f"({cells_recoded} cells recoded)"
-                    + (
-                        f" — obs['{label_column}'] is now stale; run populate_labels"
-                        if regenerate_labels_required
-                        else ""
-                    )
+                    + (f" — obs['{stale_label_column}'] now disagrees for those rows" if stale_label_column else "")
                 ),
                 details={
                     "column": column,
@@ -262,7 +279,7 @@ def merge_obs_categories(path: str, column: str, from_value: str, to_value: str)
                     "cells_recoded": cells_recoded,
                 },
             )
-            log_result = build_edit_log(read_edit_log_h5py(f_out), [entry], path)
+            log_result = build_edit_log(read_edit_log_h5py(f_out), [entry], path, source_sha256)
             if "error" in log_result:
                 raise RuntimeError(log_result["error"])
             write_edit_log_h5py(f_out, log_result["json"])
@@ -283,8 +300,8 @@ def merge_obs_categories(path: str, column: str, from_value: str, to_value: str)
             "to_value": to_value,
             "cells_recoded": cells_recoded,
             "categories_remaining": len(new_categories),
-            "regenerate_labels_required": regenerate_labels_required,
-            "palette_trimmed": palette_trimmed,
+            "stale_label_column": stale_label_column,
+            "palette_trimmed": trim_palette,
         }
 
     except Exception as e:
