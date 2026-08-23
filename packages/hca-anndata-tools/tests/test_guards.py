@@ -226,3 +226,25 @@ def test_obs_name_problems_reports_a_malformed_name_once(h5):
     would imply its only fault was being missing."""
     problems = obs_name_problems(_obs(h5), ["/X"], verbing="deleting")
     assert len(problems) == 1
+
+
+def test_obs_name_problems_checks_every_name_not_just_the_reported_ones(h5):
+    """The message is capped; the checking is not. Truncating the input would
+    let a name past the cap reach the delete unchecked (#623) — which for a
+    '/' name means h5py resolving a link path outside obs."""
+    obs = _obs(h5, columns=[f"col{i}" for i in range(8)])
+    names = [f"col{i}" for i in range(8)] + ["late/bad"]
+
+    problems = obs_name_problems(obs, names, verbing="removing")
+
+    assert any("late/bad" in p for p in problems), "a malformed name past the report cap was not checked"
+
+
+def test_obs_name_problems_caps_what_it_reports(h5):
+    """A malformed file can list hundreds of stale entries, and the string
+    travels back through an MCP tool response."""
+    obs = _obs(h5)
+    problems = obs_name_problems(obs, [f"bad{i}/x" for i in range(9)], verbing="removing")
+
+    assert len(problems) == 1
+    assert "(+4 more)" in problems[0]

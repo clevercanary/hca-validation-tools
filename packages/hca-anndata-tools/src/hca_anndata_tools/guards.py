@@ -77,11 +77,25 @@ def is_malformed_name(name: str) -> bool:
     return "/" in name or not name.strip()
 
 
+# Reported names are capped; checked names never are. A malformed file can
+# list hundreds of stale column-order entries, and these strings travel back
+# through an MCP tool response — but truncating the *input* would let a name
+# past position N reach the delete unchecked (#623).
+_MAX_REPORTED = 5
+
+
+def _listing(names: list[str]) -> str:
+    """Format a name list for an error message, capped with a count."""
+    if len(names) <= _MAX_REPORTED:
+        return str(names)
+    return f"{names[:_MAX_REPORTED]} (+{len(names) - _MAX_REPORTED} more)"
+
+
 def malformed_name_problems(names: Iterable[str]) -> list[str]:
     """A problem entry naming every malformed name, or an empty list."""
     malformed = [n for n in names if is_malformed_name(n)]
     if malformed:
-        return [f"not valid obs column names (a column name cannot contain '/' or be blank): {malformed}"]
+        return [f"not valid obs column names (a column name cannot contain '/' or be blank): {_listing(malformed)}"]
     return []
 
 
@@ -121,7 +135,7 @@ def obs_name_problems(obs: h5py.Group, names: Iterable[str], *, verbing: str) ->
     members = direct_members(obs)
     absent = [n for n in names if n not in members and not is_malformed_name(n)]
     if absent:
-        problems.append(f"not present in obs: {absent}")
+        problems.append(f"not present in obs: {_listing(absent)}")
     return problems
 
 
