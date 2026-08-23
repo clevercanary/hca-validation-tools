@@ -1,4 +1,4 @@
-"""Introspection helpers for extracting uns and obs field metadata from Pydantic models."""
+"""Introspection helpers for extracting uns field metadata from Pydantic models."""
 
 from __future__ import annotations
 

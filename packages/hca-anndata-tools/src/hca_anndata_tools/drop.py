@@ -70,11 +70,12 @@ def _validate_request(obs: h5py.Group, uns: h5py.Group | None, columns: list[str
         problems.append(f"'{index_name}' is the obs index, not a column — deleting it would destroy the file")
 
     # Columns that something in uns *references*. A dropped column leaves the
-    # reference dangling and turns a valid file invalid, so these are refused
-    # rather than repaired — repairing either of them would mean rewriting a
-    # claim the file makes, which is a curation decision and not this tool's
-    # to take. Contrast `uns['<col>_colors']`, which the column *owns* and which
-    # is therefore deleted alongside it (see :func:`drop_obs_columns`).
+    # reference dangling — an incoherence this tool cannot repair, because
+    # rewriting uns['batch_condition'] means rewriting a claim the file makes,
+    # which is a curation decision and not this tool's to take (#614's
+    # repair-or-refuse rule). Contrast `uns['<col>_colors']`, which the column
+    # *owns* and which is therefore deleted alongside it (see
+    # :func:`drop_obs_columns`).
     batched = sorted(set(columns) & set(read_batch_condition(uns)))
     if batched:
         problems.append(

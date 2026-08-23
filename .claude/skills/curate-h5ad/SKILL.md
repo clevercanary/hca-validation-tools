@@ -146,7 +146,7 @@ Order:
 2. `strip_forbidden_obs_columns` next if applicable (HCA-layout input with SRE columns present) — must run before `populate_labels`, which refuses while SRE is present. On CellxGENE-layout inputs this is unnecessary; the convert step above already stripped them.
 3. `drop_obs_columns` if the wrangler approved any privacy columns in Step 3 — one call, approved names enumerated. **This step is independent of step 2**: a file with no canonical SRE columns skips that step and still reaches this one, which is the normal shape for the producer-named columns this targets. Removal belongs ahead of the content edits so labeling and CAP see the column set the file actually ships. It does not shrink the file; `compress_h5ad` at the end repacks.
 
-   Every refusal leaves the file untouched — that is the tool working, not a failure to route around. Its checks on the names themselves (a required or optional schema column, the obs index, a name that isn't present) are listed with the tool in Bucket A; three more can fire at this step:
+   Every refusal leaves the file untouched — that is the tool working, not a failure to route around. Its checks on the names themselves (the obs index, a name that isn't present) are listed with the tool in Bucket A; three more can fire at this step:
    - `uns['batch_condition']` names one of the columns → resolving that is a Bucket C decision for the wrangler, not a reason to drop fewer columns.
    - The file uses the deprecated legacy CAP layout → refused wholesale regardless of which columns were named (see Bucket C). Report it as a CAP-layout problem, not a column problem.
    - A requested name contains `--` while `uns['cap_metadata']` is present → that is a CAP annotation-set column; bring it to the CAP curator.

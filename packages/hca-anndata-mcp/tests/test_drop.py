@@ -35,17 +35,14 @@ def test_drop_refusal_reaches_through_wrapper(tmp_path):
     the tools layer, not the MCP layer, so this pins that the wrapper does not
     bypass it. The obs index is the coherence guard every layout carries
     (schema-tier refusals were removed in #619)."""
-    import h5py
-
     from hca_anndata_tools.testing import create_sample_h5ad
 
     path = tmp_path / "test.h5ad"
     create_sample_h5ad(path)
-    with h5py.File(path, "r") as f:
-        index_name = f["obs"].attrs.get("_index", "_index")
-        index_name = index_name.decode() if isinstance(index_name, bytes) else index_name
 
-    result = drop_obs_columns(str(path), [index_name])
+    # create_sample_h5ad writes an unnamed pandas index, which anndata
+    # stores under the literal name "_index".
+    result = drop_obs_columns(str(path), ["_index"])
 
     assert "error" in result
     assert "obs index" in result["error"]
