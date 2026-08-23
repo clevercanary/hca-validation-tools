@@ -5,10 +5,12 @@ import pytest
 
 from hca_anndata_tools._io import (
     read_batch_condition,
+    read_edit_log_h5py,
     read_provenance,
     read_uns,
     require_stamped_group,
 )
+from hca_anndata_tools.inspect import _read_schema_version
 
 
 @pytest.fixture
@@ -88,3 +90,27 @@ def test_read_provenance_dataset(h5):
 def test_read_provenance_group(h5):
     prov = h5.create_group("uns/provenance")
     assert read_provenance(h5["uns"]) == prov
+
+
+def test_read_edit_log_group_at_edit_history(h5):
+    """A Group at uns/provenance/edit_history is narrowed to the no-log
+    answer instead of raising through every caller."""
+    h5.create_group("uns/provenance/edit_history")
+
+    assert read_edit_log_h5py(h5) == "[]"
+
+
+def test_read_edit_log_numeric_at_edit_history(h5):
+    """A numeric scalar there is not a log either — narrowed to "[]" rather
+    than handing a float to json.loads downstream."""
+    h5.create_group("uns/provenance")["edit_history"] = 3.14
+
+    assert read_edit_log_h5py(h5) == "[]"
+
+
+def test_read_schema_version_group_at_leaf(h5):
+    """A Group at uns['schema_version'] is narrowed to None instead of
+    raising TypeError from the scalar read."""
+    h5.create_group("uns/schema_version")
+
+    assert _read_schema_version(h5) is None

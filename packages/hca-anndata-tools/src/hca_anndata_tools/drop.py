@@ -100,7 +100,7 @@ def _validate_request(obs: h5py.Group, uns: h5py.Group | None, columns: list[str
     # request names is the point: the check below reads uns['cap_metadata'], so
     # in this layout it sees no declaration and every CAP column looks
     # droppable — the bug this exists to close (#552).
-    if uns is not None and is_legacy_cap_layout(uns):
+    if is_legacy_cap_layout(uns):
         problems.append(f"the file uses {LEGACY_LAYOUT_DESCRIPTION}, which is not supported")
 
     # CAP annotation sets declare themselves in uns['cap_metadata'] and require

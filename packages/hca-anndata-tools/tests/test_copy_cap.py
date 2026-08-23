@@ -670,12 +670,14 @@ def test_missing_file():
 
 def test_copy_survives_dataset_at_uns_in_target(cap_source, hca_target, put_dataset_at_uns):
     """A Dataset at the target's 'uns' used to crash inspection at uns.keys()
-    (#617); narrowed to None, the failure moves to the write boundary — a
-    legible refusal with the target left untouched."""
+    (#617); narrowed to None, the read phase completes and the failure moves
+    to the write boundary (require_group meeting the Dataset), with the
+    target file left byte-identical."""
     put_dataset_at_uns(hca_target)
+    before = hca_target.read_bytes()
 
     result = copy_cap_annotations(str(cap_source), str(hca_target))
 
     assert "error" in result
-    assert "no attribute" not in result["error"]
-    assert hca_target.is_file()
+    assert "no attribute" not in result["error"]  # the pre-#617 crash shape
+    assert hca_target.read_bytes() == before

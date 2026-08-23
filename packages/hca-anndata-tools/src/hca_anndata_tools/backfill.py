@@ -151,7 +151,7 @@ def _read_obs_for_backfill(
             return None, {"error": f"{side} file has no obs group: {path}"}
         if is_target:
             uns = read_uns(f)
-            if uns is not None and is_legacy_cap_layout(uns):
+            if is_legacy_cap_layout(uns):
                 # Parity with drop.py / rename.py (#552): mutating tools
                 # refuse the deprecated top-level CAP layout.
                 return None, {

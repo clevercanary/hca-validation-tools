@@ -282,9 +282,12 @@ def _read_schema_version(f: h5py.File) -> str | None:
     h5ad format.
     """
     uns = read_uns(f)
-    if uns is None or "schema_version" not in uns:
+    if uns is None:
         return None
-    raw = uns["schema_version"][()]
+    version = uns.get("schema_version")
+    if not isinstance(version, h5py.Dataset):
+        return None
+    raw = version[()]
     value = _decode_bytes(raw)
     if not isinstance(value, str):
         return None

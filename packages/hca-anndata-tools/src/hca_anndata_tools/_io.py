@@ -237,8 +237,11 @@ def read_edit_log_h5py(f: h5py.File) -> str:
     Returns "[]" if no edit log exists.
     """
     prov = read_provenance(read_uns(f))
-    if prov is not None and "edit_history" in prov:
-        return _decode_bytes(prov["edit_history"][()])
+    log = prov.get("edit_history") if prov is not None else None
+    if isinstance(log, h5py.Dataset):
+        raw = log[()]
+        if isinstance(raw, bytes | str):
+            return _decode_bytes(raw)
     return "[]"
 
 

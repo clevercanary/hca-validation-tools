@@ -420,5 +420,4 @@ def test_strip_answers_legibly_with_dataset_at_uns(tmp_path, put_dataset_at_uns)
 
     result = strip_cap_annotations(path)
 
-    assert "error" in result
-    assert "Nothing to strip" in result["error"]
+    assert result.get("nothing_to_strip") is True

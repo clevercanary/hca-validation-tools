@@ -108,14 +108,18 @@ def strip_forbidden_obs_columns(path: str) -> dict:
 
         # Peek first: layout check + presence check. Both via h5py so we
         # don't load the full anndata just to decide whether to mutate.
+        # The layout gate matches rename.py / strip_cap.py: a file is
+        # CellxGENE when uns['schema_version'] holds a non-empty string, so
+        # an empty or non-string value no longer trips the refusal the way
+        # the old bare presence check did.
         with h5py.File(path, "r") as f_in:
             if _read_schema_version(f_in):
                 return {
                     "error": (
-                        "Input is CellxGENE-layout (uns['schema_version'] is "
-                        "present). Use convert_cellxgene_to_hca instead — "
-                        "it strips these columns as a side-effect of "
-                        "converting to HCA layout."
+                        "Input is CellxGENE-layout (uns['schema_version'] "
+                        "declares a version). Use convert_cellxgene_to_hca "
+                        "instead — it strips these columns as a side-effect "
+                        "of converting to HCA layout."
                     )
                 }
             obs = f_in.get("obs")
