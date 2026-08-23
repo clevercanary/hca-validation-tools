@@ -112,14 +112,15 @@ def obs_index_problems(obs: h5py.Group, names: Iterable[str], *, verbing: str) -
     return []
 
 
-def direct_members(obs: h5py.Group) -> set[str]:
-    """The obs group's direct children, for membership tests.
+def direct_members(group: h5py.Group) -> set[str]:
+    """A group's direct children, for membership tests.
 
-    Membership against this set, not ``name in obs`` — the latter resolves
-    link paths and so accepts names that point outside obs entirely (the
-    ``/`` trap :func:`is_malformed_name` rejects).
+    Membership against this set, not ``name in group`` — h5py's
+    ``__contains__`` resolves link paths, so it accepts names that point
+    outside the group entirely (the ``/`` trap :func:`is_malformed_name`
+    rejects). True of any group, which is why uns lookups use it too.
     """
-    return set(obs.keys())
+    return set(group.keys())
 
 
 def obs_name_problems(obs: h5py.Group, names: Iterable[str], *, verbing: str) -> list[str]:
@@ -194,7 +195,13 @@ def detect_obs_references(uns: h5py.Group | None, names: Iterable[str]) -> ObsCo
     palettes: dict[str, str] = {}
     cap_columns: list[str] = []
     if uns is not None:
-        palettes = {n: key for n in names if (key := f"{n}_colors") in uns}
+        # direct_members, not `key in uns`: a name like '/X' would make h5py
+        # resolve '/X_colors' from the file root, so a root dataset of that
+        # name would be reported as this column's palette — and, in drop,
+        # deleted with it. Malformed names are refused before any write, so
+        # this is the belt to that brace (#623).
+        uns_members = direct_members(uns)
+        palettes = {n: key for n in names if (key := f"{n}_colors") in uns_members}
         # Over-refusing a '--' name in a CAP file is the safe direction, and no
         # column the mutating tools target uses that separator. Gated on the
         # declaration: without it there is no annotation set to break.

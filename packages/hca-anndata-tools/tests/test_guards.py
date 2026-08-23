@@ -248,3 +248,18 @@ def test_obs_name_problems_caps_what_it_reports(h5):
 
     assert len(problems) == 1
     assert "(+4 more)" in problems[0]
+
+
+def test_palette_detection_does_not_resolve_link_paths(h5):
+    """'/X' would make h5py resolve '/X_colors' from the file root, reporting
+    an unrelated root dataset as this column's palette — which drop would then
+    delete with the column. Malformed names are refused before any write, so
+    this is the belt to that brace (#623)."""
+    h5.create_dataset("X_colors", data=["#fff"])
+    uns = h5.create_group("uns")
+
+    refs = detect_obs_references(uns, ["/X"])
+
+    assert "/X_colors" in uns, "h5py resolves the path — this is the trap"
+    assert "/X_colors" not in direct_members(uns)  # and this is how we avoid it
+    assert refs.palettes == {}
