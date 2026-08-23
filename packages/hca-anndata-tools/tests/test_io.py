@@ -1,12 +1,18 @@
 """Tests for the _io helpers that narrow uns access (#617)."""
 
 import h5py
+import numpy as np
+import pytest
+from anndata.io import write_elem
 
 from hca_anndata_tools._io import (
+    _decode_bytes,
+    compact_categories,
     read_batch_condition,
     read_edit_log_h5py,
     read_provenance,
     read_uns,
+    remap_palette,
     require_stamped_group,
 )
 from hca_anndata_tools.inspect import _read_schema_version
@@ -107,3 +113,87 @@ def test_read_schema_version_group_at_leaf(h5):
     h5.create_group("uns/schema_version")
 
     assert _read_schema_version(h5) is None
+
+
+# --- remap_palette (#624) ----------------------------------------------------
+#
+# uns['<col>_colors'] is positionally aligned to the categories, so every tool
+# that removes a category owes this remap. Asserted as which colours survive in
+# which order — the length is what the HCA validator already checks, and
+# checking only the length is what let the bug ship silently.
+
+_COLORS = ["#aaa", "#bbb", "#ccc", "#ddd"]
+
+
+def _palette(h5, colors=_COLORS):
+    uns = h5.require_group("uns")
+    write_elem(uns, "grade_colors", np.array(colors, dtype=object))
+    return uns
+
+
+@pytest.mark.parametrize(
+    ("kept", "expected"),
+    [
+        ([1, 2, 3], ["#bbb", "#ccc", "#ddd"]),  # first removed
+        ([0, 2, 3], ["#aaa", "#ccc", "#ddd"]),  # middle removed
+        ([0, 1, 2], ["#aaa", "#bbb", "#ccc"]),  # last removed
+        ([0, 3], ["#aaa", "#ddd"]),  # two non-adjacent — the case a single-index slice cannot express
+        ([2], ["#ccc"]),  # all but one
+        ([0, 1, 2, 3], _COLORS),  # nothing removed
+    ],
+)
+def test_remap_palette_keeps_the_surviving_positions(h5, kept, expected):
+    uns = _palette(h5)
+
+    assert remap_palette(uns, "grade_colors", kept, len(_COLORS)) is True
+    assert [_decode_bytes(c) for c in uns["grade_colors"][:]] == expected
+
+
+def test_remap_palette_leaves_a_mismatched_length_alone(h5):
+    """An already-broken palette is the validator's to report, not ours to
+    guess at — we cannot know which position each colour was meant for."""
+    uns = _palette(h5, ["#111", "#222"])  # 2 against 4 categories
+
+    assert remap_palette(uns, "grade_colors", [0, 2], 4) is False
+    assert [_decode_bytes(c) for c in uns["grade_colors"][:]] == ["#111", "#222"]
+
+
+def test_remap_palette_no_palette_key(h5):
+    assert remap_palette(h5.require_group("uns"), "grade_colors", [0], 1) is False
+
+
+def test_remap_palette_no_key_named(h5):
+    assert remap_palette(_palette(h5), None, [0], 4) is False
+
+
+def test_remap_palette_no_uns():
+    assert remap_palette(None, "grade_colors", [0], 4) is False
+
+
+def test_remap_palette_does_not_resolve_link_paths(h5):
+    """Membership goes through direct_members, so a '/'-prefixed key cannot
+    reach a root dataset (the #623 trap)."""
+    write_elem(h5, "grade_colors", np.array(["#zzz"], dtype=object))
+    uns = h5.require_group("uns")
+
+    assert remap_palette(uns, "/grade_colors", [0], 1) is False
+    assert [_decode_bytes(c) for c in h5["grade_colors"][:]] == ["#zzz"]
+
+
+def test_remap_palette_keeps_the_string_encoding(h5):
+    uns = _palette(h5)
+    before = dict(uns["grade_colors"].attrs)
+
+    remap_palette(uns, "grade_colors", [0, 1], len(_COLORS))
+
+    assert dict(uns["grade_colors"].attrs) == before
+
+
+def test_compact_categories_reports_the_surviving_positions():
+    """The positions remap_palette needs; compact_categories always computed
+    them and used to discard them."""
+    kept_cats, codes, kept = compact_categories(["a", "b", "c", "d"], np.array([0, 0, 2, -1]))
+
+    assert kept_cats == ["a", "c"]
+    assert kept == [0, 2]
+    assert list(codes) == [0, 0, 1, -1]

@@ -403,3 +403,78 @@ def test_view_edit_log_auto_resolves_latest(sample_h5ad_for_write):
 def test_view_edit_log_bad_path():
     result = view_edit_log("/nonexistent/file.h5ad")
     assert "error" in result
+
+
+# --- #624: the palette must lose the positions the categories lost ----------
+
+
+def _placeholder_file(tmp_path, uns=None, **extra_obs):
+    """A file whose 'grade' column holds a placeholder among real values, with
+    a palette aligned to its four categories (sorted: a, b, unknown, z)."""
+    values = ["a", "a", "b", "unknown", "z", "z"]
+    obs = pd.DataFrame(
+        {"grade": pd.Categorical(values), **extra_obs},
+        index=pd.Index([f"c{i}" for i in range(len(values))], name="cellID"),
+    )
+    adata = ad.AnnData(X=np.zeros((len(values), 2), dtype=np.float32), obs=obs)
+    adata.uns.update({"grade_colors": np.array(["#aaa", "#bbb", "#unk", "#zzz"], dtype=object), **(uns or {})})
+    path = tmp_path / "placeholders.h5ad"
+    adata.write_h5ad(path, compression="gzip")
+    return str(path)
+
+
+def test_replace_placeholders_keeps_each_survivor_s_colour(tmp_path):
+    """The bug: blanking 'unknown' drops its category, and without a remap the
+    colour after it ('#zzz' -> 'z') shifts onto the wrong category. Asserted as
+    a mapping, not a length — the length is what the validator already checks,
+    and checking only that is what made this silent."""
+    path = _placeholder_file(tmp_path)
+
+    result = replace_placeholder_values(path, ["grade"])
+
+    assert "error" not in result
+    assert result["palettes_remapped"] == ["grade_colors"]
+    out = ad.read_h5ad(result["output_path"])
+    cats = list(out.obs["grade"].cat.categories)
+    colors = list(out.uns["grade_colors"])
+    assert dict(zip(cats, colors, strict=True)) == {"a": "#aaa", "b": "#bbb", "z": "#zzz"}
+    assert "#unk" not in colors
+
+
+def test_replace_placeholders_leaves_another_column_s_palette_alone(tmp_path):
+    """Only the rewritten column's palette is positionally invalidated."""
+    path = _placeholder_file(
+        tmp_path,
+        uns={"other_colors": np.array(["#111", "#222"], dtype=object)},
+        other=pd.Categorical(["x", "y"] * 3),
+    )
+
+    result = replace_placeholder_values(path, ["grade"])
+
+    assert "error" not in result
+    assert result["palettes_remapped"] == ["grade_colors"]
+    assert list(ad.read_h5ad(result["output_path"]).uns["other_colors"]) == ["#111", "#222"]
+
+
+def test_replace_placeholders_leaves_a_mismatched_palette_alone(tmp_path):
+    """A palette whose length already disagrees is the validator's to report,
+    not this tool's to guess at."""
+    path = _placeholder_file(tmp_path, uns={"grade_colors": np.array(["#111", "#222"], dtype=object)})
+
+    result = replace_placeholder_values(path, ["grade"])
+
+    assert "error" not in result
+    assert result["palettes_remapped"] == []
+    assert list(ad.read_h5ad(result["output_path"]).uns["grade_colors"]) == ["#111", "#222"]
+
+
+def test_replace_placeholders_reports_no_remap_without_a_palette(tmp_path):
+    path = _placeholder_file(tmp_path)
+    adata = ad.read_h5ad(path)
+    del adata.uns["grade_colors"]
+    adata.write_h5ad(path)
+
+    result = replace_placeholder_values(path, ["grade"])
+
+    assert "error" not in result
+    assert result["palettes_remapped"] == []
