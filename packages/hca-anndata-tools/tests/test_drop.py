@@ -85,13 +85,12 @@ def test_drop_is_atomic_across_valid_and_invalid(sample_h5ad_for_write):
 
 def test_drop_reports_every_problem_at_once(sample_h5ad_for_write):
     """A caller who names two bad columns learns about both in one round trip."""
-    result = drop_obs_columns(str(sample_h5ad_for_write), ["donor_id", "typo_column"])
+    result = drop_obs_columns(str(sample_h5ad_for_write), ["/obs/sex", "typo_column"])
 
     assert "error" in result
-    # donor_id is schema-required *and* absent from the fixture; the schema
-    # verdict is what matters, but the absent list must still be populated by
-    # the other name rather than short-circuited away.
-    assert "required" in result["error"]
+    # The slash name is refused by the path-name rule; the absent list must
+    # still be populated by the other name rather than short-circuited away.
+    assert "/obs/sex" in result["error"]
     assert "typo_column" in result["error"]
 
 
@@ -138,10 +137,11 @@ def test_drop_refuses_names_containing_a_slash(sample_h5ad_for_write):
         assert "uns" in f
 
 
-def test_drop_slash_path_cannot_bypass_the_schema_guard(sample_h5ad_for_write):
-    """'/obs/donor_id' resolves to the same dataset as 'donor_id' but would not
-    match the schema-required name set, so it must be refused by the path check
-    rather than sliding past the tier comparison."""
+def test_drop_refuses_slash_link_paths_to_real_columns(sample_h5ad_for_write):
+    """'/obs/donor_id' resolves to the same dataset as 'donor_id', but as an
+    HDF5 link path — every check compares plain strings, so accepting it would
+    let the delete disagree with what was validated. Refused by the path-name
+    rule, file untouched."""
     _add_obs_cols(sample_h5ad_for_write, "donor_id")
 
     result = drop_obs_columns(str(sample_h5ad_for_write), ["/obs/donor_id"])
@@ -237,35 +237,52 @@ def test_drop_reports_each_bad_name_once(sample_h5ad_for_write):
     assert "/X" not in absent_part
 
 
-# --- R2: guard tiers ---------------------------------------------------------
+# --- R2: schema-named columns drop freely; only coherence is guarded --------
 
 
-def test_drop_refuses_schema_required_column(sample_h5ad_for_write):
-    """donor_id is required; dropping it would leave an invalid file."""
+def test_drop_permits_schema_required_column(sample_h5ad_for_write):
+    """donor_id is schema-required, and the drop proceeds anyway: whether the
+    result is valid is the validator's verdict, not this tool's (#614/#619).
+    The caller may be mid-sequence, and the original survives the snapshot
+    chain regardless."""
     _add_obs_cols(sample_h5ad_for_write, "donor_id")
 
     result = drop_obs_columns(str(sample_h5ad_for_write), ["donor_id"])
 
-    assert "error" in result
-    assert "required" in result["error"]
-    assert "donor_id" in result["error"]
-    assert _no_snapshot_written(sample_h5ad_for_write)
+    assert "error" not in result
+    assert result["obs_columns_dropped"] == ["donor_id"]
+    assert "donor_id" not in ad.read_h5ad(result["output_path"]).obs.columns
+    assert Path(sample_h5ad_for_write).is_file()  # the recoverability premise
 
 
-def test_drop_refuses_schema_optional_column(sample_h5ad_for_write):
-    """author_batch_notes is optional per the schema but holds producer data
-    that cannot be reconstructed, so it is refused too."""
+def test_drop_permits_schema_optional_column(sample_h5ad_for_write):
+    """author_batch_notes is schema-described producer data, and drops freely
+    for the same reason (#614/#619)."""
     _add_obs_cols(sample_h5ad_for_write, "author_batch_notes")
 
     result = drop_obs_columns(str(sample_h5ad_for_write), ["author_batch_notes"])
 
-    assert "error" in result
-    assert "author_batch_notes" in result["error"]
-    # Reported as the optional tier, not the required one — the distinction is
-    # the seam a future force flag would use.
-    assert "optional" in result["error"]
-    assert "required" not in result["error"]
-    assert _no_snapshot_written(sample_h5ad_for_write)
+    assert "error" not in result
+    assert result["obs_columns_dropped"] == ["author_batch_notes"]
+
+
+def test_drop_chain_keeps_the_original(sample_h5ad_for_write):
+    """Two consecutive drops from the same lineage: the original file survives
+    both, and exactly one (the latest) snapshot remains — the property the
+    schema-guard removal leans on (#619)."""
+    _add_obs_cols(sample_h5ad_for_write, "junk_a", "junk_b")
+
+    r1 = drop_obs_columns(str(sample_h5ad_for_write), ["junk_a"])
+    assert "error" not in r1
+    import time
+
+    time.sleep(1.1)  # distinct snapshot timestamps (second resolution)
+    r2 = drop_obs_columns(str(sample_h5ad_for_write), ["junk_b"])
+    assert "error" not in r2
+
+    assert Path(sample_h5ad_for_write).is_file()
+    snapshots = sorted(Path(sample_h5ad_for_write).parent.glob("*-edit-*.h5ad"))
+    assert [str(p) for p in snapshots] == [r2["output_path"]]
 
 
 def test_drop_refuses_obs_index(sample_h5ad_for_write):
@@ -281,91 +298,18 @@ def test_drop_refuses_obs_index(sample_h5ad_for_write):
     assert _no_snapshot_written(sample_h5ad_for_write)
 
 
-# --- R2: the columns #538 made visible to the guard --------------------------
-#
-# These four were invisible to annDataLocation-walking until #538 (PR #545), so an
-# earlier revision of this tool deleted all of them without complaint. The LinkML
-# schema was the real defect: `Cell` was a bare `pass` with nowhere for the cell
-# annotation to live, and two `Sample` slots carried no annotation. A hardcoded
-# column list here was considered and rejected — the premise of #531 is that such
-# lists rot.
-#
-# Pinned here because the guard's coverage of them is a property of *this* tool,
-# and nothing else in this suite would notice if a future schema regeneration
-# silently dropped an annotation.
-
-
-def test_drop_refuses_the_columns_538_made_visible(sample_h5ad_for_write):
-    """All three at once, and the error must name every one of them.
-
-    Refusing two of three would be worse than refusing none: the caller would see
-    an error, assume nothing happened, and the tool's all-or-nothing contract (R1)
-    is what makes that assumption safe.
-    """
-    columns = ["cell_type_ontology_term_id", "is_primary_data", "sample_collection_method"]
-    _add_obs_cols(sample_h5ad_for_write, *columns)
-
-    result = drop_obs_columns(str(sample_h5ad_for_write), columns)
-
-    assert "error" in result
-    for column in columns:
-        assert column in result["error"], f"{column} fell through the guard"
-    assert _no_snapshot_written(sample_h5ad_for_write)
-
-
-def test_drop_splits_the_538_columns_across_tiers(sample_h5ad_for_write):
-    """`sample_collection_method` is schema-required; the other two are optional.
-
-    The tiers are reported apart because that seam is what a future `--force` flag
-    would act on, so a column landing in the wrong tier would become droppable
-    once that flag exists.
-    """
-    columns = ["cell_type_ontology_term_id", "is_primary_data", "sample_collection_method"]
-    _add_obs_cols(sample_h5ad_for_write, *columns)
-
-    error = drop_obs_columns(str(sample_h5ad_for_write), columns)["error"]
-
-    required_part, _, optional_part = error.partition("; ")
-    assert "required" in required_part
-    assert "sample_collection_method" in required_part
-    assert "optional" in optional_part
-    assert "cell_type_ontology_term_id" in optional_part
-    assert "is_primary_data" in optional_part
-
-
-def test_drop_refuses_cell_type_ontology_term_id(sample_h5ad_for_write):
-    """The worst of the four to lose: it is unrecoverable.
-
-    `populate_labels` derives `cell_type` *from* this column, not the reverse, so
-    once it is gone the file's cell annotation cannot be reconstructed from
-    anything else in the file. It is schema-*optional* (matching the h5ad
-    validator's `requirement_level`), which is exactly why the guard has to refuse
-    the optional tier too rather than only the required one.
-    """
-    _add_obs_cols(sample_h5ad_for_write, "cell_type_ontology_term_id")
-
-    result = drop_obs_columns(str(sample_h5ad_for_write), ["cell_type_ontology_term_id"])
-
-    assert "error" in result
-    assert "cell_type_ontology_term_id" in result["error"]
-    assert "optional" in result["error"]
-    assert _no_snapshot_written(sample_h5ad_for_write)
-
-
-def test_drop_refuses_author_cell_type(sample_h5ad_for_write):
-    """#538 gave `Cell` this slot too, so it is now guarded.
-
-    Deliberate: it holds the author's own cell-type naming, which no other column
-    can reconstruct once removed. Distinct from the derived labels below, which are
-    unguarded precisely because they are regenerable.
-    """
+def test_drop_permits_author_cell_type(sample_h5ad_for_write):
+    """The #605 case the old guard nearly blocked: renaming `cell_type_label`
+    to `author_cell_type` needs an existing (empty) `author_cell_type` dropped
+    first, and the schema guard refused it because the name is schema-named.
+    Under #614's principle the drop proceeds; whether the result is valid is
+    the validator's verdict."""
     _add_obs_cols(sample_h5ad_for_write, "author_cell_type")
 
     result = drop_obs_columns(str(sample_h5ad_for_write), ["author_cell_type"])
 
-    assert "error" in result
-    assert "author_cell_type" in result["error"]
-    assert _no_snapshot_written(sample_h5ad_for_write)
+    assert "error" not in result
+    assert result["obs_columns_dropped"] == ["author_cell_type"]
 
 
 # --- R3: derived labels are not guarded --------------------------------------

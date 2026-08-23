@@ -3,9 +3,11 @@
 The general-purpose sibling of :mod:`hca_anndata_tools.strip`. That module
 encodes *policy* — the two HCA-forbidden privacy column names are baked in and
 it takes no arguments — and ``convert_cellxgene_to_hca`` imports its constant
-for exactly that purpose. This module holds no policy at all: the caller names
-the columns, and the only opinion it enforces is refusing to remove something
-the HCA schema names (see :func:`drop_obs_columns`).
+for exactly that purpose. This module holds no policy at all: the caller
+names the columns, and the tool guarantees only a *coherent* result — no
+dangling references, no destroyed cell identities (see
+:func:`drop_obs_columns`). Whether the result is *valid* is the validator's
+verdict, not this tool's (#614).
 
 That split exists because producers ship the same information under names no
 fixed list can anticipate: the breast-v1 source datasets carry ethnicity as
@@ -30,7 +32,6 @@ from ._io import (
     write_edit_log_h5py,
 )
 from .cap import CAP_METADATA_KEY, LEGACY_LAYOUT_DESCRIPTION, is_legacy_cap_layout
-from .schema.helpers import obs_column_tiers
 from .write import (
     build_edit_log,
     cleanup_previous_version,
@@ -51,7 +52,6 @@ def _validate_request(obs: h5py.Group, uns: h5py.Group | None, columns: list[str
     mistyped two names should learn about both in one round trip.
     """
     problems: list[str] = []
-    required_named, optional_named = obs_column_tiers()
 
     # h5py resolves a name containing '/' as an HDF5 link path, not as a dict
     # key: a leading slash resolves from the file root, and inner slashes
@@ -68,18 +68,6 @@ def _validate_request(obs: h5py.Group, uns: h5py.Group | None, columns: list[str
     index_name = _decode_bytes(obs.attrs.get("_index", "_index"))
     if index_name in columns:
         problems.append(f"'{index_name}' is the obs index, not a column — deleting it would destroy the file")
-
-    required = sorted(c for c in columns if c in required_named)
-    if required:
-        problems.append(f"HCA schema-required obs columns cannot be dropped: {required}")
-
-    optional = sorted(c for c in columns if c in optional_named)
-    if optional:
-        problems.append(
-            f"schema-described obs columns cannot be dropped: {optional} — "
-            f"these are optional per the HCA schema but hold producer data that "
-            f"cannot be recovered once removed"
-        )
 
     # Columns that something in uns *references*. A dropped column leaves the
     # reference dangling and turns a valid file invalid, so these are refused
@@ -129,7 +117,7 @@ def _validate_request(obs: h5py.Group, uns: h5py.Group | None, columns: list[str
     # latter would resolve link paths and so accept names that point outside
     # obs entirely (see the malformed check above).
     #
-    # Reported last: a caller reading the error wants the schema verdict on the
+    # Reported last: a caller reading the error wants the verdict on the
     # names they meant more than the spelling of the ones they fumbled.
     #
     # Malformed names are excluded so each bad name is reported once. A name like
@@ -155,19 +143,15 @@ def drop_obs_columns(path: str, columns: list[str] | tuple[str, ...]) -> dict:
     the caller named the columns, so a name that isn't there is a mistake worth
     failing on.
 
-    Refuses to drop any column the HCA schema names, whether required or
-    optional, as well as the obs index. Dropping a required column would leave
-    an invalid file, and dropping an optional one would discard producer data
-    that cannot be reconstructed; this tool deliberately offers no way to do
-    either. Columns the schema does not name — producer extras, privacy columns
-    under non-canonical names, derived labels under non-canonical names — are
-    the intended targets and drop freely.
-
-    Derived label columns under their *canonical* names (``cell_type``,
-    ``tissue``, ``assay``, ``sex``, ``disease``, ``organism``,
-    ``development_stage``) are not guarded: they are outputs that
-    ``populate_labels`` regenerates from the matching ``*_ontology_term_id``
-    columns, so removing one loses nothing permanently.
+    Drops any obs column the caller names, including schema-named ones — a
+    dropped required column leaves a file the validator will reject, and that
+    is the validator's verdict to deliver, not this tool's: the caller may be
+    mid-sequence (dropping a column to regenerate it, say), and the original
+    file always survives the snapshot chain, so nothing is unrecoverable
+    (#614, #619). What *is* refused is anything that breaks coherence: the obs
+    index (cell identities), names containing ``/`` (they resolve as HDF5 link
+    paths), columns referenced by ``uns['batch_condition']``, CAP
+    annotation-set columns, and the deprecated top-level CAP layout.
 
     Deletes ``uns['<column>_colors']`` alongside each dropped column. scanpy
     writes that key for any categorical it plots, and the palette belongs to the

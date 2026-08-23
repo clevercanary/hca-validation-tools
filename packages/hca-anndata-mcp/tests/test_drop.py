@@ -30,18 +30,17 @@ def test_drop_removes_producer_column(tmp_path):
     assert "ethnicity_verbatim" not in ad.read_h5ad(result["output_path"]).obs.columns
 
 
-def test_drop_refuses_schema_column_through_wrapper(tmp_path):
-    """The guard must be in force via the wrapper too — it lives in the tools
-    layer, not the MCP layer, so this pins that the wrapper does not bypass it."""
+def test_drop_refusal_reaches_through_wrapper(tmp_path):
+    """A coherence refusal must be in force via the wrapper too — it lives in
+    the tools layer, not the MCP layer, so this pins that the wrapper does not
+    bypass it. The obs index is the coherence guard every layout carries
+    (schema-tier refusals were removed in #619)."""
     from hca_anndata_tools.testing import create_sample_h5ad
 
     path = tmp_path / "test.h5ad"
     create_sample_h5ad(path)
-    adata = ad.read_h5ad(path)
-    adata.obs["donor_id"] = pd.Categorical(["D1"] * adata.n_obs)
-    adata.write_h5ad(path)
 
-    result = drop_obs_columns(str(path), ["donor_id"])
+    result = drop_obs_columns(str(path), ["_index"])
 
     assert "error" in result
-    assert "donor_id" in ad.read_h5ad(path).obs.columns
+    assert "obs index" in result["error"]

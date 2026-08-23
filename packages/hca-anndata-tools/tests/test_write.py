@@ -14,6 +14,7 @@ from hca_anndata_tools.write import (
     EDIT_LOG_KEY,
     SameSecondSnapshotError,
     _copy_with_sha256,
+    cleanup_previous_version,
     generate_output_path,
     resolve_latest,
     snapshot_copy,
@@ -324,6 +325,38 @@ def test_write_h5ad_deletes_previous_timestamped(sample_h5ad_for_write):
     d = sample_h5ad_for_write.parent
     h5ad_files = list(d.glob("*.h5ad"))
     assert len(h5ad_files) == 2  # original + latest edit
+
+
+def test_cleanup_never_deletes_a_non_timestamped_source(tmp_path):
+    """The recoverability premise of #614/#619: only files wearing the
+    toolkit's own '-edit-<timestamp>' suffix are ever reaped, so the caller's
+    original always survives and any drop can be re-run from it. (Corollary:
+    an input file that already wears that suffix is indistinguishable from a
+    snapshot and will be reaped by the next edit — the suffix is the lineage
+    marker, so originals must not be named with it.)"""
+    original = tmp_path / "study.h5ad"
+    original.write_bytes(b"x")
+    snapshot = tmp_path / "study-edit-2026-08-23-00-00-01.h5ad"
+    snapshot.write_bytes(b"y")
+
+    cleanup_previous_version(str(original), str(snapshot))
+
+    assert original.is_file(), "a non-timestamped source must never be deleted"
+    assert snapshot.is_file()
+
+
+def test_cleanup_reaps_a_timestamped_previous_snapshot(tmp_path):
+    """The other half of the contract: a prior snapshot IS reaped, keeping the
+    lineage at original + latest."""
+    prev = tmp_path / "study-edit-2026-08-23-00-00-01.h5ad"
+    prev.write_bytes(b"x")
+    latest = tmp_path / "study-edit-2026-08-23-00-00-02.h5ad"
+    latest.write_bytes(b"y")
+
+    cleanup_previous_version(str(prev), str(latest))
+
+    assert not prev.is_file()
+    assert latest.is_file()
 
 
 def test_write_h5ad_never_deletes_original(sample_h5ad_for_write):
