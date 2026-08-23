@@ -365,3 +365,98 @@ def test_merge_refuses_a_non_string_categorical(tmp_path):
 
     assert "error" in result
     assert "non-string categories" in result["error"]
+
+
+# --- palette repair: the slice arithmetic, at every position ------------------
+#
+# The happy-path test above merges the category that sorts *last*, so
+# colors[from_index + 1:] is the empty slice there. These cover the positions
+# where both halves of the slice are non-empty — where an off-by-one would
+# actually show — and assert the surviving category -> colour *mapping*, not
+# just the length, because the validator checks only length.
+
+_ABCD = ["a", "a", "b", "b", "c", "c", "d", "d"]
+_ABCD_COLORS = ["#aaa", "#bbb", "#ccc", "#ddd"]
+
+
+def _make_palette_file(path, column="grp"):
+    adata = ad.AnnData(
+        X=np.zeros((len(_ABCD), 2), dtype=np.float32),
+        obs=pd.DataFrame(
+            {column: pd.Categorical(_ABCD)},
+            index=pd.Index([f"c{i}" for i in range(len(_ABCD))], name="cellID"),
+        ),
+    )
+    adata.uns[f"{column}_colors"] = np.array(_ABCD_COLORS, dtype=object)
+    adata.write_h5ad(path, compression="gzip")
+    return str(path)
+
+
+@pytest.mark.parametrize(
+    ("from_value", "to_value", "expected"),
+    [
+        # first position — colors[:0] is empty
+        ("a", "b", {"b": "#bbb", "c": "#ccc", "d": "#ddd"}),
+        # middle, merging upward (to_index > from_index)
+        ("b", "d", {"a": "#aaa", "c": "#ccc", "d": "#ddd"}),
+        # middle, merging downward (to_index < from_index)
+        ("c", "a", {"a": "#aaa", "b": "#bbb", "d": "#ddd"}),
+        # last position — colors[from_index + 1:] is empty
+        ("d", "a", {"a": "#aaa", "b": "#bbb", "c": "#ccc"}),
+    ],
+)
+def test_palette_survivors_keep_their_own_colour(tmp_path, from_value, to_value, expected):
+    path = _make_palette_file(tmp_path / "pal.h5ad")
+
+    result = merge_obs_categories(path, "grp", from_value, to_value)
+
+    assert "error" not in result
+    assert result["palette_trimmed"] is True
+    out = ad.read_h5ad(result["output_path"])
+    cats = list(out.obs["grp"].cat.categories)
+    colors = list(out.uns["grp_colors"])
+    assert dict(zip(cats, colors, strict=True)) == expected
+    # the merged-away category's colour is the one that went
+    assert _ABCD_COLORS["abcd".index(from_value)] not in colors
+
+
+def test_palette_repair_leaves_other_columns_palettes_alone(tmp_path):
+    """Only the merged column's palette is positionally invalidated; a
+    neighbour's is unrelated data."""
+    path = _make_palette_file(tmp_path / "pal.h5ad")
+    adata = ad.read_h5ad(path)
+    adata.obs["other"] = pd.Categorical(["x", "y"] * 4)
+    adata.uns["other_colors"] = np.array(["#111", "#222"], dtype=object)
+    adata.write_h5ad(path)
+
+    result = merge_obs_categories(path, "grp", "a", "b")
+
+    assert "error" not in result
+    out = ad.read_h5ad(result["output_path"])
+    assert list(out.uns["other_colors"]) == ["#111", "#222"]
+    assert list(out.obs["other"].cat.categories) == ["x", "y"]
+
+
+def test_palette_keeps_its_on_disk_encoding(tmp_path):
+    """Written through anndata's write_elem, so the string-array encoding
+    attrs survive — a hand-rolled rewrite is what drops them."""
+    path = _make_palette_file(tmp_path / "pal.h5ad")
+    with h5py.File(path, "r") as f:
+        before = dict(f["uns"]["grp_colors"].attrs)
+
+    result = merge_obs_categories(path, "grp", "a", "b")
+
+    with h5py.File(result["output_path"], "r") as f:
+        assert dict(f["uns"]["grp_colors"].attrs) == before
+
+
+def test_palette_untouched_when_the_merge_is_refused(tmp_path, no_snapshot):
+    """All-or-nothing covers the palette too: a refused request writes nothing,
+    so the palette cannot be trimmed against a merge that did not happen."""
+    path = _make_palette_file(tmp_path / "pal.h5ad")
+
+    result = merge_obs_categories(path, "grp", "a", "not-a-category")
+
+    assert "error" in result
+    assert no_snapshot(path)
+    assert list(ad.read_h5ad(path).uns["grp_colors"]) == _ABCD_COLORS
