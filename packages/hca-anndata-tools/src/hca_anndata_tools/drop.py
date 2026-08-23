@@ -31,9 +31,11 @@ from ._io import (
 )
 from .cap import CAP_METADATA_KEY
 from .guards import (
+    ObsColumnReferences,
     batch_condition_refusal,
     detect_obs_references,
     direct_members,
+    is_malformed_name,
     legacy_layout_problems,
     malformed_name_problems,
     obs_index_problems,
@@ -48,7 +50,9 @@ from .write import (
 )
 
 
-def _validate_request(obs: h5py.Group, uns: h5py.Group | None, columns: list[str]) -> list[str]:
+def _validate_request(
+    obs: h5py.Group, uns: h5py.Group | None, columns: list[str], refs: ObsColumnReferences
+) -> list[str]:
     """Collect every reason the drop cannot proceed.
 
     Most reasons are per-column, but not all: an unsupported file layout is a
@@ -60,18 +64,15 @@ def _validate_request(obs: h5py.Group, uns: h5py.Group | None, columns: list[str
     """
     problems: list[str] = []
 
-    malformed = [c for c in columns if "/" in c or not c.strip()]
+    malformed = [c for c in columns if is_malformed_name(c)]
     problems += malformed_name_problems(columns)
-    problems += obs_index_problems(obs, columns, consequence="deleting it would destroy the file")
+    problems += obs_index_problems(obs, columns, verbing="deleting")
     problems += legacy_layout_problems(uns)
 
-    # This tool's policy for each way something can reference a column
-    # (#614's repair-or-refuse rule):
-    #   batch_condition -> REFUSE   (a drop has no new name to re-point at)
-    #   palettes        -> CASCADE  (the column owns it; deleted alongside it
-    #                                in drop_obs_columns, not refused here)
-    #   CAP columns     -> REFUSE   (CAP material is never patched in place)
-    refs = detect_obs_references(uns, columns)
+    # This tool's policy for the two mechanisms it refuses on (#614's
+    # repair-or-refuse rule): a drop has no new name to re-point
+    # batch_condition at, and CAP material is never patched in place. The
+    # third, palettes, cascades — deleted with the column in drop_obs_columns.
     if refs.batch_condition:
         problems.append(batch_condition_refusal(refs.batch_condition, verbing="dropping"))
     if refs.cap_columns:
@@ -186,15 +187,13 @@ def drop_obs_columns(path: str, columns: list[str] | tuple[str, ...]) -> dict:
             return {"error": f"File not found: {path}"}
 
         with h5py.File(path, "r") as f_in:
-            obs, obs_error = require_obs_group(f_in)
-            if obs_error is not None:
-                return obs_error
-            assert obs is not None
+            obs = require_obs_group(f_in)
             uns = read_uns(f_in)
-            problems = _validate_request(obs, uns, requested)
+            refs = detect_obs_references(uns, requested)
+            problems = _validate_request(obs, uns, requested, refs)
             # Palettes to remove with their columns. Resolved here, from the
             # same read that validated, so the write phase does no discovery.
-            owned_uns_keys = list(detect_obs_references(uns, requested).palettes.values())
+            owned_uns_keys = list(refs.palettes.values())
 
         if problems:
             return {"error": "Refusing to drop: " + "; ".join(problems)}

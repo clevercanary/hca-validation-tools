@@ -1,7 +1,6 @@
 """Tests for the _io helpers that narrow uns access (#617)."""
 
 import h5py
-import pytest
 
 from hca_anndata_tools._io import (
     read_batch_condition,
@@ -11,12 +10,6 @@ from hca_anndata_tools._io import (
     require_stamped_group,
 )
 from hca_anndata_tools.inspect import _read_schema_version
-
-
-@pytest.fixture
-def h5(tmp_path):
-    with h5py.File(tmp_path / "f.h5", "a") as f:
-        yield f
 
 
 def test_read_uns_absent(h5):

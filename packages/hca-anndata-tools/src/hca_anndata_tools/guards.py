@@ -16,10 +16,11 @@ is why per-site reasoning kept missing one:
 - **by naming convention** — CAP annotation-set columns named
   ``<set>--<suffix>``, declared by ``uns['cap_metadata']``.
 
-:func:`detect_obs_references` finds all three at once. What a tool *does*
-about each — repair, refuse, or cascade — is that tool's policy, stated as a
-labeled block at its call site; only detection and the shared refusal wording
-live here.
+:func:`detect_obs_references` finds all three at once and carries enough for
+any of the three responses: the matched names a **refuse** needs to report,
+the palette keys a **cascade** needs to move or delete, and — for
+``batch_condition`` — the whole declaration a **repair** needs to rewrite.
+What a tool does with each is that tool's policy, at its own call site.
 """
 
 from __future__ import annotations
@@ -29,43 +30,70 @@ from dataclasses import dataclass
 
 import h5py
 
-from ._io import _decode_bytes, read_batch_condition
-from .cap import CAP_METADATA_KEY, LEGACY_LAYOUT_DESCRIPTION, is_legacy_cap_layout
+from ._io import obs_index_name, read_batch_condition
+from .cap import LEGACY_LAYOUT_DESCRIPTION, cap_obs_columns, is_cap_declared, is_legacy_cap_layout
+
+__all__ = [
+    "ObsColumnReferences",
+    "batch_condition_refusal",
+    "detect_obs_references",
+    "direct_members",
+    "is_malformed_name",
+    "legacy_layout_problems",
+    "malformed_name_problems",
+    "obs_index_name",
+    "obs_index_problems",
+    "require_obs_group",
+]
+
+
+class GuardRefusal(Exception):
+    """A precondition the caller must fix before the tool can run.
+
+    Carries the message verbatim: every mutating tool ends in
+    ``except Exception as e: return {"error": str(e)}``, so raising produces
+    the same error dict a returned refusal would, without threading an
+    optional group through the call site.
+    """
+
 
 # --- structural invariants ---------------------------------------------------
 
 
-def malformed_name_problems(names: Iterable[str]) -> list[str]:
-    """Names that cannot be obs columns: containing ``/`` or blank.
+def is_malformed_name(name: str) -> bool:
+    """True if the name cannot be an obs column: it contains ``/`` or is blank.
 
     h5py resolves a name containing ``/`` as an HDF5 link path, not a dict
     key: a leading slash resolves from the file root and inner slashes
     traverse subgroups, so ``del obs["/X"]`` would unlink the expression
     matrix. Every guard compares plain strings, so rejecting these up front
     is what keeps the checks agreeing with what the operation would do.
+
+    The predicate, separate from :func:`malformed_name_problems`, because
+    callers need the set as well as the message: a malformed name is excluded
+    from the absent-name report so each bad name is named once.
     """
-    malformed = [n for n in names if "/" in n or not n.strip()]
+    return "/" in name or not name.strip()
+
+
+def malformed_name_problems(names: Iterable[str]) -> list[str]:
+    """A problem entry naming every malformed name, or an empty list."""
+    malformed = [n for n in names if is_malformed_name(n)]
     if malformed:
         return [f"not valid obs column names (a column name cannot contain '/' or be blank): {malformed}"]
     return []
 
 
-def obs_index_name(obs: h5py.Group) -> str:
-    """The name of the obs index dataset, from ``obs.attrs['_index']``."""
-    return _decode_bytes(obs.attrs.get("_index", "_index"))
-
-
-def obs_index_problems(obs: h5py.Group, names: Iterable[str], *, consequence: str) -> list[str]:
+def obs_index_problems(obs: h5py.Group, names: Iterable[str], *, verbing: str) -> list[str]:
     """A problem entry if any name is the obs index.
 
     The index is a dataset in the obs group like any column, so a caller can
-    name it; mutating it destroys the file's cell identities. ``consequence``
-    finishes the sentence with the tool's own verb ("deleting it would
-    destroy the file", "renaming it would destroy the file").
+    name it; mutating it destroys the file's cell identities. ``verbing`` is
+    the tool's gerund ("deleting", "renaming").
     """
     index_name = obs_index_name(obs)
     if index_name in names:
-        return [f"'{index_name}' is the obs index, not a column — {consequence}"]
+        return [f"'{index_name}' is the obs index, not a column — {verbing} it would destroy the file"]
     return []
 
 
@@ -74,23 +102,40 @@ def direct_members(obs: h5py.Group) -> set[str]:
 
     Membership against this set, not ``name in obs`` — the latter resolves
     link paths and so accepts names that point outside obs entirely (the
-    ``/`` trap :func:`malformed_name_problems` rejects).
+    ``/`` trap :func:`is_malformed_name` rejects).
     """
     return set(obs.keys())
 
 
-def require_obs_group(f: h5py.File) -> tuple[h5py.Group | None, dict | None]:
-    """The file's obs group, or the error dict refusing its absence.
+def obs_name_problems(obs: h5py.Group, names: Iterable[str], *, verbing: str) -> list[str]:
+    """Every structural reason these names cannot be operated on.
+
+    The three checks any obs mutation owes, whatever the name source — a
+    caller's request, or the file's own ``column-order`` attribute: the names
+    are well-formed, none is the index, and each is a direct child.
+    """
+    names = list(names)
+    problems = malformed_name_problems(names)
+    problems += obs_index_problems(obs, names, verbing=verbing)
+    members = direct_members(obs)
+    absent = [n for n in names if n not in members and not is_malformed_name(n)]
+    if absent:
+        problems.append(f"not present in obs: {absent}")
+    return problems
+
+
+def require_obs_group(f: h5py.File) -> h5py.Group:
+    """The file's obs group, or raise :class:`GuardRefusal`.
 
     Two messages, deliberately: a missing obs group and a pre-modern layout
     (obs stored as a Dataset) are different repairs for the caller.
     """
-    obs = f.get("obs")  # not read_group: the two failure shapes get different messages
+    obs = f.get("obs")
     if obs is None:
-        return None, {"error": "File has no obs group"}
+        raise GuardRefusal("File has no obs group")
     if not isinstance(obs, h5py.Group):
-        return None, {"error": "obs is not a group — the file predates the modern h5ad layout"}
-    return obs, None
+        raise GuardRefusal("obs is not a group — the file predates the modern h5ad layout")
+    return obs
 
 
 def legacy_layout_problems(uns: h5py.Group | None) -> list[str]:
@@ -113,14 +158,16 @@ def legacy_layout_problems(uns: h5py.Group | None) -> list[str]:
 class ObsColumnReferences:
     """What in the file references the named obs columns, by mechanism.
 
-    ``batch_condition``: the requested names listed in
-    ``uns['batch_condition']``, sorted. ``palettes``: requested name →
-    ``'<name>_colors'`` key present in uns, in request order. ``cap_columns``:
-    requested names carrying the CAP ``--`` separator while
-    ``uns['cap_metadata']`` declares annotation sets, sorted.
+    ``batch_condition``: the requested names the declaration lists, sorted —
+    what a refusal reports. ``batch_condition_declared``: the whole
+    declaration in file order — what a repair rewrites, which the
+    intersection alone cannot support. ``palettes``: requested name →
+    ``'<name>_colors'`` key present in uns. ``cap_columns``: requested names
+    carrying the CAP ``--`` separator while an annotation set is declared.
     """
 
     batch_condition: list[str]
+    batch_condition_declared: list[str]
     palettes: dict[str, str]
     cap_columns: list[str]
 
@@ -128,39 +175,33 @@ class ObsColumnReferences:
 def detect_obs_references(uns: h5py.Group | None, names: Iterable[str]) -> ObsColumnReferences:
     """Find every reference to the named obs columns, across all three mechanisms."""
     names = list(names)
-    batched = sorted(set(names) & set(read_batch_condition(uns)))
+    declared = read_batch_condition(uns)
     palettes: dict[str, str] = {}
     cap_columns: list[str] = []
     if uns is not None:
         palettes = {n: key for n in names if (key := f"{n}_colors") in uns}
-        # Keyed on the '--' convention rather than on parsing cap_metadata,
-        # which may be stored as either a group or a JSON string: over-refusing
-        # a '--' name in a CAP file is the safe direction, and no column the
-        # mutating tools target uses that separator. Keyed on CAP_METADATA_KEY
-        # rather than the literal so a canonical-key rename moves cap.py and
-        # this check together (#552, in the other direction).
-        if CAP_METADATA_KEY in uns:
-            cap_columns = sorted(n for n in names if "--" in n)
-    return ObsColumnReferences(batch_condition=batched, palettes=palettes, cap_columns=cap_columns)
+        # Over-refusing a '--' name in a CAP file is the safe direction, and no
+        # column the mutating tools target uses that separator. Gated on the
+        # declaration: without it there is no annotation set to break.
+        if is_cap_declared(uns):
+            cap_columns = sorted(cap_obs_columns(names))
+    return ObsColumnReferences(
+        batch_condition=sorted(set(names) & set(declared)),
+        batch_condition_declared=declared,
+        palettes=palettes,
+        cap_columns=cap_columns,
+    )
 
 
 def batch_condition_refusal(columns: list[str], *, verbing: str) -> str:
     """The shared refusal for a by-value reference a tool cannot repair.
 
-    ``verbing`` is the tool's gerund ("dropping", "removing"). Rewriting the
-    declaration is a curation decision, not the tool's to take — the caller
-    edits ``uns['batch_condition']`` first if the change is intended.
+    Rewriting the declaration is a curation decision, not the tool's to take —
+    the caller edits ``uns['batch_condition']`` first if the change is
+    intended.
     """
     return (
         f"referenced by uns['batch_condition']: {columns} — that list declares "
         f"which columns define the experiment's batches, so {verbing} one changes "
         f"the declaration. Edit uns['batch_condition'] first if that is intended"
     )
-
-
-def cap_palette_keys(keys: Iterable[str]) -> list[str]:
-    """CAP-shaped palette keys: ``<name>_colors`` where the base name is a CAP
-    ``--`` column. Both those paired with a present column and those already
-    orphaned by an earlier era's overwrite, which deleted columns but left
-    palettes."""
-    return [k for k in keys if k.endswith("_colors") and "--" in k.removesuffix("_colors")]

@@ -4,27 +4,23 @@ These pin the extracted helpers directly. The per-tool suites still cover
 each tool's *policy* — what it does with what these find.
 """
 
-import h5py
 import pytest
 
+from hca_anndata_tools._io import obs_index_name
+from hca_anndata_tools.cap import cap_palette_keys
 from hca_anndata_tools.guards import (
+    GuardRefusal,
     ObsColumnReferences,
     batch_condition_refusal,
-    cap_palette_keys,
     detect_obs_references,
     direct_members,
+    is_malformed_name,
     legacy_layout_problems,
     malformed_name_problems,
-    obs_index_name,
     obs_index_problems,
+    obs_name_problems,
     require_obs_group,
 )
-
-
-@pytest.fixture
-def h5(tmp_path):
-    with h5py.File(tmp_path / "f.h5", "a") as f:
-        yield f
 
 
 def _obs(f, *, index_name="_index", columns=()):
@@ -43,15 +39,17 @@ def _obs(f, *, index_name="_index", columns=()):
 def test_malformed_names_are_rejected(name):
     """'/' resolves as an HDF5 link path, so such a name would reach outside
     the group being edited; blank names name nothing."""
+    assert is_malformed_name(name)
     assert malformed_name_problems([name])
 
 
 @pytest.mark.parametrize("name", ["donor_id", "cell_type--label", "x.y"])
 def test_well_formed_names_pass(name):
+    assert not is_malformed_name(name)
     assert malformed_name_problems([name]) == []
 
 
-def test_malformed_names_are_reported_together(h5):
+def test_malformed_names_are_reported_together():
     """All bad names in one round trip, not the first one found."""
     problems = malformed_name_problems(["/X", "ok", ""])
     assert len(problems) == 1
@@ -71,7 +69,7 @@ def test_obs_index_name_defaults(h5):
 def test_obs_index_is_refused_with_the_caller_s_verb(h5):
     obs = _obs(h5, index_name="cellID")
 
-    problems = obs_index_problems(obs, ["cellID"], consequence="deleting it would destroy the file")
+    problems = obs_index_problems(obs, ["cellID"], verbing="deleting")
 
     assert len(problems) == 1
     assert "cellID" in problems[0]
@@ -79,7 +77,7 @@ def test_obs_index_is_refused_with_the_caller_s_verb(h5):
 
 
 def test_obs_index_problems_empty_when_not_named(h5):
-    assert obs_index_problems(_obs(h5), ["donor_id"], consequence="x") == []
+    assert obs_index_problems(_obs(h5), ["donor_id"], verbing="deleting") == []
 
 
 def test_direct_members_does_not_resolve_link_paths(h5):
@@ -95,24 +93,20 @@ def test_direct_members_does_not_resolve_link_paths(h5):
 
 def test_require_obs_group_returns_the_group(h5):
     obs = _obs(h5)
-    got, error = require_obs_group(h5)
-    assert got == obs
-    assert error is None
+    assert require_obs_group(h5) == obs
 
 
 def test_require_obs_group_absent(h5):
-    got, error = require_obs_group(h5)
-    assert got is None
-    assert error is not None and "no obs group" in error["error"]
+    with pytest.raises(GuardRefusal, match="no obs group"):
+        require_obs_group(h5)
 
 
 def test_require_obs_group_not_a_group(h5):
     """A Dataset at 'obs' is a different repair than a missing one, so it gets
     its own message."""
     h5["obs"] = "not a group"
-    got, error = require_obs_group(h5)
-    assert got is None
-    assert error is not None and "predates the modern h5ad layout" in error["error"]
+    with pytest.raises(GuardRefusal, match="predates the modern h5ad layout"):
+        require_obs_group(h5)
 
 
 def test_legacy_layout_is_refused(h5):
@@ -131,7 +125,7 @@ def test_legacy_layout_absent_and_none(h5):
 
 def test_detect_finds_nothing_without_uns():
     assert detect_obs_references(None, ["donor_id"]) == ObsColumnReferences(
-        batch_condition=[], palettes={}, cap_columns=[]
+        batch_condition=[], batch_condition_declared=[], palettes={}, cap_columns=[]
     )
 
 
@@ -199,3 +193,36 @@ def test_cap_palette_keys_finds_orphans():
     """A palette whose column an earlier overwrite era already deleted still
     counts — nothing else would ever collect it."""
     assert cap_palette_keys(["gone--label_colors"]) == ["gone--label_colors"]
+
+
+def test_detect_carries_the_whole_declaration_for_repair(h5):
+    """A refusal reports the intersection; a repair rewrites the whole list,
+    which the intersection alone cannot support."""
+    uns = h5.create_group("uns")
+    uns.create_dataset("batch_condition", data=["donor_id", "sample_id"])
+
+    refs = detect_obs_references(uns, ["sample_id"])
+
+    assert refs.batch_condition == ["sample_id"]
+    assert refs.batch_condition_declared == ["donor_id", "sample_id"]  # file order kept
+
+
+def test_obs_name_problems_collects_all_three_structural_faults(h5):
+    """One entry point for any name source — a caller's request, or the
+    file's own column-order attribute."""
+    obs = _obs(h5, index_name="cellID", columns=["donor_id"])
+
+    problems = obs_name_problems(obs, ["/X", "cellID", "absent", "donor_id"], verbing="deleting")
+
+    assert len(problems) == 3
+    assert any("/X" in p for p in problems)
+    assert any("cellID" in p and "obs index" in p for p in problems)
+    assert any("absent" in p for p in problems)
+    assert not any("donor_id" in p for p in problems)
+
+
+def test_obs_name_problems_reports_a_malformed_name_once(h5):
+    """'/X' is necessarily absent from the members too; listing it under both
+    would imply its only fault was being missing."""
+    problems = obs_name_problems(_obs(h5), ["/X"], verbing="deleting")
+    assert len(problems) == 1

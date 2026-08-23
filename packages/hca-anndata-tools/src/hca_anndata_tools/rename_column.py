@@ -23,20 +23,21 @@ import numpy as np
 from anndata.io import write_elem
 
 from ._io import (
-    read_batch_condition,
     read_column_order,
     read_edit_log_h5py,
-    read_group,
     read_uns,
     write_edit_log_h5py,
 )
 from .cap import CAP_METADATA_KEY
 from .guards import (
+    ObsColumnReferences,
     detect_obs_references,
     direct_members,
+    is_malformed_name,
     legacy_layout_problems,
     malformed_name_problems,
     obs_index_problems,
+    require_obs_group,
 )
 from .write import (
     build_edit_log,
@@ -89,7 +90,9 @@ def _is_empty_column(obs: h5py.Group, name: str) -> bool:
     return False
 
 
-def _validate_request(obs: h5py.Group, uns: h5py.Group | None, column: str, new_name: str) -> list[str]:
+def _validate_request(
+    obs: h5py.Group, uns: h5py.Group | None, column: str, new_name: str, refs: ObsColumnReferences
+) -> list[str]:
     """Collect every reason the rename cannot proceed.
 
     All checks run to completion rather than short-circuiting, so a caller who
@@ -99,12 +102,10 @@ def _validate_request(obs: h5py.Group, uns: h5py.Group | None, column: str, new_
 
     problems += legacy_layout_problems(uns)
 
-    # This tool's policy per reference mechanism (#614's repair-or-refuse rule):
-    #   batch_condition -> REPAIR   (a rename knows the new name; rewritten below)
-    #   palettes        -> CASCADE  (moved with the column)
-    #   CAP columns     -> REFUSE   (CAP is the system of record; strip and
-    #                                re-copy the set rather than renaming it)
-    refs = detect_obs_references(uns, (column, new_name))
+    # The one mechanism this tool refuses on: CAP is the system of record, so
+    # its columns are stripped and re-copied, never renamed in place. The other
+    # two are handled in rename_obs_column — batch_condition repaired (a rename
+    # knows the new name), the palette cascaded with its column.
     if refs.cap_columns:
         problems.append(
             f"look like CAP annotation-set columns: {refs.cap_columns} — the set is declared "
@@ -112,13 +113,13 @@ def _validate_request(obs: h5py.Group, uns: h5py.Group | None, column: str, new_
             f"set and re-copy it from CAP instead of renaming its columns"
         )
 
-    malformed = [n for n in (column, new_name) if "/" in n or not n.strip()]
+    malformed = [n for n in (column, new_name) if is_malformed_name(n)]
     problems += malformed_name_problems((column, new_name))
 
     if column == new_name:
         problems.append(f"'{column}' is already the column's name")
 
-    problems += obs_index_problems(obs, (column, new_name), consequence="renaming it would destroy the file")
+    problems += obs_index_problems(obs, (column, new_name), verbing="renaming")
 
     # Membership against the group's direct children rather than `in obs`,
     # which would resolve link paths (see the malformed check above).
@@ -126,7 +127,7 @@ def _validate_request(obs: h5py.Group, uns: h5py.Group | None, column: str, new_
     # A malformed name is excluded so each bad name is reported once. "/X" is
     # necessarily absent from obs.keys() too, and listing it under both
     # problems would imply its only fault was being missing — sending a caller
-    # to hunt for a typo rather than read the path-name rule. drop.py:155 makes
+    # to hunt for a typo rather than read the path-name rule. drop._validate_request makes
     # the same exclusion for the same reason.
     members = direct_members(obs)
     if column not in members and column not in malformed:
@@ -229,13 +230,12 @@ def rename_obs_column(path: str, column: str, new_name: str) -> dict:
             return {"error": f"File not found: {path}"}
 
         with h5py.File(path, "r") as f_in:
-            obs = read_group(f_in, "obs")
-            if obs is None:
-                return {"error": "File has no obs group, or obs is not a group"}
+            obs = require_obs_group(f_in)
             uns = read_uns(f_in)
-            problems = _validate_request(obs, uns, column, new_name)
-            palette = f"{column}_colors" if uns is not None and f"{column}_colors" in uns else None
-            batch_condition = read_batch_condition(uns)
+            refs = detect_obs_references(uns, (column, new_name))
+            problems = _validate_request(obs, uns, column, new_name, refs)
+            palette = refs.palettes.get(column)
+            batch_condition = refs.batch_condition_declared
 
         if problems:
             return {"error": "Refusing to rename: " + "; ".join(problems)}

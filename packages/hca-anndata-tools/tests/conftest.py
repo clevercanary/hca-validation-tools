@@ -69,3 +69,10 @@ def put_dataset_at_uns():
         return path
 
     return _put
+
+
+@pytest.fixture
+def h5(tmp_path):
+    """A bare open h5py File, for unit tests below the h5ad layer."""
+    with h5py.File(tmp_path / "f.h5", "a") as f:
+        yield f

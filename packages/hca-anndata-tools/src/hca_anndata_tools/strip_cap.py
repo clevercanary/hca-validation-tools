@@ -24,6 +24,7 @@ from pathlib import Path
 import h5py
 
 from ._io import (
+    obs_index_name,
     read_column_order,
     read_edit_log_h5py,
     read_provenance,
@@ -31,8 +32,20 @@ from ._io import (
     update_column_order,
     write_edit_log_h5py,
 )
-from .cap import _LEGACY_CAP_MARKERS, CAP_METADATA_KEY, cap_obs_columns, unknown_cap_suffix_columns
-from .guards import cap_palette_keys, detect_obs_references, obs_index_name, require_obs_group
+from .cap import (
+    _LEGACY_CAP_MARKERS,
+    CAP_METADATA_KEY,
+    cap_obs_columns,
+    cap_palette_keys,
+    unknown_cap_suffix_columns,
+)
+from .guards import (
+    batch_condition_refusal,
+    detect_obs_references,
+    direct_members,
+    obs_name_problems,
+    require_obs_group,
+)
 from .inspect import _read_schema_version
 from .write import (
     SAME_SECOND_SNAPSHOT_ERROR,
@@ -144,45 +157,38 @@ def strip_cap_annotations(path: str) -> dict:
                         f"— strip CAP material only from HCA-layout curation targets."
                     )
                 }
-            obs, obs_error = require_obs_group(f_in)
-            if obs_error is not None:
-                return obs_error
-            assert obs is not None
+            obs = require_obs_group(f_in)
             obs_columns_present = cap_obs_columns(read_column_order(obs))
-            # Guard the attr-driven deletion (parity with drop.py/rename.py):
-            # a malformed column-order entry could name an HDF5 link path
-            # ('/'), the obs index (deleting the cell IDs), or a non-child.
+            # The names come from the column-order attr rather than a caller,
+            # but they are deleted the same way, so they owe the same three
+            # structural invariants (guards.obs_name_problems).
+            if problems := obs_name_problems(obs, obs_columns_present, verbing="removing"):
+                return {"error": "Refusing to strip: obs column-order is malformed — " + "; ".join(problems)}
+
+            # The symmetric half, which is this tool's alone: an attr-driven
+            # strip deletes what column-order lists, so a CAP-shaped direct
+            # child missing from that list would silently survive.
             index_name = obs_index_name(obs)
-            obs_children = set(obs.keys())
-            bad_names = [c for c in obs_columns_present if "/" in c or c == index_name or c not in obs_children]
-            # Symmetric check: a CAP-shaped direct child missing from
-            # column-order would silently survive an attr-driven strip.
             listed = set(obs_columns_present)
-            bad_names += [c for c in sorted(obs_children) if "--" in c and c != index_name and c not in listed]
-            if bad_names:
+            unlisted = [c for c in sorted(direct_members(obs)) if "--" in c and c != index_name and c not in listed]
+            if unlisted:
                 return {
                     "error": (
-                        f"Refusing to strip: obs column-order and the obs group disagree "
-                        f"(a '/', the obs index, or an unlisted/missing column: {bad_names[:5]}) "
+                        f"Refusing to strip: CAP-shaped obs column(s) {unlisted[:5]} are missing from "
+                        f"obs column-order, so an attr-driven strip would leave them behind "
                         f"— the file is malformed"
                     )
                 }
             unknown_suffixes = unknown_cap_suffix_columns(obs_columns_present)
             uns = read_uns(f_in)
-            # This tool's policy per reference mechanism (#614):
-            #   batch_condition -> REFUSE   (removing a CAP column it names
-            #                                would change the declaration)
-            #   palettes        -> CASCADE  (CAP-shaped ones go with the set)
-            #   CAP columns     -> the material being stripped, by definition
+            # REFUSE on a by-value reference this tool cannot repair: removing
+            # a CAP column that batch_condition names would change the
+            # declaration. (The CAP-shaped palettes cascade with the set — see
+            # cap_palette_keys below.)
             refs = detect_obs_references(uns, obs_columns_present)
             if refs.batch_condition:
                 return {
-                    "error": (
-                        f"Refusing to strip: uns['batch_condition'] references CAP column(s) "
-                        f"{refs.batch_condition} — that list declares the experiment's batch "
-                        f"covariates, so removing one changes the declaration. Edit "
-                        f"uns['batch_condition'] first if that is intended."
-                    )
+                    "error": "Refusing to strip: " + batch_condition_refusal(refs.batch_condition, verbing="removing")
                 }
             uns_keys_present: list[str] = []
             if uns is not None:

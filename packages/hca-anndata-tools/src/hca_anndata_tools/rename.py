@@ -24,6 +24,7 @@ import pandas as pd
 
 from ._io import (
     _decode_bytes,
+    obs_index_name,
     read_categorical_data,
     read_edit_log_h5py,
     read_group,
@@ -32,7 +33,7 @@ from ._io import (
     replace_string_dataset,
     write_edit_log_h5py,
 )
-from .guards import legacy_layout_problems, malformed_name_problems, obs_index_name, require_obs_group
+from .guards import direct_members, is_malformed_name, legacy_layout_problems, require_obs_group
 from .inspect import _read_schema_version
 from .write import (
     SAME_SECOND_SNAPSHOT_ERROR,
@@ -62,7 +63,7 @@ def _check_arguments(column, value, prefix_from, prefix_to) -> list[str]:
         problems.append(f"column and value must be strings; got {column!r} and {value!r}")
     # h5py resolves a name containing '/' as an HDF5 link path (see guards.py);
     # this tool takes one column, so it reports the singular form.
-    elif malformed_name_problems([column]):
+    elif is_malformed_name(column):
         problems.append(f"not a valid obs column name (cannot contain '/' or be blank): {column!r}")
 
     if not isinstance(prefix_from, str) or not prefix_from:
@@ -188,10 +189,7 @@ def rename_cell_ids(path: str, column: str, value: str, prefix_from: str, prefix
             return {"error": f"File not found: {path}"}
 
         with h5py.File(path, "r") as f_in:
-            obs, obs_error = require_obs_group(f_in)
-            if obs_error is not None:
-                return obs_error
-            assert obs is not None
+            obs = require_obs_group(f_in)
 
             version = _read_schema_version(f_in)
             if version:
@@ -220,7 +218,7 @@ def rename_cell_ids(path: str, column: str, value: str, prefix_from: str, prefix
                 }
             # Membership against direct children, not `column in obs`, which
             # would resolve link paths (the '/' trap checked above).
-            if column not in set(obs.keys()):
+            if column not in direct_members(obs):
                 return {"error": f"Refusing to rename: obs column not present: '{column}'"}
 
             mask = _selection_mask(obs, column, value)
@@ -249,7 +247,7 @@ def rename_cell_ids(path: str, column: str, value: str, prefix_from: str, prefix
                         and _decode_bytes(member.attrs.get("encoding-type", "")) == "dataframe"
                     ):
                         continue
-                    sub_name = _decode_bytes(member.attrs.get("_index", "_index"))
+                    sub_name = obs_index_name(member)
                     sub_ids = read_string_dataset(member, sub_name)
                     if sub_ids.shape != ids.shape or not (sub_ids == ids).all():
                         return {

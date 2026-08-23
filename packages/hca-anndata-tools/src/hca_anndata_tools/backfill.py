@@ -28,6 +28,7 @@ from ._io import (
     DEFAULT_PLACEHOLDERS,
     check_duplicate_ids,
     is_missing_value,
+    obs_index_name,
     read_categorical_data,
     read_edit_log_h5py,
     read_group,
@@ -38,7 +39,7 @@ from ._io import (
     verify_categorical_integrity,
     write_edit_log_h5py,
 )
-from .guards import legacy_layout_problems, obs_index_name
+from .guards import direct_members, is_malformed_name, legacy_layout_problems
 from .write import (
     SAME_SECOND_SNAPSHOT_ERROR,
     _compute_sha256,
@@ -68,7 +69,7 @@ def _check_arguments(columns) -> list[str]:
     for col in columns:
         # h5py resolves a name containing '/' as an HDF5 link path, not a
         # dict key (see drop.py for the full trap) — reject before any lookup.
-        if not isinstance(col, str) or "/" in col or not col.strip():
+        if not isinstance(col, str) or is_malformed_name(col):
             problems.append(f"not a valid obs column name (must be a non-blank string without '/'): {col!r}")
     if len(set(columns)) != len(columns):
         problems.append("columns contains duplicates")
@@ -156,7 +157,7 @@ def _read_obs_for_backfill(
             if legacy_problems := legacy_layout_problems(uns):
                 return None, {"error": f"Refusing to backfill: {legacy_problems[0]}"}
         index_name = obs_index_name(obs)
-        obs_keys = set(obs.keys())
+        obs_keys = direct_members(obs)
         for col in columns:
             if col == index_name:
                 return None, {

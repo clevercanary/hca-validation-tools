@@ -131,6 +131,13 @@ def _claim_snapshot_path(path: str) -> str:
 
 
 @contextlib.contextmanager
+# Five tools still hand-roll this sequence (rename, strip_cap, backfill,
+# copy_cap, edit) because they need the source sha256 the context manager does
+# not yield — that gap is the seam #597 has to open. Note the two families are
+# not equivalent today: _claim_snapshot_path waits out the second boundary and
+# retries, while the hand-rolled sites refuse a same-second collision outright.
+# Adopting this wholesale is therefore a behaviour change for those five, not a
+# pure extraction — a decision #597 should make deliberately.
 def snapshot_copy(path: str) -> Iterator[str]:
     """Yield the path of a fresh snapshot copy of ``path``, cleaning it up on error.
 
