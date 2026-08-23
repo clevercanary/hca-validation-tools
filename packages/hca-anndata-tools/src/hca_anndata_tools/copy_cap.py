@@ -23,8 +23,8 @@ from ._io import (
     read_categorical_data,
     read_column_order,
     read_edit_log_h5py,
+    read_provenance,
     read_uns,
-    require_stamped_group,
     update_column_order,
     verify_obs_transplant,
 )
@@ -246,8 +246,8 @@ def copy_cap_annotations(
 
                 uns = read_uns(f)
                 uns_keys = set(uns.keys()) if uns is not None else set()
-                prov = uns.get("provenance") if uns is not None else None
-                has_prov_cap = isinstance(prov, h5py.Group) and "cap" in prov
+                prov = read_provenance(uns)
+                has_prov_cap = prov is not None and "cap" in prov
                 log = read_edit_log_h5py(f)
             return obs_columns, index, var_list, uns_keys, has_prov_cap, log
 
@@ -432,7 +432,9 @@ def copy_cap_annotations(
             # removed by the overwrite pre-strip above, so this is always a
             # clean addition.
             with h5py.File(temp_path, "r") as f_temp, h5py.File(output_path, "a") as f_out:
-                require_stamped_group(f_out, "uns")
+                # Creates and stamps uns (and uns/provenance) up front, so the
+                # transplants below never meet a bare, unstamped group.
+                prov_out = ensure_provenance_group(f_out)
 
                 # Transplant new obs columns from temp
                 for col in obs_cols_to_copy:
@@ -447,7 +449,6 @@ def copy_cap_annotations(
                         f_temp.copy(f"uns/{key}", f_out["uns"])
 
                 # Transplant edit_history into provenance
-                prov_out = ensure_provenance_group(f_out)
                 if EDIT_LOG_KEY in prov_out:
                     del prov_out[EDIT_LOG_KEY]
                 if "provenance" in f_temp["uns"] and EDIT_LOG_KEY in f_temp["uns"]["provenance"]:

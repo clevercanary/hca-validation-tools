@@ -434,8 +434,6 @@ def test_copy_rejects_non_categorical_source_column(cap_source, hca_target):
     # Rewrite one CAP column in the source as a plain string dataset (via h5py,
     # bypassing anndata's auto-coercion to categorical) to simulate a source
     # that violates CAP's categorical-everywhere serialization contract.
-    import h5py
-
     col = "author_cell_type--rationale"
     with h5py.File(cap_source, "a") as f:
         del f["obs"][col]
@@ -670,15 +668,11 @@ def test_missing_file():
     assert "error" in result
 
 
-def test_copy_survives_dataset_at_uns_in_target(cap_source, hca_target):
-    """A scalar Dataset at the target's 'uns' used to crash the read phase
-    with AttributeError at uns.keys() (#617). read_uns narrows it to None so
-    inspection completes; the write phase then refuses when require_group
-    meets the Dataset — a failure at the write boundary, with the target
-    left untouched, instead of a crash while merely reading."""
-    with h5py.File(hca_target, "a") as f:
-        del f["uns"]
-        f["uns"] = "not a group"
+def test_copy_survives_dataset_at_uns_in_target(cap_source, hca_target, put_dataset_at_uns):
+    """A Dataset at the target's 'uns' used to crash inspection at uns.keys()
+    (#617); narrowed to None, the failure moves to the write boundary — a
+    legible refusal with the target left untouched."""
+    put_dataset_at_uns(hca_target)
 
     result = copy_cap_annotations(str(cap_source), str(hca_target))
 

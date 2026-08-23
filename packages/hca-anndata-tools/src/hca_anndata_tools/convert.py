@@ -17,7 +17,6 @@ from ._io import (
     ensure_provenance_group,
     open_h5ad,
     read_obs_index,
-    require_stamped_group,
     transplant_obs_columns,
     verify_obs_transplant,
 )
@@ -192,7 +191,9 @@ def convert_cellxgene_to_hca(
             shutil.copy2(path, output_path)
 
             with h5py.File(temp_path, "r") as f_temp, h5py.File(output_path, "a") as f_out:
-                require_stamped_group(f_out, "uns")
+                # Creates and stamps uns (and uns/provenance) up front, so the
+                # key deletions below never meet a bare, unstamped group.
+                prov_out = ensure_provenance_group(f_out)
 
                 # Delete CellxGENE reserved keys from uns
                 for key in _CELLXGENE_RESERVED_UNS:
@@ -203,8 +204,6 @@ def convert_cellxgene_to_hca(
                 for key in _UNS_TO_OBS:
                     if key in f_out["uns"]:
                         del f_out["uns"][key]
-
-                prov_out = ensure_provenance_group(f_out)
 
                 # Transplant provenance/cellxgene from temp (merge, don't replace whole group)
                 if "provenance" in f_temp["uns"] and "cellxgene" in f_temp["uns"]["provenance"]:

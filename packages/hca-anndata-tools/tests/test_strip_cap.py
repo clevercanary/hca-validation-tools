@@ -152,8 +152,6 @@ def test_strip_refuses_slash_in_column_order(tmp_path):
     """A '/' in a column-order entry would make h5py resolve a link path on
     deletion — a malformed file is refused before any write."""
     path = _make_cap_file(tmp_path / "slash.h5ad", uns_layout="legacy")
-    import h5py
-
     with h5py.File(path, "a") as f:
         cols = [c.decode() if isinstance(c, bytes) else c for c in f["obs"].attrs["column-order"]]
         f["obs"].attrs["column-order"] = [*cols, "bad/name--cell_fullname"]
@@ -169,8 +167,6 @@ def test_strip_refuses_index_or_ghost_in_column_order(tmp_path):
     """A malformed column-order listing the obs index (here named with '--')
     or a non-existent column is refused — deleting either would corrupt the
     output (parity with drop.py/rename.py's validators)."""
-    import h5py
-
     obs = pd.DataFrame(
         {"set--cell_fullname": pd.Categorical(["a", "b"])},
         index=pd.Index(["c1", "c2"], name="cell--id"),
@@ -416,15 +412,11 @@ def test_strip_missing_file():
     assert "File not found" in result["error"]
 
 
-def test_strip_answers_legibly_with_dataset_at_uns(tmp_path):
-    """A scalar Dataset at 'uns' used to raise TypeError inside the
-    batch_condition read (`"batch_condition" not in <Dataset>`) and surface
-    as that exception's text; read_uns narrows it to None so the tool reaches
-    its normal nothing-to-strip answer (#617)."""
+def test_strip_answers_legibly_with_dataset_at_uns(tmp_path, put_dataset_at_uns):
+    """A Dataset at 'uns' used to surface as a raw TypeError (#617); narrowed
+    to None, the tool reaches its normal nothing-to-strip answer."""
     path = _make_cap_file(tmp_path / "clean.h5ad", uns_layout="none", cap_columns=False)
-    with h5py.File(path, "a") as f:
-        del f["uns"]
-        f["uns"] = "not a group"
+    put_dataset_at_uns(path)
 
     result = strip_cap_annotations(path)
 

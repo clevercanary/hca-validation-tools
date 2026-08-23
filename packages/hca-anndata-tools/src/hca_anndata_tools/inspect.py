@@ -284,7 +284,7 @@ def _read_schema_version(f: h5py.File) -> str | None:
     uns = read_uns(f)
     if uns is None or "schema_version" not in uns:
         return None
-    raw = uns["schema_version"][()]  # pyright: ignore[reportIndexIssue]
+    raw = uns["schema_version"][()]
     value = _decode_bytes(raw)
     if not isinstance(value, str):
         return None

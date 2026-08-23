@@ -28,6 +28,7 @@ from ._io import (
     read_batch_condition,
     read_column_order,
     read_edit_log_h5py,
+    read_provenance,
     read_uns,
     update_column_order,
     write_edit_log_h5py,
@@ -189,8 +190,8 @@ def strip_cap_annotations(path: str) -> dict:
                 uns_keys_present += [k for k in _LEGACY_TOP_LEVEL_PROVENANCE if k in uns]
                 # 'provenance/cap' is an HDF5 path, so the shared deletion
                 # loop below removes the nested block like any other key.
-                prov = uns.get("provenance")
-                if isinstance(prov, h5py.Group) and "cap" in prov:
+                prov = read_provenance(uns)
+                if prov is not None and "cap" in prov:
                     uns_keys_present.append("provenance/cap")
             if uns_keys_present:
                 # This tool only undoes what our own import wrote. A file
@@ -220,13 +221,8 @@ def strip_cap_annotations(path: str) -> dict:
                 # orphan them (the validator flags colors without a matching
                 # obs column) — and those ALREADY orphaned by an earlier
                 # era's overwrite, which deleted columns but left palettes.
-                # .keys(), not bare iteration: h5py stubs type Group.__iter__
-                # as yielding str | None, while .keys() yields str. SIM118
-                # assumes dict semantics a Group does not have.
                 uns_keys_present += [
-                    k
-                    for k in uns.keys()  # noqa: SIM118
-                    if k.endswith("_colors") and "--" in k.removesuffix("_colors")
+                    k for k in sorted(uns.keys()) if k.endswith("_colors") and "--" in k.removesuffix("_colors")
                 ]
 
         if not uns_keys_present and not obs_columns_present:

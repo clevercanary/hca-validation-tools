@@ -21,10 +21,10 @@ import h5py
 
 from ._io import (
     read_edit_log_h5py,
-    read_uns,
     update_column_order,
     write_edit_log_h5py,
 )
+from .inspect import _read_schema_version
 from .write import (
     build_edit_log,
     cleanup_previous_version,
@@ -109,8 +109,7 @@ def strip_forbidden_obs_columns(path: str) -> dict:
         # Peek first: layout check + presence check. Both via h5py so we
         # don't load the full anndata just to decide whether to mutate.
         with h5py.File(path, "r") as f_in:
-            uns = read_uns(f_in)
-            if uns is not None and "schema_version" in uns:
+            if _read_schema_version(f_in):
                 return {
                     "error": (
                         "Input is CellxGENE-layout (uns['schema_version'] is "
@@ -120,7 +119,7 @@ def strip_forbidden_obs_columns(path: str) -> dict:
                     )
                 }
             obs = f_in.get("obs")
-            if obs is None:
+            if not isinstance(obs, h5py.Group):
                 return {"error": "File has no obs group"}
             present = [c for c in _OBS_COLUMNS_TO_STRIP if c in obs]
 

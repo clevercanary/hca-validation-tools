@@ -209,7 +209,7 @@ def read_batch_condition(uns: h5py.Group | None) -> list[str]:
     if uns is None or "batch_condition" not in uns:
         return []
     try:
-        raw = uns["batch_condition"][()]  # pyright: ignore[reportIndexIssue]
+        raw = uns["batch_condition"][()]
     except (OSError, TypeError, ValueError):
         return []
     if isinstance(raw, bytes | str):
@@ -220,16 +220,25 @@ def read_batch_condition(uns: h5py.Group | None) -> list[str]:
         return []
 
 
+def read_provenance(uns: h5py.Group | None) -> h5py.Group | None:
+    """``uns['provenance']`` as a group, or None when absent or not a group.
+
+    The child-level twin of :func:`read_uns`, for the same reason.
+    """
+    if uns is None:
+        return None
+    prov = uns.get("provenance")
+    return prov if isinstance(prov, h5py.Group) else None
+
+
 def read_edit_log_h5py(f: h5py.File) -> str:
     """Read the edit log JSON string from an open h5py File.
 
     Returns "[]" if no edit log exists.
     """
-    uns = read_uns(f)
-    if uns is not None:
-        prov = uns.get("provenance")
-        if isinstance(prov, h5py.Group) and "edit_history" in prov:
-            return _decode_bytes(prov["edit_history"][()])
+    prov = read_provenance(read_uns(f))
+    if prov is not None and "edit_history" in prov:
+        return _decode_bytes(prov["edit_history"][()])
     return "[]"
 
 

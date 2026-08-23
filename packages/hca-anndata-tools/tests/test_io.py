@@ -1,16 +1,11 @@
-"""Tests for the _io helpers that narrow uns access (#617).
-
-``File.get("uns")`` can hand back a Dataset on a malformed file, and h5py's
-answers when a Dataset is used as a mapping range from AttributeError to a
-silently wrong ``in``. ``read_uns`` is the single narrowing point; these tests
-pin its contract and the two helpers promoted alongside it.
-"""
+"""Tests for the _io helpers that narrow uns access (#617)."""
 
 import h5py
 import pytest
 
 from hca_anndata_tools._io import (
     read_batch_condition,
+    read_provenance,
     read_uns,
     require_stamped_group,
 )
@@ -74,3 +69,22 @@ def test_read_batch_condition_scalar(h5):
     uns = h5.create_group("uns")
     uns["batch_condition"] = "donor_id"
     assert read_batch_condition(uns) == ["donor_id"]
+
+
+def test_read_provenance_none():
+    assert read_provenance(None) is None
+
+
+def test_read_provenance_absent(h5):
+    assert read_provenance(h5.create_group("uns")) is None
+
+
+def test_read_provenance_dataset(h5):
+    uns = h5.create_group("uns")
+    uns["provenance"] = "not a group"
+    assert read_provenance(uns) is None
+
+
+def test_read_provenance_group(h5):
+    prov = h5.create_group("uns/provenance")
+    assert read_provenance(h5["uns"]) == prov
