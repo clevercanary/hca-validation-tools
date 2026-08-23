@@ -444,3 +444,66 @@ def test_rename_drops_a_batch_condition_entry_naming_only_the_replaced_column(tm
     out = ad.read_h5ad(result["output_path"])
     assert list(out.obs["dest"]) == ["a", "b", "c"]
     assert list(out.uns["batch_condition"]) == ["donor_id"], "stale entry now names different data"
+
+
+def _make_cap_file(path, legacy=False):
+    """A CAP-annotated file: an annotation set declared in uns, and the
+    '--' columns that set names."""
+    obs = pd.DataFrame(
+        {
+            "producer": pd.Categorical(["a", "b", "a"]),
+            "myset--cell_fullname": pd.Categorical(["T cell", "B cell", "T cell"]),
+        },
+        index=pd.Index(["c0", "c1", "c2"], name="cellID"),
+    )
+    adata = ad.AnnData(X=np.zeros((3, 2), dtype=np.float32), obs=obs)
+    block = {"cellannotation_schema_version": "1.0.0", "cellannotation_metadata": {"myset": {}}}
+    adata.uns.update(block) if legacy else adata.uns.update({"cap_metadata": dict(block)})
+    adata.write_h5ad(path, compression="gzip")
+    return str(path)
+
+
+def test_rename_refuses_a_cap_annotation_column(tmp_path):
+    """CAP material is never patched in place — CAP is the system of record and
+    the workflow strips a set wholesale and re-copies it. So a rename cannot
+    repair the declaration it would break, and must refuse."""
+    path = _make_cap_file(tmp_path / "cap.h5ad")
+
+    result = rename_obs_column(path, "myset--cell_fullname", "myset--renamed")
+
+    assert "error" in result
+    assert "CAP annotation-set columns" in result["error"]
+    assert _no_snapshot(tmp_path / "cap.h5ad")
+
+
+def test_rename_refuses_a_cap_column_as_the_destination(tmp_path):
+    """Renaming a producer column *into* the set's naming convention would
+    make it look like a member of a set that does not declare it."""
+    path = _make_cap_file(tmp_path / "cap.h5ad")
+
+    result = rename_obs_column(path, "producer", "myset--smuggled")
+
+    assert "error" in result
+    assert "CAP annotation-set columns" in result["error"]
+
+
+def test_rename_refuses_the_legacy_cap_layout(tmp_path):
+    """In the deprecated top-level layout the cap_metadata check sees no
+    declaration, so every CAP column would look renamable — refuse the file."""
+    path = _make_cap_file(tmp_path / "legacy.h5ad", legacy=True)
+
+    result = rename_obs_column(path, "myset--cell_fullname", "myset--renamed")
+
+    assert "error" in result
+    assert "not supported" in result["error"]
+    assert _no_snapshot(tmp_path / "legacy.h5ad")
+
+
+def test_rename_allows_a_plain_column_on_a_cap_file(tmp_path):
+    """The refusal is about CAP's columns, not about CAP files."""
+    path = _make_cap_file(tmp_path / "cap.h5ad")
+
+    result = rename_obs_column(path, "producer", "author_note")
+
+    assert "error" not in result
+    assert "author_note" in ad.read_h5ad(result["output_path"]).obs.columns

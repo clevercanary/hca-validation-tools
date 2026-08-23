@@ -29,6 +29,7 @@ from ._io import (
     read_edit_log_h5py,
     write_edit_log_h5py,
 )
+from .cap import CAP_METADATA_KEY, LEGACY_LAYOUT_DESCRIPTION, is_legacy_cap_layout
 from .drop import _read_batch_condition
 from .write import (
     build_edit_log,
@@ -85,13 +86,42 @@ def _is_empty_column(obs: h5py.Group, name: str) -> bool:
     return False
 
 
-def _validate_request(obs: h5py.Group, column: str, new_name: str) -> list[str]:
+def _validate_request(obs: h5py.Group, uns: h5py.Group | None, column: str, new_name: str) -> list[str]:
     """Collect every reason the rename cannot proceed.
 
     All checks run to completion rather than short-circuiting, so a caller who
     got two things wrong learns both in one round trip.
     """
     problems: list[str] = []
+
+    # The deprecated top-level CAP layout is refused outright, matching
+    # drop_obs_columns. Rejecting the whole file regardless of what the request
+    # names is the point: the CAP check below reads uns['cap_metadata'], so in
+    # this layout it sees no declaration and every CAP column looks renamable —
+    # the shape of #552.
+    if uns is not None and is_legacy_cap_layout(uns):
+        problems.append(f"the file uses {LEGACY_LAYOUT_DESCRIPTION}, which is not supported")
+
+    # CAP annotation sets declare themselves in uns['cap_metadata'] and require
+    # obs columns named '<set>--<suffix>'. Renaming one leaves the declared set
+    # naming a column the file no longer has — a dangling reference this tool
+    # cannot repair, because CAP material is never patched in place: CAP is the
+    # system of record, and the workflow is to strip a set wholesale and re-copy
+    # it from a fresh export. Rewriting the declaration here would fork a record
+    # CAP overwrites on its next export.
+    #
+    # Keyed on the '--' convention rather than on parsing cap_metadata, which
+    # may be a group or a JSON string: over-refusing a '--' name in a CAP file
+    # is the safe direction, and no column this tool targets uses that
+    # separator.
+    if uns is not None and CAP_METADATA_KEY in uns:
+        cap_names = sorted(n for n in (column, new_name) if "--" in n)
+        if cap_names:
+            problems.append(
+                f"look like CAP annotation-set columns: {cap_names} — the set is declared "
+                f"in uns[{CAP_METADATA_KEY!r}], which names its columns. Strip the annotation "
+                f"set and re-copy it from CAP instead of renaming its columns"
+            )
 
     # h5py resolves a name containing '/' as an HDF5 link path rather than a
     # dict key: a leading slash resolves from the file root and inner slashes
@@ -164,20 +194,21 @@ def rename_obs_column(path: str, column: str, new_name: str) -> dict:
     validates entries against the obs columns present, so the new name cannot
     be written before the rename happens.
 
-    Two gaps are open by decision rather than oversight, both left to #614,
-    which settles guard policy across all the obs-mutating tools rather than
-    growing a sixth ad-hoc variant here:
+    CAP annotation-set columns (the ``--`` names a set declares in
+    ``uns['cap_metadata']``) are refused, as is the deprecated top-level CAP
+    layout, matching ``drop_obs_columns``. A rename cannot repair the
+    declaration it would break: CAP material is never patched in place — CAP is
+    the system of record, and the workflow strips a set wholesale and re-copies
+    it from a fresh export.
 
-    * CAP annotation-set columns (the ``--`` names a set declares in
-      ``uns['cap_metadata']``) and the deprecated top-level CAP layout, both of
-      which ``drop_obs_columns`` refuses. Renaming such a column breaks the
-      declared set exactly as dropping it would.
-    * Renaming a schema-*required* column **away**, which ``drop_obs_columns``
-      also refuses. The module docstring's argument covers renaming *into* a
-      canonical name and the fact that no value is lost; it does not cover
-      this, which leaves a file missing a column the schema requires.
-      ``validate_schema`` reports that loudly and renaming back undoes it, but
-      the asymmetry with drop is real rather than reasoned.
+    Renaming a schema-*required* column **away** is *not* refused, though
+    ``drop_obs_columns`` refuses its equivalent. That is deliberate: leaving the
+    file short of a required column makes it **invalid**, which is
+    ``validate_schema``'s verdict to deliver, not this tool's to pre-empt. The
+    caller's next move may well restore it, and a tool cannot see that far.
+    What this tool does owe the caller is a **coherent** file — no dangling
+    references, no destroyed cell identities — which is what every gate above
+    protects. See #614.
 
     On the module docstring's reversibility argument: overwriting an empty
     destination is the one thing renaming back does not undo — that column's
@@ -223,7 +254,7 @@ def rename_obs_column(path: str, column: str, new_name: str) -> dict:
             uns = f_in.get("uns")
             if not isinstance(uns, h5py.Group):
                 uns = None
-            problems = _validate_request(obs, column, new_name)
+            problems = _validate_request(obs, uns, column, new_name)
             palette = f"{column}_colors" if uns is not None and f"{column}_colors" in uns else None
             batch_condition = _read_batch_condition(uns)
 
