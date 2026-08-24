@@ -187,17 +187,35 @@ def test_rename_refuses_mismatched_obsm_dataframe_index(tmp_path):
     assert_no_snapshot_written(path)
 
 
-def test_rename_same_second_snapshot_refused(tmp_path, monkeypatch):
-    """generate_output_path timestamps to the second; when a second edit would
-    name the output after its own source, refuse — the failure path used to
-    unlink the source snapshot (SameFileError -> except -> unlink)."""
+def test_rename_same_second_collision_resolves_after_waiting(tmp_path, pin_snapshot_names):
+    """The common case since #597: a name taken this second is resolved by
+    waiting out the boundary, not by failing a run the caller must re-issue."""
+    path = create_hca_h5ad(tmp_path / "test.h5ad")
+    first = rename_cell_ids(
+        str(path), column="sample_id", value="B1_0023", prefix_from="MH_mix_", prefix_to="MH_mix_BR1_"
+    )
+    snapshot = Path(first["output_path"])
+    pin_snapshot_names(str(snapshot), str(tmp_path / "test-edit-2026-08-24-00-00-01.h5ad"))
+
+    result = rename_cell_ids(
+        str(snapshot), column="sample_id", value="B1_0023", prefix_from="MH_mix_BR1_", prefix_to="Z_"
+    )
+
+    assert "error" not in result
+    assert Path(result["output_path"]).name == "test-edit-2026-08-24-00-00-01.h5ad"
+
+
+def test_rename_same_second_snapshot_refused(tmp_path, pin_snapshot_names):
+    """A collision that survives the boundary wait is refused before anything
+    is touched — the source snapshot must not be unlinked (#598)."""
     path = create_hca_h5ad(tmp_path / "test.h5ad")
     first = rename_cell_ids(
         str(path), column="sample_id", value="B1_0023", prefix_from="MH_mix_", prefix_to="MH_mix_BR1_"
     )
     snapshot = Path(first["output_path"])
 
-    monkeypatch.setattr("hca_anndata_tools.rename.generate_output_path", lambda p: p)
+    pin_snapshot_names()
+
     result = rename_cell_ids(
         str(snapshot), column="sample_id", value="B1_0023", prefix_from="MH_mix_BR1_", prefix_to="Z_"
     )

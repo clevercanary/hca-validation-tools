@@ -378,12 +378,9 @@ def read_string_dataset(group: h5py.Group, name: str) -> np.ndarray:
 # only where there is. These two carry the original dataset's compression,
 # chunks and maxshape — and, for a categorical, the narrowed codes dtype —
 # forward across a delete-and-recreate, which write_elem would discard.
-def replace_string_dataset(parent: h5py.Group, name: str, data: np.ndarray) -> None:
-    """Delete and recreate a string dataset, preserving its attrs and storage
-    properties (compression, chunks, shuffle, fletcher32, maxshape)."""
-    ds = parent[name]
-    attrs = dict(ds.attrs)
-    storage = {
+def storage_like(ds: h5py.Dataset) -> dict:
+    """The storage properties to carry across a delete-and-recreate."""
+    return {
         "compression": ds.compression,
         "compression_opts": ds.compression_opts,
         "chunks": ds.chunks,
@@ -394,6 +391,13 @@ def replace_string_dataset(parent: h5py.Group, name: str, data: np.ndarray) -> N
         # only carry it when the dataset is actually resizable.
         "maxshape": ds.maxshape if ds.maxshape != ds.shape else None,
     }
+
+
+def replace_string_dataset(parent: h5py.Group, name: str, data: np.ndarray) -> None:
+    """Delete and recreate a string dataset, preserving its attrs and storage."""
+    ds = parent[name]
+    attrs = dict(ds.attrs)
+    storage = storage_like(ds)
     del parent[name]
     new_ds = parent.create_dataset(name, data=data, dtype=h5py.string_dtype(encoding="utf-8"), **storage)
     for key, attr_value in attrs.items():
@@ -488,7 +492,7 @@ def _codes_dtype(n_categories: int, original: np.dtype) -> np.dtype:
 
 def replace_categorical_column(parent: h5py.Group, col: str, categories: list[str], codes: np.ndarray) -> None:
     """Delete and recreate a categorical column group, preserving its encoding
-    attrs and the codes dataset's storage settings (compression, chunks).
+    attrs and the codes dataset's storage settings (see storage_like).
 
     The codes are written at the smallest dtype that holds the new category
     count without narrowing the original — a caller that extended the
@@ -500,9 +504,7 @@ def replace_categorical_column(parent: h5py.Group, col: str, categories: list[st
     encoding_type = item.attrs["encoding-type"]
     encoding_version = item.attrs["encoding-version"]
     ordered = bool(item.attrs["ordered"])
-    codes_compression = item["codes"].compression
-    codes_compression_opts = item["codes"].compression_opts
-    codes_chunks = item["codes"].chunks
+    codes_storage = storage_like(item["codes"])
     codes = codes.astype(_codes_dtype(len(categories), item["codes"].dtype))
 
     del parent[col]
@@ -514,13 +516,7 @@ def replace_categorical_column(parent: h5py.Group, col: str, categories: list[st
     cat_ds = grp.create_dataset("categories", data=cat_data)
     cat_ds.attrs["encoding-type"] = "string-array"
     cat_ds.attrs["encoding-version"] = "0.2.0"
-    codes_ds = grp.create_dataset(
-        "codes",
-        data=codes,
-        compression=codes_compression,
-        compression_opts=codes_compression_opts,
-        chunks=codes_chunks,
-    )
+    codes_ds = grp.create_dataset("codes", data=codes, **codes_storage)
     codes_ds.attrs["encoding-type"] = "array"
     codes_ds.attrs["encoding-version"] = "0.2.0"
 

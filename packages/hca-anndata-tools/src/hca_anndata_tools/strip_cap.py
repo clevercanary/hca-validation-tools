@@ -17,7 +17,6 @@ replaces rather than removes).
 
 from __future__ import annotations
 
-import contextlib
 import json
 from pathlib import Path
 
@@ -38,6 +37,7 @@ from .cap import (
     CAP_METADATA_KEY,
     cap_obs_columns,
     cap_palette_keys,
+    cellxgene_schema_version,
     unknown_cap_suffix_columns,
 )
 from .guards import (
@@ -46,15 +46,12 @@ from .guards import (
     obs_name_problems,
     require_obs_group,
 )
-from .inspect import _read_schema_version
 from .write import (
-    SAME_SECOND_SNAPSHOT_ERROR,
-    _copy_with_sha256,
     build_edit_log,
     cleanup_previous_version,
-    generate_output_path,
     make_edit_entry,
     resolve_latest,
+    snapshot_copy_hashed,
 )
 
 # Every CAP-written uns key across both layout eras: the deprecated top-level
@@ -139,7 +136,6 @@ def strip_cap_annotations(path: str) -> dict:
         Dict with ``output_path``, ``uns_keys_removed``, and
         ``obs_columns_removed`` on success, or ``{"error": ...}``.
     """
-    output_path = None
     try:
         path = resolve_latest(path)
         if not Path(path).is_file():
@@ -148,7 +144,7 @@ def strip_cap_annotations(path: str) -> dict:
         # Peek first via h5py: layout check + inventory of what is present,
         # without loading the full anndata just to decide whether to mutate.
         with h5py.File(path, "r") as f_in:
-            version = _read_schema_version(f_in)
+            version = cellxgene_schema_version(f_in)
             if version:
                 return {
                     "error": (
@@ -243,22 +239,7 @@ def strip_cap_annotations(path: str) -> dict:
                 "nothing_to_strip": True,
             }
 
-        output_path = generate_output_path(path)
-        if output_path == path or (Path(output_path).exists() and Path(output_path).samefile(path)):
-            # generate_output_path timestamps to the second (see rename.py):
-            # a second edit within the same second would name the output after
-            # its own source. samefile() also catches aliases of the same
-            # snapshot ('./'-prefixed paths, hard links) that string equality
-            # misses. Refuse before touching anything.
-            return {"error": SAME_SECOND_SNAPSHOT_ERROR}
-        # Hash the source in the same streaming read as the snapshot copy;
-        # a separate hash pass would re-read the whole multi-GB file.
-        source_sha256 = _copy_with_sha256(path, output_path)
-
-        # Defer the malformed-log cleanup until after the with-block closes
-        # the output handle (see strip.py for the POSIX/Windows rationale).
-        log_error = None
-        with h5py.File(output_path, "a") as f_out:
+        with snapshot_copy_hashed(path) as (output_path, source_sha256), h5py.File(output_path, "a") as f_out:
             for key in uns_keys_present:
                 del f_out["uns"][key]
             if obs_columns_present:
@@ -281,13 +262,8 @@ def strip_cap_annotations(path: str) -> dict:
             existing_log = read_edit_log_h5py(f_out)
             log_result = build_edit_log(existing_log, [entry], path, source_sha256)
             if "error" in log_result:
-                log_error = log_result
-            else:
-                write_edit_log_h5py(f_out, log_result["json"])
-
-        if log_error is not None:
-            Path(output_path).unlink()
-            return log_error
+                raise RuntimeError(log_result["error"])
+            write_edit_log_h5py(f_out, log_result["json"])
 
         cleanup_previous_version(path, output_path)
 
@@ -306,11 +282,5 @@ def strip_cap_annotations(path: str) -> dict:
         return result
 
     except Exception as e:
-        if output_path and Path(output_path).is_file():
-            with contextlib.suppress(OSError):
-                # Never unlink an alias of the input: if output_path reaches
-                # the same inode (hard link, path alias), deleting it deletes
-                # the source snapshot.
-                if not Path(output_path).samefile(path):
-                    Path(output_path).unlink()
+        # No unlink here: snapshot_copy_hashed removes the snapshot itself.
         return {"error": str(e)}

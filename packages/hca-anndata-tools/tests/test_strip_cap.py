@@ -192,15 +192,17 @@ def test_strip_refuses_index_or_ghost_in_column_order(tmp_path):
     assert not list(tmp_path.glob("*-edit-*.h5ad"))
 
 
-def test_strip_alias_output_does_not_unlink_source(tmp_path, monkeypatch):
-    """An output path that aliases the source through a hard link must be
-    refused by the identity-aware guard — never copied over or unlinked."""
+def test_strip_alias_output_does_not_unlink_source(tmp_path, pin_snapshot_names):
+    """An output path that aliases the source through a hard link must never
+    be copied over or unlinked. The O_CREAT|O_EXCL claim subsumes the
+    samefile check this used to make by hand: the name is occupied, so it is
+    not ours to write, whatever it points at (#597)."""
     import os
 
     path = _make_cap_file(tmp_path / "aliased.h5ad", uns_layout="legacy")
     alias = tmp_path / "alias-of-source.h5ad"
     os.link(path, alias)
-    monkeypatch.setattr("hca_anndata_tools.strip_cap.generate_output_path", lambda p: str(alias))
+    pin_snapshot_names(str(alias), str(alias))
 
     result = strip_cap_annotations(path)
 
@@ -395,8 +397,21 @@ def test_strip_refuses_cellxgene_layout(sample_h5ad):
     assert "CellxGENE" in result["error"]
 
 
-def test_strip_same_second_snapshot_refused(tmp_path, monkeypatch):
-    monkeypatch.setattr("hca_anndata_tools.strip_cap.generate_output_path", lambda p: p)
+def test_strip_same_second_collision_resolves_after_waiting(tmp_path, pin_snapshot_names):
+    """The common case since #597: waited out, not refused."""
+    path = _make_cap_file(tmp_path / "guard.h5ad", uns_layout="legacy")
+    fresh = str(tmp_path / "guard-edit-2026-08-24-00-00-01.h5ad")
+    pin_snapshot_names(str(path), fresh)
+
+    result = strip_cap_annotations(path)
+
+    assert "error" not in result
+    assert result["output_path"] == fresh
+
+
+def test_strip_same_second_snapshot_refused(tmp_path, pin_snapshot_names):
+    """A collision surviving the wait is refused, source untouched."""
+    pin_snapshot_names()
     path = _make_cap_file(tmp_path / "guard.h5ad", uns_layout="legacy")
 
     result = strip_cap_annotations(path)

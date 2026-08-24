@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-import contextlib
-import shutil
 import tempfile
-import time
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -45,13 +42,13 @@ from .marker_genes import validate_marker_genes
 from .strip_cap import _LEGACY_TOP_LEVEL_PROVENANCE, strip_cap_annotations
 from .write import (
     EDIT_LOG_KEY,
-    SAME_SECOND_SNAPSHOT_ERROR,
     _compute_sha256,
     build_edit_log,
     cleanup_previous_version,
-    generate_output_path,
     make_edit_entry,
+    parse_edit_log,
     resolve_latest,
+    snapshot_copy_hashed,
 )
 
 # Demographic annotation sets — not real CAP annotations, just renamed CXG columns
@@ -151,7 +148,6 @@ def copy_cap_annotations(
         Dict with output_path, copied columns/keys, and marker gene
         validation results, or 'error' on failure.
     """
-    output_path = None
     try:
         target_path = resolve_latest(target_path)
         # Same-file guard (parity with backfill.py): with overwrite=True the
@@ -331,11 +327,6 @@ def copy_cap_annotations(
                 "cells": cell_stats,
             }
 
-        def is_target_alias(candidate: str) -> bool:
-            # String equality misses aliases of the same snapshot ('./'-
-            # prefixed paths, hard links); samefile() catches them.
-            return candidate == target_path or (Path(candidate).exists() and Path(candidate).samefile(target_path))
-
         if overwrite:
             # Overwrite = strip, then a clean import: one shared removal
             # implementation and two audit entries in the edit log instead of
@@ -344,11 +335,6 @@ def copy_cap_annotations(
             # (legacy keys, cap_metadata, provenance/cap, orphan palettes),
             # so no separate detection can drift from it; a clean target
             # reports nothing_to_strip and the import proceeds directly.
-            # The strip refuses a same-second snapshot collision (its output
-            # would be named after its input); if the target snapshot was
-            # written this very second, wait out the boundary first.
-            if is_target_alias(generate_output_path(target_path)):
-                time.sleep(1)
             strip_result = strip_cap_annotations(target_path)
             if "error" in strip_result:
                 if not strip_result.get("nothing_to_strip"):
@@ -379,55 +365,47 @@ def copy_cap_annotations(
 
         source_basename = Path(source_path).name
         source_sha256 = _compute_sha256(source_path)
-        target_sha256 = _compute_sha256(target_path)
+        if "error" in (parsed := parse_edit_log(raw_log)):
+            return parsed
 
-        entry = make_edit_entry(
-            operation="import_cap_annotations",
-            description=f"Copied CAP annotations from {source_basename}",
-            details={
-                "cap_source_file": source_basename,
-                "cap_source_sha256": source_sha256,
-                "cap_schema_version": cap_schema_version,
-                "annotation_sets": annotation_sets,
-                "obs_columns_added": obs_cols_to_copy,
-                "uns_keys_added": uns_keys_added,
-                "cells": cell_stats,
-                "genes": gene_stats,
-            },
-        )
-
-        log_result = build_edit_log(raw_log, [entry], target_path, target_sha256)
-        if "error" in log_result:
-            return log_result
-
-        temp_uns.setdefault("provenance", {})[EDIT_LOG_KEY] = log_result["json"]
-
-        n_obs = len(target_index)
-        temp_adata = ad.AnnData(
-            X=np.empty((n_obs, 0), dtype=np.float32),
-            obs=aligned_obs,
-            uns=temp_uns,
-        )
-        del aligned_obs
+        entry_details = {
+            "cap_source_file": source_basename,
+            "cap_source_sha256": source_sha256,
+            "cap_schema_version": cap_schema_version,
+            "annotation_sets": annotation_sets,
+            "obs_columns_added": obs_cols_to_copy,
+            "uns_keys_added": uns_keys_added,
+            "cells": cell_stats,
+            "genes": gene_stats,
+        }
 
         # --- Step 4: Write temp, copy target, transplant via h5py ---
-        output_path = generate_output_path(target_path)
-        if is_target_alias(output_path):
-            # generate_output_path timestamps to the second, and the overwrite
-            # path chains a strip and this import within one second — wait out
-            # the boundary rather than failing the run (see rename.py for the
-            # hazard the equality signals).
-            time.sleep(1)
-            output_path = generate_output_path(target_path)
-        if is_target_alias(output_path):
-            return {"error": SAME_SECOND_SNAPSHOT_ERROR}
+        with (
+            tempfile.TemporaryDirectory() as tmpdir,
+            snapshot_copy_hashed(target_path) as (output_path, target_sha256),
+        ):
+            # The edit log is built here because the target digest comes from
+            # the copy above, and it must reach temp_uns before the temp file
+            # is written.
+            entry = make_edit_entry(
+                operation="import_cap_annotations",
+                description=f"Copied CAP annotations from {source_basename}",
+                details=entry_details,
+            )
+            log_result = build_edit_log(raw_log, [entry], target_path, target_sha256)
+            if "error" in log_result:
+                raise RuntimeError(log_result["error"])
+            temp_uns.setdefault("provenance", {})[EDIT_LOG_KEY] = log_result["json"]
 
-        with tempfile.TemporaryDirectory() as tmpdir:
+            temp_adata = ad.AnnData(
+                X=np.empty((len(target_index), 0), dtype=np.float32),
+                obs=aligned_obs,
+                uns=temp_uns,
+            )
+            del aligned_obs
             temp_path = str(Path(tmpdir) / "cap_temp.h5ad")
             temp_adata.write_h5ad(temp_path)
             del temp_adata
-
-            shutil.copy2(target_path, output_path)
 
             # Transplant from temp into output. Any pre-existing CAP data was
             # removed by the overwrite pre-strip above, so this is always a
@@ -458,8 +436,7 @@ def copy_cap_annotations(
             # --- Step 5: Verify transplant — full column comparison ---
             verify_err = verify_obs_transplant(temp_path, output_path, obs_cols_to_copy)
             if verify_err:
-                Path(output_path).unlink()
-                return {"error": verify_err}
+                raise RuntimeError(verify_err)
 
         # --- Step 6: Cleanup + validate marker genes ---
         cleanup_previous_version(target_path, output_path)
@@ -481,10 +458,5 @@ def copy_cap_annotations(
         return result
 
     except Exception as e:
-        if output_path and Path(output_path).is_file():
-            with contextlib.suppress(OSError):
-                # Never unlink an alias of the target snapshot: same-inode
-                # output would delete the source (see strip_cap.py).
-                if not Path(output_path).samefile(target_path):
-                    Path(output_path).unlink()
+        # No unlink here: snapshot_copy_hashed removes the snapshot itself.
         return {"error": str(e)}

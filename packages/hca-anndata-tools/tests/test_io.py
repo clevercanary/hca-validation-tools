@@ -16,7 +16,7 @@ from hca_anndata_tools._io import (
     remap_palette,
     require_stamped_group,
 )
-from hca_anndata_tools.inspect import _read_schema_version
+from hca_anndata_tools.cap import cellxgene_schema_version
 
 
 def test_read_uns_absent(h5):
@@ -108,12 +108,12 @@ def test_read_edit_log_numeric_at_edit_history(h5):
     assert read_edit_log_h5py(h5) == "[]"
 
 
-def test_read_schema_version_group_at_leaf(h5):
+def test_cellxgene_schema_version_group_at_leaf(h5):
     """A Group at uns['schema_version'] is narrowed to None instead of
     raising TypeError from the scalar read."""
     h5.create_group("uns/schema_version")
 
-    assert _read_schema_version(h5) is None
+    assert cellxgene_schema_version(h5) is None
 
 
 # --- remap_palette (#624) ----------------------------------------------------
