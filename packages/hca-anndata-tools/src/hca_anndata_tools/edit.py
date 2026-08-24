@@ -30,6 +30,7 @@ from .write import (
     build_edit_log,
     cleanup_previous_version,
     make_edit_entry,
+    parse_edit_log,
     resolve_latest,
     snapshot_copy_hashed,
     write_h5ad,
@@ -325,6 +326,11 @@ def replace_placeholder_values(
                 "total_cells_affected": total_affected,
             },
         )
+
+        # Refuse a corrupt edit log before copying the file, not after the
+        # copy and the rewrites — the digest is not needed to read it.
+        if "error" in (parsed := parse_edit_log(raw_log)):
+            return parsed
 
         palettes_remapped = []
         with snapshot_copy_hashed(path) as (output_path, target_sha256), h5py.File(output_path, "a") as f:

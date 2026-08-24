@@ -45,6 +45,7 @@ from .write import (
     build_edit_log,
     cleanup_previous_version,
     make_edit_entry,
+    parse_edit_log,
     resolve_latest,
     snapshot_copy_hashed,
 )
@@ -393,26 +394,29 @@ def backfill_obs_from_source(target_path: str, source_path: str, columns: list[s
             }
 
         # --- Copy (hashing the target in the same read), then patch ---
-        # The source is a different file, so its digest is its own read.
+        if "error" in (parsed := parse_edit_log(target["raw_log"])):
+            return parsed
         source_basename = Path(source_path).name
-        source_sha256 = _compute_sha256(source_path)
 
-        entry = make_edit_entry(
-            operation="backfill_obs_from_source",
-            description=(
-                f"Backfilled {total_filled} missing obs values in "
-                f"{len(fills)} of {len(columns)} columns from {source_basename}"
-            ),
-            details={
-                "backfill_source_file": source_basename,
-                "backfill_source_sha256": source_sha256,
-                "columns": columns,
-                **overlap,
-                "total_filled": total_filled,
-                "per_column": per_column,
-            },
-        )
         with snapshot_copy_hashed(target_path) as (output_path, target_sha256), h5py.File(output_path, "a") as f_out:
+            # A full read of a different file; ordered after the claim so an
+            # unresolvable collision is refused without paying for it (#597).
+            source_sha256 = _compute_sha256(source_path)
+            entry = make_edit_entry(
+                operation="backfill_obs_from_source",
+                description=(
+                    f"Backfilled {total_filled} missing obs values in "
+                    f"{len(fills)} of {len(columns)} columns from {source_basename}"
+                ),
+                details={
+                    "backfill_source_file": source_basename,
+                    "backfill_source_sha256": source_sha256,
+                    "columns": columns,
+                    **overlap,
+                    "total_filled": total_filled,
+                    "per_column": per_column,
+                },
+            )
             obs_out = f_out["obs"]
             for col, (fill_rows, fill_values) in fills.items():
                 tgt = target["columns"][col]

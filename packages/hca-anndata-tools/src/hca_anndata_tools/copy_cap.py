@@ -46,6 +46,7 @@ from .write import (
     build_edit_log,
     cleanup_previous_version,
     make_edit_entry,
+    parse_edit_log,
     resolve_latest,
     snapshot_copy_hashed,
 )
@@ -364,6 +365,8 @@ def copy_cap_annotations(
 
         source_basename = Path(source_path).name
         source_sha256 = _compute_sha256(source_path)
+        if "error" in (parsed := parse_edit_log(raw_log)):
+            return parsed
 
         entry_details = {
             "cap_source_file": source_basename,

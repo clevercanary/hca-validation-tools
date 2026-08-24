@@ -167,9 +167,13 @@ def snapshot_copy(path: str) -> Iterator[str]:
     try:
         shutil.copy2(path, output_path)
     except shutil.SameFileError as e:
-        # Only reachable if the destination appeared between the check above
-        # and here. Nothing was written — copy2 compares inodes before opening
-        # the destination — and the file is not ours, so it is not removed.
+        # Nothing was written — the copy compares inodes before opening the
+        # destination — but the file at output_path *is* ours: the O_EXCL
+        # claim created it. Leaving it would strand a zero-byte file carrying
+        # the newest -edit- timestamp, which resolve_latest would then hand to
+        # every later call (#597).
+        with contextlib.suppress(OSError):
+            Path(output_path).unlink()
         raise SameSecondSnapshotError(SAME_SECOND_SNAPSHOT_ERROR) from e
     except BaseException:
         with contextlib.suppress(OSError):
@@ -208,6 +212,9 @@ def snapshot_copy_hashed(path: str) -> Iterator[tuple[str, str]]:
     try:
         sha256 = _copy_with_sha256(path, output_path)
     except shutil.SameFileError as e:
+        # The claimed file is ours; see snapshot_copy for why it is removed.
+        with contextlib.suppress(OSError):
+            Path(output_path).unlink()
         raise SameSecondSnapshotError(SAME_SECOND_SNAPSHOT_ERROR) from e
     except BaseException:
         with contextlib.suppress(OSError):
@@ -381,6 +388,34 @@ def make_edit_entry(
     }
 
 
+def parse_edit_log(existing_log_raw: str | list) -> dict:
+    """The existing edit log as a list, or the reason it cannot be used.
+
+    Split out of :func:`build_edit_log` because it needs no digest: a caller
+    holding the raw log can refuse a corrupt one *before* copying a multi-GB
+    file, rather than after the copy and the mutations (#597).
+
+    Returns:
+        Dict with 'log' (the entries) on success, or 'error'.
+    """
+    if isinstance(existing_log_raw, list):
+        return {"log": existing_log_raw}
+    if not isinstance(existing_log_raw, str):
+        return {
+            "error": (
+                f"Existing {EDIT_LOG_KEY} has unsupported type "
+                f"{type(existing_log_raw).__name__}; refusing to overwrite edit log"
+            )
+        }
+    try:
+        existing_log = json.loads(existing_log_raw)
+    except json.JSONDecodeError:
+        return {"error": f"Existing {EDIT_LOG_KEY} contains invalid JSON"}
+    if not isinstance(existing_log, list):
+        return {"error": f"Existing {EDIT_LOG_KEY} decoded to {type(existing_log).__name__}, expected list"}
+    return {"log": existing_log}
+
+
 def build_edit_log(
     existing_log_raw: str | list,
     edit_entries: list[dict],
@@ -417,24 +452,11 @@ def build_edit_log(
 
     stamped_entries = [{**entry, "source_file": source_filename, "source_sha256": sha256} for entry in edit_entries]
 
-    if isinstance(existing_log_raw, str):
-        try:
-            existing_log = json.loads(existing_log_raw)
-        except json.JSONDecodeError:
-            return {"error": f"Existing {EDIT_LOG_KEY} contains invalid JSON"}
-        if not isinstance(existing_log, list):
-            return {"error": f"Existing {EDIT_LOG_KEY} decoded to {type(existing_log).__name__}, expected list"}
-    elif isinstance(existing_log_raw, list):
-        existing_log = existing_log_raw
-    else:
-        return {
-            "error": (
-                f"Existing {EDIT_LOG_KEY} has unsupported type "
-                f"{type(existing_log_raw).__name__}; refusing to overwrite edit log"
-            )
-        }
+    parsed = parse_edit_log(existing_log_raw)
+    if "error" in parsed:
+        return parsed
 
-    return {"json": json.dumps(existing_log + stamped_entries)}
+    return {"json": json.dumps(parsed["log"] + stamped_entries)}
 
 
 def cleanup_previous_version(source_path: str, output_path: str) -> None:

@@ -1,5 +1,6 @@
 """Tests for write_h5ad, strip_timestamp, and generate_output_path."""
 
+import contextlib
 import hashlib
 import json
 import os
@@ -14,10 +15,12 @@ from hca_anndata_tools.write import (
     EDIT_LOG_KEY,
     MissingLineageRootError,
     SameSecondSnapshotError,
+    _compute_sha256,
     _copy_with_sha256,
     generate_output_path,
     resolve_latest,
     snapshot_copy,
+    snapshot_copy_hashed,
     strip_timestamp,
     write_h5ad,
 )
@@ -615,3 +618,86 @@ def test_generate_output_path_refuses_a_rootless_snapshot(tmp_path):
 
     with pytest.raises(MissingLineageRootError, match="data.h5ad"):
         generate_output_path(str(source))
+
+
+# --- snapshot_copy_hashed ----------------------------------------------------
+#
+# The hashed variant is a separate code path — _copy_with_sha256 rather than
+# shutil.copy2 — and it is the one all five converted tools use (#597). The
+# properties below are the ones their tool-level tests delegate here rather
+# than re-asserting five times over.
+
+
+def test_snapshot_copy_hashed_yields_the_source_digest(tmp_path):
+    source = tmp_path / "data.h5ad"
+    source.write_bytes(b"payload")
+
+    with snapshot_copy_hashed(str(source)) as (output_path, sha256):
+        assert Path(output_path).read_bytes() == b"payload"
+        assert sha256 == _compute_sha256(str(source))
+
+
+def test_snapshot_copy_hashed_waits_out_a_collision(tmp_path, monkeypatch):
+    """A name taken this second is waited out and regenerated, not refused."""
+    source = tmp_path / "data.h5ad"
+    source.write_bytes(b"x")
+    taken = tmp_path / "data-edit-2026-08-24-00-00-01.h5ad"
+    taken.write_bytes(b"someone else")
+    fresh = tmp_path / "data-edit-2026-08-24-00-00-02.h5ad"
+    names = iter([str(taken), str(fresh)])
+    monkeypatch.setattr("hca_anndata_tools.write.generate_output_path", lambda p: next(names))
+    slept = []
+    monkeypatch.setattr("hca_anndata_tools.write.time.sleep", slept.append)
+
+    with snapshot_copy_hashed(str(source)) as (output_path, _):
+        assert output_path == str(fresh)
+
+    assert slept == [1]
+    assert taken.read_bytes() == b"someone else", "the occupied name was never written over"
+
+
+def test_snapshot_copy_hashed_refuses_an_unresolvable_collision(tmp_path, monkeypatch):
+    source = tmp_path / "data.h5ad"
+    source.write_bytes(b"x")
+    monkeypatch.setattr("hca_anndata_tools.write.generate_output_path", lambda p: str(source))
+    monkeypatch.setattr("hca_anndata_tools.write.time.sleep", lambda s: None)
+
+    with pytest.raises(SameSecondSnapshotError):
+        with snapshot_copy_hashed(str(source)) as _:
+            pytest.fail("the body must not run")
+
+    assert source.read_bytes() == b"x", "the source was neither written nor unlinked"
+
+
+def test_snapshot_copy_hashed_removes_the_snapshot_when_the_body_fails(tmp_path):
+    """What retired the deferred-unlink dance in all five tools: the snapshot
+    is removed on any exception raised inside the body."""
+    source = tmp_path / "data.h5ad"
+    source.write_bytes(b"x")
+
+    claimed = None
+    with contextlib.suppress(RuntimeError):
+        with snapshot_copy_hashed(str(source)) as (output_path, _):
+            claimed = output_path
+            raise RuntimeError("boom")
+
+    assert claimed is not None
+    assert not Path(claimed).exists()
+    assert source.is_file()
+
+
+def test_snapshot_copy_hashed_never_removes_a_file_it_did_not_create(tmp_path, monkeypatch):
+    """The property the converted tools' bespoke samefile guards used to make
+    by hand: only a claimed path is ever unlinked."""
+    source = tmp_path / "data.h5ad"
+    source.write_bytes(b"x")
+    bystander = tmp_path / "data-edit-2026-08-24-00-00-01.h5ad"
+    bystander.write_bytes(b"not mine")
+    monkeypatch.setattr("hca_anndata_tools.write.generate_output_path", lambda p: str(bystander))
+    monkeypatch.setattr("hca_anndata_tools.write.time.sleep", lambda s: None)
+
+    with pytest.raises(SameSecondSnapshotError):
+        with snapshot_copy_hashed(str(source)) as _:
+            pass
+
+    assert bystander.read_bytes() == b"not mine"
