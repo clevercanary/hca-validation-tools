@@ -34,7 +34,7 @@ from typing import Any
 import h5py
 import numpy as np
 
-from ._io import read_edit_log_h5py, read_uns, write_edit_log_h5py
+from ._io import read_edit_log_h5py, read_group, read_uns, write_edit_log_h5py
 from ._serialize import make_serializable
 from .guards import is_malformed_name
 from .schema.helpers import uns_field_registry
@@ -160,6 +160,27 @@ def _namespace_problem(field: tuple[str, ...]) -> str | None:
     # one that checks less.
     if root in uns_field_registry():
         return f"'{root}' is an HCA schema uns field — use set_uns, which validates it against the schema"
+    return None
+
+
+def _edit_log_target_problem(f: h5py.File) -> str | None:
+    """Refuse now if the edit log could not be written later.
+
+    Every write ends by stamping ``uns/provenance/edit_history``, and
+    ``ensure_provenance_group`` needs ``uns['provenance']`` to be a group or
+    absent. A producer who used that unnamespaced key for something else (#576)
+    would otherwise get a raw h5py "Incompatible object (Dataset) already
+    exists" *after* the copy — the same late refusal the ``parse_edit_log``
+    check exists to avoid, so it belongs in the same read-only pass.
+    """
+    uns = read_uns(f)
+    if uns is None:
+        return None
+    if _RESERVED_ROOT in uns and read_group(uns, _RESERVED_ROOT) is None:
+        return (
+            f"uns[{_RESERVED_ROOT!r}] is a value, not a group — the edit log is written inside it, so this "
+            f"file cannot record the write"
+        )
     return None
 
 
@@ -440,6 +461,8 @@ def set_producer_uns(path: str, updates: list[dict]) -> dict:
         if not problems:
             with h5py.File(path, "r") as f_in:
                 plans, problems = _plan(f_in, parsed)
+                if problem := _edit_log_target_problem(f_in):
+                    problems.append(problem)
                 # Read here, not from the snapshot: a corrupt log is a refusal,
                 # and refusing it now costs a metadata read rather than a full
                 # copy of a file that can run to tens of gigabytes (#597).

@@ -372,6 +372,38 @@ class TestOwnership:
         assert "edit log" in result["error"]
 
 
+class TestRefusesBeforeCopying:
+    """The expensive half is the snapshot copy — up to 27 GB. Anything
+    knowable from the source read-only should refuse before paying it."""
+
+    def test_provenance_as_a_value_refuses_before_the_copy(self, producer_h5ad, no_snapshot):
+        """#576: uns['provenance'] is unnamespaced and shared with producers.
+        One that used it for a string would otherwise get a raw h5py
+        'Incompatible object' error after the whole file had been copied."""
+        with h5py.File(producer_h5ad, "a") as f:
+            if "provenance" in f["uns"]:
+                del f["uns"]["provenance"]
+            f["uns"]["provenance"] = "a producer put a string here"
+
+        result = _set(producer_h5ad, ["ihbca_provenance", "git_branch"], "main")
+
+        assert result["error"].startswith("Refusing to write:")
+        assert "edit log is written inside it" in result["error"]
+        assert no_snapshot(producer_h5ad)
+
+    def test_corrupt_edit_log_refuses_before_the_copy(self, producer_h5ad, no_snapshot):
+        with h5py.File(producer_h5ad, "a") as f:
+            prov = f["uns"].require_group("provenance")
+            if "edit_history" in prov:
+                del prov["edit_history"]
+            prov["edit_history"] = "{not json"
+
+        result = _set(producer_h5ad, ["ihbca_provenance", "git_branch"], "main")
+
+        assert "error" in result
+        assert no_snapshot(producer_h5ad)
+
+
 class TestAllOrNothing:
     def test_one_bad_entry_leaves_the_file_untouched(self, producer_h5ad, no_snapshot):
         before = producer_h5ad.read_bytes()
