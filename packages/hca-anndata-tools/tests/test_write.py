@@ -662,9 +662,8 @@ def test_snapshot_copy_hashed_refuses_an_unresolvable_collision(tmp_path, monkey
     monkeypatch.setattr("hca_anndata_tools.write.generate_output_path", lambda p: str(source))
     monkeypatch.setattr("hca_anndata_tools.write.time.sleep", lambda s: None)
 
-    with pytest.raises(SameSecondSnapshotError):
-        with snapshot_copy_hashed(str(source)) as _:
-            pytest.fail("the body must not run")
+    with pytest.raises(SameSecondSnapshotError), snapshot_copy_hashed(str(source)):
+        pytest.fail("the body must not run")
 
     assert source.read_bytes() == b"x", "the source was neither written nor unlinked"
 
@@ -676,10 +675,9 @@ def test_snapshot_copy_hashed_removes_the_snapshot_when_the_body_fails(tmp_path)
     source.write_bytes(b"x")
 
     claimed = None
-    with contextlib.suppress(RuntimeError):
-        with snapshot_copy_hashed(str(source)) as (output_path, _):
-            claimed = output_path
-            raise RuntimeError("boom")
+    with contextlib.suppress(RuntimeError), snapshot_copy_hashed(str(source)) as (output_path, _):
+        claimed = output_path
+        raise RuntimeError("boom")
 
     assert claimed is not None
     assert not Path(claimed).exists()
@@ -696,8 +694,7 @@ def test_snapshot_copy_hashed_never_removes_a_file_it_did_not_create(tmp_path, m
     monkeypatch.setattr("hca_anndata_tools.write.generate_output_path", lambda p: str(bystander))
     monkeypatch.setattr("hca_anndata_tools.write.time.sleep", lambda s: None)
 
-    with pytest.raises(SameSecondSnapshotError):
-        with snapshot_copy_hashed(str(source)) as _:
-            pass
+    with pytest.raises(SameSecondSnapshotError), snapshot_copy_hashed(str(source)):
+        pass
 
     assert bystander.read_bytes() == b"not mine"
