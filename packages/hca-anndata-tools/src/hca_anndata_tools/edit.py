@@ -25,7 +25,7 @@ from ._io import (
 )
 from ._serialize import make_serializable
 from .guards import detect_obs_references
-from .schema.helpers import uns_field_registry
+from .schema.helpers import non_producer_uns_roots, uns_field_registry
 from .write import (
     build_edit_log,
     cleanup_previous_version,
@@ -99,9 +99,10 @@ def list_uns_fields(path: str) -> dict:
                     else:
                         missing_required.append(name)
 
-            # Extra uns keys not in the HCA schema
-            schema_keys = set(registry.keys()) | {"provenance"}
-            extra_uns_keys = sorted(k for k in adata.uns if k not in schema_keys)
+            # Extra uns keys: the producer's own. Shared with set_producer_uns,
+            # which refuses exactly the complement of what is reported here.
+            non_producer_roots = non_producer_uns_roots()
+            extra_uns_keys = sorted(k for k in adata.uns if k not in non_producer_roots)
 
             return {
                 "filename": Path(path).name,

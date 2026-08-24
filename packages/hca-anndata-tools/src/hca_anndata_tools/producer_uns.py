@@ -35,9 +35,10 @@ import h5py
 import numpy as np
 
 from ._io import read_edit_log_h5py, read_group, read_uns, write_edit_log_h5py
+from ._keys import PROVENANCE_KEY
 from ._serialize import make_serializable
 from .guards import is_malformed_name
-from .schema.helpers import uns_field_registry
+from .schema.helpers import non_producer_uns_roots, uns_field_registry
 from .write import (
     build_edit_log,
     cleanup_previous_version,
@@ -46,13 +47,6 @@ from .write import (
     resolve_latest,
     snapshot_copy_hashed,
 )
-
-# Our own audit trail lives at uns/provenance/edit_history. A tool that could
-# write arbitrary scalars in there could rewrite the record every other tool's
-# guarantees rest on, so the whole namespace is off limits — including for a
-# producer who put their own keys there (#576). Costs the motivating case
-# nothing: its namespace is 'ihbca_provenance', a different key.
-_RESERVED_ROOT = "provenance"
 
 
 @dataclass(frozen=True)
@@ -142,9 +136,22 @@ def _parse_updates(updates: Any) -> tuple[list[tuple[tuple[str, ...], Any]], lis
 
 
 def _namespace_problem(field: tuple[str, ...]) -> str | None:
-    """Refuse a path this tool does not own: our provenance, or an HCA field."""
+    """Refuse a path this tool does not own: our provenance, or an HCA field.
+
+    :func:`non_producer_uns_roots` decides *whether* to refuse; each message
+    below is gated on its own reason, so a root added to that set for a third
+    reason gets a true refusal rather than inheriting one of these.
+    """
     root = field[0]
-    if root == _RESERVED_ROOT:
+    if root not in non_producer_uns_roots():
+        return None
+    # Our audit trail lives at uns/provenance/edit_history. A tool that could
+    # write arbitrary scalars in there could rewrite the record every other
+    # tool's guarantees rest on, so the whole namespace is off limits —
+    # including for a producer who put their own keys there (#576). Costs the
+    # motivating case nothing: its namespace is 'ihbca_provenance', a
+    # different key.
+    if root == PROVENANCE_KEY:
         return (
             f"{_display(field)} is inside our own provenance namespace, which carries the edit log — "
             f"this tool will not write there"
@@ -158,9 +165,18 @@ def _namespace_problem(field: tuple[str, ...]) -> str | None:
     # reference, which #614 puts squarely in the keep column. Routing is the
     # secondary reason: two doors to one field would let a caller pick the
     # one that checks less.
+    #
+    # Tested here rather than assumed from set membership: pointing a curator
+    # at set_uns is only honest for a field set_uns can actually take, and
+    # this justification is specific to those reference-holding fields.
     if root in uns_field_registry():
         return f"'{root}' is an HCA schema uns field — use set_uns, which validates it against the schema"
-    return None
+    # Unreachable while non_producer_uns_roots() is *derived* as exactly
+    # registry + provenance, so the two branches above cover it. Here because
+    # the set is derived rather than enumerated: widen that derivation and this
+    # is what a root reserved for the new reason gets, instead of silently
+    # inheriting the set_uns redirect above, which would be false for it.
+    return f"{_display(field)} is inside a reserved uns root — this tool will not write there"
 
 
 def _edit_log_target_problem(f: h5py.File) -> str | None:
@@ -176,9 +192,9 @@ def _edit_log_target_problem(f: h5py.File) -> str | None:
     uns = read_uns(f)
     if uns is None:
         return None
-    if _RESERVED_ROOT in uns and read_group(uns, _RESERVED_ROOT) is None:
+    if PROVENANCE_KEY in uns and read_group(uns, PROVENANCE_KEY) is None:
         return (
-            f"uns[{_RESERVED_ROOT!r}] is a value, not a group — the edit log is written inside it, so this "
+            f"uns[{PROVENANCE_KEY!r}] is a value, not a group — the edit log is written inside it, so this "
             f"file cannot record the write"
         )
     return None

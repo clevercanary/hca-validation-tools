@@ -13,8 +13,8 @@ import h5py
 import numpy as np
 import pytest
 
-from hca_anndata_tools import set_producer_uns, view_edit_log
-from hca_anndata_tools._io import require_stamped_group
+from hca_anndata_tools import list_uns_fields, set_producer_uns, view_edit_log
+from hca_anndata_tools._io import require_stamped_group, write_edit_log_h5py
 from hca_anndata_tools.edit import _type_display
 from hca_anndata_tools.schema.helpers import uns_field_registry
 
@@ -494,3 +494,55 @@ class TestRedirectStaysHonest:
             f"these HCA uns fields are refused by set_producer_uns but set_uns cannot take them, "
             f"so the 'use set_uns' redirect is a dead end: {unreachable}"
         )
+
+
+class TestSharedWithListUnsFields:
+    """The point of #631: what list_uns_fields reports as an editable producer
+    key and what set_producer_uns refuses are complements of one set. Computed
+    separately they could drift, and the drift would be silent — a curator told
+    to fix something the tools then refuse to touch."""
+
+    @pytest.fixture
+    def readable_h5ad(self, sample_h5ad_for_write: Path) -> Path:
+        """A file carrying one root of each kind, that anndata can read.
+
+        The main ``producer_h5ad`` fixture carries a fixed-length ``|S3``
+        field, and anndata cannot read one of those in ``uns`` at all — it
+        raises ``string indices must be integers``, so ``list_uns_fields``
+        returns an error rather than a report (#632). That is exactly why
+        ``set_producer_uns`` refuses the dtype; here it just means these tests
+        need a file both consumers can open.
+        """
+        with h5py.File(sample_h5ad_for_write, "a") as f:
+            _scalar(require_stamped_group(f, "uns/ihbca_provenance"), "git_branch", "dev")
+            write_edit_log_h5py(f, "[]")
+        return sample_h5ad_for_write
+
+    def test_a_new_reserved_root_moves_both_consumers(self, readable_h5ad, monkeypatch):
+        """Add a root to the shared derivation; both consumers must follow it.
+
+        Patches each consumer's bound name rather than the registry: that is
+        what pins the *sharing*, because monkeypatch.setattr raises if a
+        consumer stopped importing the shared derivation. Patching the registry
+        instead would reach a reintroduced local copy just as well, and prove
+        only that each consumer reads the registry.
+        """
+        from hca_anndata_tools import edit, producer_uns
+        from hca_anndata_tools.schema import helpers
+
+        assert "ihbca_provenance" in list_uns_fields(str(readable_h5ad))["extra_uns_keys"]
+        assert "error" not in _set(readable_h5ad, ["ihbca_provenance", "git_branch"], "main")
+
+        def extended():
+            return helpers.non_producer_uns_roots() | {"ihbca_provenance"}
+
+        monkeypatch.setattr(edit, "non_producer_uns_roots", extended)
+        monkeypatch.setattr(producer_uns, "non_producer_uns_roots", extended)
+
+        assert "ihbca_provenance" not in list_uns_fields(str(readable_h5ad))["extra_uns_keys"]
+        error = _set(readable_h5ad, ["ihbca_provenance", "git_branch"], "main")["error"]
+        # Truthfully, too: a root reserved for a third reason must not inherit
+        # the set_uns redirect, which would send a curator to a tool that then
+        # rejects it as unknown.
+        assert "reserved uns root" in error
+        assert "set_uns" not in error
