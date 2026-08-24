@@ -1,10 +1,12 @@
-"""Introspection helpers for extracting uns field metadata from Pydantic models."""
+"""Introspection helpers for uns field metadata, and the uns-root ownership
+set derived from it that the mutating tools share."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any
 
+from .._keys import PROVENANCE_KEY
 from .core import (
     AdiposeDataset,
     Dataset,
@@ -123,3 +125,18 @@ def uns_field_registry() -> dict[str, UnsFieldInfo]:
     if _UNS_REGISTRY is None:
         _UNS_REGISTRY = get_uns_field_registry()
     return _UNS_REGISTRY
+
+
+def non_producer_uns_roots() -> frozenset[str]:
+    """The ``uns`` root keys that are not the producer's — ours, plus the schema's.
+
+    One definition with two opposite consumers, which is why it is shared:
+    ``list_uns_fields`` subtracts it from a file's ``uns`` keys to report what
+    a curator *may* edit, and ``set_producer_uns`` tests membership to decide
+    what it must *refuse* to write. Computed separately they could disagree —
+    a second reserved root would be reported as editable and then refused,
+    with nothing erroring (#631).
+
+    Each caller renders its own message; only the set is shared.
+    """
+    return frozenset(uns_field_registry()) | {PROVENANCE_KEY}

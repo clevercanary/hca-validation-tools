@@ -16,6 +16,8 @@ import h5py
 import pandas as pd
 from anndata.io import write_elem
 
+from ._keys import EDIT_LOG_KEY, PROVENANCE_KEY
+
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
@@ -195,7 +197,7 @@ def ensure_provenance_group(f: h5py.File) -> h5py.Group:
     creates a missing parent implicitly, so ``uns`` may be born here too.
     """
     require_stamped_group(f, "uns")
-    return require_stamped_group(f, "uns/provenance")
+    return require_stamped_group(f, f"uns/{PROVENANCE_KEY}")
 
 
 def read_group(parent: h5py.File | h5py.Group, name: str) -> h5py.Group | None:
@@ -239,10 +241,10 @@ def read_batch_condition(uns: h5py.Group | None) -> list[str]:
 
 
 def read_provenance(uns: h5py.Group | None) -> h5py.Group | None:
-    """``uns['provenance']`` as a group, or None when absent or not a group."""
+    """The provenance group, or None when absent or not a group."""
     if uns is None:
         return None
-    return read_group(uns, "provenance")
+    return read_group(uns, PROVENANCE_KEY)
 
 
 def read_edit_log_h5py(f: h5py.File) -> str:
@@ -251,7 +253,7 @@ def read_edit_log_h5py(f: h5py.File) -> str:
     Returns "[]" if no edit log exists.
     """
     prov = read_provenance(read_uns(f))
-    log = prov.get("edit_history") if prov is not None else None
+    log = prov.get(EDIT_LOG_KEY) if prov is not None else None
     if isinstance(log, h5py.Dataset):
         raw = log[()]
         if isinstance(raw, bytes | str):
@@ -266,7 +268,7 @@ def write_edit_log_h5py(f: h5py.File, log_json: str) -> None:
     plain string element with no storage layout to preserve, so anndata owns
     its encoding. ``write_elem`` overwrites the key itself.
     """
-    write_elem(ensure_provenance_group(f), "edit_history", log_json)
+    write_elem(ensure_provenance_group(f), EDIT_LOG_KEY, log_json)
 
 
 def read_categorical_data(item: h5py.Group) -> tuple[pd.Index, np.ndarray]:

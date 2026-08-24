@@ -16,13 +16,14 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 from . import __version__
+from ._keys import EDIT_LOG_KEY, PROVENANCE_KEY
 
 if TYPE_CHECKING:
     from anndata import AnnData
 
 _TIMESTAMP_PATTERN = re.compile(r"-edit-\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}(?=\.h5ad$)")
 _TIMESTAMP_FORMAT = "%Y-%m-%d-%H-%M-%S"
-EDIT_LOG_KEY = "edit_history"
+
 _HASH_CHUNK_SIZE = 1 << 20  # 1 MB — keeps syscall count low on multi-GB files
 _REQUIRED_ENTRY_KEYS = {"timestamp", "tool", "tool_version", "operation", "description"}
 
@@ -344,7 +345,7 @@ def has_edit_log_operation(adata, operation: str) -> bool:
     Returns:
         ``True`` if any matching entry exists, ``False`` otherwise.
     """
-    provenance = adata.uns.get("provenance")
+    provenance = adata.uns.get(PROVENANCE_KEY)
     if not isinstance(provenance, dict):
         return False
     log_raw = provenance.get(EDIT_LOG_KEY)
@@ -512,7 +513,7 @@ def write_h5ad(
         if not Path(source_path).is_file():
             return {"error": f"Source file not found: {source_path}"}
 
-        provenance = adata.uns.get("provenance", {})
+        provenance = adata.uns.get(PROVENANCE_KEY, {})
         if isinstance(provenance, dict) and EDIT_LOG_KEY in provenance:
             existing_log_raw = provenance[EDIT_LOG_KEY]
         else:
@@ -522,7 +523,7 @@ def write_h5ad(
         if "error" in log_result:
             return log_result
 
-        adata.uns.setdefault("provenance", {})[EDIT_LOG_KEY] = log_result["json"]
+        adata.uns.setdefault(PROVENANCE_KEY, {})[EDIT_LOG_KEY] = log_result["json"]
 
         if output_path is None:
             output_path = generate_output_path(source_path)
