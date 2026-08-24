@@ -163,27 +163,41 @@ def _namespace_problem(field: tuple[str, ...]) -> str | None:
     return None
 
 
-def _external_link_problem(node: h5py.Group, segment: str, field: tuple[str, ...], depth: int) -> str | None:
-    """Refuse a member that is an HDF5 external link into another file.
+def _link_problem(node: h5py.Group, segment: str, field: tuple[str, ...], depth: int) -> str | None:
+    """Refuse a member that is an HDF5 link, external or soft.
 
-    h5py resolves external links transparently — ``get`` returns the target,
-    and ``isinstance(..., h5py.Group)`` / ``h5py.Dataset`` are both True for
-    one — so nothing else in this walk can tell the difference. HDF5 also
-    propagates the parent's access flags to the target, so under the snapshot's
-    ``"a"`` mode the foreign file is opened read-write and ``ds[()] = value``
-    lands *there*.
+    h5py resolves both transparently — ``get`` returns the target, and the
+    ``isinstance`` checks in :func:`_resolve` are True for it — so nothing else
+    in the walk can tell a link from a real member. Both were verified to
+    redirect a write, and neither is caught by anything else:
 
-    Verified: with ``uns['ns']`` linked into another h5ad, the tool reported
-    success, the snapshot kept the link unchanged, and the other file was
-    modified. The read-back could not catch it — it re-resolves through the
-    same link and sees the value it just wrote into the foreign file. So the
-    refusal has to happen here, before the link is ever followed.
+    * **External**: HDF5 propagates the parent's access flags to the target, so
+      under the snapshot's ``"a"`` mode the foreign file is opened read-write
+      and the assignment lands *there*. The tool reported success, the snapshot
+      stayed byte-identical, and another h5ad was silently modified.
+    * **Soft**: the target is elsewhere in *this* file, so the
+      ``leaf.file.filename`` backstop cannot see it, and
+      :func:`_namespace_problem` cannot either — it matches ``field[0]`` as a
+      string, and a link never presents the string it resolves to. A soft link
+      from a producer namespace to ``uns['title']`` wrote an HCA schema field
+      through this tool, bypassing the registry refusal and ``set_uns``'s
+      validation entirely.
+
+    The read-back cannot substitute for this: it re-resolves through the same
+    link and sees exactly what it wrote. So the refusal happens here, before
+    the link is followed. Scanned the eight real breast objects — 1,443 ``uns``
+    members, not one link of either kind — so nothing legitimate is lost.
     """
     link = node.get(segment, getlink=True)
     if isinstance(link, h5py.ExternalLink):
         return (
             f"{_display(field[: depth + 1])} is an external link into {link.filename!r} — writing through it "
             f"would modify that file instead of this one, leaving no record in either"
+        )
+    if isinstance(link, h5py.SoftLink):
+        return (
+            f"{_display(field[: depth + 1])} is a soft link to {link.path!r} — the guards here check the path "
+            f"you named, so writing through it would edit something you did not name"
         )
     return None
 
@@ -200,16 +214,16 @@ def _resolve(f: h5py.File, field: tuple[str, ...]) -> tuple[h5py.Dataset | None,
     typo protection the schema registry gives ``set_uns`` and this tool,
     by definition, cannot have.
 
-    Every step is also checked for an external link, including the leaf: the
-    files this runs on come from third-party producers and from CAP, so the
-    structure being walked is not ours.
+    Every step is also checked for an HDF5 link, including the leaf: the files
+    this runs on come from third-party producers and from CAP, so the structure
+    being walked is not ours.
     """
     node: h5py.Group | None = read_uns(f)
     if node is None:
         return None, f"the file has no uns group, so {_display(field)} cannot be reached"
 
     for depth, segment in enumerate(field[:-1]):
-        if problem := _external_link_problem(node, segment, field, depth):
+        if problem := _link_problem(node, segment, field, depth):
             return None, problem
         child = node.get(segment)
         if child is None:
@@ -218,7 +232,7 @@ def _resolve(f: h5py.File, field: tuple[str, ...]) -> tuple[h5py.Dataset | None,
             return None, f"{_display(field[: depth + 1])} is a value, not a group, so {_display(field)} has no parent"
         node = child
 
-    if problem := _external_link_problem(node, field[-1], field, len(field) - 1):
+    if problem := _link_problem(node, field[-1], field, len(field) - 1):
         return None, problem
     leaf = node.get(field[-1])
     if leaf is None:

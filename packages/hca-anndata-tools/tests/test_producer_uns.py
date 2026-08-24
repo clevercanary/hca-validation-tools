@@ -268,7 +268,7 @@ class TestPathGuards:
         assert "['ihbca_provenance', 'git_dirty']" in result["error"]
 
 
-class TestExternalLinks:
+class TestLinks:
     """h5py resolves an external link transparently, so without an explicit
     refusal the walk follows it into another file — and because the snapshot is
     opened "a", HDF5 opens that file read-write and the assignment lands there.
@@ -312,6 +312,33 @@ class TestExternalLinks:
         assert no_snapshot(producer_h5ad)
         with h5py.File(victim, "r") as f:
             assert f["uns/ihbca_provenance/git_branch"][()] == b"PRISTINE"
+
+    def test_soft_linked_leaf_is_refused(self, producer_h5ad, no_snapshot):
+        """A soft link stays inside this file, so the file-identity backstop
+        cannot see it — and _namespace_problem cannot either, because it
+        matches field[0] as a string and a link never presents the string it
+        resolves to. Verified before the guard: this wrote uns['title'], an
+        HCA schema field, straight through the producer tool."""
+        with h5py.File(producer_h5ad, "a") as f:
+            del f["uns"]["ihbca_provenance"]["git_branch"]
+            f["uns"]["ihbca_provenance"]["git_branch"] = h5py.SoftLink("/uns/title")
+
+        result = _set(producer_h5ad, ["ihbca_provenance", "git_branch"], "HIJACKED")
+
+        assert "soft link" in result["error"]
+        assert no_snapshot(producer_h5ad)
+        with h5py.File(producer_h5ad, "r") as f:
+            assert f["uns/title"][()] != b"HIJACKED"
+
+    def test_soft_linked_group_is_refused(self, producer_h5ad, no_snapshot):
+        """The same at an intermediate segment, not just the leaf."""
+        with h5py.File(producer_h5ad, "a") as f:
+            f["uns"]["aliased"] = h5py.SoftLink("/uns/ihbca_provenance")
+
+        result = _set(producer_h5ad, ["aliased", "git_branch"], "HIJACKED")
+
+        assert "soft link" in result["error"]
+        assert no_snapshot(producer_h5ad)
 
     def test_linked_leaf_is_not_read_either(self, producer_h5ad, victim):
         """The refusal also closes the read side: old_value travels back in the
