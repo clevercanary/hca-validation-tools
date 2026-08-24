@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from .merge_categories import merge_obs_categories
     from .normalize import normalize_raw
     from .plot import plot_embedding
+    from .producer_uns import set_producer_uns
     from .rename import rename_cell_ids
     from .rename_column import rename_obs_column
     from .stats import get_descriptive_stats
@@ -69,6 +70,7 @@ _LAZY_IMPORTS = {
     "strip_cap_annotations": ".strip_cap",
     "drop_obs_columns": ".drop",
     "merge_obs_categories": ".merge_categories",
+    "set_producer_uns": ".producer_uns",
     "rename_obs_column": ".rename_column",
     "rename_cell_ids": ".rename",
     "backfill_obs_from_source": ".backfill",
