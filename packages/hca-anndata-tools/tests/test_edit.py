@@ -340,15 +340,34 @@ def test_replace_placeholder_all_values_replaced(tmp_path):
     assert len(written.obs["test_col"].cat.categories) == 0
 
 
+def test_replace_placeholder_same_second_collision_resolves_after_waiting(tmp_path, monkeypatch):
+    """The common case since #597: a name taken this second is resolved by
+    waiting out the boundary rather than failing a run the caller re-issues."""
+    path = _make_placeholder_h5ad(tmp_path, ["valid", "unknown"])
+    fresh = str(tmp_path / "placeholders_test-edit-2026-08-24-00-00-01.h5ad")
+    names = iter([str(path), fresh])
+    monkeypatch.setattr("hca_anndata_tools.write.generate_output_path", lambda p: next(names))
+    slept = []
+    monkeypatch.setattr("hca_anndata_tools.write.time.sleep", slept.append)
+
+    result = replace_placeholder_values(str(path), ["test_col"])
+
+    assert slept == [1]
+    assert "error" not in result
+    assert result["output_path"] == fresh
+
+
 def test_replace_placeholder_same_second_snapshot_refused(tmp_path, monkeypatch):
-    """A second edit within the same second would name the output after its
-    own source and the failure path would unlink that source snapshot; the
-    guard refuses before touching anything (mirrors rename/backfill)."""
-    monkeypatch.setattr("hca_anndata_tools.edit.generate_output_path", lambda p: p)
+    """A collision that survives the boundary wait is refused before anything
+    is touched — the source snapshot must not be unlinked (#598)."""
+    monkeypatch.setattr("hca_anndata_tools.write.generate_output_path", lambda p: p)
+    slept = []
+    monkeypatch.setattr("hca_anndata_tools.write.time.sleep", slept.append)
     path = _make_placeholder_h5ad(tmp_path, ["valid", "unknown"])
 
     result = replace_placeholder_values(str(path), ["test_col"])
 
+    assert slept == [1], "the boundary wait is attempted once before refusing"
     assert "error" in result
     assert "already exists" in result["error"]
     assert path.is_file()  # the source snapshot was not unlinked

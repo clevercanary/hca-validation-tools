@@ -14,8 +14,6 @@ form-independent and would carry over.
 
 from __future__ import annotations
 
-import contextlib
-import shutil
 from pathlib import Path
 
 import h5py
@@ -37,13 +35,11 @@ from ._io import (
 from .cap import cellxgene_schema_version
 from .guards import is_malformed_name, legacy_layout_problems, require_obs_group
 from .write import (
-    SAME_SECOND_SNAPSHOT_ERROR,
-    _compute_sha256,
     build_edit_log,
     cleanup_previous_version,
-    generate_output_path,
     make_edit_entry,
     resolve_latest,
+    snapshot_copy_hashed,
 )
 
 # Before/after pairs returned for eyeball confirmation, and the cap on IDs
@@ -179,7 +175,6 @@ def rename_cell_ids(path: str, column: str, value: str, prefix_from: str, prefix
         broader-than-intended selector stays visible), and ``examples`` (up to
         five ``[before, after]`` pairs), or ``{"error": ...}``.
     """
-    output_path = None
     try:
         problems = _check_arguments(column, value, prefix_from, prefix_to)
         if problems:
@@ -310,21 +305,11 @@ def rename_cell_ids(path: str, column: str, value: str, prefix_from: str, prefix
                 )
             }
 
-        output_path = generate_output_path(path)
-        if output_path == path:
-            # generate_output_path timestamps to the second, so a second edit
-            # within the same second names the output after its own source;
-            # copying would raise SameFileError and the failure path would
-            # then unlink the source snapshot. Refuse before touching anything.
-            return {"error": SAME_SECOND_SNAPSHOT_ERROR}
-        shutil.copy2(path, output_path)
-
-        # Hash the source before opening the output: build_edit_log would
-        # otherwise re-read the whole file while the output handle is open.
-        source_sha256 = _compute_sha256(path)
-
-        log_error = None
-        with h5py.File(output_path, "a") as f_out:
+        # The hashed snapshot: claims a free name, copies, and computes the
+        # source digest in the same pass, so build_edit_log does not re-read
+        # the whole file. Waits out a same-second collision rather than
+        # refusing it (#597), and removes the snapshot on any failure below.
+        with snapshot_copy_hashed(path) as (output_path, source_sha256), h5py.File(output_path, "a") as f_out:
             replace_string_dataset(f_out["obs"], index_name, new_ids)  # pyright: ignore[reportArgumentType]
             for obsm_key, sub_name in obsm_df_indexes:
                 replace_string_dataset(f_out["obsm"][obsm_key], sub_name, new_ids)  # pyright: ignore[reportArgumentType, reportIndexIssue]
@@ -349,17 +334,11 @@ def rename_cell_ids(path: str, column: str, value: str, prefix_from: str, prefix
             existing_log = read_edit_log_h5py(f_out)
             log_result = build_edit_log(existing_log, [entry], path, source_sha256)
             if "error" in log_result:
-                log_error = log_result
-            else:
-                write_edit_log_h5py(f_out, log_result["json"])
-
-        # Deferred until the with-block has closed the output handle,
-        # matching drop.py: unlinking an open HDF5 file works on POSIX but
-        # raises on Windows, and the context __exit__ flush would hit a
-        # removed inode either way.
-        if log_error is not None:
-            Path(output_path).unlink()
-            return log_error
+                # Raising inside the context is what removes the snapshot;
+                # the deferred-unlink dance the copy2 version needed is gone
+                # with it (matching rename_column and merge_categories).
+                raise RuntimeError(log_result["error"])
+            write_edit_log_h5py(f_out, log_result["json"])
 
         cleanup_previous_version(path, output_path)
 
@@ -371,7 +350,6 @@ def rename_cell_ids(path: str, column: str, value: str, prefix_from: str, prefix
         }
 
     except Exception as e:
-        if output_path and Path(output_path).is_file():
-            with contextlib.suppress(OSError):
-                Path(output_path).unlink()
+        # No unlink here: snapshot_copy_hashed removes the snapshot itself on
+        # any exception raised inside its body.
         return {"error": str(e)}

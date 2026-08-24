@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import contextlib
 import json
-import shutil
 import types
 import typing
 from pathlib import Path
@@ -29,13 +27,11 @@ from ._serialize import make_serializable
 from .guards import detect_obs_references
 from .schema.helpers import uns_field_registry
 from .write import (
-    SAME_SECOND_SNAPSHOT_ERROR,
-    _compute_sha256,
     build_edit_log,
     cleanup_previous_version,
-    generate_output_path,
     make_edit_entry,
     resolve_latest,
+    snapshot_copy_hashed,
     write_h5ad,
 )
 
@@ -322,7 +318,6 @@ def replace_placeholder_values(
 
         total_affected = sum(sum(v.values()) for v in columns_fixed.values())
 
-        target_sha256 = _compute_sha256(path)
         entry = make_edit_entry(
             operation="replace_placeholder_values",
             description=f"Replaced placeholder values with NaN in {len(columns_fixed)} columns",
@@ -332,22 +327,12 @@ def replace_placeholder_values(
             },
         )
 
-        log_result = build_edit_log(raw_log, [entry], path, target_sha256)
-        if "error" in log_result:
-            return log_result
-
-        # Copy and patch
-        output_path = generate_output_path(path)
-        if output_path == path:
-            # generate_output_path timestamps to the second (see rename.py):
-            # a second edit within the same second names the output after its
-            # own source, and the failure path would then unlink that source
-            # snapshot. Refuse before touching anything.
-            return {"error": SAME_SECOND_SNAPSHOT_ERROR}
-        shutil.copy2(path, output_path)
-
         palettes_remapped = []
-        with h5py.File(output_path, "a") as f:
+        # The hashed snapshot: claims a free name, copies, and computes the
+        # source digest in the same pass, so build_edit_log below does not
+        # re-read the whole file. Waits out a same-second collision rather
+        # than refusing it (#597), and removes the snapshot on any failure.
+        with snapshot_copy_hashed(path) as (output_path, target_sha256), h5py.File(output_path, "a") as f:
             uns = read_uns(f)
             palettes = detect_obs_references(uns, list(columns_fixed)).palettes
             for col in columns_fixed:
@@ -367,6 +352,9 @@ def replace_placeholder_values(
                 if remap_palette(uns, palettes.get(col), kept, len(cats)):
                     palettes_remapped.append(palettes[col])
 
+            log_result = build_edit_log(raw_log, [entry], path, target_sha256)
+            if "error" in log_result:
+                raise RuntimeError(log_result["error"])
             write_edit_log_h5py(f, log_result["json"])
 
             # Verify integrity after rewrite
@@ -384,7 +372,6 @@ def replace_placeholder_values(
         }
 
     except Exception as e:
-        if output_path and Path(output_path).is_file():
-            with contextlib.suppress(OSError):
-                Path(output_path).unlink()
+        # No unlink here: snapshot_copy_hashed removes the snapshot itself on
+        # any exception raised inside its body.
         return {"error": str(e)}
