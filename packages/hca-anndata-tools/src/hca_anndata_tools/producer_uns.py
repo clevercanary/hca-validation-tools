@@ -26,6 +26,7 @@ replaces that missing backstop.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -41,6 +42,7 @@ from .write import (
     build_edit_log,
     cleanup_previous_version,
     make_edit_entry,
+    parse_edit_log,
     resolve_latest,
     snapshot_copy_hashed,
 )
@@ -60,43 +62,41 @@ class _PlannedWrite:
     Validation reads the source read-only and the write happens on a snapshot,
     so no h5py object survives between the two — the path segments and the
     already-coerced value do.
+
+    ``expected`` is both what gets assigned and what the read-back must see:
+    every value is coerced through the target dtype during validation, so
+    assigning it is what makes the two agree by construction.
     """
 
     field: tuple[str, ...]
-    value: Any  # what gets assigned
-    expected: Any  # what the read-back must see, JSON-shaped
+    expected: Any  # assigned, and what the read-back must see; JSON-shaped
     old_value: Any
     dtype: np.dtype
 
 
-def _display(field: tuple[str, ...] | list[str]) -> str:
+def _display(field: tuple[str, ...]) -> str:
     """A field path as the caller would subscript it: ``uns['a']['b']``."""
     return "uns" + "".join(f"[{segment!r}]" for segment in field)
 
 
-def _parse_updates(updates: Any) -> tuple[list[tuple[str, ...]], list[Any], list[str]]:
-    """Normalize the caller's ``updates`` into field paths and values.
+def _parse_updates(updates: Any) -> tuple[list[tuple[tuple[str, ...], Any]], list[str]]:
+    """Normalize the caller's ``updates`` into ``(field, value)`` pairs.
 
     MCP-exposed, so this arrives as decoded JSON and may hold anything.
     Structural problems are collected rather than raised so a caller who got
     two entries wrong learns both in one round trip.
 
     Returns:
-        ``(fields, values, problems)``. Only well-formed entries appear in
-        ``fields``/``values``; positions do not correspond to the input.
+        ``(parsed, problems)``. Only well-formed entries appear in ``parsed``;
+        positions do not correspond to the input.
     """
     problems: list[str] = []
     if not isinstance(updates, list):
-        return (
-            [],
-            [],
-            [f"updates must be a list of {{'field': [...], 'value': ...}} entries, got {type(updates).__name__}"],
-        )
+        return [], [f"updates must be a list of {{'field': [...], 'value': ...}} entries, got {type(updates).__name__}"]
     if not updates:
-        return [], [], ["updates must not be empty — every write should change something"]
+        return [], ["updates must not be empty — every write should change something"]
 
-    fields: list[tuple[str, ...]] = []
-    values: list[Any] = []
+    parsed: list[tuple[tuple[str, ...], Any]] = []
     for i, entry in enumerate(updates):
         if not isinstance(entry, dict):
             problems.append(f"updates[{i}] must be an object with 'field' and 'value', got {type(entry).__name__}")
@@ -130,16 +130,15 @@ def _parse_updates(updates: Any) -> tuple[list[tuple[str, ...]], list[Any], list
                 f"(a segment cannot contain '/' or be blank): {malformed}"
             )
             continue
-        fields.append(tuple(field))
-        values.append(entry["value"])
+        parsed.append((tuple(field), entry["value"]))
 
     seen: set[tuple[str, ...]] = set()
-    for field in fields:
+    for field, _ in parsed:
         if field in seen:
             problems.append(f"{_display(field)} appears more than once in updates — the intended value is ambiguous")
         seen.add(field)
 
-    return fields, values, problems
+    return parsed, problems
 
 
 def _namespace_problem(field: tuple[str, ...]) -> str | None:
@@ -150,29 +149,68 @@ def _namespace_problem(field: tuple[str, ...]) -> str | None:
             f"{_display(field)} is inside our own provenance namespace, which carries the edit log — "
             f"this tool will not write there"
         )
-    # Routing, not a validity judgment: set_uns exists, validates the value
-    # against the schema, and cross-checks fields like batch_condition and
-    # default_embedding against the rest of the file. Two doors to the same
-    # field would let a caller pick the one that checks less.
+    # Coherence, not only routing — the distinction matters, because #621
+    # removed a guard defended on routing grounds alone. Two of the five
+    # registry fields hold *references into other groups*: set_uns checks
+    # batch_condition against obs.columns and default_embedding against
+    # obsm.keys(). Writing either raw through this tool could leave a
+    # batch_condition naming an obs column that does not exist — a dangling
+    # reference, which #614 puts squarely in the keep column. Routing is the
+    # secondary reason: two doors to one field would let a caller pick the
+    # one that checks less.
     if root in uns_field_registry():
         return f"'{root}' is an HCA schema uns field — use set_uns, which validates it against the schema"
     return None
 
 
-def _resolve(f: h5py.File, field: tuple[str, ...]) -> tuple[h5py.Dataset | None, str | None]:
+def _external_link_problem(node: h5py.Group, segment: str, field: tuple[str, ...], depth: int) -> str | None:
+    """Refuse a member that is an HDF5 external link into another file.
+
+    h5py resolves external links transparently — ``get`` returns the target,
+    and ``isinstance(..., h5py.Group)`` / ``h5py.Dataset`` are both True for
+    one — so nothing else in this walk can tell the difference. HDF5 also
+    propagates the parent's access flags to the target, so under the snapshot's
+    ``"a"`` mode the foreign file is opened read-write and ``ds[()] = value``
+    lands *there*.
+
+    Verified: with ``uns['ns']`` linked into another h5ad, the tool reported
+    success, the snapshot kept the link unchanged, and the other file was
+    modified. The read-back could not catch it — it re-resolves through the
+    same link and sees the value it just wrote into the foreign file. So the
+    refusal has to happen here, before the link is ever followed.
+    """
+    link = node.get(segment, getlink=True)
+    if isinstance(link, h5py.ExternalLink):
+        return (
+            f"{_display(field[: depth + 1])} is an external link into {link.filename!r} — writing through it "
+            f"would modify that file instead of this one, leaving no record in either"
+        )
+    return None
+
+
+def _resolve(f: h5py.File, field: tuple[str, ...]) -> tuple[h5py.Dataset | None, str]:
     """The scalar dataset ``field`` names, or the reason it cannot be reached.
+
+    The message is empty exactly when a dataset is returned, so a caller
+    that checks the dataset never has to invent a fallback string.
 
     Overwrite-only: every segment must already exist. Every target of a
     producer's correction does, so nothing is lost — and it means a misspelled
     segment is an error rather than a silently created key, which is the
     typo protection the schema registry gives ``set_uns`` and this tool,
     by definition, cannot have.
+
+    Every step is also checked for an external link, including the leaf: the
+    files this runs on come from third-party producers and from CAP, so the
+    structure being walked is not ours.
     """
     node: h5py.Group | None = read_uns(f)
     if node is None:
         return None, f"the file has no uns group, so {_display(field)} cannot be reached"
 
     for depth, segment in enumerate(field[:-1]):
+        if problem := _external_link_problem(node, segment, field, depth):
+            return None, problem
         child = node.get(segment)
         if child is None:
             return None, f"{_display(field[: depth + 1])} does not exist (reaching {_display(field)})"
@@ -180,6 +218,8 @@ def _resolve(f: h5py.File, field: tuple[str, ...]) -> tuple[h5py.Dataset | None,
             return None, f"{_display(field[: depth + 1])} is a value, not a group, so {_display(field)} has no parent"
         node = child
 
+    if problem := _external_link_problem(node, field[-1], field, len(field) - 1):
+        return None, problem
     leaf = node.get(field[-1])
     if leaf is None:
         return None, f"{_display(field)} does not exist — this tool overwrites existing fields, it does not create them"
@@ -192,11 +232,35 @@ def _resolve(f: h5py.File, field: tuple[str, ...]) -> tuple[h5py.Dataset | None,
             f"{_display(field)} holds an array of shape {leaf.shape}, not a scalar — "
             f"this tool writes scalar values only"
         )
-    return leaf, None
+    # Belt and braces over the per-segment check above: whatever mechanism got
+    # us here, the node we are about to write must live in the file we opened.
+    if leaf.file.filename != f.filename:
+        return None, (
+            f"{_display(field)} resolves into {leaf.file.filename!r}, not the file being edited — refusing to "
+            f"write outside it"
+        )
+    return leaf, ""
 
 
-def _coerce(ds: h5py.Dataset, value: Any, disp: str) -> tuple[Any, Any, str | None]:
-    """The value to assign and to expect on read-back, or why the type is wrong.
+def _as_dtype(value: Any, dtype: np.dtype, disp: str) -> tuple[Any, str | None]:
+    """``value`` put through ``dtype``, or why it does not fit.
+
+    Shared by the int and float branches, which differ in what they do with
+    the result — the int branch demands it round-trip exactly, the float
+    branch accepts the precision the dtype has.
+    """
+    try:
+        # The cast is the probe, so its overflow warning is expected output,
+        # not a problem to surface — the caller checks the result instead.
+        with np.errstate(over="ignore", invalid="ignore"):
+            coerced = np.asarray(value, dtype=dtype)
+    except (OverflowError, ValueError, TypeError) as e:
+        return None, f"{disp} has dtype {dtype} and cannot hold {value!r}: {e}"
+    return make_serializable(coerced[()]), None
+
+
+def _coerce(ds: h5py.Dataset, value: Any, disp: str) -> tuple[Any, str | None]:
+    """The value to assign and expect on read-back, or why the type is wrong.
 
     The stored dtype is the contract. Writing ``False`` into a string field
     would store ``'false'`` and pass every downstream check, because a
@@ -206,69 +270,74 @@ def _coerce(ds: h5py.Dataset, value: Any, disp: str) -> tuple[Any, Any, str | No
     dtype = ds.dtype
     string_info = h5py.check_string_dtype(dtype)
     if string_info is not None:
-        if not isinstance(value, str):
-            return None, None, f"{disp} holds a string; got {type(value).__name__}"
+        # Refused as a dtype, not case by case. anndata writes every string as
+        # variable-length; a fixed-length one means the field was written by
+        # something else, and supporting it would mean owning two hazards it
+        # brings with it — HDF5 truncates an over-long value on assignment with
+        # no error at all, and h5py reports these as ascii, so a non-ASCII
+        # value raises out of the type check instead of being refused by it.
+        # Scanned the eight real breast objects: 1,244 scalar uns datasets,
+        # 1,041 of them strings, and not one is fixed-length. Nothing to gain.
         if string_info.length is not None:
-            # Fixed-length strings truncate on assignment with no error at all:
-            # a 19-byte value into an |S3 stores three bytes and returns
-            # success. Verified, not theorized.
-            encoded = value.encode(string_info.encoding or "utf-8")
-            if len(encoded) > string_info.length:
-                return (
-                    None,
-                    None,
-                    (
-                        f"{disp} is a fixed-length string of {string_info.length} bytes and {value!r} needs "
-                        f"{len(encoded)} — HDF5 would truncate it silently"
-                    ),
-                )
-        return value, value, None
+            return None, (
+                f"{disp} is a fixed-length string ({dtype}) — anndata writes strings as variable-length, "
+                f"so this field was not written by anndata and HDF5 would truncate an over-long value "
+                f"into it without reporting anything"
+            )
+        if not isinstance(value, str):
+            return None, f"{disp} holds a string; got {type(value).__name__}"
+        return value, None
 
     kind = dtype.kind
     # bool before int, always: isinstance(True, int) is True in Python, so an
     # int branch reached first would accept True and store it as 1.
     if kind == "b":
         if not isinstance(value, bool):
-            return None, None, f"{disp} holds a boolean; got {type(value).__name__}"
-        return value, value, None
+            return None, f"{disp} holds a boolean; got {type(value).__name__}"
+        return value, None
     if kind in "iu":
         if isinstance(value, bool) or not isinstance(value, int):
-            return None, None, f"{disp} holds an integer; got {type(value).__name__}"
-        # Range, not just type: an out-of-bounds int either raises here or
-        # wraps silently depending on the numpy version, and a wrapped value
-        # is a wrong value that nothing downstream would question.
-        try:
-            coerced = np.asarray(value, dtype=dtype)
-        except (OverflowError, ValueError, TypeError) as e:
-            return None, None, f"{disp} has dtype {dtype} and cannot hold {value!r}: {e}"
-        stored = make_serializable(coerced[()])
+            return None, f"{disp} holds an integer; got {type(value).__name__}"
+        # Range, not just type: an out-of-bounds int either raises in _as_dtype
+        # or wraps silently depending on the numpy version, and a wrapped value
+        # is a wrong value that nothing downstream would question — so the
+        # coerced result has to come back equal, not merely exist.
+        stored, problem = _as_dtype(value, dtype, disp)
+        if problem:
+            return None, problem
         if stored != value:
-            return None, None, f"{disp} has dtype {dtype}, which would store {value!r} as {stored!r}"
-        return value, stored, None
+            return None, f"{disp} has dtype {dtype}, which would store {value!r} as {stored!r}"
+        return stored, None
     if kind == "f":
         if isinstance(value, bool) or not isinstance(value, int | float):
-            return None, None, f"{disp} holds a float; got {type(value).__name__}"
+            return None, f"{disp} holds a float; got {type(value).__name__}"
+        # Non-finite is refused at both ends, and for two reasons that compound.
+        # A wrong value: nan and inf mean nothing as a provenance scalar, and
+        # 1e40 into a float32 silently becomes inf rather than the number asked
+        # for. And an unreadable file: json.dumps writes them as the bare tokens
+        # NaN and Infinity, which RFC 8259 does not allow — that entry would
+        # make the file's *whole* edit_history unparseable to a strict reader,
+        # including every entry written by every other tool. nan also defeats
+        # the read-back by construction, since nan != nan.
+        if not math.isfinite(value):
+            return None, f"{disp}: {value!r} is not a finite number"
         # Int accepted as a widening: JSON has one number type, so a whole
         # float arrives as an int. Precision loss on a narrow float dtype is
         # allowed rather than refused — every float32 field would otherwise
-        # reject most decimals — so the read-back expects the coerced value.
-        try:
-            coerced = np.asarray(value, dtype=dtype)
-        except (OverflowError, ValueError, TypeError) as e:
-            return None, None, f"{disp} has dtype {dtype} and cannot hold {value!r}: {e}"
-        return value, make_serializable(coerced[()]), None
+        # reject most decimals — so the value that lands is the coerced one.
+        stored, problem = _as_dtype(value, dtype, disp)
+        if problem:
+            return None, problem
+        if not math.isfinite(stored):
+            return None, f"{disp} has dtype {dtype}, which cannot hold {value!r} — it would overflow to {stored!r}"
+        return stored, None
 
-    return (
-        None,
-        None,
-        (
-            f"{disp} has dtype {dtype}, which this tool cannot write — it writes string, boolean, "
-            f"integer and float scalars"
-        ),
+    return None, (
+        f"{disp} has dtype {dtype}, which this tool cannot write — it writes string, boolean, integer and float scalars"
     )
 
 
-def _plan(f: h5py.File, fields: list[tuple[str, ...]], values: list[Any]) -> tuple[list[_PlannedWrite], list[str]]:
+def _plan(f: h5py.File, parsed: list[tuple[tuple[str, ...], Any]]) -> tuple[list[_PlannedWrite], list[str]]:
     """Validate every requested write against the source file.
 
     Runs to completion rather than short-circuiting: a caller who named one
@@ -276,22 +345,21 @@ def _plan(f: h5py.File, fields: list[tuple[str, ...]], values: list[Any]) -> tup
     """
     plans: list[_PlannedWrite] = []
     problems: list[str] = []
-    for field, value in zip(fields, values, strict=True):
+    for field, value in parsed:
         if problem := _namespace_problem(field):
             problems.append(problem)
             continue
         ds, problem = _resolve(f, field)
         if ds is None:
-            problems.append(problem or f"{_display(field)} could not be resolved")
+            problems.append(problem)
             continue
-        assign, expected, problem = _coerce(ds, value, _display(field))
+        expected, problem = _coerce(ds, value, _display(field))
         if problem:
             problems.append(problem)
             continue
         plans.append(
             _PlannedWrite(
                 field=field,
-                value=assign,
                 expected=expected,
                 old_value=make_serializable(ds[()]),
                 dtype=ds.dtype,
@@ -321,9 +389,10 @@ def set_producer_uns(path: str, updates: list[dict]) -> dict:
     version.
 
     Refuses a path that does not exist (it overwrites, it never creates), a
-    value whose type does not match the stored dtype, a non-scalar or
-    group-valued target, a segment containing ``/``, our own ``provenance``
-    namespace, and any HCA schema field — those belong to ``set_uns``, which
+    value whose type does not match the stored dtype, a non-finite float, a
+    fixed-length string field, an external link into another file, a
+    non-scalar or group-valued target, a segment containing ``/``, our own
+    ``provenance`` namespace, and any HCA schema field — those belong to ``set_uns``, which
     validates them. Whether the *result* is valid is ``validate_schema``'s
     verdict, not this tool's (#614) — though note that for a producer-owned
     namespace it will not have one, which is why the guards above are stricter
@@ -350,14 +419,32 @@ def set_producer_uns(path: str, updates: list[dict]) -> dict:
         if not Path(path).is_file():
             return {"error": f"File not found: {path}"}
 
-        fields, values, problems = _parse_updates(updates)
+        parsed, problems = _parse_updates(updates)
 
         plans: list[_PlannedWrite] = []
+        raw_log: str = "[]"
         if not problems:
             with h5py.File(path, "r") as f_in:
-                plans, problems = _plan(f_in, fields, values)
+                plans, problems = _plan(f_in, parsed)
+                # Read here, not from the snapshot: a corrupt log is a refusal,
+                # and refusing it now costs a metadata read rather than a full
+                # copy of a file that can run to tens of gigabytes (#597).
+                raw_log = read_edit_log_h5py(f_in)
         if problems:
             return {"error": "Refusing to write: " + "; ".join(problems)}
+        parsed_log = parse_edit_log(raw_log)
+        if "error" in parsed_log:
+            return parsed_log
+
+        records = [
+            {
+                "field": list(p.field),
+                "old_value": p.old_value,
+                "new_value": p.expected,
+                "dtype": str(p.dtype),
+            }
+            for p in plans
+        ]
 
         with (
             snapshot_copy_hashed(path) as (output_path, source_sha256),
@@ -371,7 +458,7 @@ def set_producer_uns(path: str, updates: list[dict]) -> dict:
                 ds, problem = _resolve(f_out, plan.field)
                 if ds is None:
                     raise RuntimeError(f"snapshot does not match the validated source: {problem}")
-                ds[()] = plan.value
+                ds[()] = plan.expected
 
             entry = make_edit_entry(
                 operation="set_producer_uns",
@@ -379,19 +466,9 @@ def set_producer_uns(path: str, updates: list[dict]) -> dict:
                     f"Set {len(plans)} producer uns field(s): "
                     + ", ".join(f"{_display(p.field)} {p.old_value!r} -> {p.expected!r}" for p in plans)
                 ),
-                details={
-                    "fields": [
-                        {
-                            "field": list(p.field),
-                            "old_value": p.old_value,
-                            "new_value": p.expected,
-                            "dtype": str(p.dtype),
-                        }
-                        for p in plans
-                    ]
-                },
+                details={"fields": records},
             )
-            log_result = build_edit_log(read_edit_log_h5py(f_out), [entry], path, source_sha256)
+            log_result = build_edit_log(raw_log, [entry], path, source_sha256)
             if "error" in log_result:
                 raise RuntimeError(log_result["error"])
             write_edit_log_h5py(f_out, log_result["json"])
@@ -399,6 +476,12 @@ def set_producer_uns(path: str, updates: list[dict]) -> dict:
             # Read back before the snapshot is accepted. Value *and* dtype:
             # checking the value alone is what lets a bool-written-as-a-string
             # through, and this namespace has no validator behind it.
+            #
+            # A second pass, deliberately, not a check folded into the write
+            # loop above: two distinct paths can name one dataset through an
+            # HDF5 hard link, and only a pass that runs after every write
+            # catches the second write clobbering the first. Duplicate *paths*
+            # are already refused; aliases are not detectable up front.
             for plan in plans:
                 ds, problem = _resolve(f_out, plan.field)
                 if ds is None:
@@ -416,15 +499,7 @@ def set_producer_uns(path: str, updates: list[dict]) -> dict:
         return {
             "output_path": output_path,
             "fields_written": len(plans),
-            "updates": [
-                {
-                    "field": list(p.field),
-                    "old_value": p.old_value,
-                    "new_value": p.expected,
-                    "dtype": str(p.dtype),
-                }
-                for p in plans
-            ],
+            "updates": records,
         }
 
     except Exception as e:

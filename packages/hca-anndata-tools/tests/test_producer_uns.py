@@ -6,7 +6,6 @@ opinion on it, and a test that checked the value alone would pass on exactly
 the mis-write this exists to prevent (a bool stored as the string 'false').
 """
 
-import hashlib
 import json
 from pathlib import Path
 
@@ -16,6 +15,8 @@ import pytest
 
 from hca_anndata_tools import set_producer_uns, view_edit_log
 from hca_anndata_tools._io import require_stamped_group
+from hca_anndata_tools.edit import _type_display
+from hca_anndata_tools.schema.helpers import uns_field_registry
 
 
 def _scalar(group: h5py.Group, name: str, value) -> None:
@@ -49,8 +50,9 @@ def producer_h5ad(sample_h5ad_for_write: Path) -> Path:
     return sample_h5ad_for_write
 
 
-def _sha256(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+def _set(h5ad: Path, field, value):
+    """One-update call — the shape most tests here need."""
+    return set_producer_uns(str(h5ad), [{"field": field, "value": value}])
 
 
 def _read(path: str, *segments: str):
@@ -129,10 +131,7 @@ class TestTheCorrection:
         json.dumps(entry)
 
     def test_nested_subgroup_is_reachable(self, producer_h5ad):
-        result = set_producer_uns(
-            str(producer_h5ad),
-            [{"field": ["ihbca_provenance", "mapping_stats", "pct_mapped"], "value": 91.5}],
-        )
+        result = _set(producer_h5ad, ["ihbca_provenance", "mapping_stats", "pct_mapped"], 91.5)
 
         assert "error" not in result, result.get("error")
         value, dtype, _ = _read(result["output_path"], "ihbca_provenance", "mapping_stats", "pct_mapped")
@@ -144,41 +143,38 @@ class TestTypeGuards:
     """The stored dtype is the contract; nothing downstream would catch a breach."""
 
     def test_bool_into_a_string_field_is_refused(self, producer_h5ad):
-        result = set_producer_uns(str(producer_h5ad), [{"field": ["ihbca_provenance", "git_branch"], "value": False}])
+        result = _set(producer_h5ad, ["ihbca_provenance", "git_branch"], False)
 
         assert "holds a string" in result["error"]
         assert "bool" in result["error"]
 
     def test_string_into_a_bool_field_is_refused(self, producer_h5ad):
-        result = set_producer_uns(str(producer_h5ad), [{"field": ["ihbca_provenance", "git_dirty"], "value": "false"}])
+        result = _set(producer_h5ad, ["ihbca_provenance", "git_dirty"], "false")
 
         assert "holds a boolean" in result["error"]
 
     def test_true_into_an_int_field_is_refused(self, producer_h5ad):
         """isinstance(True, int) is True in Python — an int check reached first
         would accept this and store 1."""
-        result = set_producer_uns(str(producer_h5ad), [{"field": ["ihbca_provenance", "cell_count"], "value": True}])
+        result = _set(producer_h5ad, ["ihbca_provenance", "cell_count"], True)
 
         assert "holds an integer" in result["error"]
         assert "bool" in result["error"]
 
     def test_float_into_an_int_field_is_refused(self, producer_h5ad):
-        result = set_producer_uns(str(producer_h5ad), [{"field": ["ihbca_provenance", "cell_count"], "value": 7.9}])
+        result = _set(producer_h5ad, ["ihbca_provenance", "cell_count"], 7.9)
 
         assert "holds an integer" in result["error"]
 
     def test_out_of_range_int_is_refused(self, producer_h5ad):
         """Type alone is not enough: 999 is an int, and int8 cannot hold it."""
-        result = set_producer_uns(str(producer_h5ad), [{"field": ["ihbca_provenance", "small_count"], "value": 999}])
+        result = _set(producer_h5ad, ["ihbca_provenance", "small_count"], 999)
 
         assert "int8" in result["error"]
 
     def test_int_widens_into_a_float_field(self, producer_h5ad):
         """JSON has one number type, so a whole float arrives as an int."""
-        result = set_producer_uns(
-            str(producer_h5ad),
-            [{"field": ["ihbca_provenance", "mapping_stats", "pct_mapped"], "value": 90}],
-        )
+        result = _set(producer_h5ad, ["ihbca_provenance", "mapping_stats", "pct_mapped"], 90)
 
         assert "error" not in result, result.get("error")
         value, dtype, _ = _read(result["output_path"], "ihbca_provenance", "mapping_stats", "pct_mapped")
@@ -186,19 +182,44 @@ class TestTypeGuards:
         assert dtype == np.dtype(np.float64)
         assert result["updates"][0]["new_value"] == 90.0
 
-    def test_fixed_length_string_truncation_is_refused(self, producer_h5ad):
-        """HDF5 truncates a too-long value into a fixed-length string and
-        reports success — the exact silent mis-write this tool guards."""
-        result = set_producer_uns(
-            str(producer_h5ad),
-            [{"field": ["ihbca_provenance", "short_code"], "value": "a-much-longer-value"}],
-        )
+    def test_fixed_length_string_field_is_refused(self, producer_h5ad):
+        """Refused as a dtype rather than supported. anndata writes every
+        string as variable-length, so a fixed-length one was written by
+        something else — and HDF5 truncates an over-long value into it with no
+        error at all. None of the eight real breast objects has one."""
+        result = _set(producer_h5ad, ["ihbca_provenance", "short_code"], "abc")
 
+        assert "fixed-length string" in result["error"]
         assert "truncate" in result["error"]
-        assert "3 bytes" in result["error"]
+
+    def test_fixed_length_refusal_does_not_depend_on_the_value(self, producer_h5ad):
+        """Including a non-ASCII one — h5py reports |S as ascii, so encoding it
+        to measure a length would raise out of the type check instead of being
+        refused by it. Refusing the dtype means never reaching that."""
+        result = _set(producer_h5ad, ["ihbca_provenance", "short_code"], "é")
+
+        assert "fixed-length string" in result["error"]
+
+    def test_nan_is_refused(self, producer_h5ad):
+        """nan defeats the read-back by construction (nan != nan), and
+        json.dumps writes it as the bare token NaN, which is not valid JSON."""
+        result = _set(producer_h5ad, ["ihbca_provenance", "mapping_stats", "pct_mapped"], float("nan"))
+
+        assert "not a finite number" in result["error"]
+
+    def test_float_overflow_is_refused(self, producer_h5ad, tmp_path):
+        """A finite input that the dtype turns into inf is a wrong value, and
+        it would write Infinity into the shared edit log."""
+        with h5py.File(producer_h5ad, "a") as f:
+            _scalar(f["uns/ihbca_provenance"], "narrow", np.float32(1.5))
+
+        result = _set(producer_h5ad, ["ihbca_provenance", "narrow"], 1e40)
+
+        assert "overflow" in result["error"]
+        assert "float32" in result["error"]
 
     def test_none_is_refused(self, producer_h5ad):
-        result = set_producer_uns(str(producer_h5ad), [{"field": ["ihbca_provenance", "git_branch"], "value": None}])
+        result = _set(producer_h5ad, ["ihbca_provenance", "git_branch"], None)
 
         assert "holds a string" in result["error"]
 
@@ -207,63 +228,110 @@ class TestPathGuards:
     """Overwrite-only: every segment must already exist."""
 
     def test_missing_leaf_is_refused(self, producer_h5ad):
-        result = set_producer_uns(str(producer_h5ad), [{"field": ["ihbca_provenance", "git_dity"], "value": "x"}])
+        result = _set(producer_h5ad, ["ihbca_provenance", "git_dity"], "x")
 
         assert "does not exist" in result["error"]
         assert "does not create them" in result["error"]
 
     def test_missing_intermediate_is_refused(self, producer_h5ad):
-        result = set_producer_uns(str(producer_h5ad), [{"field": ["ihbca_provnance", "git_dirty"], "value": False}])
+        result = _set(producer_h5ad, ["ihbca_provnance", "git_dirty"], False)
 
         assert "does not exist" in result["error"]
         assert "ihbca_provnance" in result["error"]
 
     def test_intermediate_that_is_a_value_is_refused(self, producer_h5ad):
-        result = set_producer_uns(
-            str(producer_h5ad),
-            [{"field": ["ihbca_provenance", "git_branch", "deeper"], "value": "x"}],
-        )
+        result = _set(producer_h5ad, ["ihbca_provenance", "git_branch", "deeper"], "x")
 
         assert "is a value, not a group" in result["error"]
 
     def test_group_valued_target_is_refused(self, producer_h5ad):
-        result = set_producer_uns(str(producer_h5ad), [{"field": ["ihbca_provenance", "mapping_stats"], "value": 1}])
+        result = _set(producer_h5ad, ["ihbca_provenance", "mapping_stats"], 1)
 
         assert "is a group, not a value" in result["error"]
 
     def test_non_scalar_target_is_refused(self, producer_h5ad):
-        result = set_producer_uns(
-            str(producer_h5ad),
-            [{"field": ["ihbca_provenance", "unmapped_examples"], "value": "x"}],
-        )
+        result = _set(producer_h5ad, ["ihbca_provenance", "unmapped_examples"], "x")
 
         assert "not a scalar" in result["error"]
 
     def test_segment_containing_a_slash_is_refused(self, producer_h5ad):
         """h5py would resolve it as a further link path, so the check that runs
         and the walk that follows could disagree about what was addressed."""
-        result = set_producer_uns(
-            str(producer_h5ad),
-            [{"field": ["ihbca_provenance/git_dirty"], "value": False}],
-        )
+        result = _set(producer_h5ad, ["ihbca_provenance/git_dirty"], False)
 
         assert "cannot contain '/'" in result["error"]
 
     def test_slash_joined_string_is_refused_with_the_list_form(self, producer_h5ad):
-        result = set_producer_uns(
-            str(producer_h5ad),
-            [{"field": "ihbca_provenance/git_dirty", "value": False}],
-        )
+        result = _set(producer_h5ad, "ihbca_provenance/git_dirty", False)
 
         assert "must be a list of path segments" in result["error"]
         assert "['ihbca_provenance', 'git_dirty']" in result["error"]
+
+
+class TestExternalLinks:
+    """h5py resolves an external link transparently, so without an explicit
+    refusal the walk follows it into another file — and because the snapshot is
+    opened "a", HDF5 opens that file read-write and the assignment lands there.
+    Verified before the guard existed: the tool reported success, the snapshot
+    kept the link unchanged, and a different h5ad was modified. The read-back
+    could not catch it; it re-resolves through the same link. These files come
+    from third-party producers and from CAP, so the structure is not ours.
+    """
+
+    @pytest.fixture
+    def victim(self, tmp_path) -> Path:
+        path = tmp_path / "victim.h5ad"
+        with h5py.File(path, "w") as f:
+            group = require_stamped_group(f, "uns/ihbca_provenance")
+            _scalar(group, "git_branch", "PRISTINE")
+        return path
+
+    def test_linked_namespace_is_refused(self, producer_h5ad, victim, no_snapshot):
+        with h5py.File(producer_h5ad, "a") as f:
+            del f["uns"]["ihbca_provenance"]
+            f["uns"]["ihbca_provenance"] = h5py.ExternalLink(str(victim), "/uns/ihbca_provenance")
+
+        result = _set(producer_h5ad, ["ihbca_provenance", "git_branch"], "TAMPERED")
+
+        assert "external link" in result["error"]
+        assert no_snapshot(producer_h5ad)
+        with h5py.File(victim, "r") as f:
+            assert f["uns/ihbca_provenance/git_branch"][()] == b"PRISTINE"
+
+    def test_linked_leaf_is_refused(self, producer_h5ad, victim, no_snapshot):
+        """A single crafted scalar is enough — the walk never sees a group."""
+        with h5py.File(producer_h5ad, "a") as f:
+            del f["uns"]["ihbca_provenance"]["git_branch"]
+            f["uns"]["ihbca_provenance"]["git_branch"] = h5py.ExternalLink(
+                str(victim), "/uns/ihbca_provenance/git_branch"
+            )
+
+        result = _set(producer_h5ad, ["ihbca_provenance", "git_branch"], "TAMPERED")
+
+        assert "external link" in result["error"]
+        assert no_snapshot(producer_h5ad)
+        with h5py.File(victim, "r") as f:
+            assert f["uns/ihbca_provenance/git_branch"][()] == b"PRISTINE"
+
+    def test_linked_leaf_is_not_read_either(self, producer_h5ad, victim):
+        """The refusal also closes the read side: old_value travels back in the
+        MCP response, so following a link would leak a foreign file's scalar."""
+        with h5py.File(producer_h5ad, "a") as f:
+            del f["uns"]["ihbca_provenance"]["git_branch"]
+            f["uns"]["ihbca_provenance"]["git_branch"] = h5py.ExternalLink(
+                str(victim), "/uns/ihbca_provenance/git_branch"
+            )
+
+        result = _set(producer_h5ad, ["ihbca_provenance", "git_branch"], "TAMPERED")
+
+        assert "PRISTINE" not in str(result)
 
 
 class TestOwnership:
     """Paths this tool does not own."""
 
     def test_hca_schema_field_is_refused_and_names_set_uns(self, producer_h5ad):
-        result = set_producer_uns(str(producer_h5ad), [{"field": ["title"], "value": "New title"}])
+        result = _set(producer_h5ad, ["title"], "New title")
 
         assert "HCA schema uns field" in result["error"]
         assert "set_uns" in result["error"]
@@ -271,18 +339,15 @@ class TestOwnership:
     def test_our_provenance_namespace_is_refused(self, producer_h5ad):
         """The edit log lives there; a tool that could rewrite it would undo
         every other tool's guarantee."""
-        result = set_producer_uns(
-            str(producer_h5ad),
-            [{"field": ["provenance", "edit_history"], "value": "[]"}],
-        )
+        result = _set(producer_h5ad, ["provenance", "edit_history"], "[]")
 
         assert "provenance namespace" in result["error"]
         assert "edit log" in result["error"]
 
 
 class TestAllOrNothing:
-    def test_one_bad_entry_leaves_the_file_untouched(self, producer_h5ad):
-        before = _sha256(producer_h5ad)
+    def test_one_bad_entry_leaves_the_file_untouched(self, producer_h5ad, no_snapshot):
+        before = producer_h5ad.read_bytes()
 
         result = set_producer_uns(
             str(producer_h5ad),
@@ -293,8 +358,8 @@ class TestAllOrNothing:
         )
 
         assert "error" in result
-        assert _sha256(producer_h5ad) == before
-        assert sorted(p.name for p in producer_h5ad.parent.glob("*.h5ad")) == [producer_h5ad.name]
+        assert producer_h5ad.read_bytes() == before
+        assert no_snapshot(producer_h5ad)
 
     def test_every_problem_is_reported_in_one_pass(self, producer_h5ad):
         result = set_producer_uns(
@@ -333,7 +398,7 @@ class TestRequestShape:
         assert "missing ['value']" in result["error"]
 
     def test_non_string_segments_are_refused(self, producer_h5ad):
-        result = set_producer_uns(str(producer_h5ad), [{"field": ["ihbca_provenance", 3], "value": 1}])
+        result = _set(producer_h5ad, ["ihbca_provenance", 3], 1)
 
         assert "segments must be strings" in result["error"]
 
@@ -349,3 +414,24 @@ class TestRequestShape:
         result = set_producer_uns(str(producer_h5ad), THE_CORRECTION)
 
         assert "no uns group" in result["error"]
+
+
+class TestRedirectStaysHonest:
+    """set_producer_uns refuses HCA registry roots and tells the caller to use
+    set_uns. That advice is only good while set_uns can actually handle every
+    field it refuses — set_uns takes ``str | list[str]`` at the top level only.
+    The first registry field that is a scalar bool/int, or nested, would be
+    reachable by neither tool, and the caller would follow the redirect into a
+    second refusal. Pin it here so a schema change fails a test, not a curator.
+    """
+
+    def test_every_registry_field_is_flat_and_set_uns_typed(self):
+        unreachable = {
+            name: info.annotation
+            for name, info in uns_field_registry().items()
+            if _type_display(info.annotation) not in {"str", "list[str]"}
+        }
+        assert not unreachable, (
+            f"these HCA uns fields are refused by set_producer_uns but set_uns cannot take them, "
+            f"so the 'use set_uns' redirect is a dead end: {unreachable}"
+        )
