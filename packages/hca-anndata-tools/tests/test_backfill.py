@@ -324,32 +324,25 @@ def test_backfill_runs_chain(tmp_path, monkeypatch):
     assert second["per_column"]["library_id"]["pct_full_after"] == 100.0
 
 
-def test_backfill_same_second_collision_resolves_after_waiting(target_source, tmp_path, monkeypatch):
+def test_backfill_same_second_collision_resolves_after_waiting(target_source, tmp_path, pin_snapshot_names):
     """The common case since #597: waited out, not refused."""
     target, source = target_source
     fresh = str(Path(target).parent / "target-edit-2026-08-24-00-00-01.h5ad")
-    names = iter([str(target), fresh])
-    monkeypatch.setattr("hca_anndata_tools.write.generate_output_path", lambda p: next(names))
-    slept = []
-    monkeypatch.setattr("hca_anndata_tools.write.time.sleep", slept.append)
+    pin_snapshot_names(str(target), fresh)
 
     result = backfill_obs_from_source(target, source, columns=["library_id"])
 
-    assert slept == [1]
     assert "error" not in result
     assert result["output_path"] == fresh
 
 
-def test_backfill_same_second_snapshot_refused(target_source, monkeypatch):
+def test_backfill_same_second_snapshot_refused(target_source, pin_snapshot_names):
     """A collision surviving the wait is refused, target untouched."""
-    monkeypatch.setattr("hca_anndata_tools.write.generate_output_path", lambda p: p)
-    slept = []
-    monkeypatch.setattr("hca_anndata_tools.write.time.sleep", slept.append)
+    pin_snapshot_names()
     target, source = target_source
 
     result = backfill_obs_from_source(target, source, columns=["library_id"])
 
-    assert slept == [1], "the boundary wait is attempted once before refusing"
     assert "error" in result
     assert "already exists" in result["error"]
     assert ad.read_h5ad(target).n_obs == 7  # target untouched

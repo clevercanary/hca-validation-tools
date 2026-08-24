@@ -17,7 +17,6 @@ replaces rather than removes).
 
 from __future__ import annotations
 
-import contextlib
 import json
 from pathlib import Path
 
@@ -137,7 +136,6 @@ def strip_cap_annotations(path: str) -> dict:
         Dict with ``output_path``, ``uns_keys_removed``, and
         ``obs_columns_removed`` on success, or ``{"error": ...}``.
     """
-    output_path = None
     try:
         path = resolve_latest(path)
         if not Path(path).is_file():
@@ -241,9 +239,6 @@ def strip_cap_annotations(path: str) -> dict:
                 "nothing_to_strip": True,
             }
 
-        # Already streamed its hash; the shared helper adds the O_CREAT|O_EXCL
-        # claim (which subsumes the samefile alias check this used to make by
-        # hand) and waits out a same-second collision rather than refusing it.
         with snapshot_copy_hashed(path) as (output_path, source_sha256), h5py.File(output_path, "a") as f_out:
             for key in uns_keys_present:
                 del f_out["uns"][key]
@@ -287,11 +282,5 @@ def strip_cap_annotations(path: str) -> dict:
         return result
 
     except Exception as e:
-        if output_path and Path(output_path).is_file():
-            with contextlib.suppress(OSError):
-                # Never unlink an alias of the input: if output_path reaches
-                # the same inode (hard link, path alias), deleting it deletes
-                # the source snapshot.
-                if not Path(output_path).samefile(path):
-                    Path(output_path).unlink()
+        # No unlink here: snapshot_copy_hashed removes the snapshot itself.
         return {"error": str(e)}

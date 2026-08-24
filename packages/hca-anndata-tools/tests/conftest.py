@@ -87,3 +87,27 @@ def no_snapshot():
         return not any("-edit-" in p.name for p in Path(path).parent.iterdir())
 
     return _check
+
+
+@pytest.fixture
+def pin_snapshot_names(monkeypatch):
+    """Force the snapshot namer to return the given names in order, and make
+    the boundary wait instant.
+
+    The tools no longer implement collision handling themselves — they call
+    write.snapshot_copy(_hashed) — so a tool test pins only what the *tool*
+    does with the outcome. That the helper waits once and then refuses is its
+    own property, owned by test_write.py.
+    """
+
+    def _pin(*names):
+        if names:
+            it = iter(names)
+            monkeypatch.setattr("hca_anndata_tools.write.generate_output_path", lambda p: next(it))
+        else:
+            # No names: every attempt lands on the source itself, so the
+            # collision survives the wait and the tool must refuse.
+            monkeypatch.setattr("hca_anndata_tools.write.generate_output_path", lambda p: p)
+        monkeypatch.setattr("hca_anndata_tools.write.time.sleep", lambda s: None)
+
+    return _pin

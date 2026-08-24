@@ -379,13 +379,7 @@ def read_string_dataset(group: h5py.Group, name: str) -> np.ndarray:
 # chunks and maxshape — and, for a categorical, the narrowed codes dtype —
 # forward across a delete-and-recreate, which write_elem would discard.
 def storage_like(ds: h5py.Dataset) -> dict:
-    """The storage properties to carry across a delete-and-recreate.
-
-    One definition, because the two callers had drifted: the string-dataset
-    replacement carried all of these while the categorical one carried only
-    compression and chunks, silently dropping a source file's shuffle and
-    fletcher32 filters (#597).
-    """
+    """The storage properties to carry across a delete-and-recreate."""
     return {
         "compression": ds.compression,
         "compression_opts": ds.compression_opts,

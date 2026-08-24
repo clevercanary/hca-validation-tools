@@ -277,7 +277,6 @@ def replace_placeholder_values(
         'palettes_remapped' (the uns palette keys realigned to the surviving
         categories) on success, or 'error' on failure.
     """
-    output_path = None
     try:
         path = resolve_latest(path)
         if not columns:
@@ -328,10 +327,6 @@ def replace_placeholder_values(
         )
 
         palettes_remapped = []
-        # The hashed snapshot: claims a free name, copies, and computes the
-        # source digest in the same pass, so build_edit_log below does not
-        # re-read the whole file. Waits out a same-second collision rather
-        # than refusing it (#597), and removes the snapshot on any failure.
         with snapshot_copy_hashed(path) as (output_path, target_sha256), h5py.File(output_path, "a") as f:
             uns = read_uns(f)
             palettes = detect_obs_references(uns, list(columns_fixed)).palettes
@@ -372,6 +367,5 @@ def replace_placeholder_values(
         }
 
     except Exception as e:
-        # No unlink here: snapshot_copy_hashed removes the snapshot itself on
-        # any exception raised inside its body.
+        # No unlink here: snapshot_copy_hashed removes the snapshot itself.
         return {"error": str(e)}

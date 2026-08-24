@@ -147,7 +147,6 @@ def copy_cap_annotations(
         Dict with output_path, copied columns/keys, and marker gene
         validation results, or 'error' on failure.
     """
-    output_path = None
     try:
         target_path = resolve_latest(target_path)
         # Same-file guard (parity with backfill.py): with overwrite=True the
@@ -335,9 +334,6 @@ def copy_cap_annotations(
             # (legacy keys, cap_metadata, provenance/cap, orphan palettes),
             # so no separate detection can drift from it; a clean target
             # reports nothing_to_strip and the import proceeds directly.
-            # No boundary wait before the strip any more: it waits out a
-            # same-second collision itself since #597, so chaining a strip and
-            # this import within one second needs nothing from the caller.
             strip_result = strip_cap_annotations(target_path)
             if "error" in strip_result:
                 if not strip_result.get("nothing_to_strip"):
@@ -368,45 +364,42 @@ def copy_cap_annotations(
 
         source_basename = Path(source_path).name
         source_sha256 = _compute_sha256(source_path)
-        target_sha256 = _compute_sha256(target_path)
 
-        entry = make_edit_entry(
-            operation="import_cap_annotations",
-            description=f"Copied CAP annotations from {source_basename}",
-            details={
-                "cap_source_file": source_basename,
-                "cap_source_sha256": source_sha256,
-                "cap_schema_version": cap_schema_version,
-                "annotation_sets": annotation_sets,
-                "obs_columns_added": obs_cols_to_copy,
-                "uns_keys_added": uns_keys_added,
-                "cells": cell_stats,
-                "genes": gene_stats,
-            },
-        )
-
-        log_result = build_edit_log(raw_log, [entry], target_path, target_sha256)
-        if "error" in log_result:
-            return log_result
-
-        temp_uns.setdefault("provenance", {})[EDIT_LOG_KEY] = log_result["json"]
-
-        n_obs = len(target_index)
-        temp_adata = ad.AnnData(
-            X=np.empty((n_obs, 0), dtype=np.float32),
-            obs=aligned_obs,
-            uns=temp_uns,
-        )
-        del aligned_obs
+        entry_details = {
+            "cap_source_file": source_basename,
+            "cap_source_sha256": source_sha256,
+            "cap_schema_version": cap_schema_version,
+            "annotation_sets": annotation_sets,
+            "obs_columns_added": obs_cols_to_copy,
+            "uns_keys_added": uns_keys_added,
+            "cells": cell_stats,
+            "genes": gene_stats,
+        }
 
         # --- Step 4: Write temp, copy target, transplant via h5py ---
-        # This tool's own retry-then-refuse and samefile alias check are what
-        # the shared helper does — with an O_CREAT|O_EXCL claim instead of a
-        # test-then-copy, so the name cannot be taken in between (#597).
         with (
             tempfile.TemporaryDirectory() as tmpdir,
             snapshot_copy_hashed(target_path) as (output_path, target_sha256),
         ):
+            # The edit log is built here because the target digest comes from
+            # the copy above, and it must reach temp_uns before the temp file
+            # is written.
+            entry = make_edit_entry(
+                operation="import_cap_annotations",
+                description=f"Copied CAP annotations from {source_basename}",
+                details=entry_details,
+            )
+            log_result = build_edit_log(raw_log, [entry], target_path, target_sha256)
+            if "error" in log_result:
+                raise RuntimeError(log_result["error"])
+            temp_uns.setdefault("provenance", {})[EDIT_LOG_KEY] = log_result["json"]
+
+            temp_adata = ad.AnnData(
+                X=np.empty((len(target_index), 0), dtype=np.float32),
+                obs=aligned_obs,
+                uns=temp_uns,
+            )
+            del aligned_obs
             temp_path = str(Path(tmpdir) / "cap_temp.h5ad")
             temp_adata.write_h5ad(temp_path)
             del temp_adata
@@ -462,7 +455,5 @@ def copy_cap_annotations(
         return result
 
     except Exception as e:
-        # No unlink here: snapshot_copy_hashed only ever removes a snapshot it
-        # claimed itself, so the alias-of-the-target case this used to guard
-        # cannot arise.
+        # No unlink here: snapshot_copy_hashed removes the snapshot itself.
         return {"error": str(e)}

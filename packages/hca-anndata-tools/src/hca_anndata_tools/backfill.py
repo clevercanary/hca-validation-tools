@@ -282,7 +282,6 @@ def backfill_obs_from_source(target_path: str, source_path: str, columns: list[s
         ``missing_after`` over all target cells, and ``pct_full_after`` —
         or ``{"error": ...}``.
     """
-    output_path = None
     try:
         problems = _check_arguments(columns)
         if problems:
@@ -394,9 +393,7 @@ def backfill_obs_from_source(target_path: str, source_path: str, columns: list[s
             }
 
         # --- Copy (hashing the target in the same read), then patch ---
-        # Already streamed the target's hash; the shared helper adds the
-        # O_CREAT|O_EXCL claim and waits out a same-second collision (#597).
-        # The *source* hash is a separate file and stays a separate read.
+        # The source is a different file, so its digest is its own read.
         source_basename = Path(source_path).name
         source_sha256 = _compute_sha256(source_path)
 
@@ -446,6 +443,5 @@ def backfill_obs_from_source(target_path: str, source_path: str, columns: list[s
         }
 
     except Exception as e:
-        # No unlink here: snapshot_copy_hashed removes the snapshot itself on
-        # any exception raised inside its body.
+        # No unlink here: snapshot_copy_hashed removes the snapshot itself.
         return {"error": str(e)}

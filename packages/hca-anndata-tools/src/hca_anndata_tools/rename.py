@@ -305,10 +305,6 @@ def rename_cell_ids(path: str, column: str, value: str, prefix_from: str, prefix
                 )
             }
 
-        # The hashed snapshot: claims a free name, copies, and computes the
-        # source digest in the same pass, so build_edit_log does not re-read
-        # the whole file. Waits out a same-second collision rather than
-        # refusing it (#597), and removes the snapshot on any failure below.
         with snapshot_copy_hashed(path) as (output_path, source_sha256), h5py.File(output_path, "a") as f_out:
             replace_string_dataset(f_out["obs"], index_name, new_ids)  # pyright: ignore[reportArgumentType]
             for obsm_key, sub_name in obsm_df_indexes:
@@ -334,9 +330,6 @@ def rename_cell_ids(path: str, column: str, value: str, prefix_from: str, prefix
             existing_log = read_edit_log_h5py(f_out)
             log_result = build_edit_log(existing_log, [entry], path, source_sha256)
             if "error" in log_result:
-                # Raising inside the context is what removes the snapshot;
-                # the deferred-unlink dance the copy2 version needed is gone
-                # with it (matching rename_column and merge_categories).
                 raise RuntimeError(log_result["error"])
             write_edit_log_h5py(f_out, log_result["json"])
 
@@ -350,6 +343,5 @@ def rename_cell_ids(path: str, column: str, value: str, prefix_from: str, prefix
         }
 
     except Exception as e:
-        # No unlink here: snapshot_copy_hashed removes the snapshot itself on
-        # any exception raised inside its body.
+        # No unlink here: snapshot_copy_hashed removes the snapshot itself.
         return {"error": str(e)}

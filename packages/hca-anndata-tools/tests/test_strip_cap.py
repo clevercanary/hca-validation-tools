@@ -192,7 +192,7 @@ def test_strip_refuses_index_or_ghost_in_column_order(tmp_path):
     assert not list(tmp_path.glob("*-edit-*.h5ad"))
 
 
-def test_strip_alias_output_does_not_unlink_source(tmp_path, monkeypatch):
+def test_strip_alias_output_does_not_unlink_source(tmp_path, pin_snapshot_names):
     """An output path that aliases the source through a hard link must never
     be copied over or unlinked. The O_CREAT|O_EXCL claim subsumes the
     samefile check this used to make by hand: the name is occupied, so it is
@@ -202,8 +202,7 @@ def test_strip_alias_output_does_not_unlink_source(tmp_path, monkeypatch):
     path = _make_cap_file(tmp_path / "aliased.h5ad", uns_layout="legacy")
     alias = tmp_path / "alias-of-source.h5ad"
     os.link(path, alias)
-    monkeypatch.setattr("hca_anndata_tools.write.generate_output_path", lambda p: str(alias))
-    monkeypatch.setattr("hca_anndata_tools.write.time.sleep", lambda s: None)
+    pin_snapshot_names(str(alias), str(alias))
 
     result = strip_cap_annotations(path)
 
@@ -398,32 +397,25 @@ def test_strip_refuses_cellxgene_layout(sample_h5ad):
     assert "CellxGENE" in result["error"]
 
 
-def test_strip_same_second_collision_resolves_after_waiting(tmp_path, monkeypatch):
+def test_strip_same_second_collision_resolves_after_waiting(tmp_path, pin_snapshot_names):
     """The common case since #597: waited out, not refused."""
     path = _make_cap_file(tmp_path / "guard.h5ad", uns_layout="legacy")
     fresh = str(tmp_path / "guard-edit-2026-08-24-00-00-01.h5ad")
-    names = iter([str(path), fresh])
-    monkeypatch.setattr("hca_anndata_tools.write.generate_output_path", lambda p: next(names))
-    slept = []
-    monkeypatch.setattr("hca_anndata_tools.write.time.sleep", slept.append)
+    pin_snapshot_names(str(path), fresh)
 
     result = strip_cap_annotations(path)
 
-    assert slept == [1]
     assert "error" not in result
     assert result["output_path"] == fresh
 
 
-def test_strip_same_second_snapshot_refused(tmp_path, monkeypatch):
+def test_strip_same_second_snapshot_refused(tmp_path, pin_snapshot_names):
     """A collision surviving the wait is refused, source untouched."""
-    monkeypatch.setattr("hca_anndata_tools.write.generate_output_path", lambda p: p)
-    slept = []
-    monkeypatch.setattr("hca_anndata_tools.write.time.sleep", slept.append)
+    pin_snapshot_names()
     path = _make_cap_file(tmp_path / "guard.h5ad", uns_layout="legacy")
 
     result = strip_cap_annotations(path)
 
-    assert slept == [1], "the boundary wait is attempted once before refusing"
     assert "error" in result
     assert "already exists" in result["error"]
     assert ad.read_h5ad(path).uns["cellannotation_schema_version"] == "1.0.0"  # untouched
