@@ -38,6 +38,7 @@ from .cap import (
     CAP_METADATA_KEY,
     cap_obs_columns,
     cap_palette_keys,
+    cellxgene_schema_version,
     unknown_cap_suffix_columns,
 )
 from .guards import (
@@ -46,7 +47,6 @@ from .guards import (
     obs_name_problems,
     require_obs_group,
 )
-from .inspect import _read_schema_version
 from .write import (
     SAME_SECOND_SNAPSHOT_ERROR,
     _copy_with_sha256,
@@ -148,7 +148,7 @@ def strip_cap_annotations(path: str) -> dict:
         # Peek first via h5py: layout check + inventory of what is present,
         # without loading the full anndata just to decide whether to mutate.
         with h5py.File(path, "r") as f_in:
-            version = _read_schema_version(f_in)
+            version = cellxgene_schema_version(f_in)
             if version:
                 return {
                     "error": (

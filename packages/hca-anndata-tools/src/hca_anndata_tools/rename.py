@@ -34,8 +34,8 @@ from ._io import (
     replace_string_dataset,
     write_edit_log_h5py,
 )
+from .cap import cellxgene_schema_version
 from .guards import is_malformed_name, legacy_layout_problems, require_obs_group
-from .inspect import _read_schema_version
 from .write import (
     SAME_SECOND_SNAPSHOT_ERROR,
     _compute_sha256,
@@ -192,7 +192,7 @@ def rename_cell_ids(path: str, column: str, value: str, prefix_from: str, prefix
         with h5py.File(path, "r") as f_in:
             obs = require_obs_group(f_in)
 
-            version = _read_schema_version(f_in)
+            version = cellxgene_schema_version(f_in)
             if version:
                 return {
                     "error": (

@@ -2,7 +2,9 @@
 
 from collections.abc import Mapping
 
-from ._io import open_h5ad
+import h5py
+
+from ._io import _decode_bytes, open_h5ad, read_uns
 from ._serialize import make_serializable as _make_serializable
 from .write import resolve_latest
 
@@ -47,6 +49,28 @@ LEGACY_LAYOUT_ERROR = (
     "Only the nested uns['cap_metadata'] layout is accepted; re-export the CAP "
     "file with its metadata nested under uns['cap_metadata']."
 )
+
+
+def cellxgene_schema_version(f: h5py.File) -> str | None:
+    """The CellxGENE schema version this file declares, or None.
+
+    ``uns['schema_version']`` holding a non-empty string is what marks a
+    CellxGENE-layout file — the canonical predicate `check_schema_type` uses.
+    Mere key presence is not enough: an empty value would otherwise give one
+    tool a CellxGENE verdict and another an HCA verdict on the same file
+    (#597). Public here, beside the CAP layout predicates, so the mutating
+    tools stop importing inspect's private (#597).
+    """
+    uns = read_uns(f)
+    if uns is None:
+        return None
+    version = uns.get("schema_version")
+    if not isinstance(version, h5py.Dataset):
+        return None
+    value = _decode_bytes(version[()])
+    if not isinstance(value, str):
+        return None
+    return value.strip() or None
 
 
 def is_legacy_cap_layout(uns) -> bool:

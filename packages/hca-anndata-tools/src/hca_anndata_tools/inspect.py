@@ -7,7 +7,7 @@ from pathlib import Path
 import h5py
 import numpy as np
 
-from ._io import _decode_bytes, read_uns
+from .cap import cellxgene_schema_version
 from .write import resolve_latest
 
 _DEFAULT_SAMPLE_SIZE = 2000
@@ -274,27 +274,6 @@ def check_x_normalization(path: str, sample_size: int = _DEFAULT_SAMPLE_SIZE) ->
         return {"error": str(e)}
 
 
-def _read_schema_version(f: h5py.File) -> str | None:
-    """Read and decode ``uns['schema_version']`` from an open h5py File.
-
-    Returns the stripped string, or None if absent or empty.
-    ``schema_version`` is stored as a scalar string dataset in AnnData's
-    h5ad format.
-    """
-    uns = read_uns(f)
-    if uns is None:
-        return None
-    version = uns.get("schema_version")
-    if not isinstance(version, h5py.Dataset):
-        return None
-    raw = version[()]
-    value = _decode_bytes(raw)
-    if not isinstance(value, str):
-        return None
-    value = value.strip()
-    return value or None
-
-
 def check_schema_type(path: str) -> dict:
     """Report whether an h5ad file declares the CellxGENE or HCA schema.
 
@@ -315,7 +294,7 @@ def check_schema_type(path: str) -> dict:
     try:
         path = resolve_latest(path)
         with h5py.File(path, "r") as f:
-            version = _read_schema_version(f)
+            version = cellxgene_schema_version(f)
         if version:
             return {
                 "filename": Path(path).name,

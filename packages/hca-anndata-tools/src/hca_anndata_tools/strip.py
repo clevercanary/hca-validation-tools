@@ -25,7 +25,7 @@ from ._io import (
     update_column_order,
     write_edit_log_h5py,
 )
-from .inspect import _read_schema_version
+from .cap import cellxgene_schema_version
 from .write import (
     build_edit_log,
     cleanup_previous_version,
@@ -114,7 +114,7 @@ def strip_forbidden_obs_columns(path: str) -> dict:
         # an empty or non-string value no longer trips the refusal the way
         # the old bare presence check did.
         with h5py.File(path, "r") as f_in:
-            if _read_schema_version(f_in):
+            if cellxgene_schema_version(f_in):
                 return {
                     "error": (
                         "Input is CellxGENE-layout (uns['schema_version'] "
