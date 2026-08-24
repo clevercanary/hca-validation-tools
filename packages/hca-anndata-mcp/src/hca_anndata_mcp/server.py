@@ -8,6 +8,7 @@ from hca_anndata_mcp.tools.label import label_h5ad
 from hca_anndata_mcp.tools.merge_categories import merge_obs_categories
 from hca_anndata_mcp.tools.plot import plot_embedding_mcp
 from hca_anndata_mcp.tools.populate import populate_labels
+from hca_anndata_mcp.tools.producer_uns import set_producer_uns
 from hca_anndata_mcp.tools.rename import rename_cell_ids
 from hca_anndata_mcp.tools.rename_column import rename_obs_column
 from hca_anndata_mcp.tools.strip import strip_forbidden_obs_columns
@@ -44,6 +45,16 @@ mcp = FastMCP(
         "get_cap_annotations to inspect CAP cell annotation metadata, "
         "list_uns_fields to see HCA dataset metadata and what's missing, "
         "set_uns to update HCA dataset metadata fields with schema validation, "
+        "set_producer_uns to correct a producer-owned uns field that set_uns cannot "
+        "reach — a nested, non-schema namespace such as uns['ihbca_provenance'] — "
+        "addressed by path segments (['ihbca_provenance', 'git_dirty']) rather than a "
+        "slash-joined string; it overwrites existing scalars only (never creates a key, so "
+        "a misspelled segment is an error rather than junk metadata), and refuses a value "
+        "whose type differs from the stored dtype — writing False into a string field would "
+        "store 'false' and no validator would object, because the namespace has no schema; "
+        "it writes the whole batch in one snapshot with one edit-log entry, reads every "
+        "field back (value and dtype) before accepting the result, and refuses HCA schema "
+        "fields (use set_uns) and our own uns['provenance'] namespace, "
         "convert_cellxgene_to_hca to convert CellxGENE files to HCA format, "
         "strip_forbidden_obs_columns to remove HCA-forbidden obs columns "
         "(self_reported_ethnicity*) from HCA-layout files — use this when "
@@ -144,6 +155,7 @@ mcp.tool()(plot_embedding_mcp)
 mcp.tool()(get_cap_annotations)
 mcp.tool()(list_uns_fields)
 mcp.tool()(set_uns)
+mcp.tool()(set_producer_uns)
 mcp.tool()(convert_cellxgene_to_hca)
 mcp.tool()(strip_forbidden_obs_columns)
 mcp.tool()(drop_obs_columns)
