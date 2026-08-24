@@ -17,7 +17,6 @@ repeated runs chain without accumulating file copies.
 
 from __future__ import annotations
 
-import contextlib
 from pathlib import Path
 
 import h5py
@@ -42,14 +41,12 @@ from ._io import (
 )
 from .guards import is_malformed_name, legacy_layout_problems
 from .write import (
-    SAME_SECOND_SNAPSHOT_ERROR,
     _compute_sha256,
-    _copy_with_sha256,
     build_edit_log,
     cleanup_previous_version,
-    generate_output_path,
     make_edit_entry,
     resolve_latest,
+    snapshot_copy_hashed,
 )
 
 # Cap on the conflict examples quoted per column, and on the duplicate IDs
@@ -397,16 +394,11 @@ def backfill_obs_from_source(target_path: str, source_path: str, columns: list[s
             }
 
         # --- Copy (hashing the target in the same read), then patch ---
-        output_path = generate_output_path(target_path)
-        if output_path == target_path:
-            # generate_output_path timestamps to the second (see rename.py):
-            # a second edit within the same second would name the output after
-            # its own source. Refuse before touching anything — and before the
-            # source hash below, which reads the whole source file.
-            return {"error": SAME_SECOND_SNAPSHOT_ERROR}
+        # Already streamed the target's hash; the shared helper adds the
+        # O_CREAT|O_EXCL claim and waits out a same-second collision (#597).
+        # The *source* hash is a separate file and stays a separate read.
         source_basename = Path(source_path).name
         source_sha256 = _compute_sha256(source_path)
-        target_sha256 = _copy_with_sha256(target_path, output_path)
 
         entry = make_edit_entry(
             operation="backfill_obs_from_source",
@@ -423,12 +415,7 @@ def backfill_obs_from_source(target_path: str, source_path: str, columns: list[s
                 "per_column": per_column,
             },
         )
-        log_result = build_edit_log(target["raw_log"], [entry], target_path, target_sha256)
-        if "error" in log_result:
-            Path(output_path).unlink()
-            return log_result
-
-        with h5py.File(output_path, "a") as f_out:
+        with snapshot_copy_hashed(target_path) as (output_path, target_sha256), h5py.File(output_path, "a") as f_out:
             obs_out = f_out["obs"]
             for col, (fill_rows, fill_values) in fills.items():
                 tgt = target["columns"][col]
@@ -438,6 +425,9 @@ def backfill_obs_from_source(target_path: str, source_path: str, columns: list[s
                     new_values = tgt["values"].copy()
                     new_values[fill_rows] = fill_values
                     replace_string_dataset(obs_out, col, new_values)  # pyright: ignore[reportArgumentType]
+            log_result = build_edit_log(target["raw_log"], [entry], target_path, target_sha256)
+            if "error" in log_result:
+                raise RuntimeError(log_result["error"])
             write_edit_log_h5py(f_out, log_result["json"])
 
             verify_err = verify_categorical_integrity(f_out, list(fills))
@@ -456,7 +446,6 @@ def backfill_obs_from_source(target_path: str, source_path: str, columns: list[s
         }
 
     except Exception as e:
-        if output_path and Path(output_path).is_file():
-            with contextlib.suppress(OSError):
-                Path(output_path).unlink()
+        # No unlink here: snapshot_copy_hashed removes the snapshot itself on
+        # any exception raised inside its body.
         return {"error": str(e)}

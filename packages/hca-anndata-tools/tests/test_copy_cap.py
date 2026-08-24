@@ -606,11 +606,11 @@ def test_copy_overwrite_overlap_failure_does_not_mutate(cap_source, tmp_path):
 
 
 def test_copy_overwrite_same_second_snapshot_is_safe(cap_source, tmp_path, monkeypatch):
-    """With timestamps pinned to one wall-clock second, the chained
-    strip+import must fail cleanly (via the identity guards) rather than
-    copy over — and lose — the target snapshot."""
+    """With timestamps pinned to one wall-clock second, every retry lands on
+    the same taken name, so the chained strip+import must fail cleanly rather
+    than copy over — and lose — the target snapshot."""
     monkeypatch.setattr("hca_anndata_tools.write.generate_timestamp", lambda: "2026-08-21-00-00-00")
-    monkeypatch.setattr("hca_anndata_tools.copy_cap.time", type("T", (), {"sleep": staticmethod(lambda s: None)}))
+    monkeypatch.setattr("hca_anndata_tools.write.time.sleep", lambda s: None)
     (tmp_path / "snap.h5ad").touch()  # lineage root, so only the same-second guard fires
     target = tmp_path / "snap-edit-2026-08-21-00-00-00.h5ad"
     _make_hca_target(target, CELL_IDS)
