@@ -1,5 +1,6 @@
 """Tests for the get_cap_annotations function and _make_serializable helper."""
 
+import json
 import shutil
 from pathlib import Path
 
@@ -9,7 +10,8 @@ import pandas as pd
 import pytest
 import scipy.sparse as sp
 
-from hca_anndata_tools.cap import _make_serializable, get_cap_annotations
+from hca_anndata_tools._serialize import make_serializable as _make_serializable
+from hca_anndata_tools.cap import get_cap_annotations
 
 # -- _make_serializable tests --------------------------------------------------
 
@@ -35,7 +37,47 @@ def test_serializable_str():
 
 
 def test_serializable_bytes():
-    assert isinstance(_make_serializable(np.bytes_(b"data")), str)
+    # On the value, not the type: str() on bytes yields a repr, which is still a str (#632).
+    assert _make_serializable(np.bytes_(b"data")) == "data"
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (np.array([b"x", b"y"]), ["x", "y"]),  # S: tolist leaves bytes as bytes
+        (np.array([np.int64(1), "a"], dtype=object), [1, "a"]),  # O: leaves numpy scalars
+        (np.array([(b"x", 1)], dtype=[("a", "S1"), ("b", "i4")]), [["x", 1]]),  # V: bytes in a struct
+        ({"a": np.bytes_("x"), "b": [np.int64(2)]}, {"a": "x", "b": [2]}),
+        (b"\xff\xfe", "\ufffd\ufffd"),  # errors="replace": degrade, do not raise
+        # longdouble is kind 'f' like float64, but tolist() hands it back as
+        # numpy — which is why floats are not on the fast path (#632).
+        (np.array([1.5, 2.5], dtype=np.longdouble), [1.5, 2.5]),
+    ],
+)
+def test_containers_round_trip_through_json(value, expected):
+    """Equality alone missed b'dev' rendered as six characters; dumps alone
+    missed bytes surviving inside a list. #632 was both, so assert both.
+
+    Scalar *types* are pinned by the isinstance tests above, which equality
+    cannot do — True == 1, so a row asserting == True would accept an int.
+    """
+    result = _make_serializable(value)
+    assert result == expected
+    assert json.loads(json.dumps(result)) == expected
+
+
+def test_timedelta64_passes_through_rather_than_raising():
+    """np.timedelta64 subclasses np.signedinteger, so it reaches the integer
+    branch — where int() raises instead of converting. It must be excluded, or
+    the helper throws at its callers rather than handing back a value the
+    serializer downstream can refuse. Every position, because recursing into
+    object arrays is what put the last one at risk (#632)."""
+    td = np.timedelta64(90, "s")
+
+    assert _make_serializable(td) is td
+    assert _make_serializable([td]) == [td]
+    assert _make_serializable({"t": td}) == {"t": td}
+    assert _make_serializable(np.array([td], dtype=object)) == [td]
 
 
 def test_serializable_ndarray():
