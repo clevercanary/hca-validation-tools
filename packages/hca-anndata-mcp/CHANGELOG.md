@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.8.0](https://github.com/clevercanary/hca-validation-tools/compare/hca-anndata-mcp-v0.7.4...hca-anndata-mcp-v0.8.0) (2026-08-25)
+
+
+### ⚠ BREAKING CHANGES
+
+* **hca-anndata-tools:** drop_obs_columns stops refusing schema-named columns ([#621](https://github.com/clevercanary/hca-validation-tools/issues/621))
+
+### Features
+
+* **hca-anndata-tools:** add merge_obs_categories for a typo-split category ([#625](https://github.com/clevercanary/hca-validation-tools/issues/625)) ([f7d4d72](https://github.com/clevercanary/hca-validation-tools/commit/f7d4d72e5251e22e0bdc8ad756e89ca079641872))
+* **hca-anndata-tools:** add rename_obs_column for a column whose name misdescribes it ([#616](https://github.com/clevercanary/hca-validation-tools/issues/616)) ([4223165](https://github.com/clevercanary/hca-validation-tools/commit/4223165babcf6e673005577f2a4aa012cdc96b80))
+* **hca-anndata-tools:** add set_producer_uns for nested, producer-owned uns fields ([#630](https://github.com/clevercanary/hca-validation-tools/issues/630)) ([680c48a](https://github.com/clevercanary/hca-validation-tools/commit/680c48afc32bd47ff8a8bf26e882f600c013ff11)), closes [#629](https://github.com/clevercanary/hca-validation-tools/issues/629)
+* **hca-anndata-tools:** drop_obs_columns stops refusing schema-named columns ([#621](https://github.com/clevercanary/hca-validation-tools/issues/621)) ([7efd902](https://github.com/clevercanary/hca-validation-tools/commit/7efd9022ebf37c85f1ef38c42015bb3ed6c40451))
+
 ## [0.7.4](https://github.com/clevercanary/hca-validation-tools/compare/hca-anndata-mcp-v0.7.3...hca-anndata-mcp-v0.7.4) (2026-08-21)
 
 

@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.7.0](https://github.com/clevercanary/hca-validation-tools/compare/hca-anndata-tools-v0.6.4...hca-anndata-tools-v0.7.0) (2026-08-25)
+
+
+### ⚠ BREAKING CHANGES
+
+* **hca-anndata-tools:** drop_obs_columns stops refusing schema-named columns ([#621](https://github.com/clevercanary/hca-validation-tools/issues/621))
+
+### Features
+
+* **hca-anndata-tools:** add merge_obs_categories for a typo-split category ([#625](https://github.com/clevercanary/hca-validation-tools/issues/625)) ([f7d4d72](https://github.com/clevercanary/hca-validation-tools/commit/f7d4d72e5251e22e0bdc8ad756e89ca079641872))
+* **hca-anndata-tools:** add rename_obs_column for a column whose name misdescribes it ([#616](https://github.com/clevercanary/hca-validation-tools/issues/616)) ([4223165](https://github.com/clevercanary/hca-validation-tools/commit/4223165babcf6e673005577f2a4aa012cdc96b80))
+* **hca-anndata-tools:** add set_producer_uns for nested, producer-owned uns fields ([#630](https://github.com/clevercanary/hca-validation-tools/issues/630)) ([680c48a](https://github.com/clevercanary/hca-validation-tools/commit/680c48afc32bd47ff8a8bf26e882f600c013ff11)), closes [#629](https://github.com/clevercanary/hca-validation-tools/issues/629)
+* **hca-anndata-tools:** drop_obs_columns stops refusing schema-named columns ([#621](https://github.com/clevercanary/hca-validation-tools/issues/621)) ([7efd902](https://github.com/clevercanary/hca-validation-tools/commit/7efd9022ebf37c85f1ef38c42015bb3ed6c40451))
+
+
+### Bug Fixes
+
+* **hca-anndata-tools:** decode np.bytes_ and finish bytes inside arrays ([#634](https://github.com/clevercanary/hca-validation-tools/issues/634)) ([ca2492b](https://github.com/clevercanary/hca-validation-tools/commit/ca2492b3d37b80b9a031126405e4827cd7751c50)), closes [#632](https://github.com/clevercanary/hca-validation-tools/issues/632)
+* **hca-anndata-tools:** narrow every uns read through read_uns ([#618](https://github.com/clevercanary/hca-validation-tools/issues/618)) ([021e08b](https://github.com/clevercanary/hca-validation-tools/commit/021e08b573ba5dcf3c9121f8f3bd48cd2a41c9f2))
+* **hca-anndata-tools:** remap the palette when a category is dropped ([#627](https://github.com/clevercanary/hca-validation-tools/issues/627)) ([f1e08c2](https://github.com/clevercanary/hca-validation-tools/commit/f1e08c2079b5ecc2701e80131e2db22d7f47bed3))
+* **hca-anndata-tools:** stop same-second snapshot collisions from destroying the previous snapshot ([#609](https://github.com/clevercanary/hca-validation-tools/issues/609)) ([4dd3dc4](https://github.com/clevercanary/hca-validation-tools/commit/4dd3dc406df6d3208629b845ab0f802e85018849)), closes [#598](https://github.com/clevercanary/hca-validation-tools/issues/598)
+
+
+### Code Refactoring
+
+* **hca-anndata-tools:** adopt the shared snapshot helper in the five hand-rolled tools ([#628](https://github.com/clevercanary/hca-validation-tools/issues/628)) ([b00d8be](https://github.com/clevercanary/hca-validation-tools/commit/b00d8bed183a4655237684d07f19d26d935248ae))
+* **hca-anndata-tools:** extract shared structural invariants and the obs-reference detector ([#623](https://github.com/clevercanary/hca-validation-tools/issues/623)) ([e07c03a](https://github.com/clevercanary/hca-validation-tools/commit/e07c03ab4bb1398595dd5a85fbbd242da6f2251c))
+* **hca-anndata-tools:** one definition of the non-producer uns roots ([#633](https://github.com/clevercanary/hca-validation-tools/issues/633)) ([6e09a19](https://github.com/clevercanary/hca-validation-tools/commit/6e09a19772f756f23b8c59d9f9aa1deeb51418e1)), closes [#631](https://github.com/clevercanary/hca-validation-tools/issues/631)
+
 ## [0.6.4](https://github.com/clevercanary/hca-validation-tools/compare/hca-anndata-tools-v0.6.3...hca-anndata-tools-v0.6.4) (2026-08-21)
 
 
