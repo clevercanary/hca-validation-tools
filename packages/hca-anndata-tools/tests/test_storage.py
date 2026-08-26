@@ -198,7 +198,7 @@ def test_encodings_covers_obsm_dataframe_indexes(sample_h5ad, tmp_path):
     """An obsm DataFrame's own index is read the same way obs's is.
 
     rename_cell_ids walks obsm frames and reads each index with
-    read_string_dataset, so a nullable index there fails mid-rename. Missing
+    read_index, so a nullable index there fails mid-rename. Missing
     it would let a file report a clean bill of health and still crash.
     """
     path = tmp_path / "obsm.h5ad"

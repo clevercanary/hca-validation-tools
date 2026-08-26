@@ -22,7 +22,6 @@ from hca_anndata_tools._io import (
     read_element,
     read_obs_index,
     read_provenance,
-    read_string_dataset,
     read_uns,
     remap_palette,
     require_stamped_group,
@@ -32,6 +31,7 @@ from hca_anndata_tools.cap import cellxgene_schema_version
 from hca_anndata_tools.testing import (
     create_sample_h5ad,
     make_fixed_width_byte_array,
+    make_nullable_index,
     make_nullable_string_array,
 )
 
@@ -162,7 +162,7 @@ def test_remap_palette_keeps_the_surviving_positions(h5, kept, expected):
     uns = _palette(h5)
 
     assert remap_palette(uns, "grade_colors", kept, len(_COLORS)) == "grade_colors"
-    assert list(read_string_dataset(uns, "grade_colors")) == expected
+    assert list(read_element(uns["grade_colors"])) == expected
 
 
 def test_remap_palette_leaves_a_mismatched_length_alone(h5):
@@ -171,7 +171,7 @@ def test_remap_palette_leaves_a_mismatched_length_alone(h5):
     uns = _palette(h5, ["#111", "#222"])  # 2 against 4 categories
 
     assert remap_palette(uns, "grade_colors", [0, 2], 4) is None
-    assert list(read_string_dataset(uns, "grade_colors")) == ["#111", "#222"]
+    assert list(read_element(uns["grade_colors"])) == ["#111", "#222"]
 
 
 def test_remap_palette_no_palette_key(h5):
@@ -193,7 +193,7 @@ def test_remap_palette_does_not_resolve_link_paths(h5):
     uns = h5.require_group("uns")
 
     assert remap_palette(uns, "/grade_colors", [0], 1) is None
-    assert list(read_string_dataset(h5, "grade_colors")) == ["#zzz"]
+    assert list(read_element(h5["grade_colors"])) == ["#zzz"]
 
 
 def test_remap_palette_keeps_the_string_encoding(h5):
@@ -231,9 +231,7 @@ def test_remap_palette_leaves_a_scalar_palette_alone(h5):
 def _nullable(tmp_path, *, masked=0):
     """A sample file whose obs index is a nullable-string-array group."""
     path = create_sample_h5ad(tmp_path / "test.h5ad")
-    with h5py.File(path, "r+") as f:
-        obs = f["obs"]
-        make_nullable_string_array(obs, obs_index_name(obs), masked=masked)
+    make_nullable_index(path, masked=masked)
     return path
 
 
@@ -309,7 +307,7 @@ def test_read_element_keeps_a_single_row_iterable(tmp_path):
     """anndata unwraps a length-1 unstamped byte array to a scalar.
 
     Without atleast_1d that reaches callers as a 0-d array, and
-    ``list(read_string_dataset(...))`` raises "iteration over a 0-d array" —
+    ``list(read_element(...))`` raises "iteration over a 0-d array" —
     on a one-category legacy categorical, or a one-cell file.
     """
     path = tmp_path / "one.h5ad"
@@ -363,11 +361,7 @@ def test_verify_categorical_integrity_counts_rows_not_group_members(tmp_path):
     members — so every categorical column would be reported corrupt with a
     codes-length mismatch, after the caller had already paid for a full copy.
     """
-    path = create_sample_h5ad(tmp_path / "nullable.h5ad")
-    with h5py.File(path, "r+") as f:
-        obs = f["obs"]
-        make_nullable_string_array(obs, obs_index_name(obs))
-    with h5py.File(path) as f:
+    with h5py.File(_nullable(tmp_path)) as f:
         assert verify_categorical_integrity(f, ["cell_type", "sex"]) is None
 
 

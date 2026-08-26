@@ -4,14 +4,13 @@ import json
 from pathlib import Path
 
 import anndata as ad
-import h5py
 import numpy as np
 import pandas as pd
 import pytest
 
-from hca_anndata_tools._io import _codes_dtype, obs_index_name
+from hca_anndata_tools._io import _codes_dtype
 from hca_anndata_tools.backfill import backfill_obs_from_source
-from hca_anndata_tools.testing import create_sample_h5ad, make_nullable_string_array
+from hca_anndata_tools.testing import create_sample_h5ad, make_nullable_index
 
 # The canonical scenario, one row per case the tool must handle:
 #
@@ -427,9 +426,7 @@ def test_backfill_refuses_a_masked_index_rather_than_joining_na_to_na(tmp_path):
     """
     target = create_sample_h5ad(tmp_path / "target.h5ad")
     source = create_sample_h5ad(tmp_path / "source.h5ad")
-    with h5py.File(source, "r+") as f:
-        obs = f["obs"]
-        make_nullable_string_array(obs, obs_index_name(obs), masked=1)
+    make_nullable_index(source, masked=1)
 
     result = backfill_obs_from_source(str(target), str(source), columns=["cell_type"])
 
@@ -447,9 +444,7 @@ def test_backfill_reads_an_unmasked_nullable_index(target_source, tmp_path):
     report 0 matched cells while claiming success.
     """
     target, source = target_source
-    with h5py.File(source, "r+") as f:
-        obs = f["obs"]
-        make_nullable_string_array(obs, obs_index_name(obs))
+    make_nullable_index(source)
 
     result = backfill_obs_from_source(target, source, columns=["library_id"])
 

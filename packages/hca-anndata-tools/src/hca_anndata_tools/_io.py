@@ -77,15 +77,6 @@ def _decode_bytes(val):
     return val
 
 
-# Reading and writing are no longer the same capability. Reads need no
-# encoding list at all: read_element delegates to anndata's registry, which
-# handles every encoding it knows and raises naming the one it does not.
-# Writes are narrower — see is_writable_element below.
-#
-# backfill.py refuses nullable *columns* independently; we do not support those
-# in either direction, which is a separate policy from writability.
-
-
 def encoding_of(item: h5py.Group | h5py.Dataset | h5py.Datatype) -> str | None:
     """The declared ``encoding-type`` of an HDF5 item, or None if unstamped.
 
@@ -159,25 +150,28 @@ def read_element(item: h5py.Group | h5py.Dataset | h5py.Datatype) -> np.ndarray:
     """
     import numpy as np
 
-    # atleast_1d: anndata's unstamped-dataset fallback unwraps a length-1
-    # byte-string array to a scalar, which would otherwise reach callers as a
-    # 0-d array they cannot iterate.
-    if encoding_of(item) is None:
+    with warnings.catch_warnings():
         # anndata warns on every read of a legacy unstamped element. encoding_of
         # calls those "old, not invalid", and the readers handle them, so the
         # warning is noise the MCP server would repeat on every tool call
-        # against such a file. Scoped to this one message so a genuine anndata
-        # warning still surfaces.
-        with warnings.catch_warnings():
-            # Matched on the message, not the class: anndata raises this as an
-            # OldFormatWarning (a PendingDeprecationWarning subclass, and
-            # private), so naming a category couples us to an internal.
-            warnings.filterwarnings("ignore", message=".*written without encoding metadata.*")
-            raw = read_elem(item)
-    else:
+        # against such a file. Matched on the message, not the class: anndata
+        # raises an OldFormatWarning, which is private and a
+        # PendingDeprecationWarning subclass, so naming a category would couple
+        # us to an internal.
+        warnings.filterwarnings("ignore", message=".*written without encoding metadata.*")
         raw = read_elem(item)
-    values = np.atleast_1d(np.asarray(raw, dtype=object))
+    # atleast_1d: anndata's unstamped-dataset fallback unwraps a length-1
+    # byte-string array to a scalar, which would otherwise reach callers as a
+    # 0-d array they cannot iterate.
+    raw = np.atleast_1d(np.asanyarray(raw))
+    if raw.dtype.kind == "S":
+        # Decode off the fixed-width array directly. Boxing to object first
+        # allocates a bytes object per row that the next line discards:
+        # 0.33s and 427 MB peak becomes 0.20s and 278 MB on a 2M-row index.
+        return np.array([v.decode("utf-8") for v in raw.flat], dtype=object).reshape(raw.shape)
+    values = np.asarray(raw, dtype=object)
     if values.size and isinstance(values.flat[0], bytes):
+        # Variable-length bytes have no fixed-width array to decode off.
         values = np.array([_decode_bytes(v) for v in values.flat], dtype=object).reshape(values.shape)
     return values
 
@@ -217,9 +211,7 @@ def obs_index_name(obs: h5py.Group | h5py.Dataset | h5py.Datatype) -> str:
     """The name of the index dataset, from the group's ``_index`` attribute.
 
     A reader, not a guard — the same lookup obsm DataFrames and ``var`` need
-    for their own index. Accepts the ``Group | Dataset | Datatype`` union h5py
-    member access is typed as, as :func:`read_column_order` does, so call sites
-    need neither an isinstance dance nor a pyright suppression.
+    for their own index.
     """
     return _decode_bytes(obs.attrs.get("_index", "_index"))
 
@@ -572,19 +564,6 @@ def check_duplicate_ids(index, label: str) -> str | None:
     return f"{label} have duplicate IDs (first 5): {dupes}"
 
 
-def read_string_dataset(group: h5py.Group | h5py.Dataset | h5py.Datatype, name: str) -> np.ndarray:
-    """Read a string element as an object array of str.
-
-    Goes through :func:`read_element`, so it reads whatever encoding the
-    element declares rather than assuming a plain dataset — ``.asstr()`` has
-    no meaning on the *group* a ``nullable-string-array`` is stored as.
-    ``dtype=object`` matters either way: a fixed-width unicode dtype would
-    silently clip longer values assigned into the array later (see
-    ``rename_cell_ids``).
-    """
-    return read_element(group[name])
-
-
 # The rule for the two encoders below, and for anything added beside them:
 # use anndata's ``write_elem`` where there is no storage layout to preserve
 # (see write_edit_log_h5py, and batch_condition in rename_column); hand-roll
@@ -685,7 +664,7 @@ def remap_palette(uns: h5py.Group | None, key: str | None, kept: Sequence[int], 
     # here, before any read. Treated like a mismatched length: left alone.
     if not isinstance(node, h5py.Dataset) or node.ndim != 1 or not h5py.check_string_dtype(node.dtype):
         return None
-    colors = list(read_string_dataset(uns, key))
+    colors = list(read_element(uns[key]))
     if len(colors) != n_before:
         return None
     write_elem(uns, key, np.array([colors[i] for i in kept], dtype=object))
@@ -762,7 +741,7 @@ def verify_categorical_integrity(
         item = obs[col]
         if not (isinstance(item, h5py.Group) and "categories" in item):
             continue
-        cats = read_element(item["categories"])
+        n_cats = index_length(item["categories"])
         codes = item["codes"][:]
 
         if len(codes) != n_obs:
@@ -770,8 +749,8 @@ def verify_categorical_integrity(
         if (codes < -1).any():
             return f"Column '{col}': found codes below -1"
         valid = codes[codes >= 0]
-        if len(valid) > 0 and len(cats) > 0 and int(valid.max()) >= len(cats):
-            return f"Column '{col}': max code {valid.max()} >= n_categories {len(cats)}"
+        if len(valid) > 0 and n_cats > 0 and int(valid.max()) >= n_cats:
+            return f"Column '{col}': max code {valid.max()} >= n_categories {n_cats}"
         if expected_valid_counts and col in expected_valid_counts:
             actual = int((codes >= 0).sum())
             expected = expected_valid_counts[col]

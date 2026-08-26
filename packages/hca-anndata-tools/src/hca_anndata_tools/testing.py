@@ -270,7 +270,7 @@ def make_fixed_width_byte_array(parent: h5py.Group, name: str) -> None:
     source = parent[name]
     if not isinstance(source, h5py.Dataset):
         raise TypeError(f"{name!r} is not a dataset — nothing to convert")
-    encoded = [v.encode("utf-8") if isinstance(v, str) else v for v in source.asstr()[:]]
+    encoded = [v.encode("utf-8") for v in source.asstr()[:]]
     # Sized from the data, never a fixed 64: a hard-coded width would truncate
     # longer IDs silently, and a fixture that quietly corrupts its own values
     # is worse than no fixture.
@@ -283,3 +283,21 @@ def make_fixed_width_byte_array(parent: h5py.Group, name: str) -> None:
         written.attrs[key] = value
     written.attrs["encoding-type"] = "array"
     written.attrs["encoding-version"] = "0.2.0"
+
+
+def make_nullable_index(path, frame: str = "obs", *, masked: int = 0) -> None:
+    """Rewrite a dataframe's index in place as a ``nullable-string-array``.
+
+    The open-file-and-convert that every test of this encoding was writing by
+    hand, three lines at a time, across six modules. ``frame`` is the group's
+    name — ``obs`` or ``var``.
+
+    The index name is read from the attribute directly rather than through
+    ``_io.obs_index_name``: a fixture that leans on the code under test cannot
+    be trusted to expose that code's bugs.
+    """
+    with h5py.File(path, "r+") as f:
+        group = f[frame]
+        assert isinstance(group, h5py.Group), f"{frame!r} is not a dataframe group"
+        name = group.attrs.get("_index", "_index")
+        make_nullable_string_array(group, name.decode("utf-8") if isinstance(name, bytes) else name, masked=masked)

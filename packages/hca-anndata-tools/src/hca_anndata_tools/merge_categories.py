@@ -22,7 +22,7 @@ import numpy as np
 from ._io import (
     direct_members,
     read_edit_log_h5py,
-    read_string_dataset,
+    read_element,
     read_uns,
     remap_palette,
     replace_categorical_column,
@@ -54,7 +54,7 @@ def _read_categories(obs: h5py.Group, column: str) -> list[str]:
     Categories only: the codes array is the expensive half, and the write
     phase is the one place that needs it.
     """
-    return list(read_string_dataset(obs[column], "categories"))
+    return list(read_element(obs[column]["categories"]))
 
 
 def _column_problems(obs: h5py.Group, column: str, from_value: str, to_value: str) -> list[str]:
@@ -77,10 +77,9 @@ def _column_problems(obs: h5py.Group, column: str, from_value: str, to_value: st
     # rather than proceeds.
     if reason := unwritable_element_reason(item["categories"], f"the '{column}' categories array"):
         return [reason]
-    # Checked on the dtype, before any read: the caller is required to pass
-    # strings, so an int-backed categorical (anndata writes these for batch and
-    # cluster columns) could never be addressed — and _read_categories' asstr()
-    # would raise on it rather than return something to compare.
+    # Checked on the dtype: the caller is required to pass strings, so an
+    # int-backed categorical (anndata writes these for batch and cluster
+    # columns) could never be addressed by value.
     if not h5py.check_string_dtype(item["categories"].dtype):
         return [
             f"'{column}' has non-string categories (dtype {item['categories'].dtype}) — this "

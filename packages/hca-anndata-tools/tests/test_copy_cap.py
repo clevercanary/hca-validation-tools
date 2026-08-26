@@ -10,9 +10,8 @@ import pandas as pd
 import pytest
 import scipy.sparse as sp
 
-from hca_anndata_tools._io import obs_index_name
 from hca_anndata_tools.copy_cap import copy_cap_annotations
-from hca_anndata_tools.testing import make_nullable_string_array
+from hca_anndata_tools.testing import make_nullable_index
 from hca_anndata_tools.write import EDIT_LOG_KEY
 
 # --- Fixtures ---
@@ -379,9 +378,7 @@ def test_var_overlap_refuses_a_masked_var_index(cap_source, tmp_path):
     single masked entry (hca-validation-tools#637 review).
     """
     target = _make_hca_target(tmp_path / "target_masked_var.h5ad", CELL_IDS)
-    with h5py.File(target, "r+") as f:
-        var = f["var"]
-        make_nullable_string_array(var, obs_index_name(var), masked=1)
+    make_nullable_index(target, "var", masked=1)
 
     result = copy_cap_annotations(str(cap_source), str(target))
     assert "error" in result

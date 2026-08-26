@@ -9,7 +9,7 @@ import h5py
 
 from hca_anndata_tools._io import encoding_of, obs_index_name
 from hca_anndata_tools.convert import _slugify, convert_cellxgene_to_hca
-from hca_anndata_tools.testing import create_cellxgene_h5ad, make_nullable_string_array
+from hca_anndata_tools.testing import create_cellxgene_h5ad, make_nullable_index
 from hca_anndata_tools.write import EDIT_LOG_KEY
 
 # --- _slugify ---
@@ -231,9 +231,7 @@ def test_convert_succeeds_on_a_nullable_string_array_file(tmp_path):
     blocker (#641) is a separate concern.
     """
     path = create_cellxgene_h5ad(tmp_path / "cxg.h5ad")
-    with h5py.File(path, "r+") as f:
-        obs = f["obs"]
-        make_nullable_string_array(obs, obs_index_name(obs))
+    make_nullable_index(path)
 
     result = convert_cellxgene_to_hca(str(path))
 

@@ -252,9 +252,10 @@ def rename_cell_ids(path: str, column: str, value: str, prefix_from: str, prefix
                     ):
                         continue
                     sub_name = obs_index_name(member)
-                    if refusal := require_writable_index(member, sub_name, "rename", f"obsm[{obsm_key!r}]"):
+                    frame_label = f"obsm[{obsm_key!r}]"
+                    if refusal := require_writable_index(member, sub_name, "rename", frame_label):
                         return {"error": refusal}
-                    sub_ids = read_index(member, sub_name, f"obsm[{obsm_key!r}]")
+                    sub_ids = read_index(member, sub_name, frame_label)
                     if sub_ids.shape != ids.shape or not (sub_ids == ids).all():
                         return {
                             "error": (

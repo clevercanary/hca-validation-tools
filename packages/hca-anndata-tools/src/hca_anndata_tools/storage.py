@@ -185,11 +185,12 @@ def get_storage_info(path: str) -> dict:
     surfaces during inspection rather than as an opaque HDF5 error partway
     through a curation run on a multi-gigabyte file. Its ``unsupported`` list
     names the paths this package can read but **cannot write back**, judged by
-    :func:`~hca_anndata_tools._io.is_writable_element` — the same predicate the
-    editing tools refuse on, so an inspection called clean here cannot be
-    rejected by ``rename_cell_ids``. A flagged file can still be inspected and
-    converted; it cannot be renamed or recompressed until
-    hca-validation-tools#641 lands.
+    :func:`~hca_anndata_tools._io.is_writable_element` — the same predicate
+    ``rename_cell_ids`` and ``merge_obs_categories`` refuse on, so an
+    inspection called clean here cannot be rejected by those tools. Other
+    rewriting tools (``compress_h5ad``) have no such preflight and still fail
+    at the write. A flagged file can still be inspected and converted; it
+    cannot be renamed or recompressed until hca-validation-tools#641 lands.
 
     Args:
         path: Absolute path to an .h5ad file.

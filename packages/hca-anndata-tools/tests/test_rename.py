@@ -23,7 +23,7 @@ from hca_anndata_tools.testing import (
     HCA_TEST_ROWS,
     create_hca_h5ad,
     make_fixed_width_byte_array,
-    make_nullable_string_array,
+    make_nullable_index,
 )
 
 B1_IDS = [cell_id for cell_id, sample in HCA_TEST_ROWS if sample == "B1_0023"]
@@ -324,18 +324,20 @@ def test_rename_refuses_malformed_arguments(hca_path, column, value, prefix_from
 
 
 def test_rename_refuses_an_unwritable_index_before_taking_a_snapshot(tmp_path):
-    """Fail before the copy, not after it.
+    """Fail before the copy, not after it — and for the write reason.
 
     The reads cope with a nullable index, but replace_string_dataset needs a
-    Dataset to copy storage properties from — so the write fails regardless
-    (hca-validation-tools#641). Without the guard the failure lands *after*
+    Dataset to copy storage properties from, so the write fails regardless
+    (hca-validation-tools#641). Without the guard that failure lands *after*
     snapshot_copy_hashed has duplicated a multi-gigabyte file, with a message
     about a missing .compression attribute.
+
+    The fixture carries a mask so the assertions can pin *which* guard fired:
+    the writable check refuses a nullable index whether or not it holds nulls,
+    so rename never reaches read_index's missing-value check for the obs index.
     """
     path = create_hca_h5ad(tmp_path / "test.h5ad")
-    with h5py.File(path, "r+") as f:
-        obs = f["obs"]
-        make_nullable_string_array(obs, obs_index_name(obs))
+    make_nullable_index(path, masked=1)
 
     before = set(tmp_path.iterdir())
     result = rename_cell_ids(
@@ -345,6 +347,8 @@ def test_rename_refuses_an_unwritable_index_before_taking_a_snapshot(tmp_path):
     assert "error" in result
     assert "nullable-string-array" in result["error"]
     assert "#641" in result["error"]
+    assert "cannot write back" in result["error"]
+    assert "missing value" not in result["error"]
     # the decisive part: no snapshot was written
     assert set(tmp_path.iterdir()) == before
 
@@ -375,26 +379,3 @@ def test_rename_accepts_a_fixed_width_byte_index(tmp_path):
     ids = read_obs_index(result["output_path"])
     assert "MH_mix_BR1_AAA" in ids
     assert "MH_mix_TTT" in ids
-
-
-def test_rename_refuses_a_nullable_index_for_the_write_reason_not_the_mask(tmp_path):
-    """The writable guard fires first, and the message must say so.
-
-    An earlier version of this test made the index masked and asserted only
-    that an error came back — which passed for the wrong reason, since
-    require_writable_index refuses a nullable index whether or not it is
-    masked. rename never reaches read_index's missing-value check for the obs
-    index: only a plain string-array Dataset gets past the guard, and that
-    encoding cannot carry nulls.
-    """
-    path = create_hca_h5ad(tmp_path / "masked.h5ad")
-    with h5py.File(path, "r+") as f:
-        obs = f["obs"]
-        make_nullable_string_array(obs, obs_index_name(obs), masked=1)
-
-    result = rename_cell_ids(
-        str(path), column="sample_id", value="B1_0023", prefix_from="MH_mix_", prefix_to="MH_mix_BR1_"
-    )
-    assert "error" in result
-    assert "cannot write back" in result["error"]
-    assert "missing value" not in result["error"]

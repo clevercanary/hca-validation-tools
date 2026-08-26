@@ -31,9 +31,9 @@ from ._io import (
     obs_index_name,
     read_categorical_data,
     read_edit_log_h5py,
+    read_element,
     read_group,
     read_index,
-    read_string_dataset,
     read_uns,
     replace_categorical_column,
     replace_string_dataset,
@@ -126,7 +126,7 @@ def _read_column(obs: h5py.Group, col: str, placeholders: set[str], side: str) -
         return None, (
             f"{side} column '{col}' is not categorical or string — only those obs column types can be backfilled"
         )
-    values = read_string_dataset(obs, col)
+    values = read_element(obs[col])
     codes, uniques = pd.factorize(values)
     uniq_missing = np.array([is_missing_value(u, placeholders) for u in uniques], dtype=bool)
     valid = codes >= 0
