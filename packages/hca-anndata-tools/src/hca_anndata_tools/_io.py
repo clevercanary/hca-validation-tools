@@ -319,8 +319,10 @@ def read_var_gene_names(path: str) -> tuple[set[str], dict[str, str]]:
     """
     with h5py.File(path, "r") as f:
         var = f["var"]
-        idx_key = _decode_bytes(var.attrs.get("_index", "_index"))
-        index = list(read_element(var[idx_key]))
+        # read_index, not read_element: these Ensembl IDs are lookup keys, and
+        # _strip_ensembl_version would hit pd.NA with an AttributeError about
+        # NAType — the opaque failure this module now refuses by name.
+        index = list(read_index(var, obs_index_name(var), "var"))
 
         # Find gene name column
         name_col = None

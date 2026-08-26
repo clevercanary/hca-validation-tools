@@ -270,7 +270,11 @@ def make_fixed_width_byte_array(parent: h5py.Group, name: str) -> None:
     source = parent[name]
     if not isinstance(source, h5py.Dataset):
         raise TypeError(f"{name!r} is not a dataset — nothing to convert")
-    values = np.array([v.encode("utf-8") if isinstance(v, str) else v for v in source.asstr()[:]], dtype="S64")
+    encoded = [v.encode("utf-8") if isinstance(v, str) else v for v in source.asstr()[:]]
+    # Sized from the data, never a fixed 64: a hard-coded width would truncate
+    # longer IDs silently, and a fixture that quietly corrupts its own values
+    # is worse than no fixture.
+    values = np.array(encoded, dtype=f"S{max((len(v) for v in encoded), default=1)}")
     attrs = dict(source.attrs)
     del parent[name]
 

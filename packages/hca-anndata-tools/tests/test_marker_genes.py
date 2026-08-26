@@ -3,17 +3,19 @@
 from pathlib import Path
 
 import anndata as ad
+import h5py
 import numpy as np
 import pandas as pd
 import pytest
 import scipy.sparse as sp
 
 from hca_anndata_tools._gencode import load_gencode_reference
-from hca_anndata_tools._io import read_var_gene_names
+from hca_anndata_tools._io import obs_index_name, read_var_gene_names
 from hca_anndata_tools.marker_genes import (
     _extract_marker_genes_from_categories,
     validate_marker_genes,
 )
+from hca_anndata_tools.testing import make_nullable_string_array
 
 # -- GENCODE reference loader tests --------------------------------------------
 
@@ -284,3 +286,22 @@ def test_details_per_set(marker_h5ad):
     assert "found" in detail
     assert "known_renames" in detail
     assert "not_in_gencode" in detail
+
+
+def test_read_var_gene_names_refuses_a_masked_var_index(tmp_path):
+    """A masked Ensembl ID is a lookup key with no value.
+
+    _strip_ensembl_version would meet pd.NA and raise an AttributeError about
+    NAType — the opaque failure hca-validation-tools#637 replaces with a named
+    refusal wherever an index is read.
+    """
+    var = pd.DataFrame({"feature_name": ["GFAP", "AIF1"]}, index=["ENSG00000131095", "ENSG00000204472"])
+    X = sp.random(2, 2, density=0.5, format="csr", dtype=np.float32)
+    adata = ad.AnnData(X=X, var=var, obs=pd.DataFrame(index=["c0", "c1"]))
+    path = tmp_path / "masked_var.h5ad"
+    adata.write_h5ad(path)
+    with h5py.File(path, "r+") as f:
+        make_nullable_string_array(f["var"], obs_index_name(f["var"]), masked=1)
+
+    with pytest.raises(ValueError, match="missing value"):
+        read_var_gene_names(str(path))
