@@ -79,9 +79,11 @@ def _decode_bytes(val):
 # The on-disk string encodings the raw-h5py readers in this package can
 # actually handle. AnnData also writes ``nullable-string-array`` — a *group*
 # of ``values`` + ``mask`` rather than a plain dataset — which every ``[:]``
-# slice in this package refuses (hca-validation-tools#637). Widening that
-# support means adding the encoding here and nowhere else: get_storage_info
-# reports its verdict from this set, so the two cannot drift apart.
+# slice in this package refuses (hca-validation-tools#637). get_storage_info
+# reports its verdict from this set, so detection and capability stay in step.
+# Widening support means editing this set *and* the readers themselves — the
+# refusal in backfill.py states the same fact independently, so #637 should
+# route both through one predicate rather than trusting this constant alone.
 SUPPORTED_STRING_ENCODINGS = frozenset({"string-array"})
 
 
@@ -94,7 +96,7 @@ def encoding_of(item: h5py.Group | h5py.Dataset | h5py.Datatype) -> str | None:
     Datatype`` union h5py member access is typed as, so call sites need
     neither an isinstance dance nor a pyright suppression.
     """
-    return _decode_bytes(item.attrs.get("encoding-type")) if "encoding-type" in item.attrs else None
+    return _decode_bytes(item.attrs.get("encoding-type"))
 
 
 def _strip_ensembl_version(eid: str) -> str:

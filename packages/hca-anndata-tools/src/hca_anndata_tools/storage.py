@@ -3,13 +3,21 @@
 from pathlib import Path
 
 import h5py
+import numpy as np
 
-from ._io import SUPPORTED_STRING_ENCODINGS, encoding_of, obs_index_name
+from ._io import (
+    SUPPORTED_STRING_ENCODINGS,
+    direct_members,
+    encoding_of,
+    obs_index_name,
+    read_group,
+)
 from .write import resolve_latest
 
 # The dataframe groups worth reporting encodings for, as (result key, HDF5 path).
-# ``raw.var`` is spelled with a dot in the result and a slash on disk, matching
-# how the rest of this module reports ``raw_X``.
+# The key is the AnnData spelling a reader recognises (``raw.var``); the path is
+# where it lives on disk (``raw/var``). Reported paths use the on-disk form so
+# they can be pasted straight into h5py or grep.
 _DATAFRAMES = (("obs", "obs"), ("var", "var"), ("raw.var", "raw/var"))
 
 # A file written entirely in an unsupported encoding flags every categorical
@@ -34,7 +42,7 @@ def _dataset_info(ds: h5py.Dataset) -> dict:
 
 def _group_info(group: h5py.Group) -> dict:
     """Extract storage info from an HDF5 group (e.g. sparse matrix)."""
-    result = {"format": group.attrs.get("encoding-type", "unknown")}
+    result: dict = {"format": encoding_of(group) or "unknown"}
     for key in sorted(group.keys()):
         item = group[key]
         if isinstance(item, h5py.Dataset):
@@ -61,14 +69,14 @@ def _mask_count(item: h5py.Group | h5py.Dataset | h5py.Datatype) -> int | None:
     a null and returns None rather than 0, so callers can tell "no nulls"
     apart from "cannot have nulls".
     """
-    if isinstance(item, h5py.Group) and "mask" in item:
-        mask = item["mask"]
-        if isinstance(mask, h5py.Dataset):
-            return int(mask[:].sum())
+    if isinstance(item, h5py.Group) and isinstance(mask := item.get("mask"), h5py.Dataset):
+        # count_nonzero is a dedicated popcount path; ndarray.sum() on bools
+        # goes through a generic int64 add-reduce and measures ~13x slower.
+        return int(np.count_nonzero(mask[:]))
     return None
 
 
-def _is_unreadable(item: h5py.Group | h5py.Dataset | h5py.Datatype, encoding: str | None) -> bool:
+def _is_unreadable(item: h5py.Group | h5py.Dataset | h5py.Datatype) -> bool:
     """True if this package's raw-h5py readers cannot slice ``item``.
 
     The operative test is the container, not the encoding name: every reader
@@ -82,43 +90,48 @@ def _is_unreadable(item: h5py.Group | h5py.Dataset | h5py.Datatype, encoding: st
     hca-validation-tools#637) clears these reports in the same commit that
     makes the readers cope.
     """
-    if not isinstance(item, h5py.Group):
-        return False
-    return encoding not in SUPPORTED_STRING_ENCODINGS
+    return isinstance(item, h5py.Group) and encoding_of(item) not in SUPPORTED_STRING_ENCODINGS
 
 
-def _dataframe_encodings(df: h5py.Group, key: str, index_name: str) -> tuple[dict, list[str]]:
+def _dataframe_encodings(df: h5py.Group, path: str, index_name: str) -> tuple[dict, list[str]]:
     """Encodings of a dataframe's index and its categoricals' categories.
 
-    Returns the per-dataframe report and the paths whose encoding this
+    Returns the per-dataframe report and the on-disk paths whose encoding this
     package's raw-h5py readers cannot handle. Categorical ``categories`` are
     reported because they break readers exactly as an index does — in the
     files that motivated this (hca-validation-tools#638) a categorical's
     categories were themselves a nullable group.
+
+    Members are read through :func:`~hca_anndata_tools._io.direct_members`
+    because ``index_name`` comes from the file rather than the caller, and
+    h5py's ``__contains__`` resolves link paths — so a malformed name with a
+    ``/`` would otherwise be looked up outside this group. Sorting keeps the
+    truncated path sample deterministic between runs.
     """
     unsupported: list[str] = []
+    members = direct_members(df)
 
     index_enc = None
     index_masked = None
-    if index_name in df:
+    if index_name in members:
         index = df[index_name]
         index_enc = encoding_of(index)
         index_masked = _mask_count(index)
-        if _is_unreadable(index, index_enc):
-            unsupported.append(f"{key}/{index_name}")
+        if _is_unreadable(index):
+            unsupported.append(f"{path}/{index_name}")
 
     categoricals: dict[str, int] = {}
-    for name in df:
+    for name in sorted(members):
         if name == index_name:
             continue
         column = df[name]
         if not isinstance(column, h5py.Group) or "categories" not in column:
             continue
         categories = column["categories"]
-        enc = encoding_of(categories)
-        categoricals[enc or "unstamped"] = categoricals.get(enc or "unstamped", 0) + 1
-        if _is_unreadable(categories, enc):
-            unsupported.append(f"{key}/{name}/categories")
+        label = encoding_of(categories) or "unstamped"
+        categoricals[label] = categoricals.get(label, 0) + 1
+        if _is_unreadable(categories):
+            unsupported.append(f"{path}/{name}/categories")
 
     return {
         "index": index_enc,
@@ -128,22 +141,44 @@ def _dataframe_encodings(df: h5py.Group, key: str, index_name: str) -> tuple[dic
 
 
 def _encodings_info(f: h5py.File) -> dict:
-    """Report string encodings across obs, var and raw.var.
+    """Report string encodings across obs, var, raw.var and obsm DataFrames.
 
-    Attribute reads and (for nullable indexes) one mask read only — the cost
-    does not scale with the size of the expression matrix, so this is as
-    cheap on a 29 GB atlas as on a small file.
+    Attribute reads, plus one mask read per nullable index — bounded by the
+    cell count, never by the matrix — so this is as cheap on a 29 GB atlas as
+    on a small file. A file with no nullable index reads no data at all.
+
+    Scope is dataframe indexes and categorical ``categories``. A plain
+    nullable string *column* is not reported: judging those needs a predicate
+    tied to what a given reader intends (``read_categorical_data`` handles
+    categorical groups happily, and ``backfill`` handles nullable ints by
+    design), which belongs with the reader fix in hca-validation-tools#637.
     """
     result: dict = {}
     unsupported: list[str] = []
     for key, path in _DATAFRAMES:
-        df = f.get(path)
-        if not isinstance(df, h5py.Group):
+        df = read_group(f, path)
+        if df is None:
             result[key] = None
             continue
-        report, bad = _dataframe_encodings(df, key, obs_index_name(df))
+        report, bad = _dataframe_encodings(df, path, obs_index_name(df))
         result[key] = report
         unsupported.extend(bad)
+
+    # obsm DataFrames carry their own index, which rename_cell_ids reads the
+    # same way it reads obs (rename.py). Omitting them would let a file report
+    # a clean bill of health and still fail mid-rename — the exact late,
+    # opaque failure this block exists to pre-empt.
+    obsm_frames: dict = {}
+    obsm = read_group(f, "obsm")
+    if obsm is not None:
+        for name in sorted(direct_members(obsm)):
+            member = obsm[name]
+            if not isinstance(member, h5py.Group) or encoding_of(member) != "dataframe":
+                continue
+            report, bad = _dataframe_encodings(member, f"obsm/{name}", obs_index_name(member))
+            obsm_frames[name] = report
+            unsupported.extend(bad)
+    result["obsm"] = obsm_frames
     result["unsupported_count"] = len(unsupported)
     result["unsupported"] = unsupported[:_MAX_UNSUPPORTED_PATHS]
     result["unsupported_truncated"] = len(unsupported) > _MAX_UNSUPPORTED_PATHS

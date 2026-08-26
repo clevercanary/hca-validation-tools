@@ -67,7 +67,7 @@ Flag any uncompressed dataset in a >100 MB file as an issue.
 
 ### Encodings
 
-From `get_storage_info.encodings`, render one row per dataframe (`obs`, `var`, `raw.var`); skip any whose value is `null` (the file has no such dataframe):
+From `get_storage_info.encodings`, render one row per dataframe — `obs`, `var`, `raw.var`, and each entry of the `obsm` map (an obsm DataFrame carries its own index and fails the same way). Skip any whose value is `null`, and skip `obsm` entirely when its map is empty:
 
 | Dataframe | Index encoding | Categoricals |
 |---|---|---|
@@ -75,7 +75,9 @@ From `get_storage_info.encodings`, render one row per dataframe (`obs`, `var`, `
 
 Then apply two checks, which mean different things and must not be merged:
 
-- **`unsupported_count > 0` — compatibility.** Report it as an issue and name it: our raw-h5py readers cannot slice these elements, so a curation run would fail partway through with an opaque HDF5 error (`Accessing a group is done with bytes or str, not <class 'slice'>`) instead of failing here. Give the count, and the sample paths in `unsupported` — note that when `unsupported_truncated` is true the list is a sample and `unsupported_count` is the real total, so cite the count, never the length of the list. `nullable-string-array` is the encoding this normally means; it is legal AnnData that our tooling does not yet read (hca-validation-tools#637), **not** a defect in the file.
+- **`unsupported_count > 0` — compatibility.** Report it as an issue and name it: our raw-h5py readers cannot slice these elements, so a curation run would fail partway through with an opaque HDF5 error (`Accessing a group is done with bytes or str, not <class 'slice'>`) instead of failing here. Give the count, and the sample paths in `unsupported` — note that when `unsupported_truncated` is true the list is a sample and `unsupported_count` is the real total, so cite the count, never the length of the list. `nullable-string-array` is the encoding this normally means; it is legal AnnData that our tooling does not yet read (hca-validation-tools#637), **not** a defect in the file. The reported paths are on-disk HDF5 paths, so they can be pasted straight into h5py or grep.
+
+  Note the scope: this covers dataframe *indexes* and categorical `categories`. A plain nullable string obs *column* is not reported (hca-validation-tools#637 covers those), so a clean result here is not a guarantee that every reader will succeed — it rules out the failure mode that has actually bitten us.
 - **`index_masked` greater than 0 — data.** Report this as a *separate and more serious* issue: the index contains null values. A null cell ID corrupts every join silently, and unlike an unsupported encoding it is a problem with the data rather than with our tools. `index_masked` is `null` for encodings that cannot hold nulls at all, which is not the same as `0`.
 
 ## 4. Embeddings

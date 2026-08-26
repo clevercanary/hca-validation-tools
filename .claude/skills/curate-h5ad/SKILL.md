@@ -66,6 +66,8 @@ Candidates go to **B1** — they block, and each needs approve-or-strike from th
 
 **And say what this does not establish.** A column you did not flag is **not** thereby cleared — this step reduces the risk, it does not eliminate it. An obscurely-named column produces a clean-looking report on a file that still carries the data. That sentence belongs in the saved report, not just this conversation — Step 5 requires it in the Summary, which ships whether or not anything was dropped.
 
+**Before anything else, check `get_storage_info.encodings`.** If `unsupported_count` is greater than 0, **stop and report it rather than starting the fix sequence**: the named elements use an on-disk encoding our raw-h5py tools cannot read, so a mechanical fix would fail partway through — after a multi-gigabyte snapshot has already been written. Give the count and the sample paths (they are real HDF5 paths) and say that hca-validation-tools#637 tracks the reader support. A non-zero `index_masked` is worse and separate: the index contains nulls, which corrupt joins silently.
+
 ## Step 2 — Classify every finding into one bucket
 
 ### Bucket A — Mechanical (safe to run after approval)
