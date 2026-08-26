@@ -7,7 +7,7 @@ from pathlib import Path
 import anndata as ad
 import h5py
 
-from hca_anndata_tools._io import obs_index_name
+from hca_anndata_tools._io import encoding_of, obs_index_name
 from hca_anndata_tools.convert import _slugify, convert_cellxgene_to_hca
 from hca_anndata_tools.testing import create_cellxgene_h5ad, make_nullable_string_array
 from hca_anndata_tools.write import EDIT_LOG_KEY
@@ -240,4 +240,8 @@ def test_convert_succeeds_on_a_nullable_string_array_file(tmp_path):
     assert "error" not in result, result.get("error")
     assert Path(result["output_path"]).exists()
     with h5py.File(result["output_path"]) as f:
-        assert f["obs"].attrs["_index"]
+        obs = f["obs"]
+        # The claim that justifies deferring #641: convert copies and
+        # transplants, so the nullable index is carried across rather than
+        # rewritten. Assert it, or the split has no evidence behind it.
+        assert encoding_of(obs[obs_index_name(obs)]) == "nullable-string-array"

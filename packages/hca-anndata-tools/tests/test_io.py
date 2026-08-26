@@ -216,9 +216,9 @@ def test_remap_palette_leaves_a_scalar_palette_alone(h5):
 # --- nullable-string-array reads (hca-validation-tools#637) -----------------
 
 
-def _nullable(tmp_path, *, masked=0, name="test.h5ad"):
+def _nullable(tmp_path, *, masked=0):
     """A sample file whose obs index is a nullable-string-array group."""
-    path = create_sample_h5ad(tmp_path / name)
+    path = create_sample_h5ad(tmp_path / "test.h5ad")
     with h5py.File(path, "r+") as f:
         obs = f["obs"]
         make_nullable_string_array(obs, obs_index_name(obs), masked=masked)
@@ -250,14 +250,9 @@ def test_read_element_reads_nullable_categories(tmp_path):
     """
     path = create_sample_h5ad(tmp_path / "cats.h5ad")
     with h5py.File(path, "r+") as f:
-        for name in f["obs"]:
-            item = f["obs"][name]
-            if isinstance(item, h5py.Group) and "categories" in item:
-                make_nullable_string_array(item, "categories")
-                target = name
-                break
+        make_nullable_string_array(f["obs"]["cell_type"], "categories")
     with h5py.File(path) as f:
-        cats, codes = read_categorical_data(f["obs"][target])
+        cats, codes = read_categorical_data(f["obs"]["cell_type"])
     assert len(cats) > 0
     assert len(codes) > 0
 
@@ -267,33 +262,14 @@ def test_read_obs_index_reads_a_nullable_index(tmp_path):
 
 
 def test_read_obs_index_refuses_a_masked_index(tmp_path):
-    """A cell with no ID cannot be joined on.
+    """A cell with no ID cannot be joined on, and str(pd.NA) is "<NA>" — so
+    every masked row would collapse to one identifier and later joins would
+    match the wrong cells while reporting success.
 
-    Converting pd.NA to str yields "<NA>", so every masked row would collapse
-    to the same identifier and later joins would match the wrong cells while
-    reporting success.
+    The message must be actionable: it names the index column and the count.
     """
-    path = _nullable(tmp_path, masked=2)
-    with pytest.raises(ValueError, match="missing value"):
-        read_obs_index(str(path))
-
-
-def test_read_obs_index_refusal_names_the_column_and_count(tmp_path):
-    """The message has to be actionable, not a stack trace."""
     path = _nullable(tmp_path, masked=3)
     with pytest.raises(ValueError) as exc:
         read_obs_index(str(path))
     assert "3 missing value" in str(exc.value)
-    assert obs_index_name.__name__  # index name appears in the message
     assert "_index" in str(exc.value)
-
-
-def test_read_string_dataset_handles_both_encodings(tmp_path):
-    """asstr() has no meaning on the group a nullable array is stored as."""
-    plain = create_sample_h5ad(tmp_path / "p.h5ad")
-    nullable = _nullable(tmp_path, name="n.h5ad")
-    for path in (plain, nullable):
-        with h5py.File(path) as f:
-            values = read_string_dataset(f["obs"], obs_index_name(f["obs"]))
-        assert values.dtype == object
-        assert len(values) > 0

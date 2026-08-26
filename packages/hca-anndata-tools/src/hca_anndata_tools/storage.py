@@ -81,16 +81,18 @@ def _mask_count(item: h5py.Group | h5py.Dataset | h5py.Datatype) -> int | None:
 def _is_unreadable(item: h5py.Group | h5py.Dataset | h5py.Datatype) -> bool:
     """True if this package's raw-h5py readers cannot slice ``item``.
 
-    The operative test is the container, not the encoding name: every reader
-    here does ``item[:]``, which a Dataset answers and a Group refuses. So a
-    numeric categorical whose categories are an ``array`` Dataset is fine,
-    while a ``nullable-string-array`` Group is not — judging by encoding name
-    alone would flag the former as broken when it reads perfectly well.
+    The operative test is the container, not the encoding name: a Group is
+    what the write path cannot recreate — ``replace_string_dataset`` calls
+    ``storage_like``, which needs a Dataset. So a numeric categorical whose
+    categories are an ``array`` Dataset is fine, while a
+    ``nullable-string-array`` Group is not; judging by encoding name alone
+    would flag the former as broken when it handles perfectly well.
 
-    The encoding is still consulted so that widening
-    :data:`~hca_anndata_tools._io.SUPPORTED_STRING_ENCODINGS` (see
-    hca-validation-tools#637) clears these reports in the same commit that
-    makes the readers cope.
+    Note what this reports since hca-validation-tools#637: the *readers* now
+    cope with both encodings via ``read_element``, so a flagged file can be
+    inspected — it cannot be **written**, which is what
+    :data:`~hca_anndata_tools._io.SUPPORTED_STRING_ENCODINGS` now describes.
+    Widening it belongs with the write fix (#641).
     """
     return isinstance(item, h5py.Group) and encoding_of(item) not in SUPPORTED_STRING_ENCODINGS
 

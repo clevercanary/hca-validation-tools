@@ -53,7 +53,7 @@ def _read_categories(obs: h5py.Group, column: str) -> list[str]:
     Categories only: the codes array is the expensive half, and the write
     phase is the one place that needs it.
     """
-    return list(read_string_dataset(obs[column], "categories"))  # pyright: ignore[reportArgumentType]
+    return list(read_string_dataset(obs[column], "categories"))
 
 
 def _column_problems(obs: h5py.Group, column: str, from_value: str, to_value: str) -> list[str]:

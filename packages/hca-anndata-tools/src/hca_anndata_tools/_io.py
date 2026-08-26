@@ -79,11 +79,15 @@ def _decode_bytes(val):
 # The on-disk string encodings the raw-h5py readers in this package can
 # actually handle. AnnData also writes ``nullable-string-array`` — a *group*
 # of ``values`` + ``mask`` rather than a plain dataset — which every ``[:]``
-# slice in this package refuses (hca-validation-tools#637). get_storage_info
-# reports its verdict from this set, so detection and capability stay in step.
-# Widening support means editing this set *and* the readers themselves — the
-# refusal in backfill.py states the same fact independently, so #637 should
-# route both through one predicate rather than trusting this constant alone.
+# slice in this package refuses. #637 fixed the *readers*: they now go through
+# read_element and cope with both encodings. This set is deliberately NOT
+# widened, because it now describes what can be **written**, not read —
+# replace_string_dataset calls storage_like, which needs a Dataset, and
+# anndata 0.11.4 refuses to write a StringArray at all
+# (hca-validation-tools#641). get_storage_info reports its verdict from this
+# set, so a nullable file is correctly still flagged: readable, not writable.
+# backfill.py's own refusal of nullable columns is a separate policy — we do
+# not support nullable columns in either direction.
 SUPPORTED_STRING_ENCODINGS = frozenset({"string-array"})
 
 
@@ -170,7 +174,7 @@ def read_obs_index(path: str) -> list[str]:
             f"obs index '{idx_key}' has {missing.size} missing value(s) "
             f"(first at row {missing[0]}) — a cell with no ID cannot be joined on"
         )
-    return [_decode_bytes(v) for v in values]
+    return list(values)
 
 
 def read_column_order(obs: h5py.Group | h5py.Dataset | h5py.Datatype) -> list[str]:
@@ -206,9 +210,9 @@ def read_obs_categorical_values(path: str, column: str) -> set[str]:
     with h5py.File(path, "r") as f:
         item = f["obs"][column]
         if isinstance(item, h5py.Group) and "categories" in item:
-            return {_decode_bytes(v) for v in read_element(item["categories"])}
+            return set(read_element(item["categories"]))
         # Non-categorical: read the full element
-        return {_decode_bytes(v) for v in read_element(item)}
+        return set(read_element(item))
 
 
 def read_var_gene_names(path: str) -> tuple[set[str], dict[str, str]]:
@@ -221,7 +225,7 @@ def read_var_gene_names(path: str) -> tuple[set[str], dict[str, str]]:
     with h5py.File(path, "r") as f:
         var = f["var"]
         idx_key = _decode_bytes(var.attrs.get("_index", "_index"))
-        index = [_decode_bytes(v) for v in read_element(var[idx_key])]
+        index = list(read_element(var[idx_key]))
 
         # Find gene name column
         name_col = None
@@ -239,7 +243,7 @@ def read_var_gene_names(path: str) -> tuple[set[str], dict[str, str]]:
             categories, codes = read_categorical_data(item)
             names = [categories[c] if c >= 0 else "" for c in codes]
         else:
-            names = [_decode_bytes(v) for v in read_element(item)]
+            names = list(read_element(item))
 
         gene_names = set(names)
 
@@ -353,7 +357,7 @@ def read_categorical_data(item: h5py.Group) -> tuple[pd.Index, np.ndarray]:
     Returns:
         (categories, codes) — pandas Index of decoded category strings and numpy codes array.
     """
-    categories = [_decode_bytes(v) for v in read_element(item["categories"])]
+    categories = list(read_element(item["categories"]))
     codes = item["codes"][:]
     return pd.Index(categories), codes
 
@@ -544,7 +548,7 @@ def remap_palette(uns: h5py.Group | None, key: str | None, kept: Sequence[int], 
         return None
     node = uns[key]
     # A palette that is not a string array is not one we can realign — and
-    # read_string_dataset's asstr() would raise on it, after the snapshot has
+    # a nullable group has no asstr(); read_element handles both encodings, after the snapshot has
     # already been copied. Treated like a mismatched length: left alone.
     if not isinstance(node, h5py.Dataset) or node.ndim != 1 or not h5py.check_string_dtype(node.dtype):
         return None
@@ -669,7 +673,11 @@ def verify_obs_transplant(
                 if not np.array_equal(temp_item["codes"][:], out_item["codes"][:]):
                     return f"Verification failed: codes mismatch for column '{col}'"
             else:
-                if not np.array_equal(read_element(temp_item), read_element(out_item)):
+                # read_elem, not read_element: this branch compares whatever the
+                # column holds, and object-boxing a float column costs ~14x here
+                # for no gain. dtype=object exists for callers that assign
+                # longer strings back in; a comparison does not.
+                if not np.array_equal(read_elem(temp_item), read_elem(out_item)):
                     return f"Verification failed: data mismatch for column '{col}'"
 
     return None
