@@ -76,6 +76,27 @@ def _decode_bytes(val):
     return val
 
 
+# The on-disk string encodings the raw-h5py readers in this package can
+# actually handle. AnnData also writes ``nullable-string-array`` — a *group*
+# of ``values`` + ``mask`` rather than a plain dataset — which every ``[:]``
+# slice in this package refuses (hca-validation-tools#637). Widening that
+# support means adding the encoding here and nowhere else: get_storage_info
+# reports its verdict from this set, so the two cannot drift apart.
+SUPPORTED_STRING_ENCODINGS = frozenset({"string-array"})
+
+
+def encoding_of(item: h5py.Group | h5py.Dataset | h5py.Datatype) -> str | None:
+    """The declared ``encoding-type`` of an HDF5 item, or None if unstamped.
+
+    A reader, not a guard: callers decide what an unfamiliar encoding means.
+    Older AnnData wrote string arrays with no ``encoding-type`` at all, so
+    None is "unstamped", not "invalid". Accepts the ``Group | Dataset |
+    Datatype`` union h5py member access is typed as, so call sites need
+    neither an isinstance dance nor a pyright suppression.
+    """
+    return _decode_bytes(item.attrs.get("encoding-type")) if "encoding-type" in item.attrs else None
+
+
 def _strip_ensembl_version(eid: str) -> str:
     """Strip version suffix from Ensembl ID: ENSG00000173947.7 -> ENSG00000173947."""
     if eid.startswith("ENSG") and "." in eid:

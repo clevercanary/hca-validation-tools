@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import anndata as ad
+import h5py
 import numpy as np
 import pandas as pd
 import scipy.sparse as sp
@@ -211,3 +212,36 @@ def create_hca_h5ad(
     adata.uns["title"] = "Test HCA file"
     adata.write_h5ad(path)
     return path
+
+
+def make_nullable_string_array(parent: h5py.Group, name: str, *, masked: int = 0) -> None:
+    """Rewrite an existing string dataset as a ``nullable-string-array`` group.
+
+    AnnData 0.11.4 — the version ``cellxgene-schema`` pins — refuses to
+    *write* nullable strings (``allow_write_nullable_strings`` is False), so
+    fixtures carrying this encoding cannot be produced through
+    ``write_h5ad``. Toggling that setting would mutate global process state
+    and couple tests to an AnnData internal; building the group directly is
+    deterministic and mirrors what real files contain.
+
+    Args:
+        parent: The group holding ``name`` (e.g. an ``obs`` group).
+        name: An existing string dataset to convert in place.
+        masked: How many leading entries to mark as null.
+    """
+    source = parent[name]
+    if not isinstance(source, h5py.Dataset):
+        raise TypeError(f"{name!r} is not a dataset — nothing to convert")
+    values = source[:]
+    attrs = dict(source.attrs)
+    del parent[name]
+
+    group = parent.create_group(name)
+    group.create_dataset("values", data=values)
+    mask = np.zeros(len(values), dtype=bool)
+    mask[:masked] = True
+    group.create_dataset("mask", data=mask)
+    for key, value in attrs.items():
+        group.attrs[key] = value
+    group.attrs["encoding-type"] = "nullable-string-array"
+    group.attrs["encoding-version"] = "0.1.0"
