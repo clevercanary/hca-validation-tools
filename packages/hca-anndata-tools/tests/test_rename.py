@@ -177,7 +177,12 @@ def test_rename_refuses_mismatched_obsm_dataframe_index(tmp_path):
         broken = sub[index_name].asstr()[:]
         broken[0] = "someone_else_entirely"
         del sub[index_name]
-        f["obsm"]["per_cell_scores"].create_dataset(index_name, data=broken.astype(object))
+        # Stamp the encoding metadata a real AnnData writer would leave: an
+        # unstamped element is a different defect from the one under test, and
+        # reading one warns.
+        rebuilt = f["obsm"]["per_cell_scores"].create_dataset(index_name, data=broken.astype(object))
+        rebuilt.attrs["encoding-type"] = "string-array"
+        rebuilt.attrs["encoding-version"] = "0.2.0"
 
     result = rename_cell_ids(
         str(path), column="sample_id", value="B1_0023", prefix_from="MH_mix_", prefix_to="MH_mix_BR1_"

@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Literal
 import anndata as ad
 import h5py
 import pandas as pd
-from anndata.io import write_elem
+from anndata.io import read_elem, write_elem
 
 from ._keys import EDIT_LOG_KEY, PROVENANCE_KEY
 
@@ -99,6 +99,41 @@ def encoding_of(item: h5py.Group | h5py.Dataset | h5py.Datatype) -> str | None:
     return _decode_bytes(item.attrs.get("encoding-type"))
 
 
+def read_element(item: h5py.Group | h5py.Dataset | h5py.Datatype) -> np.ndarray:
+    """Read a string or categorical element, whatever encoding it uses.
+
+    The read counterpart of the write rule stated above ``replace_string_dataset``:
+    use anndata where there is no storage layout to preserve, hand-roll only
+    where there is. A read has no layout to carry, so it goes through
+    ``read_elem`` — which dispatches on ``encoding-type`` via anndata's own
+    registry and therefore handles ``string-array``, ``nullable-string-array``
+    and whatever AnnData adds next, without this package tracking the taxonomy.
+
+    Hand-rolled ``[:]`` slices are what broke on nullable indexes: a
+    ``nullable-string-array`` is a *group* of ``values`` + ``mask``, so ``[:]``
+    raises and ``.asstr()`` has no such attribute
+    (hca-validation-tools#637). Reaching into ``values`` ourselves would
+    re-implement the registry badly and break again on the next encoding.
+
+    Returns an object array, matching what the hand-rolled readers returned —
+    ``dtype=object`` matters, since a fixed-width unicode dtype would silently
+    clip longer values assigned in later (see ``rename_cell_ids``). Masked
+    entries surface as ``pd.NA``; callers that cannot tolerate a missing value
+    must check before converting to str, because ``str(pd.NA)`` is ``"<NA>"``
+    and would turn every masked row into the *same* value.
+    """
+    import numpy as np
+
+    return np.asarray(read_elem(item), dtype=object)
+
+
+def masked_positions(values: np.ndarray) -> np.ndarray:
+    """Indices of missing entries in an object array read by :func:`read_element`."""
+    import numpy as np
+
+    return np.flatnonzero(pd.isna(values))
+
+
 def _strip_ensembl_version(eid: str) -> str:
     """Strip version suffix from Ensembl ID: ENSG00000173947.7 -> ENSG00000173947."""
     if eid.startswith("ENSG") and "." in eid:
@@ -116,10 +151,26 @@ def obs_index_name(obs: h5py.Group) -> str:
 
 
 def read_obs_index(path: str) -> list[str]:
-    """Read the obs index (cell IDs) from an h5ad file via h5py."""
+    """Read the obs index (cell IDs) from an h5ad file.
+
+    Raises:
+        ValueError: The index contains missing values. A cell with no ID
+            cannot be joined on, and converting one to str yields ``"<NA>"``
+            — so every masked row would collapse to the same identifier and
+            later joins would match the wrong cells while reporting success.
+            The underlying values usually survive the mask, so this is
+            repairable, but not by guessing here.
+    """
     with h5py.File(path, "r") as f:
         idx_key = obs_index_name(f["obs"])  # pyright: ignore[reportArgumentType]
-        return [_decode_bytes(v) for v in f["obs"][idx_key][:]]
+        values = read_element(f["obs"][idx_key])
+    missing = masked_positions(values)
+    if missing.size:
+        raise ValueError(
+            f"obs index '{idx_key}' has {missing.size} missing value(s) "
+            f"(first at row {missing[0]}) — a cell with no ID cannot be joined on"
+        )
+    return [_decode_bytes(v) for v in values]
 
 
 def read_column_order(obs: h5py.Group | h5py.Dataset | h5py.Datatype) -> list[str]:
@@ -155,9 +206,9 @@ def read_obs_categorical_values(path: str, column: str) -> set[str]:
     with h5py.File(path, "r") as f:
         item = f["obs"][column]
         if isinstance(item, h5py.Group) and "categories" in item:
-            return {_decode_bytes(v) for v in item["categories"][:]}
-        # Non-categorical: read full dataset
-        return {_decode_bytes(v) for v in item[:]}
+            return {_decode_bytes(v) for v in read_element(item["categories"])}
+        # Non-categorical: read the full element
+        return {_decode_bytes(v) for v in read_element(item)}
 
 
 def read_var_gene_names(path: str) -> tuple[set[str], dict[str, str]]:
@@ -170,8 +221,7 @@ def read_var_gene_names(path: str) -> tuple[set[str], dict[str, str]]:
     with h5py.File(path, "r") as f:
         var = f["var"]
         idx_key = _decode_bytes(var.attrs.get("_index", "_index"))
-        raw_index = var[idx_key][:]
-        index = [_decode_bytes(v) for v in raw_index]
+        index = [_decode_bytes(v) for v in read_element(var[idx_key])]
 
         # Find gene name column
         name_col = None
@@ -189,7 +239,7 @@ def read_var_gene_names(path: str) -> tuple[set[str], dict[str, str]]:
             categories, codes = read_categorical_data(item)
             names = [categories[c] if c >= 0 else "" for c in codes]
         else:
-            names = [_decode_bytes(v) for v in item[:]]
+            names = [_decode_bytes(v) for v in read_element(item)]
 
         gene_names = set(names)
 
@@ -303,7 +353,7 @@ def read_categorical_data(item: h5py.Group) -> tuple[pd.Index, np.ndarray]:
     Returns:
         (categories, codes) — pandas Index of decoded category strings and numpy codes array.
     """
-    categories = [_decode_bytes(v) for v in item["categories"][:]]
+    categories = [_decode_bytes(v) for v in read_element(item["categories"])]
     codes = item["codes"][:]
     return pd.Index(categories), codes
 
@@ -385,16 +435,17 @@ def check_duplicate_ids(index, label: str) -> str | None:
     return f"{label} have duplicate IDs (first 5): {dupes}"
 
 
-def read_string_dataset(group: h5py.Group, name: str) -> np.ndarray:
-    """Read a string dataset as an object array of str.
+def read_string_dataset(group: h5py.Group | h5py.Dataset | h5py.Datatype, name: str) -> np.ndarray:
+    """Read a string element as an object array of str.
 
-    asstr() decodes in C (vlen and fixed-width alike); dtype=object matters —
-    a fixed-width unicode dtype would silently clip longer values assigned
-    into the array later (see rename_cell_ids).
+    Goes through :func:`read_element`, so it reads whatever encoding the
+    element declares rather than assuming a plain dataset — ``.asstr()`` has
+    no meaning on the *group* a ``nullable-string-array`` is stored as.
+    ``dtype=object`` matters either way: a fixed-width unicode dtype would
+    silently clip longer values assigned into the array later (see
+    ``rename_cell_ids``).
     """
-    import numpy as np
-
-    return np.asarray(group[name].asstr()[:], dtype=object)
+    return read_element(group[name])
 
 
 # The rule for the two encoders below, and for anything added beside them:
@@ -573,7 +624,7 @@ def verify_categorical_integrity(
         item = obs[col]
         if not (isinstance(item, h5py.Group) and "categories" in item):
             continue
-        cats = item["categories"][:]
+        cats = read_element(item["categories"])
         codes = item["codes"][:]
 
         if len(codes) != n_obs:
@@ -613,12 +664,12 @@ def verify_obs_transplant(
             out_item = f_out["obs"][col]
 
             if isinstance(temp_item, h5py.Group) and "categories" in temp_item:
-                if not np.array_equal(temp_item["categories"][:], out_item["categories"][:]):
+                if not np.array_equal(read_element(temp_item["categories"]), read_element(out_item["categories"])):
                     return f"Verification failed: categories mismatch for column '{col}'"
                 if not np.array_equal(temp_item["codes"][:], out_item["codes"][:]):
                     return f"Verification failed: codes mismatch for column '{col}'"
             else:
-                if not np.array_equal(temp_item[:], out_item[:]):
+                if not np.array_equal(read_element(temp_item), read_element(out_item)):
                     return f"Verification failed: data mismatch for column '{col}'"
 
     return None

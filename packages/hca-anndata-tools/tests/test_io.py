@@ -8,8 +8,12 @@ from anndata.io import write_elem
 from hca_anndata_tools._io import (
     _decode_bytes,
     compact_categories,
+    obs_index_name,
     read_batch_condition,
+    read_categorical_data,
     read_edit_log_h5py,
+    read_element,
+    read_obs_index,
     read_provenance,
     read_string_dataset,
     read_uns,
@@ -17,6 +21,7 @@ from hca_anndata_tools._io import (
     require_stamped_group,
 )
 from hca_anndata_tools.cap import cellxgene_schema_version
+from hca_anndata_tools.testing import create_sample_h5ad, make_nullable_string_array
 
 
 def test_read_uns_absent(h5):
@@ -206,3 +211,89 @@ def test_remap_palette_leaves_a_scalar_palette_alone(h5):
 
     assert remap_palette(uns, "grade_colors", [0], 1) is None
     assert _decode_bytes(uns["grade_colors"][()]) == "#aaa"
+
+
+# --- nullable-string-array reads (hca-validation-tools#637) -----------------
+
+
+def _nullable(tmp_path, *, masked=0, name="test.h5ad"):
+    """A sample file whose obs index is a nullable-string-array group."""
+    path = create_sample_h5ad(tmp_path / name)
+    with h5py.File(path, "r+") as f:
+        obs = f["obs"]
+        make_nullable_string_array(obs, obs_index_name(obs), masked=masked)
+    return path
+
+
+def test_read_element_reads_a_nullable_group(tmp_path):
+    """The encoding that broke every hand-rolled [:] slice."""
+    path = _nullable(tmp_path)
+    with h5py.File(path) as f:
+        values = read_element(f["obs"][obs_index_name(f["obs"])])
+    assert values.dtype == object
+    assert all(isinstance(v, str) for v in values)
+
+
+def test_read_element_reads_a_plain_dataset_unchanged(tmp_path):
+    """The common encoding must keep working — same contract, same dtype."""
+    path = create_sample_h5ad(tmp_path / "plain.h5ad")
+    with h5py.File(path) as f:
+        values = read_element(f["obs"][obs_index_name(f["obs"])])
+    assert values.dtype == object
+    assert all(isinstance(v, str) for v in values)
+
+
+def test_read_element_reads_nullable_categories(tmp_path):
+    """A categorical whose categories are themselves a nullable group.
+
+    An index-only fix would miss this; it is how the liver files are written.
+    """
+    path = create_sample_h5ad(tmp_path / "cats.h5ad")
+    with h5py.File(path, "r+") as f:
+        for name in f["obs"]:
+            item = f["obs"][name]
+            if isinstance(item, h5py.Group) and "categories" in item:
+                make_nullable_string_array(item, "categories")
+                target = name
+                break
+    with h5py.File(path) as f:
+        cats, codes = read_categorical_data(f["obs"][target])
+    assert len(cats) > 0
+    assert len(codes) > 0
+
+
+def test_read_obs_index_reads_a_nullable_index(tmp_path):
+    assert len(read_obs_index(str(_nullable(tmp_path)))) > 0
+
+
+def test_read_obs_index_refuses_a_masked_index(tmp_path):
+    """A cell with no ID cannot be joined on.
+
+    Converting pd.NA to str yields "<NA>", so every masked row would collapse
+    to the same identifier and later joins would match the wrong cells while
+    reporting success.
+    """
+    path = _nullable(tmp_path, masked=2)
+    with pytest.raises(ValueError, match="missing value"):
+        read_obs_index(str(path))
+
+
+def test_read_obs_index_refusal_names_the_column_and_count(tmp_path):
+    """The message has to be actionable, not a stack trace."""
+    path = _nullable(tmp_path, masked=3)
+    with pytest.raises(ValueError) as exc:
+        read_obs_index(str(path))
+    assert "3 missing value" in str(exc.value)
+    assert obs_index_name.__name__  # index name appears in the message
+    assert "_index" in str(exc.value)
+
+
+def test_read_string_dataset_handles_both_encodings(tmp_path):
+    """asstr() has no meaning on the group a nullable array is stored as."""
+    plain = create_sample_h5ad(tmp_path / "p.h5ad")
+    nullable = _nullable(tmp_path, name="n.h5ad")
+    for path in (plain, nullable):
+        with h5py.File(path) as f:
+            values = read_string_dataset(f["obs"], obs_index_name(f["obs"]))
+        assert values.dtype == object
+        assert len(values) > 0

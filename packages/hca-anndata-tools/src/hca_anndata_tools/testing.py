@@ -237,10 +237,18 @@ def make_nullable_string_array(parent: h5py.Group, name: str, *, masked: int = 0
     del parent[name]
 
     group = parent.create_group(name)
-    group.create_dataset("values", data=values)
-    mask = np.zeros(len(values), dtype=bool)
-    mask[:masked] = True
-    group.create_dataset("mask", data=mask)
+    # Stamp the children as AnnData does: a real nullable-string-array marks
+    # values as string-array and mask as array. Leaving them bare makes the
+    # fixture read as an *unstamped* element, which anndata warns about — a
+    # different defect from the one these fixtures exist to reproduce.
+    written = group.create_dataset("values", data=values)
+    written.attrs["encoding-type"] = "string-array"
+    written.attrs["encoding-version"] = "0.2.0"
+    mask_values = np.zeros(len(values), dtype=bool)
+    mask_values[:masked] = True
+    mask = group.create_dataset("mask", data=mask_values)
+    mask.attrs["encoding-type"] = "array"
+    mask.attrs["encoding-version"] = "0.2.0"
     for key, value in attrs.items():
         group.attrs[key] = value
     group.attrs["encoding-type"] = "nullable-string-array"

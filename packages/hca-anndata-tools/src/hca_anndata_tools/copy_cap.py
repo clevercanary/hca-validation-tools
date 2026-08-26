@@ -22,6 +22,7 @@ from ._io import (
     read_column_order,
     read_edit_log_h5py,
     read_provenance,
+    read_string_dataset,
     read_uns,
     update_column_order,
     verify_obs_transplant,
@@ -194,11 +195,11 @@ def copy_cap_annotations(
             obs_cols_to_copy = _get_obs_columns_to_copy(annotation_sets, source_obs_columns)
 
             idx_key = obs_index_name(obs_group)
-            source_index_list = [_decode_bytes(v) for v in obs_group[idx_key][:]]
+            source_index_list = [_decode_bytes(v) for v in read_string_dataset(obs_group, idx_key)]
 
             var_group = f["var"]
             var_idx_key = _decode_bytes(var_group.attrs.get("_index", "_index"))
-            source_var_list = [_decode_bytes(v) for v in var_group[var_idx_key][:]]
+            source_var_list = [_decode_bytes(v) for v in read_string_dataset(var_group, var_idx_key)]
 
             source_obs_data = {}
             for col in obs_cols_to_copy:
@@ -237,11 +238,11 @@ def copy_cap_annotations(
                 obs_group = require_obs_group(f)
                 obs_columns = read_column_order(obs_group)
                 idx_key = obs_index_name(obs_group)
-                index = [_decode_bytes(v) for v in obs_group[idx_key][:]]
+                index = [_decode_bytes(v) for v in read_string_dataset(obs_group, idx_key)]
 
                 var_group = f["var"]
                 var_idx_key = _decode_bytes(var_group.attrs.get("_index", "_index"))
-                var_list = [_decode_bytes(v) for v in var_group[var_idx_key][:]]
+                var_list = [_decode_bytes(v) for v in read_string_dataset(var_group, var_idx_key)]
 
                 uns = read_uns(f)
                 uns_keys = set(uns.keys()) if uns is not None else set()

@@ -5,8 +5,11 @@ import re
 from pathlib import Path
 
 import anndata as ad
+import h5py
 
+from hca_anndata_tools._io import obs_index_name
 from hca_anndata_tools.convert import _slugify, convert_cellxgene_to_hca
+from hca_anndata_tools.testing import create_cellxgene_h5ad, make_nullable_string_array
 from hca_anndata_tools.write import EDIT_LOG_KEY
 
 # --- _slugify ---
@@ -216,3 +219,25 @@ def test_convert_returns_source_and_title(cellxgene_h5ad):
     result = convert_cellxgene_to_hca(str(cellxgene_h5ad))
     assert result["source"] == cellxgene_h5ad.name
     assert result["title"] == "snRNA-seq of Human Retina - Test Subset"
+
+
+def test_convert_succeeds_on_a_nullable_string_array_file(tmp_path):
+    """The encoding that used to kill this tool at its first step.
+
+    convert copies the source and transplants changed elements, so it never
+    rewrites the obs index and never hands a StringArray to write_elem — it
+    succeeds outright rather than failing at the write (hca-validation-tools#637).
+    The output still carries the nullable encoding, which is why the write
+    blocker (#641) is a separate concern.
+    """
+    path = create_cellxgene_h5ad(tmp_path / "cxg.h5ad")
+    with h5py.File(path, "r+") as f:
+        obs = f["obs"]
+        make_nullable_string_array(obs, obs_index_name(obs))
+
+    result = convert_cellxgene_to_hca(str(path))
+
+    assert "error" not in result, result.get("error")
+    assert Path(result["output_path"]).exists()
+    with h5py.File(result["output_path"]) as f:
+        assert f["obs"].attrs["_index"]
