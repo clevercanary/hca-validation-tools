@@ -26,6 +26,10 @@ The target schemas are:
 
 Start with the evaluator, then gate the HCA validator on the schema it reports:
 
+**Check `get_storage_info.encodings` before running any fix.** If `unsupported_count` is greater than 0, **stop and report it rather than starting the fix sequence**: the named elements use an on-disk encoding our raw-h5py tools cannot read, so a mechanical fix would fail partway through — after a multi-gigabyte snapshot has already been written. Give the count and the sample paths (they are real HDF5 paths) and say that hca-validation-tools#637 tracks the reader support.
+
+Separately, stop if `index_masked` is a number **greater than 0**: the index contains nulls, which corrupt joins silently, and that is a problem with the data rather than with our tools. `index_masked` is `null` — not `0` — for any encoding that cannot hold nulls at all, which is the ordinary case; `null` is not a finding.
+
 - Run `/evaluate-h5ad $ARGUMENTS` — produces the structured overview report (schema type, X verdict, metadata, storage, embeddings, CAP, edit history, summary). This already calls `check_schema_type` and `check_x_normalization`, so their verdicts are available for Step 2 gating without a separate tool call.
 - If the evaluator reports `schema: "hca"`, run `validate_schema $ARGUMENTS` — the HCA schema validator (`is_valid`, full `errors` and `warnings` lists). These are the authoritative blocking/advisory signals for Bucket B decisions. Feature-ID warnings are ordered last; summarize repeated shapes in the punch list rather than pasting thousands of lines verbatim.
 - If the evaluator reports `schema: "cellxgene"`, **do not** run `validate_schema` yet — the HCA validator would report a large, mostly irrelevant error list. `convert_cellxgene_to_hca` moves into Bucket A; after it runs, re-enter Step 1 on the converted file to get the accurate HCA findings.
@@ -65,8 +69,6 @@ Candidates go to **B1** — they block, and each needs approve-or-strike from th
 **Flag liberally within that scope.** A false positive costs one struck line; a false negative ships ethnicity data.
 
 **And say what this does not establish.** A column you did not flag is **not** thereby cleared — this step reduces the risk, it does not eliminate it. An obscurely-named column produces a clean-looking report on a file that still carries the data. That sentence belongs in the saved report, not just this conversation — Step 5 requires it in the Summary, which ships whether or not anything was dropped.
-
-**Before anything else, check `get_storage_info.encodings`.** If `unsupported_count` is greater than 0, **stop and report it rather than starting the fix sequence**: the named elements use an on-disk encoding our raw-h5py tools cannot read, so a mechanical fix would fail partway through — after a multi-gigabyte snapshot has already been written. Give the count and the sample paths (they are real HDF5 paths) and say that hca-validation-tools#637 tracks the reader support. A non-zero `index_masked` is worse and separate: the index contains nulls, which corrupt joins silently.
 
 ## Step 2 — Classify every finding into one bucket
 

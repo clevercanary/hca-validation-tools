@@ -115,7 +115,10 @@ def _dataframe_encodings(df: h5py.Group, path: str, index_name: str) -> tuple[di
     index_masked = None
     if index_name in members:
         index = df[index_name]
-        index_enc = encoding_of(index)
+        # "unstamped" matches the categoricals path below: older AnnData wrote
+        # string arrays with no encoding-type, and that is a real encoding
+        # state. None is reserved for "the group has no index dataset at all".
+        index_enc = encoding_of(index) or "unstamped"
         index_masked = _mask_count(index)
         if _is_unreadable(index):
             unsupported.append(f"{path}/{index_name}")
@@ -221,7 +224,14 @@ def get_storage_info(path: str) -> dict:
                 for layer_name in f["layers"]:
                     layers[layer_name] = _inspect_item(f, f"layers/{layer_name}")
             result["layers"] = layers if layers else None
-            result["encodings"] = _encodings_info(f)
+            # Best-effort: this block walks obs/var/raw.var/obsm, which the rest
+            # of this function never touches, so a structural surprise there
+            # (a dangling link, an array-valued _index attr) must not discard
+            # the size and compression report callers already relied on.
+            try:
+                result["encodings"] = _encodings_info(f)
+            except Exception as e:
+                result["encodings"] = {"error": str(e)}
 
         return result
     except Exception as e:

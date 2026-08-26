@@ -203,3 +203,39 @@ def test_encodings_covers_obsm_dataframe_indexes(sample_h5ad, tmp_path):
 def test_encodings_obsm_arrays_are_not_dataframes(sample_h5ad):
     """Plain obsm arrays (X_umap etc.) have no index and must not appear."""
     assert get_storage_info(str(sample_h5ad))["encodings"]["obsm"] == {}
+
+
+def test_encodings_failure_does_not_discard_the_rest_of_the_report(sample_h5ad, tmp_path, monkeypatch):
+    """A broken encodings walk must not blank size and compression.
+
+    curate-h5ad reads the compression report to decide whether to run
+    compress_h5ad, so a purely diagnostic addition must never cost the
+    caller information it previously got.
+    """
+    path = tmp_path / "boom.h5ad"
+    shutil.copy2(sample_h5ad, path)
+    monkeypatch.setattr(
+        "hca_anndata_tools.storage._encodings_info",
+        lambda _f: (_ for _ in ()).throw(RuntimeError("structural surprise")),
+    )
+    result = get_storage_info(str(path))
+    assert "error" not in result
+    assert result["file_size_bytes"] > 0
+    assert result["X"]["data"]["compression"] is not None or result["X"]["data"]["compression"] is None
+    assert result["encodings"]["error"] == "structural surprise"
+
+
+def test_encodings_unstamped_index_is_labelled_not_null(sample_h5ad, tmp_path):
+    """Older AnnData wrote string arrays with no encoding-type.
+
+    That is a real encoding state and must not be reported as ``null``,
+    which the skill treats as "this dataframe is absent".
+    """
+    path = tmp_path / "unstamped.h5ad"
+    shutil.copy2(sample_h5ad, path)
+    with h5py.File(path, "r+") as f:
+        obs = f["obs"]
+        del obs[obs_index_name(obs)].attrs["encoding-type"]
+    enc = get_storage_info(str(path))["encodings"]
+    assert enc["obs"]["index"] == "unstamped"
+    assert enc["obs"]["index"] is not None
