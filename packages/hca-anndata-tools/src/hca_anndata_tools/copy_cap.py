@@ -21,6 +21,7 @@ from ._io import (
     read_categorical_data,
     read_column_order,
     read_edit_log_h5py,
+    read_index,
     read_provenance,
     read_string_dataset,
     read_uns,
@@ -195,7 +196,7 @@ def copy_cap_annotations(
             obs_cols_to_copy = _get_obs_columns_to_copy(annotation_sets, source_obs_columns)
 
             idx_key = obs_index_name(obs_group)
-            source_index_list = list(read_string_dataset(obs_group, idx_key))
+            source_index_list = list(read_index(obs_group, idx_key, "CAP cells"))
 
             var_group = f["var"]
             var_idx_key = _decode_bytes(var_group.attrs.get("_index", "_index"))
@@ -238,7 +239,7 @@ def copy_cap_annotations(
                 obs_group = require_obs_group(f)
                 obs_columns = read_column_order(obs_group)
                 idx_key = obs_index_name(obs_group)
-                index = list(read_string_dataset(obs_group, idx_key))
+                index = list(read_index(obs_group, idx_key, "HCA cells"))
 
                 var_group = f["var"]
                 var_idx_key = _decode_bytes(var_group.attrs.get("_index", "_index"))

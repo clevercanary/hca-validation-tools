@@ -18,7 +18,8 @@ import numpy as np
 import pytest
 
 from hca_anndata_tools import rename_cell_ids
-from hca_anndata_tools.testing import HCA_TEST_ROWS, create_hca_h5ad
+from hca_anndata_tools._io import obs_index_name
+from hca_anndata_tools.testing import HCA_TEST_ROWS, create_hca_h5ad, make_nullable_string_array
 
 B1_IDS = [cell_id for cell_id, sample in HCA_TEST_ROWS if sample == "B1_0023"]
 
@@ -315,3 +316,42 @@ def test_rename_refuses_malformed_arguments(hca_path, column, value, prefix_from
     result = rename_cell_ids(str(hca_path), column=column, value=value, prefix_from=prefix_from, prefix_to=prefix_to)
     assert expected in result["error"]
     assert_no_snapshot_written(hca_path)
+
+
+def test_rename_refuses_an_unwritable_index_before_taking_a_snapshot(tmp_path):
+    """Fail before the copy, not after it.
+
+    The reads cope with a nullable index, but replace_string_dataset needs a
+    Dataset to copy storage properties from — so the write fails regardless
+    (hca-validation-tools#641). Without the guard the failure lands *after*
+    snapshot_copy_hashed has duplicated a multi-gigabyte file, with a message
+    about a missing .compression attribute.
+    """
+    path = create_hca_h5ad(tmp_path / "test.h5ad")
+    with h5py.File(path, "r+") as f:
+        obs = f["obs"]
+        make_nullable_string_array(obs, obs_index_name(obs))
+
+    before = set(tmp_path.iterdir())
+    result = rename_cell_ids(
+        str(path), column="sample_id", value="B1_0023", prefix_from="MH_mix_", prefix_to="MH_mix_BR1_"
+    )
+
+    assert "error" in result
+    assert "nullable-string-array" in result["error"]
+    assert "#641" in result["error"]
+    # the decisive part: no snapshot was written
+    assert set(tmp_path.iterdir()) == before
+
+
+def test_rename_refuses_a_masked_index(tmp_path):
+    """A cell with no ID cannot be matched against the obsm frames' copies."""
+    path = create_hca_h5ad(tmp_path / "masked.h5ad")
+    with h5py.File(path, "r+") as f:
+        obs = f["obs"]
+        make_nullable_string_array(obs, obs_index_name(obs), masked=1)
+
+    result = rename_cell_ids(
+        str(path), column="sample_id", value="B1_0023", prefix_from="MH_mix_", prefix_to="MH_mix_BR1_"
+    )
+    assert "error" in result

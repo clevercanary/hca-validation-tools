@@ -27,9 +27,10 @@ from ._io import (
     read_categorical_data,
     read_edit_log_h5py,
     read_group,
-    read_string_dataset,
+    read_index,
     read_uns,
     replace_string_dataset,
+    require_writable_index,
     write_edit_log_h5py,
 )
 from .cap import cellxgene_schema_version
@@ -223,10 +224,17 @@ def rename_cell_ids(path: str, column: str, value: str, prefix_from: str, prefix
                 # Gated before the index read: a mistyped selector should not
                 # pay for decoding 2M IDs it will never use.
                 return {"error": f"Refusing to rename: no rows match obs['{column}'] == {value!r}"}
-            # dtype=object (inside read_string_dataset) pins what asstr()
-            # already returns: a fixed-width unicode dtype here would silently
-            # clip the longer renamed IDs on assignment in _compute_new_ids.
-            ids = read_string_dataset(obs, index_name)
+            # Refuse before the snapshot, not after: replace_string_dataset
+            # needs a Dataset to copy storage properties from, so a nullable
+            # index fails at the write — and without this guard that failure
+            # lands after a multi-gigabyte copy (hca-validation-tools#641).
+            if refusal := require_writable_index(obs, index_name, "rename"):
+                return {"error": refusal}
+            # read_index pins dtype=object — a fixed-width unicode dtype would
+            # silently clip the longer renamed IDs on assignment in
+            # _compute_new_ids — and enforces the index contract, since these
+            # IDs are matched against the obsm frames' copies below.
+            ids = read_index(obs, index_name, "obs")
 
             # A DataFrame in obsm carries its own duplicate copy of the cell
             # IDs (anndata writes the frame's index alongside the parent's),
@@ -244,7 +252,9 @@ def rename_cell_ids(path: str, column: str, value: str, prefix_from: str, prefix
                     ):
                         continue
                     sub_name = obs_index_name(member)
-                    sub_ids = read_string_dataset(member, sub_name)
+                    if refusal := require_writable_index(member, sub_name, "rename"):
+                        return {"error": refusal}
+                    sub_ids = read_index(member, sub_name, f"obsm[{obsm_key!r}]")
                     if sub_ids.shape != ids.shape or not (sub_ids == ids).all():
                         return {
                             "error": (

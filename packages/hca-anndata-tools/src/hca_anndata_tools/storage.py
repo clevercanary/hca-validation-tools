@@ -6,7 +6,7 @@ import h5py
 import numpy as np
 
 from ._io import (
-    SUPPORTED_STRING_ENCODINGS,
+    WRITABLE_STRING_ENCODINGS,
     direct_members,
     encoding_of,
     obs_index_name,
@@ -91,10 +91,10 @@ def _is_unreadable(item: h5py.Group | h5py.Dataset | h5py.Datatype) -> bool:
     Note what this reports since hca-validation-tools#637: the *readers* now
     cope with both encodings via ``read_element``, so a flagged file can be
     inspected — it cannot be **written**, which is what
-    :data:`~hca_anndata_tools._io.SUPPORTED_STRING_ENCODINGS` now describes.
+    :data:`~hca_anndata_tools._io.WRITABLE_STRING_ENCODINGS` now describes.
     Widening it belongs with the write fix (#641).
     """
-    return isinstance(item, h5py.Group) and encoding_of(item) not in SUPPORTED_STRING_ENCODINGS
+    return isinstance(item, h5py.Group) and encoding_of(item) not in WRITABLE_STRING_ENCODINGS
 
 
 def _dataframe_encodings(df: h5py.Group, path: str, index_name: str) -> tuple[dict, list[str]]:
@@ -203,7 +203,8 @@ def get_storage_info(path: str) -> dict:
     surfaces during inspection rather than as an opaque HDF5 error partway
     through a curation run on a multi-gigabyte file. Its ``unsupported`` list
     names the paths this package's raw-h5py readers cannot handle, judged
-    against :data:`~hca_anndata_tools._io.SUPPORTED_STRING_ENCODINGS`.
+    against :data:`~hca_anndata_tools._io.WRITABLE_STRING_ENCODINGS` — an
+    element may be readable and still not writable.
 
     Args:
         path: Absolute path to an .h5ad file.

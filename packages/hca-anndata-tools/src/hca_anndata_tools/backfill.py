@@ -32,6 +32,7 @@ from ._io import (
     read_categorical_data,
     read_edit_log_h5py,
     read_group,
+    read_index,
     read_string_dataset,
     read_uns,
     replace_categorical_column,
@@ -164,9 +165,9 @@ def _read_obs_for_backfill(
                 }
             if col not in obs_keys:
                 return None, {"error": f"{side} file has no obs column '{col}'"}
-        # The pandas Index is built once and reused for the duplicate check
-        # and the join.
-        index = pd.Index(read_string_dataset(obs, index_name))
+        # read_index refuses a masked index — the join key cannot contain
+        # nulls. Duplicates stay a caller concern; see read_index.
+        index = pd.Index(read_index(obs, index_name, side))
         dupe_err = check_duplicate_ids(index, f"{side} cells")
         if dupe_err:
             return None, {"error": dupe_err}

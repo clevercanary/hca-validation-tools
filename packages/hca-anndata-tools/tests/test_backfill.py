@@ -4,12 +4,14 @@ import json
 from pathlib import Path
 
 import anndata as ad
+import h5py
 import numpy as np
 import pandas as pd
 import pytest
 
-from hca_anndata_tools._io import _codes_dtype
+from hca_anndata_tools._io import _codes_dtype, obs_index_name
 from hca_anndata_tools.backfill import backfill_obs_from_source
+from hca_anndata_tools.testing import create_sample_h5ad, make_nullable_string_array
 
 # The canonical scenario, one row per case the tool must handle:
 #
@@ -412,3 +414,24 @@ def test_codes_dtype_upcasts_when_categories_outgrow_int8():
     assert _codes_dtype(200, np.dtype(np.int8)) == np.dtype(np.int16)
     assert _codes_dtype(200, np.dtype(np.int32)) == np.dtype(np.int32)
     assert _codes_dtype(2**20, np.dtype(np.int16)) == np.dtype(np.int32)
+
+
+def test_backfill_refuses_a_masked_index_rather_than_joining_na_to_na(tmp_path):
+    """A masked join key must not silently match another file's masked key.
+
+    pandas joins pd.NA to pd.NA, so without this refusal a masked cell matches
+    the *other* file's masked cell and is counted as a legitimate match — no
+    error, no warning, a wrong number in the report. check_duplicate_ids
+    catches it only for two or more masked rows; one sails through
+    (hca-validation-tools#637).
+    """
+    target = create_sample_h5ad(tmp_path / "target.h5ad")
+    source = create_sample_h5ad(tmp_path / "source.h5ad")
+    with h5py.File(source, "r+") as f:
+        obs = f["obs"]
+        make_nullable_string_array(obs, obs_index_name(obs), masked=1)
+
+    result = backfill_obs_from_source(str(target), str(source), columns=["cell_type"])
+
+    assert "error" in result
+    assert "missing value" in result["error"]

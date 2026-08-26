@@ -79,16 +79,23 @@ def _decode_bytes(val):
 # The on-disk string encodings the raw-h5py readers in this package can
 # actually handle. AnnData also writes ``nullable-string-array`` — a *group*
 # of ``values`` + ``mask`` rather than a plain dataset — which every ``[:]``
-# slice in this package refuses. #637 fixed the *readers*: they now go through
-# read_element and cope with both encodings. This set is deliberately NOT
-# widened, because it now describes what can be **written**, not read —
-# replace_string_dataset calls storage_like, which needs a Dataset, and
-# anndata 0.11.4 refuses to write a StringArray at all
-# (hca-validation-tools#641). get_storage_info reports its verdict from this
-# set, so a nullable file is correctly still flagged: readable, not writable.
-# backfill.py's own refusal of nullable columns is a separate policy — we do
-# not support nullable columns in either direction.
-SUPPORTED_STRING_ENCODINGS = frozenset({"string-array"})
+# slice in this package refuses. Reading and writing are no longer the same
+# capability, so they are two sets: conflating them under one name is what
+# made get_storage_info unable to say whether a file could be inspected but
+# not edited.
+#
+# READABLE: #637 routed every reader through read_element, which delegates to
+# anndata's registry and copes with both encodings.
+READABLE_STRING_ENCODINGS = frozenset({"string-array", "nullable-string-array"})
+
+# WRITABLE: replace_string_dataset calls storage_like, which needs a Dataset —
+# a nullable group has no .compression — and anndata 0.11.4 refuses to write a
+# StringArray at all (hca-validation-tools#641). So a nullable file can be
+# inspected and converted, but not renamed or recompressed.
+WRITABLE_STRING_ENCODINGS = frozenset({"string-array"})
+
+# backfill.py refuses nullable *columns* independently; we do not support those
+# in either direction, which is a separate policy from these two sets.
 
 
 def encoding_of(item: h5py.Group | h5py.Dataset | h5py.Datatype) -> str | None:
@@ -131,13 +138,6 @@ def read_element(item: h5py.Group | h5py.Dataset | h5py.Datatype) -> np.ndarray:
     return np.asarray(read_elem(item), dtype=object)
 
 
-def masked_positions(values: np.ndarray) -> np.ndarray:
-    """Indices of missing entries in an object array read by :func:`read_element`."""
-    import numpy as np
-
-    return np.flatnonzero(pd.isna(values))
-
-
 def _strip_ensembl_version(eid: str) -> str:
     """Strip version suffix from Ensembl ID: ENSG00000173947.7 -> ENSG00000173947."""
     if eid.startswith("ENSG") and "." in eid:
@@ -154,27 +154,70 @@ def obs_index_name(obs: h5py.Group) -> str:
     return _decode_bytes(obs.attrs.get("_index", "_index"))
 
 
+def read_index(group: h5py.Group | h5py.Dataset | h5py.Datatype, name: str, label: str) -> np.ndarray:
+    """Read a dataframe index, enforcing what every index read needs.
+
+    An index is a join key, and a missing value in one is never legitimate:
+    ``str(pd.NA)`` is ``"<NA>"``, so masked rows collapse to a single
+    identifier. Worse than a crash — pandas joins ``pd.NA`` to ``pd.NA``, so a
+    masked cell matches the *other* file's masked cell and is counted as a
+    legitimate match (hca-validation-tools#637). ``check_duplicate_ids``
+    catches that only for two or more masked rows; a single one passes.
+
+    The underlying values usually survive a mask, so a masked index is
+    repairable — but not by guessing here.
+
+    Duplicates are deliberately **not** checked here. They have
+    context-dependent remedies that only the caller knows: ``rename_cell_ids``
+    distinguishes duplicates that already exist ("repair the file") from ones
+    the rename would create ("change the arguments"), and folding that into a
+    shared reader would flatten two refusals into one unhelpful message.
+    Callers keep their own ``check_duplicate_ids``.
+
+    Raises:
+        ValueError: The index contains missing values.
+    """
+    import numpy as np
+
+    values = read_element(group[name])
+    missing = np.flatnonzero(pd.isna(values))
+    if missing.size:
+        raise ValueError(
+            f"{label} index '{name}' has {missing.size} missing value(s) "
+            f"(first at row {missing[0]}) — a cell with no ID cannot be joined on"
+        )
+    return values
+
+
+def require_writable_index(group: h5py.Group | h5py.Dataset | h5py.Datatype, name: str, tool: str) -> str | None:
+    """Refuse an index this package can read but cannot write back.
+
+    Called before a tool takes a snapshot, not after. ``replace_string_dataset``
+    needs a Dataset to copy storage properties from, so a nullable group fails
+    at the write — and without this the failure lands *after* a multi-gigabyte
+    copy, with a message about a missing ``.compression`` attribute
+    (hca-validation-tools#641).
+    """
+    encoding = encoding_of(group[name])
+    if encoding in WRITABLE_STRING_ENCODINGS or encoding is None:
+        return None
+    return (
+        f"Refusing to {tool}: index '{name}' uses the '{encoding}' encoding, which "
+        f"this package can read but cannot write back (hca-validation-tools#641). "
+        f"The file must be re-exported with a plain string index first."
+    )
+
+
 def read_obs_index(path: str) -> list[str]:
     """Read the obs index (cell IDs) from an h5ad file.
 
     Raises:
-        ValueError: The index contains missing values. A cell with no ID
-            cannot be joined on, and converting one to str yields ``"<NA>"``
-            — so every masked row would collapse to the same identifier and
-            later joins would match the wrong cells while reporting success.
-            The underlying values usually survive the mask, so this is
-            repairable, but not by guessing here.
+        ValueError: The index has missing values or duplicates — see
+            :func:`read_index`.
     """
     with h5py.File(path, "r") as f:
         idx_key = obs_index_name(f["obs"])  # pyright: ignore[reportArgumentType]
-        values = read_element(f["obs"][idx_key])
-    missing = masked_positions(values)
-    if missing.size:
-        raise ValueError(
-            f"obs index '{idx_key}' has {missing.size} missing value(s) "
-            f"(first at row {missing[0]}) — a cell with no ID cannot be joined on"
-        )
-    return list(values)
+        return list(read_index(f["obs"], idx_key, "obs"))
 
 
 def read_column_order(obs: h5py.Group | h5py.Dataset | h5py.Datatype) -> list[str]:
