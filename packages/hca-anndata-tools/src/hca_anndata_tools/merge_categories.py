@@ -26,6 +26,7 @@ from ._io import (
     read_uns,
     remap_palette,
     replace_categorical_column,
+    unwritable_element_reason,
     verify_categorical_integrity,
     write_edit_log_h5py,
 )
@@ -68,6 +69,14 @@ def _column_problems(obs: h5py.Group, column: str, from_value: str, to_value: st
     item = obs[column]
     if not (isinstance(item, h5py.Group) and "categories" in item):
         return [f"'{column}' is not a categorical column — this tool edits the categories array, not values row by row"]
+    # Before the dtype check, which needs a Dataset to have a dtype at all: a
+    # nullable-string-array categories group otherwise leaked "'Group' object
+    # has no attribute 'dtype'" — an h5py internal, on the plain liver file
+    # shape, from the tool this refusal names (hca-validation-tools#637). The
+    # reads cope with that encoding now; the write does not, so this refuses
+    # rather than proceeds.
+    if reason := unwritable_element_reason(item["categories"], f"the '{column}' categories array"):
+        return [reason]
     # Checked on the dtype, before any read: the caller is required to pass
     # strings, so an int-backed categorical (anndata writes these for batch and
     # cluster columns) could never be addressed — and _read_categories' asstr()

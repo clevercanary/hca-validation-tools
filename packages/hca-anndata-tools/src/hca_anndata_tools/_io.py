@@ -235,29 +235,41 @@ def read_index(group: h5py.Group | h5py.Dataset | h5py.Datatype, name: str, labe
     return values
 
 
+def unwritable_element_reason(item: h5py.Group | h5py.Dataset | h5py.Datatype, subject: str) -> str | None:
+    """Why ``item`` cannot be written back, or None if it can.
+
+    Checked before a tool takes a snapshot, not after: without it the write
+    failure lands *after* a multi-gigabyte copy, with a message about a missing
+    ``.compression`` attribute (hca-validation-tools#641). What counts as
+    writable is :func:`is_writable_element`.
+
+    One clause for every refusal of this kind — ``subject`` is what varies, and
+    naming something the reader can find in the file is the caller's job. No
+    "Refusing to X" prefix: callers that collect problems into a list add their
+    own, and :func:`require_writable_index` adds it for callers that return one
+    refusal directly.
+    """
+    if is_writable_element(item):
+        return None
+    return (
+        f"{subject} uses the "
+        f"'{encoding_of(item) or 'unstamped ' + type(item).__name__.lower()}' encoding, which this "
+        f"package can read but cannot write back (hca-validation-tools#641). "
+        f"The file must be re-exported with plain string arrays first."
+    )
+
+
 def require_writable_index(
     group: h5py.Group | h5py.Dataset | h5py.Datatype, name: str, tool: str, label: str = "obs"
 ) -> str | None:
     """Refuse an index this package can read but cannot write back.
 
-    Called before a tool takes a snapshot, not after: without this the write
-    failure lands *after* a multi-gigabyte copy, with a message about a missing
-    ``.compression`` attribute (hca-validation-tools#641). What counts as
-    writable is :func:`is_writable_element`.
-
     ``label`` names *which* index, the way :func:`read_index`'s does — an obsm
     frame's index is usually called ``_index`` too, so the dataset name alone
     cannot tell a caller which frame to fix.
     """
-    item = group[name]
-    if is_writable_element(item):
-        return None
-    return (
-        f"Refusing to {tool}: {label} index '{name}' uses the "
-        f"'{encoding_of(item) or 'unstamped ' + type(item).__name__.lower()}' encoding, which this "
-        f"package can read but cannot write back (hca-validation-tools#641). "
-        f"The file must be re-exported with a plain string index first."
-    )
+    reason = unwritable_element_reason(group[name], f"{label} index '{name}'")
+    return f"Refusing to {tool}: {reason}" if reason else None
 
 
 def read_obs_index(path: str) -> list[str]:

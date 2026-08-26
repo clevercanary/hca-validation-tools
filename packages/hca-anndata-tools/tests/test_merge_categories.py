@@ -11,6 +11,7 @@ import pytest
 
 from hca_anndata_tools._io import read_edit_log_h5py
 from hca_anndata_tools.merge_categories import merge_obs_categories
+from hca_anndata_tools.testing import create_sample_h5ad, make_nullable_string_array
 
 # The real split this tool exists for, from nee2023's tissue_label (#527):
 # 11,635 cells under a misspelling of the category above them.
@@ -455,3 +456,27 @@ def test_palette_untouched_when_the_merge_is_refused(tmp_path, no_snapshot):
     assert "error" in result
     assert no_snapshot(path)
     assert list(ad.read_h5ad(path).uns["grp_colors"]) == _ABCD_COLORS
+
+
+def test_merge_refuses_nullable_categories_by_name(tmp_path):
+    """The liver file shape must not leak an h5py internal.
+
+    A nullable-string-array categories group has no .dtype, so the string-dtype
+    guard raised AttributeError and the tool returned "'Group' object has no
+    attribute 'dtype'" — an h5py internal from a tool that should say which
+    encoding it cannot write (hca-validation-tools#637). Note mask 0: this is
+    the plain shape of all seven liver integrated objects, not an edge case.
+    """
+    path = create_sample_h5ad(tmp_path / "nullable.h5ad")
+    with h5py.File(path, "r+") as f:
+        make_nullable_string_array(f["obs"]["cell_type"], "categories")
+
+    before = set(tmp_path.iterdir())
+    result = merge_obs_categories(str(path), "cell_type", "T cell", "B cell")
+
+    assert "error" in result
+    assert "nullable-string-array" in result["error"]
+    assert "#641" in result["error"]
+    assert "dtype" not in result["error"]
+    # Refused before the snapshot, like every other write guard here.
+    assert set(tmp_path.iterdir()) == before
