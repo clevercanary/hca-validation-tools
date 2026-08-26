@@ -254,7 +254,7 @@ def read_index(group: h5py.Group | h5py.Dataset | h5py.Datatype, name: str, labe
     if missing.size:
         raise ValueError(
             f"{label} index '{name}' has {missing.size} missing value(s) "
-            f"(first at row {missing[0]}) — a cell with no ID cannot be joined on"
+            f"(first at row {missing[0]}) — an entry with no identifier cannot be joined on"
         )
     return values
 
