@@ -21,10 +21,12 @@ from .write import resolve_latest
 _DATAFRAMES = (("obs", "obs"), ("var", "var"), ("raw.var", "raw/var"))
 
 # A file written entirely in an unsupported encoding flags every categorical
-# it has — 66 paths on the liver object that motivated this. The exact count
+# it has — 64 paths on the liver object that motivated this. The exact count
 # is the actionable number; an unbounded path list is noise that crowds out
 # the rest of the report, so the paths are a sample and the count is whole.
-# Mirrors the _MAX_REPORTED cap guards.py uses for the same reason.
+# Same tactic as guards._MAX_REPORTED, deliberately not the same number: that
+# one caps names inside a one-line refusal message, this one caps a sample in
+# a JSON payload a reader can scroll.
 _MAX_UNSUPPORTED_PATHS = 10
 
 
