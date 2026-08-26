@@ -81,11 +81,12 @@ def _mask_count(item: h5py.Group | h5py.Dataset | h5py.Datatype) -> int | None:
 def _dataframe_encodings(df: h5py.Group, path: str, index_name: str) -> tuple[dict, list[str]]:
     """Encodings of a dataframe's index and its categoricals' categories.
 
-    Returns the per-dataframe report and the on-disk paths whose encoding this
-    package's raw-h5py readers cannot handle. Categorical ``categories`` are
-    reported because they break readers exactly as an index does — in the
-    files that motivated this (hca-validation-tools#638) a categorical's
-    categories were themselves a nullable group.
+    Returns the per-dataframe report and the on-disk paths this package can
+    read but cannot write back, per :func:`~hca_anndata_tools._io.is_writable_element`.
+    Categorical ``categories`` are reported because they block a write exactly
+    as an index does — in the files that motivated this
+    (hca-validation-tools#638) a categorical's categories were themselves a
+    nullable group, and ``merge_obs_categories`` refuses on precisely that.
 
     Members are read through :func:`~hca_anndata_tools._io.direct_members`
     because ``index_name`` comes from the file rather than the caller, and
