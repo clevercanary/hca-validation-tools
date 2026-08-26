@@ -1,5 +1,7 @@
 """Tests for the _io helpers that narrow uns access (#617)."""
 
+import warnings
+
 import h5py
 import numpy as np
 import pytest
@@ -8,6 +10,8 @@ from anndata.io import write_elem
 from hca_anndata_tools._io import (
     _decode_bytes,
     compact_categories,
+    encoding_of,
+    is_writable_element,
     obs_index_name,
     read_batch_condition,
     read_categorical_data,
@@ -19,9 +23,14 @@ from hca_anndata_tools._io import (
     read_uns,
     remap_palette,
     require_stamped_group,
+    verify_categorical_integrity,
 )
 from hca_anndata_tools.cap import cellxgene_schema_version
-from hca_anndata_tools.testing import create_sample_h5ad, make_nullable_string_array
+from hca_anndata_tools.testing import (
+    create_sample_h5ad,
+    make_fixed_width_byte_array,
+    make_nullable_string_array,
+)
 
 
 def test_read_uns_absent(h5):
@@ -303,9 +312,57 @@ def test_read_element_keeps_a_single_row_iterable(tmp_path):
     path = tmp_path / "one.h5ad"
     with h5py.File(path, "w") as f:
         f.create_dataset("solo", data=np.array([b"only"], dtype="S8"))
-    # Reading an unstamped element warns — that is anndata telling us it took
-    # the legacy path, which is exactly the path being tested.
-    with h5py.File(path) as f, pytest.warns(Warning, match="without encoding metadata"):
+    with h5py.File(path) as f:
         values = read_element(f["solo"])
     assert values.ndim == 1
     assert list(values) == ["only"]
+
+
+def test_read_element_does_not_warn_on_a_legacy_unstamped_element(tmp_path):
+    """An unstamped element is old, not invalid — reading it must be silent.
+
+    anndata warns once per read that it took the legacy path. Routing every
+    read through read_elem would otherwise make the MCP server emit that
+    warning on every tool call against such a file, for a file class
+    encoding_of explicitly supports.
+    """
+    path = tmp_path / "legacy.h5ad"
+    with h5py.File(path, "w") as f:
+        f.create_dataset("ids", data=np.array([b"cell_0", b"cell_1"], dtype="S16"))
+    with h5py.File(path) as f, warnings.catch_warnings():
+        warnings.simplefilter("error")
+        assert list(read_element(f["ids"])) == ["cell_0", "cell_1"]
+
+
+def test_is_writable_element_judges_the_container_not_the_encoding(tmp_path):
+    """A fixed-width byte index is stamped ``array`` and writes perfectly well.
+
+    replace_string_dataset needs a Dataset to copy storage properties from —
+    that is the whole constraint. An encoding-name check refuses this file
+    (hca-validation-tools#637 review) while get_storage_info calls it clean,
+    so the two guards must share one predicate.
+    """
+    path = create_sample_h5ad(tmp_path / "fixed.h5ad")
+    with h5py.File(path, "r+") as f:
+        obs = f["obs"]
+        make_fixed_width_byte_array(obs, obs_index_name(obs))
+    with h5py.File(path) as f:
+        obs = f["obs"]
+        assert encoding_of(obs[obs_index_name(obs)]) == "array"
+        assert is_writable_element(obs[obs_index_name(obs)])
+        assert not is_writable_element(f["obs"]["cell_type"])
+
+
+def test_verify_categorical_integrity_counts_rows_not_group_members(tmp_path):
+    """n_obs must be the cell count even when the index is a nullable group.
+
+    len(obs[idx_key]) on that group returns 2 — the ``values`` and ``mask``
+    members — so every categorical column would be reported corrupt with a
+    codes-length mismatch, after the caller had already paid for a full copy.
+    """
+    path = create_sample_h5ad(tmp_path / "nullable.h5ad")
+    with h5py.File(path, "r+") as f:
+        obs = f["obs"]
+        make_nullable_string_array(obs, obs_index_name(obs))
+    with h5py.File(path) as f:
+        assert verify_categorical_integrity(f, ["cell_type", "sex"]) is None

@@ -8,7 +8,7 @@ import numpy as np
 
 from hca_anndata_tools._io import obs_index_name
 from hca_anndata_tools.storage import _MAX_UNSUPPORTED_PATHS, get_storage_info
-from hca_anndata_tools.testing import make_nullable_string_array
+from hca_anndata_tools.testing import make_fixed_width_byte_array, make_nullable_string_array
 
 
 def test_storage_file_size(sample_h5ad):
@@ -77,6 +77,25 @@ def test_encodings_reported_for_plain_file(sample_h5ad):
     assert enc["unsupported"] == []
     assert enc["unsupported_count"] == 0
     assert enc["unsupported_truncated"] is False
+
+
+def test_encodings_does_not_flag_a_fixed_width_byte_index(sample_h5ad, tmp_path):
+    """``array`` on a Dataset is writable — the report must agree with rename.
+
+    This is the same predicate rename_cell_ids refuses on. When the two
+    disagreed, get_storage_info called this file clean and rename refused it
+    (hca-validation-tools#637 review).
+    """
+    path = tmp_path / "fixed.h5ad"
+    shutil.copy2(sample_h5ad, path)
+    with h5py.File(path, "r+") as f:
+        obs = f["obs"]
+        make_fixed_width_byte_array(obs, obs_index_name(obs))
+
+    enc = get_storage_info(str(path))["encodings"]
+    assert enc["obs"]["index"] == "array"
+    assert enc["unsupported"] == []
+    assert enc["unsupported_count"] == 0
 
 
 def test_encodings_index_masked_is_none_when_not_nullable(sample_h5ad):

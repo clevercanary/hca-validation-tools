@@ -13,7 +13,6 @@ import numpy as np
 import pandas as pd
 
 from ._io import (
-    _decode_bytes,
     check_duplicate_ids,
     ensure_provenance_group,
     obs_index_name,
@@ -23,7 +22,6 @@ from ._io import (
     read_edit_log_h5py,
     read_index,
     read_provenance,
-    read_string_dataset,
     read_uns,
     update_column_order,
     verify_obs_transplant,
@@ -199,8 +197,7 @@ def copy_cap_annotations(
             source_index_list = list(read_index(obs_group, idx_key, "CAP cells"))
 
             var_group = f["var"]
-            var_idx_key = _decode_bytes(var_group.attrs.get("_index", "_index"))
-            source_var_list = list(read_string_dataset(var_group, var_idx_key))
+            source_var_list = list(read_index(var_group, obs_index_name(var_group), "CAP genes"))
 
             source_obs_data = {}
             for col in obs_cols_to_copy:
@@ -242,8 +239,7 @@ def copy_cap_annotations(
                 index = list(read_index(obs_group, idx_key, "HCA cells"))
 
                 var_group = f["var"]
-                var_idx_key = _decode_bytes(var_group.attrs.get("_index", "_index"))
-                var_list = list(read_string_dataset(var_group, var_idx_key))
+                var_list = list(read_index(var_group, obs_index_name(var_group), "HCA genes"))
 
                 uns = read_uns(f)
                 uns_keys = set(uns.keys()) if uns is not None else set()

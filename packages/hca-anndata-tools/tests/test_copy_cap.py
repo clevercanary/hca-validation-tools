@@ -10,7 +10,9 @@ import pandas as pd
 import pytest
 import scipy.sparse as sp
 
+from hca_anndata_tools._io import obs_index_name
 from hca_anndata_tools.copy_cap import copy_cap_annotations
+from hca_anndata_tools.testing import make_nullable_string_array
 from hca_anndata_tools.write import EDIT_LOG_KEY
 
 # --- Fixtures ---
@@ -366,6 +368,25 @@ def test_var_overlap_rejects_duplicate_var_ids(cap_source, tmp_path):
     assert "error" in result
     assert "duplicate" in result["error"].lower()
     assert "HCA genes" in result["error"]
+
+
+def test_var_overlap_refuses_a_masked_var_index(cap_source, tmp_path):
+    """A null gene ID must not be counted as an overlapping gene.
+
+    pandas matches pd.NA to pd.NA, so a masked var index on each side
+    intersects to a "shared gene" that is no gene at all — the same NA-joins-NA
+    hazard read_index closes for cells, and check_duplicate_ids misses it for a
+    single masked entry (hca-validation-tools#637 review).
+    """
+    target = _make_hca_target(tmp_path / "target_masked_var.h5ad", CELL_IDS)
+    with h5py.File(target, "r+") as f:
+        var = f["var"]
+        make_nullable_string_array(var, obs_index_name(var), masked=1)
+
+    result = copy_cap_annotations(str(cap_source), str(target))
+    assert "error" in result
+    assert "HCA genes" in result["error"]
+    assert "missing value" in result["error"]
 
 
 # --- Failure cases ---

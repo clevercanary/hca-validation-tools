@@ -253,3 +253,29 @@ def make_nullable_string_array(parent: h5py.Group, name: str, *, masked: int = 0
         group.attrs[key] = value
     group.attrs["encoding-type"] = "nullable-string-array"
     group.attrs["encoding-version"] = "0.1.0"
+
+
+def make_fixed_width_byte_array(parent: h5py.Group, name: str) -> None:
+    """Rewrite an existing string dataset as a fixed-width byte array.
+
+    AnnData stamps a numpy ``S``-kind array ``encoding-type: array``, not
+    ``string-array`` — so this is a *writable* encoding (a plain Dataset)
+    that a guard keyed on the encoding *name* would wrongly refuse. Files in
+    the wild carry it; ``read_elem`` hands the values back as raw ``bytes``.
+
+    Args:
+        parent: The group holding ``name`` (e.g. an ``obs`` group).
+        name: An existing string dataset to convert in place.
+    """
+    source = parent[name]
+    if not isinstance(source, h5py.Dataset):
+        raise TypeError(f"{name!r} is not a dataset — nothing to convert")
+    values = np.array([v.encode("utf-8") if isinstance(v, str) else v for v in source.asstr()[:]], dtype="S64")
+    attrs = dict(source.attrs)
+    del parent[name]
+
+    written = parent.create_dataset(name, data=values)
+    for key, value in attrs.items():
+        written.attrs[key] = value
+    written.attrs["encoding-type"] = "array"
+    written.attrs["encoding-version"] = "0.2.0"

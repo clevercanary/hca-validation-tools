@@ -6,9 +6,9 @@ import h5py
 import numpy as np
 
 from ._io import (
-    WRITABLE_STRING_ENCODINGS,
     direct_members,
     encoding_of,
+    is_writable_element,
     obs_index_name,
     read_group,
 )
@@ -78,23 +78,6 @@ def _mask_count(item: h5py.Group | h5py.Dataset | h5py.Datatype) -> int | None:
     return None
 
 
-def _is_unwritable(item: h5py.Group | h5py.Dataset | h5py.Datatype) -> bool:
-    """True if this package cannot write ``item`` back.
-
-    The operative test is the container, not the encoding name: a Group is
-    what the write path cannot recreate — ``replace_string_dataset`` calls
-    ``storage_like``, which needs a Dataset. So a numeric categorical whose
-    categories are an ``array`` Dataset is fine, while a
-    ``nullable-string-array`` Group is not; judging by encoding name alone
-    would flag the former as broken when it handles perfectly well.
-
-    Since hca-validation-tools#637 the readers cope with both encodings via
-    ``read_element``, so a flagged element can be **inspected**; what it
-    cannot be is written back. Widening that belongs with #641.
-    """
-    return isinstance(item, h5py.Group) and encoding_of(item) not in WRITABLE_STRING_ENCODINGS
-
-
 def _dataframe_encodings(df: h5py.Group, path: str, index_name: str) -> tuple[dict, list[str]]:
     """Encodings of a dataframe's index and its categoricals' categories.
 
@@ -122,7 +105,7 @@ def _dataframe_encodings(df: h5py.Group, path: str, index_name: str) -> tuple[di
         # state. None is reserved for "the group has no index dataset at all".
         index_enc = encoding_of(index) or "unstamped"
         index_masked = _mask_count(index)
-        if _is_unwritable(index):
+        if not is_writable_element(index):
             unsupported.append(f"{path}/{index_name}")
 
     categoricals: dict[str, int] = {}
@@ -135,7 +118,7 @@ def _dataframe_encodings(df: h5py.Group, path: str, index_name: str) -> tuple[di
         categories = column["categories"]
         label = encoding_of(categories) or "unstamped"
         categoricals[label] = categoricals.get(label, 0) + 1
-        if _is_unwritable(categories):
+        if not is_writable_element(categories):
             unsupported.append(f"{path}/{name}/categories")
 
     return {
@@ -200,10 +183,12 @@ def get_storage_info(path: str) -> dict:
     The ``encodings`` block exists so an incompatible on-disk representation
     surfaces during inspection rather than as an opaque HDF5 error partway
     through a curation run on a multi-gigabyte file. Its ``unsupported`` list
-    names the paths this package can read but **cannot write back**, judged
-    against :data:`~hca_anndata_tools._io.WRITABLE_STRING_ENCODINGS`. A flagged
-    file can still be inspected and converted; it cannot be renamed or
-    recompressed until hca-validation-tools#641 lands.
+    names the paths this package can read but **cannot write back**, judged by
+    :func:`~hca_anndata_tools._io.is_writable_element` — the same predicate the
+    editing tools refuse on, so an inspection called clean here cannot be
+    rejected by ``rename_cell_ids``. A flagged file can still be inspected and
+    converted; it cannot be renamed or recompressed until
+    hca-validation-tools#641 lands.
 
     Args:
         path: Absolute path to an .h5ad file.

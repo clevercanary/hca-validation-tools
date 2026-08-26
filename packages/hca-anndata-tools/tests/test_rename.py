@@ -18,8 +18,13 @@ import numpy as np
 import pytest
 
 from hca_anndata_tools import rename_cell_ids
-from hca_anndata_tools._io import obs_index_name
-from hca_anndata_tools.testing import HCA_TEST_ROWS, create_hca_h5ad, make_nullable_string_array
+from hca_anndata_tools._io import obs_index_name, read_obs_index
+from hca_anndata_tools.testing import (
+    HCA_TEST_ROWS,
+    create_hca_h5ad,
+    make_fixed_width_byte_array,
+    make_nullable_string_array,
+)
 
 B1_IDS = [cell_id for cell_id, sample in HCA_TEST_ROWS if sample == "B1_0023"]
 
@@ -342,6 +347,34 @@ def test_rename_refuses_an_unwritable_index_before_taking_a_snapshot(tmp_path):
     assert "#641" in result["error"]
     # the decisive part: no snapshot was written
     assert set(tmp_path.iterdir()) == before
+
+
+def test_rename_accepts_a_fixed_width_byte_index(tmp_path):
+    """The writable guard must judge the container, not the encoding name.
+
+    anndata stamps a fixed-width byte array ``array``, not ``string-array``.
+    It is still a plain Dataset, so replace_string_dataset handles it — an
+    encoding-name check refused a file that renames perfectly well, while
+    get_storage_info reported the same file clean (hca-validation-tools#637
+    review).
+    """
+    path = create_hca_h5ad(tmp_path / "fixed.h5ad")
+    with h5py.File(path, "r+") as f:
+        obs = f["obs"]
+        make_fixed_width_byte_array(obs, obs_index_name(obs))
+
+    result = rename_cell_ids(
+        str(path), column="sample_id", value="B1_0023", prefix_from="MH_mix_", prefix_to="MH_mix_BR1_"
+    )
+
+    assert "error" not in result
+    assert result["n_renamed"] == 3
+    # Not just a status: the renamed IDs must survive the round trip. The
+    # source dtype is fixed-width, so a rewrite that kept it would clip the
+    # longer prefix silently.
+    ids = read_obs_index(result["output_path"])
+    assert "MH_mix_BR1_AAA" in ids
+    assert "MH_mix_TTT" in ids
 
 
 def test_rename_refuses_a_nullable_index_for_the_write_reason_not_the_mask(tmp_path):

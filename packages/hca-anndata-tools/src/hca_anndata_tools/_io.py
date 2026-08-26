@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import gc
+import warnings
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Literal
 
@@ -76,24 +77,13 @@ def _decode_bytes(val):
     return val
 
 
-# The on-disk string encodings the raw-h5py readers in this package can
-# actually handle. AnnData also writes ``nullable-string-array`` — a *group*
-# of ``values`` + ``mask`` rather than a plain dataset — which every ``[:]``
-# slice in this package refuses. Reading and writing are no longer the same
-# capability, so they are two sets: conflating them under one name is what
-# made get_storage_info unable to say whether a file could be inspected but
-# not edited.
-# Reads need no such set: read_element delegates to anndata's registry, which
+# Reading and writing are no longer the same capability. Reads need no
+# encoding list at all: read_element delegates to anndata's registry, which
 # handles every encoding it knows and raises naming the one it does not.
+# Writes are narrower — see is_writable_element below.
 #
-# WRITABLE: replace_string_dataset calls storage_like, which needs a Dataset —
-# a nullable group has no .compression — and anndata 0.11.4 refuses to write a
-# StringArray at all (hca-validation-tools#641). So a nullable file can be
-# inspected and converted, but not renamed or recompressed.
-WRITABLE_STRING_ENCODINGS = frozenset({"string-array"})
-
 # backfill.py refuses nullable *columns* independently; we do not support those
-# in either direction, which is a separate policy from these two sets.
+# in either direction, which is a separate policy from writability.
 
 
 def encoding_of(item: h5py.Group | h5py.Dataset | h5py.Datatype) -> str | None:
@@ -106,6 +96,32 @@ def encoding_of(item: h5py.Group | h5py.Dataset | h5py.Datatype) -> str | None:
     neither an isinstance dance nor a pyright suppression.
     """
     return _decode_bytes(item.attrs.get("encoding-type"))
+
+
+def is_writable_element(item: h5py.Group | h5py.Dataset | h5py.Datatype) -> bool:
+    """True if this package can write ``item`` back in place.
+
+    The operative test is the container, not the encoding name.
+    ``replace_string_dataset`` calls ``storage_like``, which copies chunking and
+    compression off an existing Dataset; a Group — ``nullable-string-array``, or
+    whatever multi-part encoding AnnData adds next — has none of those
+    properties to copy, and anndata 0.11.4 refuses to write a ``StringArray`` at
+    all (hca-validation-tools#641).
+
+    Judging by encoding name instead would refuse elements that write perfectly
+    well: a fixed-width byte index and a numeric categorical's ``categories``
+    are both stamped ``array``, and both are Datasets. It would equally *pass*
+    an unstamped Group, which then fails at the write.
+
+    Since hca-validation-tools#637 the readers cope with every encoding anndata
+    knows, so a Group element can still be inspected and converted — what it
+    cannot be is renamed or recompressed.
+
+    One predicate, two call sites — :func:`require_writable_index` refuses
+    before a tool takes its snapshot, ``get_storage_info`` reports the same
+    verdict during inspection. They must not be able to disagree.
+    """
+    return isinstance(item, h5py.Dataset)
 
 
 def read_element(item: h5py.Group | h5py.Dataset | h5py.Datatype) -> np.ndarray:
@@ -146,7 +162,21 @@ def read_element(item: h5py.Group | h5py.Dataset | h5py.Datatype) -> np.ndarray:
     # atleast_1d: anndata's unstamped-dataset fallback unwraps a length-1
     # byte-string array to a scalar, which would otherwise reach callers as a
     # 0-d array they cannot iterate.
-    values = np.atleast_1d(np.asarray(read_elem(item), dtype=object))
+    if encoding_of(item) is None:
+        # anndata warns on every read of a legacy unstamped element. encoding_of
+        # calls those "old, not invalid", and the readers handle them, so the
+        # warning is noise the MCP server would repeat on every tool call
+        # against such a file. Scoped to this one message so a genuine anndata
+        # warning still surfaces.
+        with warnings.catch_warnings():
+            # Matched on the message, not the class: anndata raises this as an
+            # OldFormatWarning (a PendingDeprecationWarning subclass, and
+            # private), so naming a category couples us to an internal.
+            warnings.filterwarnings("ignore", message=".*written without encoding metadata.*")
+            raw = read_elem(item)
+    else:
+        raw = read_elem(item)
+    values = np.atleast_1d(np.asarray(raw, dtype=object))
     if values.size and isinstance(values.flat[0], bytes):
         values = np.array([_decode_bytes(v) for v in values.flat], dtype=object).reshape(values.shape)
     return values
@@ -159,11 +189,13 @@ def _strip_ensembl_version(eid: str) -> str:
     return eid
 
 
-def obs_index_name(obs: h5py.Group) -> str:
-    """The name of the obs index dataset, from ``obs.attrs['_index']``.
+def obs_index_name(obs: h5py.Group | h5py.Dataset | h5py.Datatype) -> str:
+    """The name of the index dataset, from the group's ``_index`` attribute.
 
-    A reader, not a guard — the same lookup obsm DataFrames need for their
-    own sub-index.
+    A reader, not a guard — the same lookup obsm DataFrames and ``var`` need
+    for their own index. Accepts the ``Group | Dataset | Datatype`` union h5py
+    member access is typed as, as :func:`read_column_order` does, so call sites
+    need neither an isinstance dance nor a pyright suppression.
     """
     return _decode_bytes(obs.attrs.get("_index", "_index"))
 
@@ -203,25 +235,25 @@ def read_index(group: h5py.Group | h5py.Dataset | h5py.Datatype, name: str, labe
     return values
 
 
-def require_writable_index(group: h5py.Group | h5py.Dataset | h5py.Datatype, name: str, tool: str) -> str | None:
+def require_writable_index(
+    group: h5py.Group | h5py.Dataset | h5py.Datatype, name: str, tool: str, label: str = "obs"
+) -> str | None:
     """Refuse an index this package can read but cannot write back.
 
-    Called before a tool takes a snapshot, not after. ``replace_string_dataset``
-    needs a Dataset to copy storage properties from, so a nullable group fails
-    at the write — and without this the failure lands *after* a multi-gigabyte
-    copy, with a message about a missing ``.compression`` attribute
-    (hca-validation-tools#641).
+    Called before a tool takes a snapshot, not after: without this the write
+    failure lands *after* a multi-gigabyte copy, with a message about a missing
+    ``.compression`` attribute (hca-validation-tools#641). What counts as
+    writable is :func:`is_writable_element`.
+
+    ``label`` names *which* index, the way :func:`read_index`'s does — an obsm
+    frame's index is usually called ``_index`` too, so the dataset name alone
+    cannot tell a caller which frame to fix.
     """
     item = group[name]
-    # Container, not encoding name — the same test _is_unwritable uses, and for
-    # the same reason: replace_string_dataset needs a Dataset to copy storage
-    # properties from. An *unstamped* group would pass an encoding-name check
-    # and then fail after the snapshot, which is what this guard exists to
-    # prevent.
-    if isinstance(item, h5py.Dataset) and encoding_of(item) in WRITABLE_STRING_ENCODINGS | {None}:
+    if is_writable_element(item):
         return None
     return (
-        f"Refusing to {tool}: index '{name}' uses the "
+        f"Refusing to {tool}: {label} index '{name}' uses the "
         f"'{encoding_of(item) or 'unstamped ' + type(item).__name__.lower()}' encoding, which this "
         f"package can read but cannot write back (hca-validation-tools#641). "
         f"The file must be re-exported with a plain string index first."
@@ -232,8 +264,8 @@ def read_obs_index(path: str) -> list[str]:
     """Read the obs index (cell IDs) from an h5ad file.
 
     Raises:
-        ValueError: The index has missing values or duplicates — see
-            :func:`read_index`.
+        ValueError: The index has missing values. Duplicates are *not* checked
+            — see :func:`read_index` for why that is left to callers.
     """
     with h5py.File(path, "r") as f:
         idx_key = obs_index_name(f["obs"])  # pyright: ignore[reportArgumentType]
@@ -685,7 +717,9 @@ def verify_categorical_integrity(
     """
     obs = f["obs"]
     idx_key = _decode_bytes(obs.attrs.get("_index", "_index"))
-    n_obs = len(obs[idx_key])
+    # Not len(obs[idx_key]): on a nullable index that is the *member* count of
+    # the values+mask group — 2 — so every column would be reported corrupt.
+    n_obs = read_element(obs[idx_key]).shape[0]
 
     for col in columns:
         item = obs[col]

@@ -26,7 +26,7 @@ The target schemas are:
 
 Start with the evaluator, then gate the HCA validator on the schema it reports:
 
-**Check `get_storage_info.encodings` before running any fix.** If `unsupported_count` is greater than 0, **stop and report it rather than starting the fix sequence**: the named elements use an on-disk encoding our raw-h5py tools cannot read, so a mechanical fix would fail partway through — after a multi-gigabyte snapshot has already been written. Give the count and the sample paths (they are real HDF5 paths) and say that hca-validation-tools#637 tracks the reader support.
+**Check `get_storage_info.encodings` before running any fix.** If `unsupported_count` is greater than 0, **stop and report it rather than starting the fix sequence**: the named elements use an on-disk encoding our tools can read but **cannot write back**, so any tool that rewrites one of them fails at the write — after a multi-gigabyte snapshot has already been written. Give the count and the sample paths (they are real HDF5 paths) and say that hca-validation-tools#641 tracks the write support. Read-only and copy-and-transplant tools (`get_summary`, `view_data`, `convert_cellxgene_to_hca`, `backfill_obs_from_source`) are unaffected since hca-validation-tools#637; `rename_cell_ids` and `compress_h5ad` are the ones that stop.
 
 Separately, stop if `index_masked` is a number **greater than 0**: the index contains nulls, which corrupt joins silently, and that is a problem with the data rather than with our tools. `index_masked` is `null` — not `0` — for any encoding that cannot hold nulls at all, which is the ordinary case; `null` is not a finding.
 

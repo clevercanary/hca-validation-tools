@@ -435,3 +435,24 @@ def test_backfill_refuses_a_masked_index_rather_than_joining_na_to_na(tmp_path):
 
     assert "error" in result
     assert "missing value" in result["error"]
+
+
+def test_backfill_reads_an_unmasked_nullable_index(target_source, tmp_path):
+    """A nullable index the tool only reads is no obstacle.
+
+    backfill transplants columns into a copy; it never rewrites either index,
+    so the encoding that blocks the write tools (hca-validation-tools#641) does
+    not block this one. Asserting the join, not just the absence of an error —
+    an index read as bytes compares unequal to its str counterparts and would
+    report 0 matched cells while claiming success.
+    """
+    target, source = target_source
+    with h5py.File(source, "r+") as f:
+        obs = f["obs"]
+        make_nullable_string_array(obs, obs_index_name(obs))
+
+    result = backfill_obs_from_source(target, source, columns=["library_id"])
+
+    assert "error" not in result, result.get("error")
+    assert result["n_matched"] == 5
+    assert result["total_filled"] == 2
