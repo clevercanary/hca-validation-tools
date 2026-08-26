@@ -221,7 +221,11 @@ def test_encodings_failure_does_not_discard_the_rest_of_the_report(sample_h5ad, 
     result = get_storage_info(str(path))
     assert "error" not in result
     assert result["file_size_bytes"] > 0
-    assert result["X"]["data"]["compression"] is not None or result["X"]["data"]["compression"] is None
+    # The concrete fields a caller would lose if the whole result collapsed:
+    # curate-h5ad reads these to decide whether to run compress_h5ad.
+    assert result["X"]["format"] == "csr_matrix"
+    assert "compression" in result["X"]["data"]
+    assert result["X"]["data"]["shape"]
     assert result["encodings"]["error"] == "structural surprise"
 
 
