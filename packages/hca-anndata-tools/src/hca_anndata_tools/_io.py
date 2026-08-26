@@ -83,11 +83,9 @@ def _decode_bytes(val):
 # capability, so they are two sets: conflating them under one name is what
 # made get_storage_info unable to say whether a file could be inspected but
 # not edited.
+# Reads need no such set: read_element delegates to anndata's registry, which
+# handles every encoding it knows and raises naming the one it does not.
 #
-# READABLE: #637 routed every reader through read_element, which delegates to
-# anndata's registry and copes with both encodings.
-READABLE_STRING_ENCODINGS = frozenset({"string-array", "nullable-string-array"})
-
 # WRITABLE: replace_string_dataset calls storage_like, which needs a Dataset —
 # a nullable group has no .compression — and anndata 0.11.4 refuses to write a
 # StringArray at all (hca-validation-tools#641). So a nullable file can be
@@ -126,16 +124,32 @@ def read_element(item: h5py.Group | h5py.Dataset | h5py.Datatype) -> np.ndarray:
     (hca-validation-tools#637). Reaching into ``values`` ourselves would
     re-implement the registry badly and break again on the next encoding.
 
-    Returns an object array, matching what the hand-rolled readers returned —
-    ``dtype=object`` matters, since a fixed-width unicode dtype would silently
-    clip longer values assigned in later (see ``rename_cell_ids``). Masked
-    entries surface as ``pd.NA``; callers that cannot tolerate a missing value
-    must check before converting to str, because ``str(pd.NA)`` is ``"<NA>"``
-    and would turn every masked row into the *same* value.
+    Returns an object array of decoded ``str``, matching what the hand-rolled
+    readers returned. Two details are load-bearing:
+
+    * **``dtype=object``** — a fixed-width unicode dtype would silently clip
+      longer values assigned in later (see ``rename_cell_ids``).
+    * **Decoding.** ``read_elem`` dispatches on ``encoding-type``, and a
+      fixed-width byte array is stamped ``array`` (which is what anndata's own
+      ``write_elem`` does for a numpy ``S``-kind array), so it comes back as
+      raw ``bytes`` — no exception, no warning. The readers this replaced all
+      decoded, and skipping it makes cell IDs compare unequal to their
+      ``str`` counterparts: a join silently matches nothing rather than
+      failing. Only the bytes case pays for the decode.
+
+    Masked entries surface as ``pd.NA``; callers that cannot tolerate a
+    missing value must check before converting to str, because ``str(pd.NA)``
+    is ``"<NA>"`` and would turn every masked row into the *same* value.
     """
     import numpy as np
 
-    return np.asarray(read_elem(item), dtype=object)
+    # atleast_1d: anndata's unstamped-dataset fallback unwraps a length-1
+    # byte-string array to a scalar, which would otherwise reach callers as a
+    # 0-d array they cannot iterate.
+    values = np.atleast_1d(np.asarray(read_elem(item), dtype=object))
+    if values.size and isinstance(values.flat[0], bytes):
+        values = np.array([_decode_bytes(v) for v in values.flat], dtype=object).reshape(values.shape)
+    return values
 
 
 def _strip_ensembl_version(eid: str) -> str:
@@ -198,12 +212,18 @@ def require_writable_index(group: h5py.Group | h5py.Dataset | h5py.Datatype, nam
     copy, with a message about a missing ``.compression`` attribute
     (hca-validation-tools#641).
     """
-    encoding = encoding_of(group[name])
-    if encoding in WRITABLE_STRING_ENCODINGS or encoding is None:
+    item = group[name]
+    # Container, not encoding name — the same test _is_unwritable uses, and for
+    # the same reason: replace_string_dataset needs a Dataset to copy storage
+    # properties from. An *unstamped* group would pass an encoding-name check
+    # and then fail after the snapshot, which is what this guard exists to
+    # prevent.
+    if isinstance(item, h5py.Dataset) and encoding_of(item) in WRITABLE_STRING_ENCODINGS | {None}:
         return None
     return (
-        f"Refusing to {tool}: index '{name}' uses the '{encoding}' encoding, which "
-        f"this package can read but cannot write back (hca-validation-tools#641). "
+        f"Refusing to {tool}: index '{name}' uses the "
+        f"'{encoding_of(item) or 'unstamped ' + type(item).__name__.lower()}' encoding, which this "
+        f"package can read but cannot write back (hca-validation-tools#641). "
         f"The file must be re-exported with a plain string index first."
     )
 
@@ -590,9 +610,9 @@ def remap_palette(uns: h5py.Group | None, key: str | None, kept: Sequence[int], 
     if uns is None or key is None or key not in direct_members(uns):
         return None
     node = uns[key]
-    # A palette that is not a string array is not one we can realign — and
-    # a nullable group has no asstr(); read_element handles both encodings, after the snapshot has
-    # already been copied. Treated like a mismatched length: left alone.
+    # A palette that is not a one-dimensional string Dataset is not one we can
+    # realign, and the write below could not recreate it in place. Rejected
+    # here, before any read. Treated like a mismatched length: left alone.
     if not isinstance(node, h5py.Dataset) or node.ndim != 1 or not h5py.check_string_dtype(node.dtype):
         return None
     colors = list(read_string_dataset(uns, key))

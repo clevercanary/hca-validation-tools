@@ -273,3 +273,39 @@ def test_read_obs_index_refuses_a_masked_index(tmp_path):
         read_obs_index(str(path))
     assert "3 missing value" in str(exc.value)
     assert "_index" in str(exc.value)
+
+
+def test_read_element_decodes_fixed_width_byte_arrays(tmp_path):
+    """A byte array stamped ``array`` must come back as str.
+
+    anndata's own write_elem stamps a numpy S-kind array as ``array``, which
+    read_elem routes through read_array — raw bytes, no warning. Skipping the
+    decode makes cell IDs compare unequal to their str counterparts, so a join
+    silently matches nothing instead of failing (hca-validation-tools#637).
+    """
+    path = tmp_path / "fixed.h5ad"
+    with h5py.File(path, "w") as f:
+        write_elem(f, "ids", np.array([b"cell_0", b"cell_1"], dtype="S64"))
+        assert f["ids"].attrs["encoding-type"] == "array"  # the shape of the trap
+    with h5py.File(path) as f:
+        values = read_element(f["ids"])
+    assert list(values) == ["cell_0", "cell_1"]
+    assert all(isinstance(v, str) for v in values)
+
+
+def test_read_element_keeps_a_single_row_iterable(tmp_path):
+    """anndata unwraps a length-1 unstamped byte array to a scalar.
+
+    Without atleast_1d that reaches callers as a 0-d array, and
+    ``list(read_string_dataset(...))`` raises "iteration over a 0-d array" —
+    on a one-category legacy categorical, or a one-cell file.
+    """
+    path = tmp_path / "one.h5ad"
+    with h5py.File(path, "w") as f:
+        f.create_dataset("solo", data=np.array([b"only"], dtype="S8"))
+    # Reading an unstamped element warns — that is anndata telling us it took
+    # the legacy path, which is exactly the path being tested.
+    with h5py.File(path) as f, pytest.warns(Warning, match="without encoding metadata"):
+        values = read_element(f["solo"])
+    assert values.ndim == 1
+    assert list(values) == ["only"]

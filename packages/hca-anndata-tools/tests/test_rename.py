@@ -344,8 +344,16 @@ def test_rename_refuses_an_unwritable_index_before_taking_a_snapshot(tmp_path):
     assert set(tmp_path.iterdir()) == before
 
 
-def test_rename_refuses_a_masked_index(tmp_path):
-    """A cell with no ID cannot be matched against the obsm frames' copies."""
+def test_rename_refuses_a_nullable_index_for_the_write_reason_not_the_mask(tmp_path):
+    """The writable guard fires first, and the message must say so.
+
+    An earlier version of this test made the index masked and asserted only
+    that an error came back — which passed for the wrong reason, since
+    require_writable_index refuses a nullable index whether or not it is
+    masked. rename never reaches read_index's missing-value check for the obs
+    index: only a plain string-array Dataset gets past the guard, and that
+    encoding cannot carry nulls.
+    """
     path = create_hca_h5ad(tmp_path / "masked.h5ad")
     with h5py.File(path, "r+") as f:
         obs = f["obs"]
@@ -355,3 +363,5 @@ def test_rename_refuses_a_masked_index(tmp_path):
         str(path), column="sample_id", value="B1_0023", prefix_from="MH_mix_", prefix_to="MH_mix_BR1_"
     )
     assert "error" in result
+    assert "cannot write back" in result["error"]
+    assert "missing value" not in result["error"]
