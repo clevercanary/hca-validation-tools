@@ -268,7 +268,7 @@ def read_obs_index(path: str) -> list[str]:
             — see :func:`read_index` for why that is left to callers.
     """
     with h5py.File(path, "r") as f:
-        idx_key = obs_index_name(f["obs"])  # pyright: ignore[reportArgumentType]
+        idx_key = obs_index_name(f["obs"])
         return list(read_index(f["obs"], idx_key, "obs"))
 
 
