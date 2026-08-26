@@ -182,6 +182,30 @@ def read_element(item: h5py.Group | h5py.Dataset | h5py.Datatype) -> np.ndarray:
     return values
 
 
+def index_length(item: h5py.Group | h5py.Dataset | h5py.Datatype) -> int:
+    """The row count of an index element, from HDF5 metadata where it can be.
+
+    The one place this package looks inside a nullable group's ``values``
+    child, and it is deliberately bounded to a *shape*: no decoding, no mask,
+    nothing that re-implements anndata's registry — which is the reason the
+    reads go through :func:`read_element` instead.
+
+    :func:`read_element` answers the same question by materialising every ID:
+    1.15s and 174 MB on a 944k-cell object, for a number HDF5 already stores in
+    a header. Callers run it after a multi-gigabyte copy, with a curator
+    already waiting.
+
+    Anything else — an encoding we have not met, a scalar — falls through to
+    ``read_element``, so the unknown case is correct but slow rather than
+    wrong.
+    """
+    if isinstance(item, h5py.Dataset) and item.ndim:
+        return item.shape[0]
+    if isinstance(item, h5py.Group) and isinstance(values := item.get("values"), h5py.Dataset) and values.ndim:
+        return values.shape[0]
+    return read_element(item).shape[0]
+
+
 def _strip_ensembl_version(eid: str) -> str:
     """Strip version suffix from Ensembl ID: ENSG00000173947.7 -> ENSG00000173947."""
     if eid.startswith("ENSG") and "." in eid:
@@ -730,10 +754,9 @@ def verify_categorical_integrity(
         None if all columns pass, or an error message string.
     """
     obs = f["obs"]
-    idx_key = _decode_bytes(obs.attrs.get("_index", "_index"))
     # Not len(obs[idx_key]): on a nullable index that is the *member* count of
     # the values+mask group — 2 — so every column would be reported corrupt.
-    n_obs = read_element(obs[idx_key]).shape[0]
+    n_obs = index_length(obs[obs_index_name(obs)])
 
     for col in columns:
         item = obs[col]

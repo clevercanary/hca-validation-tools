@@ -4,13 +4,16 @@ import warnings
 
 import h5py
 import numpy as np
+import pandas as pd
 import pytest
 from anndata.io import write_elem
 
+from hca_anndata_tools import _io
 from hca_anndata_tools._io import (
     _decode_bytes,
     compact_categories,
     encoding_of,
+    index_length,
     is_writable_element,
     obs_index_name,
     read_batch_condition,
@@ -366,3 +369,42 @@ def test_verify_categorical_integrity_counts_rows_not_group_members(tmp_path):
         make_nullable_string_array(obs, obs_index_name(obs))
     with h5py.File(path) as f:
         assert verify_categorical_integrity(f, ["cell_type", "sex"]) is None
+
+
+def test_index_length_returns_rows_for_both_encodings(tmp_path):
+    """50 cells either way — never the group's member count of 2."""
+    plain = create_sample_h5ad(tmp_path / "plain.h5ad")
+    with h5py.File(plain) as f:
+        obs = f["obs"]
+        assert index_length(obs[obs_index_name(obs)]) == 50
+
+    with h5py.File(_nullable(tmp_path)) as f:
+        obs = f["obs"]
+        item = obs[obs_index_name(obs)]
+        assert isinstance(item, h5py.Group)  # the shape that used to return 2
+        assert index_length(item) == 50
+
+
+def test_index_length_does_not_read_the_values(tmp_path, monkeypatch):
+    """Metadata only — proven by making a values read fail.
+
+    The point of this helper is the 174 MB and 1.15s that read_element spends
+    on a 944k-cell index to produce a number the HDF5 header already holds.
+    Asserting the count alone would pass either way, so the read is removed.
+    """
+
+    def boom(item):
+        raise AssertionError("index_length read the values")
+
+    monkeypatch.setattr(_io, "read_element", boom)
+    with h5py.File(_nullable(tmp_path)) as f:
+        obs = f["obs"]
+        assert index_length(obs[obs_index_name(obs)]) == 50
+
+
+def test_index_length_falls_back_for_an_unknown_group(tmp_path):
+    """An encoding with no ``values`` child is slow, not wrong."""
+    path = tmp_path / "cats.h5ad"
+    with h5py.File(path, "w") as f:
+        write_elem(f, "col", pd.Categorical(["a", "b", "a"]))
+        assert index_length(f["col"]) == 3
