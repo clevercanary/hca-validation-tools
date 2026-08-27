@@ -77,8 +77,11 @@ And the conversion to the profile splits cleanly on the mask:
 
 Where the version constraint actually lives matters for maintenance:
 
-- `hca-anndata-tools` declares only `anndata>=0.11,<1` — deliberately loose;
-  this package has no pin of its own.
+- `hca-anndata-tools` declares `anndata>=0.11,<0.12` — capped below 0.12 so
+  CI, which resolves fresh (package locks are gitignored), tests the writer
+  this profile is defined against; the cap moves when cellxgene-schema's
+  pin moves. (0.12 already serializes some encodings differently — its
+  first CI run failed the encoding-matrix tests on exactly that.)
 - `hca-schema-validator` declares `anndata==0.11.4`, and its pyproject says
   why: these are **cellxgene-schema 7.0.1's pins, not ours** — the vendored
   validator must reproduce that environment to behave identically, so they
