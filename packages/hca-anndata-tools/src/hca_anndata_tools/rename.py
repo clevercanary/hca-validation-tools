@@ -23,9 +23,11 @@ import pandas as pd
 from ._io import (
     _decode_bytes,
     direct_members,
+    encoding_of,
     obs_index_name,
     read_categorical_data,
     read_edit_log_h5py,
+    read_element,
     read_group,
     read_index,
     read_uns,
@@ -89,10 +91,18 @@ def _selection_mask(obs: h5py.Group, column: str, value: str) -> np.ndarray:
             return np.zeros(codes.shape, dtype=bool)
         return codes == categories.get_loc(value)
     if isinstance(item, h5py.Group):
-        # Nullable-dtype columns (pandas boolean / Int64 / string) are stored
-        # as values+mask groups with no categories; they have no `.dtype`, so
-        # without this branch the string check below would crash instead of
-        # honoring the select-nothing contract above.
+        if encoding_of(item) == "nullable-string-array":
+            # Real string values the readers read (#637): selecting nothing
+            # here would report the false diagnosis "no rows match" on the
+            # very files that motivated the read fix. A masked row is pd.NA,
+            # which equals nothing, so it never matches.
+            values = read_element(item)
+            return np.array([not pd.isna(v) and v == value for v in values.flat], dtype=bool)
+        # Non-string nullable columns (pandas boolean / Int64) are stored as
+        # values+mask groups with no categories; they can never equal a
+        # string value and have no `.dtype`, so without this branch the
+        # string check below would crash instead of honoring the
+        # select-nothing contract above.
         values = item.get("values")
         shape = values.shape if isinstance(values, h5py.Dataset) else (0,)
         return np.zeros(shape, dtype=bool)

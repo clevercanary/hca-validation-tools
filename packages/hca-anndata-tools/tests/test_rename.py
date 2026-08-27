@@ -24,6 +24,7 @@ from hca_anndata_tools.testing import (
     create_hca_h5ad,
     make_fixed_width_byte_array,
     make_nullable_index,
+    make_nullable_string_array,
 )
 
 B1_IDS = [cell_id for cell_id, sample in HCA_TEST_ROWS if sample == "B1_0023"]
@@ -379,3 +380,35 @@ def test_rename_accepts_a_fixed_width_byte_index(tmp_path):
     ids = read_obs_index(result["output_path"])
     assert "MH_mix_BR1_AAA" in ids
     assert "MH_mix_TTT" in ids
+
+
+def test_rename_selects_rows_from_a_nullable_string_selector(tmp_path):
+    """A nullable-string selector column holds real values the readers read
+    (#637) — selecting nothing would report the false diagnosis "no rows
+    match" on the liver shape. A masked row equals nothing and never matches.
+
+    anndata converts string obs columns to categoricals on write
+    (strings_to_categoricals), so the plain string dataset is built directly
+    before conversion to the nullable group.
+    """
+    path = create_hca_h5ad(tmp_path / "nullable_sel.h5ad")
+    samples = [sample for _, sample in HCA_TEST_ROWS]
+    with h5py.File(path, "r+") as f:
+        obs = f["obs"]
+        del obs["sample_id"]
+        ds = obs.create_dataset("sample_id", data=np.array(samples, dtype=object), dtype=h5py.string_dtype())
+        ds.attrs["encoding-type"] = "string-array"
+        ds.attrs["encoding-version"] = "0.2.0"
+        # Masks row 0 (MH_mix_AAA, B1_0023): a masked row must not match.
+        make_nullable_string_array(obs, "sample_id", masked=1)
+
+    result = rename_cell_ids(
+        str(path), column="sample_id", value="B1_0023", prefix_from="MH_mix_", prefix_to="MH_mix_BR1_"
+    )
+
+    assert "error" not in result, result.get("error")
+    assert result["n_selected"] == len(B1_IDS) - 1  # the masked row did not match
+    after = ad.read_h5ad(result["output_path"])
+    assert "MH_mix_AAA" in after.obs_names  # masked selector row: untouched
+    assert "MH_mix_BR1_CCC" in after.obs_names
+    assert "MH_mix_BR1_GGG" in after.obs_names
