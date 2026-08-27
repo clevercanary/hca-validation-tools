@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 from . import __version__
-from ._keys import EDIT_LOG_KEY, PROVENANCE_KEY
+from ._keys import EDIT_LOG_KEY, PROVENANCE_KEY, UNWRITABLE_REMEDY
 
 if TYPE_CHECKING:
     from anndata import AnnData
@@ -559,10 +559,8 @@ def write_h5ad(
         if nullable := nullable_string_locations(adata):
             return {
                 "error": (
-                    f"Refusing to write: {', '.join(nullable)} hold(s) pandas nullable string "
-                    f"values, which this package can read but cannot write back "
-                    f"(hca-validation-tools#641). Re-exporting the file with plain string "
-                    f"arrays is the workaround available today; it is not the only possible fix."
+                    f"Refusing to write: {', '.join(nullable)} hold(s) pandas "
+                    f"nullable string values, {UNWRITABLE_REMEDY}"
                 )
             }
 

@@ -27,8 +27,9 @@ from ._io import (
     DEFAULT_PLACEHOLDERS,
     check_duplicate_ids,
     direct_members,
-    encoding_of,
+    holds_string_values,
     is_missing_value,
+    masked_categories_reason,
     obs_index_name,
     read_categorical_data,
     read_edit_log_h5py,
@@ -112,21 +113,14 @@ def _read_column(
         # (the liver shape, hca-validation-tools#638) — still string values,
         # and probing .dtype on the group would leak an h5py internal.
         cats_item = item["categories"]
-        non_string_categorical = (
-            f"{side} column '{col}' is a categorical of non-string values — "
-            "only string-valued categorical and string obs columns can be backfilled"
-        )
-        if isinstance(cats_item, h5py.Group):
-            if encoding_of(cats_item) != "nullable-string-array":
-                return None, non_string_categorical
-        elif len(cats_item) and h5py.check_string_dtype(cats_item.dtype) is None:  # pyright: ignore[reportArgumentType, reportAttributeAccessIssue]
-            return None, non_string_categorical
-        cats, codes = read_categorical_data(item)  # pyright: ignore[reportArgumentType]
-        if is_target and (n_masked := int(pd.isna(cats).sum())):
+        if len(cats_item) and not holds_string_values(cats_item):  # pyright: ignore[reportArgumentType]
             return None, (
-                f"Target column '{col}' has {n_masked} masked (null) categories — a masked "
-                "category has no value a rewrite could keep; repair the column upstream first"
+                f"{side} column '{col}' is a categorical of non-string values — "
+                "only string-valued categorical and string obs columns can be backfilled"
             )
+        cats, codes = read_categorical_data(item)  # pyright: ignore[reportArgumentType]
+        if is_target and (reason := masked_categories_reason(cats, f"Target column '{col}'")):
+            return None, reason
         cat_values = np.array(list(cats), dtype=object)
         # pd.isna first: a masked category *is* a missing value, and
         # is_missing_value would call .strip() on pd.NA.
@@ -144,24 +138,18 @@ def _read_column(
             "values": values,
             "missing": missing,
         }, None
-    if isinstance(item, h5py.Group):
-        if encoding_of(item) != "nullable-string-array":
-            # nullable-integer / nullable-boolean: same verdict as their
-            # plain counterparts below.
-            return None, (
-                f"{side} column '{col}' is not categorical or string — only those obs column types can be backfilled"
-            )
-        if is_target:
-            reason = unwritable_element_reason(item, f"Target column '{col}'")
-            assert reason is not None  # a Group is never writable
-            return None, f"Refusing to backfill: {reason}"
-        values = read_element(item)
-    elif h5py.check_string_dtype(item.dtype) is None:  # pyright: ignore[reportAttributeAccessIssue]
+    # Numeric, boolean, and their nullable group counterparts all land here:
+    # no string values to compare, one verdict.
+    if not holds_string_values(item):
         return None, (
             f"{side} column '{col}' is not categorical or string — only those obs column types can be backfilled"
         )
-    else:
-        values = read_element(item)
+    # A nullable-string target reads fine but replace_string_dataset needs a
+    # Dataset to copy layout from — refuse before the snapshot. A Dataset
+    # target passes through (reason is None).
+    if is_target and (reason := unwritable_element_reason(item, f"Target column '{col}'")):
+        return None, f"Refusing to backfill: {reason}"
+    values = read_element(item)
     # factorize sends pd.NA (a masked entry) to code -1 — missing, which is
     # exactly what a masked source value means here.
     codes, uniques = pd.factorize(values)

@@ -21,10 +21,12 @@ from hca_anndata_tools import rename_cell_ids
 from hca_anndata_tools._io import obs_index_name, read_obs_index
 from hca_anndata_tools.testing import (
     HCA_TEST_ROWS,
+    assert_no_snapshot_written,
     create_hca_h5ad,
     make_fixed_width_byte_array,
     make_nullable_index,
     make_nullable_string_array,
+    make_plain_string_column,
 )
 
 B1_IDS = [cell_id for cell_id, sample in HCA_TEST_ROWS if sample == "B1_0023"]
@@ -33,10 +35,6 @@ B1_IDS = [cell_id for cell_id, sample in HCA_TEST_ROWS if sample == "B1_0023"]
 @pytest.fixture
 def hca_path(tmp_path) -> Path:
     return create_hca_h5ad(tmp_path / "test.h5ad")
-
-
-def assert_no_snapshot_written(path: Path) -> None:
-    assert not list(path.parent.glob("*-edit-*.h5ad"))
 
 
 def test_rename_happy_path(hca_path):
@@ -395,10 +393,7 @@ def test_rename_selects_rows_from_a_nullable_string_selector(tmp_path):
     samples = [sample for _, sample in HCA_TEST_ROWS]
     with h5py.File(path, "r+") as f:
         obs = f["obs"]
-        del obs["sample_id"]
-        ds = obs.create_dataset("sample_id", data=np.array(samples, dtype=object), dtype=h5py.string_dtype())
-        ds.attrs["encoding-type"] = "string-array"
-        ds.attrs["encoding-version"] = "0.2.0"
+        make_plain_string_column(obs, "sample_id", samples)
         # Masks row 0 (MH_mix_AAA, B1_0023): a masked row must not match.
         make_nullable_string_array(obs, "sample_id", masked=1)
 

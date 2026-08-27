@@ -11,7 +11,13 @@ import pytest
 
 from hca_anndata_tools._io import _codes_dtype
 from hca_anndata_tools.backfill import backfill_obs_from_source
-from hca_anndata_tools.testing import create_sample_h5ad, make_nullable_index, make_nullable_string_array
+from hca_anndata_tools.testing import (
+    assert_no_snapshot_written,
+    create_sample_h5ad,
+    make_nullable_index,
+    make_nullable_string_array,
+    make_plain_string_column,
+)
 
 # The canonical scenario, one row per case the tool must handle:
 #
@@ -470,27 +476,13 @@ def test_backfill_reads_nullable_source_categories(target_source, tmp_path):
     assert result["total_filled"] == 2
 
 
-def _to_plain_string_column(path, col, values):
-    """Replace a column with a plain string-array Dataset.
-
-    anndata's write converts string obs columns to categoricals
-    (strings_to_categoricals), so a genuine string-dataset column has to be
-    built directly.
-    """
-    with h5py.File(path, "r+") as f:
-        del f[f"obs/{col}"]
-        ds = f["obs"].create_dataset(col, data=np.array(values, dtype=object), dtype=h5py.string_dtype())
-        ds.attrs["encoding-type"] = "string-array"
-        ds.attrs["encoding-version"] = "0.2.0"
-
-
 def test_backfill_treats_a_masked_source_value_as_missing(tmp_path):
     """A masked (pd.NA) source value is absent data: the row must not fill,
     and must not become the literal string "<NA>" in the target."""
     target = _make_h5ad(tmp_path / "target.h5ad", TARGET_IDS, {"library_id": TARGET_LIB})
     source = _make_h5ad(tmp_path / "source.h5ad", SOURCE_IDS, {"library_id": SOURCE_LIB})
-    _to_plain_string_column(source, "library_id", SOURCE_LIB)
     with h5py.File(source, "r+") as f:
+        make_plain_string_column(f["obs"], "library_id", SOURCE_LIB)
         # Masks the first entry — c1's "L1" — so only c2 can still fill.
         make_nullable_string_array(f["obs"], "library_id", masked=1)
 
@@ -531,7 +523,7 @@ def test_backfill_refuses_masked_target_categories(target_source):
 
     assert "error" in result
     assert "masked (null) categories" in result["error"]
-    assert not list(Path(target).parent.glob("*-edit-*.h5ad"))
+    assert_no_snapshot_written(target)
 
 
 def test_backfill_refuses_a_nullable_target_string_column(tmp_path):
@@ -540,8 +532,8 @@ def test_backfill_refuses_a_nullable_target_string_column(tmp_path):
     with the shared #641 message, before any snapshot is taken."""
     target = _make_h5ad(tmp_path / "target.h5ad", TARGET_IDS, {"library_id": TARGET_LIB})
     source = _make_h5ad(tmp_path / "source.h5ad", SOURCE_IDS, {"library_id": SOURCE_LIB})
-    _to_plain_string_column(target, "library_id", ["" if v is None else v for v in TARGET_LIB])
     with h5py.File(target, "r+") as f:
+        make_plain_string_column(f["obs"], "library_id", ["" if v is None else v for v in TARGET_LIB])
         make_nullable_string_array(f["obs"], "library_id")
 
     result = backfill_obs_from_source(target, source, columns=["library_id"])
@@ -549,4 +541,4 @@ def test_backfill_refuses_a_nullable_target_string_column(tmp_path):
     assert "error" in result
     assert "cannot write back" in result["error"]
     assert "hca-validation-tools#641" in result["error"]
-    assert not list(Path(target).parent.glob("*-edit-*.h5ad"))
+    assert_no_snapshot_written(target)

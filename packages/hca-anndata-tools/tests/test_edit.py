@@ -14,7 +14,7 @@ from hca_anndata_tools.edit import (
     set_uns,
     view_edit_log,
 )
-from hca_anndata_tools.testing import make_nullable_string_array
+from hca_anndata_tools.testing import assert_no_snapshot_written, make_nullable_string_array
 from hca_anndata_tools.write import EDIT_LOG_KEY
 
 # --- list_uns_fields ---
@@ -492,4 +492,4 @@ def test_replace_placeholder_refuses_masked_categories(tmp_path):
     assert "error" in result
     assert "masked (null) categories" in result["error"]
     assert "NAType" not in result["error"]
-    assert not list(tmp_path.glob("*-edit-*.h5ad"))
+    assert_no_snapshot_written(path)

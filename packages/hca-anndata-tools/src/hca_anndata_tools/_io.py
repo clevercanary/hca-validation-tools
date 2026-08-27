@@ -17,7 +17,7 @@ import h5py
 import pandas as pd
 from anndata.io import read_elem, write_elem
 
-from ._keys import EDIT_LOG_KEY, PROVENANCE_KEY
+from ._keys import EDIT_LOG_KEY, PROVENANCE_KEY, UNWRITABLE_REMEDY
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -87,6 +87,22 @@ def encoding_of(item: h5py.Group | h5py.Dataset | h5py.Datatype) -> str | None:
     neither an isinstance dance nor a pyright suppression.
     """
     return _decode_bytes(item.attrs.get("encoding-type"))
+
+
+def holds_string_values(item: h5py.Group | h5py.Dataset | h5py.Datatype) -> bool:
+    """True if this element's values are strings, whatever its container.
+
+    The one place the string-encoding taxonomy lives: a Dataset answers by
+    dtype, and a Group holds strings only as a ``nullable-string-array`` —
+    the values+mask serialization of pandas ``StringDtype``. Callers that
+    fork on "can these values be compared or backfilled as strings" ask
+    here, so the next string-holding encoding anndata ships is taught in
+    one place rather than at every call site — per-site taxonomy tracking
+    is the drift that produced hca-validation-tools#637.
+    """
+    if isinstance(item, h5py.Group):
+        return encoding_of(item) == "nullable-string-array"
+    return h5py.check_string_dtype(item.dtype) is not None
 
 
 def is_writable_element(item: h5py.Group | h5py.Dataset | h5py.Datatype) -> bool:
@@ -273,10 +289,26 @@ def unwritable_element_reason(item: h5py.Group | h5py.Dataset | h5py.Datatype, s
         return None
     return (
         f"{subject} uses the "
-        f"'{encoding_of(item) or 'unstamped ' + type(item).__name__.lower()}' encoding, which this "
-        f"package can read but cannot write back (hca-validation-tools#641). "
-        f"Re-exporting the file with plain string arrays is the workaround "
-        f"available today; it is not the only possible fix."
+        f"'{encoding_of(item) or 'unstamped ' + type(item).__name__.lower()}' encoding, "
+        f"{UNWRITABLE_REMEDY}"
+    )
+
+
+def masked_categories_reason(cats: pd.Index, subject: str) -> str | None:
+    """Why these categories block a rewrite, or None if none are masked.
+
+    A masked (pd.NA) category has no value a rewrite could keep —
+    ``str(pd.NA)`` is ``"<NA>"`` — and none to compare against anything.
+    Shared the way :func:`unwritable_element_reason` is, so the wording
+    cannot drift between the tools that rewrite categoricals; ``subject``
+    is what varies.
+    """
+    n_masked = int(pd.isna(cats).sum())
+    if not n_masked:
+        return None
+    return (
+        f"{subject} has {n_masked} masked (null) categories — a masked "
+        "category has no value a rewrite could keep; repair the column upstream first"
     )
 
 

@@ -214,6 +214,30 @@ def create_hca_h5ad(
     return path
 
 
+def make_plain_string_column(parent: h5py.Group, name: str, values: list[str]) -> None:
+    """Create (or replace) ``name`` as a plain ``string-array`` Dataset.
+
+    anndata's write converts string obs columns to categoricals
+    (``strings_to_categoricals``), so a genuine plain string column cannot be
+    produced through ``write_h5ad`` — it has to be built directly. Composes
+    with :func:`make_nullable_string_array` to build a nullable column.
+    """
+    if name in parent:
+        del parent[name]
+    ds = parent.create_dataset(name, data=np.array(values, dtype=object), dtype=h5py.string_dtype())
+    ds.attrs["encoding-type"] = "string-array"
+    ds.attrs["encoding-version"] = "0.2.0"
+
+
+def assert_no_snapshot_written(path) -> None:
+    """No ``-edit-<timestamp>`` snapshot exists beside ``path``.
+
+    The no-partial-artifact half of every refusal test: a tool that refuses
+    must leave nothing wearing the snapshot name ``resolve_latest`` keys on.
+    """
+    assert not list(Path(path).parent.glob("*-edit-*.h5ad"))
+
+
 def make_nullable_string_array(parent: h5py.Group, name: str, *, masked: int = 0) -> None:
     """Rewrite an existing string dataset as a ``nullable-string-array`` group.
 

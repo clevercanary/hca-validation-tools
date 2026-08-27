@@ -12,6 +12,7 @@ import anndata as ad
 import pandas as pd
 import pytest
 
+from hca_anndata_tools.testing import assert_no_snapshot_written
 from hca_anndata_tools.write import (
     EDIT_LOG_KEY,
     MissingLineageRootError,
@@ -713,7 +714,7 @@ def test_write_h5ad_refuses_nullable_strings(sample_h5ad_for_write):
     assert "error" in result
     assert "obs['lineage']" in result["error"]
     assert "hca-validation-tools#641" in result["error"]
-    assert not list(sample_h5ad_for_write.parent.glob("*-edit-*.h5ad"))
+    assert_no_snapshot_written(sample_h5ad_for_write)
 
 
 def test_write_h5ad_removes_partial_output_on_failure(sample_h5ad_for_write):
@@ -727,4 +728,4 @@ def test_write_h5ad_removes_partial_output_on_failure(sample_h5ad_for_write):
 
     assert "error" in result
     assert "edit_entries" not in result["error"]  # the write itself must be what failed
-    assert not list(sample_h5ad_for_write.parent.glob("*-edit-*.h5ad"))
+    assert_no_snapshot_written(sample_h5ad_for_write)

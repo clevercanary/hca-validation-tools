@@ -8,12 +8,12 @@ import typing
 from pathlib import Path
 
 import h5py
-import pandas as pd
 from pydantic import TypeAdapter, ValidationError
 
 from ._io import (
     DEFAULT_PLACEHOLDERS,
     compact_categories,
+    masked_categories_reason,
     open_h5ad,
     read_categorical_data,
     read_column_order,
@@ -299,17 +299,9 @@ def replace_placeholder_values(
                 item = obs[col]
                 if isinstance(item, h5py.Group) and "categories" in item:
                     cats, codes = read_categorical_data(item)
-                    # Before .lower(): a masked (pd.NA) category has no value
-                    # to compare against the placeholder list, and no value a
-                    # rewrite could keep. Refused here, before the snapshot.
-                    if n_masked := int(pd.isna(cats).sum()):
-                        return {
-                            "error": (
-                                f"Column '{col}' has {n_masked} masked (null) categories — a masked "
-                                "category has no value a rewrite could keep; repair the column "
-                                "upstream first"
-                            )
-                        }
+                    # Before .lower(): refused here, before the snapshot.
+                    if reason := masked_categories_reason(cats, f"Column '{col}'"):
+                        return {"error": reason}
                     placeholder_count = 0
                     matches = {}
                     for i in range(len(cats)):
