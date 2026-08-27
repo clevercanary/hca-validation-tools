@@ -64,7 +64,11 @@ And the conversion to the profile splits cleanly on the mask:
   no ID*, every fill fabricates one, `str(pd.NA)` collapses all masked rows
   to the same `"<NA>"`, and pandas joins NA to NA, so the fabrication then
   silently *matches things*. This is a data problem to refuse by name, not
-  an encoding problem to paper over.
+  an encoding problem to paper over. One shape sits outside even the
+  read-wide guarantee: a *categorical* whose **categories** are masked is a
+  file anndata itself cannot read ("Categorical categories cannot be
+  null"), so principle 2 does not apply to it — tools that hit it owe a
+  named refusal, nothing more.
 
 ## The anndata pin, precisely
 

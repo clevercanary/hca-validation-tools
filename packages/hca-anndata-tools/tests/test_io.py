@@ -402,3 +402,23 @@ def test_index_length_falls_back_for_an_unknown_group(tmp_path):
     with h5py.File(path, "w") as f:
         write_elem(f, "col", pd.Categorical(["a", "b", "a"]))
         assert index_length(f["col"]) == 3
+
+
+def test_holds_string_values_rejects_a_stamped_group_missing_values(tmp_path):
+    """A group stamped nullable-string-array but missing its values child is
+    corrupt, not string-valued — passing it would leak anndata's raw HDF5
+    KeyError through every caller instead of a named refusal."""
+    path = tmp_path / "truncated.h5ad"
+    with h5py.File(path, "w") as f:
+        grp = f.create_group("broken")
+        grp.attrs["encoding-type"] = "nullable-string-array"
+        grp.attrs["encoding-version"] = "0.1.0"
+        assert _io.holds_string_values(grp) is False
+
+
+def test_is_missing_value_judges_na_itself():
+    """NA is judged inside the shared predicate, not by call-site guards —
+    per-site guards are how 'NAType has no attribute strip' comes back."""
+    assert _io.is_missing_value(pd.NA, set()) is True  # pyright: ignore[reportArgumentType]
+    assert _io.is_missing_value("unknown", {"unknown"}) is True
+    assert _io.is_missing_value("real value", {"unknown"}) is False

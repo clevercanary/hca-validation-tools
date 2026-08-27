@@ -715,6 +715,9 @@ def test_write_h5ad_refuses_nullable_strings(sample_h5ad_for_write):
     assert "obs['lineage']" in result["error"]
     assert "hca-validation-tools#641" in result["error"]
     assert_no_snapshot_written(sample_h5ad_for_write)
+    # A refusal must leave adata untouched — a stamped edit log would
+    # double-append on the fixed-and-retried write.
+    assert "provenance" not in adata.uns
 
 
 def test_write_h5ad_removes_partial_output_on_failure(sample_h5ad_for_write):
@@ -729,3 +732,35 @@ def test_write_h5ad_removes_partial_output_on_failure(sample_h5ad_for_write):
     assert "error" in result
     assert "edit_entries" not in result["error"]  # the write itself must be what failed
     assert_no_snapshot_written(sample_h5ad_for_write)
+
+
+def test_write_h5ad_funnel_covers_varm_and_uns(sample_h5ad_for_write):
+    """The refuse-before-any-bytes guarantee holds wherever anndata
+    serializes a dataframe or pandas array — not just obs/var."""
+    adata = ad.read_h5ad(sample_h5ad_for_write)
+    adata.varm["annotations"] = pd.DataFrame(
+        {"family": pd.array(["x"] * adata.n_vars, dtype="string")}, index=adata.var_names
+    )
+    adata.uns["meta"] = {"table": pd.DataFrame({"name": pd.array(["y"], dtype="string")})}
+
+    result = write_h5ad(adata, str(sample_h5ad_for_write), [_make_entry()])
+
+    assert "error" in result
+    assert "varm['annotations']['family']" in result["error"]
+    assert "uns['meta']['table']['name']" in result["error"]
+    assert_no_snapshot_written(sample_h5ad_for_write)
+
+
+def test_write_h5ad_failure_keeps_a_preexisting_output(tmp_path, sample_h5ad_for_write):
+    """The failure unlink removes only a file the write itself created: a
+    pre-existing output may still be intact (backed writes open with mode
+    'a'), and deleting maybe-good data is worse than leaving it."""
+    decoy = tmp_path / "decoy.h5ad"
+    decoy.write_bytes(b"pre-existing bytes")
+    adata = ad.read_h5ad(sample_h5ad_for_write)
+    adata.uns["unserializable"] = object()
+
+    result = write_h5ad(adata, str(sample_h5ad_for_write), [_make_entry()], output_path=str(decoy))
+
+    assert "error" in result
+    assert decoy.exists()

@@ -85,7 +85,8 @@ def _read_column(
     """Read one obs column into a uniform shape: (column dict, error).
 
     The dict holds ``kind`` ('categorical' or 'string'), per-row ``values``
-    (object array of strings, None where NaN or masked), and a ``missing``
+    (object array of strings; a missing row holds None — or pd.NA when its
+    code points at a masked category), and a ``missing``
     mask (NaN, masked, empty, or placeholder). Categorical columns also carry
     ``cats``/``codes``. Layouts with no missing vocabulary this tool
     understands (numeric or boolean values, plain or nullable) are refused
@@ -122,9 +123,7 @@ def _read_column(
         if is_target and (reason := masked_categories_reason(cats, f"Target column '{col}'")):
             return None, reason
         cat_values = np.array(list(cats), dtype=object)
-        # pd.isna first: a masked category *is* a missing value, and
-        # is_missing_value would call .strip() on pd.NA.
-        cat_missing = np.array([bool(pd.isna(c)) or is_missing_value(c, placeholders) for c in cats], dtype=bool)
+        cat_missing = np.array([is_missing_value(c, placeholders) for c in cats], dtype=bool)
         valid = codes >= 0
         values = np.full(len(codes), None, dtype=object)
         values[valid] = cat_values[codes[valid]]

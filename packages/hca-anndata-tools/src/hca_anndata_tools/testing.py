@@ -234,8 +234,12 @@ def assert_no_snapshot_written(path) -> None:
 
     The no-partial-artifact half of every refusal test: a tool that refuses
     must leave nothing wearing the snapshot name ``resolve_latest`` keys on.
+    Judged by ``write._is_timestamped`` — the naming's one owner — so a
+    rename of the snapshot pattern cannot turn this assert vacuously green.
     """
-    assert not list(Path(path).parent.glob("*-edit-*.h5ad"))
+    from .write import _is_timestamped
+
+    assert not [p for p in Path(path).parent.iterdir() if _is_timestamped(str(p))]
 
 
 def make_nullable_string_array(parent: h5py.Group, name: str, *, masked: int = 0) -> None:

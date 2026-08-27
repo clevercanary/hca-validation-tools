@@ -480,8 +480,9 @@ def nullable_string_locations(adata: AnnData) -> list[str]:
     only *after* it has already streamed X into the output file. Checking
     here refuses before any bytes are written (hca-validation-tools#641
     tracks converting instead of refusing). Covers the value a column holds
-    and the categories behind a categorical, on every dataframe anndata
-    serializes: obs, var, raw.var, and obsm frames.
+    and the categories behind a categorical, everywhere anndata serializes
+    one: obs, var, raw.var, the obsm/varm/raw.varm frames, and uns —
+    including DataFrames and bare pandas arrays nested in uns dicts.
     """
     import pandas as pd
 
@@ -493,8 +494,23 @@ def nullable_string_locations(adata: AnnData) -> list[str]:
     frames = [("obs", adata.obs), ("var", adata.var)]
     if adata.raw is not None:
         frames.append(("raw.var", adata.raw.var))
-    frames += [(f"obsm['{key}']", val) for key, val in adata.obsm.items() if isinstance(val, pd.DataFrame)]
+        frames += [(f"raw.varm['{k}']", v) for k, v in adata.raw.varm.items() if isinstance(v, pd.DataFrame)]
+    frames += [(f"obsm['{k}']", v) for k, v in adata.obsm.items() if isinstance(v, pd.DataFrame)]
+    frames += [(f"varm['{k}']", v) for k, v in adata.varm.items() if isinstance(v, pd.DataFrame)]
+
     found = []
+
+    def collect_uns(prefix: str, mapping) -> None:
+        for k, v in mapping.items():
+            loc = f"{prefix}['{k}']"
+            if isinstance(v, pd.DataFrame):
+                frames.append((loc, v))
+            elif isinstance(v, dict):
+                collect_uns(loc, v)
+            elif is_nullable_string(getattr(v, "dtype", None)):
+                found.append(loc)
+
+    collect_uns("uns", adata.uns)
     for name, df in frames:
         if is_nullable_string(df.index.dtype):
             found.append(f"{name} index")
@@ -544,6 +560,17 @@ def write_h5ad(
         if not Path(source_path).is_file():
             return {"error": f"Source file not found: {source_path}"}
 
+        # Before the uns mutation below: a refusal must leave adata exactly
+        # as the caller passed it, or a fixed-and-retried write re-reads the
+        # just-stamped entries as the existing log and appends them twice.
+        if nullable := nullable_string_locations(adata):
+            return {
+                "error": (
+                    f"Refusing to write: {', '.join(nullable)} hold(s) pandas "
+                    f"nullable string values, {UNWRITABLE_REMEDY}"
+                )
+            }
+
         provenance = adata.uns.get(PROVENANCE_KEY, {})
         if isinstance(provenance, dict) and EDIT_LOG_KEY in provenance:
             existing_log_raw = provenance[EDIT_LOG_KEY]
@@ -556,23 +583,25 @@ def write_h5ad(
 
         adata.uns.setdefault(PROVENANCE_KEY, {})[EDIT_LOG_KEY] = log_result["json"]
 
-        if nullable := nullable_string_locations(adata):
-            return {
-                "error": (
-                    f"Refusing to write: {', '.join(nullable)} hold(s) pandas "
-                    f"nullable string values, {UNWRITABLE_REMEDY}"
-                )
-            }
-
         if output_path is None:
             output_path = generate_output_path(source_path)
+        # Same-second chained edits make output_path == source_path
+        # (generate_output_path has 1-second resolution); the write then
+        # deliberately replaces the snapshot in place and
+        # cleanup_previous_version keeps it. The existed_before guard below
+        # is what makes that safe: a pre-existing file is never unlinked.
+        existed_before = Path(output_path).exists()
         try:
             adata.write_h5ad(output_path, compression=compression, compression_opts=compression_opts)
         except BaseException:
             # A truncated file wearing the -edit-<timestamp> name is
             # indistinguishable from a good snapshot — leave no plausible
-            # artifact behind a failed write.
-            Path(output_path).unlink(missing_ok=True)
+            # artifact behind a failed write. Only a file this write created:
+            # a pre-existing output may be intact (backed writes open with
+            # mode 'a' and a failure can precede any truncation), and
+            # deleting maybe-good data is worse than leaving it.
+            if not existed_before:
+                Path(output_path).unlink(missing_ok=True)
             raise
 
         cleanup_previous_version(source_path, output_path)

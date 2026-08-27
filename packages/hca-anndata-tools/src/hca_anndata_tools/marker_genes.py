@@ -87,6 +87,10 @@ def validate_marker_genes(path: str, annotation_set: str | None = None) -> dict:
         # A masked (pd.NA) value is a missing organism, not evidence of a
         # non-human one — and sorted() below cannot order pd.NA anyway.
         organisms = {o for o in organisms if not pd.isna(o)}
+        if not organisms:
+            # All values masked or NaN: absence of evidence must not pass the
+            # human-only gate and validate against the human GENCODE.
+            return {"error": "organism_ontology_term_id has no readable values — cannot confirm a human dataset"}
         non_human = organisms - {"NCBITaxon:9606"}
         if non_human:
             return {"error": f"Only human (NCBITaxon:9606) is supported, found non-human: {sorted(non_human)}"}

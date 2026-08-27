@@ -345,3 +345,30 @@ def test_masked_evidence_and_organism_values_are_skipped(tmp_path):
     assert result["total_unique_markers"] == 2
     reported = {item["marker_gene"] for item in result["not_in_gencode"]}
     assert reported == {"ZZZFAKE"}
+
+
+def test_all_masked_organism_is_refused_not_passed(tmp_path):
+    """Absence of organism evidence must not pass the human-only gate — an
+    all-masked column would otherwise validate against the human GENCODE
+    with the organism never established."""
+    obs = pd.DataFrame(
+        {
+            "organism_ontology_term_id": pd.Categorical(["NCBITaxon:9606"] * 2),
+            "test_labels": pd.Categorical(["typeA"] * 2),
+            "test_labels--marker_gene_evidence": pd.Categorical(["GFAP"] * 2),
+            "test_labels--cell_ontology_term_id": pd.Categorical(["CL:0000540"] * 2),
+        },
+        index=["cell_0", "cell_1"],
+    )
+    var = pd.DataFrame({"feature_name": ["GFAP"]}, index=["ENSG00000131095"])
+    X = sp.random(2, 1, density=0.5, format="csr", dtype=np.float32)
+    path = tmp_path / "masked_organism.h5ad"
+    ad.AnnData(X=X, obs=obs, var=var).write_h5ad(path)
+    with h5py.File(path, "r+") as f:
+        # The only category is masked: no readable organism value remains.
+        make_nullable_string_array(f["obs/organism_ontology_term_id"], "categories", masked=1)
+
+    result = validate_marker_genes(str(path))
+
+    assert "error" in result
+    assert "no readable values" in result["error"]

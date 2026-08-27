@@ -43,8 +43,13 @@ DEFAULT_PLACEHOLDERS = [
 
 
 def is_missing_value(value: str, placeholders: set[str]) -> bool:
-    """True if a string value means "no data": empty/whitespace or a
-    placeholder (compare against a pre-lowercased set)."""
+    """True if a value means "no data": pd.NA/NaN (readers hand masked
+    entries through as pd.NA), empty/whitespace, or a placeholder (compare
+    against a pre-lowercased set). NA is judged here, not at call sites —
+    a caller-side guard is the per-site drift that reintroduces
+    "'NAType' object has no attribute 'strip'" one consumer at a time."""
+    if pd.isna(value):
+        return True
     s = value.strip()
     return not s or s.lower() in placeholders
 
@@ -101,7 +106,11 @@ def holds_string_values(item: h5py.Group | h5py.Dataset | h5py.Datatype) -> bool
     is the drift that produced hca-validation-tools#637.
     """
     if isinstance(item, h5py.Group):
-        return encoding_of(item) == "nullable-string-array"
+        # The membership check keeps a *stamped but truncated* group (no
+        # ``values`` child — corrupt, and files arrive from external teams)
+        # out of the readers, so callers refuse it with their own named
+        # message instead of leaking anndata's raw HDF5 KeyError.
+        return encoding_of(item) == "nullable-string-array" and "values" in item
     return h5py.check_string_dtype(item.dtype) is not None
 
 
