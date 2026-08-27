@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
     import numpy as np
+    from pandas.api.typing import NAType
 
 # The HCA placeholder vocabulary (case-insensitive): obs values that mean
 # "no data". replace_placeholder_values blanks exact (lowercased) matches of
@@ -42,7 +43,7 @@ DEFAULT_PLACEHOLDERS = [
 ]
 
 
-def is_missing_value(value: str, placeholders: set[str]) -> bool:
+def is_missing_value(value: str | NAType, placeholders: set[str]) -> bool:
     """True if a value means "no data": pd.NA/NaN (readers hand masked
     entries through as pd.NA), empty/whitespace, or a placeholder (compare
     against a pre-lowercased set). NA is judged here, not at call sites —
@@ -52,6 +53,32 @@ def is_missing_value(value: str, placeholders: set[str]) -> bool:
         return True
     s = value.strip()
     return not s or s.lower() in placeholders
+
+
+def _masked_categories_open_error(path: str) -> str | None:
+    """Name the masked-categories column pandas' reader refused.
+
+    anndata cannot *read* a categorical whose categories are masked — pandas
+    raises "Categorical categories cannot be null" naming no column — so the
+    column is found again via h5py. Best-effort by design: the file is
+    already known bad, and a scan failure must not replace the original
+    error with a second traceback.
+    """
+    try:
+        with h5py.File(path, "r") as f:
+            for frame in ("obs", "var", "raw/var"):
+                group = f.get(frame)
+                if not isinstance(group, h5py.Group):
+                    continue
+                for col in group:
+                    item = group[col]
+                    if isinstance(item, h5py.Group) and "categories" in item:
+                        cats = pd.Index(read_element(item["categories"]))
+                        if reason := masked_categories_reason(cats, f"{frame} column '{col}'"):
+                            return reason
+    except Exception:
+        return None
+    return None
 
 
 @contextmanager
@@ -64,8 +91,19 @@ def open_h5ad(path: str, backed: Literal["r", "r+"] | None = "r"):
 
     Yields:
         An AnnData object.
+
+    Raises:
+        ValueError: With the column named, when the file holds a categorical
+            whose categories are masked — a shape anndata itself cannot read
+            (see :func:`masked_categories_reason`). Every tool that opens
+            files through here gets the named refusal for free.
     """
-    adata = ad.read_h5ad(path, backed=backed)
+    try:
+        adata = ad.read_h5ad(path, backed=backed)
+    except ValueError as e:
+        if "Categorical categories cannot be null" in str(e) and (named := _masked_categories_open_error(path)):
+            raise ValueError(named) from e
+        raise
     try:
         yield adata
     finally:
@@ -363,8 +401,13 @@ def read_obs_column_names(path: str) -> list[str]:
         return read_column_order(f["obs"])
 
 
-def read_obs_categorical_values(path: str, column: str) -> set[str]:
+def read_obs_categorical_values(path: str, column: str) -> set[str | NAType]:
     """Read the unique category values for a categorical obs column.
+
+    The set can contain ``pd.NA``: a nullable column's masked rows, or a
+    masked category, come through as NA (the annotation says so, so pyright
+    holds callers to an NA policy instead of letting ``sorted``/``lower``
+    crash at runtime on the liver shape).
 
     For categorical columns, HDF5 stores a small 'categories' array
     separately from the per-cell 'codes' array. This reads only the
@@ -415,6 +458,10 @@ def read_var_gene_names(path: str) -> tuple[set[str], dict[str, str]]:
             names = [categories[c] if c >= 0 else "" for c in codes]
         else:
             names = list(read_element(item))
+        # A masked name is no name — same as an unset categorical code above.
+        # pd.NA must not escape into results: str(pd.NA) is "<NA>", and the
+        # MCP layer cannot serialize NAType at all.
+        names = ["" if pd.isna(n) else n for n in names]
 
         gene_names = set(names)
 
@@ -836,7 +883,11 @@ def verify_obs_transplant(
                 # column holds, and object-boxing a float column costs ~14x here
                 # for no gain. dtype=object exists for callers that assign
                 # longer strings back in; a comparison does not.
-                if not np.array_equal(read_elem(temp_item), read_elem(out_item)):
+                # Not np.array_equal: it raises on object arrays holding
+                # pd.NA and calls NaN != NaN, so a byte-perfect float or
+                # nullable column would fail verification. Series.equals
+                # treats missing as equal to missing.
+                if not pd.Series(read_elem(temp_item)).equals(pd.Series(read_elem(out_item))):
                     return f"Verification failed: data mismatch for column '{col}'"
 
     return None

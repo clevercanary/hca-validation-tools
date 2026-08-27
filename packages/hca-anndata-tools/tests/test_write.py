@@ -751,16 +751,16 @@ def test_write_h5ad_funnel_covers_varm_and_uns(sample_h5ad_for_write):
     assert_no_snapshot_written(sample_h5ad_for_write)
 
 
-def test_write_h5ad_failure_keeps_a_preexisting_output(tmp_path, sample_h5ad_for_write):
-    """The failure unlink removes only a file the write itself created: a
-    pre-existing output may still be intact (backed writes open with mode
-    'a'), and deleting maybe-good data is worse than leaving it."""
+def test_write_h5ad_refuses_a_taken_output_path(tmp_path, sample_h5ad_for_write):
+    """The output name is claimed with O_EXCL before anything is written —
+    an occupied name is refused outright, so a failed write can never have
+    truncated (mode 'w') or deleted a pre-existing file."""
     decoy = tmp_path / "decoy.h5ad"
     decoy.write_bytes(b"pre-existing bytes")
     adata = ad.read_h5ad(sample_h5ad_for_write)
-    adata.uns["unserializable"] = object()
 
     result = write_h5ad(adata, str(sample_h5ad_for_write), [_make_entry()], output_path=str(decoy))
 
     assert "error" in result
-    assert decoy.exists()
+    assert "already exists" in result["error"]
+    assert decoy.read_bytes() == b"pre-existing bytes"

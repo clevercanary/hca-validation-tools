@@ -58,6 +58,13 @@ def test_extract_markers_skips_unknown():
     assert _extract_marker_genes_from_categories(categories) == {"GFAP", "RBFOX3"}
 
 
+def test_extract_markers_skips_placeholders_case_insensitively():
+    """'Unknown' and 'NONE' are placeholders, not gene symbols — the skip
+    judgment is is_missing_value's (lowercased), not a raw set match."""
+    categories = {"Unknown", "NONE", "Na", "  ", "GFAP"}
+    assert _extract_marker_genes_from_categories(categories) == {"GFAP"}
+
+
 def test_extract_markers_strips_whitespace():
     categories = {"  GFAP  ", "AIF1 , RBFOX3 "}
     assert _extract_marker_genes_from_categories(categories) == {"GFAP", "AIF1", "RBFOX3"}

@@ -583,25 +583,21 @@ def write_h5ad(
 
         adata.uns.setdefault(PROVENANCE_KEY, {})[EDIT_LOG_KEY] = log_result["json"]
 
+        # The same claim machinery every copy-and-patch tool uses
+        # (snapshot_copy): O_EXCL creates the output name, waiting out a
+        # same-second collision. The claim is what makes the failure unlink
+        # safe — the file at output_path is ours by construction, so removing
+        # it can never delete pre-existing data, and no partial file is left
+        # wearing the -edit-<timestamp> name resolve_latest keys on.
         if output_path is None:
-            output_path = generate_output_path(source_path)
-        # Same-second chained edits make output_path == source_path
-        # (generate_output_path has 1-second resolution); the write then
-        # deliberately replaces the snapshot in place and
-        # cleanup_previous_version keeps it. The existed_before guard below
-        # is what makes that safe: a pre-existing file is never unlinked.
-        existed_before = Path(output_path).exists()
+            output_path = _claim_snapshot_path(source_path)
+        elif not _try_claim(output_path):
+            return {"error": f"Refusing to write: a file already exists at {output_path}"}
         try:
             adata.write_h5ad(output_path, compression=compression, compression_opts=compression_opts)
         except BaseException:
-            # A truncated file wearing the -edit-<timestamp> name is
-            # indistinguishable from a good snapshot — leave no plausible
-            # artifact behind a failed write. Only a file this write created:
-            # a pre-existing output may be intact (backed writes open with
-            # mode 'a' and a failure can precede any truncation), and
-            # deleting maybe-good data is worse than leaving it.
-            if not existed_before:
-                Path(output_path).unlink(missing_ok=True)
+            with contextlib.suppress(OSError):
+                Path(output_path).unlink()
             raise
 
         cleanup_previous_version(source_path, output_path)

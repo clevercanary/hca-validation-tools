@@ -2,38 +2,42 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import pandas as pd
 
 from ._gencode import load_gencode_reference
 from ._io import (
+    is_missing_value,
     read_obs_categorical_values,
     read_obs_column_names,
     read_var_gene_names,
 )
+
+if TYPE_CHECKING:
+    from pandas.api.typing import NAType
 from .cap import _find_annotation_sets
 from .write import resolve_latest
 
-_SKIP_VALUES = {"unknown", "", "NA", "na", "none", "None"}
+# Judged through is_missing_value (case-insensitive, NA-aware), so 'Unknown'
+# or 'NONE' cannot slip through as a phantom gene symbol.
+_SKIP_PLACEHOLDERS = {"unknown", "na", "none"}
 
 
-def _extract_marker_genes_from_categories(categories: set[str]) -> set[str]:
+def _extract_marker_genes_from_categories(categories: set[str | NAType]) -> set[str]:
     """Parse unique gene symbols from a set of category values.
 
     Values are comma-separated gene symbols like "MARCO,CST3,FABP4,INHBA".
-    Skips null, empty, and placeholder values.
+    Skips masked (pd.NA), empty, and placeholder values — absent evidence,
+    not genes.
     """
     genes: set[str] = set()
     for val in categories:
-        # A masked (pd.NA) value is absent evidence, not a gene — str() would
-        # coin the phantom symbol "<NA>" and report it as a typo.
-        if pd.isna(val):
+        if is_missing_value(val, _SKIP_PLACEHOLDERS):
             continue
-        val = str(val).strip()
-        if val in _SKIP_VALUES:
-            continue
-        for gene in val.split(","):
+        for gene in str(val).split(","):
             gene = gene.strip()
-            if gene and gene not in _SKIP_VALUES:
+            if gene and not is_missing_value(gene, _SKIP_PLACEHOLDERS):
                 genes.add(gene)
     return genes
 

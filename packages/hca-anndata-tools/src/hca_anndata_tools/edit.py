@@ -8,6 +8,7 @@ import typing
 from pathlib import Path
 
 import h5py
+import pandas as pd
 from pydantic import TypeAdapter, ValidationError
 
 from ._io import (
@@ -18,6 +19,7 @@ from ._io import (
     read_categorical_data,
     read_column_order,
     read_edit_log_h5py,
+    read_element,
     read_uns,
     remap_palette,
     replace_categorical_column,
@@ -298,10 +300,13 @@ def replace_placeholder_values(
                     return {"error": f"Column '{col}' not found in obs"}
                 item = obs[col]
                 if isinstance(item, h5py.Group) and "categories" in item:
-                    cats, codes = read_categorical_data(item)
-                    # Before .lower(): refused here, before the snapshot.
-                    if reason := masked_categories_reason(cats, f"Column '{col}'"):
+                    # Before .lower(), and off the categories alone — refused
+                    # before the snapshot and before the full codes read.
+                    if reason := masked_categories_reason(
+                        pd.Index(read_element(item["categories"])), f"Column '{col}'"
+                    ):
                         return {"error": reason}
+                    cats, codes = read_categorical_data(item)
                     placeholder_count = 0
                     matches = {}
                     for i in range(len(cats)):

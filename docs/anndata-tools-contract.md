@@ -195,9 +195,10 @@ target is constrained.
     `get_storage_info` calls clean cannot be refused by a tool for encoding
     reasons, and everything it flags is flagged for the reason a tool would
     actually refuse. When inspection cannot see everything enforcement
-    checks, the inspection report says so explicitly (today: plain nullable
-    obs *columns* are not scanned — a clean report rules out the known
-    failure mode, it is not a guarantee).
+    checks, the inspection report says so explicitly (today the scanned
+    dataframes — obs, var, raw.var, obsm frames — cover indexes, plain
+    nullable columns, and categorical categories; varm and uns are checked
+    only by the write funnel).
 
 ### Errors
 
@@ -249,6 +250,30 @@ target is constrained.
     through the reader it exercises hides the reader's bugs), **boundaries
     are pinned at both ends** (one test that X is accepted, one that Y is
     refused), and **the suite passes with zero warnings**.
+
+## How writing works
+
+Two write paths, one safety model. The model: **a destination name is
+written only after an O_EXCL claim creates it** (`_try_claim` /
+`_claim_snapshot_path` in `write.py`) — a same-second timestamp collision
+waits out the boundary and regenerates; a claim that still fails refuses
+(`SameSecondSnapshotError`). Because the claim *created* the file, whatever
+sits at that name afterwards is ours, so **failure cleanup unlinks it
+unconditionally and can never delete pre-existing data** — and no partial
+file is ever left wearing the `-edit-<timestamp>` name `resolve_latest`
+selects by. Success then retires the previous snapshot
+(`cleanup_previous_version`), keeping original + latest on disk.
+
+| Path | Used by | Mechanism |
+|---|---|---|
+| **Copy-and-patch** | in-place surgical tools (rename, merge, backfill, replace_placeholder, copy_cap) | `snapshot_copy` / `snapshot_copy_hashed`: claim → streamed copy (digest inline) → h5py-patch the copy → unlink the claim on any failure |
+| **Full rewrite** | anndata-based tools (compress, normalize, convert, set_uns, …) | `write_h5ad`: profile refusal (`nullable_string_locations`) *before* mutating `adata` → edit log stamped → claim → `adata.write_h5ad` streams → unlink the claim on any failure |
+
+Anything that writes an h5ad goes through one of these two functions —
+hand-rolling output-path handling around either is how `write_h5ad` itself
+accumulated three data-loss hazards before adopting the claim (the #642
+review rounds). The edit log is written into the output as part of the same
+operation, so a snapshot and its provenance can never disagree.
 
 ## The two spellings of "missing"
 

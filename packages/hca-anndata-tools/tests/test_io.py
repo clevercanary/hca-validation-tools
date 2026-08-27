@@ -2,6 +2,7 @@
 
 import warnings
 
+import anndata as ad
 import h5py
 import numpy as np
 import pandas as pd
@@ -422,3 +423,20 @@ def test_is_missing_value_judges_na_itself():
     assert _io.is_missing_value(pd.NA, set()) is True  # pyright: ignore[reportArgumentType]
     assert _io.is_missing_value("unknown", {"unknown"}) is True
     assert _io.is_missing_value("real value", {"unknown"}) is False
+
+
+def test_open_h5ad_names_the_masked_categorical_column(tmp_path):
+    """anndata cannot read a categorical whose categories are masked; the
+    open funnel replaces pandas' unnamed 'Categorical categories cannot be
+    null' with a refusal naming the column — in var as well as obs, for
+    every tool that opens files through it."""
+    path = tmp_path / "masked_var_cat.h5ad"
+    var = pd.DataFrame({"family": pd.Categorical(["a", "b"])}, index=["ENSG1", "ENSG2"])
+    adata = ad.AnnData(X=np.zeros((2, 2), dtype=np.float32), var=var, obs=pd.DataFrame(index=["c0", "c1"]))
+    adata.write_h5ad(path)
+    with h5py.File(path, "r+") as f:
+        make_nullable_string_array(f["var/family"], "categories", masked=1)
+
+    with pytest.raises(ValueError, match="masked \\(null\\) categories") as excinfo, _io.open_h5ad(str(path)):
+        pass
+    assert "var column 'family'" in str(excinfo.value)

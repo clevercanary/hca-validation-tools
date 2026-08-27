@@ -15,7 +15,6 @@ import pandas as pd
 from ._io import (
     check_duplicate_ids,
     ensure_provenance_group,
-    masked_categories_reason,
     obs_index_name,
     open_h5ad,
     read_categorical_data,
@@ -118,26 +117,6 @@ def _get_obs_columns_to_copy(
                 columns.append(col)
 
     return columns
-
-
-def _masked_obs_categories_error(path: str) -> dict | None:
-    """The named refusal for a source whose categorical categories are masked.
-
-    anndata refuses to *read* such a file — pandas raises "Categorical
-    categories cannot be null" during ``open_h5ad``, naming no column — so
-    the column has to be found again via h5py to refuse by name.
-    """
-    with h5py.File(path, "r") as f:
-        obs = f.get("obs")
-        if not isinstance(obs, h5py.Group):
-            return None
-        for col in obs:
-            item = obs[col]
-            if isinstance(item, h5py.Group) and "categories" in item:
-                cats, _ = read_categorical_data(item)  # pyright: ignore[reportArgumentType]
-                if reason := masked_categories_reason(cats, f"CAP source column '{col}'"):
-                    return {"error": reason}
-    return None
 
 
 def copy_cap_annotations(
@@ -476,13 +455,6 @@ def copy_cap_annotations(
             result["overwrite_strip"] = overwrite_strip
         return result
 
-    except ValueError as e:
-        # No unlink here either: snapshot_copy_hashed removes the snapshot.
-        if "Categorical categories cannot be null" in str(e):
-            named = _masked_obs_categories_error(source_path)
-            if named:
-                return named
-        return {"error": str(e)}
     except Exception as e:
         # No unlink here: snapshot_copy_hashed removes the snapshot itself.
         return {"error": str(e)}

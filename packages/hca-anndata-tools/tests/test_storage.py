@@ -7,7 +7,12 @@ import h5py
 import numpy as np
 
 from hca_anndata_tools.storage import _MAX_UNSUPPORTED_PATHS, get_storage_info
-from hca_anndata_tools.testing import make_fixed_width_byte_array, make_nullable_index, make_nullable_string_array
+from hca_anndata_tools.testing import (
+    make_fixed_width_byte_array,
+    make_nullable_index,
+    make_nullable_string_array,
+    make_plain_string_column,
+)
 
 
 def test_storage_file_size(sample_h5ad):
@@ -270,3 +275,18 @@ def test_encodings_unstamped_index_is_labelled_not_null(sample_h5ad, tmp_path):
     enc = get_storage_info(str(path))["encodings"]
     assert enc["obs"]["index"] == "unstamped"
     assert enc["obs"]["index"] is not None
+
+
+def test_encodings_flags_a_plain_nullable_column(sample_h5ad, tmp_path):
+    """A non-categorical nullable column is exactly what the write funnel
+    refuses — the report must flag it too, or inspection green-lights a file
+    the tools then refuse (contract principle 9)."""
+    path = tmp_path / "nullable-col.h5ad"
+    shutil.copy2(sample_h5ad, path)
+    with h5py.File(path, "r+") as f:
+        obs = f["obs"]
+        make_plain_string_column(obs, "batch", ["b1"] * obs[_index_attr(obs)].shape[0])
+        make_nullable_string_array(obs, "batch")
+
+    enc = get_storage_info(str(path))["encodings"]
+    assert "obs/batch" in enc["unsupported"]
