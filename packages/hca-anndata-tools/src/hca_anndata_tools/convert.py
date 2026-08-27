@@ -160,13 +160,6 @@ def convert_cellxgene_to_hca(
         out_filename = f"{slug}-edit-{timestamp}.h5ad"
         directory = Path(output_dir) if output_dir is not None else Path(path).parent
         output_path = str(directory / out_filename)
-        # The claim model (see docs/anndata-tools-contract.md, "How writing
-        # works"): create the name with O_EXCL before writing, so a
-        # same-second convert of a same-titled source cannot silently
-        # overwrite a finished output — and the failure unlinks below only
-        # ever remove a file this run created.
-        if not _try_claim(output_path):
-            return {"error": SAME_SECOND_SNAPSHOT_ERROR}
 
         entry = make_edit_entry(
             operation="import_cellxgene",
@@ -197,6 +190,14 @@ def convert_cellxgene_to_hca(
             temp_adata.write_h5ad(temp_path)
             del temp_adata
 
+            # The claim model (see docs/anndata-tools-contract.md, "How
+            # writing works"), immediately before the copy so no error
+            # return can strand the claimed empty file: a same-second
+            # convert of a same-titled source is refused rather than
+            # silently overwritten, and the failure unlinks below only
+            # ever remove a file this run created.
+            if not _try_claim(output_path):
+                return {"error": SAME_SECOND_SNAPSHOT_ERROR}
             shutil.copy2(path, output_path)
 
             with h5py.File(temp_path, "r") as f_temp, h5py.File(output_path, "a") as f_out:
