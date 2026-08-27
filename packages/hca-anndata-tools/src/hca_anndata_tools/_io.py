@@ -669,7 +669,7 @@ def remap_palette(uns: h5py.Group | None, key: str | None, kept: Sequence[int], 
     # here, before any read. Treated like a mismatched length: left alone.
     if not isinstance(node, h5py.Dataset) or node.ndim != 1 or not h5py.check_string_dtype(node.dtype):
         return None
-    colors = list(read_element(uns[key]))
+    colors = list(read_element(node))
     if len(colors) != n_before:
         return None
     write_elem(uns, key, np.array([colors[i] for i in kept], dtype=object))
