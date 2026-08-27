@@ -471,6 +471,37 @@ def cleanup_previous_version(source_path: str, output_path: str) -> None:
             Path(source_path).unlink()  # write succeeded; stale file is harmless
 
 
+def nullable_string_locations(adata: AnnData) -> list[str]:
+    """Dataframe locations holding pandas nullable strings (StringDtype).
+
+    The write funnel's half of the write profile: anndata 0.11.4 raises on a
+    ``StringArray`` (``allow_write_nullable_strings`` defaults False, which is
+    the behaviour we want — our output must stay CellxGENE-compatible), but
+    only *after* it has already streamed X into the output file. Checking
+    here refuses before any bytes are written (hca-validation-tools#641
+    tracks converting instead of refusing). Covers the value a column holds
+    and the categories behind a categorical, on every dataframe anndata
+    serializes: obs, var, raw.var, and obsm frames.
+    """
+    import pandas as pd
+
+    def is_nullable_string(dtype) -> bool:
+        if isinstance(dtype, pd.CategoricalDtype):
+            return is_nullable_string(dtype.categories.dtype)
+        return isinstance(dtype, pd.StringDtype)
+
+    frames = [("obs", adata.obs), ("var", adata.var)]
+    if adata.raw is not None:
+        frames.append(("raw.var", adata.raw.var))
+    frames += [(f"obsm['{key}']", val) for key, val in adata.obsm.items() if isinstance(val, pd.DataFrame)]
+    found = []
+    for name, df in frames:
+        if is_nullable_string(df.index.dtype):
+            found.append(f"{name} index")
+        found += [f"{name}['{col}']" for col in df.columns if is_nullable_string(df[col].dtype)]
+    return found
+
+
 def write_h5ad(
     adata: AnnData,
     source_path: str,
@@ -525,9 +556,26 @@ def write_h5ad(
 
         adata.uns.setdefault(PROVENANCE_KEY, {})[EDIT_LOG_KEY] = log_result["json"]
 
+        if nullable := nullable_string_locations(adata):
+            return {
+                "error": (
+                    f"Refusing to write: {', '.join(nullable)} hold(s) pandas nullable string "
+                    f"values, which this package can read but cannot write back "
+                    f"(hca-validation-tools#641). Re-exporting the file with plain string "
+                    f"arrays is the workaround available today; it is not the only possible fix."
+                )
+            }
+
         if output_path is None:
             output_path = generate_output_path(source_path)
-        adata.write_h5ad(output_path, compression=compression, compression_opts=compression_opts)
+        try:
+            adata.write_h5ad(output_path, compression=compression, compression_opts=compression_opts)
+        except BaseException:
+            # A truncated file wearing the -edit-<timestamp> name is
+            # indistinguishable from a good snapshot — leave no plausible
+            # artifact behind a failed write.
+            Path(output_path).unlink(missing_ok=True)
+            raise
 
         cleanup_previous_version(source_path, output_path)
 

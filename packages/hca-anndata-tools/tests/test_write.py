@@ -9,6 +9,7 @@ import shutil
 from pathlib import Path
 
 import anndata as ad
+import pandas as pd
 import pytest
 
 from hca_anndata_tools.write import (
@@ -698,3 +699,32 @@ def test_snapshot_copy_hashed_never_removes_a_file_it_did_not_create(tmp_path, m
         pass
 
     assert bystander.read_bytes() == b"not mine"
+
+
+def test_write_h5ad_refuses_nullable_strings(sample_h5ad_for_write):
+    """The write funnel's half of the write profile: a pandas StringDtype
+    column would make anndata raise on StringArray — but only after X has
+    been streamed. Refuse by name before any bytes are written."""
+    adata = ad.read_h5ad(sample_h5ad_for_write)
+    adata.obs["lineage"] = pd.array(["a"] * adata.n_obs, dtype="string")
+
+    result = write_h5ad(adata, str(sample_h5ad_for_write), [_make_entry()])
+
+    assert "error" in result
+    assert "obs['lineage']" in result["error"]
+    assert "hca-validation-tools#641" in result["error"]
+    assert not list(sample_h5ad_for_write.parent.glob("*-edit-*.h5ad"))
+
+
+def test_write_h5ad_removes_partial_output_on_failure(sample_h5ad_for_write):
+    """A failed write must not leave a truncated file wearing the
+    -edit-<timestamp> snapshot name — resolve_latest would pick it up as a
+    good snapshot."""
+    adata = ad.read_h5ad(sample_h5ad_for_write)
+    adata.uns["unserializable"] = object()
+
+    result = write_h5ad(adata, str(sample_h5ad_for_write), [_make_entry()])
+
+    assert "error" in result
+    assert "edit_entries" not in result["error"]  # the write itself must be what failed
+    assert not list(sample_h5ad_for_write.parent.glob("*-edit-*.h5ad"))
