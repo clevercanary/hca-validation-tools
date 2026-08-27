@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pandas as pd
+
 from ._gencode import load_gencode_reference
 from ._io import (
     read_obs_categorical_values,
@@ -22,6 +24,10 @@ def _extract_marker_genes_from_categories(categories: set[str]) -> set[str]:
     """
     genes: set[str] = set()
     for val in categories:
+        # A masked (pd.NA) value is absent evidence, not a gene — str() would
+        # coin the phantom symbol "<NA>" and report it as a typo.
+        if pd.isna(val):
+            continue
         val = str(val).strip()
         if val in _SKIP_VALUES:
             continue
@@ -78,6 +84,9 @@ def validate_marker_genes(path: str, annotation_set: str | None = None) -> dict:
         if "organism_ontology_term_id" not in obs_columns:
             return {"error": "organism_ontology_term_id not found in obs columns"}
         organisms = read_obs_categorical_values(path, "organism_ontology_term_id")
+        # A masked (pd.NA) value is a missing organism, not evidence of a
+        # non-human one — and sorted() below cannot order pd.NA anyway.
+        organisms = {o for o in organisms if not pd.isna(o)}
         non_human = organisms - {"NCBITaxon:9606"}
         if non_human:
             return {"error": f"Only human (NCBITaxon:9606) is supported, found non-human: {sorted(non_human)}"}
