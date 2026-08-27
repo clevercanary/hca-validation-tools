@@ -19,12 +19,15 @@ the skills reference it instead of enumerating per-tool behavior that drifts.
 ## The one-line contract
 
 **Read wide, write narrow.** We read everything anndata reads; we write only
-the **non-nullable, CellxGENE-compatible profile**: anndata's plain
-`string-array` and `array` encodings, backed by ordinary NumPy dtypes — never
-the `nullable-*` encodings (pandas "nullable dtypes": `StringDtype`, `Int64`,
-`boolean`, serialized as a values + mask group). Formats in between are legal
-input and never output — a tool that touches one converts it or refuses by
-name; it never emits it.
+the **CellxGENE-compatible profile**. For strings that means anndata's plain
+`string-array` encoding, never `nullable-string-array` (pandas `StringDtype`'s
+values + mask serialization): a tool that touches one converts it to plain
+strings or refuses by name; it never emits it. The *numeric* nullable
+encodings (`nullable-integer` / `nullable-boolean`, from pandas `Int64` /
+`boolean`) are **inside** the profile: anndata — cellxgene-schema's own pin —
+reads and writes them ungated, so the CxG toolchain itself produces and
+accepts them, and refusing them would block files nothing downstream
+rejects.
 
 ## Worked example: the liver obs index
 
@@ -152,15 +155,18 @@ target is constrained.
 
 ### Writing
 
-5. **We write one profile: non-nullable, CellxGENE-compatible.** Output
-   compatibility is the deliberate design center, not a limitation: whatever
-   we emit must ingest at CellxGENE and CAP. Nullable encodings are legal
-   input and never output. A tool that rewrites a nullable element either
-   converts it to the profile losslessly (mask all zero — #641's
+5. **We write one profile: CellxGENE-compatible, with strings plain.**
+   Output compatibility is the deliberate design center, not a limitation:
+   whatever we emit must ingest at CellxGENE and CAP. Nullable *string*
+   encodings are legal input and never output — a tool that rewrites one
+   either converts it to plain strings losslessly (mask all zero — #641's
    normalize-on-write) or refuses by name (any mask set: the data has no
-   faithful plain representation). No tool silently emits an encoding
-   outside the profile, and no tool "supports" nullable writes — that would
-   be a bug against this principle, not a feature.
+   faithful plain representation). No tool silently emits a nullable string,
+   and no tool "supports" writing them — that would be a bug against this
+   principle, not a feature. The boundary is drawn where the evidence is:
+   anndata 0.11.4 gates exactly nullable strings
+   (`allow_write_nullable_strings`) and nothing else, so nullable
+   integer/boolean columns pass through every tool untouched and unflagged.
 
 6. **One predicate judges in-place writability, and nothing else does.**
    `is_writable_element` — container, not encoding name — is the only code

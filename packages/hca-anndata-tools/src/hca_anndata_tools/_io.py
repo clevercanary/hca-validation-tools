@@ -64,18 +64,32 @@ def _masked_categories_open_error(path: str) -> str | None:
     already known bad, and a scan failure must not replace the original
     error with a second traceback.
     """
+
+    def scan(group: h5py.Group, label: str) -> str | None:
+        for col in group:
+            item = group[col]
+            if (
+                isinstance(item, h5py.Group)
+                and "categories" in item
+                and (reason := masked_categories_reason(read_categories(item), f"{label} column '{col}'"))
+            ):
+                return reason
+        return None
+
     with suppress(Exception), h5py.File(path, "r") as f:
         for frame in ("obs", "var", "raw/var"):
             group = f.get(frame)
-            if not isinstance(group, h5py.Group):
+            if isinstance(group, h5py.Group) and (reason := scan(group, frame)):
+                return reason
+        # obsm/varm DataFrames carry their own categoricals and are read by
+        # anndata just the same.
+        for holder_name in ("obsm", "varm"):
+            holder = f.get(holder_name)
+            if not isinstance(holder, h5py.Group):
                 continue
-            for col in group:
-                item = group[col]
-                if (
-                    isinstance(item, h5py.Group)
-                    and "categories" in item
-                    and (reason := masked_categories_reason(read_categories(item), f"{frame} column '{col}'"))
-                ):
+            for key in holder:
+                frame_group = holder[key]
+                if isinstance(frame_group, h5py.Group) and (reason := scan(frame_group, f"{holder_name}['{key}']")):
                     return reason
     return None
 
@@ -143,11 +157,9 @@ def holds_string_values(item: h5py.Group | h5py.Dataset | h5py.Datatype) -> bool
     is the drift that produced hca-validation-tools#637.
     """
     if isinstance(item, h5py.Group):
-        # The membership check keeps a *stamped but truncated* group (no
-        # ``values`` child — corrupt, and files arrive from external teams)
-        # out of the readers, so callers refuse it with their own named
-        # message instead of leaking anndata's raw HDF5 KeyError.
-        return encoding_of(item) == "nullable-string-array" and "values" in item
+        # Encoding only — a stamped-but-truncated group is caught by
+        # read_element's corruption check, with the element named.
+        return encoding_of(item) == "nullable-string-array"
     return h5py.check_string_dtype(item.dtype) is not None
 
 
@@ -215,6 +227,14 @@ def read_element(item: h5py.Group | h5py.Dataset | h5py.Datatype) -> np.ndarray:
     is ``"<NA>"`` and would turn every masked row into the *same* value.
     """
     import numpy as np
+
+    if isinstance(item, h5py.Group) and (enc := encoding_of(item)) and enc.startswith("nullable-"):
+        # A stamped values+mask group missing a child is a corrupt file (a
+        # truncated write); anndata's reader would leak a raw HDF5 KeyError.
+        # Checked here so every caller gets the named error at once.
+        for child in ("values", "mask"):
+            if child not in item:
+                raise ValueError(f"'{item.name}' is stamped '{enc}' but has no '{child}' dataset — the file is corrupt")
 
     with warnings.catch_warnings():
         # anndata warns on every read of a legacy unstamped element. encoding_of

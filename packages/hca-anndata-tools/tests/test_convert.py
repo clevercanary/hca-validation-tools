@@ -243,3 +243,21 @@ def test_convert_succeeds_on_a_nullable_string_array_file(tmp_path):
         # transplants, so the nullable index is carried across rather than
         # rewritten. Assert it, or the split has no evidence behind it.
         assert encoding_of(obs[obs_index_name(obs)]) == "nullable-string-array"
+
+
+def test_convert_refuses_to_overwrite_a_same_second_output(cellxgene_h5ad, monkeypatch):
+    """The output name is claimed with O_EXCL: a second convert of a
+    same-titled source in the same second is refused, not silently
+    overwritten — and its failure handling cannot unlink the first run's
+    finished file."""
+    monkeypatch.setattr("hca_anndata_tools.convert.generate_timestamp", lambda: "2026-01-01-00-00-00")
+
+    first = convert_cellxgene_to_hca(str(cellxgene_h5ad))
+    assert "error" not in first, first.get("error")
+    size_before = Path(first["output_path"]).stat().st_size
+
+    second = convert_cellxgene_to_hca(str(cellxgene_h5ad))
+
+    assert "error" in second
+    assert "already exists" in second["error"] or "retry in a moment" in second["error"]
+    assert Path(first["output_path"]).stat().st_size == size_before

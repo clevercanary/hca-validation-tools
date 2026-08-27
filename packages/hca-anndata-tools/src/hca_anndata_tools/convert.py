@@ -24,6 +24,8 @@ from ._serialize import make_serializable
 from .strip import _OBS_COLUMNS_TO_STRIP, _strip_forbidden_obs_columns_h5py
 from .write import (
     EDIT_LOG_KEY,
+    SAME_SECOND_SNAPSHOT_ERROR,
+    _try_claim,
     build_edit_log,
     generate_timestamp,
     make_edit_entry,
@@ -158,6 +160,13 @@ def convert_cellxgene_to_hca(
         out_filename = f"{slug}-edit-{timestamp}.h5ad"
         directory = Path(output_dir) if output_dir is not None else Path(path).parent
         output_path = str(directory / out_filename)
+        # The claim model (see docs/anndata-tools-contract.md, "How writing
+        # works"): create the name with O_EXCL before writing, so a
+        # same-second convert of a same-titled source cannot silently
+        # overwrite a finished output — and the failure unlinks below only
+        # ever remove a file this run created.
+        if not _try_claim(output_path):
+            return {"error": SAME_SECOND_SNAPSHOT_ERROR}
 
         entry = make_edit_entry(
             operation="import_cellxgene",

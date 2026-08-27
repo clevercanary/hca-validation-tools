@@ -732,6 +732,8 @@ def test_write_h5ad_removes_partial_output_on_failure(sample_h5ad_for_write):
     assert "error" in result
     assert "edit_entries" not in result["error"]  # the write itself must be what failed
     assert_no_snapshot_written(sample_h5ad_for_write)
+    # Unstamped: a retry must not double-append the edit log.
+    assert "provenance" not in adata.uns
 
 
 def test_write_h5ad_funnel_covers_varm_and_uns(sample_h5ad_for_write):
@@ -764,3 +766,5 @@ def test_write_h5ad_refuses_a_taken_output_path(tmp_path, sample_h5ad_for_write)
     assert "error" in result
     assert "already exists" in result["error"]
     assert decoy.read_bytes() == b"pre-existing bytes"
+    # Unstamped: a retry must not double-append the edit log.
+    assert "provenance" not in adata.uns

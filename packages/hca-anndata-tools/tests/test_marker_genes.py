@@ -379,3 +379,10 @@ def test_all_masked_organism_is_refused_not_passed(tmp_path):
 
     assert "error" in result
     assert "no readable values" in result["error"]
+
+
+def test_extract_markers_reports_non_string_values_instead_of_crashing():
+    """A numeric evidence value is reported as a symbol for the GENCODE check
+    to flag — main's behavior — not crashed on with 'no attribute strip'."""
+    categories = {1.5, True, "GFAP"}
+    assert _extract_marker_genes_from_categories(categories) == {"1.5", "True", "GFAP"}

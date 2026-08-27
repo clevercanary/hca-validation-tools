@@ -458,25 +458,39 @@ def test_palette_untouched_when_the_merge_is_refused(tmp_path, no_snapshot):
     assert list(ad.read_h5ad(path).uns["grp_colors"]) == _ABCD_COLORS
 
 
-def test_merge_refuses_nullable_categories_by_name(tmp_path):
-    """The liver file shape must not leak an h5py internal.
+def test_merge_recreates_nullable_categories_as_plain(tmp_path):
+    """The liver shape (unmasked nullable categories) merges fine.
 
-    A nullable-string-array categories group has no .dtype, so the string-dtype
-    guard raised AttributeError and the tool returned "'Group' object has no
-    attribute 'dtype'" — an h5py internal from a tool that should say which
-    encoding it cannot write (hca-validation-tools#637). Note mask 0: this is
-    the plain shape of all seven liver integrated objects, not an edge case.
+    The writer — replace_categorical_column — recreates the categories from
+    scratch, exactly as backfill's target side does, so the encoding is no
+    obstacle: it is normalized to a plain string-array on the way out. An
+    earlier revision refused this shape via the in-place predicate, blocking
+    the very files this branch exists to unblock. Note mask 0: this is the
+    plain shape of all seven liver integrated objects, not an edge case.
     """
     path = create_sample_h5ad(tmp_path / "nullable.h5ad")
     with h5py.File(path, "r+") as f:
         make_nullable_string_array(f["obs"]["cell_type"], "categories")
 
+    result = merge_obs_categories(str(path), "cell_type", "T cell", "B cell")
+
+    assert "error" not in result, result.get("error")
+    with h5py.File(result["output_path"], "r") as f:
+        cats_item = f["obs/cell_type/categories"]
+        assert isinstance(cats_item, h5py.Dataset)
+        assert "T cell" not in [c.decode() if isinstance(c, bytes) else c for c in cats_item.asstr()[:]]
+
+
+def test_merge_refuses_masked_categories_by_name(tmp_path):
+    """A masked (null) category has no value a merge could keep or match —
+    refused by name, before the snapshot, never an h5py or pandas internal."""
+    path = create_sample_h5ad(tmp_path / "masked.h5ad")
+    with h5py.File(path, "r+") as f:
+        make_nullable_string_array(f["obs"]["cell_type"], "categories", masked=1)
+
     before = set(tmp_path.iterdir())
     result = merge_obs_categories(str(path), "cell_type", "T cell", "B cell")
 
     assert "error" in result
-    assert "nullable-string-array" in result["error"]
-    assert "#641" in result["error"]
-    assert "dtype" not in result["error"]
-    # Refused before the snapshot, like every other write guard here.
+    assert "masked (null) categories" in result["error"]
     assert set(tmp_path.iterdir()) == before

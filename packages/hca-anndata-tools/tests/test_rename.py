@@ -403,6 +403,7 @@ def test_rename_selects_rows_from_a_nullable_string_selector(tmp_path):
 
     assert "error" not in result, result.get("error")
     assert result["n_selected"] == len(B1_IDS) - 1  # the masked row did not match
+    assert result["n_selector_masked"] == 1  # ...and the skip is reported
     after = ad.read_h5ad(result["output_path"])
     assert "MH_mix_AAA" in after.obs_names  # masked selector row: untouched
     assert "MH_mix_BR1_CCC" in after.obs_names

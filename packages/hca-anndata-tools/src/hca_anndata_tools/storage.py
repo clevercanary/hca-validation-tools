@@ -8,6 +8,7 @@ import numpy as np
 from ._io import (
     direct_members,
     encoding_of,
+    holds_string_values,
     is_writable_element,
     obs_index_name,
     read_group,
@@ -119,8 +120,11 @@ def _dataframe_encodings(df: h5py.Group, path: str, index_name: str) -> tuple[di
         if not isinstance(column, h5py.Group):
             continue
         if "categories" not in column:
-            # Nullable group column: no Dataset layout to rewrite in place.
-            if not is_writable_element(column):
+            # Only nullable *strings* are flagged: they are what the write
+            # funnel refuses. Nullable-integer/boolean columns pass through
+            # every tool (anndata writes them ungated), so flagging them
+            # would hard-stop curation on files nothing refuses.
+            if holds_string_values(column):
                 unsupported.append(f"{path}/{name}")
             continue
         categories = column["categories"]
@@ -143,9 +147,11 @@ def _encodings_info(f: h5py.File) -> dict:
     cell count, never by the matrix — so this is as cheap on a 29 GB atlas as
     on a small file. A file with no nullable index reads no data at all.
 
-    Scope is the listed dataframes' indexes, plain group columns, and
-    categorical ``categories`` — every element the in-place writers judge.
-    ``varm`` and ``uns`` frames are the write funnel's alone.
+    Scope is the listed dataframes' indexes, plain nullable-string
+    columns, and categorical ``categories`` — everything a tool would
+    actually refuse. ``varm`` and ``uns`` frames are the write funnel's
+    alone, and nullable-integer/boolean columns are not flagged: every
+    tool accepts them.
     """
     result: dict = {}
     unsupported: list[str] = []
@@ -184,8 +190,8 @@ def get_storage_info(path: str) -> dict:
 
     Returns file size, compression settings, chunk sizes, and sparse format
     for X, raw/X, and all layers, plus the string encodings used by the
-    ``obs``, ``var``, ``raw.var`` and obsm dataframes — indexes, plain group
-    columns, and categoricals.
+    ``obs``, ``var``, ``raw.var`` and obsm dataframes — indexes, plain
+    nullable-string columns, and categoricals.
 
     The ``encodings`` block exists so an incompatible on-disk representation
     surfaces during inspection rather than as an opaque HDF5 error partway

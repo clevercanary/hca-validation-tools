@@ -290,3 +290,22 @@ def test_encodings_flags_a_plain_nullable_column(sample_h5ad, tmp_path):
 
     enc = get_storage_info(str(path))["encodings"]
     assert "obs/batch" in enc["unsupported"]
+
+
+def test_encodings_does_not_flag_a_nullable_integer_column(sample_h5ad, tmp_path):
+    """Nullable-integer columns pass through every tool (anndata writes them
+    ungated), so flagging them would hard-stop curation on files nothing
+    refuses — the report flags only what a tool would actually refuse."""
+    path = tmp_path / "nullable-int.h5ad"
+    shutil.copy2(sample_h5ad, path)
+    with h5py.File(path, "r+") as f:
+        obs = f["obs"]
+        n = obs[_index_attr(obs)].shape[0]
+        grp = obs.create_group("qc_flag")
+        grp.attrs["encoding-type"] = "nullable-integer"
+        grp.attrs["encoding-version"] = "0.1.0"
+        grp.create_dataset("values", data=np.zeros(n, dtype="i8"))
+        grp.create_dataset("mask", data=np.zeros(n, dtype=bool))
+
+    enc = get_storage_info(str(path))["encodings"]
+    assert "obs/qc_flag" not in enc["unsupported"]

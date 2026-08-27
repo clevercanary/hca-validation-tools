@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 import pandas as pd
 
 from ._gencode import load_gencode_reference
 from ._io import (
+    DEFAULT_PLACEHOLDERS,
     is_missing_value,
     read_obs_categorical_values,
     read_obs_column_names,
@@ -16,28 +15,30 @@ from ._io import (
 from .cap import _find_annotation_sets
 from .write import resolve_latest
 
-if TYPE_CHECKING:
-    from pandas.api.typing import NAType
-
-# Judged through is_missing_value (case-insensitive, NA-aware), so 'Unknown'
-# or 'NONE' cannot slip through as a phantom gene symbol.
-_SKIP_PLACEHOLDERS = {"unknown", "na", "none"}
+# The one placeholder vocabulary (_io's), judged through is_missing_value —
+# case-insensitive, and no entry collides with an HGNC symbol.
+_PLACEHOLDERS = set(DEFAULT_PLACEHOLDERS)
 
 
-def _extract_marker_genes_from_categories(categories: set[str | NAType]) -> set[str]:
+def _extract_marker_genes_from_categories(categories: set) -> set[str]:
     """Parse unique gene symbols from a set of category values.
 
     Values are comma-separated gene symbols like "MARCO,CST3,FABP4,INHBA".
     Skips masked (pd.NA), empty, and placeholder values — absent evidence,
-    not genes.
+    not genes. Non-string values (a numeric evidence column) are reported as
+    symbols for the GENCODE check to flag, never crashed on.
     """
     genes: set[str] = set()
     for val in categories:
-        if is_missing_value(val, _SKIP_PLACEHOLDERS):
+        # pd.isna before str(): str(pd.NA) is "<NA>".
+        if pd.isna(val):
             continue
-        for gene in str(val).split(","):
+        val = str(val).strip()
+        if is_missing_value(val, _PLACEHOLDERS):
+            continue
+        for gene in val.split(","):
             gene = gene.strip()
-            if not is_missing_value(gene, _SKIP_PLACEHOLDERS):
+            if not is_missing_value(gene, _PLACEHOLDERS):
                 genes.add(gene)
     return genes
 

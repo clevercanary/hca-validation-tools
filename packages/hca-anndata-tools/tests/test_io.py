@@ -405,16 +405,24 @@ def test_index_length_falls_back_for_an_unknown_group(tmp_path):
         assert index_length(f["col"]) == 3
 
 
-def test_holds_string_values_rejects_a_stamped_group_missing_values(tmp_path):
-    """A group stamped nullable-string-array but missing its values child is
-    corrupt, not string-valued — passing it would leak anndata's raw HDF5
-    KeyError through every caller instead of a named refusal."""
+def test_read_element_names_a_truncated_nullable_group(tmp_path):
+    """A stamped values+mask group missing a child is a corrupt file; anndata
+    would leak a raw HDF5 KeyError. read_element names the element and the
+    missing child for every caller at once."""
     path = tmp_path / "truncated.h5ad"
     with h5py.File(path, "w") as f:
-        grp = f.create_group("broken")
-        grp.attrs["encoding-type"] = "nullable-string-array"
-        grp.attrs["encoding-version"] = "0.1.0"
-        assert _io.holds_string_values(grp) is False
+        no_values = f.create_group("no_values")
+        no_values.attrs["encoding-type"] = "nullable-string-array"
+        no_values.attrs["encoding-version"] = "0.1.0"
+        no_mask = f.create_group("no_mask")
+        no_mask.attrs["encoding-type"] = "nullable-string-array"
+        no_mask.attrs["encoding-version"] = "0.1.0"
+        no_mask.create_dataset("values", data=np.array(["a"], dtype=object), dtype=h5py.string_dtype())
+
+        with pytest.raises(ValueError, match="no 'values'"):
+            _io.read_element(no_values)
+        with pytest.raises(ValueError, match="no 'mask'"):
+            _io.read_element(no_mask)
 
 
 def test_is_missing_value_judges_na_itself():
@@ -440,3 +448,18 @@ def test_open_h5ad_names_the_masked_categorical_column(tmp_path):
     with pytest.raises(ValueError, match="masked \\(null\\) categories") as excinfo, _io.open_h5ad(str(path)):
         pass
     assert "var column 'family'" in str(excinfo.value)
+
+
+def test_open_h5ad_names_a_masked_categorical_in_obsm(tmp_path):
+    """The named refusal covers obsm frames too — anndata reads their
+    categoricals the same way, and the raw pandas message names no column."""
+    path = tmp_path / "masked_obsm_cat.h5ad"
+    adata = ad.AnnData(X=np.zeros((2, 2), dtype=np.float32), obs=pd.DataFrame(index=["c0", "c1"]))
+    adata.obsm["annot"] = pd.DataFrame({"grade": pd.Categorical(["hi", "lo"])}, index=adata.obs_names)
+    adata.write_h5ad(path)
+    with h5py.File(path, "r+") as f:
+        make_nullable_string_array(f["obsm/annot/grade"], "categories", masked=1)
+
+    with pytest.raises(ValueError, match="masked \\(null\\) categories") as excinfo, _io.open_h5ad(str(path)):
+        pass
+    assert "obsm['annot'] column 'grade'" in str(excinfo.value)

@@ -76,8 +76,13 @@ def _check_arguments(column, value, prefix_from, prefix_to) -> list[str]:
     return problems
 
 
-def _selection_mask(obs: h5py.Group, column: str, value: str) -> np.ndarray:
-    """Boolean mask of the rows whose ``column`` equals ``value``.
+def _selection_mask(obs: h5py.Group, column: str, value: str) -> tuple[np.ndarray, int]:
+    """Mask of the rows whose ``column`` equals ``value``, and the masked count.
+
+    The count is how many selector rows are pd.NA — rows that could not be
+    compared and therefore never match. Callers surface it, so a partially
+    masked selector produces a *visibly* partial selection rather than a
+    silent one (skip-with-reported-count, per the contract's NA policy).
 
     Categorical columns are matched through their codes without materializing
     a per-row string array; plain string datasets are decoded by h5py in C via
@@ -88,8 +93,8 @@ def _selection_mask(obs: h5py.Group, column: str, value: str) -> np.ndarray:
     if isinstance(item, h5py.Group) and "categories" in item:
         categories, codes = read_categorical_data(item)
         if value not in categories:
-            return np.zeros(codes.shape, dtype=bool)
-        return codes == categories.get_loc(value)
+            return np.zeros(codes.shape, dtype=bool), 0
+        return codes == categories.get_loc(value), 0
     if isinstance(item, h5py.Group):
         if holds_string_values(item):
             # Real string values the readers read (#637): selecting nothing
@@ -101,7 +106,7 @@ def _selection_mask(obs: h5py.Group, column: str, value: str) -> np.ndarray:
             present = ~pd.isna(values)
             mask = np.zeros(values.shape, dtype=bool)
             mask[present] = values[present] == value
-            return mask
+            return mask, int((~present).sum())
         # Non-string nullable columns (pandas boolean / Int64) are stored as
         # values+mask groups with no categories; they can never equal a
         # string value and have no `.dtype`, so without this branch the
@@ -109,10 +114,10 @@ def _selection_mask(obs: h5py.Group, column: str, value: str) -> np.ndarray:
         # select-nothing contract above.
         values = item.get("values")
         shape = values.shape if isinstance(values, h5py.Dataset) else (0,)
-        return np.zeros(shape, dtype=bool)
+        return np.zeros(shape, dtype=bool), 0
     if h5py.check_string_dtype(item.dtype) is None:  # pyright: ignore[reportAttributeAccessIssue]
-        return np.zeros(item.shape, dtype=bool)  # pyright: ignore[reportAttributeAccessIssue]
-    return np.asarray(item.asstr()[:] == value)  # pyright: ignore[reportAttributeAccessIssue]
+        return np.zeros(item.shape, dtype=bool), 0  # pyright: ignore[reportAttributeAccessIssue]
+    return np.asarray(item.asstr()[:] == value), 0  # pyright: ignore[reportAttributeAccessIssue]
 
 
 def _compute_new_ids(
@@ -185,8 +190,10 @@ def rename_cell_ids(path: str, column: str, value: str, prefix_from: str, prefix
         prefix_to: Its replacement.
 
     Returns:
-        Dict with ``output_path``, ``n_selected``, ``n_renamed`` (always equal
-        to ``n_selected`` for this operation; the issue asks for both so a
+        Dict with ``output_path``, ``n_selected``, ``n_selector_masked``
+        (selector rows that are pd.NA and so never matched — nonzero means
+        the selection may be partial), ``n_renamed`` (always equal to
+        ``n_selected`` for this operation; the issue asks for both so a
         broader-than-intended selector stays visible), and ``examples`` (up to
         five ``[before, after]`` pairs), or ``{"error": ...}``.
     """
@@ -232,7 +239,7 @@ def rename_cell_ids(path: str, column: str, value: str, prefix_from: str, prefix
             if column not in direct_members(obs):
                 return {"error": f"Refusing to rename: obs column not present: '{column}'"}
 
-            mask = _selection_mask(obs, column, value)
+            mask, n_selector_masked = _selection_mask(obs, column, value)
             n_selected = int(mask.sum())
             if n_selected == 0:
                 # Gated before the index read: a mistyped selector should not
@@ -364,6 +371,7 @@ def rename_cell_ids(path: str, column: str, value: str, prefix_from: str, prefix
             "output_path": output_path,
             "n_selected": n_selected,
             "n_renamed": n_selected,
+            "n_selector_masked": n_selector_masked,
             "examples": examples,
         }
 

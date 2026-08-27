@@ -559,8 +559,7 @@ def write_h5ad(
         # Before the uns mutation below: a refusal must leave adata exactly
         # as the caller passed it, or a fixed-and-retried write re-reads the
         # just-stamped entries as the existing log and appends them twice.
-        # (The explicit-output "already exists" refusal further down runs
-        # after the stamp; accepted — output_path is a test hook.)
+        # Post-stamp failure paths restore the log via _unstamp below.
         if nullable := nullable_string_locations(adata):
             return {
                 "error": (
@@ -570,10 +569,8 @@ def write_h5ad(
             }
 
         provenance = adata.uns.get(PROVENANCE_KEY, {})
-        if isinstance(provenance, dict) and EDIT_LOG_KEY in provenance:
-            existing_log_raw = provenance[EDIT_LOG_KEY]
-        else:
-            existing_log_raw = "[]"
+        had_log = isinstance(provenance, dict) and EDIT_LOG_KEY in provenance
+        existing_log_raw = provenance[EDIT_LOG_KEY] if had_log else "[]"
 
         log_result = build_edit_log(existing_log_raw, edit_entries, source_path)
         if "error" in log_result:
@@ -581,18 +578,36 @@ def write_h5ad(
 
         adata.uns.setdefault(PROVENANCE_KEY, {})[EDIT_LOG_KEY] = log_result["json"]
 
+        def _unstamp() -> None:
+            # Any failure after the stamp must put adata back the way the
+            # caller passed it: a retried write would otherwise parse the
+            # just-stamped entries as the existing log and append them twice.
+            if had_log:
+                adata.uns[PROVENANCE_KEY][EDIT_LOG_KEY] = existing_log_raw
+            else:
+                prov = adata.uns.get(PROVENANCE_KEY)
+                if isinstance(prov, dict):
+                    prov.pop(EDIT_LOG_KEY, None)
+                    if not prov:
+                        adata.uns.pop(PROVENANCE_KEY, None)
+
         # The same claim machinery every copy-and-patch tool uses
         # (snapshot_copy): O_EXCL creates the output name, waiting out a
         # same-second collision. The claim is what makes the failure unlink
         # safe — the file at output_path is ours by construction, so removing
         # it can never delete pre-existing data, and no partial file is left
         # wearing the -edit-<timestamp> name resolve_latest keys on.
-        if output_path is None:
-            output_path = _claim_snapshot_path(source_path)
-        elif not _try_claim(output_path):
-            return {"error": f"Refusing to write: a file already exists at {output_path}"}
-        with _claimed(output_path):
-            adata.write_h5ad(output_path, compression=compression, compression_opts=compression_opts)
+        try:
+            if output_path is None:
+                output_path = _claim_snapshot_path(source_path)
+            elif not _try_claim(output_path):
+                _unstamp()
+                return {"error": f"Refusing to write: a file already exists at {output_path}"}
+            with _claimed(output_path):
+                adata.write_h5ad(output_path, compression=compression, compression_opts=compression_opts)
+        except BaseException:
+            _unstamp()
+            raise
 
         cleanup_previous_version(source_path, output_path)
 
