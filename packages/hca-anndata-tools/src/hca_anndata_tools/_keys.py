@@ -15,3 +15,14 @@ have left each of them quietly looking at a key nobody wrote (#631).
 
 PROVENANCE_KEY = "provenance"
 EDIT_LOG_KEY = "edit_history"
+
+# The shared tail of every "readable but not writable back" refusal — _io's
+# per-element refusals and write_h5ad's funnel refusal compose it, so the
+# wording (and the #641 reference) cannot drift between them. Lives here for
+# the same reason the keys do: modules that must agree about a string, with
+# no dependency cost.
+UNWRITABLE_REMEDY = (
+    "which this package can read but cannot write back "
+    "(hca-validation-tools#641). Re-exporting the file with plain string "
+    "arrays is the workaround available today; it is not the only possible fix."
+)

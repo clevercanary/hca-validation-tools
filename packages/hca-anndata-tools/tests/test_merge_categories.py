@@ -11,6 +11,7 @@ import pytest
 
 from hca_anndata_tools._io import read_edit_log_h5py
 from hca_anndata_tools.merge_categories import merge_obs_categories
+from hca_anndata_tools.testing import create_sample_h5ad, make_nullable_string_array
 
 # The real split this tool exists for, from nee2023's tissue_label (#527):
 # 11,635 cells under a misspelling of the category above them.
@@ -455,3 +456,41 @@ def test_palette_untouched_when_the_merge_is_refused(tmp_path, no_snapshot):
     assert "error" in result
     assert no_snapshot(path)
     assert list(ad.read_h5ad(path).uns["grp_colors"]) == _ABCD_COLORS
+
+
+def test_merge_recreates_nullable_categories_as_plain(tmp_path):
+    """The liver shape (unmasked nullable categories) merges fine.
+
+    The writer — replace_categorical_column — recreates the categories from
+    scratch, exactly as backfill's target side does, so the encoding is no
+    obstacle: it is normalized to a plain string-array on the way out. An
+    earlier revision refused this shape via the in-place predicate, blocking
+    the very files this branch exists to unblock. Note mask 0: this is the
+    plain shape of all seven liver integrated objects, not an edge case.
+    """
+    path = create_sample_h5ad(tmp_path / "nullable.h5ad")
+    with h5py.File(path, "r+") as f:
+        make_nullable_string_array(f["obs"]["cell_type"], "categories")
+
+    result = merge_obs_categories(str(path), "cell_type", "T cell", "B cell")
+
+    assert "error" not in result, result.get("error")
+    with h5py.File(result["output_path"], "r") as f:
+        cats_item = f["obs/cell_type/categories"]
+        assert isinstance(cats_item, h5py.Dataset)
+        assert "T cell" not in [c.decode() if isinstance(c, bytes) else c for c in cats_item.asstr()[:]]
+
+
+def test_merge_refuses_masked_categories_by_name(tmp_path):
+    """A masked (null) category has no value a merge could keep or match —
+    refused by name, before the snapshot, never an h5py or pandas internal."""
+    path = create_sample_h5ad(tmp_path / "masked.h5ad")
+    with h5py.File(path, "r+") as f:
+        make_nullable_string_array(f["obs"]["cell_type"], "categories", masked=1)
+
+    before = set(tmp_path.iterdir())
+    result = merge_obs_categories(str(path), "cell_type", "T cell", "B cell")
+
+    assert "error" in result
+    assert "masked (null) categories" in result["error"]
+    assert set(tmp_path.iterdir()) == before

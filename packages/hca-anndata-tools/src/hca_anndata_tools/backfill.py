@@ -27,15 +27,19 @@ from ._io import (
     DEFAULT_PLACEHOLDERS,
     check_duplicate_ids,
     direct_members,
+    holds_string_values,
     is_missing_value,
+    masked_categories_reason,
     obs_index_name,
-    read_categorical_data,
+    read_categories,
     read_edit_log_h5py,
+    read_element,
     read_group,
-    read_string_dataset,
+    read_index,
     read_uns,
     replace_categorical_column,
     replace_string_dataset,
+    unwritable_element_reason,
     verify_categorical_integrity,
     write_edit_log_h5py,
 )
@@ -75,14 +79,25 @@ def _check_arguments(columns) -> list[str]:
     return problems
 
 
-def _read_column(obs: h5py.Group, col: str, placeholders: set[str], side: str) -> tuple[dict | None, str | None]:
+def _read_column(
+    obs: h5py.Group, col: str, placeholders: set[str], side: str, is_target: bool = False
+) -> tuple[dict | None, str | None]:
     """Read one obs column into a uniform shape: (column dict, error).
 
     The dict holds ``kind`` ('categorical' or 'string'), per-row ``values``
-    (object array of strings, None where NaN), and a ``missing`` mask (NaN,
-    empty, or placeholder). Categorical columns also carry ``cats``/``codes``.
-    Any other layout (numeric, boolean, nullable-dtype groups) has no missing
-    vocabulary this tool understands, so it is refused rather than guessed at.
+    (object array of strings; a missing row holds None — or pd.NA when its
+    code points at a masked category), and a ``missing``
+    mask (NaN, masked, empty, or placeholder). Categorical columns also carry
+    ``cats``/``codes``. Layouts with no missing vocabulary this tool
+    understands (numeric or boolean values, plain or nullable) are refused
+    rather than guessed at.
+
+    ``is_target`` marks the side whose columns get rewritten. It changes the
+    verdict on two shapes this tool can *read* but not write back: a
+    nullable-string column (``replace_string_dataset`` needs a Dataset to
+    copy layout from — refused before the snapshot), and a categorical with
+    masked categories (a void category has no value a rewrite could keep).
+    On the read-only source side both shapes just read.
 
     The missing predicate runs once per distinct value, never per row — the
     categorical branch works on the categories, the string branch factorizes
@@ -95,12 +110,19 @@ def _read_column(obs: h5py.Group, col: str, placeholders: set[str], side: str) -
         # the clear error rather than tripping over .strip() on a non-string.
         # An EMPTY categories array (an all-NaN column) is fine — anndata
         # writes it with a non-string dtype, but there is nothing to compare.
-        if len(item["categories"]) and h5py.check_string_dtype(item["categories"].dtype) is None:  # pyright: ignore[reportAttributeAccessIssue, reportArgumentType]
+        # The categories may themselves be a nullable-string-array *group*
+        # (the liver shape, hca-validation-tools#638) — still string values,
+        # and probing .dtype on the group would leak an h5py internal.
+        cats_item = item["categories"]
+        if len(cats_item) and not holds_string_values(cats_item):  # pyright: ignore[reportArgumentType]
             return None, (
                 f"{side} column '{col}' is a categorical of non-string values — "
                 "only string-valued categorical and string obs columns can be backfilled"
             )
-        cats, codes = read_categorical_data(item)  # pyright: ignore[reportArgumentType]
+        cats = read_categories(item)  # pyright: ignore[reportArgumentType]
+        if is_target and (reason := masked_categories_reason(cats, f"Target column '{col}'")):
+            return None, reason
+        codes: np.ndarray = item["codes"][:]  # pyright: ignore[reportIndexIssue, reportAssignmentType]
         cat_values = np.array(list(cats), dtype=object)
         cat_missing = np.array([is_missing_value(c, placeholders) for c in cats], dtype=bool)
         valid = codes >= 0
@@ -116,16 +138,20 @@ def _read_column(obs: h5py.Group, col: str, placeholders: set[str], side: str) -
             "values": values,
             "missing": missing,
         }, None
-    if isinstance(item, h5py.Group):
-        return None, (
-            f"{side} column '{col}' uses a nullable-dtype layout, which is not supported — "
-            "only categorical and string obs columns can be backfilled"
-        )
-    if h5py.check_string_dtype(item.dtype) is None:  # pyright: ignore[reportAttributeAccessIssue]
+    # Numeric, boolean, and their nullable group counterparts all land here:
+    # no string values to compare, one verdict.
+    if not holds_string_values(item):
         return None, (
             f"{side} column '{col}' is not categorical or string — only those obs column types can be backfilled"
         )
-    values = read_string_dataset(obs, col)
+    # A nullable-string target reads fine but replace_string_dataset needs a
+    # Dataset to copy layout from — refuse before the snapshot. A Dataset
+    # target passes through (reason is None).
+    if is_target and (reason := unwritable_element_reason(item, f"Target column '{col}'")):
+        return None, f"Refusing to backfill: {reason}"
+    values = read_element(item)
+    # factorize sends pd.NA (a masked entry) to code -1 — missing, which is
+    # exactly what a masked source value means here.
     codes, uniques = pd.factorize(values)
     uniq_missing = np.array([is_missing_value(u, placeholders) for u in uniques], dtype=bool)
     valid = codes >= 0
@@ -164,15 +190,15 @@ def _read_obs_for_backfill(
                 }
             if col not in obs_keys:
                 return None, {"error": f"{side} file has no obs column '{col}'"}
-        # The pandas Index is built once and reused for the duplicate check
-        # and the join.
-        index = pd.Index(read_string_dataset(obs, index_name))
+        # read_index refuses a masked index — the join key cannot contain
+        # nulls. Duplicates stay a caller concern; see read_index.
+        index = pd.Index(read_index(obs, index_name, side))
         dupe_err = check_duplicate_ids(index, f"{side} cells")
         if dupe_err:
             return None, {"error": dupe_err}
         col_data = {}
         for col in columns:
-            data, err = _read_column(obs, col, placeholders, side)
+            data, err = _read_column(obs, col, placeholders, side, is_target=is_target)
             if err:
                 return None, {"error": err}
             col_data[col] = data

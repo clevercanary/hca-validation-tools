@@ -214,6 +214,47 @@ def create_hca_h5ad(
     return path
 
 
+def write_h5ad_with_nullable_strings(adata, path) -> None:
+    """anndata's own writer with ``allow_write_nullable_strings`` on.
+
+    This is how the producer pipelines that made the liver files write —
+    anndata itself, flag flipped — so fixtures written through here carry
+    the authentic on-disk encodings, not this module's reconstructions.
+    ``settings.override`` restores the flag on exit, so no process-global
+    state leaks into other tests.
+    """
+    with ad.settings.override(allow_write_nullable_strings=True):
+        adata.write_h5ad(path)
+
+
+def make_plain_string_column(parent: h5py.Group, name: str, values: list[str]) -> None:
+    """Create (or replace) ``name`` as a plain ``string-array`` Dataset.
+
+    anndata's write converts string obs columns to categoricals
+    (``strings_to_categoricals``), so a genuine plain string column cannot be
+    produced through ``write_h5ad`` — it has to be built directly. Composes
+    with :func:`make_nullable_string_array` to build a nullable column.
+    """
+    if name in parent:
+        del parent[name]
+    ds = parent.create_dataset(name, data=np.array(values, dtype=object), dtype=h5py.string_dtype())
+    ds.attrs["encoding-type"] = "string-array"
+    ds.attrs["encoding-version"] = "0.2.0"
+
+
+def assert_no_snapshot_written(path) -> None:
+    """No ``-edit-<timestamp>`` snapshot exists beside ``path``.
+
+    The no-partial-artifact half of every refusal test: a tool that refuses
+    must leave nothing wearing the snapshot name ``resolve_latest`` keys on.
+    Judged by ``write._is_timestamped`` — the naming's one owner — so a
+    rename of the snapshot pattern cannot turn this assert vacuously green.
+    """
+    from .write import _is_timestamped
+
+    assert not [p for p in Path(path).parent.iterdir() if _is_timestamped(str(p))]
+
+
 def make_nullable_string_array(parent: h5py.Group, name: str, *, masked: int = 0) -> None:
     """Rewrite an existing string dataset as a ``nullable-string-array`` group.
 
@@ -237,11 +278,67 @@ def make_nullable_string_array(parent: h5py.Group, name: str, *, masked: int = 0
     del parent[name]
 
     group = parent.create_group(name)
-    group.create_dataset("values", data=values)
-    mask = np.zeros(len(values), dtype=bool)
-    mask[:masked] = True
-    group.create_dataset("mask", data=mask)
+    # Stamp the children as AnnData does: a real nullable-string-array marks
+    # values as string-array and mask as array. Leaving them bare makes the
+    # fixture read as an *unstamped* element, which anndata warns about — a
+    # different defect from the one these fixtures exist to reproduce.
+    written = group.create_dataset("values", data=values)
+    written.attrs["encoding-type"] = "string-array"
+    written.attrs["encoding-version"] = "0.2.0"
+    mask_values = np.zeros(len(values), dtype=bool)
+    mask_values[:masked] = True
+    mask = group.create_dataset("mask", data=mask_values)
+    mask.attrs["encoding-type"] = "array"
+    mask.attrs["encoding-version"] = "0.2.0"
     for key, value in attrs.items():
         group.attrs[key] = value
     group.attrs["encoding-type"] = "nullable-string-array"
     group.attrs["encoding-version"] = "0.1.0"
+
+
+def make_fixed_width_byte_array(parent: h5py.Group, name: str) -> None:
+    """Rewrite an existing string dataset as a fixed-width byte array.
+
+    AnnData stamps a numpy ``S``-kind array ``encoding-type: array``, not
+    ``string-array`` — so this is a *writable* encoding (a plain Dataset)
+    that a guard keyed on the encoding *name* would wrongly refuse. Files in
+    the wild carry it; ``read_elem`` hands the values back as raw ``bytes``.
+
+    Args:
+        parent: The group holding ``name`` (e.g. an ``obs`` group).
+        name: An existing string dataset to convert in place.
+    """
+    source = parent[name]
+    if not isinstance(source, h5py.Dataset):
+        raise TypeError(f"{name!r} is not a dataset — nothing to convert")
+    encoded = [v.encode("utf-8") for v in source.asstr()[:]]
+    # Sized from the data, never a fixed 64: a hard-coded width would truncate
+    # longer IDs silently, and a fixture that quietly corrupts its own values
+    # is worse than no fixture.
+    values = np.array(encoded, dtype=f"S{max((len(v) for v in encoded), default=1)}")
+    attrs = dict(source.attrs)
+    del parent[name]
+
+    written = parent.create_dataset(name, data=values)
+    for key, value in attrs.items():
+        written.attrs[key] = value
+    written.attrs["encoding-type"] = "array"
+    written.attrs["encoding-version"] = "0.2.0"
+
+
+def make_nullable_index(path, frame: str = "obs", *, masked: int = 0) -> None:
+    """Rewrite a dataframe's index in place as a ``nullable-string-array``.
+
+    The open-file-and-convert that every test of this encoding was writing by
+    hand, three lines at a time, across six modules. ``frame`` is the group's
+    name — ``obs`` or ``var``.
+
+    The index name is read from the attribute directly rather than through
+    ``_io.obs_index_name``: a fixture that leans on the code under test cannot
+    be trusted to expose that code's bugs.
+    """
+    with h5py.File(path, "r+") as f:
+        group = f[frame]
+        assert isinstance(group, h5py.Group), f"{frame!r} is not a dataframe group"
+        name = group.attrs.get("_index", "_index")
+        make_nullable_string_array(group, name.decode("utf-8") if isinstance(name, bytes) else name, masked=masked)

@@ -11,6 +11,7 @@ import pytest
 import scipy.sparse as sp
 
 from hca_anndata_tools.copy_cap import copy_cap_annotations
+from hca_anndata_tools.testing import make_nullable_index, make_nullable_string_array
 from hca_anndata_tools.write import EDIT_LOG_KEY
 
 # --- Fixtures ---
@@ -368,6 +369,23 @@ def test_var_overlap_rejects_duplicate_var_ids(cap_source, tmp_path):
     assert "HCA genes" in result["error"]
 
 
+def test_var_overlap_refuses_a_masked_var_index(cap_source, tmp_path):
+    """A null gene ID must not be counted as an overlapping gene.
+
+    pandas matches pd.NA to pd.NA, so a masked var index on each side
+    intersects to a "shared gene" that is no gene at all — the same NA-joins-NA
+    hazard read_index closes for cells, and check_duplicate_ids misses it for a
+    single masked entry (hca-validation-tools#637 review).
+    """
+    target = _make_hca_target(tmp_path / "target_masked_var.h5ad", CELL_IDS)
+    make_nullable_index(target, "var", masked=1)
+
+    result = copy_cap_annotations(str(cap_source), str(target))
+    assert "error" in result
+    assert "HCA genes" in result["error"]
+    assert "missing value" in result["error"]
+
+
 # --- Failure cases ---
 
 
@@ -682,3 +700,18 @@ def test_copy_survives_dataset_at_uns_in_target(cap_source, hca_target, put_data
     assert "error" in result
     assert "no attribute" not in result["error"]  # the pre-#617 crash shape
     assert hca_target.read_bytes() == before
+
+
+def test_copy_refuses_masked_cap_categories(cap_source, tmp_path):
+    """Masked nullable-string categories in a CAP column are refused by name
+    — pandas would otherwise raise its internal 'Categorical categories
+    cannot be null' through the broad except."""
+    target = _make_hca_target(tmp_path / "target_masked_cats.h5ad", CELL_IDS)
+    with h5py.File(cap_source, "r+") as f:
+        make_nullable_string_array(f["obs/author_cell_type--rationale"], "categories", masked=1)
+
+    result = copy_cap_annotations(str(cap_source), str(target))
+
+    assert "error" in result
+    assert "masked (null) categories" in result["error"]
+    assert "author_cell_type--rationale" in result["error"]

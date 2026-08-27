@@ -8,20 +8,22 @@
 from __future__ import annotations
 
 import gc
-from contextlib import contextmanager
+import warnings
+from contextlib import contextmanager, suppress
 from typing import TYPE_CHECKING, Literal
 
 import anndata as ad
 import h5py
 import pandas as pd
-from anndata.io import write_elem
+from anndata.io import read_elem, write_elem
 
-from ._keys import EDIT_LOG_KEY, PROVENANCE_KEY
+from ._keys import EDIT_LOG_KEY, PROVENANCE_KEY, UNWRITABLE_REMEDY
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
     import numpy as np
+    from pandas.api.typing import NAType
 
 # The HCA placeholder vocabulary (case-insensitive): obs values that mean
 # "no data". replace_placeholder_values blanks exact (lowercased) matches of
@@ -41,11 +43,55 @@ DEFAULT_PLACEHOLDERS = [
 ]
 
 
-def is_missing_value(value: str, placeholders: set[str]) -> bool:
-    """True if a string value means "no data": empty/whitespace or a
-    placeholder (compare against a pre-lowercased set)."""
+def is_missing_value(value: str | NAType, placeholders: set[str]) -> bool:
+    """True if a value means "no data": pd.NA/NaN (readers hand masked
+    entries through as pd.NA), empty/whitespace, or a placeholder (compare
+    against a pre-lowercased set). NA is judged here, not at call sites —
+    a caller-side guard is the per-site drift that reintroduces
+    "'NAType' object has no attribute 'strip'" one consumer at a time."""
+    if pd.isna(value):
+        return True
     s = value.strip()
     return not s or s.lower() in placeholders
+
+
+def _masked_categories_open_error(path: str) -> str | None:
+    """Name the masked-categories column pandas' reader refused.
+
+    anndata cannot *read* a categorical whose categories are masked — pandas
+    raises "Categorical categories cannot be null" naming no column — so the
+    column is found again via h5py. Best-effort by design: the file is
+    already known bad, and a scan failure must not replace the original
+    error with a second traceback.
+    """
+
+    def scan(group: h5py.Group, label: str) -> str | None:
+        for col in group:
+            item = group[col]
+            if (
+                isinstance(item, h5py.Group)
+                and "categories" in item
+                and (reason := masked_categories_reason(read_categories(item), f"{label} column '{col}'"))
+            ):
+                return reason
+        return None
+
+    with suppress(Exception), h5py.File(path, "r") as f:
+        for frame in ("obs", "var", "raw/var"):
+            group = f.get(frame)
+            if isinstance(group, h5py.Group) and (reason := scan(group, frame)):
+                return reason
+        # obsm/varm DataFrames carry their own categoricals and are read by
+        # anndata just the same.
+        for holder_name in ("obsm", "varm"):
+            holder = f.get(holder_name)
+            if not isinstance(holder, h5py.Group):
+                continue
+            for key in holder:
+                frame_group = holder[key]
+                if isinstance(frame_group, h5py.Group) and (reason := scan(frame_group, f"{holder_name}['{key}']")):
+                    return reason
+    return None
 
 
 @contextmanager
@@ -58,8 +104,19 @@ def open_h5ad(path: str, backed: Literal["r", "r+"] | None = "r"):
 
     Yields:
         An AnnData object.
+
+    Raises:
+        ValueError: With the column named, when the file holds a categorical
+            whose categories are masked — a shape anndata itself cannot read
+            (see :func:`masked_categories_reason`). Every tool that opens
+            files through here gets the named refusal for free.
     """
-    adata = ad.read_h5ad(path, backed=backed)
+    try:
+        adata = ad.read_h5ad(path, backed=backed)
+    except ValueError as e:
+        if "Categorical categories cannot be null" in str(e) and (named := _masked_categories_open_error(path)):
+            raise ValueError(named) from e
+        raise
     try:
         yield adata
     finally:
@@ -76,17 +133,6 @@ def _decode_bytes(val):
     return val
 
 
-# The on-disk string encodings the raw-h5py readers in this package can
-# actually handle. AnnData also writes ``nullable-string-array`` — a *group*
-# of ``values`` + ``mask`` rather than a plain dataset — which every ``[:]``
-# slice in this package refuses (hca-validation-tools#637). get_storage_info
-# reports its verdict from this set, so detection and capability stay in step.
-# Widening support means editing this set *and* the readers themselves — the
-# refusal in backfill.py states the same fact independently, so #637 should
-# route both through one predicate rather than trusting this constant alone.
-SUPPORTED_STRING_ENCODINGS = frozenset({"string-array"})
-
-
 def encoding_of(item: h5py.Group | h5py.Dataset | h5py.Datatype) -> str | None:
     """The declared ``encoding-type`` of an HDF5 item, or None if unstamped.
 
@@ -99,6 +145,147 @@ def encoding_of(item: h5py.Group | h5py.Dataset | h5py.Datatype) -> str | None:
     return _decode_bytes(item.attrs.get("encoding-type"))
 
 
+def holds_string_values(item: h5py.Group | h5py.Dataset | h5py.Datatype) -> bool:
+    """True if this element's values are strings, whatever its container.
+
+    The one place the string-encoding taxonomy lives: a Dataset answers by
+    dtype, and a Group holds strings only as a ``nullable-string-array`` —
+    the values+mask serialization of pandas ``StringDtype``. Callers that
+    fork on "can these values be compared or backfilled as strings" ask
+    here, so the next string-holding encoding anndata ships is taught in
+    one place rather than at every call site — per-site taxonomy tracking
+    is the drift that produced hca-validation-tools#637.
+    """
+    if isinstance(item, h5py.Group):
+        # Encoding only — a stamped-but-truncated group is caught by
+        # read_element's corruption check, with the element named.
+        return encoding_of(item) == "nullable-string-array"
+    return h5py.check_string_dtype(item.dtype) is not None
+
+
+def is_writable_element(item: h5py.Group | h5py.Dataset | h5py.Datatype) -> bool:
+    """True if this package can write ``item`` back in place.
+
+    The operative test is the container, not the encoding name.
+    ``replace_string_dataset`` calls ``storage_like``, which copies chunking and
+    compression off an existing Dataset; a Group — ``nullable-string-array``, or
+    whatever multi-part encoding AnnData adds next — has none of those
+    properties to copy (hca-validation-tools#641).
+
+    Note what this is *not* about: anndata can write nullable strings, behind
+    the ``allow_write_nullable_strings`` setting it ships defaulting to False.
+    The constraint here is our own hand-rolled writer needing a Dataset, which
+    no setting changes.
+
+    Judging by encoding name instead would refuse elements that write perfectly
+    well: a fixed-width byte index and a numeric categorical's ``categories``
+    are both stamped ``array``, and both are Datasets. It would equally *pass*
+    an unstamped Group, which then fails at the write.
+
+    Since hca-validation-tools#637 the readers cope with every encoding anndata
+    knows, so a Group element can still be inspected and converted — what it
+    cannot be is renamed or recompressed.
+
+    One predicate, two call sites — :func:`require_writable_index` refuses
+    before a tool takes its snapshot, ``get_storage_info`` reports the same
+    verdict during inspection. They must not be able to disagree.
+    """
+    return isinstance(item, h5py.Dataset)
+
+
+def read_element(item: h5py.Group | h5py.Dataset | h5py.Datatype) -> np.ndarray:
+    """Read a string or categorical element, whatever encoding it uses.
+
+    The read counterpart of the write rule stated above ``replace_string_dataset``:
+    use anndata where there is no storage layout to preserve, hand-roll only
+    where there is. A read has no layout to carry, so it goes through
+    ``read_elem`` — which dispatches on ``encoding-type`` via anndata's own
+    registry and therefore handles ``string-array``, ``nullable-string-array``
+    and whatever AnnData adds next, without this package tracking the taxonomy.
+
+    Hand-rolled ``[:]`` slices are what broke on nullable indexes: a
+    ``nullable-string-array`` is a *group* of ``values`` + ``mask``, so ``[:]``
+    raises and ``.asstr()`` has no such attribute
+    (hca-validation-tools#637). Reaching into ``values`` ourselves would
+    re-implement the registry badly and break again on the next encoding.
+
+    Returns an object array of decoded ``str``, matching what the hand-rolled
+    readers returned. Two details are load-bearing:
+
+    * **``dtype=object``** — a fixed-width unicode dtype would silently clip
+      longer values assigned in later (see ``rename_cell_ids``).
+    * **Decoding.** ``read_elem`` dispatches on ``encoding-type``, and a
+      fixed-width byte array is stamped ``array`` (which is what anndata's own
+      ``write_elem`` does for a numpy ``S``-kind array), so it comes back as
+      raw ``bytes`` — no exception, no warning. The readers this replaced all
+      decoded, and skipping it makes cell IDs compare unequal to their
+      ``str`` counterparts: a join silently matches nothing rather than
+      failing. Only the bytes case pays for the decode.
+
+    Masked entries surface as ``pd.NA``; callers that cannot tolerate a
+    missing value must check before converting to str, because ``str(pd.NA)``
+    is ``"<NA>"`` and would turn every masked row into the *same* value.
+    """
+    import numpy as np
+
+    if isinstance(item, h5py.Group) and (enc := encoding_of(item)) and enc.startswith("nullable-"):
+        # A stamped values+mask group missing a child is a corrupt file (a
+        # truncated write); anndata's reader would leak a raw HDF5 KeyError.
+        # Checked here so every caller gets the named error at once.
+        for child in ("values", "mask"):
+            if child not in item:
+                raise ValueError(f"'{item.name}' is stamped '{enc}' but has no '{child}' dataset — the file is corrupt")
+
+    with warnings.catch_warnings():
+        # anndata warns on every read of a legacy unstamped element. encoding_of
+        # calls those "old, not invalid", and the readers handle them, so the
+        # warning is noise the MCP server would repeat on every tool call
+        # against such a file. Matched on the message, not the class: anndata
+        # raises an OldFormatWarning, which is private and a
+        # PendingDeprecationWarning subclass, so naming a category would couple
+        # us to an internal.
+        warnings.filterwarnings("ignore", message=".*written without encoding metadata.*")
+        raw = read_elem(item)
+    # atleast_1d: anndata's unstamped-dataset fallback unwraps a length-1
+    # byte-string array to a scalar, which would otherwise reach callers as a
+    # 0-d array they cannot iterate.
+    raw = np.atleast_1d(np.asanyarray(raw))
+    if raw.dtype.kind == "S":
+        # Decode off the fixed-width array directly. Boxing to object first
+        # allocates a bytes object per row that the next line discards:
+        # 0.33s and 427 MB peak becomes 0.20s and 278 MB on a 2M-row index.
+        return np.array([v.decode("utf-8") for v in raw.flat], dtype=object).reshape(raw.shape)
+    values = np.asarray(raw, dtype=object)
+    if values.size and isinstance(values.flat[0], bytes):
+        # Variable-length bytes have no fixed-width array to decode off.
+        values = np.array([_decode_bytes(v) for v in values.flat], dtype=object).reshape(values.shape)
+    return values
+
+
+def index_length(item: h5py.Group | h5py.Dataset | h5py.Datatype) -> int:
+    """The row count of an index element, from HDF5 metadata where it can be.
+
+    The one place this package looks inside a nullable group's ``values``
+    child, and it is deliberately bounded to a *shape*: no decoding, no mask,
+    nothing that re-implements anndata's registry — which is the reason the
+    reads go through :func:`read_element` instead.
+
+    :func:`read_element` answers the same question by materialising every ID:
+    1.15s and 174 MB on a 944k-cell object, for a number HDF5 already stores in
+    a header. Callers run it after a multi-gigabyte copy, with a curator
+    already waiting.
+
+    Anything else — an encoding we have not met, a scalar — falls through to
+    ``read_element``, so the unknown case is correct but slow rather than
+    wrong.
+    """
+    if isinstance(item, h5py.Dataset) and item.ndim:
+        return item.shape[0]
+    if isinstance(item, h5py.Group) and isinstance(values := item.get("values"), h5py.Dataset) and values.ndim:
+        return values.shape[0]
+    return read_element(item).shape[0]
+
+
 def _strip_ensembl_version(eid: str) -> str:
     """Strip version suffix from Ensembl ID: ENSG00000173947.7 -> ENSG00000173947."""
     if eid.startswith("ENSG") and "." in eid:
@@ -106,20 +293,114 @@ def _strip_ensembl_version(eid: str) -> str:
     return eid
 
 
-def obs_index_name(obs: h5py.Group) -> str:
-    """The name of the obs index dataset, from ``obs.attrs['_index']``.
+def obs_index_name(obs: h5py.Group | h5py.Dataset | h5py.Datatype) -> str:
+    """The name of the index dataset, from the group's ``_index`` attribute.
 
-    A reader, not a guard — the same lookup obsm DataFrames need for their
-    own sub-index.
+    A reader, not a guard — the same lookup obsm DataFrames and ``var`` need
+    for their own index.
     """
     return _decode_bytes(obs.attrs.get("_index", "_index"))
 
 
+def read_index(group: h5py.Group | h5py.Dataset | h5py.Datatype, name: str, label: str) -> np.ndarray:
+    """Read a dataframe index, enforcing what every index read needs.
+
+    An index is a join key, and a missing value in one is never legitimate:
+    ``str(pd.NA)`` is ``"<NA>"``, so masked rows collapse to a single
+    identifier. Worse than a crash — pandas joins ``pd.NA`` to ``pd.NA``, so a
+    masked cell matches the *other* file's masked cell and is counted as a
+    legitimate match (hca-validation-tools#637). ``check_duplicate_ids``
+    catches that only for two or more masked rows; a single one passes.
+
+    The underlying values usually survive a mask, so a masked index is
+    repairable — but not by guessing here.
+
+    Duplicates are deliberately **not** checked here. They have
+    context-dependent remedies that only the caller knows: ``rename_cell_ids``
+    distinguishes duplicates that already exist ("repair the file") from ones
+    the rename would create ("change the arguments"), and folding that into a
+    shared reader would flatten two refusals into one unhelpful message.
+    Callers keep their own ``check_duplicate_ids``.
+
+    Raises:
+        ValueError: The index contains missing values.
+    """
+    import numpy as np
+
+    values = read_element(group[name])
+    missing = np.flatnonzero(pd.isna(values))
+    if missing.size:
+        raise ValueError(
+            f"{label} index '{name}' has {missing.size} missing value(s) "
+            f"(first at row {missing[0]}) — an entry with no identifier cannot be joined on"
+        )
+    return values
+
+
+def unwritable_element_reason(item: h5py.Group | h5py.Dataset | h5py.Datatype, subject: str) -> str | None:
+    """Why ``item`` cannot be written back, or None if it can.
+
+    Checked before a tool takes a snapshot, not after: without it the write
+    failure lands *after* a multi-gigabyte copy, with a message about a missing
+    ``.compression`` attribute (hca-validation-tools#641). What counts as
+    writable is :func:`is_writable_element`.
+
+    One clause for every refusal of this kind — ``subject`` is what varies, and
+    naming something the reader can find in the file is the caller's job. No
+    "Refusing to X" prefix: callers that collect problems into a list add their
+    own, and :func:`require_writable_index` adds it for callers that return one
+    refusal directly.
+    """
+    if is_writable_element(item):
+        return None
+    return (
+        f"{subject} uses the "
+        f"'{encoding_of(item) or 'unstamped ' + type(item).__name__.lower()}' encoding, "
+        f"{UNWRITABLE_REMEDY}"
+    )
+
+
+def masked_categories_reason(cats: pd.Index, subject: str) -> str | None:
+    """Why these categories block a rewrite, or None if none are masked.
+
+    A masked (pd.NA) category has no value a rewrite could keep —
+    ``str(pd.NA)`` is ``"<NA>"`` — and none to compare against anything.
+    Shared the way :func:`unwritable_element_reason` is, so the wording
+    cannot drift between the tools that rewrite categoricals; ``subject``
+    is what varies.
+    """
+    n_masked = int(pd.isna(cats).sum())
+    if not n_masked:
+        return None
+    return (
+        f"{subject} has {n_masked} masked (null) categories — a masked "
+        "category has no value a rewrite could keep; repair the column upstream first"
+    )
+
+
+def require_writable_index(
+    group: h5py.Group | h5py.Dataset | h5py.Datatype, name: str, tool: str, label: str = "obs"
+) -> str | None:
+    """Refuse an index this package can read but cannot write back.
+
+    ``label`` names *which* index, the way :func:`read_index`'s does — an obsm
+    frame's index is usually called ``_index`` too, so the dataset name alone
+    cannot tell a caller which frame to fix.
+    """
+    reason = unwritable_element_reason(group[name], f"{label} index '{name}'")
+    return f"Refusing to {tool}: {reason}" if reason else None
+
+
 def read_obs_index(path: str) -> list[str]:
-    """Read the obs index (cell IDs) from an h5ad file via h5py."""
+    """Read the obs index (cell IDs) from an h5ad file.
+
+    Raises:
+        ValueError: The index has missing values. Duplicates are *not* checked
+            — see :func:`read_index` for why that is left to callers.
+    """
     with h5py.File(path, "r") as f:
-        idx_key = obs_index_name(f["obs"])  # pyright: ignore[reportArgumentType]
-        return [_decode_bytes(v) for v in f["obs"][idx_key][:]]
+        idx_key = obs_index_name(f["obs"])
+        return list(read_index(f["obs"], idx_key, "obs"))
 
 
 def read_column_order(obs: h5py.Group | h5py.Dataset | h5py.Datatype) -> list[str]:
@@ -139,8 +420,13 @@ def read_obs_column_names(path: str) -> list[str]:
         return read_column_order(f["obs"])
 
 
-def read_obs_categorical_values(path: str, column: str) -> set[str]:
+def read_obs_categorical_values(path: str, column: str) -> set[str | NAType]:
     """Read the unique category values for a categorical obs column.
+
+    The set can contain ``pd.NA``: a nullable column's masked rows, or a
+    masked category, come through as NA (the annotation says so, so pyright
+    holds callers to an NA policy instead of letting ``sorted``/``lower``
+    crash at runtime on the liver shape).
 
     For categorical columns, HDF5 stores a small 'categories' array
     separately from the per-cell 'codes' array. This reads only the
@@ -155,9 +441,9 @@ def read_obs_categorical_values(path: str, column: str) -> set[str]:
     with h5py.File(path, "r") as f:
         item = f["obs"][column]
         if isinstance(item, h5py.Group) and "categories" in item:
-            return {_decode_bytes(v) for v in item["categories"][:]}
-        # Non-categorical: read full dataset
-        return {_decode_bytes(v) for v in item[:]}
+            return set(read_element(item["categories"]))
+        # Non-categorical: read the full element
+        return set(read_element(item))
 
 
 def read_var_gene_names(path: str) -> tuple[set[str], dict[str, str]]:
@@ -169,9 +455,10 @@ def read_var_gene_names(path: str) -> tuple[set[str], dict[str, str]]:
     """
     with h5py.File(path, "r") as f:
         var = f["var"]
-        idx_key = _decode_bytes(var.attrs.get("_index", "_index"))
-        raw_index = var[idx_key][:]
-        index = [_decode_bytes(v) for v in raw_index]
+        # read_index, not read_element: these Ensembl IDs are lookup keys, and
+        # _strip_ensembl_version would hit pd.NA with an AttributeError about
+        # NAType — the opaque failure this module now refuses by name.
+        index = list(read_index(var, obs_index_name(var), "var"))
 
         # Find gene name column
         name_col = None
@@ -189,7 +476,11 @@ def read_var_gene_names(path: str) -> tuple[set[str], dict[str, str]]:
             categories, codes = read_categorical_data(item)
             names = [categories[c] if c >= 0 else "" for c in codes]
         else:
-            names = [_decode_bytes(v) for v in item[:]]
+            names = list(read_element(item))
+        # A masked name is no name — same as an unset categorical code above.
+        # pd.NA must not escape into results: str(pd.NA) is "<NA>", and the
+        # MCP layer cannot serialize NAType at all.
+        names = ["" if pd.isna(n) else n for n in names]
 
         gene_names = set(names)
 
@@ -294,6 +585,15 @@ def write_edit_log_h5py(f: h5py.File, log_json: str) -> None:
     write_elem(ensure_provenance_group(f), EDIT_LOG_KEY, log_json)
 
 
+def read_categories(item: h5py.Group) -> pd.Index:
+    """Read only the categories of a categorical h5py group.
+
+    Distinct-value-sized, so a caller that may refuse (a masked-categories
+    check) reads this before paying for the n_obs-sized codes.
+    """
+    return pd.Index(read_element(item["categories"]))
+
+
 def read_categorical_data(item: h5py.Group) -> tuple[pd.Index, np.ndarray]:
     """Read categories and codes from a categorical h5py group.
 
@@ -303,9 +603,7 @@ def read_categorical_data(item: h5py.Group) -> tuple[pd.Index, np.ndarray]:
     Returns:
         (categories, codes) — pandas Index of decoded category strings and numpy codes array.
     """
-    categories = [_decode_bytes(v) for v in item["categories"][:]]
-    codes = item["codes"][:]
-    return pd.Index(categories), codes
+    return read_categories(item), item["codes"][:]
 
 
 def update_column_order(
@@ -383,18 +681,6 @@ def check_duplicate_ids(index, label: str) -> str | None:
         return None
     dupes = idx[idx.duplicated()].unique()[:5].tolist()
     return f"{label} have duplicate IDs (first 5): {dupes}"
-
-
-def read_string_dataset(group: h5py.Group, name: str) -> np.ndarray:
-    """Read a string dataset as an object array of str.
-
-    asstr() decodes in C (vlen and fixed-width alike); dtype=object matters —
-    a fixed-width unicode dtype would silently clip longer values assigned
-    into the array later (see rename_cell_ids).
-    """
-    import numpy as np
-
-    return np.asarray(group[name].asstr()[:], dtype=object)
 
 
 # The rule for the two encoders below, and for anything added beside them:
@@ -492,12 +778,12 @@ def remap_palette(uns: h5py.Group | None, key: str | None, kept: Sequence[int], 
     if uns is None or key is None or key not in direct_members(uns):
         return None
     node = uns[key]
-    # A palette that is not a string array is not one we can realign — and
-    # read_string_dataset's asstr() would raise on it, after the snapshot has
-    # already been copied. Treated like a mismatched length: left alone.
+    # A palette that is not a one-dimensional string Dataset is not one we can
+    # realign, and the write below could not recreate it in place. Rejected
+    # here, before any read. Treated like a mismatched length: left alone.
     if not isinstance(node, h5py.Dataset) or node.ndim != 1 or not h5py.check_string_dtype(node.dtype):
         return None
-    colors = list(read_string_dataset(uns, key))
+    colors = list(read_element(node))
     if len(colors) != n_before:
         return None
     write_elem(uns, key, np.array([colors[i] for i in kept], dtype=object))
@@ -566,14 +852,15 @@ def verify_categorical_integrity(
         None if all columns pass, or an error message string.
     """
     obs = f["obs"]
-    idx_key = _decode_bytes(obs.attrs.get("_index", "_index"))
-    n_obs = len(obs[idx_key])
+    # Not len(obs[idx_key]): on a nullable index that is the *member* count of
+    # the values+mask group — 2 — so every column would be reported corrupt.
+    n_obs = index_length(obs[obs_index_name(obs)])
 
     for col in columns:
         item = obs[col]
         if not (isinstance(item, h5py.Group) and "categories" in item):
             continue
-        cats = item["categories"][:]
+        n_cats = index_length(item["categories"])
         codes = item["codes"][:]
 
         if len(codes) != n_obs:
@@ -581,8 +868,8 @@ def verify_categorical_integrity(
         if (codes < -1).any():
             return f"Column '{col}': found codes below -1"
         valid = codes[codes >= 0]
-        if len(valid) > 0 and len(cats) > 0 and int(valid.max()) >= len(cats):
-            return f"Column '{col}': max code {valid.max()} >= n_categories {len(cats)}"
+        if len(valid) > 0 and n_cats > 0 and int(valid.max()) >= n_cats:
+            return f"Column '{col}': max code {valid.max()} >= n_categories {n_cats}"
         if expected_valid_counts and col in expected_valid_counts:
             actual = int((codes >= 0).sum())
             expected = expected_valid_counts[col]
@@ -613,12 +900,20 @@ def verify_obs_transplant(
             out_item = f_out["obs"][col]
 
             if isinstance(temp_item, h5py.Group) and "categories" in temp_item:
-                if not np.array_equal(temp_item["categories"][:], out_item["categories"][:]):
+                if not np.array_equal(read_element(temp_item["categories"]), read_element(out_item["categories"])):
                     return f"Verification failed: categories mismatch for column '{col}'"
                 if not np.array_equal(temp_item["codes"][:], out_item["codes"][:]):
                     return f"Verification failed: codes mismatch for column '{col}'"
             else:
-                if not np.array_equal(temp_item[:], out_item[:]):
+                # read_elem, not read_element: this branch compares whatever the
+                # column holds, and object-boxing a float column costs ~14x here
+                # for no gain. dtype=object exists for callers that assign
+                # longer strings back in; a comparison does not.
+                # Not np.array_equal: it raises on object arrays holding
+                # pd.NA and calls NaN != NaN, so a byte-perfect float or
+                # nullable column would fail verification. Series.equals
+                # treats missing as equal to missing.
+                if not pd.Series(read_elem(temp_item)).equals(pd.Series(read_elem(out_item))):
                     return f"Verification failed: data mismatch for column '{col}'"
 
     return None

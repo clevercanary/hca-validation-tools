@@ -13,8 +13,10 @@ from pydantic import TypeAdapter, ValidationError
 from ._io import (
     DEFAULT_PLACEHOLDERS,
     compact_categories,
+    masked_categories_reason,
     open_h5ad,
     read_categorical_data,
+    read_categories,
     read_column_order,
     read_edit_log_h5py,
     read_uns,
@@ -297,7 +299,11 @@ def replace_placeholder_values(
                     return {"error": f"Column '{col}' not found in obs"}
                 item = obs[col]
                 if isinstance(item, h5py.Group) and "categories" in item:
-                    cats, codes = read_categorical_data(item)
+                    cats = read_categories(item)
+                    # Before .lower() and before the n_obs-sized codes read.
+                    if reason := masked_categories_reason(cats, f"Column '{col}'"):
+                        return {"error": reason}
+                    codes = item["codes"][:]  # pyright: ignore[reportIndexIssue]
                     placeholder_count = 0
                     matches = {}
                     for i in range(len(cats)):

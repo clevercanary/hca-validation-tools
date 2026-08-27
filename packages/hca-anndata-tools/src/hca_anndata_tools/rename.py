@@ -23,13 +23,16 @@ import pandas as pd
 from ._io import (
     _decode_bytes,
     direct_members,
+    holds_string_values,
     obs_index_name,
     read_categorical_data,
     read_edit_log_h5py,
+    read_element,
     read_group,
-    read_string_dataset,
+    read_index,
     read_uns,
     replace_string_dataset,
+    require_writable_index,
     write_edit_log_h5py,
 )
 from .cap import cellxgene_schema_version
@@ -73,8 +76,13 @@ def _check_arguments(column, value, prefix_from, prefix_to) -> list[str]:
     return problems
 
 
-def _selection_mask(obs: h5py.Group, column: str, value: str) -> np.ndarray:
-    """Boolean mask of the rows whose ``column`` equals ``value``.
+def _selection_mask(obs: h5py.Group, column: str, value: str) -> tuple[np.ndarray, int]:
+    """Mask of the rows whose ``column`` equals ``value``, and the masked count.
+
+    The count is how many selector rows are pd.NA — rows that could not be
+    compared and therefore never match. Callers surface it, so a partially
+    masked selector produces a *visibly* partial selection rather than a
+    silent one (skip-with-reported-count, per the contract's NA policy).
 
     Categorical columns are matched through their codes without materializing
     a per-row string array; plain string datasets are decoded by h5py in C via
@@ -85,19 +93,31 @@ def _selection_mask(obs: h5py.Group, column: str, value: str) -> np.ndarray:
     if isinstance(item, h5py.Group) and "categories" in item:
         categories, codes = read_categorical_data(item)
         if value not in categories:
-            return np.zeros(codes.shape, dtype=bool)
-        return codes == categories.get_loc(value)
+            return np.zeros(codes.shape, dtype=bool), 0
+        return codes == categories.get_loc(value), 0
     if isinstance(item, h5py.Group):
-        # Nullable-dtype columns (pandas boolean / Int64 / string) are stored
-        # as values+mask groups with no categories; they have no `.dtype`, so
-        # without this branch the string check below would crash instead of
-        # honoring the select-nothing contract above.
+        if holds_string_values(item):
+            # Real string values the readers read (#637): selecting nothing
+            # here would report the false diagnosis "no rows match" on the
+            # very files that motivated the read fix. Vectorized — pd.isna
+            # runs C-level over the object array, and only present rows are
+            # compared; a masked row is pd.NA, equals nothing, never matches.
+            values = read_element(item)
+            present = ~pd.isna(values)
+            mask = np.zeros(values.shape, dtype=bool)
+            mask[present] = values[present] == value
+            return mask, int((~present).sum())
+        # Non-string nullable columns (pandas boolean / Int64) are stored as
+        # values+mask groups with no categories; they can never equal a
+        # string value and have no `.dtype`, so without this branch the
+        # string check below would crash instead of honoring the
+        # select-nothing contract above.
         values = item.get("values")
         shape = values.shape if isinstance(values, h5py.Dataset) else (0,)
-        return np.zeros(shape, dtype=bool)
+        return np.zeros(shape, dtype=bool), 0
     if h5py.check_string_dtype(item.dtype) is None:  # pyright: ignore[reportAttributeAccessIssue]
-        return np.zeros(item.shape, dtype=bool)  # pyright: ignore[reportAttributeAccessIssue]
-    return np.asarray(item.asstr()[:] == value)  # pyright: ignore[reportAttributeAccessIssue]
+        return np.zeros(item.shape, dtype=bool), 0  # pyright: ignore[reportAttributeAccessIssue]
+    return np.asarray(item.asstr()[:] == value), 0  # pyright: ignore[reportAttributeAccessIssue]
 
 
 def _compute_new_ids(
@@ -170,8 +190,10 @@ def rename_cell_ids(path: str, column: str, value: str, prefix_from: str, prefix
         prefix_to: Its replacement.
 
     Returns:
-        Dict with ``output_path``, ``n_selected``, ``n_renamed`` (always equal
-        to ``n_selected`` for this operation; the issue asks for both so a
+        Dict with ``output_path``, ``n_selected``, ``n_selector_masked``
+        (selector rows that are pd.NA and so never matched — nonzero means
+        the selection may be partial), ``n_renamed`` (always equal to
+        ``n_selected`` for this operation; the issue asks for both so a
         broader-than-intended selector stays visible), and ``examples`` (up to
         five ``[before, after]`` pairs), or ``{"error": ...}``.
     """
@@ -217,16 +239,23 @@ def rename_cell_ids(path: str, column: str, value: str, prefix_from: str, prefix
             if column not in direct_members(obs):
                 return {"error": f"Refusing to rename: obs column not present: '{column}'"}
 
-            mask = _selection_mask(obs, column, value)
+            mask, n_selector_masked = _selection_mask(obs, column, value)
             n_selected = int(mask.sum())
             if n_selected == 0:
                 # Gated before the index read: a mistyped selector should not
                 # pay for decoding 2M IDs it will never use.
                 return {"error": f"Refusing to rename: no rows match obs['{column}'] == {value!r}"}
-            # dtype=object (inside read_string_dataset) pins what asstr()
-            # already returns: a fixed-width unicode dtype here would silently
-            # clip the longer renamed IDs on assignment in _compute_new_ids.
-            ids = read_string_dataset(obs, index_name)
+            # Refuse before the snapshot, not after: replace_string_dataset
+            # needs a Dataset to copy storage properties from, so a nullable
+            # index fails at the write — and without this guard that failure
+            # lands after a multi-gigabyte copy (hca-validation-tools#641).
+            if refusal := require_writable_index(obs, index_name, "rename"):
+                return {"error": refusal}
+            # read_index pins dtype=object — a fixed-width unicode dtype would
+            # silently clip the longer renamed IDs on assignment in
+            # _compute_new_ids — and enforces the index contract, since these
+            # IDs are matched against the obsm frames' copies below.
+            ids = read_index(obs, index_name, "obs")
 
             # A DataFrame in obsm carries its own duplicate copy of the cell
             # IDs (anndata writes the frame's index alongside the parent's),
@@ -244,7 +273,10 @@ def rename_cell_ids(path: str, column: str, value: str, prefix_from: str, prefix
                     ):
                         continue
                     sub_name = obs_index_name(member)
-                    sub_ids = read_string_dataset(member, sub_name)
+                    frame_label = f"obsm[{obsm_key!r}]"
+                    if refusal := require_writable_index(member, sub_name, "rename", frame_label):
+                        return {"error": refusal}
+                    sub_ids = read_index(member, sub_name, frame_label)
                     if sub_ids.shape != ids.shape or not (sub_ids == ids).all():
                         return {
                             "error": (
@@ -339,6 +371,7 @@ def rename_cell_ids(path: str, column: str, value: str, prefix_from: str, prefix
             "output_path": output_path,
             "n_selected": n_selected,
             "n_renamed": n_selected,
+            "n_selector_masked": n_selector_masked,
             "examples": examples,
         }
 

@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 from . import __version__
-from ._keys import EDIT_LOG_KEY, PROVENANCE_KEY
+from ._keys import EDIT_LOG_KEY, PROVENANCE_KEY, UNWRITABLE_REMEDY
 
 if TYPE_CHECKING:
     from anndata import AnnData
@@ -132,6 +132,24 @@ def _claim_snapshot_path(path: str) -> str:
 
 
 @contextlib.contextmanager
+def _claimed(output_path: str) -> Iterator[None]:
+    """Remove the file at ``output_path`` if the body fails.
+
+    The one spelling of the claim model's cleanup half: the caller claimed
+    the name (``_try_claim`` / :func:`_claim_snapshot_path`), so the file is
+    ours by construction and removing it can never delete pre-existing data —
+    and no partial file survives wearing the ``-edit-<timestamp>`` name
+    ``resolve_latest`` selects by.
+    """
+    try:
+        yield
+    except BaseException:
+        with contextlib.suppress(OSError):
+            Path(output_path).unlink()
+        raise
+
+
+@contextlib.contextmanager
 def snapshot_copy(path: str) -> Iterator[str]:
     """Yield the path of a fresh snapshot copy of ``path``, cleaning it up on error.
 
@@ -165,28 +183,15 @@ def snapshot_copy(path: str) -> Iterator[str]:
     """
     output_path = _claim_snapshot_path(path)
 
-    try:
-        shutil.copy2(path, output_path)
-    except shutil.SameFileError as e:
-        # Nothing was written — the copy compares inodes before opening the
-        # destination — but the file at output_path *is* ours: the O_EXCL
-        # claim created it. Leaving it would strand a zero-byte file carrying
-        # the newest -edit- timestamp, which resolve_latest would then hand to
-        # every later call (#597).
-        with contextlib.suppress(OSError):
-            Path(output_path).unlink()
-        raise SameSecondSnapshotError(SAME_SECOND_SNAPSHOT_ERROR) from e
-    except BaseException:
-        with contextlib.suppress(OSError):
-            Path(output_path).unlink()
-        raise
-
-    try:
+    with _claimed(output_path):
+        try:
+            shutil.copy2(path, output_path)
+        except shutil.SameFileError as e:
+            # Nothing was written — the copy compares inodes before opening
+            # the destination — but the claimed file must still go, which
+            # _claimed does on this re-raise (#597).
+            raise SameSecondSnapshotError(SAME_SECOND_SNAPSHOT_ERROR) from e
         yield output_path
-    except BaseException:
-        with contextlib.suppress(OSError):
-            Path(output_path).unlink()
-        raise
 
 
 @contextlib.contextmanager
@@ -210,24 +215,14 @@ def snapshot_copy_hashed(path: str) -> Iterator[tuple[str, str]]:
     """
     output_path = _claim_snapshot_path(path)
 
-    try:
-        sha256 = _copy_with_sha256(path, output_path)
-    except shutil.SameFileError as e:
-        # The claimed file is ours; see snapshot_copy for why it is removed.
-        with contextlib.suppress(OSError):
-            Path(output_path).unlink()
-        raise SameSecondSnapshotError(SAME_SECOND_SNAPSHOT_ERROR) from e
-    except BaseException:
-        with contextlib.suppress(OSError):
-            Path(output_path).unlink()
-        raise
-
-    try:
+    with _claimed(output_path):
+        try:
+            sha256 = _copy_with_sha256(path, output_path)
+        except shutil.SameFileError as e:
+            # See snapshot_copy: nothing written, claimed file removed on
+            # this re-raise.
+            raise SameSecondSnapshotError(SAME_SECOND_SNAPSHOT_ERROR) from e
         yield output_path, sha256
-    except BaseException:
-        with contextlib.suppress(OSError):
-            Path(output_path).unlink()
-        raise
 
 
 def strip_timestamp(filename: str) -> str:
@@ -471,6 +466,53 @@ def cleanup_previous_version(source_path: str, output_path: str) -> None:
             Path(source_path).unlink()  # write succeeded; stale file is harmless
 
 
+def nullable_string_locations(adata: AnnData) -> list[str]:
+    """Dataframe locations holding pandas nullable strings (StringDtype).
+
+    The write funnel's half of the write profile: anndata 0.11.4 raises on a
+    ``StringArray`` (``allow_write_nullable_strings`` defaults False, which is
+    the behaviour we want — our output must stay CellxGENE-compatible), but
+    only *after* it has already streamed X into the output file. Checking
+    here refuses before any bytes are written (hca-validation-tools#641
+    tracks converting instead of refusing). Covers the value a column holds
+    and the categories behind a categorical, everywhere anndata serializes
+    one: obs, var, raw.var, the obsm/varm/raw.varm frames, and uns —
+    including DataFrames and bare pandas arrays nested in uns dicts.
+    """
+    import pandas as pd
+
+    def is_nullable_string(dtype) -> bool:
+        if isinstance(dtype, pd.CategoricalDtype):
+            return is_nullable_string(dtype.categories.dtype)
+        return isinstance(dtype, pd.StringDtype)
+
+    frames = [("obs", adata.obs), ("var", adata.var)]
+    if adata.raw is not None:
+        frames.append(("raw.var", adata.raw.var))
+        frames += [(f"raw.varm['{k}']", v) for k, v in adata.raw.varm.items() if isinstance(v, pd.DataFrame)]
+    frames += [(f"obsm['{k}']", v) for k, v in adata.obsm.items() if isinstance(v, pd.DataFrame)]
+    frames += [(f"varm['{k}']", v) for k, v in adata.varm.items() if isinstance(v, pd.DataFrame)]
+
+    found = []
+
+    def collect_uns(prefix: str, mapping) -> None:
+        for k, v in mapping.items():
+            loc = f"{prefix}['{k}']"
+            if isinstance(v, pd.DataFrame):
+                frames.append((loc, v))
+            elif isinstance(v, dict):
+                collect_uns(loc, v)
+            elif is_nullable_string(getattr(v, "dtype", None)):
+                found.append(loc)
+
+    collect_uns("uns", adata.uns)
+    for name, df in frames:
+        if is_nullable_string(df.index.dtype):
+            found.append(f"{name} index")
+        found += [f"{name}['{col}']" for col in df.columns if is_nullable_string(df[col].dtype)]
+    return found
+
+
 def write_h5ad(
     adata: AnnData,
     source_path: str,
@@ -496,8 +538,9 @@ def write_h5ad(
             timestamp, tool, tool_version, operation, description. Optional:
             details (dict of operation-specific structured data).
             The source_file and source_sha256 fields are set automatically.
-        output_path: Override the generated output path. If None, a
-            timestamped path is generated from the source filename.
+        output_path: Override the generated output path; must not already
+            exist — an occupied name is refused rather than overwritten. If
+            None, a timestamped path is claimed from the source filename.
         compression: HDF5 filter for chunked datasets. Defaults to 'gzip'.
             Passed through to anndata.AnnData.write_h5ad.
         compression_opts: Filter options (e.g. gzip level 0-9). None uses
@@ -513,11 +556,21 @@ def write_h5ad(
         if not Path(source_path).is_file():
             return {"error": f"Source file not found: {source_path}"}
 
+        # Before the uns mutation below: a refusal must leave adata exactly
+        # as the caller passed it, or a fixed-and-retried write re-reads the
+        # just-stamped entries as the existing log and appends them twice.
+        # Post-stamp failure paths restore the log via _unstamp below.
+        if nullable := nullable_string_locations(adata):
+            return {
+                "error": (
+                    f"Refusing to write: {', '.join(nullable)} hold(s) pandas "
+                    f"nullable string values, {UNWRITABLE_REMEDY}"
+                )
+            }
+
         provenance = adata.uns.get(PROVENANCE_KEY, {})
-        if isinstance(provenance, dict) and EDIT_LOG_KEY in provenance:
-            existing_log_raw = provenance[EDIT_LOG_KEY]
-        else:
-            existing_log_raw = "[]"
+        had_log = isinstance(provenance, dict) and EDIT_LOG_KEY in provenance
+        existing_log_raw = provenance[EDIT_LOG_KEY] if had_log else "[]"
 
         log_result = build_edit_log(existing_log_raw, edit_entries, source_path)
         if "error" in log_result:
@@ -525,9 +578,36 @@ def write_h5ad(
 
         adata.uns.setdefault(PROVENANCE_KEY, {})[EDIT_LOG_KEY] = log_result["json"]
 
-        if output_path is None:
-            output_path = generate_output_path(source_path)
-        adata.write_h5ad(output_path, compression=compression, compression_opts=compression_opts)
+        def _unstamp() -> None:
+            # Any failure after the stamp must put adata back the way the
+            # caller passed it: a retried write would otherwise parse the
+            # just-stamped entries as the existing log and append them twice.
+            if had_log:
+                adata.uns[PROVENANCE_KEY][EDIT_LOG_KEY] = existing_log_raw
+            else:
+                prov = adata.uns.get(PROVENANCE_KEY)
+                if isinstance(prov, dict):
+                    prov.pop(EDIT_LOG_KEY, None)
+                    if not prov:
+                        adata.uns.pop(PROVENANCE_KEY, None)
+
+        # The same claim machinery every copy-and-patch tool uses
+        # (snapshot_copy): O_EXCL creates the output name, waiting out a
+        # same-second collision. The claim is what makes the failure unlink
+        # safe — the file at output_path is ours by construction, so removing
+        # it can never delete pre-existing data, and no partial file is left
+        # wearing the -edit-<timestamp> name resolve_latest keys on.
+        try:
+            if output_path is None:
+                output_path = _claim_snapshot_path(source_path)
+            elif not _try_claim(output_path):
+                _unstamp()
+                return {"error": f"Refusing to write: a file already exists at {output_path}"}
+            with _claimed(output_path):
+                adata.write_h5ad(output_path, compression=compression, compression_opts=compression_opts)
+        except BaseException:
+            _unstamp()
+            raise
 
         cleanup_previous_version(source_path, output_path)
 

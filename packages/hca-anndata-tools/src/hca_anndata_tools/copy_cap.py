@@ -13,7 +13,6 @@ import numpy as np
 import pandas as pd
 
 from ._io import (
-    _decode_bytes,
     check_duplicate_ids,
     ensure_provenance_group,
     obs_index_name,
@@ -21,6 +20,7 @@ from ._io import (
     read_categorical_data,
     read_column_order,
     read_edit_log_h5py,
+    read_index,
     read_provenance,
     read_uns,
     update_column_order,
@@ -194,11 +194,10 @@ def copy_cap_annotations(
             obs_cols_to_copy = _get_obs_columns_to_copy(annotation_sets, source_obs_columns)
 
             idx_key = obs_index_name(obs_group)
-            source_index_list = [_decode_bytes(v) for v in obs_group[idx_key][:]]
+            source_index_list = list(read_index(obs_group, idx_key, "CAP cells"))
 
             var_group = f["var"]
-            var_idx_key = _decode_bytes(var_group.attrs.get("_index", "_index"))
-            source_var_list = [_decode_bytes(v) for v in var_group[var_idx_key][:]]
+            source_var_list = list(read_index(var_group, obs_index_name(var_group), "CAP genes"))
 
             source_obs_data = {}
             for col in obs_cols_to_copy:
@@ -237,11 +236,10 @@ def copy_cap_annotations(
                 obs_group = require_obs_group(f)
                 obs_columns = read_column_order(obs_group)
                 idx_key = obs_index_name(obs_group)
-                index = [_decode_bytes(v) for v in obs_group[idx_key][:]]
+                index = list(read_index(obs_group, idx_key, "HCA cells"))
 
                 var_group = f["var"]
-                var_idx_key = _decode_bytes(var_group.attrs.get("_index", "_index"))
-                var_list = [_decode_bytes(v) for v in var_group[var_idx_key][:]]
+                var_list = list(read_index(var_group, obs_index_name(var_group), "HCA genes"))
 
                 uns = read_uns(f)
                 uns_keys = set(uns.keys()) if uns is not None else set()

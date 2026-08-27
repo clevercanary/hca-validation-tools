@@ -21,8 +21,10 @@ import numpy as np
 
 from ._io import (
     direct_members,
+    holds_string_values,
+    masked_categories_reason,
+    read_categories,
     read_edit_log_h5py,
-    read_string_dataset,
     read_uns,
     remap_palette,
     replace_categorical_column,
@@ -48,12 +50,12 @@ _TERM_ID_SUFFIX = "_ontology_term_id"
 
 
 def _read_categories(obs: h5py.Group, column: str) -> list[str]:
-    """The column's categories, decoded.
+    """The column's categories, decoded — :func:`_io.read_categories` as a list.
 
     Categories only: the codes array is the expensive half, and the write
     phase is the one place that needs it.
     """
-    return list(read_string_dataset(obs[column], "categories"))  # pyright: ignore[reportArgumentType]
+    return list(read_categories(obs[column]))  # pyright: ignore[reportArgumentType]
 
 
 def _column_problems(obs: h5py.Group, column: str, from_value: str, to_value: str) -> list[str]:
@@ -68,15 +70,25 @@ def _column_problems(obs: h5py.Group, column: str, from_value: str, to_value: st
     item = obs[column]
     if not (isinstance(item, h5py.Group) and "categories" in item):
         return [f"'{column}' is not a categorical column — this tool edits the categories array, not values row by row"]
-    # Checked on the dtype, before any read: the caller is required to pass
-    # strings, so an int-backed categorical (anndata writes these for batch and
-    # cluster columns) could never be addressed — and _read_categories' asstr()
-    # would raise on it rather than return something to compare.
-    if not h5py.check_string_dtype(item["categories"].dtype):
+    # The caller is required to pass strings, so an int-backed categorical
+    # (anndata writes these for batch and cluster columns) could never be
+    # addressed by value. holds_string_values also accepts a
+    # nullable-string-array categories *group* — the plain liver shape: the
+    # write recreates categories from scratch (replace_categorical_column),
+    # so the encoding is no obstacle and is normalized on the way out. Only
+    # masked categories refuse: a void category has no value a merge could
+    # keep or match.
+    cats_item = item["categories"]
+    if not holds_string_values(cats_item):  # pyright: ignore[reportArgumentType]
+        # Name the dtype where there is one (a Dataset); a non-string *group*
+        # (nullable-integer categories) has no single dtype to show.
+        detail = "" if isinstance(cats_item, h5py.Group) else f" (dtype {cats_item.dtype})"  # pyright: ignore[reportAttributeAccessIssue]
         return [
-            f"'{column}' has non-string categories (dtype {item['categories'].dtype}) — this "
+            f"'{column}' has non-string categories{detail} — this "
             f"tool matches by string value, so it cannot address them"
         ]
+    if reason := masked_categories_reason(read_categories(item), f"the '{column}' categories array"):
+        return [reason]
     if missing := [v for v in (from_value, to_value) if v not in _read_categories(obs, column)]:
         return [
             f"not categories of '{column}': {missing} — both values must already "

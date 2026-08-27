@@ -9,8 +9,10 @@ import shutil
 from pathlib import Path
 
 import anndata as ad
+import pandas as pd
 import pytest
 
+from hca_anndata_tools.testing import assert_no_snapshot_written
 from hca_anndata_tools.write import (
     EDIT_LOG_KEY,
     MissingLineageRootError,
@@ -698,3 +700,71 @@ def test_snapshot_copy_hashed_never_removes_a_file_it_did_not_create(tmp_path, m
         pass
 
     assert bystander.read_bytes() == b"not mine"
+
+
+def test_write_h5ad_refuses_nullable_strings(sample_h5ad_for_write):
+    """The write funnel's half of the write profile: a pandas StringDtype
+    column would make anndata raise on StringArray — but only after X has
+    been streamed. Refuse by name before any bytes are written."""
+    adata = ad.read_h5ad(sample_h5ad_for_write)
+    adata.obs["lineage"] = pd.array(["a"] * adata.n_obs, dtype="string")
+
+    result = write_h5ad(adata, str(sample_h5ad_for_write), [_make_entry()])
+
+    assert "error" in result
+    assert "obs['lineage']" in result["error"]
+    assert "hca-validation-tools#641" in result["error"]
+    assert_no_snapshot_written(sample_h5ad_for_write)
+    # A refusal must leave adata untouched — a stamped edit log would
+    # double-append on the fixed-and-retried write.
+    assert "provenance" not in adata.uns
+
+
+def test_write_h5ad_removes_partial_output_on_failure(sample_h5ad_for_write):
+    """A failed write must not leave a truncated file wearing the
+    -edit-<timestamp> snapshot name — resolve_latest would pick it up as a
+    good snapshot."""
+    adata = ad.read_h5ad(sample_h5ad_for_write)
+    adata.uns["unserializable"] = object()
+
+    result = write_h5ad(adata, str(sample_h5ad_for_write), [_make_entry()])
+
+    assert "error" in result
+    assert "edit_entries" not in result["error"]  # the write itself must be what failed
+    assert_no_snapshot_written(sample_h5ad_for_write)
+    # Unstamped: a retry must not double-append the edit log.
+    assert "provenance" not in adata.uns
+
+
+def test_write_h5ad_funnel_covers_varm_and_uns(sample_h5ad_for_write):
+    """The refuse-before-any-bytes guarantee holds wherever anndata
+    serializes a dataframe or pandas array — not just obs/var."""
+    adata = ad.read_h5ad(sample_h5ad_for_write)
+    adata.varm["annotations"] = pd.DataFrame(
+        {"family": pd.array(["x"] * adata.n_vars, dtype="string")}, index=adata.var_names
+    )
+    adata.uns["meta"] = {"table": pd.DataFrame({"name": pd.array(["y"], dtype="string")})}
+
+    result = write_h5ad(adata, str(sample_h5ad_for_write), [_make_entry()])
+
+    assert "error" in result
+    assert "varm['annotations']['family']" in result["error"]
+    assert "uns['meta']['table']['name']" in result["error"]
+    assert_no_snapshot_written(sample_h5ad_for_write)
+
+
+def test_write_h5ad_refuses_a_taken_output_path(tmp_path, sample_h5ad_for_write):
+    """The output name is claimed with O_EXCL before anything is written —
+    an occupied name is refused outright, so a failed write can never have
+    truncated (mode 'w') or deleted a pre-existing file."""
+    decoy = tmp_path / "decoy.h5ad"
+    decoy.write_bytes(b"pre-existing bytes")
+    adata = ad.read_h5ad(sample_h5ad_for_write)
+
+    result = write_h5ad(adata, str(sample_h5ad_for_write), [_make_entry()], output_path=str(decoy))
+
+    assert "error" in result
+    assert "already exists" in result["error"]
+    assert decoy.read_bytes() == b"pre-existing bytes"
+    # Unstamped: a retry must not double-append the edit log.
+    assert "provenance" not in adata.uns

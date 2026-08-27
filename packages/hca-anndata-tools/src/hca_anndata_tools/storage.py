@@ -6,9 +6,10 @@ import h5py
 import numpy as np
 
 from ._io import (
-    SUPPORTED_STRING_ENCODINGS,
     direct_members,
     encoding_of,
+    holds_string_values,
+    is_writable_element,
     obs_index_name,
     read_group,
 )
@@ -78,31 +79,17 @@ def _mask_count(item: h5py.Group | h5py.Dataset | h5py.Datatype) -> int | None:
     return None
 
 
-def _is_unreadable(item: h5py.Group | h5py.Dataset | h5py.Datatype) -> bool:
-    """True if this package's raw-h5py readers cannot slice ``item``.
-
-    The operative test is the container, not the encoding name: every reader
-    here does ``item[:]``, which a Dataset answers and a Group refuses. So a
-    numeric categorical whose categories are an ``array`` Dataset is fine,
-    while a ``nullable-string-array`` Group is not — judging by encoding name
-    alone would flag the former as broken when it reads perfectly well.
-
-    The encoding is still consulted so that widening
-    :data:`~hca_anndata_tools._io.SUPPORTED_STRING_ENCODINGS` (see
-    hca-validation-tools#637) clears these reports in the same commit that
-    makes the readers cope.
-    """
-    return isinstance(item, h5py.Group) and encoding_of(item) not in SUPPORTED_STRING_ENCODINGS
-
-
 def _dataframe_encodings(df: h5py.Group, path: str, index_name: str) -> tuple[dict, list[str]]:
-    """Encodings of a dataframe's index and its categoricals' categories.
+    """Encodings of a dataframe's index, its columns, and its categoricals' categories.
 
-    Returns the per-dataframe report and the on-disk paths whose encoding this
-    package's raw-h5py readers cannot handle. Categorical ``categories`` are
-    reported because they break readers exactly as an index does — in the
-    files that motivated this (hca-validation-tools#638) a categorical's
-    categories were themselves a nullable group.
+    Returns the per-dataframe report and the on-disk paths this package can
+    read but cannot write back, per :func:`~hca_anndata_tools._io.is_writable_element`
+    — indexes, plain nullable columns, and categorical ``categories`` alike,
+    so this report and the write funnel cannot disagree on a dataframe.
+    Categorical ``categories`` are reported because they block a write exactly
+    as an index does — in the files that motivated this
+    (hca-validation-tools#638) a categorical's categories were themselves a
+    nullable group, and ``merge_obs_categories`` refuses on precisely that.
 
     Members are read through :func:`~hca_anndata_tools._io.direct_members`
     because ``index_name`` comes from the file rather than the caller, and
@@ -122,7 +109,7 @@ def _dataframe_encodings(df: h5py.Group, path: str, index_name: str) -> tuple[di
         # state. None is reserved for "the group has no index dataset at all".
         index_enc = encoding_of(index) or "unstamped"
         index_masked = _mask_count(index)
-        if _is_unreadable(index):
+        if not is_writable_element(index):
             unsupported.append(f"{path}/{index_name}")
 
     categoricals: dict[str, int] = {}
@@ -130,12 +117,20 @@ def _dataframe_encodings(df: h5py.Group, path: str, index_name: str) -> tuple[di
         if name == index_name:
             continue
         column = df[name]
-        if not isinstance(column, h5py.Group) or "categories" not in column:
+        if not isinstance(column, h5py.Group):
+            continue
+        if "categories" not in column:
+            # Only nullable *strings* are flagged: they are what the write
+            # funnel refuses. Nullable-integer/boolean columns pass through
+            # every tool (anndata writes them ungated), so flagging them
+            # would hard-stop curation on files nothing refuses.
+            if holds_string_values(column):
+                unsupported.append(f"{path}/{name}")
             continue
         categories = column["categories"]
         label = encoding_of(categories) or "unstamped"
         categoricals[label] = categoricals.get(label, 0) + 1
-        if _is_unreadable(categories):
+        if not is_writable_element(categories):
             unsupported.append(f"{path}/{name}/categories")
 
     return {
@@ -152,11 +147,11 @@ def _encodings_info(f: h5py.File) -> dict:
     cell count, never by the matrix — so this is as cheap on a 29 GB atlas as
     on a small file. A file with no nullable index reads no data at all.
 
-    Scope is dataframe indexes and categorical ``categories``. A plain
-    nullable string *column* is not reported: judging those needs a predicate
-    tied to what a given reader intends (``read_categorical_data`` handles
-    categorical groups happily, and ``backfill`` handles nullable ints by
-    design), which belongs with the reader fix in hca-validation-tools#637.
+    Scope is the listed dataframes' indexes, plain nullable-string
+    columns, and categorical ``categories`` — everything a tool would
+    actually refuse. ``varm`` and ``uns`` frames are the write funnel's
+    alone, and nullable-integer/boolean columns are not flagged: every
+    tool accepts them.
     """
     result: dict = {}
     unsupported: list[str] = []
@@ -195,13 +190,20 @@ def get_storage_info(path: str) -> dict:
 
     Returns file size, compression settings, chunk sizes, and sparse format
     for X, raw/X, and all layers, plus the string encodings used by the
-    ``obs``, ``var`` and ``raw.var`` indexes and categoricals.
+    ``obs``, ``var``, ``raw.var`` and obsm dataframes — indexes, plain
+    nullable-string columns, and categoricals.
 
     The ``encodings`` block exists so an incompatible on-disk representation
     surfaces during inspection rather than as an opaque HDF5 error partway
     through a curation run on a multi-gigabyte file. Its ``unsupported`` list
-    names the paths this package's raw-h5py readers cannot handle, judged
-    against :data:`~hca_anndata_tools._io.SUPPORTED_STRING_ENCODINGS`.
+    names the paths this package can read but **cannot write back**, judged by
+    :func:`~hca_anndata_tools._io.is_writable_element` — the same predicate
+    ``rename_cell_ids`` and ``merge_obs_categories`` refuse on, so an
+    inspection called clean here cannot be rejected by those tools.
+    Full-rewrite tools (``compress_h5ad``, ``normalize_raw``) refuse at the
+    shared write funnel, before any bytes are written. A flagged file can
+    still be inspected and converted; it cannot be renamed or recompressed
+    until hca-validation-tools#641 lands.
 
     Args:
         path: Absolute path to an .h5ad file.

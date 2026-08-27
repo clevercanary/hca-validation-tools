@@ -4,12 +4,20 @@ import json
 from pathlib import Path
 
 import anndata as ad
+import h5py
 import numpy as np
 import pandas as pd
 import pytest
 
 from hca_anndata_tools._io import _codes_dtype
 from hca_anndata_tools.backfill import backfill_obs_from_source
+from hca_anndata_tools.testing import (
+    assert_no_snapshot_written,
+    create_sample_h5ad,
+    make_nullable_index,
+    make_nullable_string_array,
+    make_plain_string_column,
+)
 
 # The canonical scenario, one row per case the tool must handle:
 #
@@ -412,3 +420,125 @@ def test_codes_dtype_upcasts_when_categories_outgrow_int8():
     assert _codes_dtype(200, np.dtype(np.int8)) == np.dtype(np.int16)
     assert _codes_dtype(200, np.dtype(np.int32)) == np.dtype(np.int32)
     assert _codes_dtype(2**20, np.dtype(np.int16)) == np.dtype(np.int32)
+
+
+def test_backfill_refuses_a_masked_index_rather_than_joining_na_to_na(tmp_path):
+    """A masked join key must not silently match another file's masked key.
+
+    pandas joins pd.NA to pd.NA, so without this refusal a masked cell matches
+    the *other* file's masked cell and is counted as a legitimate match — no
+    error, no warning, a wrong number in the report. check_duplicate_ids
+    catches it only for two or more masked rows; one sails through
+    (hca-validation-tools#637).
+    """
+    target = create_sample_h5ad(tmp_path / "target.h5ad")
+    source = create_sample_h5ad(tmp_path / "source.h5ad")
+    make_nullable_index(source, masked=1)
+
+    result = backfill_obs_from_source(str(target), str(source), columns=["cell_type"])
+
+    assert "error" in result
+    assert "missing value" in result["error"]
+
+
+def test_backfill_reads_an_unmasked_nullable_index(target_source, tmp_path):
+    """A nullable index the tool only reads is no obstacle.
+
+    backfill transplants columns into a copy; it never rewrites either index,
+    so the encoding that blocks the write tools (hca-validation-tools#641) does
+    not block this one. Asserting the join, not just the absence of an error —
+    an index read as bytes compares unequal to its str counterparts and would
+    report 0 matched cells while claiming success.
+    """
+    target, source = target_source
+    make_nullable_index(source)
+
+    result = backfill_obs_from_source(target, source, columns=["library_id"])
+
+    assert "error" not in result, result.get("error")
+    assert result["n_matched"] == 5
+    assert result["total_filled"] == 2
+
+
+def test_backfill_reads_nullable_source_categories(target_source, tmp_path):
+    """The liver shape (#638): a source categorical whose categories are a
+    nullable-string-array group. The source is only ever read, so this must
+    backfill exactly like a plain categorical — not leak
+    "'Group' object has no attribute 'dtype'"."""
+    target, source = target_source
+    with h5py.File(source, "r+") as f:
+        make_nullable_string_array(f["obs/library_id"], "categories")
+
+    result = backfill_obs_from_source(target, source, columns=["library_id"])
+
+    assert "error" not in result, result.get("error")
+    assert result["n_matched"] == 5
+    assert result["total_filled"] == 2
+
+
+def test_backfill_treats_a_masked_source_value_as_missing(tmp_path):
+    """A masked (pd.NA) source value is absent data: the row must not fill,
+    and must not become the literal string "<NA>" in the target."""
+    target = _make_h5ad(tmp_path / "target.h5ad", TARGET_IDS, {"library_id": TARGET_LIB})
+    source = _make_h5ad(tmp_path / "source.h5ad", SOURCE_IDS, {"library_id": SOURCE_LIB})
+    with h5py.File(source, "r+") as f:
+        make_plain_string_column(f["obs"], "library_id", SOURCE_LIB)
+        # Masks the first entry — c1's "L1" — so only c2 can still fill.
+        make_nullable_string_array(f["obs"], "library_id", masked=1)
+
+    result = backfill_obs_from_source(target, source, columns=["library_id"])
+
+    assert "error" not in result, result.get("error")
+    assert result["total_filled"] == 1
+    out = ad.read_h5ad(result["output_path"])
+    assert pd.isna(out.obs["library_id"]["c1"])
+    assert out.obs["library_id"]["c2"] == "L2"
+    assert "<NA>" not in set(out.obs["library_id"].cat.categories)
+
+
+def test_backfill_recreates_nullable_target_categories_as_plain(target_source):
+    """A target categorical with nullable (unmasked) categories is writable:
+    replace_categorical_column recreates the categories from scratch, so the
+    output carries a plain string-array — normalized on write."""
+    target, source = target_source
+    with h5py.File(target, "r+") as f:
+        make_nullable_string_array(f["obs/library_id"], "categories")
+
+    result = backfill_obs_from_source(target, source, columns=["library_id"])
+
+    assert "error" not in result, result.get("error")
+    assert result["total_filled"] == 2
+    with h5py.File(result["output_path"], "r") as f:
+        assert isinstance(f["obs/library_id/categories"], h5py.Dataset)
+
+
+def test_backfill_refuses_masked_target_categories(target_source):
+    """A masked target category has no value a rewrite could keep — refused
+    by name, before any snapshot is taken."""
+    target, source = target_source
+    with h5py.File(target, "r+") as f:
+        make_nullable_string_array(f["obs/library_id"], "categories", masked=1)
+
+    result = backfill_obs_from_source(target, source, columns=["library_id"])
+
+    assert "error" in result
+    assert "masked (null) categories" in result["error"]
+    assert_no_snapshot_written(target)
+
+
+def test_backfill_refuses_a_nullable_target_string_column(tmp_path):
+    """A nullable-string target column reads fine but cannot be rewritten
+    (replace_string_dataset needs a Dataset to copy layout from) — refused
+    with the shared #641 message, before any snapshot is taken."""
+    target = _make_h5ad(tmp_path / "target.h5ad", TARGET_IDS, {"library_id": TARGET_LIB})
+    source = _make_h5ad(tmp_path / "source.h5ad", SOURCE_IDS, {"library_id": SOURCE_LIB})
+    with h5py.File(target, "r+") as f:
+        make_plain_string_column(f["obs"], "library_id", ["" if v is None else v for v in TARGET_LIB])
+        make_nullable_string_array(f["obs"], "library_id")
+
+    result = backfill_obs_from_source(target, source, columns=["library_id"])
+
+    assert "error" in result
+    assert "cannot write back" in result["error"]
+    assert "hca-validation-tools#641" in result["error"]
+    assert_no_snapshot_written(target)

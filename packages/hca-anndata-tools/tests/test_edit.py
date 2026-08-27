@@ -3,6 +3,7 @@
 import json
 
 import anndata as ad
+import h5py
 import numpy as np
 import pandas as pd
 import scipy.sparse as sp
@@ -13,6 +14,7 @@ from hca_anndata_tools.edit import (
     set_uns,
     view_edit_log,
 )
+from hca_anndata_tools.testing import assert_no_snapshot_written, make_nullable_string_array
 from hca_anndata_tools.write import EDIT_LOG_KEY
 
 # --- list_uns_fields ---
@@ -475,3 +477,19 @@ def test_replace_placeholders_reports_no_remap_without_a_palette(tmp_path):
 
     assert "error" not in result
     assert result["palettes_remapped"] == []
+
+
+def test_replace_placeholder_refuses_masked_categories(tmp_path):
+    """A masked (pd.NA) category has no value to compare against the
+    placeholder list — refused by name before any snapshot, not the opaque
+    "'NAType' object has no attribute 'lower'"."""
+    path = _make_placeholder_h5ad(tmp_path, ["valid", "unknown"])
+    with h5py.File(path, "r+") as f:
+        make_nullable_string_array(f["obs/test_col"], "categories", masked=1)
+
+    result = replace_placeholder_values(str(path), ["test_col"])
+
+    assert "error" in result
+    assert "masked (null) categories" in result["error"]
+    assert "NAType" not in result["error"]
+    assert_no_snapshot_written(path)

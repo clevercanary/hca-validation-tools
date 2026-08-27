@@ -5,8 +5,11 @@ import re
 from pathlib import Path
 
 import anndata as ad
+import h5py
 
+from hca_anndata_tools._io import encoding_of, obs_index_name
 from hca_anndata_tools.convert import _slugify, convert_cellxgene_to_hca
+from hca_anndata_tools.testing import create_cellxgene_h5ad, make_nullable_index
 from hca_anndata_tools.write import EDIT_LOG_KEY
 
 # --- _slugify ---
@@ -216,3 +219,45 @@ def test_convert_returns_source_and_title(cellxgene_h5ad):
     result = convert_cellxgene_to_hca(str(cellxgene_h5ad))
     assert result["source"] == cellxgene_h5ad.name
     assert result["title"] == "snRNA-seq of Human Retina - Test Subset"
+
+
+def test_convert_succeeds_on_a_nullable_string_array_file(tmp_path):
+    """The encoding that used to kill this tool at its first step.
+
+    convert copies the source and transplants changed elements, so it never
+    rewrites the obs index and never hands a StringArray to write_elem — it
+    succeeds outright rather than failing at the write (hca-validation-tools#637).
+    The output still carries the nullable encoding, which is why the write
+    blocker (#641) is a separate concern.
+    """
+    path = create_cellxgene_h5ad(tmp_path / "cxg.h5ad")
+    make_nullable_index(path)
+
+    result = convert_cellxgene_to_hca(str(path))
+
+    assert "error" not in result, result.get("error")
+    assert Path(result["output_path"]).exists()
+    with h5py.File(result["output_path"]) as f:
+        obs = f["obs"]
+        # The claim that justifies deferring #641: convert copies and
+        # transplants, so the nullable index is carried across rather than
+        # rewritten. Assert it, or the split has no evidence behind it.
+        assert encoding_of(obs[obs_index_name(obs)]) == "nullable-string-array"
+
+
+def test_convert_refuses_to_overwrite_a_same_second_output(cellxgene_h5ad, monkeypatch):
+    """The output name is claimed with O_EXCL: a second convert of a
+    same-titled source in the same second is refused, not silently
+    overwritten — and its failure handling cannot unlink the first run's
+    finished file."""
+    monkeypatch.setattr("hca_anndata_tools.convert.generate_timestamp", lambda: "2026-01-01-00-00-00")
+
+    first = convert_cellxgene_to_hca(str(cellxgene_h5ad))
+    assert "error" not in first, first.get("error")
+    size_before = Path(first["output_path"]).stat().st_size
+
+    second = convert_cellxgene_to_hca(str(cellxgene_h5ad))
+
+    assert "error" in second
+    assert "already exists" in second["error"] or "retry in a moment" in second["error"]
+    assert Path(first["output_path"]).stat().st_size == size_before

@@ -24,6 +24,8 @@ from ._serialize import make_serializable
 from .strip import _OBS_COLUMNS_TO_STRIP, _strip_forbidden_obs_columns_h5py
 from .write import (
     EDIT_LOG_KEY,
+    SAME_SECOND_SNAPSHOT_ERROR,
+    _try_claim,
     build_edit_log,
     generate_timestamp,
     make_edit_entry,
@@ -188,6 +190,14 @@ def convert_cellxgene_to_hca(
             temp_adata.write_h5ad(temp_path)
             del temp_adata
 
+            # The claim model (see docs/anndata-tools-contract.md, "How
+            # writing works"), immediately before the copy so no error
+            # return can strand the claimed empty file: a same-second
+            # convert of a same-titled source is refused rather than
+            # silently overwritten, and the failure unlinks below only
+            # ever remove a file this run created.
+            if not _try_claim(output_path):
+                return {"error": SAME_SECOND_SNAPSHOT_ERROR}
             shutil.copy2(path, output_path)
 
             with h5py.File(temp_path, "r") as f_temp, h5py.File(output_path, "a") as f_out:

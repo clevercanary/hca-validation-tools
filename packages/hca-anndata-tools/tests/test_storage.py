@@ -6,9 +6,13 @@ from pathlib import Path
 import h5py
 import numpy as np
 
-from hca_anndata_tools._io import obs_index_name
 from hca_anndata_tools.storage import _MAX_UNSUPPORTED_PATHS, get_storage_info
-from hca_anndata_tools.testing import make_nullable_string_array
+from hca_anndata_tools.testing import (
+    make_fixed_width_byte_array,
+    make_nullable_index,
+    make_nullable_string_array,
+    make_plain_string_column,
+)
 
 
 def test_storage_file_size(sample_h5ad):
@@ -53,6 +57,14 @@ def test_storage_missing_file():
 # --- encodings block (hca-validation-tools#638) -----------------------------
 
 
+def _index_attr(obs) -> str:
+    """The index name straight from the attribute — not via _io.obs_index_name,
+    which get_storage_info itself calls: a fixture that leans on the code
+    under test cannot be trusted to expose that code's bugs."""
+    name = obs.attrs.get("_index", "_index")
+    return name.decode("utf-8") if isinstance(name, bytes) else name
+
+
 def _nullable_copy(src: Path, dest: Path, *, masked: int = 0, columns: tuple[str, ...] = ()) -> Path:
     """Copy ``src``, rewriting its obs index — and any named categorical
     columns' ``categories`` — as ``nullable-string-array``.
@@ -61,11 +73,12 @@ def _nullable_copy(src: Path, dest: Path, *, masked: int = 0, columns: tuple[str
     asserts on a categorical says which one it broke.
     """
     shutil.copy2(src, dest)
-    with h5py.File(dest, "r+") as f:
-        obs = f["obs"]
-        make_nullable_string_array(obs, obs_index_name(obs), masked=masked)
-        for column in columns:
-            make_nullable_string_array(obs[column], "categories")
+    make_nullable_index(dest, masked=masked)
+    if columns:
+        with h5py.File(dest, "r+") as f:
+            obs = f["obs"]
+            for column in columns:
+                make_nullable_string_array(obs[column], "categories")
     return dest
 
 
@@ -77,6 +90,25 @@ def test_encodings_reported_for_plain_file(sample_h5ad):
     assert enc["unsupported"] == []
     assert enc["unsupported_count"] == 0
     assert enc["unsupported_truncated"] is False
+
+
+def test_encodings_does_not_flag_a_fixed_width_byte_index(sample_h5ad, tmp_path):
+    """``array`` on a Dataset is writable — the report must agree with rename.
+
+    This is the same predicate rename_cell_ids refuses on. When the two
+    disagreed, get_storage_info called this file clean and rename refused it
+    (hca-validation-tools#637 review).
+    """
+    path = tmp_path / "fixed.h5ad"
+    shutil.copy2(sample_h5ad, path)
+    with h5py.File(path, "r+") as f:
+        obs = f["obs"]
+        make_fixed_width_byte_array(obs, _index_attr(obs))
+
+    enc = get_storage_info(str(path))["encodings"]
+    assert enc["obs"]["index"] == "array"
+    assert enc["unsupported"] == []
+    assert enc["unsupported_count"] == 0
 
 
 def test_encodings_index_masked_is_none_when_not_nullable(sample_h5ad):
@@ -127,7 +159,7 @@ def test_encodings_unsupported_paths_are_capped_but_count_is_whole(sample_h5ad, 
     extra = _MAX_UNSUPPORTED_PATHS + 2
     with h5py.File(path, "r+") as f:
         obs = f["obs"]
-        n = obs[obs_index_name(obs)].shape[0]
+        n = obs[_index_attr(obs)].shape[0]
         for i in range(extra):
             grp = obs.create_group(f"nullable_cat_{i}")
             grp.attrs["encoding-type"] = "categorical"
@@ -179,7 +211,7 @@ def test_encodings_covers_obsm_dataframe_indexes(sample_h5ad, tmp_path):
     """An obsm DataFrame's own index is read the same way obs's is.
 
     rename_cell_ids walks obsm frames and reads each index with
-    read_string_dataset, so a nullable index there fails mid-rename. Missing
+    read_index, so a nullable index there fails mid-rename. Missing
     it would let a file report a clean bill of health and still crash.
     """
     path = tmp_path / "obsm.h5ad"
@@ -190,7 +222,7 @@ def test_encodings_covers_obsm_dataframe_indexes(sample_h5ad, tmp_path):
         frame.attrs["encoding-version"] = "0.2.0"
         frame.attrs["_index"] = "_index"
         frame.attrs["column-order"] = np.array([], dtype=h5py.string_dtype())
-        ids = f["obs"][obs_index_name(f["obs"])][:]
+        ids = f["obs"][_index_attr(f["obs"])][:]
         ds = frame.create_dataset("_index", data=ids)
         ds.attrs["encoding-type"] = "string-array"
         make_nullable_string_array(frame, "_index")
@@ -239,7 +271,41 @@ def test_encodings_unstamped_index_is_labelled_not_null(sample_h5ad, tmp_path):
     shutil.copy2(sample_h5ad, path)
     with h5py.File(path, "r+") as f:
         obs = f["obs"]
-        del obs[obs_index_name(obs)].attrs["encoding-type"]
+        del obs[_index_attr(obs)].attrs["encoding-type"]
     enc = get_storage_info(str(path))["encodings"]
     assert enc["obs"]["index"] == "unstamped"
     assert enc["obs"]["index"] is not None
+
+
+def test_encodings_flags_a_plain_nullable_column(sample_h5ad, tmp_path):
+    """A non-categorical nullable column is exactly what the write funnel
+    refuses — the report must flag it too, or inspection green-lights a file
+    the tools then refuse (contract principle 9)."""
+    path = tmp_path / "nullable-col.h5ad"
+    shutil.copy2(sample_h5ad, path)
+    with h5py.File(path, "r+") as f:
+        obs = f["obs"]
+        make_plain_string_column(obs, "batch", ["b1"] * obs[_index_attr(obs)].shape[0])
+        make_nullable_string_array(obs, "batch")
+
+    enc = get_storage_info(str(path))["encodings"]
+    assert "obs/batch" in enc["unsupported"]
+
+
+def test_encodings_does_not_flag_a_nullable_integer_column(sample_h5ad, tmp_path):
+    """Nullable-integer columns pass through every tool (anndata writes them
+    ungated), so flagging them would hard-stop curation on files nothing
+    refuses — the report flags only what a tool would actually refuse."""
+    path = tmp_path / "nullable-int.h5ad"
+    shutil.copy2(sample_h5ad, path)
+    with h5py.File(path, "r+") as f:
+        obs = f["obs"]
+        n = obs[_index_attr(obs)].shape[0]
+        grp = obs.create_group("qc_flag")
+        grp.attrs["encoding-type"] = "nullable-integer"
+        grp.attrs["encoding-version"] = "0.1.0"
+        grp.create_dataset("values", data=np.zeros(n, dtype="i8"))
+        grp.create_dataset("mask", data=np.zeros(n, dtype=bool))
+
+    enc = get_storage_info(str(path))["encodings"]
+    assert "obs/qc_flag" not in enc["unsupported"]
