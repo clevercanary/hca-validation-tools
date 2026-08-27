@@ -214,6 +214,19 @@ def create_hca_h5ad(
     return path
 
 
+def write_h5ad_with_nullable_strings(adata, path) -> None:
+    """anndata's own writer with ``allow_write_nullable_strings`` on.
+
+    This is how the producer pipelines that made the liver files write —
+    anndata itself, flag flipped — so fixtures written through here carry
+    the authentic on-disk encodings, not this module's reconstructions.
+    ``settings.override`` restores the flag on exit, so no process-global
+    state leaks into other tests.
+    """
+    with ad.settings.override(allow_write_nullable_strings=True):
+        adata.write_h5ad(path)
+
+
 def make_plain_string_column(parent: h5py.Group, name: str, values: list[str]) -> None:
     """Create (or replace) ``name`` as a plain ``string-array`` Dataset.
 
