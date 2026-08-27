@@ -15,6 +15,12 @@ dependencies = [
     # Categorical-of-StringDtype categories come out plain, not nullable).
     # Moves when cellxgene-schema's own anndata pin moves.
     "anndata>=0.11,<0.12",
+    # Same cap cellxgene-schema carries, for the same reason: scipy 1.16
+    # removed sparse internals anndata 0.11's backed classes use — a backed
+    # X slice raises "'backed_csr_matrix' object has no attribute
+    # '_validate_indices'" (caught by CI's fresh resolve, reproduced with
+    # anndata 0.11.4 + scipy 1.17.1). Moves with the anndata cap above.
+    "scipy<1.16",
     "pandas>2,<3",
     "numpy<3",
     "h5py>=3.8",
