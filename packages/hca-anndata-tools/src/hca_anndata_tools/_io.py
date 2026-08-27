@@ -96,8 +96,12 @@ def is_writable_element(item: h5py.Group | h5py.Dataset | h5py.Datatype) -> bool
     ``replace_string_dataset`` calls ``storage_like``, which copies chunking and
     compression off an existing Dataset; a Group — ``nullable-string-array``, or
     whatever multi-part encoding AnnData adds next — has none of those
-    properties to copy, and anndata 0.11.4 refuses to write a ``StringArray`` at
-    all (hca-validation-tools#641).
+    properties to copy (hca-validation-tools#641).
+
+    Note what this is *not* about: anndata can write nullable strings, behind
+    the ``allow_write_nullable_strings`` setting it ships defaulting to False.
+    The constraint here is our own hand-rolled writer needing a Dataset, which
+    no setting changes.
 
     Judging by encoding name instead would refuse elements that write perfectly
     well: a fixed-width byte index and a numeric categorical's ``categories``
@@ -271,7 +275,8 @@ def unwritable_element_reason(item: h5py.Group | h5py.Dataset | h5py.Datatype, s
         f"{subject} uses the "
         f"'{encoding_of(item) or 'unstamped ' + type(item).__name__.lower()}' encoding, which this "
         f"package can read but cannot write back (hca-validation-tools#641). "
-        f"The file must be re-exported with plain string arrays first."
+        f"Re-exporting the file with plain string arrays is the workaround "
+        f"available today; it is not the only possible fix."
     )
 
 
