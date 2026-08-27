@@ -19,6 +19,8 @@ Two facts discovered while building this, worth keeping on record:
   it as a defect to refuse rather than an encoding to support.
 """
 
+import warnings
+
 import anndata as ad
 import h5py
 import numpy as np
@@ -343,3 +345,76 @@ def test_funnel_leaves_a_numeric_categorical_index_alone(tmp_path):
 
     assert "error" not in result, result.get("error")
     assert "encodings_normalized" not in result
+
+
+def test_everything_stock_anndata_writes_still_writes_through_the_funnel(tmp_path):
+    """The no-regression invariant behind this branch's review lesson.
+
+    The funnel once regressed by flattening *numeric* categorical indexes —
+    a shape no hand-picked test imagined, caught only by review. This test
+    replaces imagination with enumeration: for every generated single-axis
+    variant, if stock anndata writes it, write_h5ad must write it too, with
+    the values intact. New dtype handling that narrows the writable domain
+    fails here mechanically.
+    """
+    base_obs = {"col": ["a", "b", "a"]}
+    base_index = ["c1", "c2", "c3"]
+
+    def build(index=None, extra_col=None, uns_value=None):
+        obs = pd.DataFrame(dict(base_obs), index=pd.Index(base_index))
+        if extra_col is not None:
+            obs["extra"] = extra_col
+        adata = ad.AnnData(X=np.zeros((3, 2), dtype=np.float32), obs=obs)
+        if index is not None:
+            # Assigned post-construction: the AnnData constructor coerces
+            # non-str indexes to str (with a warning), so building through
+            # it would silently test a different shape than intended — the
+            # original regression repro assigned exactly this way.
+            adata.obs.index = pd.Index(index)
+        if uns_value is not None:
+            adata.uns["value"] = uns_value
+        return adata
+
+    variants = {
+        "baseline": {},
+        "index_categorical_str": {"index": pd.CategoricalIndex(base_index)},
+        "index_categorical_int": {"index": pd.CategoricalIndex([1, 2, 3])},
+        "index_int": {"index": [1, 2, 3]},
+        "col_categorical_str": {"extra_col": pd.Categorical(["x", "y", "x"])},
+        "col_categorical_int": {"extra_col": pd.Categorical([1, 2, 1])},
+        "col_int64_nullable": {"extra_col": pd.array([1, pd.NA, 3], dtype="Int64")},
+        "col_boolean_nullable": {"extra_col": pd.array([True, pd.NA, False], dtype="boolean")},
+        "col_float_nan": {"extra_col": [1.0, np.nan, 2.0]},
+        "col_int_plain": {"extra_col": [1, 2, 3]},
+        "col_bool_plain": {"extra_col": [True, False, True]},
+        "uns_numeric_cat_index_df": {"uns_value": pd.DataFrame({"v": [1.0, 2.0]}, index=pd.CategoricalIndex([10, 20]))},
+        "uns_str_cat_index_df": {"uns_value": pd.DataFrame({"v": [1.0, 2.0]}, index=pd.CategoricalIndex(["a", "b"]))},
+        "uns_categorical": {"uns_value": pd.Categorical(["x", "y"])},
+        "uns_str_array": {"uns_value": np.array(["p", "q"], dtype=object)},
+        "uns_nested_dict": {"uns_value": {"deep": {"arr": np.array([1, 2])}}},
+    }
+
+    failures = []
+    for name, kwargs in variants.items():
+        stock = tmp_path / f"stock-{name}.h5ad"
+        try:
+            build(**kwargs).write_h5ad(stock)
+        except Exception:
+            continue  # stock anndata refuses it: outside this invariant
+        result = write_h5ad(build(**kwargs), str(stock), _entry())
+        if "error" in result:
+            failures.append(f"{name}: {result['error'][:120]}")
+            continue
+        with warnings.catch_warnings():
+            # Reading an int-indexed file back makes anndata coerce the
+            # index to str with an ImplicitModificationWarning — a property
+            # of the deliberately tested shape, not a defect in the write.
+            warnings.simplefilter("ignore")
+            before = ad.read_h5ad(stock)
+            after = ad.read_h5ad(result["output_path"])
+        if [str(i) for i in after.obs_names] != [str(i) for i in before.obs_names]:
+            failures.append(f"{name}: obs_names changed")
+        for col in before.obs.columns:
+            if list(after.obs[col].astype(str)) != list(before.obs[col].astype(str)):
+                failures.append(f"{name}: column {col!r} values changed")
+    assert not failures, failures
