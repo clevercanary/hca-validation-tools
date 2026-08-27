@@ -653,13 +653,19 @@ def write_h5ad(
         if not Path(source_path).is_file():
             return {"error": f"Source file not found: {source_path}"}
 
-        # Entry validation and the masked-string refusal run before adata is
-        # touched at all (normalize_nullable_strings collects before
-        # converting). Later failures — an occupied output name, a failed
-        # write — restore the log via _unstamp so a retry never re-reads
-        # just-stamped entries as the existing log; the dtype normalization
-        # itself may persist through them, which is fine: it is value-
-        # identical and idempotent, and the retry writes the same bytes.
+        # The masked-string refusal runs FIRST — before adata is touched
+        # (normalize_nullable_strings collects before converting) and before
+        # build_edit_log streams the whole source for its SHA-256: a doomed
+        # write on a multi-gigabyte file must not pay for the hash
+        # (principle 7). An entries-validation error after normalization
+        # leaves the dtypes converted — value-identical and idempotent, so
+        # benign — and later failures (occupied name, failed write) restore
+        # the log via _unstamp so a retry never re-reads just-stamped
+        # entries as the existing log.
+        normalized, masked = normalize_nullable_strings(adata)
+        if masked:
+            return {"error": f"Refusing to write: {', '.join(masked)} hold(s) {MASKED_STRING_REMEDY}"}
+
         provenance = adata.uns.get(PROVENANCE_KEY, {})
         had_log = isinstance(provenance, dict) and EDIT_LOG_KEY in provenance
         existing_log_raw = provenance[EDIT_LOG_KEY] if had_log else "[]"
@@ -667,10 +673,6 @@ def write_h5ad(
         log_result = build_edit_log(existing_log_raw, edit_entries, source_path)
         if "error" in log_result:
             return log_result
-
-        normalized, masked = normalize_nullable_strings(adata)
-        if masked:
-            return {"error": f"Refusing to write: {', '.join(masked)} hold(s) {MASKED_STRING_REMEDY}"}
 
         adata.uns.setdefault(PROVENANCE_KEY, {})[EDIT_LOG_KEY] = log_result["json"]
 

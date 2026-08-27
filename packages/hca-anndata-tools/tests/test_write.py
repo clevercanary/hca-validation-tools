@@ -797,3 +797,22 @@ def test_forward_encodings_normalized_is_the_one_spelling():
         "encodings_normalized": ["x"],
     }
     assert forward_encodings_normalized({"output_path": "p"}, {"a": 1}) == {"a": 1}
+
+
+def test_write_h5ad_masked_refusal_never_hashes_the_source(sample_h5ad_for_write, monkeypatch):
+    """A doomed write on a multi-gigabyte file must not stream the whole
+    source for its SHA-256 first — the masked refusal runs before
+    build_edit_log's hash (fresh-verifier finding)."""
+    import hca_anndata_tools.write as write_module
+
+    def _boom(path):
+        raise AssertionError("source was hashed on a refused write")
+
+    monkeypatch.setattr(write_module, "_compute_sha256", _boom)
+    adata = ad.read_h5ad(sample_h5ad_for_write)
+    adata.obs["lineage"] = pd.array(["a", pd.NA] * (adata.n_obs // 2), dtype="string")
+
+    result = write_h5ad(adata, str(sample_h5ad_for_write), [_make_entry()])
+
+    assert "error" in result
+    assert "masked (null) string" in result["error"]

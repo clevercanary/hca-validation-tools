@@ -302,3 +302,22 @@ def test_convert_ignores_a_masked_column_it_strips_anyway(tmp_path):
     assert "error" not in result, result.get("error")
     with h5py.File(result["output_path"]) as f:
         assert "self_reported_ethnicity_ontology_term_id" not in f["obs"]
+
+
+def test_convert_ignores_a_masked_column_the_uns_broadcast_overwrites(tmp_path):
+    """The transplant overwrites the _UNS_TO_OBS broadcast columns wholesale
+    (organism, organism_ontology_term_id), so a masked value in one never
+    reaches the output and must not refuse the convert — the preflight is
+    never stricter than the pipeline it fronts for."""
+    path = create_cellxgene_h5ad(tmp_path / "cxg_masked_organism.h5ad")
+    with h5py.File(path, "r+") as f:
+        n = f["obs"][f["obs"].attrs.get("_index", "_index")].shape[0]
+        make_plain_string_column(f["obs"], "organism", ["Homo sapiens"] * n)
+        make_nullable_string_array(f["obs"], "organism", masked=1)
+
+    result = convert_cellxgene_to_hca(str(path))
+
+    assert "error" not in result, result.get("error")
+    with h5py.File(result["output_path"]) as f:
+        organism = f["obs/organism"]
+        assert isinstance(organism, h5py.Group) and "categories" in organism  # the broadcast categorical
