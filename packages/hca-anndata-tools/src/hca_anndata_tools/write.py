@@ -645,16 +645,12 @@ def write_h5ad(
         if not Path(source_path).is_file():
             return {"error": f"Source file not found: {source_path}"}
 
-        # Before the uns mutation below: a refusal must leave adata exactly
-        # as the caller passed it, or a fixed-and-retried write re-reads the
+        # Every refusal path runs before adata is touched: entry validation
+        # first (it needs nothing from adata's data), then the masked-string
+        # refusal (normalize_nullable_strings collects before converting).
+        # Only then is the log stamped; post-stamp failure paths restore it
+        # via _unstamp below, so a fixed-and-retried write never re-reads
         # just-stamped entries as the existing log and appends them twice.
-        # (normalize_nullable_strings collects before converting, so its
-        # masked refusal honors this too.) Post-stamp failure paths restore
-        # the log via _unstamp below.
-        normalized, masked = normalize_nullable_strings(adata)
-        if masked:
-            return {"error": f"Refusing to write: {', '.join(masked)} hold(s) {MASKED_STRING_REMEDY}"}
-
         provenance = adata.uns.get(PROVENANCE_KEY, {})
         had_log = isinstance(provenance, dict) and EDIT_LOG_KEY in provenance
         existing_log_raw = provenance[EDIT_LOG_KEY] if had_log else "[]"
@@ -662,6 +658,10 @@ def write_h5ad(
         log_result = build_edit_log(existing_log_raw, edit_entries, source_path)
         if "error" in log_result:
             return log_result
+
+        normalized, masked = normalize_nullable_strings(adata)
+        if masked:
+            return {"error": f"Refusing to write: {', '.join(masked)} hold(s) {MASKED_STRING_REMEDY}"}
 
         adata.uns.setdefault(PROVENANCE_KEY, {})[EDIT_LOG_KEY] = log_result["json"]
 
