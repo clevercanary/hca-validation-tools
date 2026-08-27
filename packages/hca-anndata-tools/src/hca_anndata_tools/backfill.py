@@ -31,7 +31,7 @@ from ._io import (
     is_missing_value,
     masked_categories_reason,
     obs_index_name,
-    read_categorical_data,
+    read_categories,
     read_edit_log_h5py,
     read_element,
     read_group,
@@ -119,13 +119,10 @@ def _read_column(
                 f"{side} column '{col}' is a categorical of non-string values — "
                 "only string-valued categorical and string obs columns can be backfilled"
             )
-        # Masked check off the categories alone (distinct-value-sized),
-        # before the full n_obs-sized codes read pays for a refusal.
-        if is_target and (
-            reason := masked_categories_reason(pd.Index(read_element(cats_item)), f"Target column '{col}'")
-        ):
+        cats = read_categories(item)  # pyright: ignore[reportArgumentType]
+        if is_target and (reason := masked_categories_reason(cats, f"Target column '{col}'")):
             return None, reason
-        cats, codes = read_categorical_data(item)  # pyright: ignore[reportArgumentType]
+        codes: np.ndarray = item["codes"][:]  # pyright: ignore[reportIndexIssue, reportAssignmentType]
         cat_values = np.array(list(cats), dtype=object)
         cat_missing = np.array([is_missing_value(c, placeholders) for c in cats], dtype=bool)
         valid = codes >= 0

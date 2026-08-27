@@ -119,12 +119,9 @@ def _dataframe_encodings(df: h5py.Group, path: str, index_name: str) -> tuple[di
         if not isinstance(column, h5py.Group):
             continue
         if "categories" not in column:
-            # A non-categorical group column (nullable-string/-integer/
-            # -boolean): readable, unwritable in place — the write funnel
-            # refuses it, so the report must flag it too, or inspection
-            # green-lights a file the tools then refuse (contract
-            # principle 9).
-            unsupported.append(f"{path}/{name}")
+            # Nullable group column: no Dataset layout to rewrite in place.
+            if not is_writable_element(column):
+                unsupported.append(f"{path}/{name}")
             continue
         categories = column["categories"]
         label = encoding_of(categories) or "unstamped"
@@ -146,11 +143,9 @@ def _encodings_info(f: h5py.File) -> dict:
     cell count, never by the matrix — so this is as cheap on a 29 GB atlas as
     on a small file. A file with no nullable index reads no data at all.
 
-    Scope is dataframe indexes and categorical ``categories``. A plain
-    nullable string *column* is not reported: judging those needs a predicate
-    tied to what a given reader intends (``read_categorical_data`` handles
-    categorical groups happily, and ``backfill`` handles nullable ints by
-    design), which belongs with the reader fix in hca-validation-tools#637.
+    Scope is the listed dataframes' indexes, plain group columns, and
+    categorical ``categories`` — every element the in-place writers judge.
+    ``varm`` and ``uns`` frames are the write funnel's alone.
     """
     result: dict = {}
     unsupported: list[str] = []
@@ -189,7 +184,8 @@ def get_storage_info(path: str) -> dict:
 
     Returns file size, compression settings, chunk sizes, and sparse format
     for X, raw/X, and all layers, plus the string encodings used by the
-    ``obs``, ``var`` and ``raw.var`` indexes and categoricals.
+    ``obs``, ``var``, ``raw.var`` and obsm dataframes — indexes, plain group
+    columns, and categoricals.
 
     The ``encodings`` block exists so an incompatible on-disk representation
     surfaces during inspection rather than as an opaque HDF5 error partway

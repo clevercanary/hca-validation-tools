@@ -257,7 +257,8 @@ Two write paths, one safety model. The model: **a destination name is
 written only after an O_EXCL claim creates it** (`_try_claim` /
 `_claim_snapshot_path` in `write.py`) — a same-second timestamp collision
 waits out the boundary and regenerates; a claim that still fails refuses
-(`SameSecondSnapshotError`). Because the claim *created* the file, whatever
+(`SameSecondSnapshotError`), and an explicitly supplied output name that is
+already taken is refused outright. Because the claim *created* the file, whatever
 sits at that name afterwards is ours, so **failure cleanup unlinks it
 unconditionally and can never delete pre-existing data** — and no partial
 file is ever left wearing the `-edit-<timestamp>` name `resolve_latest`
@@ -269,7 +270,9 @@ selects by. Success then retires the previous snapshot
 | **Copy-and-patch** | in-place surgical tools (rename, merge, backfill, replace_placeholder, copy_cap) | `snapshot_copy` / `snapshot_copy_hashed`: claim → streamed copy (digest inline) → h5py-patch the copy → unlink the claim on any failure |
 | **Full rewrite** | anndata-based tools (compress, normalize, convert, set_uns, …) | `write_h5ad`: profile refusal (`nullable_string_locations`) *before* mutating `adata` → edit log stamped → claim → `adata.write_h5ad` streams → unlink the claim on any failure |
 
-Anything that writes an h5ad goes through one of these two functions —
+Any destination h5ad — a snapshot or a converted output — is named and
+written through one of these two functions (scratch files in temp dirs are
+exempt) —
 hand-rolling output-path handling around either is how `write_h5ad` itself
 accumulated three data-loss hazards before adopting the claim (the #642
 review rounds). The edit log is written into the output as part of the same

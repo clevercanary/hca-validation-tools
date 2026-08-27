@@ -111,3 +111,25 @@ def pin_snapshot_names(monkeypatch):
         monkeypatch.setattr("hca_anndata_tools.write.time.sleep", lambda s: None)
 
     return _pin
+
+
+@pytest.fixture(autouse=True)
+def _unique_snapshot_timestamps(monkeypatch):
+    """Give every generated snapshot name a unique second, so chained writes
+    in one test never collide and _claim_snapshot_path never really sleeps —
+    ~13s of pure time.sleep(1) per suite run otherwise. The collision path
+    itself stays pinned by the test_write.py claim tests, which monkeypatch
+    generate_output_path directly and so bypass this fixture.
+    """
+    import itertools
+    from datetime import datetime, timedelta, timezone
+
+    from hca_anndata_tools import write as write_module
+
+    base = datetime.now(timezone.utc)
+    counter = itertools.count()
+    monkeypatch.setattr(
+        write_module,
+        "generate_timestamp",
+        lambda: (base + timedelta(seconds=next(counter))).strftime("%Y-%m-%d-%H-%M-%S"),
+    )

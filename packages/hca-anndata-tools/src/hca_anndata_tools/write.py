@@ -132,6 +132,24 @@ def _claim_snapshot_path(path: str) -> str:
 
 
 @contextlib.contextmanager
+def _claimed(output_path: str) -> Iterator[None]:
+    """Remove the file at ``output_path`` if the body fails.
+
+    The one spelling of the claim model's cleanup half: the caller claimed
+    the name (``_try_claim`` / :func:`_claim_snapshot_path`), so the file is
+    ours by construction and removing it can never delete pre-existing data —
+    and no partial file survives wearing the ``-edit-<timestamp>`` name
+    ``resolve_latest`` selects by.
+    """
+    try:
+        yield
+    except BaseException:
+        with contextlib.suppress(OSError):
+            Path(output_path).unlink()
+        raise
+
+
+@contextlib.contextmanager
 def snapshot_copy(path: str) -> Iterator[str]:
     """Yield the path of a fresh snapshot copy of ``path``, cleaning it up on error.
 
@@ -165,28 +183,15 @@ def snapshot_copy(path: str) -> Iterator[str]:
     """
     output_path = _claim_snapshot_path(path)
 
-    try:
-        shutil.copy2(path, output_path)
-    except shutil.SameFileError as e:
-        # Nothing was written — the copy compares inodes before opening the
-        # destination — but the file at output_path *is* ours: the O_EXCL
-        # claim created it. Leaving it would strand a zero-byte file carrying
-        # the newest -edit- timestamp, which resolve_latest would then hand to
-        # every later call (#597).
-        with contextlib.suppress(OSError):
-            Path(output_path).unlink()
-        raise SameSecondSnapshotError(SAME_SECOND_SNAPSHOT_ERROR) from e
-    except BaseException:
-        with contextlib.suppress(OSError):
-            Path(output_path).unlink()
-        raise
-
-    try:
+    with _claimed(output_path):
+        try:
+            shutil.copy2(path, output_path)
+        except shutil.SameFileError as e:
+            # Nothing was written — the copy compares inodes before opening
+            # the destination — but the claimed file must still go, which
+            # _claimed does on this re-raise (#597).
+            raise SameSecondSnapshotError(SAME_SECOND_SNAPSHOT_ERROR) from e
         yield output_path
-    except BaseException:
-        with contextlib.suppress(OSError):
-            Path(output_path).unlink()
-        raise
 
 
 @contextlib.contextmanager
@@ -210,24 +215,14 @@ def snapshot_copy_hashed(path: str) -> Iterator[tuple[str, str]]:
     """
     output_path = _claim_snapshot_path(path)
 
-    try:
-        sha256 = _copy_with_sha256(path, output_path)
-    except shutil.SameFileError as e:
-        # The claimed file is ours; see snapshot_copy for why it is removed.
-        with contextlib.suppress(OSError):
-            Path(output_path).unlink()
-        raise SameSecondSnapshotError(SAME_SECOND_SNAPSHOT_ERROR) from e
-    except BaseException:
-        with contextlib.suppress(OSError):
-            Path(output_path).unlink()
-        raise
-
-    try:
+    with _claimed(output_path):
+        try:
+            sha256 = _copy_with_sha256(path, output_path)
+        except shutil.SameFileError as e:
+            # See snapshot_copy: nothing written, claimed file removed on
+            # this re-raise.
+            raise SameSecondSnapshotError(SAME_SECOND_SNAPSHOT_ERROR) from e
         yield output_path, sha256
-    except BaseException:
-        with contextlib.suppress(OSError):
-            Path(output_path).unlink()
-        raise
 
 
 def strip_timestamp(filename: str) -> str:
@@ -543,8 +538,9 @@ def write_h5ad(
             timestamp, tool, tool_version, operation, description. Optional:
             details (dict of operation-specific structured data).
             The source_file and source_sha256 fields are set automatically.
-        output_path: Override the generated output path. If None, a
-            timestamped path is generated from the source filename.
+        output_path: Override the generated output path; must not already
+            exist — an occupied name is refused rather than overwritten. If
+            None, a timestamped path is claimed from the source filename.
         compression: HDF5 filter for chunked datasets. Defaults to 'gzip'.
             Passed through to anndata.AnnData.write_h5ad.
         compression_opts: Filter options (e.g. gzip level 0-9). None uses
@@ -563,6 +559,8 @@ def write_h5ad(
         # Before the uns mutation below: a refusal must leave adata exactly
         # as the caller passed it, or a fixed-and-retried write re-reads the
         # just-stamped entries as the existing log and appends them twice.
+        # (The explicit-output "already exists" refusal further down runs
+        # after the stamp; accepted — output_path is a test hook.)
         if nullable := nullable_string_locations(adata):
             return {
                 "error": (
@@ -593,12 +591,8 @@ def write_h5ad(
             output_path = _claim_snapshot_path(source_path)
         elif not _try_claim(output_path):
             return {"error": f"Refusing to write: a file already exists at {output_path}"}
-        try:
+        with _claimed(output_path):
             adata.write_h5ad(output_path, compression=compression, compression_opts=compression_opts)
-        except BaseException:
-            with contextlib.suppress(OSError):
-                Path(output_path).unlink()
-            raise
 
         cleanup_previous_version(source_path, output_path)
 

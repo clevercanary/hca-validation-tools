@@ -13,11 +13,11 @@ from ._io import (
     read_obs_column_names,
     read_var_gene_names,
 )
+from .cap import _find_annotation_sets
+from .write import resolve_latest
 
 if TYPE_CHECKING:
     from pandas.api.typing import NAType
-from .cap import _find_annotation_sets
-from .write import resolve_latest
 
 # Judged through is_missing_value (case-insensitive, NA-aware), so 'Unknown'
 # or 'NONE' cannot slip through as a phantom gene symbol.
@@ -37,7 +37,7 @@ def _extract_marker_genes_from_categories(categories: set[str | NAType]) -> set[
             continue
         for gene in str(val).split(","):
             gene = gene.strip()
-            if gene and not is_missing_value(gene, _SKIP_PLACEHOLDERS):
+            if not is_missing_value(gene, _SKIP_PLACEHOLDERS):
                 genes.add(gene)
     return genes
 

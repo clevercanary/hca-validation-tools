@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import gc
 import warnings
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from typing import TYPE_CHECKING, Literal
 
 import anndata as ad
@@ -64,20 +64,19 @@ def _masked_categories_open_error(path: str) -> str | None:
     already known bad, and a scan failure must not replace the original
     error with a second traceback.
     """
-    try:
-        with h5py.File(path, "r") as f:
-            for frame in ("obs", "var", "raw/var"):
-                group = f.get(frame)
-                if not isinstance(group, h5py.Group):
-                    continue
-                for col in group:
-                    item = group[col]
-                    if isinstance(item, h5py.Group) and "categories" in item:
-                        cats = pd.Index(read_element(item["categories"]))
-                        if reason := masked_categories_reason(cats, f"{frame} column '{col}'"):
-                            return reason
-    except Exception:
-        return None
+    with suppress(Exception), h5py.File(path, "r") as f:
+        for frame in ("obs", "var", "raw/var"):
+            group = f.get(frame)
+            if not isinstance(group, h5py.Group):
+                continue
+            for col in group:
+                item = group[col]
+                if (
+                    isinstance(item, h5py.Group)
+                    and "categories" in item
+                    and (reason := masked_categories_reason(read_categories(item), f"{frame} column '{col}'"))
+                ):
+                    return reason
     return None
 
 
@@ -566,6 +565,15 @@ def write_edit_log_h5py(f: h5py.File, log_json: str) -> None:
     write_elem(ensure_provenance_group(f), EDIT_LOG_KEY, log_json)
 
 
+def read_categories(item: h5py.Group) -> pd.Index:
+    """Read only the categories of a categorical h5py group.
+
+    Distinct-value-sized, so a caller that may refuse (a masked-categories
+    check) reads this before paying for the n_obs-sized codes.
+    """
+    return pd.Index(read_element(item["categories"]))
+
+
 def read_categorical_data(item: h5py.Group) -> tuple[pd.Index, np.ndarray]:
     """Read categories and codes from a categorical h5py group.
 
@@ -575,9 +583,7 @@ def read_categorical_data(item: h5py.Group) -> tuple[pd.Index, np.ndarray]:
     Returns:
         (categories, codes) — pandas Index of decoded category strings and numpy codes array.
     """
-    categories = list(read_element(item["categories"]))
-    codes = item["codes"][:]
-    return pd.Index(categories), codes
+    return read_categories(item), item["codes"][:]
 
 
 def update_column_order(
