@@ -215,6 +215,19 @@ def is_writable_element(item: h5py.Group | h5py.Dataset | h5py.Datatype) -> bool
     return isinstance(item, h5py.Dataset)
 
 
+def require_nullable_children(item: h5py.Group) -> None:
+    """Raise the named corruption error for a truncated values+mask group.
+
+    A stamped nullable group missing a child is a corrupt file (a truncated
+    write); reaching into it directly would leak a raw KeyError. One spelling
+    for every consumer — the readers and the normalizing writers alike.
+    """
+    enc = encoding_of(item) or "nullable"
+    for child in ("values", "mask"):
+        if child not in item:
+            raise ValueError(f"'{item.name}' is stamped '{enc}' but has no '{child}' dataset — the file is corrupt")
+
+
 def read_element(item: h5py.Group | h5py.Dataset | h5py.Datatype) -> np.ndarray:
     """Read a string or categorical element, whatever encoding it uses.
 
@@ -251,12 +264,7 @@ def read_element(item: h5py.Group | h5py.Dataset | h5py.Datatype) -> np.ndarray:
     import numpy as np
 
     if isinstance(item, h5py.Group) and (enc := encoding_of(item)) and enc.startswith("nullable-"):
-        # A stamped values+mask group missing a child is a corrupt file (a
-        # truncated write); anndata's reader would leak a raw HDF5 KeyError.
-        # Checked here so every caller gets the named error at once.
-        for child in ("values", "mask"):
-            if child not in item:
-                raise ValueError(f"'{item.name}' is stamped '{enc}' but has no '{child}' dataset — the file is corrupt")
+        require_nullable_children(item)
 
     with warnings.catch_warnings():
         # anndata warns on every read of a legacy unstamped element. encoding_of
@@ -701,6 +709,7 @@ def replace_string_dataset(parent: h5py.Group, name: str, data: np.ndarray) -> N
     """
     ds = parent[name]
     if isinstance(ds, h5py.Group):
+        require_nullable_children(ds)
         storage = storage_like(ds["values"])
         # Preserve whatever else a producer stamped on the group; only the
         # encoding attrs change, because the encoding is what changed.
@@ -915,7 +924,8 @@ def normalize_file_string_encodings(f: h5py.File) -> tuple[list[str], str | None
         if not (isinstance(target, h5py.Group) and encoding_of(target) == "nullable-string-array"):
             continue
         loc = f"{parent.name}/{name}".removeprefix("/")
-        if n_masked := int(np.asarray(target["mask"][()]).sum()):
+        require_nullable_children(target)
+        if n_masked := int(np.count_nonzero(np.asarray(target["mask"][:]))):  # pyright: ignore[reportIndexIssue]
             masked.append(f"{loc} ({n_masked})")
         else:
             targets.append((parent, name, loc))

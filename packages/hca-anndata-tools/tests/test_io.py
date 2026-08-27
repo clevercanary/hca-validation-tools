@@ -423,6 +423,10 @@ def test_read_element_names_a_truncated_nullable_group(tmp_path):
             _io.read_element(no_values)
         with pytest.raises(ValueError, match="no 'mask'"):
             _io.read_element(no_mask)
+        # The normalizing writer shares the same guard — a corrupt group
+        # must not surface as a raw KeyError after the snapshot.
+        with pytest.raises(ValueError, match="no 'mask'"):
+            _io.replace_string_dataset(f, "no_mask", np.array(["b"], dtype=object))
 
 
 def test_is_missing_value_judges_na_itself():
