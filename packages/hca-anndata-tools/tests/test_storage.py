@@ -309,3 +309,21 @@ def test_encodings_does_not_flag_a_nullable_integer_column(sample_h5ad, tmp_path
 
     enc = get_storage_info(str(path))["encodings"]
     assert "obs/qc_flag" not in enc["unsupported"]
+
+
+def test_encodings_does_not_flag_a_categorical_index(sample_h5ad, tmp_path):
+    """A categorical-group index is in-profile (anndata's own serialization
+    of a CategoricalIndex) and nothing refuses it — rename flattens it as it
+    rewrites. Flagging it would make the informational report cry wolf."""
+    import anndata as ad
+    import pandas as pd
+
+    path = tmp_path / "cat-idx.h5ad"
+    adata = ad.read_h5ad(sample_h5ad)
+    adata.obs.index = pd.CategoricalIndex(adata.obs.index)
+    adata.write_h5ad(path)
+    with h5py.File(path) as f:
+        assert isinstance(f["obs/_index"], h5py.Group)  # the shape under test
+
+    enc = get_storage_info(str(path))["encodings"]
+    assert "obs/_index" not in enc["unsupported"]

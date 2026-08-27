@@ -110,7 +110,11 @@ def _dataframe_encodings(df: h5py.Group, path: str, index_name: str) -> tuple[di
         # state. None is reserved for "the group has no index dataset at all".
         index_enc = encoding_of(index) or "unstamped"
         index_masked = _mask_count(index)
-        if not is_writable_element(index):
+        # Nullable-string only, like the column and categories rules below:
+        # a categorical or nullable-numeric index group is in-profile and
+        # nothing refuses it (rename flattens a categorical index as it
+        # rewrites it).
+        if holds_string_values(index) and not is_writable_element(index):
             unsupported.append(f"{path}/{index_name}")
 
     categoricals: dict[str, int] = {}
@@ -201,10 +205,9 @@ def get_storage_info(path: str) -> dict:
     The ``encodings`` block exists so an incompatible on-disk representation
     surfaces during inspection rather than as an opaque HDF5 error partway
     through a curation run on a multi-gigabyte file. Its ``unsupported`` list
-    names the paths this package can read but **cannot rewrite in place**, judged by
-    :func:`~hca_anndata_tools._io.is_writable_element` — the same predicate
-    ``rename_cell_ids`` and ``merge_obs_categories`` refuse on, so an
-    inspection called clean here cannot be rejected by those tools.
+    names the nullable-string paths in the file — informational: since #641
+    nothing refuses them, every write normalizes the ones it touches, and
+    the flags clear as writes happen.
     Informational since #641: no tool refuses these encodings any more —
     every write normalizes what it touches (a full rewrite normalizes
     everything; an in-place rewrite normalizes the elements it replaces), so

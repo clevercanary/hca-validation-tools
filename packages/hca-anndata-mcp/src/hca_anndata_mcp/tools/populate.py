@@ -28,7 +28,7 @@ from pathlib import Path
 
 from hca_anndata_tools import has_edit_log_operation
 from hca_anndata_tools._io import open_h5ad
-from hca_anndata_tools.write import make_edit_entry, resolve_latest, write_h5ad
+from hca_anndata_tools.write import forward_encodings_normalized, make_edit_entry, resolve_latest, write_h5ad
 from hca_schema_validator import populate_in_memory
 
 
@@ -131,9 +131,7 @@ def populate_labels(path: str) -> dict:
             "filled": filled,
             "matched": matched,
         }
-        if "encodings_normalized" in write_result:
-            out["encodings_normalized"] = write_result["encodings_normalized"]
-        return out
+        return forward_encodings_normalized(write_result, out)
 
     except Exception as e:
         return {"error": str(e)}

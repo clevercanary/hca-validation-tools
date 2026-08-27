@@ -93,11 +93,11 @@ def _read_column(
     rather than guessed at.
 
     ``is_target`` marks the side whose columns get rewritten. It changes the
-    verdict on two shapes this tool can *read* but not rewrite in place: a
-    nullable-string column (``replace_string_dataset`` needs a Dataset to
-    copy layout from — refused before the snapshot), and a categorical with
-    masked categories (a void category has no value a rewrite could keep).
-    On the read-only source side both shapes just read.
+    verdict on one shape: a categorical with masked *categories* (a void
+    category has no value a rewrite could keep) refuses on the target side.
+    Nullable-string targets read and rewrite fine — replace_string_dataset
+    normalizes them (#641); only masked values surviving the fill refuse,
+    checked in the plan phase. The read-only source side just reads.
 
     The missing predicate runs once per distinct value, never per row — the
     categorical branch works on the categories, the string branch factorizes
@@ -382,10 +382,12 @@ def backfill_obs_from_source(target_path: str, source_path: str, columns: list[s
                             f"re-derive the ordering upstream first."
                         )
                     }
-            if tgt["kind"] == "string":
+            if filled and tgt["kind"] == "string":
                 # A masked value the fill does not reach has no plain-string
                 # representation, and the rewrite of a filled column is a
-                # plain Dataset — known here, before the snapshot.
+                # plain Dataset — known here, before the snapshot. A column
+                # with nothing to fill is never rewritten, so its masked
+                # values are not this run's problem.
                 residual = pd.isna(tgt["values"]).copy()
                 residual[fill_rows] = False
                 if n_residual := int(residual.sum()):

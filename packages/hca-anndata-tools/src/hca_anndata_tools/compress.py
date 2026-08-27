@@ -9,7 +9,7 @@ from typing import Literal
 import h5py
 
 from ._io import open_h5ad, read_edit_log_h5py, write_edit_log_h5py
-from .write import make_edit_entry, resolve_latest, write_h5ad
+from .write import forward_encodings_normalized, make_edit_entry, resolve_latest, write_h5ad
 
 
 def _detect_x_compression(path: str) -> str | None:
@@ -112,9 +112,7 @@ def compress_h5ad(
             "ratio": ratio,
             "compression": f"{compression}:{compression_level}",
         }
-        if "encodings_normalized" in result:
-            out["encodings_normalized"] = result["encodings_normalized"]
-        return out
+        return forward_encodings_normalized(result, out)
 
     except Exception as e:
         return {"error": str(e)}

@@ -443,3 +443,40 @@ def test_rename_flattens_a_categorical_index(tmp_path):
         assert isinstance(idx, h5py.Dataset)
         assert "ordered" not in idx.attrs
         assert "MH_mix_BR1_AAA" in idx.asstr()[:]
+
+
+def test_rename_normalizes_nullable_obsm_frame_indexes_too(tmp_path):
+    """The liver-shaped real case: obs index AND an obsm frame's own index
+    both nullable. Both are rewritten — and therefore both normalized —
+    by the same replace_string_dataset path."""
+    path = create_hca_h5ad(tmp_path / "obsm.h5ad", obsm_dataframe=True)
+    make_nullable_index(path)
+    make_nullable_index(path, frame="obsm/per_cell_scores")
+
+    result = rename_cell_ids(
+        str(path), column="sample_id", value="B1_0023", prefix_from="MH_mix_", prefix_to="MH_mix_BR1_"
+    )
+
+    assert "error" not in result, result.get("error")
+    with h5py.File(result["output_path"]) as f:
+        for frame in ("obs", "obsm/per_cell_scores"):
+            grp = f[frame]
+            idx = grp[obs_index_name(grp)]
+            assert isinstance(idx, h5py.Dataset), frame
+            assert "MH_mix_BR1_AAA" in idx.asstr()[:], frame
+
+
+def test_rename_refuses_a_masked_obsm_frame_index(tmp_path):
+    """A masked obsm sub-index is refused by read_index, by name, before
+    the snapshot — same contract as the obs index."""
+    path = create_hca_h5ad(tmp_path / "obsm_masked.h5ad", obsm_dataframe=True)
+    make_nullable_index(path, frame="obsm/per_cell_scores", masked=1)
+
+    before = set(tmp_path.iterdir())
+    result = rename_cell_ids(
+        str(path), column="sample_id", value="B1_0023", prefix_from="MH_mix_", prefix_to="MH_mix_BR1_"
+    )
+
+    assert "error" in result
+    assert "missing value" in result["error"]
+    assert set(tmp_path.iterdir()) == before

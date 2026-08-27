@@ -19,6 +19,7 @@ from hca_anndata_tools.write import (
     SameSecondSnapshotError,
     _compute_sha256,
     _copy_with_sha256,
+    forward_encodings_normalized,
     generate_output_path,
     resolve_latest,
     snapshot_copy,
@@ -785,3 +786,14 @@ def test_write_h5ad_refuses_a_taken_output_path(tmp_path, sample_h5ad_for_write)
     assert decoy.read_bytes() == b"pre-existing bytes"
     # Unstamped: a retry must not double-append the edit log.
     assert "provenance" not in adata.uns
+
+
+def test_forward_encodings_normalized_is_the_one_spelling():
+    """Every tool that rebuilds its result dict forwards through this helper,
+    so the skills' claim that write_h5ad-based tools report what they
+    normalized cannot silently go false for one of them."""
+    assert forward_encodings_normalized({"encodings_normalized": ["x"]}, {"a": 1}) == {
+        "a": 1,
+        "encodings_normalized": ["x"],
+    }
+    assert forward_encodings_normalized({"output_path": "p"}, {"a": 1}) == {"a": 1}

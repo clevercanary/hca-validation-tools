@@ -326,3 +326,20 @@ def test_normalize_raw_reports_encodings_normalized(tmp_path):
 
     assert "error" not in result, result.get("error")
     assert "obs['lib']" in result["encodings_normalized"]
+
+
+def test_funnel_leaves_a_numeric_categorical_index_alone(tmp_path):
+    """Flattening a numeric CategoricalIndex would hand anndata's string
+    writer integers — a post-stream TypeError on files that write fine. Its
+    serialization is in-profile as it stands, so the funnel must not touch
+    it (caught by review on the first cut)."""
+    path = tmp_path / "numeric_cat_idx.h5ad"
+    adata = ad.AnnData(X=np.zeros((3, 2), dtype=np.float32), obs=pd.DataFrame(index=["c1", "c2", "c3"]))
+    adata.uns["tbl"] = pd.DataFrame({"v": [1.0, 2.0]}, index=pd.CategoricalIndex([10, 20]))
+    adata.write_h5ad(path)
+
+    out = ad.read_h5ad(path)
+    result = write_h5ad(out, str(path), _entry())
+
+    assert "error" not in result, result.get("error")
+    assert "encodings_normalized" not in result

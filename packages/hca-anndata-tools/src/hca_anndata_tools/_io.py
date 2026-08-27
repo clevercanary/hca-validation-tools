@@ -852,31 +852,6 @@ def replace_categorical_column(parent: h5py.Group, col: str, categories: list[st
     codes_ds.attrs["encoding-version"] = "0.2.0"
 
 
-def normalize_string_element(parent: h5py.Group, name: str) -> int:
-    """Rewrite a nullable-string element as a plain ``string-array`` Dataset.
-
-    The h5py half of #641's normalize-on-write, for output files edited in
-    place (convert's copy-and-transplant). Storage settings carry over from
-    the old ``values`` child (:func:`storage_like`), so the element keeps its
-    chunking and compression. Returns the element's masked count — a masked
-    string has no plain representation, so nothing is rewritten unless it is
-    zero; the caller composes the refusal.
-    """
-    import numpy as np
-
-    item = parent[name]
-    values = read_element(item)
-    if n_masked := int(pd.isna(values).sum()):
-        return n_masked
-    settings = storage_like(item["values"])
-    attrs = {**dict(item.attrs), "encoding-type": "string-array", "encoding-version": "0.2.0"}
-    del parent[name]
-    ds = parent.create_dataset(name, data=np.asarray(values, dtype=object), dtype=h5py.string_dtype(), **settings)
-    for key, value in attrs.items():
-        ds.attrs[key] = value
-    return 0
-
-
 def _iter_string_element_targets(f: h5py.File) -> Iterator[tuple[h5py.Group, str]]:
     """``(parent, name)`` of every element that may hold string values.
 
@@ -915,38 +890,52 @@ def _iter_string_element_targets(f: h5py.File) -> Iterator[tuple[h5py.Group, str
         yield from walk_uns(uns)
 
 
+def _nullable_string_targets(f: h5py.File) -> Iterator[tuple[h5py.Group, str, str]]:
+    """The ``(parent, name, loc)`` triples the file normalizer acts on."""
+    for parent, name in _iter_string_element_targets(f):
+        target = parent[name]
+        if isinstance(target, h5py.Group) and encoding_of(target) == "nullable-string-array":
+            yield parent, name, f"{parent.name}/{name}".removeprefix("/")
+
+
+def masked_string_error(f: h5py.File) -> str | None:
+    """The named refusal for masked nullable-string elements, or None.
+
+    Judged off the tiny on-disk ``mask`` datasets alone — cheap enough to
+    run read-only against a multi-gigabyte *source* before any copy is made
+    (convert), and against an output before anything is rewritten. Names
+    every masked element with its count in one message.
+    """
+    import numpy as np
+
+    masked: list[str] = []
+    for parent, name, loc in _nullable_string_targets(f):
+        target = parent[name]
+        require_nullable_children(target)  # pyright: ignore[reportArgumentType]
+        if n_masked := int(np.count_nonzero(np.asarray(target["mask"][:]))):  # pyright: ignore[reportIndexIssue]
+            masked.append(f"{loc} ({n_masked})")
+    if masked:
+        return f"{', '.join(masked)} hold(s) {MASKED_STRING_REMEDY}"
+    return None
+
+
 def normalize_file_string_encodings(f: h5py.File) -> tuple[list[str], str | None]:
     """Normalize every nullable-string element in an open file to the profile.
 
     Walks :func:`_iter_string_element_targets` — dataframe indexes, plain
     columns, and categorical ``categories``, plus bare arrays and
-    categoricals nested in uns — so the copy-and-transplant row's claim
-    ("the file it writes contains only profile encodings") holds with no
-    carve-out. Masked elements are detected off the on-disk ``mask`` child
-    *before anything is rewritten* — the error names every masked element
-    with its count in one refusal, nothing has been converted, and the
-    caller discards the file (convert unlinks its claimed output).
+    categoricals nested in uns. Masked elements refuse via
+    :func:`masked_string_error` before anything is rewritten; the rewrite
+    itself is :func:`replace_string_dataset`'s normalizing branch, so this
+    pass and the in-place tools produce the identical on-disk shape.
     """
-    import numpy as np
-
-    targets: list[tuple[h5py.Group, str, str]] = []
-    masked: list[str] = []
-    for parent, name in _iter_string_element_targets(f):
-        target = parent[name]
-        if not (isinstance(target, h5py.Group) and encoding_of(target) == "nullable-string-array"):
-            continue
-        loc = f"{parent.name}/{name}".removeprefix("/")
-        require_nullable_children(target)
-        if n_masked := int(np.count_nonzero(np.asarray(target["mask"][:]))):  # pyright: ignore[reportIndexIssue]
-            masked.append(f"{loc} ({n_masked})")
-        else:
-            targets.append((parent, name, loc))
-    if masked:
-        return [], f"{', '.join(masked)} hold(s) {MASKED_STRING_REMEDY}"
-
+    if err := masked_string_error(f):
+        return [], err
     normalized: list[str] = []
-    for parent, name, loc in targets:
-        normalize_string_element(parent, name)
+    for parent, name, loc in _nullable_string_targets(f):
+        # The values child alone: the mask is known all-zero, and reading
+        # the assembled nullable element would pay for it a second time.
+        replace_string_dataset(parent, name, read_element(parent[name]["values"]))  # pyright: ignore[reportIndexIssue, reportArgumentType]
         normalized.append(loc)
     return normalized, None
 

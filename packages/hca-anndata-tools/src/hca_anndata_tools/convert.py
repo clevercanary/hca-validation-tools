@@ -15,6 +15,7 @@ import pandas as pd
 
 from ._io import (
     ensure_provenance_group,
+    masked_string_error,
     normalize_file_string_encodings,
     open_h5ad,
     read_obs_index,
@@ -121,6 +122,13 @@ def convert_cellxgene_to_hca(
         # the edge case where the attr lists a column that isn't actually
         # present as a dataset (which would make the strip a no-op while
         # the edit log overclaimed).
+        # Masked strings refuse HERE — a few KB of mask reads on the source —
+        # not after the multi-gigabyte copy has been made (contract principle
+        # 7). The post-copy normalization pass keeps its own check as the
+        # backstop.
+        with h5py.File(path, "r") as source_f:
+            if masked_err := masked_string_error(source_f):
+                return {"error": f"Refusing to convert: {masked_err}"}
         with h5py.File(path, "r") as _f:
             source_obs_members = set(_f["obs"].keys())
 

@@ -551,11 +551,17 @@ def normalize_nullable_strings(adata: AnnData) -> tuple[list[str], list[str]]:
 
     collect_uns("uns", adata.uns)
     for name, df in frames:
-        if isinstance(df.index.dtype, pd.CategoricalDtype) or is_nullable_string(df.index.dtype):
-            # A StringDtype index is the #638 read-back; a *categorical*
-            # index (its categories can hide the same nullable dtype) writes
-            # back as a group — outside the profile and unwritable in place —
-            # so both flatten to plain values. A NaN entry either way is an
+        index_dtype = df.index.dtype
+        index_is_string_categorical = isinstance(index_dtype, pd.CategoricalDtype) and (
+            is_nullable_string(index_dtype.categories.dtype) or index_dtype.categories.dtype == object
+        )
+        if index_is_string_categorical or is_nullable_string(index_dtype):
+            # A StringDtype index is the #638 read-back; a *string-valued
+            # categorical* index (its categories can hide the same nullable
+            # dtype) writes back as a group, so both flatten to plain
+            # values. A numeric categorical index is left alone — flattening
+            # it would hand anndata's string writer integers, and its
+            # serialization is in-profile as it stands. A NaN entry is an
             # identifier that does not exist: masked, refuse.
             if df.index.isna().any():
                 masked.append(f"{name} index")
@@ -578,6 +584,18 @@ def normalize_nullable_strings(adata: AnnData) -> tuple[list[str], list[str]]:
     for _, apply in actions:
         apply()
     return [loc for loc, _ in actions], []
+
+
+def forward_encodings_normalized(write_result: dict, out: dict) -> dict:
+    """Copy ``encodings_normalized`` from a write_h5ad result into ``out``.
+
+    One spelling for every tool that rebuilds its result dict, so the skills'
+    claim that write_h5ad-based tools report what they normalized cannot
+    silently go false for one of them.
+    """
+    if "encodings_normalized" in write_result:
+        out["encodings_normalized"] = write_result["encodings_normalized"]
+    return out
 
 
 def write_h5ad(

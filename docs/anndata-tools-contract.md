@@ -205,14 +205,14 @@ target is constrained.
 
 ### Agreement
 
-10. **Inspection and enforcement answer from the same predicate.** A file
-    `get_storage_info` calls clean cannot be refused by a tool for encoding
-    reasons, and everything it flags is flagged for the reason a tool would
-    actually refuse. When inspection cannot see everything enforcement
-    checks, the inspection report says so explicitly (today the scanned
-    dataframes — obs, var, raw.var, obsm frames — cover indexes, plain
-    nullable columns, and categorical categories; varm and uns are checked
-    only by the write funnel).
+10. **Inspection tells the truth about what writes will do.** Since #641
+    no tool refuses an encoding, so the report's `unsupported` list is
+    informational: the nullable-string elements a write would normalize.
+    A file it calls clean is written byte-compatibly; a flagged file is
+    normalized element-by-element as writes touch it. Where inspection
+    sees less than the writers reach (varm and uns are normalized but not
+    inspected), the report's docs say so. Masked string values remain the
+    one refusal, and every tool names them.
 
 ### Errors
 

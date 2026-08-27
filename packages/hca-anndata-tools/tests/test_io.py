@@ -481,7 +481,7 @@ def test_normalizing_a_nullable_group_preserves_producer_attrs(tmp_path):
         ds.attrs["encoding-version"] = "0.2.0"
         ds.attrs["producer-note"] = "keep me"
         make_nullable_string_array(obs, "col")  # copies attrs onto the group
-        assert _io.normalize_string_element(obs, "col") == 0
+        _io.replace_string_dataset(obs, "col", np.array(["a", "b"], dtype=object))
         out = obs["col"]
         assert isinstance(out, h5py.Dataset)
         assert out.attrs["producer-note"] == "keep me"
