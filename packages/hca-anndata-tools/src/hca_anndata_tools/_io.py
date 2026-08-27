@@ -934,7 +934,10 @@ def normalize_file_string_encodings(f: h5py.File) -> tuple[list[str], str | None
     if err := masked_string_error(f):
         return [], err
     normalized: list[str] = []
-    for parent, name, loc in _nullable_string_targets(f):
+    # Materialized before rewriting: replace_string_dataset deletes and
+    # recreates elements inside groups the generator would still be
+    # iterating, and mutating an HDF5 group mid-iteration is undefined.
+    for parent, name, loc in list(_nullable_string_targets(f)):
         # The values child alone: the mask is known all-zero, and reading
         # the assembled nullable element would pay for it a second time.
         replace_string_dataset(parent, name, read_element(parent[name]["values"]))  # pyright: ignore[reportIndexIssue, reportArgumentType]

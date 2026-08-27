@@ -553,7 +553,11 @@ def normalize_nullable_strings(adata: AnnData) -> tuple[list[str], list[str]]:
     for name, df in frames:
         index_dtype = df.index.dtype
         index_is_string_categorical = isinstance(index_dtype, pd.CategoricalDtype) and (
-            is_nullable_string(index_dtype.categories.dtype) or index_dtype.categories.dtype == object
+            is_nullable_string(index_dtype.categories.dtype)
+            # inferred_type, not dtype == object: object categories can hold
+            # numbers, and flattening those would hand anndata's string
+            # writer non-strings.
+            or index_dtype.categories.inferred_type == "string"
         )
         if index_is_string_categorical or is_nullable_string(index_dtype):
             # A StringDtype index is the #638 read-back; a *string-valued

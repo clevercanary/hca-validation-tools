@@ -418,3 +418,17 @@ def test_everything_stock_anndata_writes_still_writes_through_the_funnel(tmp_pat
             if list(after.obs[col].astype(str)) != list(before.obs[col].astype(str)):
                 failures.append(f"{name}: column {col!r} values changed")
     assert not failures, failures
+
+
+def test_funnel_does_not_flatten_an_object_numeric_categorical_index():
+    """object-dtype categories are not necessarily strings — a categorical
+    index over object-boxed numbers must not be flattened into non-strings
+    for anndata's string writer (suppressed-review catch)."""
+    from hca_anndata_tools.write import normalize_nullable_strings
+
+    adata = ad.AnnData(X=np.zeros((3, 2), dtype=np.float32), obs=pd.DataFrame(index=["c1", "c2", "c3"]))
+    adata.obs.index = pd.CategoricalIndex(np.array([1, 2, 3], dtype=object))
+
+    normalized, masked = normalize_nullable_strings(adata)
+
+    assert normalized == [] and masked == []
