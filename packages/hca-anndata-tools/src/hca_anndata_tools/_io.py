@@ -832,6 +832,78 @@ def replace_categorical_column(parent: h5py.Group, col: str, categories: list[st
     codes_ds.attrs["encoding-version"] = "0.2.0"
 
 
+def normalize_string_element(parent: h5py.Group, name: str) -> str | None:
+    """Rewrite a nullable-string element as a plain ``string-array`` Dataset.
+
+    The h5py half of #641's normalize-on-write, for output files edited in
+    place (convert's copy-and-transplant). Storage settings carry over from
+    the old ``values`` child (:func:`storage_like`), so the element keeps its
+    chunking and compression. Returns the refusal reason for a masked
+    element — a masked string has no plain representation, and flattening
+    would fabricate text for missing data — or None on success.
+    """
+    import numpy as np
+
+    item = parent[name]
+    values = read_element(item)
+    if n_masked := int(pd.isna(values).sum()):
+        return (
+            f"'{item.name}' has {n_masked} masked (null) string value(s), which have no "
+            "plain-string representation — flattening would fabricate text for missing data"
+        )
+    settings = storage_like(item["values"])
+    del parent[name]
+    ds = parent.create_dataset(name, data=np.asarray(values, dtype=object), dtype=h5py.string_dtype(), **settings)
+    ds.attrs["encoding-type"] = "string-array"
+    ds.attrs["encoding-version"] = "0.2.0"
+    return None
+
+
+def normalize_file_string_encodings(f: h5py.File) -> tuple[list[str], str | None]:
+    """Normalize every nullable-string element in an open file to the profile.
+
+    Walks the dataframes the storage report covers, plus varm: obs, var,
+    raw/var, and every obsm/varm frame — indexes, plain columns, and
+    categorical ``categories``. Returns ``(normalized paths, error)``; the
+    error is set on the first masked element, and callers discard the file
+    (convert unlinks its claimed output), so partial normalization before
+    the error never reaches anyone.
+    """
+
+    def frames():
+        for path in ("obs", "var", "raw/var"):
+            group = f.get(path)
+            if isinstance(group, h5py.Group):
+                yield group
+        for holder_name in ("obsm", "varm"):
+            holder = f.get(holder_name)
+            if not isinstance(holder, h5py.Group):
+                continue
+            for key in holder:
+                member = holder[key]
+                if isinstance(member, h5py.Group) and encoding_of(member) == "dataframe":
+                    yield member
+
+    normalized: list[str] = []
+    for df in frames():
+        for name in direct_members(df):
+            item = df[name]
+            if not isinstance(item, h5py.Group):
+                continue
+            if "categories" in item:
+                target_parent, target_name = item, "categories"
+            else:
+                target_parent, target_name = df, name
+            target = target_parent[target_name]
+            if not (isinstance(target, h5py.Group) and encoding_of(target) == "nullable-string-array"):
+                continue
+            loc = f"{target_parent.name}/{target_name}".removeprefix("/")
+            if err := normalize_string_element(target_parent, target_name):
+                return normalized, err
+            normalized.append(loc)
+    return normalized, None
+
+
 def verify_categorical_integrity(
     f: h5py.File,
     columns: list[str],

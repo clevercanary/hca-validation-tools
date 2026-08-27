@@ -105,13 +105,16 @@ def compress_h5ad(
             log[-1]["details"]["ratio"] = ratio
             write_edit_log_h5py(f, json.dumps(log))
 
-        return {
+        out = {
             "output_path": result["output_path"],
             "size_before_bytes": size_before,
             "size_after_bytes": size_after,
             "ratio": ratio,
             "compression": f"{compression}:{compression_level}",
         }
+        if "encodings_normalized" in result:
+            out["encodings_normalized"] = result["encodings_normalized"]
+        return out
 
     except Exception as e:
         return {"error": str(e)}

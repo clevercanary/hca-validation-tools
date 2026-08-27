@@ -9,7 +9,12 @@ import h5py
 
 from hca_anndata_tools._io import encoding_of, obs_index_name
 from hca_anndata_tools.convert import _slugify, convert_cellxgene_to_hca
-from hca_anndata_tools.testing import create_cellxgene_h5ad, make_nullable_index
+from hca_anndata_tools.testing import (
+    create_cellxgene_h5ad,
+    make_nullable_index,
+    make_nullable_string_array,
+    make_plain_string_column,
+)
 from hca_anndata_tools.write import EDIT_LOG_KEY
 
 # --- _slugify ---
@@ -221,14 +226,14 @@ def test_convert_returns_source_and_title(cellxgene_h5ad):
     assert result["title"] == "snRNA-seq of Human Retina - Test Subset"
 
 
-def test_convert_succeeds_on_a_nullable_string_array_file(tmp_path):
+def test_convert_normalizes_a_nullable_string_array_file(tmp_path):
     """The encoding that used to kill this tool at its first step.
 
-    convert copies the source and transplants changed elements, so it never
-    rewrites the obs index and never hands a StringArray to write_elem — it
-    succeeds outright rather than failing at the write (hca-validation-tools#637).
-    The output still carries the nullable encoding, which is why the write
-    blocker (#641) is a separate concern.
+    convert copies the source and transplants changed elements, so the
+    source's nullable elements survive the copy — and since #641 they are
+    normalized to plain string-array on the way out, per the contract's
+    copy-and-transplant row: the file it writes contains only profile
+    encodings.
     """
     path = create_cellxgene_h5ad(tmp_path / "cxg.h5ad")
     make_nullable_index(path)
@@ -237,12 +242,31 @@ def test_convert_succeeds_on_a_nullable_string_array_file(tmp_path):
 
     assert "error" not in result, result.get("error")
     assert Path(result["output_path"]).exists()
+    assert "obs/_index" in result["encodings_normalized"]
     with h5py.File(result["output_path"]) as f:
         obs = f["obs"]
-        # The claim that justifies deferring #641: convert copies and
-        # transplants, so the nullable index is carried across rather than
-        # rewritten. Assert it, or the split has no evidence behind it.
-        assert encoding_of(obs[obs_index_name(obs)]) == "nullable-string-array"
+        idx = obs[obs_index_name(obs)]
+        assert isinstance(idx, h5py.Dataset)
+        assert encoding_of(idx) == "string-array"
+
+
+def test_convert_refuses_a_masked_element_and_leaves_no_output(tmp_path):
+    """A masked string has no plain representation — the normalization pass
+    refuses by name, and the claimed output is removed, not left as a
+    partially normalized file wearing the -edit- name."""
+    path = create_cellxgene_h5ad(tmp_path / "cxg_masked.h5ad")
+    with h5py.File(path, "r+") as f:
+        n = f["obs"][f["obs"].attrs.get("_index", "_index")].shape[0]
+        make_plain_string_column(f["obs"], "batch", ["b1"] * n)
+        make_nullable_string_array(f["obs"], "batch", masked=1)
+
+    before = set(tmp_path.iterdir())
+    result = convert_cellxgene_to_hca(str(path))
+
+    assert "error" in result
+    assert "masked (null) string value" in result["error"]
+    assert "obs/batch" in result["error"]
+    assert set(tmp_path.iterdir()) == before
 
 
 def test_convert_refuses_to_overwrite_a_same_second_output(cellxgene_h5ad, monkeypatch):

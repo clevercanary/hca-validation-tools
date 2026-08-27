@@ -276,8 +276,8 @@ selects by. Success then retires the previous snapshot
 
 | Path | Used by | Mechanism |
 |---|---|---|
-| **Copy-and-patch** | in-place surgical tools (rename, merge, backfill, replace_placeholder, copy_cap) | `snapshot_copy` / `snapshot_copy_hashed`: claim → streamed copy (digest inline) → h5py-patch the copy → unlink the claim on any failure |
-| **Full rewrite** | anndata-based tools (compress, normalize, convert, set_uns, …) | `write_h5ad`: profile refusal (`nullable_string_locations`) *before* mutating `adata` → edit log stamped → claim → `adata.write_h5ad` streams → unlink the claim on any failure |
+| **Copy-and-patch** | in-place surgical tools (rename, merge, backfill, replace_placeholder, copy_cap) | `snapshot_copy` / `snapshot_copy_hashed`: claim → streamed copy (digest inline) → h5py-patch the copy → unlink the claim on any failure. (convert's transplant additionally normalizes the copy's remaining nullable-string elements — `normalize_file_string_encodings`.) |
+| **Full rewrite** | anndata-based tools (compress, normalize, convert, set_uns, …) | `write_h5ad`: profile normalization (`normalize_nullable_strings` — mask-0 nullable strings flattened to plain, masked refused by name, all *before* mutating `adata`) → edit log stamped → claim → `adata.write_h5ad` streams → unlink the claim on any failure |
 
 Any destination h5ad — a snapshot or a converted output — is named and
 written through one of these two functions (scratch files in temp dirs are
@@ -348,10 +348,13 @@ other placeholder-looking value through curator-reviewed mappings.
    `replace_placeholder_values` on masked nullable categories: refuse by
    name (the target is unwritable there anyway).
 
-4. **#641 is normalize-on-write.** Flatten nullable → plain where the mask
-   is all zero (covers every liver file we hold); refuse by name where any
-   mask bit is set. Not "nullable write support" — principle 5 rules that
-   out as a goal.
+4. **#641 is normalize-on-write — implemented 2026-08-27.** Flatten
+   nullable → plain where the mask is all zero (covers every liver file we
+   hold); refuse by name where any mask bit is set. Not "nullable write
+   support" — principle 5 rules that out as a goal. Implementation:
+   `write.normalize_nullable_strings` (the funnel, in-memory) and
+   `_io.normalize_file_string_encodings` (convert's h5py pass); results
+   carry `encodings_normalized`.
 
 5. **"Leave blank → becomes NaN" in the curation instructions is correct,
    and profile-compatible — for the columns it governs.** The mechanism:

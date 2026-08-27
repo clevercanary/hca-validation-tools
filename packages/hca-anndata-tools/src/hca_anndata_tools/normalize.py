@@ -181,13 +181,16 @@ def normalize_raw(path: str) -> dict:
         if "error" in result:
             return result
 
-        return {
+        out = {
             "output_path": result["output_path"],
             "n_obs": n_obs,
             "n_vars": n_vars,
             "target_sum": _TARGET_SUM,
             "raw_x": plan["raw_x"],
         }
+        if "encodings_normalized" in result:
+            out["encodings_normalized"] = result["encodings_normalized"]
+        return out
 
     except Exception as e:
         return {"error": str(e)}

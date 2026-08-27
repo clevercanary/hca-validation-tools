@@ -15,6 +15,7 @@ import pandas as pd
 
 from ._io import (
     ensure_provenance_group,
+    normalize_file_string_encodings,
     open_h5ad,
     read_obs_index,
     transplant_obs_columns,
@@ -230,6 +231,17 @@ def convert_cellxgene_to_hca(
                 # as forbidden.
                 _strip_forbidden_obs_columns_h5py(f_out)
 
+                # Normalize what the copy carried over: the transplant only
+                # replaces the converted obs columns, so the source's
+                # nullable-string elements (index, untouched columns,
+                # var/obsm/varm) survive in the copy — and the contract says
+                # this tool's output contains only profile encodings. A
+                # masked element raises; the except handler unlinks the
+                # claimed output.
+                encodings_normalized, norm_err = normalize_file_string_encodings(f_out)
+                if norm_err:
+                    raise ValueError(f"Refusing to convert: {norm_err}; repair the source values upstream first")
+
                 # Transplant edit_history into provenance
                 if EDIT_LOG_KEY in prov_out:
                     del prov_out[EDIT_LOG_KEY]
@@ -242,12 +254,15 @@ def convert_cellxgene_to_hca(
                 Path(output_path).unlink()
                 return {"error": verify_err}
 
-        return {
+        result = {
             "output_path": output_path,
             "source": Path(path).name,
             "title": title,
             "conversions": conversions,
         }
+        if encodings_normalized:
+            result["encodings_normalized"] = encodings_normalized
+        return result
 
     except Exception as e:
         if output_path and Path(output_path).is_file():

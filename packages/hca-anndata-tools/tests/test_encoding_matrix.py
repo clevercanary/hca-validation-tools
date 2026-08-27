@@ -31,6 +31,7 @@ from hca_anndata_tools._io import (
     read_element,
     read_obs_index,
 )
+from hca_anndata_tools.compress import compress_h5ad
 from hca_anndata_tools.merge_categories import merge_obs_categories
 from hca_anndata_tools.rename import rename_cell_ids
 from hca_anndata_tools.storage import get_storage_info
@@ -110,10 +111,10 @@ def test_masked_index_written_by_anndata_is_refused_by_name(tmp_path):
         read_obs_index(str(path))
 
 
-def test_unique_valued_nullable_column_survives_and_is_governed(tmp_path):
+def test_unique_valued_nullable_column_is_flagged_then_normalized(tmp_path):
     """All-unique values escape strings_to_categoricals, so the column lands
     as a genuine nullable-string-array — the report flags it, and the write
-    funnel refuses the round-trip by name before any bytes."""
+    funnel normalizes the round-trip to the plain profile (#641)."""
     path = tmp_path / "unique_col.h5ad"
     obs = pd.DataFrame({"lib_id": pd.array(["L1", "L2", "L3"], dtype="string")}, index=["c1", "c2", "c3"])
     write_h5ad_with_nullable_strings(ad.AnnData(X=np.zeros((3, 2), dtype=np.float32), obs=obs), path)
@@ -123,9 +124,52 @@ def test_unique_valued_nullable_column_survives_and_is_governed(tmp_path):
     assert "obs/lib_id" in get_storage_info(str(path))["encodings"]["unsupported"]
 
     result = write_h5ad(ad.read_h5ad(path), str(path), _entry())
+    assert "error" not in result, result.get("error")
+    assert "obs['lib_id']" in result["encodings_normalized"]
+    with h5py.File(result["output_path"]) as f:
+        assert encoding_of(f["obs/lib_id"]) == "string-array"
+    assert get_storage_info(result["output_path"])["encodings"]["unsupported_count"] == 0
+
+
+def test_compress_normalizes_the_anndata_written_matrix(tmp_path):
+    """End to end on anndata-authored files: the full liver-shaped matrix —
+    nullable index, nullable categorical categories, numeric nullables —
+    goes through compress_h5ad and comes out entirely inside the profile,
+    values intact. This is the #641 definition of done."""
+    path = tmp_path / "matrix.h5ad"
+    write_h5ad_with_nullable_strings(_matrix_adata(), path)
+    assert get_storage_info(str(path))["encodings"]["unsupported_count"] > 0
+
+    result = compress_h5ad(str(path))
+
+    assert "error" not in result, result.get("error")
+    assert "obs index" in result["encodings_normalized"]
+    enc = get_storage_info(result["output_path"])["encodings"]
+    assert enc["unsupported_count"] == 0
+    assert enc["obs"]["index"] == "string-array"
+    out = ad.read_h5ad(result["output_path"])
+    assert list(out.obs_names) == ["c1", "c2", "c3"]
+    assert list(out.obs["cat_nullable_cats"]) == ["m", "n", "m"]
+    # Numeric nullables are inside the profile and survive untouched.
+    assert str(out.obs["int_nullable"].dtype) == "Int64"
+
+
+def test_masked_column_written_by_anndata_is_refused_at_the_funnel(tmp_path):
+    """The masked half of #641's boundary, on an anndata-authored shape: a
+    masked plain column (write_elem route) refuses at the funnel by name."""
+    path = tmp_path / "masked_col_funnel.h5ad"
+    adata = ad.AnnData(X=np.zeros((3, 2), dtype=np.float32), obs=pd.DataFrame(index=["c1", "c2", "c3"]))
+    adata.write_h5ad(path)
+    with h5py.File(path, "r+") as f, ad.settings.override(allow_write_nullable_strings=True):
+        obs = ad.io.read_elem(f["obs"])
+        obs["sample_id"] = pd.array(["s1", pd.NA, "s1"], dtype="string")
+        ad.io.write_elem(f, "obs", obs)
+
+    result = compress_h5ad(str(path))
+
     assert "error" in result
-    assert "obs['lib_id']" in result["error"]
-    assert "hca-validation-tools#641" in result["error"]
+    assert "obs['sample_id']" in result["error"]
+    assert "masked (null) string" in result["error"]
 
 
 def test_masked_column_via_write_elem_reads_and_reports(tmp_path):

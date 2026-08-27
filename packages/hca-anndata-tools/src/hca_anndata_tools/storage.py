@@ -200,10 +200,11 @@ def get_storage_info(path: str) -> dict:
     :func:`~hca_anndata_tools._io.is_writable_element` — the same predicate
     ``rename_cell_ids`` and ``merge_obs_categories`` refuse on, so an
     inspection called clean here cannot be rejected by those tools.
-    Full-rewrite tools (``compress_h5ad``, ``normalize_raw``) refuse at the
-    shared write funnel, before any bytes are written. A flagged file can
-    still be inspected and converted; it cannot be renamed or recompressed
-    until hca-validation-tools#641 lands.
+    Full-rewrite tools (``compress_h5ad``, ``normalize_raw``) *normalize*
+    flagged elements to plain ``string-array`` on the way through (#641), so
+    a flagged file is repairable: run a full rewrite and the flags clear.
+    In-place tools (rename, merge) refuse until then, naming that remedy.
+    Masked string values are the exception — no rewrite may flatten them.
 
     Args:
         path: Absolute path to an .h5ad file.

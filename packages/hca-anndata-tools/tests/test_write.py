@@ -702,22 +702,38 @@ def test_snapshot_copy_hashed_never_removes_a_file_it_did_not_create(tmp_path, m
     assert bystander.read_bytes() == b"not mine"
 
 
-def test_write_h5ad_refuses_nullable_strings(sample_h5ad_for_write):
-    """The write funnel's half of the write profile: a pandas StringDtype
-    column would make anndata raise on StringArray — but only after X has
-    been streamed. Refuse by name before any bytes are written."""
+def test_write_h5ad_normalizes_nullable_strings(sample_h5ad_for_write):
+    """The write funnel's half of the write profile (#641): a mask-0
+    StringDtype column is flattened to plain str — value-identical — and the
+    output carries the plain string-array encoding; the result names what
+    was normalized."""
     adata = ad.read_h5ad(sample_h5ad_for_write)
     adata.obs["lineage"] = pd.array(["a"] * adata.n_obs, dtype="string")
 
     result = write_h5ad(adata, str(sample_h5ad_for_write), [_make_entry()])
 
+    assert "error" not in result, result.get("error")
+    assert result["encodings_normalized"] == ["obs['lineage']"]
+    out = ad.read_h5ad(result["output_path"])
+    assert not isinstance(out.obs["lineage"].dtype, pd.StringDtype)
+    assert list(out.obs["lineage"].astype(str)) == ["a"] * adata.n_obs
+
+
+def test_write_h5ad_refuses_masked_strings_untouched(sample_h5ad_for_write):
+    """A masked string has no plain representation — flattening would
+    fabricate text for missing data. Refused by name, before any bytes, and
+    adata comes back exactly as passed: dtype unconverted, log unstamped."""
+    adata = ad.read_h5ad(sample_h5ad_for_write)
+    adata.obs["lineage"] = pd.array(["a", pd.NA] * (adata.n_obs // 2), dtype="string")
+
+    result = write_h5ad(adata, str(sample_h5ad_for_write), [_make_entry()])
+
     assert "error" in result
     assert "obs['lineage']" in result["error"]
-    assert "hca-validation-tools#641" in result["error"]
+    assert "masked (null) string" in result["error"]
     assert_no_snapshot_written(sample_h5ad_for_write)
-    # A refusal must leave adata untouched — a stamped edit log would
-    # double-append on the fixed-and-retried write.
-    assert "provenance" not in adata.uns
+    assert isinstance(adata.obs["lineage"].dtype, pd.StringDtype)  # not converted
+    assert "provenance" not in adata.uns  # not stamped
 
 
 def test_write_h5ad_removes_partial_output_on_failure(sample_h5ad_for_write):
@@ -736,9 +752,9 @@ def test_write_h5ad_removes_partial_output_on_failure(sample_h5ad_for_write):
     assert "provenance" not in adata.uns
 
 
-def test_write_h5ad_funnel_covers_varm_and_uns(sample_h5ad_for_write):
-    """The refuse-before-any-bytes guarantee holds wherever anndata
-    serializes a dataframe or pandas array — not just obs/var."""
+def test_write_h5ad_funnel_normalizes_varm_and_uns(sample_h5ad_for_write):
+    """Normalization reaches wherever anndata serializes a dataframe or
+    pandas array — not just obs/var."""
     adata = ad.read_h5ad(sample_h5ad_for_write)
     adata.varm["annotations"] = pd.DataFrame(
         {"family": pd.array(["x"] * adata.n_vars, dtype="string")}, index=adata.var_names
@@ -747,10 +763,11 @@ def test_write_h5ad_funnel_covers_varm_and_uns(sample_h5ad_for_write):
 
     result = write_h5ad(adata, str(sample_h5ad_for_write), [_make_entry()])
 
-    assert "error" in result
-    assert "varm['annotations']['family']" in result["error"]
-    assert "uns['meta']['table']['name']" in result["error"]
-    assert_no_snapshot_written(sample_h5ad_for_write)
+    assert "error" not in result, result.get("error")
+    assert "varm['annotations']['family']" in result["encodings_normalized"]
+    assert "uns['meta']['table']['name']" in result["encodings_normalized"]
+    out = ad.read_h5ad(result["output_path"])
+    assert not isinstance(out.varm["annotations"]["family"].dtype, pd.StringDtype)
 
 
 def test_write_h5ad_refuses_a_taken_output_path(tmp_path, sample_h5ad_for_write):

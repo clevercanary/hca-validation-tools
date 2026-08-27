@@ -528,8 +528,9 @@ def test_backfill_refuses_masked_target_categories(target_source):
 
 def test_backfill_refuses_a_nullable_target_string_column(tmp_path):
     """A nullable-string target column reads fine but cannot be rewritten
-    (replace_string_dataset needs a Dataset to copy layout from) — refused
-    with the shared #641 message, before any snapshot is taken."""
+    in place (replace_string_dataset needs a Dataset to copy layout from) —
+    refused with the shared remedy naming the in-repo fix, before any
+    snapshot is taken."""
     target = _make_h5ad(tmp_path / "target.h5ad", TARGET_IDS, {"library_id": TARGET_LIB})
     source = _make_h5ad(tmp_path / "source.h5ad", SOURCE_IDS, {"library_id": SOURCE_LIB})
     with h5py.File(target, "r+") as f:
@@ -539,6 +540,6 @@ def test_backfill_refuses_a_nullable_target_string_column(tmp_path):
     result = backfill_obs_from_source(target, source, columns=["library_id"])
 
     assert "error" in result
-    assert "cannot write back" in result["error"]
-    assert "hca-validation-tools#641" in result["error"]
+    assert "cannot rewrite in place" in result["error"]
+    assert "normalize the encoding" in result["error"]
     assert_no_snapshot_written(target)

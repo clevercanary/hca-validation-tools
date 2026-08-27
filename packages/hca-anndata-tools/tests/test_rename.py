@@ -326,10 +326,11 @@ def test_rename_refuses_an_unwritable_index_before_taking_a_snapshot(tmp_path):
     """Fail before the copy, not after it — and for the write reason.
 
     The reads cope with a nullable index, but replace_string_dataset needs a
-    Dataset to copy storage properties from, so the write fails regardless
-    (hca-validation-tools#641). Without the guard that failure lands *after*
+    Dataset to copy storage properties from, so the in-place write fails
+    regardless. Without the guard that failure lands *after*
     snapshot_copy_hashed has duplicated a multi-gigabyte file, with a message
-    about a missing .compression attribute.
+    about a missing .compression attribute. Since #641 the refusal names the
+    in-repo remedy: a full rewrite normalizes the encoding.
 
     The fixture carries a mask so the assertions can pin *which* guard fired:
     the writable check refuses a nullable index whether or not it holds nulls,
@@ -345,8 +346,8 @@ def test_rename_refuses_an_unwritable_index_before_taking_a_snapshot(tmp_path):
 
     assert "error" in result
     assert "nullable-string-array" in result["error"]
-    assert "#641" in result["error"]
-    assert "cannot write back" in result["error"]
+    assert "cannot rewrite in place" in result["error"]
+    assert "normalize the encoding" in result["error"]
     assert "missing value" not in result["error"]
     # the decisive part: no snapshot was written
     assert set(tmp_path.iterdir()) == before
