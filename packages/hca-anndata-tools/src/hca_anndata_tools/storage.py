@@ -82,11 +82,11 @@ def _mask_count(item: h5py.Group | h5py.Dataset | h5py.Datatype) -> int | None:
 def _dataframe_encodings(df: h5py.Group, path: str, index_name: str) -> tuple[dict, list[str]]:
     """Encodings of a dataframe's index, its columns, and its categoricals' categories.
 
-    Returns the per-dataframe report and the on-disk paths this package can
-    read but cannot rewrite in place, per :func:`~hca_anndata_tools._io.is_writable_element`
-    — indexes, plain nullable columns, and categorical ``categories`` alike.
-    Every write normalizes the flagged elements it touches (#641); nothing
-    refuses them.
+    Returns the per-dataframe report and the nullable-string paths —
+    indexes, plain columns, and categorical ``categories`` alike.
+    Informational: every write normalizes the flagged elements it touches
+    (#641); nothing refuses them, and only masked string *values* refuse
+    anywhere.
     Categorical ``categories`` are reported because they block a write exactly
     as an index does — in the files that motivated this
     (hca-validation-tools#638) a categorical's categories were themselves a

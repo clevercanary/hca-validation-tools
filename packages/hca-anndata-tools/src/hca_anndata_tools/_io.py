@@ -862,7 +862,9 @@ def _iter_string_element_targets(f: h5py.File) -> Iterator[tuple[h5py.Group, str
     dataframe and uns halves.
     """
     for _, df in iter_dataframe_groups(f):
-        for name in direct_members(df):
+        # Sorted: direct_members is a set, and both encodings_normalized and
+        # the masked-element message should be stable between runs.
+        for name in sorted(direct_members(df)):
             item = df[name]
             if isinstance(item, h5py.Group):
                 if "categories" in item:
