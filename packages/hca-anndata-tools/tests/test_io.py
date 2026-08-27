@@ -463,3 +463,22 @@ def test_open_h5ad_names_a_masked_categorical_in_obsm(tmp_path):
     with pytest.raises(ValueError, match="masked \\(null\\) categories") as excinfo, _io.open_h5ad(str(path)):
         pass
     assert "obsm['annot'] column 'grade'" in str(excinfo.value)
+
+
+def test_normalizing_a_nullable_group_preserves_producer_attrs(tmp_path):
+    """Only the encoding attrs change when a nullable group is normalized —
+    whatever else a producer stamped on the element survives, per
+    replace_string_dataset's own contract ("preserving its attrs")."""
+    path = tmp_path / "attrs.h5ad"
+    with h5py.File(path, "w") as f:
+        obs = f.create_group("obs")
+        ds = obs.create_dataset("col", data=np.array(["a", "b"], dtype=object), dtype=h5py.string_dtype())
+        ds.attrs["encoding-type"] = "string-array"
+        ds.attrs["encoding-version"] = "0.2.0"
+        ds.attrs["producer-note"] = "keep me"
+        make_nullable_string_array(obs, "col")  # copies attrs onto the group
+        assert _io.normalize_string_element(obs, "col") == 0
+        out = obs["col"]
+        assert isinstance(out, h5py.Dataset)
+        assert out.attrs["producer-note"] == "keep me"
+        assert out.attrs["encoding-type"] == "string-array"

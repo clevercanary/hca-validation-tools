@@ -702,7 +702,9 @@ def replace_string_dataset(parent: h5py.Group, name: str, data: np.ndarray) -> N
     ds = parent[name]
     if isinstance(ds, h5py.Group):
         storage = storage_like(ds["values"])
-        attrs = {"encoding-type": "string-array", "encoding-version": "0.2.0"}
+        # Preserve whatever else a producer stamped on the group; only the
+        # encoding attrs change, because the encoding is what changed.
+        attrs = {**dict(ds.attrs), "encoding-type": "string-array", "encoding-version": "0.2.0"}
     else:
         attrs = dict(ds.attrs)
         storage = storage_like(ds)
@@ -846,10 +848,11 @@ def normalize_string_element(parent: h5py.Group, name: str) -> int:
     if n_masked := int(pd.isna(values).sum()):
         return n_masked
     settings = storage_like(item["values"])
+    attrs = {**dict(item.attrs), "encoding-type": "string-array", "encoding-version": "0.2.0"}
     del parent[name]
     ds = parent.create_dataset(name, data=np.asarray(values, dtype=object), dtype=h5py.string_dtype(), **settings)
-    ds.attrs["encoding-type"] = "string-array"
-    ds.attrs["encoding-version"] = "0.2.0"
+    for key, value in attrs.items():
+        ds.attrs[key] = value
     return 0
 
 
