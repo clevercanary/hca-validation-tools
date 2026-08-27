@@ -709,11 +709,23 @@ def replace_string_dataset(parent: h5py.Group, name: str, data: np.ndarray) -> N
     """
     ds = parent[name]
     if isinstance(ds, h5py.Group):
-        require_nullable_children(ds)
-        storage = storage_like(ds["values"])
-        # Preserve whatever else a producer stamped on the group; only the
-        # encoding attrs change, because the encoding is what changed.
-        attrs = {**dict(ds.attrs), "encoding-type": "string-array", "encoding-version": "0.2.0"}
+        if "codes" in ds and "categories" in ds:
+            # A categorical group target — anndata writes a CategoricalIndex
+            # this way. Flatten it: ``data`` is already the full per-row
+            # array, and the row-shaped ``codes`` child carries the storage
+            # settings. ``ordered`` is categorical machinery with no meaning
+            # on a plain dataset, so it does not survive.
+            layout = ds["codes"]
+            dropped = ("encoding-type", "encoding-version", "ordered")
+        else:
+            require_nullable_children(ds)
+            layout = ds["values"]
+            dropped = ("encoding-type", "encoding-version")
+        storage = storage_like(layout)  # pyright: ignore[reportArgumentType]
+        # Preserve whatever else a producer stamped on the group; only what
+        # describes the old encoding changes, because that is what changed.
+        attrs = {k: v for k, v in ds.attrs.items() if k not in dropped}
+        attrs |= {"encoding-type": "string-array", "encoding-version": "0.2.0"}
     else:
         attrs = dict(ds.attrs)
         storage = storage_like(ds)

@@ -415,3 +415,31 @@ def test_rename_selects_rows_from_a_nullable_string_selector(tmp_path):
     assert "MH_mix_AAA" in after.obs_names  # masked selector row: untouched
     assert "MH_mix_BR1_CCC" in after.obs_names
     assert "MH_mix_BR1_GGG" in after.obs_names
+
+
+def test_rename_flattens_a_categorical_index(tmp_path):
+    """anndata writes a CategoricalIndex as a categorical *group* — a valid
+    file, not a corrupt one. The rewrite flattens it to a plain string-array
+    with the renamed IDs (an earlier revision raised a false 'file is
+    corrupt' error here, after the snapshot)."""
+    import pandas as pd
+
+    ids = [cell_id for cell_id, _ in HCA_TEST_ROWS]
+    samples = [sample for _, sample in HCA_TEST_ROWS]
+    obs = pd.DataFrame({"sample_id": pd.Categorical(samples)}, index=pd.CategoricalIndex(ids))
+    adata = ad.AnnData(X=np.zeros((len(ids), 2), dtype=np.float32), obs=obs)
+    path = tmp_path / "cat_idx.h5ad"
+    adata.write_h5ad(path)
+    with h5py.File(path) as f:
+        assert isinstance(f["obs/_index"], h5py.Group)  # the shape under test
+
+    result = rename_cell_ids(
+        str(path), column="sample_id", value="B1_0023", prefix_from="MH_mix_", prefix_to="MH_mix_BR1_"
+    )
+
+    assert "error" not in result, result.get("error")
+    with h5py.File(result["output_path"]) as f:
+        idx = f["obs/_index"]
+        assert isinstance(idx, h5py.Dataset)
+        assert "ordered" not in idx.attrs
+        assert "MH_mix_BR1_AAA" in idx.asstr()[:]
