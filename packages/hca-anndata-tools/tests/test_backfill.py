@@ -526,20 +526,42 @@ def test_backfill_refuses_masked_target_categories(target_source):
     assert_no_snapshot_written(target)
 
 
-def test_backfill_refuses_a_nullable_target_string_column(tmp_path):
-    """A nullable-string target column reads fine but cannot be rewritten
-    in place (replace_string_dataset needs a Dataset to copy layout from) —
-    refused with the shared remedy naming the in-repo fix, before any
-    snapshot is taken."""
+def test_backfill_normalizes_a_nullable_target_string_column(tmp_path):
+    """Every write fixes the format in its own path (#641): an unmasked
+    nullable target column is filled AND normalized to a plain string-array
+    in the same write — no refusal, no other tool."""
     target = _make_h5ad(tmp_path / "target.h5ad", TARGET_IDS, {"library_id": TARGET_LIB})
     source = _make_h5ad(tmp_path / "source.h5ad", SOURCE_IDS, {"library_id": SOURCE_LIB})
     with h5py.File(target, "r+") as f:
+        # Unmasked: the "missing" rows are in-band placeholders/empties, so
+        # the filled array is NA-free and has a plain representation.
         make_plain_string_column(f["obs"], "library_id", ["" if v is None else v for v in TARGET_LIB])
         make_nullable_string_array(f["obs"], "library_id")
 
     result = backfill_obs_from_source(target, source, columns=["library_id"])
 
+    assert "error" not in result, result.get("error")
+    assert result["total_filled"] == 2
+    with h5py.File(result["output_path"], "r") as f:
+        col = f["obs/library_id"]
+        assert isinstance(col, h5py.Dataset)  # normalized, not a values+mask group
+        values = list(col.asstr()[:])
+    assert "L1" in values and "L2" in values
+
+
+def test_backfill_refuses_a_masked_residue_the_fill_does_not_reach(tmp_path):
+    """A masked value the fill leaves behind has no plain representation —
+    refused by name in the plan phase, before the snapshot."""
+    target = _make_h5ad(tmp_path / "target.h5ad", TARGET_IDS, {"library_id": TARGET_LIB})
+    source = _make_h5ad(tmp_path / "source.h5ad", SOURCE_IDS, {"library_id": SOURCE_LIB})
+    with h5py.File(target, "r+") as f:
+        make_plain_string_column(f["obs"], "library_id", ["" if v is None else v for v in TARGET_LIB])
+        # Masks c5 and c6 — c5 has no source row and c6 is absent from the
+        # source, so neither mask is filled.
+        make_nullable_string_array(f["obs"], "library_id", masked=6)
+
+    result = backfill_obs_from_source(target, source, columns=["library_id"])
+
     assert "error" in result
-    assert "cannot rewrite in place" in result["error"]
-    assert "normalize the encoding" in result["error"]
+    assert "masked (null) string value" in result["error"]
     assert_no_snapshot_written(target)

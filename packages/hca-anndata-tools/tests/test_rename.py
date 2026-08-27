@@ -322,20 +322,30 @@ def test_rename_refuses_malformed_arguments(hca_path, column, value, prefix_from
     assert_no_snapshot_written(hca_path)
 
 
-def test_rename_refuses_an_unwritable_index_before_taking_a_snapshot(tmp_path):
-    """Fail before the copy, not after it — and for the write reason.
+def test_rename_normalizes_a_nullable_index_as_it_rewrites(tmp_path):
+    """Every write fixes the format in its own path (#641): rename on a
+    nullable-index file just works — replace_string_dataset writes the
+    renamed IDs as a plain string-array, no refusal, no other tool."""
+    path = create_hca_h5ad(tmp_path / "test.h5ad")
+    make_nullable_index(path)
 
-    The reads cope with a nullable index, but replace_string_dataset needs a
-    Dataset to copy storage properties from, so the in-place write fails
-    regardless. Without the guard that failure lands *after*
-    snapshot_copy_hashed has duplicated a multi-gigabyte file, with a message
-    about a missing .compression attribute. Since #641 the refusal names the
-    in-repo remedy: a full rewrite normalizes the encoding.
+    result = rename_cell_ids(
+        str(path), column="sample_id", value="B1_0023", prefix_from="MH_mix_", prefix_to="MH_mix_BR1_"
+    )
 
-    The fixture carries a mask so the assertions can pin *which* guard fired:
-    the writable check refuses a nullable index whether or not it holds nulls,
-    so rename never reaches read_index's missing-value check for the obs index.
-    """
+    assert "error" not in result, result.get("error")
+    assert result["n_renamed"] == len(B1_IDS)
+    with h5py.File(result["output_path"], "r") as f:
+        obs = f["obs"]
+        idx = obs[obs_index_name(obs)]
+        assert isinstance(idx, h5py.Dataset)  # normalized, not a values+mask group
+        assert "MH_mix_BR1_AAA" in idx.asstr()[:]
+
+
+def test_rename_refuses_a_masked_index_before_taking_a_snapshot(tmp_path):
+    """The one remaining encoding-adjacent refusal is a data problem: a
+    masked index has cells with no ID, refused by read_index before the
+    snapshot."""
     path = create_hca_h5ad(tmp_path / "test.h5ad")
     make_nullable_index(path, masked=1)
 
@@ -345,11 +355,7 @@ def test_rename_refuses_an_unwritable_index_before_taking_a_snapshot(tmp_path):
     )
 
     assert "error" in result
-    assert "nullable-string-array" in result["error"]
-    assert "cannot rewrite in place" in result["error"]
-    assert "normalize the encoding" in result["error"]
-    assert "missing value" not in result["error"]
-    # the decisive part: no snapshot was written
+    assert "missing value" in result["error"]
     assert set(tmp_path.iterdir()) == before
 
 

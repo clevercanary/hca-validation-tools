@@ -16,13 +16,12 @@ have left each of them quietly looking at a key nobody wrote (#631).
 PROVENANCE_KEY = "provenance"
 EDIT_LOG_KEY = "edit_history"
 
-# The shared tail of every "readable but not rewritable in place" refusal —
-# the in-place surgical tools' refusals compose it, so the wording cannot
-# drift between them. Lives here for the same reason the keys do: modules
-# that must agree about a string, with no dependency cost. Since #641 the
-# remedy is in-repo: a full rewrite normalizes the encoding.
-UNWRITABLE_REMEDY = (
-    "which this package can read but cannot rewrite in place. "
-    "Run a full rewrite (compress_h5ad or normalize_raw) to normalize the "
-    "encoding to plain string arrays, then retry."
+# The shared tail of every masked-string refusal — the write funnel, the
+# h5py normalization pass, and whatever masked-refusal site comes next
+# compose it, so the wording cannot drift and the skills' claim that masked
+# values "refuse by name everywhere" stays one sentence, not several.
+MASKED_STRING_REMEDY = (
+    "masked (null) string value(s), which have no plain-string "
+    "representation — flattening would fabricate text for missing data; "
+    "repair the values upstream first"
 )

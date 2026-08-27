@@ -134,6 +134,7 @@ def label_h5ad(path: str) -> dict:
             "feature_name_labeled": feature_name_labeled,
             "feature_name_nan": feature_name_nan,
             "obs_labels_written": obs_labels_written,
+            **({"encodings_normalized": result["encodings_normalized"]} if "encodings_normalized" in result else {}),
         }
     except Exception as e:
         return {"error": str(e)}

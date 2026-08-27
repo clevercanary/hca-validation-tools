@@ -126,11 +126,14 @@ def populate_labels(path: str) -> dict:
         if "error" in write_result:
             return write_result
 
-        return {
+        out = {
             "output_path": write_result["output_path"],
             "filled": filled,
             "matched": matched,
         }
+        if "encodings_normalized" in write_result:
+            out["encodings_normalized"] = write_result["encodings_normalized"]
+        return out
 
     except Exception as e:
         return {"error": str(e)}

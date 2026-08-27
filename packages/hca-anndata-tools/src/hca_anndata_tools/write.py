@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import functools
 import glob
 import hashlib
 import json
@@ -16,7 +17,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 from . import __version__
-from ._keys import EDIT_LOG_KEY, PROVENANCE_KEY
+from ._keys import EDIT_LOG_KEY, MASKED_STRING_REMEDY, PROVENANCE_KEY
 
 if TYPE_CHECKING:
     from anndata import AnnData
@@ -466,6 +467,29 @@ def cleanup_previous_version(source_path: str, output_path: str) -> None:
             Path(source_path).unlink()  # write succeeded; stale file is harmless
 
 
+def _convert_column(df, col: str) -> None:
+    df[col] = df[col].astype(object)
+
+
+def _convert_index(df) -> None:
+    df.index = df.index.astype(object)
+
+
+def _convert_categories(df, col: str) -> None:
+    # Categories cannot hold pd.NA (pandas refuses), so this conversion is
+    # always safe; the codes are untouched.
+    df[col] = df[col].cat.rename_categories(df[col].cat.categories.astype(object))
+
+
+def _convert_uns_array(mapping, key: str) -> None:
+    mapping[key] = mapping[key].astype(object)
+
+
+def _convert_uns_categories(mapping, key: str) -> None:
+    cat = mapping[key]
+    mapping[key] = cat.rename_categories(cat.categories.astype(object))
+
+
 def normalize_nullable_strings(adata: AnnData) -> tuple[list[str], list[str]]:
     """Convert pandas nullable strings to plain ``str``, in place; name what cannot be.
 
@@ -514,39 +538,40 @@ def normalize_nullable_strings(adata: AnnData) -> tuple[list[str], list[str]]:
                 frames.append((loc, v))
             elif isinstance(v, dict):
                 collect_uns(loc, v)
+            elif isinstance(getattr(v, "dtype", None), pd.CategoricalDtype):
+                # A bare Categorical in uns (read back from a #638-shaped
+                # file) carries the nullable dtype in its categories.
+                if isinstance(v, pd.Categorical) and is_nullable_string(v.dtype.categories.dtype):
+                    actions.append((loc, functools.partial(_convert_uns_categories, mapping, k)))
             elif is_nullable_string(getattr(v, "dtype", None)):
                 if pd.isna(v).any():
                     masked.append(loc)
                 else:
-                    actions.append((loc, lambda m=mapping, k=k, v=v: m.__setitem__(k, v.astype(object))))
+                    actions.append((loc, functools.partial(_convert_uns_array, mapping, k)))
 
     collect_uns("uns", adata.uns)
     for name, df in frames:
-        if is_nullable_string(df.index.dtype):
+        if isinstance(df.index.dtype, pd.CategoricalDtype) or is_nullable_string(df.index.dtype):
+            # A StringDtype index is the #638 read-back; a *categorical*
+            # index (its categories can hide the same nullable dtype) writes
+            # back as a group — outside the profile and unwritable in place —
+            # so both flatten to plain values. A NaN entry either way is an
+            # identifier that does not exist: masked, refuse.
             if df.index.isna().any():
                 masked.append(f"{name} index")
             else:
-                actions.append((f"{name} index", lambda d=df: setattr(d, "index", d.index.astype(object))))
+                actions.append((f"{name} index", functools.partial(_convert_index, df)))
         for col in df.columns:
             loc = f"{name}['{col}']"
             dtype = df[col].dtype
             if isinstance(dtype, pd.CategoricalDtype):
-                # Categories cannot hold pd.NA (pandas refuses), so this
-                # conversion is always safe; the codes are untouched.
                 if is_nullable_string(dtype.categories.dtype):
-                    actions.append(
-                        (
-                            loc,
-                            lambda d=df, c=col: d.__setitem__(
-                                c, d[c].cat.rename_categories(d[c].cat.categories.astype(object))
-                            ),
-                        )
-                    )
+                    actions.append((loc, functools.partial(_convert_categories, df, col)))
             elif is_nullable_string(dtype):
                 if df[col].isna().any():
                     masked.append(loc)
                 else:
-                    actions.append((loc, lambda d=df, c=col: d.__setitem__(c, d[c].astype(object))))
+                    actions.append((loc, functools.partial(_convert_column, df, col)))
 
     if masked:
         return [], masked
@@ -610,13 +635,7 @@ def write_h5ad(
         # the log via _unstamp below.
         normalized, masked = normalize_nullable_strings(adata)
         if masked:
-            return {
-                "error": (
-                    f"Refusing to write: {', '.join(masked)} hold(s) masked (null) string "
-                    f"values, which have no plain-string representation — flattening would "
-                    f"fabricate text for missing data. Repair the values upstream first."
-                )
-            }
+            return {"error": f"Refusing to write: {', '.join(masked)} hold(s) {MASKED_STRING_REMEDY}"}
 
         provenance = adata.uns.get(PROVENANCE_KEY, {})
         had_log = isinstance(provenance, dict) and EDIT_LOG_KEY in provenance

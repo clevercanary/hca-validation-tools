@@ -83,9 +83,10 @@ def _dataframe_encodings(df: h5py.Group, path: str, index_name: str) -> tuple[di
     """Encodings of a dataframe's index, its columns, and its categoricals' categories.
 
     Returns the per-dataframe report and the on-disk paths this package can
-    read but cannot write back, per :func:`~hca_anndata_tools._io.is_writable_element`
-    — indexes, plain nullable columns, and categorical ``categories`` alike,
-    so this report and the write funnel cannot disagree on a dataframe.
+    read but cannot rewrite in place, per :func:`~hca_anndata_tools._io.is_writable_element`
+    — indexes, plain nullable columns, and categorical ``categories`` alike.
+    Every write normalizes the flagged elements it touches (#641); nothing
+    refuses them.
     Categorical ``categories`` are reported because they block a write exactly
     as an index does — in the files that motivated this
     (hca-validation-tools#638) a categorical's categories were themselves a
@@ -130,7 +131,11 @@ def _dataframe_encodings(df: h5py.Group, path: str, index_name: str) -> tuple[di
         categories = column["categories"]
         label = encoding_of(categories) or "unstamped"
         categoricals[label] = categoricals.get(label, 0) + 1
-        if not is_writable_element(categories):
+        # Nullable-string only, like the plain-column rule above:
+        # nullable-*numeric* categories are inside the profile (anndata
+        # writes them ungated), and a full rewrite would emit them again —
+        # flagging them would send a curator on the remedy loop forever.
+        if holds_string_values(categories) and not is_writable_element(categories):
             unsupported.append(f"{path}/{name}/categories")
 
     return {
@@ -196,15 +201,15 @@ def get_storage_info(path: str) -> dict:
     The ``encodings`` block exists so an incompatible on-disk representation
     surfaces during inspection rather than as an opaque HDF5 error partway
     through a curation run on a multi-gigabyte file. Its ``unsupported`` list
-    names the paths this package can read but **cannot write back**, judged by
+    names the paths this package can read but **cannot rewrite in place**, judged by
     :func:`~hca_anndata_tools._io.is_writable_element` — the same predicate
     ``rename_cell_ids`` and ``merge_obs_categories`` refuse on, so an
     inspection called clean here cannot be rejected by those tools.
-    Full-rewrite tools (``compress_h5ad``, ``normalize_raw``) *normalize*
-    flagged elements to plain ``string-array`` on the way through (#641), so
-    a flagged file is repairable: run a full rewrite and the flags clear.
-    In-place tools (rename, merge) refuse until then, naming that remedy.
-    Masked string values are the exception — no rewrite may flatten them.
+    Informational since #641: no tool refuses these encodings any more —
+    every write normalizes what it touches (a full rewrite normalizes
+    everything; an in-place rewrite normalizes the elements it replaces), so
+    the flags describe the file as it is, and clear as writes happen. Masked
+    string values are the one hard stop — no rewrite may flatten them.
 
     Args:
         path: Absolute path to an .h5ad file.

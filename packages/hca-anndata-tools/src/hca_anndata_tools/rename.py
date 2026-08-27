@@ -32,7 +32,6 @@ from ._io import (
     read_index,
     read_uns,
     replace_string_dataset,
-    require_writable_index,
     write_edit_log_h5py,
 )
 from .cap import cellxgene_schema_version
@@ -245,12 +244,9 @@ def rename_cell_ids(path: str, column: str, value: str, prefix_from: str, prefix
                 # Gated before the index read: a mistyped selector should not
                 # pay for decoding 2M IDs it will never use.
                 return {"error": f"Refusing to rename: no rows match obs['{column}'] == {value!r}"}
-            # Refuse before the snapshot, not after: replace_string_dataset
-            # needs a Dataset to copy storage properties from, so a nullable
-            # index fails at the write — and without this guard that failure
-            # lands after a multi-gigabyte copy (hca-validation-tools#641).
-            if refusal := require_writable_index(obs, index_name, "rename"):
-                return {"error": refusal}
+            # No encoding refusal here: replace_string_dataset normalizes a
+            # nullable index as it rewrites it (#641), and a *masked* index
+            # was already refused by read_index below — before the snapshot.
             # read_index pins dtype=object — a fixed-width unicode dtype would
             # silently clip the longer renamed IDs on assignment in
             # _compute_new_ids — and enforces the index contract, since these
@@ -274,8 +270,6 @@ def rename_cell_ids(path: str, column: str, value: str, prefix_from: str, prefix
                         continue
                     sub_name = obs_index_name(member)
                     frame_label = f"obsm[{obsm_key!r}]"
-                    if refusal := require_writable_index(member, sub_name, "rename", frame_label):
-                        return {"error": refusal}
                     sub_ids = read_index(member, sub_name, frame_label)
                     if sub_ids.shape != ids.shape or not (sub_ids == ids).all():
                         return {
