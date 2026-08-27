@@ -281,9 +281,28 @@ def test_funnel_normalizes_categorical_index_and_bare_uns_shapes(tmp_path, sampl
     assert {"obs index", "uns['grades']", "uns['tags']"} <= set(result["encodings_normalized"])
     enc = get_storage_info(result["output_path"])["encodings"]
     assert enc["unsupported_count"] == 0
-    assert enc["obs"]["index"] == "string-array"  # flattened, not a categorical group
+    # The container stays categorical — in-profile — with its categories
+    # child normalized; flattening it was the fresh-verifier regression.
+    assert enc["obs"]["index"] == "categorical"
     out = ad.read_h5ad(result["output_path"])
     assert list(out.obs_names) == [f"c{i}" for i in range(adata.n_obs)]
+
+
+def test_funnel_leaves_a_plain_string_categorical_index_untouched(tmp_path):
+    """Principle 10's clean-file guarantee, pinned: a plain string
+    CategoricalIndex is in-profile and unflagged, so the funnel must not
+    rewrite or report it (the fresh-verifier round caught it doing both) —
+    and a NaN entry in one is code -1, also in-profile, so it must not be
+    refused either."""
+    from hca_anndata_tools.write import normalize_nullable_strings
+
+    adata = ad.AnnData(X=np.zeros((3, 2), dtype=np.float32), obs=pd.DataFrame(index=["c1", "c2", "c3"]))
+    adata.obs.index = pd.CategoricalIndex(["c1", "c2", "c3"])
+    adata.uns["tbl"] = pd.DataFrame({"v": [1.0, 2.0, 3.0]}, index=pd.CategoricalIndex(["a", np.nan, "b"]))
+
+    normalized, masked = normalize_nullable_strings(adata)
+
+    assert normalized == [] and masked == []
 
 
 def test_file_walk_normalizes_a_bare_uns_categorical(tmp_path):
@@ -389,6 +408,10 @@ def test_everything_stock_anndata_writes_still_writes_through_the_funnel(tmp_pat
         "col_bool_plain": {"extra_col": [True, False, True]},
         "uns_numeric_cat_index_df": {"uns_value": pd.DataFrame({"v": [1.0, 2.0]}, index=pd.CategoricalIndex([10, 20]))},
         "uns_str_cat_index_df": {"uns_value": pd.DataFrame({"v": [1.0, 2.0]}, index=pd.CategoricalIndex(["a", "b"]))},
+        "uns_str_cat_nan_index_df": {
+            "uns_value": pd.DataFrame({"v": [1.0, 2.0, 3.0]}, index=pd.CategoricalIndex(["a", np.nan, "b"]))
+        },
+        "index_categorical_str_with_nan": {"index": pd.CategoricalIndex(["c1", np.nan, "c3"])},
         "uns_categorical": {"uns_value": pd.Categorical(["x", "y"])},
         "uns_str_array": {"uns_value": np.array(["p", "q"], dtype=object)},
         "uns_nested_dict": {"uns_value": {"deep": {"arr": np.array([1, 2])}}},

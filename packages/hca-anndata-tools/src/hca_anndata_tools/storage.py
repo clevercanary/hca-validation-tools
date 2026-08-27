@@ -114,9 +114,18 @@ def _dataframe_encodings(df: h5py.Group, path: str, index_name: str) -> tuple[di
         # Nullable-string only, like the column and categories rules below:
         # a categorical or nullable-numeric index group is in-profile and
         # nothing refuses it (rename flattens a categorical index as it
-        # rewrites it).
+        # rewrites it). A categorical index can still hide the nullable
+        # dtype in its *categories* child — flagged like a column's, so the
+        # report and the funnel agree (principle 10).
         if holds_string_values(index) and not is_writable_element(index):
             unsupported.append(f"{path}/{index_name}")
+        elif (
+            isinstance(index, h5py.Group)
+            and "categories" in index
+            and holds_string_values(index["categories"])
+            and not is_writable_element(index["categories"])
+        ):
+            unsupported.append(f"{path}/{index_name}/categories")
 
     categoricals: dict[str, int] = {}
     for name in sorted(members):
@@ -126,10 +135,10 @@ def _dataframe_encodings(df: h5py.Group, path: str, index_name: str) -> tuple[di
         if not isinstance(column, h5py.Group):
             continue
         if "categories" not in column:
-            # Only nullable *strings* are flagged: they are what the write
-            # funnel refuses. Nullable-integer/boolean columns pass through
-            # every tool (anndata writes them ungated), so flagging them
-            # would hard-stop curation on files nothing refuses.
+            # Only nullable *strings* are flagged: they are what writes
+            # normalize. Nullable-integer/boolean columns pass through
+            # every tool untouched (anndata writes them ungated), so
+            # flagging them would be noise nothing acts on.
             if holds_string_values(column):
                 unsupported.append(f"{path}/{name}")
             continue
@@ -207,13 +216,10 @@ def get_storage_info(path: str) -> dict:
     surfaces during inspection rather than as an opaque HDF5 error partway
     through a curation run on a multi-gigabyte file. Its ``unsupported`` list
     names the nullable-string paths in the file — informational: since #641
-    nothing refuses them, every write normalizes the ones it touches, and
-    the flags clear as writes happen.
-    Informational since #641: no tool refuses these encodings any more —
-    every write normalizes what it touches (a full rewrite normalizes
-    everything; an in-place rewrite normalizes the elements it replaces), so
-    the flags describe the file as it is, and clear as writes happen. Masked
-    string values are the one hard stop — no rewrite may flatten them.
+    nothing refuses them; every write normalizes the ones it touches (a full
+    rewrite normalizes everything), so the flags describe the file as it is
+    and clear as writes happen. Masked string values are the one hard stop —
+    no rewrite may flatten them.
 
     Args:
         path: Absolute path to an .h5ad file.

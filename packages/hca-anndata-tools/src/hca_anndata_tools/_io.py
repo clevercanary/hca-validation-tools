@@ -901,18 +901,25 @@ def _nullable_string_targets(f: h5py.File) -> Iterator[tuple[h5py.Group, str, st
             yield parent, name, f"{parent.name}/{name}".removeprefix("/")
 
 
-def masked_string_error(f: h5py.File) -> str | None:
+def masked_string_error(f: h5py.File, ignore_obs_columns: Sequence[str] = ()) -> str | None:
     """The named refusal for masked nullable-string elements, or None.
 
     Judged off the tiny on-disk ``mask`` datasets alone — cheap enough to
     run read-only against a multi-gigabyte *source* before any copy is made
     (convert), and against an output before anything is rewritten. Names
     every masked element with its count in one message.
+
+    ``ignore_obs_columns``: obs columns the caller's pipeline deletes before
+    writing (convert's SRE strip) — a masked value there never reaches the
+    output, so refusing on it would make the preflight stricter than the
+    chokepoint it fronts for.
     """
     import numpy as np
 
     masked: list[str] = []
     for parent, name, loc in _nullable_string_targets(f):
+        if parent.name == "/obs" and name in ignore_obs_columns:
+            continue
         target = parent[name]
         require_nullable_children(target)  # pyright: ignore[reportArgumentType]
         if n_masked := int(np.count_nonzero(np.asarray(target["mask"][:]))):  # pyright: ignore[reportIndexIssue]

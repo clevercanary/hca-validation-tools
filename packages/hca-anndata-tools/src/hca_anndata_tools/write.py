@@ -475,6 +475,10 @@ def _convert_index(df) -> None:
     df.index = df.index.astype(object)
 
 
+def _convert_index_categories(df) -> None:
+    df.index = df.index.rename_categories(df.index.categories.astype(object))
+
+
 def _convert_categories(df, col: str) -> None:
     # Categories cannot hold pd.NA (pandas refuses), so this conversion is
     # always safe; the codes are untouched.
@@ -552,21 +556,21 @@ def normalize_nullable_strings(adata: AnnData) -> tuple[list[str], list[str]]:
     collect_uns("uns", adata.uns)
     for name, df in frames:
         index_dtype = df.index.dtype
-        index_is_string_categorical = isinstance(index_dtype, pd.CategoricalDtype) and (
-            is_nullable_string(index_dtype.categories.dtype)
-            # inferred_type, not dtype == object: object categories can hold
-            # numbers, and flattening those would hand anndata's string
-            # writer non-strings.
-            or index_dtype.categories.inferred_type == "string"
-        )
-        if index_is_string_categorical or is_nullable_string(index_dtype):
-            # A StringDtype index is the #638 read-back; a *string-valued
-            # categorical* index (its categories can hide the same nullable
-            # dtype) writes back as a group, so both flatten to plain
-            # values. A numeric categorical index is left alone — flattening
-            # it would hand anndata's string writer integers, and its
-            # serialization is in-profile as it stands. A NaN entry is an
-            # identifier that does not exist: masked, refuse.
+        # The index policy, per case (fresh-verifier round on #649 — the
+        # earlier flatten-any-string-categorical arm refused and rewrote
+        # in-profile files stock anndata writes):
+        # - StringDtype index: the #638 read-back. Masked → refuse (stock
+        #   cannot write it either way); else flatten to plain values.
+        # - Categorical index whose *categories* are StringDtype: the
+        #   nullable dtype hides a level down. Convert the categories'
+        #   dtype only — the container stays categorical (in-profile), and
+        #   NaN entries are code -1, also in-profile: nothing to refuse.
+        # - Every other categorical index (plain-string, numeric,
+        #   object-numeric): in-profile as it stands; untouched.
+        if isinstance(index_dtype, pd.CategoricalDtype):
+            if is_nullable_string(index_dtype.categories.dtype):
+                actions.append((f"{name} index", functools.partial(_convert_index_categories, df)))
+        elif is_nullable_string(index_dtype):
             if df.index.isna().any():
                 masked.append(f"{name} index")
             else:

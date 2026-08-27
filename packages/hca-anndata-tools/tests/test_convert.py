@@ -285,3 +285,20 @@ def test_convert_refuses_to_overwrite_a_same_second_output(cellxgene_h5ad, monke
     assert "error" in second
     assert "already exists" in second["error"] or "retry in a moment" in second["error"]
     assert Path(first["output_path"]).stat().st_size == size_before
+
+
+def test_convert_ignores_a_masked_column_it_strips_anyway(tmp_path):
+    """The pre-copy masked scan must not be stricter than the pipeline it
+    fronts for: a masked value in a column the SRE strip deletes never
+    reaches the output, so it must not refuse the convert."""
+    path = create_cellxgene_h5ad(tmp_path / "cxg_masked_sre.h5ad")
+    with h5py.File(path, "r+") as f:
+        n = f["obs"][f["obs"].attrs.get("_index", "_index")].shape[0]
+        make_plain_string_column(f["obs"], "self_reported_ethnicity_ontology_term_id", ["e1"] * n)
+        make_nullable_string_array(f["obs"], "self_reported_ethnicity_ontology_term_id", masked=1)
+
+    result = convert_cellxgene_to_hca(str(path))
+
+    assert "error" not in result, result.get("error")
+    with h5py.File(result["output_path"]) as f:
+        assert "self_reported_ethnicity_ontology_term_id" not in f["obs"]

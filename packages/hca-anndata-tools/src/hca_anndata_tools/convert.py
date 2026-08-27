@@ -127,7 +127,7 @@ def convert_cellxgene_to_hca(
         # 7). The post-copy normalization pass keeps its own check as the
         # backstop.
         with h5py.File(path, "r") as source_f:
-            if masked_err := masked_string_error(source_f):
+            if masked_err := masked_string_error(source_f, ignore_obs_columns=_OBS_COLUMNS_TO_STRIP):
                 return {"error": f"Refusing to convert: {masked_err}"}
         with h5py.File(path, "r") as _f:
             source_obs_members = set(_f["obs"].keys())

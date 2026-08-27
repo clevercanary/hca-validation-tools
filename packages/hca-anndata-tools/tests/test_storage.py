@@ -327,3 +327,24 @@ def test_encodings_does_not_flag_a_categorical_index(sample_h5ad, tmp_path):
 
     enc = get_storage_info(str(path))["encodings"]
     assert "obs/_index" not in enc["unsupported"]
+
+
+def test_encodings_flags_a_categorical_index_with_nullable_categories(sample_h5ad, tmp_path):
+    """The nullable dtype can hide in a categorical index's categories child
+    — flagged like a column's, so the report and the funnel agree on what a
+    write will normalize (principle 10)."""
+    import anndata as ad
+    import pandas as pd
+
+    from hca_anndata_tools.testing import write_h5ad_with_nullable_strings
+
+    path = tmp_path / "cat-idx-nullable.h5ad"
+    adata = ad.read_h5ad(sample_h5ad)
+    adata.obs.index = pd.CategoricalIndex(pd.array(list(adata.obs.index.astype(str)), dtype="string"))
+    write_h5ad_with_nullable_strings(adata, path)
+    with h5py.File(path) as f:
+        idx = f["obs/_index"]
+        assert isinstance(idx, h5py.Group) and "categories" in idx  # the shape under test
+
+    enc = get_storage_info(str(path))["encodings"]
+    assert "obs/_index/categories" in enc["unsupported"]
