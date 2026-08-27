@@ -6,9 +6,8 @@ from pathlib import Path
 import h5py
 import numpy as np
 
-from hca_anndata_tools._io import obs_index_name
 from hca_anndata_tools.storage import _MAX_UNSUPPORTED_PATHS, get_storage_info
-from hca_anndata_tools.testing import make_fixed_width_byte_array, make_nullable_string_array
+from hca_anndata_tools.testing import make_fixed_width_byte_array, make_nullable_index, make_nullable_string_array
 
 
 def test_storage_file_size(sample_h5ad):
@@ -53,6 +52,14 @@ def test_storage_missing_file():
 # --- encodings block (hca-validation-tools#638) -----------------------------
 
 
+def _index_attr(obs) -> str:
+    """The index name straight from the attribute — not via _io.obs_index_name,
+    which get_storage_info itself calls: a fixture that leans on the code
+    under test cannot be trusted to expose that code's bugs."""
+    name = obs.attrs.get("_index", "_index")
+    return name.decode("utf-8") if isinstance(name, bytes) else name
+
+
 def _nullable_copy(src: Path, dest: Path, *, masked: int = 0, columns: tuple[str, ...] = ()) -> Path:
     """Copy ``src``, rewriting its obs index — and any named categorical
     columns' ``categories`` — as ``nullable-string-array``.
@@ -61,11 +68,12 @@ def _nullable_copy(src: Path, dest: Path, *, masked: int = 0, columns: tuple[str
     asserts on a categorical says which one it broke.
     """
     shutil.copy2(src, dest)
-    with h5py.File(dest, "r+") as f:
-        obs = f["obs"]
-        make_nullable_string_array(obs, obs_index_name(obs), masked=masked)
-        for column in columns:
-            make_nullable_string_array(obs[column], "categories")
+    make_nullable_index(dest, masked=masked)
+    if columns:
+        with h5py.File(dest, "r+") as f:
+            obs = f["obs"]
+            for column in columns:
+                make_nullable_string_array(obs[column], "categories")
     return dest
 
 
@@ -90,7 +98,7 @@ def test_encodings_does_not_flag_a_fixed_width_byte_index(sample_h5ad, tmp_path)
     shutil.copy2(sample_h5ad, path)
     with h5py.File(path, "r+") as f:
         obs = f["obs"]
-        make_fixed_width_byte_array(obs, obs_index_name(obs))
+        make_fixed_width_byte_array(obs, _index_attr(obs))
 
     enc = get_storage_info(str(path))["encodings"]
     assert enc["obs"]["index"] == "array"
@@ -146,7 +154,7 @@ def test_encodings_unsupported_paths_are_capped_but_count_is_whole(sample_h5ad, 
     extra = _MAX_UNSUPPORTED_PATHS + 2
     with h5py.File(path, "r+") as f:
         obs = f["obs"]
-        n = obs[obs_index_name(obs)].shape[0]
+        n = obs[_index_attr(obs)].shape[0]
         for i in range(extra):
             grp = obs.create_group(f"nullable_cat_{i}")
             grp.attrs["encoding-type"] = "categorical"
@@ -209,7 +217,7 @@ def test_encodings_covers_obsm_dataframe_indexes(sample_h5ad, tmp_path):
         frame.attrs["encoding-version"] = "0.2.0"
         frame.attrs["_index"] = "_index"
         frame.attrs["column-order"] = np.array([], dtype=h5py.string_dtype())
-        ids = f["obs"][obs_index_name(f["obs"])][:]
+        ids = f["obs"][_index_attr(f["obs"])][:]
         ds = frame.create_dataset("_index", data=ids)
         ds.attrs["encoding-type"] = "string-array"
         make_nullable_string_array(frame, "_index")
@@ -258,7 +266,7 @@ def test_encodings_unstamped_index_is_labelled_not_null(sample_h5ad, tmp_path):
     shutil.copy2(sample_h5ad, path)
     with h5py.File(path, "r+") as f:
         obs = f["obs"]
-        del obs[obs_index_name(obs)].attrs["encoding-type"]
+        del obs[_index_attr(obs)].attrs["encoding-type"]
     enc = get_storage_info(str(path))["encodings"]
     assert enc["obs"]["index"] == "unstamped"
     assert enc["obs"]["index"] is not None
