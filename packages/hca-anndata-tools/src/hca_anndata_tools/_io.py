@@ -204,13 +204,12 @@ def is_writable_element(item: h5py.Group | h5py.Dataset | h5py.Datatype) -> bool
     are both stamped ``array``, and both are Datasets. It would equally *pass*
     an unstamped Group, which then fails at the write.
 
-    Since hca-validation-tools#637 the readers cope with every encoding anndata
-    knows, so a Group element can still be inspected and converted — what it
-    cannot be is rewritten in place; a full rewrite normalizes it (#641).
-
-    Consulted by ``get_storage_info``'s report; the writers themselves no
-    longer refuse on it — ``replace_string_dataset`` normalizes a group
-    target as it rewrites it (#641).
+    Since hca-validation-tools#637 the readers cope with every encoding
+    anndata knows, and since #641 this predicate is *informational*: it
+    feeds ``get_storage_info``'s report, and no writer refuses on it —
+    ``replace_string_dataset`` normalizes a group target to a plain Dataset
+    as it rewrites it, which is why "writable in place" here means
+    "byte-preserving replace" rather than "rewritable at all".
     """
     return isinstance(item, h5py.Dataset)
 
@@ -856,8 +855,10 @@ def _iter_string_element_targets(f: h5py.File) -> Iterator[tuple[h5py.Group, str
     """``(parent, name)`` of every element that may hold string values.
 
     Dataframe members via :func:`iter_dataframe_groups` (a categorical
-    member targets its ``categories`` child), plus everything nested in uns:
-    bare arrays, and the ``categories`` child of a bare uns categorical.
+    member targets its ``categories`` child), plus the *group-shaped*
+    string carriers nested in uns: nullable arrays (values+mask groups) and
+    the ``categories`` child of a bare uns categorical. Plain h5py Datasets
+    in uns are already plain and are deliberately not walked.
     One walker for the normalizer, so an element cannot fall between the
     dataframe and uns halves.
     """

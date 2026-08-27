@@ -649,12 +649,13 @@ def write_h5ad(
         if not Path(source_path).is_file():
             return {"error": f"Source file not found: {source_path}"}
 
-        # Every refusal path runs before adata is touched: entry validation
-        # first (it needs nothing from adata's data), then the masked-string
-        # refusal (normalize_nullable_strings collects before converting).
-        # Only then is the log stamped; post-stamp failure paths restore it
-        # via _unstamp below, so a fixed-and-retried write never re-reads
-        # just-stamped entries as the existing log and appends them twice.
+        # Entry validation and the masked-string refusal run before adata is
+        # touched at all (normalize_nullable_strings collects before
+        # converting). Later failures — an occupied output name, a failed
+        # write — restore the log via _unstamp so a retry never re-reads
+        # just-stamped entries as the existing log; the dtype normalization
+        # itself may persist through them, which is fine: it is value-
+        # identical and idempotent, and the retry writes the same bytes.
         provenance = adata.uns.get(PROVENANCE_KEY, {})
         had_log = isinstance(provenance, dict) and EDIT_LOG_KEY in provenance
         existing_log_raw = provenance[EDIT_LOG_KEY] if had_log else "[]"

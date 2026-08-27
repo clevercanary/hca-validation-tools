@@ -90,7 +90,8 @@ def _dataframe_encodings(df: h5py.Group, path: str, index_name: str) -> tuple[di
     Categorical ``categories`` are reported because they block a write exactly
     as an index does — in the files that motivated this
     (hca-validation-tools#638) a categorical's categories were themselves a
-    nullable group, and ``merge_obs_categories`` refuses on precisely that.
+    nullable group; since #641 the tools normalize that shape as they
+    rewrite it, and only *masked* categories refuse.
 
     Members are read through :func:`~hca_anndata_tools._io.direct_members`
     because ``index_name`` comes from the file rather than the caller, and
