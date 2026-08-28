@@ -255,6 +255,11 @@ def assert_no_snapshot_written(path) -> None:
     assert not [p for p in Path(path).parent.iterdir() if _is_timestamped(str(p))]
 
 
+def _decode(value):
+    """bytes -> str, anything else unchanged (testing.py keeps no _io import)."""
+    return value.decode() if isinstance(value, bytes) else value
+
+
 def add_masked_categorical_column(path, name: str = "bystander") -> None:
     """Add an obs column whose *categories* are masked, in place.
 
@@ -282,6 +287,12 @@ def add_masked_categorical_column(path, name: str = "bystander") -> None:
         n = obs[index_name].shape[0]
         write_elem(obs, name, pd.Categorical(["x"] * n))
         make_nullable_string_array(obs[name], "categories", masked=1)  # pyright: ignore[reportArgumentType]
+        # column-order too, or anndata never reads the column and the
+        # fixture is a corrupt element no reader would ever reach — which
+        # is not the shape any of these tests mean.
+        order = [_decode(c) for c in obs.attrs["column-order"]]
+        if name not in order:
+            obs.attrs["column-order"] = [*order, name]
 
 
 def make_nullable_string_array(parent: h5py.Group, name: str, *, masked: int = 0) -> None:
