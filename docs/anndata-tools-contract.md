@@ -338,7 +338,9 @@ other placeholder-looking value through curator-reviewed mappings.
    the shared predicate's. Fix: the source side just reads; the target side
    refuses through `unwritable_element_reason` like every other surgical
    tool. In scope for #642 because the branch's own SKILL.md already claims
-   backfill works on these files.
+   backfill works on these files. (Superseded by Decision 4: #641 deleted
+   `unwritable_element_reason` — the target side now normalizes what it
+   rewrites, and only masked values refuse.)
 
 3. **NA policy: tools never translate; they refuse, skip, or propagate.**
    - *Refuse* = stop the whole operation with a named error, because one

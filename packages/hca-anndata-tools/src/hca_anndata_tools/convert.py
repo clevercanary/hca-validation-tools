@@ -122,10 +122,10 @@ def convert_cellxgene_to_hca(
         # the edge case where the attr lists a column that isn't actually
         # present as a dataset (which would make the strip a no-op while
         # the edit log overclaimed).
-        # Masked strings refuse HERE — a few KB of mask reads on the source —
-        # not after the multi-gigabyte copy has been made (contract principle
-        # 7). The post-copy normalization pass keeps its own check as the
-        # backstop.
+        # Masked strings refuse HERE — mask reads only, a byte per cell
+        # per nullable element, never the matrix — not after the
+        # multi-gigabyte copy has been made (contract principle 7). The
+        # post-copy normalization pass keeps its own check as the backstop.
         with h5py.File(path, "r") as source_f:
             # Ignore every obs column this pipeline replaces or deletes:
             # the SRE strip (unconditional), and the uns keys actually being
