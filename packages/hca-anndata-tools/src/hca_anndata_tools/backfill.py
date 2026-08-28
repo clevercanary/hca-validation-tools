@@ -89,9 +89,7 @@ def _read_column(obs: h5py.Group, col: str, placeholders: set[str], side: str) -
     understands (numeric or boolean values, plain or nullable) are refused
     rather than guessed at.
 
-    Masked *categories* refuse by name for both sides — see the comment at
-    the categorical read below (#651). Nullable-string columns read and
-    rewrite fine — replace_string_dataset normalizes them (#641); only
+    Nullable-string columns read and rewrite fine — replace_string_dataset normalizes them (#641); only
     masked values surviving the fill refuse, checked in the plan phase.
 
     The missing predicate runs once per distinct value, never per row — the

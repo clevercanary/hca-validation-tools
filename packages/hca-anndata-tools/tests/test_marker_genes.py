@@ -15,7 +15,7 @@ from hca_anndata_tools.marker_genes import (
     _extract_marker_genes_from_categories,
     validate_marker_genes,
 )
-from hca_anndata_tools.testing import make_nullable_index, make_nullable_string_array
+from hca_anndata_tools.testing import add_masked_categorical_column, make_nullable_index, make_nullable_string_array
 
 # -- GENCODE reference loader tests --------------------------------------------
 
@@ -350,9 +350,10 @@ def test_masked_evidence_and_organism_values_are_skipped(tmp_path):
 
     assert "error" not in result, result.get("error")
     # The diagnostic ran, but it must SAY the file is corrupt (#651): this
-    # validator is h5py-only, so no earlier anndata read fails for it.
-    assert len(result["corruption"]) == 2
-    assert all("anndata cannot open it" in n for n in result["corruption"])
+    # validator is h5py-only, so no earlier anndata read fails for it. One
+    # notice, not an inventory — the scan names the first corrupt element.
+    assert len(result["corruption"]) == 1
+    assert "anndata itself cannot open the file" in result["corruption"][0]
     assert result["total_unique_markers"] == 2
     reported = {item["marker_gene"] for item in result["not_in_gencode"]}
     assert reported == {"ZZZFAKE"}
@@ -404,7 +405,6 @@ def test_marker_validation_names_corruption_it_never_reads(tmp_path):
             "test_labels": pd.Categorical(["typeA"] * n_obs),
             "test_labels--marker_gene_evidence": pd.Categorical(["GFAP"] * n_obs),
             "test_labels--cell_ontology_term_id": pd.Categorical(["CL:0000540"] * n_obs),
-            "tissue": pd.Categorical(["liver", "gut", "liver", "gut"]),
         },
         index=[f"cell_{i}" for i in range(n_obs)],
     )
@@ -412,12 +412,11 @@ def test_marker_validation_names_corruption_it_never_reads(tmp_path):
     X = sp.random(n_obs, 1, density=0.5, format="csr", dtype=np.float32)
     path = tmp_path / "bystander_corrupt.h5ad"
     ad.AnnData(X=X, obs=obs, var=var).write_h5ad(path)
-    with h5py.File(path, "r+") as f:
-        make_nullable_string_array(f["obs/tissue"], "categories", masked=1)
+    add_masked_categorical_column(path, "tissue")
 
     result = validate_marker_genes(str(path))
 
     assert "error" not in result, result.get("error")
     assert len(result["corruption"]) == 1
     assert "obs column 'tissue'" in result["corruption"][0]
-    assert "anndata cannot open it" in result["corruption"][0]
+    assert "anndata itself cannot open the file" in result["corruption"][0]

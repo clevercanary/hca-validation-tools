@@ -137,10 +137,6 @@ def strip_forbidden_obs_columns(path: str) -> dict:
                 ),
             }
 
-        # Masked categories refuse inside snapshot_copy (#651), exempting
-        # the columns this tool deletes — stripping the corrupt column IS
-        # the repair. The no-op return above means a file with nothing to
-        # strip is never scanned at all.
         with snapshot_copy(path, ignore_masked_obs_columns=_OBS_COLUMNS_TO_STRIP) as output_path:
             # Defer the malformed-log cleanup until after the with-block closes
             # the output file — calling os.remove on an open HDF5 handle works

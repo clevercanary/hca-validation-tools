@@ -197,9 +197,6 @@ def drop_obs_columns(path: str, columns: list[str] | tuple[str, ...]) -> dict:
 
         if problems:
             return {"error": "Refusing to drop: " + "; ".join(problems)}
-        # Masked categories refuse inside snapshot_copy (#651), exempting
-        # the columns this call deletes: dropping the corrupt column IS the
-        # repair, and the element never reaches the output.
         with snapshot_copy(path, ignore_masked_obs_columns=requested) as output_path:
             # Defer the malformed-log cleanup until after the with-block closes the
             # output file, matching strip_forbidden_obs_columns: unlinking an open

@@ -239,9 +239,6 @@ def strip_cap_annotations(path: str) -> dict:
                 "nothing_to_strip": True,
             }
 
-        # Masked categories refuse inside snapshot_copy_hashed (#651),
-        # exempting the CAP columns this tool removes — deleting them IS
-        # the repair, and CAP files are never repaired here.
         with (
             snapshot_copy_hashed(path, ignore_masked_obs_columns=obs_columns_present) as (
                 output_path,

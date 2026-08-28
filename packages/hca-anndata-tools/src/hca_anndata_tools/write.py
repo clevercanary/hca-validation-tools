@@ -16,10 +16,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
-import h5py
-
 from . import __version__
-from ._io import masked_categories_error
+from ._io import masked_categories_error_for_path
 from ._keys import EDIT_LOG_KEY, MASKED_STRING_REMEDY, PROVENANCE_KEY
 
 if TYPE_CHECKING:
@@ -166,15 +164,8 @@ def _refuse_masked_categories(path: str, ignore_obs_columns: Sequence[str]) -> N
     repair, and the element never reaches the output. Runs before the
     snapshot name is even claimed; distinct-value-sized reads only.
     """
-    # Signature check, not a guard: a file that is not HDF5 (or is
-    # truncated past its signature) has no categoricals to scan, and the
-    # caller's own open owns that failure — the gate's one job is the
-    # masked-categories shape.
-    if not h5py.is_hdf5(path):
-        return
-    with h5py.File(path, "r") as f:
-        if reason := masked_categories_error(f, ignore_obs_columns=ignore_obs_columns):
-            raise ValueError(reason)
+    if reason := masked_categories_error_for_path(path, ignore_obs_columns=ignore_obs_columns):
+        raise ValueError(reason)
 
 
 @contextlib.contextmanager

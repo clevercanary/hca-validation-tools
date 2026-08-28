@@ -488,11 +488,11 @@ def test_normalizing_a_nullable_group_preserves_producer_attrs(tmp_path):
         assert out.attrs["encoding-type"] == "string-array"
 
 
-def test_read_obs_categorical_values_names_masked_categories(tmp_path):
+def test_read_obs_categorical_values_bypasses_the_chokepoint(tmp_path):
     """The unique-values helper is the one deliberate bypass of the
     masked-categories chokepoint (#651): a read-only diagnostic still gets
-    the values, but the returned corruption notice says the file is one
-    anndata cannot open — a clean verdict on it is impossible to present."""
+    the values rather than a refusal. Its caller names the corruption from
+    a whole-file scan, so no clean verdict on a corrupt file is possible."""
     path = tmp_path / "masked_cat_values.h5ad"
     obs = pd.DataFrame({"ann": pd.Categorical(["a", "b"])}, index=["c0", "c1"])
     adata = ad.AnnData(X=np.zeros((2, 1), dtype=np.float32), obs=obs)
@@ -500,13 +500,13 @@ def test_read_obs_categorical_values_names_masked_categories(tmp_path):
     with h5py.File(path, "r+") as f:
         make_nullable_string_array(f["obs/ann"], "categories", masked=1)
 
-    values, corruption = _io.read_obs_categorical_values(str(path), "ann")
+    values = _io.read_obs_categorical_values(str(path), "ann")
 
-    assert corruption is not None
-    assert "obs column 'ann'" in corruption
-    assert "1 masked (null) categories" in corruption
-    assert "anndata cannot open it" in corruption
     assert len(values) == 2  # the readable category plus pd.NA
+    assert any(pd.isna(v) for v in values)
+    # The corruption is named by the scan the caller runs, not here.
+    with h5py.File(path) as f:
+        assert "obs column 'ann'" in (_io.masked_categories_error(f) or "")
 
 
 def test_masked_scan_recurses_past_a_decoy_categories_member(tmp_path):
@@ -527,3 +527,34 @@ def test_masked_scan_recurses_past_a_decoy_categories_member(tmp_path):
     assert reason is not None
     assert "uns['legacy']['ann']" in reason
     assert "masked (null) categories" in reason
+
+
+def test_masked_scan_and_the_normalizer_agree_on_an_unstamped_categorical(tmp_path):
+    """A legacy (unstamped) uns categorical is a categorical to the write
+    gate and a container to the normalizer's walker; the gate checks it
+    AND recurses, so neither shape's masked categories can hide."""
+    path = tmp_path / "unstamped.h5ad"
+    adata = ad.AnnData(X=np.zeros((2, 1), dtype=np.float32), obs=pd.DataFrame(index=["c0", "c1"]))
+    adata.write_h5ad(path)
+    with h5py.File(path, "r+") as f:
+        legacy = f["uns"].create_group("legacy")
+        write_elem(legacy, "inner", pd.Categorical(["hi", "lo"]))
+        del legacy["inner"].attrs["encoding-type"]  # the unstamped shape
+        make_nullable_string_array(f["uns/legacy/inner"], "categories", masked=1)
+
+        assert "uns['legacy']['inner']" in (_io.masked_categories_error(f) or "")
+
+
+def test_masked_scan_still_reads_non_string_categories(tmp_path):
+    """The scan skips plain *string* categories (HDF5 strings cannot be
+    null) but must still read numeric ones — a NaN in a float categories
+    array is the same corrupt shape in another dtype."""
+    path = tmp_path / "float-cats.h5ad"
+    adata = ad.AnnData(X=np.zeros((2, 1), dtype=np.float32), obs=pd.DataFrame(index=["c0", "c1"]))
+    adata.obs["grade"] = pd.Categorical([1.5, 2.5])
+    adata.write_h5ad(path)
+    with h5py.File(path, "r+") as f:
+        cats = f["obs/grade/categories"]
+        cats[0] = np.nan
+
+        assert "obs column 'grade'" in (_io.masked_categories_error(f) or "")

@@ -72,11 +72,8 @@ def _dataframe_encodings(df: h5py.Group, path: str, index_name: str) -> tuple[di
     indexes, plain columns, and categorical ``categories`` alike — each
     mapped to its count of masked values (0 for the ordinary mask-0 case).
     One mapping rather than parallel collections, so a future flagged shape
-    cannot report the path and silently skip its masked verdict. The two
-    verdicts differ (#651): a mask-0 flagged element is informational —
-    every write normalizes it as it touches it (#641) — while a *masked*
-    one refuses the writes that would rewrite it, so the report must let a
-    reader tell them apart.
+    cannot report the path and silently skip its masked verdict; what the
+    two verdicts mean is :func:`get_storage_info`'s to explain.
     Categorical ``categories`` are reported just like indexes and plain
     columns — in the files that motivated this
     (hca-validation-tools#638) a categorical's categories were themselves a
@@ -160,16 +157,11 @@ def _encodings_info(f: h5py.File) -> dict:
     Scope is the listed dataframes' indexes, plain nullable-string
     columns, and categorical ``categories``. ``varm`` and ``uns`` frames
     are the write funnel's alone, and nullable-integer/boolean columns are
-    not flagged: every tool accepts them. The ``masked`` dict separates
-    the two verdicts a flagged path can carry (#651): absent from it,
-    the element normalizes on the next write that touches it; present,
-    the writes that would rewrite it refuse — the in-repo remedies are a
-    backfill that fills the masked values (residuals still refuse) or
-    dropping the column; otherwise repair upstream. ``masked`` shares
-    this block's inspection scope: a masked element in ``varm`` or
-    ``uns`` still refuses writes even though it is not reported here.
-    ``masked_count`` counts flagged *paths* (like ``unsupported_count``),
-    not masked values — the per-path value counts are the dict's values.
+    not flagged: every tool accepts them. ``masked`` shares this scope: a
+    masked element in ``varm`` or ``uns`` still refuses writes even though
+    it is not reported here. ``masked_count`` counts flagged *paths* (like
+    ``unsupported_count``), not masked values — the per-path value counts
+    are the dict's values.
     """
     result: dict = {}
     flagged: dict[str, int] = {}
@@ -224,10 +216,12 @@ def get_storage_info(path: str) -> dict:
     (path → count) separates the two verdicts those paths carry (#651): a
     path absent from ``masked`` is informational — every write normalizes it
     as it touches it (#641), so the flag clears as writes happen — while a
-    path in ``masked`` holds masked string values, the one hard stop: the
-    writes that would rewrite it refuse by name. The in-repo remedies are
-    a backfill that fills the masked values (residuals still refuse) or
-    dropping the column; otherwise the data must be repaired upstream.
+    path in ``masked`` holds masked values, the one hard stop. A masked
+    *column* refuses the writes that would rewrite it, and the in-repo
+    remedies are a backfill that fills the values (residuals still refuse)
+    or dropping the column. A masked ``.../categories`` path is worse: that
+    file is one anndata itself cannot open, so **every** write refuses it
+    and only upstream repair (or dropping the column) clears it.
 
     Args:
         path: Absolute path to an .h5ad file.

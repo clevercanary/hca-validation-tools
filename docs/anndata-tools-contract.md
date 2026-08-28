@@ -80,24 +80,17 @@ And the conversion to the profile splits cleanly on the mask:
   And the reads are only half of it: **every write refuses the shape**,
   enforced where principle 8 says enforcement lives — inside
   `snapshot_copy` / `snapshot_copy_hashed`, the chokepoint every in-place
-  surgical write passes through. A tool that never reads a categorical
-  (`rename_obs_column`, `drop_obs_columns`, `strip_forbidden_obs_columns`,
-  `strip_cap_annotations`, `set_producer_uns`, `copy_cap`'s target) and a
-  tool that reads only its own columns (`rename_cell_ids`, `merge`,
-  `backfill`, `replace_placeholder_values`) are covered identically, for
-  bystander corruption included, and so is whatever surgical tool joins
-  the class next — no write ever stamps a fresh `-edit-` name onto a file
-  anndata cannot open. (Full rewrites and convert refuse earlier, at
-  `open_h5ad`; per-tool preflights like `copy_cap`'s remain a courtesy
-  that fronts expensive work.) The one exemption: obs columns the write
-  itself deletes or replaces wholesale (drop/strip of the corrupt column
-  IS the repair; a CAP column being overwritten never reaches the output
-  — CAP files are never repaired here). The one bypass is read-only:
-  `validate_marker_genes` writes nothing and elects principle 3's skip
-  arm so a corrupt file can still be diagnosed — its result carries a
-  `corruption` notice naming the shape and saying anndata cannot open
-  the file, backed by a whole-file scan, so no clean verdict can be
-  presented no matter where the corruption sits.
+  surgical write passes through. Bystander corruption included, and
+  whatever surgical tool joins the class next covered without an edit
+  here; full rewrites and convert refuse earlier, at `open_h5ad`. The one
+  exemption: obs columns the write itself deletes or replaces wholesale
+  (drop/strip of the corrupt column IS the repair; a CAP column being
+  overwritten never reaches the output — CAP files are never repaired
+  here). The one bypass is read-only: `validate_marker_genes` writes
+  nothing and elects principle 3's skip arm so a corrupt file can still be
+  diagnosed — its result carries a `corruption` notice from a whole-file
+  scan, so no clean verdict can be presented no matter where the
+  corruption sits.
 
 ## The anndata pin, precisely
 
@@ -425,16 +418,18 @@ other placeholder-looking value through curator-reviewed mappings.
    (backfill target, replace_placeholder, merge, read_index) are deleted
    as redundant (principle 13). Inspection gained the `masked` dict so
    the report can distinguish the masked verdict from the normalizable
-   one (principle 10). Amended same day: **every write refuses the
-   shape**, not only the categorical-reading ones — exempting only obs
-   columns the write itself deletes or replaces wholesale; the sole
+   one (principle 10). **Every write refuses the shape**, exempting only
+   obs columns the write itself deletes or replaces wholesale; the sole
    bypass is the read-only `validate_marker_genes`, which skips per
-   principle 3 and reports the named corruption in a `corruption`
-   result key instead of refusing. Amended again 2026-08-28 after a
-   fresh adversarial run refuted the universal quantifier a second
-   time (per-tool preflights left the four categorical-reading
-   surgical tools and `strip_cap_annotations` uncovered for bystander
-   corruption): enforcement now lives inside `snapshot_copy` /
-   `snapshot_copy_hashed` (principle 8), the per-tool guards are
-   deleted, and the marker validator's `corruption` key is backed by a
-   whole-file scan.
+   principle 3 and reports the named corruption in a `corruption` result
+   key instead of refusing.
+
+   The one fact worth keeping from how this landed: it was drafted twice
+   as per-tool preflights, and a fresh adversarial run refuted the
+   universal quantifier both times — the second draft still left the
+   categorical-reading surgical tools and `strip_cap_annotations`
+   uncovered for corruption sitting one column over from where they
+   looked. Per-tool guards cannot make a claim of the form "every write";
+   only a chokepoint can, which is why enforcement lives in
+   `snapshot_copy` / `snapshot_copy_hashed` and every per-tool guard is
+   deleted.

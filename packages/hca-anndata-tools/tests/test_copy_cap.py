@@ -721,14 +721,10 @@ def test_copy_refuses_a_masked_categories_target(cap_source, tmp_path):
     """Every write refuses a masked-categories target (#651): a corrupt
     non-CAP column would survive the copy into a fresh snapshot of a file
     anndata cannot open."""
-    from hca_anndata_tools.testing import assert_no_snapshot_written, make_nullable_string_array
+    from hca_anndata_tools.testing import add_masked_categorical_column, assert_no_snapshot_written
 
     target = _make_hca_target(tmp_path / "target_masked_col.h5ad", CELL_IDS)
-    adata = ad.read_h5ad(target)
-    adata.obs["donor"] = pd.Categorical(["d1"] * adata.n_obs)
-    adata.write_h5ad(target)
-    with h5py.File(target, "r+") as f:
-        make_nullable_string_array(f["obs/donor"], "categories", masked=1)
+    add_masked_categorical_column(target, "donor")
 
     result = copy_cap_annotations(str(cap_source), str(target))
 

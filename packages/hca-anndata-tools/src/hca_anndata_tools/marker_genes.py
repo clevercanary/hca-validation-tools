@@ -2,16 +2,13 @@
 
 from __future__ import annotations
 
-import contextlib
-
-import h5py
 import pandas as pd
 
 from ._gencode import load_gencode_reference
 from ._io import (
     DEFAULT_PLACEHOLDERS,
     is_missing_value,
-    masked_categories_error,
+    masked_categories_error_for_path,
     read_obs_categorical_values,
     read_obs_column_names,
     read_var_gene_names,
@@ -92,10 +89,7 @@ def validate_marker_genes(path: str, annotation_set: str | None = None) -> dict:
 
         if "organism_ontology_term_id" not in obs_columns:
             return {"error": "organism_ontology_term_id not found in obs columns"}
-        corruption: list[str] = []
-        organisms, notice = read_obs_categorical_values(path, "organism_ontology_term_id")
-        if notice:
-            corruption.append(notice)
+        organisms = read_obs_categorical_values(path, "organism_ontology_term_id")
         # A masked (pd.NA) value is a missing organism, not evidence of a
         # non-human one — and sorted() below cannot order pd.NA anyway.
         organisms = {o for o in organisms if not pd.isna(o)}
@@ -142,9 +136,7 @@ def validate_marker_genes(path: str, annotation_set: str | None = None) -> dict:
         for setname in sets_with_markers:
             marker_col = f"{setname}--marker_gene_evidence"
             # Read only the category values, not the full per-cell column
-            categories, notice = read_obs_categorical_values(path, marker_col)
-            if notice:
-                corruption.append(notice)
+            categories = read_obs_categorical_values(path, marker_col)
             markers = _extract_marker_genes_from_categories(categories)
             all_unique.update(markers)
 
@@ -201,19 +193,12 @@ def validate_marker_genes(path: str, annotation_set: str | None = None) -> dict:
         }
         # This validator is h5py-only, so nothing upstream of it fails on a
         # file anndata cannot open — the diagnostic still runs (principle
-        # 3's skip arm), and this key is how the corruption gets said. The
-        # per-column notices cover the columns this validator reads; the
-        # whole-file scan runs only when they found nothing, because its
-        # one job is preventing a CLEAN verdict on a corrupt file — any
-        # notice at all already prevents one, and the scan names a single
-        # element, not an inventory. Best-effort (read-only): an unrelated
-        # scan failure must not replace the diagnostic.
-        if not corruption:
-            with contextlib.suppress(Exception), h5py.File(path, "r") as f:
-                if hit := masked_categories_error(f):
-                    corruption.append(hit.split(" — ")[0] + " — the file is corrupt and anndata cannot open it")
-        if corruption:
-            result["corruption"] = corruption
+        # 3's skip arm), and this key is how the corruption gets said. One
+        # whole-file scan rather than per-column notices: the scan is a
+        # superset of what the columns read here could report, so a clean
+        # verdict on a corrupt file is impossible wherever the masks sit.
+        if corruption := masked_categories_error_for_path(path, best_effort=True):
+            result["corruption"] = [corruption]
         return result
 
     except Exception as e:

@@ -664,11 +664,10 @@ def test_drop_refuses_a_masked_categories_file(sample_h5ad_for_write, no_snapsho
     """Every write refuses a masked-categories file (#651): dropping some
     OTHER column must not stamp a fresh snapshot of a file anndata cannot
     open."""
-    from hca_anndata_tools.testing import make_nullable_string_array
+    from hca_anndata_tools.testing import add_masked_categorical_column
 
-    _add_obs_cols(sample_h5ad_for_write, "keep_corrupt", "to_drop")
-    with h5py.File(sample_h5ad_for_write, "r+") as f:
-        make_nullable_string_array(f["obs/keep_corrupt"], "categories", masked=1)
+    _add_obs_cols(sample_h5ad_for_write, "to_drop")
+    add_masked_categorical_column(sample_h5ad_for_write, "keep_corrupt")
 
     result = drop_obs_columns(str(sample_h5ad_for_write), ["to_drop"])
 

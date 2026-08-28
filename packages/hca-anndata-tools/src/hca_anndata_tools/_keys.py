@@ -16,6 +16,14 @@ have left each of them quietly looking at a key nobody wrote (#631).
 PROVENANCE_KEY = "provenance"
 EDIT_LOG_KEY = "edit_history"
 
+# The shared tail of every masked-*categories* refusal: the read chokepoint
+# raises it, the write gate reports it, and the read-only marker validator
+# quotes it. One spelling, so "refuse by name everywhere" is one sentence.
+MASKED_CATEGORIES_REMEDY = (
+    "masked (null) categories — a masked category has no value a rewrite "
+    "could keep, and anndata itself cannot open the file; repair the data upstream first"
+)
+
 # The shared tail of every masked-string refusal — the write funnel, the
 # h5py normalization pass, and whatever masked-refusal site comes next
 # compose it, so the wording cannot drift and the skills' claim that masked

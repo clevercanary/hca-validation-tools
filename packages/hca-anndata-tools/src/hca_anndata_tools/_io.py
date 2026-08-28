@@ -17,7 +17,7 @@ import h5py
 import pandas as pd
 from anndata.io import read_elem, write_elem
 
-from ._keys import EDIT_LOG_KEY, MASKED_STRING_REMEDY, PROVENANCE_KEY
+from ._keys import EDIT_LOG_KEY, MASKED_CATEGORIES_REMEDY, MASKED_STRING_REMEDY, PROVENANCE_KEY
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
@@ -94,33 +94,55 @@ def iter_dataframe_groups(f: h5py.File) -> Iterator[tuple[str, h5py.Group]]:
         yield from walk_uns("uns", uns)
 
 
-def masked_categories_error(f: h5py.File, ignore_obs_columns: Sequence[str] = ()) -> str | None:
-    """The named masked-categories reason for this file, or None.
+class MaskedCategoriesError(ValueError):
+    """A categorical whose *categories* are masked — a corrupt file.
 
-    The write-side preflight (#651): every write refuses a file holding a
-    categorical whose categories are masked — the shape anndata itself
-    cannot open — including the h5py-only writers that never read a
-    categorical (rename_obs_column, drop, strip, set_producer_uns,
-    copy_cap's target). ``ignore_obs_columns`` exempts obs columns the
-    write itself deletes or replaces wholesale: deleting the corrupt
-    column IS the repair, and the corrupt element never reaches the
-    output. Distinct-value-sized reads per categorical — never the codes.
-
-    Raises anything an unrelated corruption raises; callers that must not
-    replace an original error (the open_h5ad scan) handle that themselves.
+    A type rather than a message, because four sites need to tell this
+    refusal from an unrelated one (the write gate, the open scan, merge's
+    problem cascade, the marker validator) and matching on prose is how
+    a reworded message silently changes behavior. ``subject`` and
+    ``n_masked`` are the parts a caller may want to recompose.
     """
 
-    def check(item: h5py.Group, subject: str) -> str | None:
-        try:
-            read_categories(item, subject)
-        except ValueError as e:
-            if "masked (null) categories" in str(e):
-                return str(e)
-            # Unrelated corruption (e.g. a truncated nullable group)
-            # propagates — it is a different defect with its own named
-            # error.
-            raise
-        return None
+    def __init__(self, subject: str, n_masked: int) -> None:
+        super().__init__(f"{subject} has {n_masked} {MASKED_CATEGORIES_REMEDY}")
+        self.subject = subject
+        self.n_masked = n_masked
+
+
+def _may_hold_masked_categories(item: h5py.Group) -> bool:
+    """Could this categorical's categories be masked at all?
+
+    A plain string ``categories`` dataset provably cannot: HDF5 strings have
+    no null, which is why pandas needed the values+mask encoding in the
+    first place. Skipping those keeps the scan off the one shape that is
+    ``n_obs``-sized by construction — a *categorical index*, whose
+    categories are one per cell — where decoding every string to ask a
+    question the encoding already answers costs seconds on a 2M-cell file.
+
+    Everything else still reads: a nullable group can be masked (its mask
+    says whether it is), and a numeric dataset can carry NaN, which is the
+    same corrupt shape in another dtype.
+    """
+    categories = item["categories"]
+    if isinstance(categories, h5py.Group):
+        return bool(mask_count(categories))
+    return h5py.check_string_dtype(categories.dtype) is None
+
+
+def masked_categories_error(f: h5py.File, ignore_obs_columns: Sequence[str] = ()) -> str | None:
+    """Name the first masked-categories element in this file, or None.
+
+    Scans every categorical anndata would read — the dataframe groups and
+    the bare categoricals nested in uns — and reads only categories, never
+    codes. ``ignore_obs_columns`` skips obs columns the caller replaces or
+    deletes wholesale. Unrelated corruption propagates: it is a different
+    defect with its own named error, and only :func:`read_categories`'
+    refusal is this function's answer.
+
+    Callers give it meaning: the write gate (:func:`write.snapshot_copy`)
+    turns a hit into a refusal, and the read-only diagnostics report it.
+    """
 
     for label, group in iter_dataframe_groups(f):
         index_name = obs_index_name(group)
@@ -130,10 +152,12 @@ def masked_categories_error(f: h5py.File, ignore_obs_columns: Sequence[str] = ()
             if label == "obs" and col in ignore_obs_columns and col != index_name:
                 continue
             item = group[col]
-            if isinstance(item, h5py.Group) and "categories" in item:
+            if isinstance(item, h5py.Group) and "categories" in item and _may_hold_masked_categories(item):
                 kind = "index" if col == index_name else "column"
-                if reason := check(item, f"{label} {kind} '{col}'"):
-                    return reason
+                try:
+                    read_categories(item, f"{label} {kind} '{col}'")
+                except MaskedCategoriesError as e:
+                    return str(e)
 
     # Bare categoricals in uns (uns['grades'] as a pd.Categorical) are a
     # supported shape the dataframe walk above never visits — the write
@@ -146,14 +170,20 @@ def masked_categories_error(f: h5py.File, ignore_obs_columns: Sequence[str] = ()
                 continue
             label = f"{prefix}['{key}']"
             enc = encoding_of(member)
-            # An unstamped group counts as a categorical only with BOTH
-            # children — a bare group that merely contains a member named
-            # 'categories' still gets recursed, so nothing nested inside
-            # it can hide from the scan.
-            if enc == "categorical" or (enc is None and "categories" in member and "codes" in member):
-                if reason := check(member, label):
-                    return reason
-            elif enc in (None, "dict") and (reason := walk_uns(label, member)):
+            if enc == "dataframe":
+                continue  # already walked above, via iter_dataframe_groups
+            # Check *and* recurse rather than choosing: _iter_string_element_targets
+            # recurses every unstamped group while a legacy categorical is
+            # exactly an unstamped group with categories, so picking one
+            # rule leaves the other's shape unscanned. Checking a container
+            # costs nothing (no categories child) and recursing a
+            # categorical finds nothing, so doing both cannot miss either.
+            if "categories" in member and _may_hold_masked_categories(member):
+                try:
+                    read_categories(member, label)
+                except MaskedCategoriesError as e:
+                    return str(e)
+            if enc in (None, "dict") and (reason := walk_uns(label, member)):
                 return reason
         return None
 
@@ -163,19 +193,30 @@ def masked_categories_error(f: h5py.File, ignore_obs_columns: Sequence[str] = ()
     return None
 
 
-def _masked_categories_open_error(path: str) -> str | None:
-    """Name the masked-categories column pandas' reader refused.
+def masked_categories_error_for_path(
+    path: str, *, ignore_obs_columns: Sequence[str] = (), best_effort: bool = False
+) -> str | None:
+    """:func:`masked_categories_error` for a path this module opens.
 
-    anndata cannot *read* a categorical whose categories are masked — pandas
-    raises "Categorical categories cannot be null" naming no column — so the
-    column is found again via h5py. Best-effort by design: the file is
-    already known bad, and a scan failure must not replace the original
-    error with a second traceback (the suppress swallows the re-raise from
-    an unrelated corruption).
+    Opening belongs here rather than at each call site — the write gate,
+    the ``open_h5ad`` naming scan, and the marker validator would each
+    otherwise carry their own ``h5py.File`` and their own answer to "what
+    if this is not an HDF5 file at all".
+
+    ``best_effort`` suppresses every failure and answers None: the two
+    read-only callers are describing a file already known to be bad, and a
+    scan that raises must not replace the error the caller already has.
     """
-    with suppress(Exception), h5py.File(path, "r") as f:
-        return masked_categories_error(f)
-    return None
+    if best_effort:
+        with suppress(Exception), h5py.File(path, "r") as f:
+            return masked_categories_error(f, ignore_obs_columns=ignore_obs_columns)
+        return None
+    # Not a guard: a non-HDF5 path holds no categoricals, and the caller's
+    # own open owns that failure.
+    if not h5py.is_hdf5(path):
+        return None
+    with h5py.File(path, "r") as f:
+        return masked_categories_error(f, ignore_obs_columns=ignore_obs_columns)
 
 
 @contextmanager
@@ -198,7 +239,9 @@ def open_h5ad(path: str, backed: Literal["r", "r+"] | None = "r"):
     try:
         adata = ad.read_h5ad(path, backed=backed)
     except ValueError as e:
-        if "Categorical categories cannot be null" in str(e) and (named := _masked_categories_open_error(path)):
+        if "Categorical categories cannot be null" in str(e) and (
+            named := masked_categories_error_for_path(path, best_effort=True)
+        ):
             raise ValueError(named) from e
         raise
     try:
@@ -468,22 +511,21 @@ def read_obs_column_names(path: str) -> list[str]:
         return read_column_order(f["obs"])
 
 
-def read_obs_categorical_values(path: str, column: str) -> tuple[set[str | NAType], str | None]:
+def read_obs_categorical_values(path: str, column: str) -> set[str | NAType]:
     """Read the unique category values for a categorical obs column.
 
-    Returns ``(values, corruption)``. The set can contain ``pd.NA``: a
-    nullable column's masked rows come through as NA (the annotation says
-    so, so pyright holds callers to an NA policy instead of letting
-    ``sorted``/``lower`` crash at runtime on the liver shape).
+    The set can contain ``pd.NA``: a nullable column's masked rows come
+    through as NA (the annotation says so, so pyright holds callers to an
+    NA policy instead of letting ``sorted``/``lower`` crash at runtime on
+    the liver shape).
 
-    Masked *categories* are different: that file is corrupt and anndata
-    itself cannot open it. This read-only helper is the one deliberate
-    bypass of the :func:`read_categories` chokepoint (#651) — principle
-    3's skip arm, so a diagnostic can still run on a corrupt file while
-    the repair is pending — and ``corruption`` carries the named reason
-    whenever that shape was read, so no caller can present a clean
-    verdict on a file anndata cannot open. Every write path refuses the
-    shape outright.
+    This is the one deliberate bypass of the :func:`read_categories`
+    chokepoint (#651): masked *categories* mean a corrupt file anndata
+    cannot open, and every write refuses that shape — but this helper
+    serves a read-only diagnostic, which elects principle 3's skip arm so
+    the file can still be diagnosed while the repair is pending. The
+    caller names the corruption from its own whole-file scan, so no clean
+    verdict on a corrupt file is possible.
 
     For categorical columns, HDF5 stores a small 'categories' array
     separately from the per-cell 'codes' array. This reads only the
@@ -498,16 +540,12 @@ def read_obs_categorical_values(path: str, column: str) -> tuple[set[str | NATyp
     with h5py.File(path, "r") as f:
         item = f["obs"][column]
         if isinstance(item, h5py.Group) and "categories" in item:
-            values = read_element(item["categories"])
-            corruption = None
-            if n_masked := int(pd.isna(values).sum()):
-                corruption = (
-                    f"obs column '{column}' has {n_masked} masked (null) categories — "
-                    "the file is corrupt and anndata cannot open it; repair the column upstream"
-                )
-            return set(values), corruption
+            # read_element, not read_categories: masked *categories* do not
+            # refuse here (principle 3's skip arm — see the docstring); the
+            # caller names the corruption from its own whole-file scan.
+            return set(read_element(item["categories"]))
         # Non-categorical: read the full element
-        return set(read_element(item)), None
+        return set(read_element(item))
 
 
 def read_var_gene_names(path: str) -> tuple[set[str], dict[str, str]]:
@@ -684,13 +722,8 @@ def read_categories(item: h5py.Group, subject: str) -> pd.Index:
         ValueError: The categories are masked, named via ``subject``.
     """
     cats = pd.Index(read_element(item["categories"]))
-    # A masked (pd.NA) category has no value a rewrite could keep —
-    # ``str(pd.NA)`` is ``"<NA>"`` — and none to compare against anything.
     if n_masked := int(pd.isna(cats).sum()):
-        raise ValueError(
-            f"{subject} has {n_masked} masked (null) categories — a masked "
-            "category has no value a rewrite could keep; repair the data upstream first"
-        )
+        raise MaskedCategoriesError(subject, n_masked)
     return cats
 
 
