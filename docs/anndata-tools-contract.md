@@ -282,7 +282,7 @@ selects by. Success then retires the previous snapshot
 | Path | Used by | Mechanism |
 |---|---|---|
 | **Copy-and-patch** | in-place surgical tools (rename, merge, backfill, replace_placeholder, copy_cap) | `snapshot_copy` / `snapshot_copy_hashed`: claim → streamed copy (digest inline) → h5py-patch the copy → unlink the claim on any failure. (convert's transplant additionally normalizes the copy's remaining nullable-string elements — `normalize_file_string_encodings`.) |
-| **Full rewrite** | anndata-based tools (compress, normalize, set_uns, …) | `write_h5ad`: every refusal (entry validation, masked strings) runs *before* `adata` is touched → profile normalization (`normalize_nullable_strings` — mask-0 nullable strings flattened to plain, dtype-only and value-identical) → edit log stamped → claim → `adata.write_h5ad` streams → unlink the claim on any failure |
+| **Full rewrite** | anndata-based tools (compress, normalize, set_uns, …) | `write_h5ad`: the masked-string refusal runs first — before `adata` is touched and before the source is hashed → profile normalization (`normalize_nullable_strings` — mask-0 nullable strings flattened to plain, dtype-only and value-identical) → entry validation + source hash (a validation failure after this point leaves only the value-identical normalization applied) → edit log stamped → claim → `adata.write_h5ad` streams → unlink the claim on any failure |
 
 Any destination h5ad — a snapshot or a converted output — is named and
 written through one of these two functions (scratch files in temp dirs are
