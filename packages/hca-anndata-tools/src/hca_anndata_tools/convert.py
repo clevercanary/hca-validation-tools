@@ -128,10 +128,12 @@ def convert_cellxgene_to_hca(
         # backstop.
         with h5py.File(path, "r") as source_f:
             # Ignore every obs column this pipeline replaces or deletes:
-            # the SRE strip, and the _UNS_TO_OBS broadcasts, which the
-            # transplant overwrites wholesale — a masked value in either
-            # never reaches the output.
-            replaced = tuple(_OBS_COLUMNS_TO_STRIP) + tuple(_UNS_TO_OBS)
+            # the SRE strip (unconditional), and the uns keys actually being
+            # broadcast — the transplant overwrites those wholesale, so a
+            # masked value there never reaches the output. A _UNS_TO_OBS
+            # column with no uns counterpart survives the copy untouched,
+            # so it must refuse here, not after the multi-gigabyte copy.
+            replaced = tuple(_OBS_COLUMNS_TO_STRIP) + tuple(uns_to_broadcast)
             if masked_err := masked_string_error(source_f, ignore_obs_columns=replaced):
                 return {"error": f"Refusing to convert: {masked_err}"}
         with h5py.File(path, "r") as _f:

@@ -352,11 +352,26 @@ def read_index(group: h5py.Group | h5py.Dataset | h5py.Datatype, name: str, labe
     Callers keep their own ``check_duplicate_ids``.
 
     Raises:
-        ValueError: The index contains missing values.
+        ValueError: The index contains missing values, or is a categorical
+            whose categories are masked (named here, before the read —
+            pandas' own message names no element).
     """
     import numpy as np
 
-    values = read_element(group[name])
+    item = group[name]
+    # A categorical index whose *categories* are masked would otherwise
+    # surface as pandas' unnamed "Categorical categories cannot be null"
+    # out of read_element (principle 11). Named in the shared reader so
+    # rename, backfill, and every other index read refuse identically —
+    # and before paying for the codes (read_categories is
+    # distinct-value-sized).
+    if (
+        isinstance(item, h5py.Group)
+        and "categories" in item
+        and (reason := masked_categories_reason(read_categories(item), f"{label} index '{name}'"))
+    ):
+        raise ValueError(reason)
+    values = read_element(item)
     missing = np.flatnonzero(pd.isna(values))
     if missing.size:
         raise ValueError(

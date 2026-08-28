@@ -2,6 +2,7 @@
 
 import json
 import re
+import shutil
 from pathlib import Path
 
 import anndata as ad
@@ -321,3 +322,29 @@ def test_convert_ignores_a_masked_column_the_uns_broadcast_overwrites(tmp_path):
     with h5py.File(result["output_path"]) as f:
         organism = f["obs/organism"]
         assert isinstance(organism, h5py.Group) and "categories" in organism  # the broadcast categorical
+
+
+def test_convert_refuses_a_masked_broadcast_column_before_the_copy(tmp_path, monkeypatch):
+    """The broadcast overwrite only covers uns keys actually present: with
+    uns['organism'] absent, a masked obs['organism'] survives the copy
+    untouched, so the preflight must refuse before the multi-gigabyte copy
+    is paid for (contract principle 7) — not at the post-copy backstop."""
+    path = create_cellxgene_h5ad(tmp_path / "cxg_masked_orphan_organism.h5ad")
+    with h5py.File(path, "r+") as f:
+        del f["uns/organism"]
+        n = f["obs"][obs_index_name(f["obs"])].shape[0]
+        make_plain_string_column(f["obs"], "organism", ["Homo sapiens"] * n)
+        make_nullable_string_array(f["obs"], "organism", masked=1)
+
+    copies: list[tuple] = []
+    real_copy2 = shutil.copy2
+    monkeypatch.setattr(
+        "hca_anndata_tools.convert.shutil.copy2",
+        lambda *args, **kwargs: copies.append(args) or real_copy2(*args, **kwargs),
+    )
+
+    result = convert_cellxgene_to_hca(str(path))
+
+    assert "obs/organism" in result.get("error", ""), result
+    assert "masked" in result["error"]
+    assert copies == []

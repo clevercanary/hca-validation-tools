@@ -15,7 +15,9 @@ from pathlib import Path
 import anndata as ad
 import h5py
 import numpy as np
+import pandas as pd
 import pytest
+from anndata.io import write_elem
 
 from hca_anndata_tools import rename_cell_ids
 from hca_anndata_tools._io import obs_index_name, read_obs_index
@@ -480,3 +482,28 @@ def test_rename_refuses_a_masked_obsm_frame_index(tmp_path):
     assert "error" in result
     assert "missing value" in result["error"]
     assert set(tmp_path.iterdir()) == before
+
+
+def test_rename_names_a_masked_categorical_index(hca_path):
+    """A categorical obs index whose categories are masked used to leak
+    pandas' unnamed 'Categorical categories cannot be null' out of the
+    broad handler (principle 11); the shared index reader now refuses it
+    by name, before the snapshot."""
+    with h5py.File(hca_path, "r+") as f:
+        obs = f["obs"]
+        ids = [v.decode() for v in obs["cellID"][:]]
+        del obs["cellID"]
+        write_elem(obs, "cellID", pd.Categorical(ids))
+        make_nullable_string_array(f["obs/cellID"], "categories", masked=1)
+
+    result = rename_cell_ids(
+        str(hca_path),
+        column="sample_id",
+        value="B1_0023",
+        prefix_from="MH_mix_",
+        prefix_to="MH_mix_BR1_",
+    )
+
+    assert "masked (null) categories" in result.get("error", ""), result
+    assert "obs index 'cellID'" in result["error"]
+    assert_no_snapshot_written(hca_path)
