@@ -494,3 +494,25 @@ def test_merge_refuses_masked_categories_by_name(tmp_path):
     assert "error" in result
     assert "masked (null) categories" in result["error"]
     assert set(tmp_path.iterdir()) == before
+
+
+def test_merge_refuses_a_masked_categories_bystander(tmp_path):
+    """Every write refuses a masked-categories file (#651) even when the
+    corruption sits in a column the merge never reads — enforced at the
+    snapshot chokepoint, so no fresh -edit- snapshot of a file anndata
+    cannot open."""
+    from anndata.io import write_elem
+
+    from hca_anndata_tools.testing import assert_no_snapshot_written, make_nullable_string_array
+
+    path = _make(tmp_path / "bystander.h5ad", values=["good", "typo", "good"])
+    with h5py.File(path, "r+") as f:
+        n = f["obs"][f["obs"].attrs.get("_index", "_index")].shape[0]
+        write_elem(f["obs"], "bystander", pd.Categorical(["x"] * n))
+        make_nullable_string_array(f["obs/bystander"], "categories", masked=1)
+
+    result = merge_obs_categories(str(path), column="tissue_label", from_value="typo", to_value="good")
+
+    assert "masked (null) categories" in result.get("error", ""), result
+    assert "'bystander'" in result["error"]
+    assert_no_snapshot_written(path)

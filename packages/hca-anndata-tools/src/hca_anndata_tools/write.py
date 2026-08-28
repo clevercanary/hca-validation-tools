@@ -11,10 +11,12 @@ import os
 import re
 import shutil
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
+
+import h5py
 
 from . import __version__
 from ._keys import EDIT_LOG_KEY, MASKED_STRING_REMEDY, PROVENANCE_KEY
@@ -150,8 +152,34 @@ def _claimed(output_path: str) -> Iterator[None]:
         raise
 
 
+def _refuse_masked_categories(path: str, ignore_obs_columns: Sequence[str]) -> None:
+    """The write-side masked-categories gate (#651, principle 8).
+
+    Every in-place surgical write snapshots through :func:`snapshot_copy` /
+    :func:`snapshot_copy_hashed`, so enforcing here covers every current and
+    future surgical tool by construction — including the ones that never
+    read a categorical (a link move, a column drop, a uns-only write) and
+    would otherwise stamp a fresh ``-edit-`` name onto a file anndata
+    cannot open. ``ignore_obs_columns`` exempts the obs columns the caller
+    deletes or replaces wholesale: removing the corrupt column IS the
+    repair, and the element never reaches the output. Runs before the
+    snapshot name is even claimed; distinct-value-sized reads only.
+    """
+    from ._io import masked_categories_error
+
+    # Signature check, not a guard: a file that is not HDF5 (or is
+    # truncated past its signature) has no categoricals to scan, and the
+    # caller's own open owns that failure — the gate's one job is the
+    # masked-categories shape.
+    if not h5py.is_hdf5(path):
+        return
+    with h5py.File(path, "r") as f:
+        if reason := masked_categories_error(f, ignore_obs_columns=ignore_obs_columns):
+            raise ValueError(reason)
+
+
 @contextlib.contextmanager
-def snapshot_copy(path: str) -> Iterator[str]:
+def snapshot_copy(path: str, *, ignore_masked_obs_columns: Sequence[str] = ()) -> Iterator[str]:
     """Yield the path of a fresh snapshot copy of ``path``, cleaning it up on error.
 
     Wraps ``shutil.copy2`` with the three things every copy-and-patch tool
@@ -182,6 +210,7 @@ def snapshot_copy(path: str) -> Iterator[str]:
         SameSecondSnapshotError: No free snapshot name was available, even
             after waiting out the second boundary.
     """
+    _refuse_masked_categories(path, ignore_masked_obs_columns)
     output_path = _claim_snapshot_path(path)
 
     with _claimed(output_path):
@@ -196,7 +225,7 @@ def snapshot_copy(path: str) -> Iterator[str]:
 
 
 @contextlib.contextmanager
-def snapshot_copy_hashed(path: str) -> Iterator[tuple[str, str]]:
+def snapshot_copy_hashed(path: str, *, ignore_masked_obs_columns: Sequence[str] = ()) -> Iterator[tuple[str, str]]:
     """:func:`snapshot_copy`, yielding the source's SHA-256 alongside the path.
 
     The digest is computed *during* the copy, so a caller that needs it for
@@ -214,6 +243,7 @@ def snapshot_copy_hashed(path: str) -> Iterator[tuple[str, str]]:
         SameSecondSnapshotError: No free snapshot name was available, even
             after waiting out the second boundary.
     """
+    _refuse_masked_categories(path, ignore_masked_obs_columns)
     output_path = _claim_snapshot_path(path)
 
     with _claimed(output_path):

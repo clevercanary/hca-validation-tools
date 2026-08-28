@@ -239,7 +239,16 @@ def strip_cap_annotations(path: str) -> dict:
                 "nothing_to_strip": True,
             }
 
-        with snapshot_copy_hashed(path) as (output_path, source_sha256), h5py.File(output_path, "a") as f_out:
+        # Masked categories refuse inside snapshot_copy_hashed (#651),
+        # exempting the CAP columns this tool removes — deleting them IS
+        # the repair, and CAP files are never repaired here.
+        with (
+            snapshot_copy_hashed(path, ignore_masked_obs_columns=obs_columns_present) as (
+                output_path,
+                source_sha256,
+            ),
+            h5py.File(output_path, "a") as f_out,
+        ):
             for key in uns_keys_present:
                 del f_out["uns"][key]
             if obs_columns_present:

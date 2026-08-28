@@ -25,7 +25,6 @@ import h5py
 
 from ._io import (
     direct_members,
-    masked_categories_error,
     read_edit_log_h5py,
     read_uns,
     update_column_order,
@@ -195,17 +194,13 @@ def drop_obs_columns(path: str, columns: list[str] | tuple[str, ...]) -> dict:
             # Palettes to remove with their columns. Resolved here, from the
             # same read that validated, so the write phase does no discovery.
             owned_uns_keys = list(refs.palettes.values())
-            # Every write refuses a masked-categories file (#651) — except
-            # the columns this call deletes: dropping the corrupt column IS
-            # the repair, and the element never reaches the output.
-            masked_err = masked_categories_error(f_in, ignore_obs_columns=requested)
 
         if problems:
             return {"error": "Refusing to drop: " + "; ".join(problems)}
-        if masked_err:
-            return {"error": f"Refusing to drop: {masked_err}"}
-
-        with snapshot_copy(path) as output_path:
+        # Masked categories refuse inside snapshot_copy (#651), exempting
+        # the columns this call deletes: dropping the corrupt column IS the
+        # repair, and the element never reaches the output.
+        with snapshot_copy(path, ignore_masked_obs_columns=requested) as output_path:
             # Defer the malformed-log cleanup until after the with-block closes the
             # output file, matching strip_forbidden_obs_columns: unlinking an open
             # HDF5 handle works on POSIX but raises on Windows, and the context

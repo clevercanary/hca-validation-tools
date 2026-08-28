@@ -388,7 +388,10 @@ def copy_cap_annotations(
         # --- Step 4: Write temp, copy target, transplant via h5py ---
         with (
             tempfile.TemporaryDirectory() as tmpdir,
-            snapshot_copy_hashed(target_path) as (output_path, target_sha256),
+            snapshot_copy_hashed(target_path, ignore_masked_obs_columns=cap_obs_columns(target_obs_columns)) as (
+                output_path,
+                target_sha256,
+            ),
         ):
             # The edit log is built here because the target digest comes from
             # the copy above, and it must reach temp_uns before the temp file

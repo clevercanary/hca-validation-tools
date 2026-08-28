@@ -507,3 +507,23 @@ def test_read_obs_categorical_values_names_masked_categories(tmp_path):
     assert "1 masked (null) categories" in corruption
     assert "anndata cannot open it" in corruption
     assert len(values) == 2  # the readable category plus pd.NA
+
+
+def test_masked_scan_recurses_past_a_decoy_categories_member(tmp_path):
+    """An unstamped uns group that merely CONTAINS a member named
+    'categories' is not a categorical — the scan recurses into it, so a
+    masked categorical nested inside cannot hide from the write gate."""
+    path = tmp_path / "decoy.h5ad"
+    adata = ad.AnnData(X=np.zeros((2, 1), dtype=np.float32), obs=pd.DataFrame(index=["c0", "c1"]))
+    adata.write_h5ad(path)
+    with h5py.File(path, "r+") as f:
+        legacy = f["uns"].create_group("legacy")
+        legacy.create_dataset("categories", data=np.array([b"just a name"]))
+        write_elem(legacy, "ann", pd.Categorical(["hi", "lo"]))
+        make_nullable_string_array(f["uns/legacy/ann"], "categories", masked=1)
+
+        reason = _io.masked_categories_error(f)
+
+    assert reason is not None
+    assert "uns['legacy']['ann']" in reason
+    assert "masked (null) categories" in reason

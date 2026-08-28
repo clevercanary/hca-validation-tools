@@ -24,7 +24,6 @@ from anndata.io import write_elem
 
 from ._io import (
     direct_members,
-    masked_categories_error,
     read_column_order,
     read_edit_log_h5py,
     read_uns,
@@ -237,16 +236,9 @@ def rename_obs_column(path: str, column: str, new_name: str) -> dict:
             problems = _validate_request(obs, uns, column, new_name, refs)
             palette = refs.palettes.get(column)
             batch_condition = refs.batch_condition_declared
-            # Every write refuses a masked-categories file (#651): a link
-            # move reads no categorical, so without this the tool would
-            # snapshot a file anndata cannot open. No exemption — renaming
-            # repairs nothing.
-            masked_err = masked_categories_error(f_in)
 
         if problems:
             return {"error": "Refusing to rename: " + "; ".join(problems)}
-        if masked_err:
-            return {"error": f"Refusing to rename: {masked_err}"}
 
         # h5py closes before snapshot_copy's cleanup runs, which is the ordering
         # the unlink needs: removing an open HDF5 handle raises on Windows.

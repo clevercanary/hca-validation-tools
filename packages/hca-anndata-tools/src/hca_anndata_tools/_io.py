@@ -144,7 +144,11 @@ def masked_categories_error(f: h5py.File, ignore_obs_columns: Sequence[str] = ()
                 continue
             label = f"{prefix}['{key}']"
             enc = encoding_of(member)
-            if enc == "categorical" or (enc is None and "categories" in member):
+            # An unstamped group counts as a categorical only with BOTH
+            # children — a bare group that merely contains a member named
+            # 'categories' still gets recursed, so nothing nested inside
+            # it can hide from the scan.
+            if enc == "categorical" or (enc is None and "categories" in member and "codes" in member):
                 if reason := check(member, label):
                     return reason
             elif enc in (None, "dict") and (reason := walk_uns(label, member)):

@@ -390,3 +390,34 @@ def test_extract_markers_reports_non_string_values_instead_of_crashing():
     to flag — main's behavior — not crashed on with 'no attribute strip'."""
     categories = {1.5, True, "GFAP"}
     assert _extract_marker_genes_from_categories(categories) == {"1.5", "True", "GFAP"}
+
+
+def test_marker_validation_names_corruption_it_never_reads(tmp_path):
+    """The whole-file backstop (#651): masked categories in a column this
+    validator never touches still surface under `corruption` — a clean
+    verdict on a file anndata cannot open is impossible no matter where
+    the corruption sits."""
+    n_obs = 4
+    obs = pd.DataFrame(
+        {
+            "organism_ontology_term_id": pd.Categorical(["NCBITaxon:9606"] * n_obs),
+            "test_labels": pd.Categorical(["typeA"] * n_obs),
+            "test_labels--marker_gene_evidence": pd.Categorical(["GFAP"] * n_obs),
+            "test_labels--cell_ontology_term_id": pd.Categorical(["CL:0000540"] * n_obs),
+            "tissue": pd.Categorical(["liver", "gut", "liver", "gut"]),
+        },
+        index=[f"cell_{i}" for i in range(n_obs)],
+    )
+    var = pd.DataFrame({"feature_name": ["GFAP"]}, index=["ENSG00000131095"])
+    X = sp.random(n_obs, 1, density=0.5, format="csr", dtype=np.float32)
+    path = tmp_path / "bystander_corrupt.h5ad"
+    ad.AnnData(X=X, obs=obs, var=var).write_h5ad(path)
+    with h5py.File(path, "r+") as f:
+        make_nullable_string_array(f["obs/tissue"], "categories", masked=1)
+
+    result = validate_marker_genes(str(path))
+
+    assert "error" not in result, result.get("error")
+    assert len(result["corruption"]) == 1
+    assert "obs column 'tissue'" in result["corruption"][0]
+    assert "anndata cannot open it" in result["corruption"][0]

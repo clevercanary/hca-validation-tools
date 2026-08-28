@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import contextlib
+
+import h5py
 import pandas as pd
 
 from ._gencode import load_gencode_reference
 from ._io import (
     DEFAULT_PLACEHOLDERS,
     is_missing_value,
+    masked_categories_error,
     read_obs_categorical_values,
     read_obs_column_names,
     read_var_gene_names,
@@ -197,7 +201,16 @@ def validate_marker_genes(path: str, annotation_set: str | None = None) -> dict:
         }
         # This validator is h5py-only, so nothing upstream of it fails on a
         # file anndata cannot open — the diagnostic still runs (principle
-        # 3's skip arm), and this key is how the corruption gets said.
+        # 3's skip arm), and this key is how the corruption gets said. The
+        # per-column notices cover the columns this validator reads; the
+        # whole-file scan backstops the rest, so a clean verdict on a
+        # corrupt file is impossible no matter where the corruption sits.
+        # Best-effort (read-only): an unrelated scan failure must not
+        # replace the diagnostic.
+        if not corruption:
+            with contextlib.suppress(Exception), h5py.File(path, "r") as f:
+                if hit := masked_categories_error(f):
+                    corruption.append(hit.split(" — ")[0] + " — the file is corrupt and anndata cannot open it")
         if corruption:
             result["corruption"] = corruption
         return result

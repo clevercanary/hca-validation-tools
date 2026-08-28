@@ -20,7 +20,6 @@ from pathlib import Path
 import h5py
 
 from ._io import (
-    masked_categories_error,
     read_edit_log_h5py,
     read_group,
     update_column_order,
@@ -128,12 +127,6 @@ def strip_forbidden_obs_columns(path: str) -> dict:
             if obs is None:
                 return {"error": "File has no obs group"}
             present = [c for c in _OBS_COLUMNS_TO_STRIP if c in obs]
-            # Every write refuses a masked-categories file (#651) — except
-            # the columns this tool deletes: stripping the corrupt column
-            # IS the repair. Skipped when there is nothing to strip: the
-            # no-op path writes nothing, and the scan can raise on
-            # unrelated corruption.
-            masked_err = masked_categories_error(f_in, ignore_obs_columns=_OBS_COLUMNS_TO_STRIP) if present else None
 
         if not present:
             return {
@@ -144,10 +137,11 @@ def strip_forbidden_obs_columns(path: str) -> dict:
                 ),
             }
 
-        if masked_err:
-            return {"error": f"Refusing to strip: {masked_err}"}
-
-        with snapshot_copy(path) as output_path:
+        # Masked categories refuse inside snapshot_copy (#651), exempting
+        # the columns this tool deletes — stripping the corrupt column IS
+        # the repair. The no-op return above means a file with nothing to
+        # strip is never scanned at all.
+        with snapshot_copy(path, ignore_masked_obs_columns=_OBS_COLUMNS_TO_STRIP) as output_path:
             # Defer the malformed-log cleanup until after the with-block closes
             # the output file — calling os.remove on an open HDF5 handle works
             # on POSIX (unlinked-but-open inode) but raises on Windows, and even

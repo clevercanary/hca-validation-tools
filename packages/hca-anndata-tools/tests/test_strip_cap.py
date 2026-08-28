@@ -456,3 +456,41 @@ def test_strip_refuses_a_slash_past_the_report_cap(tmp_path):
     assert "error" in result
     assert "malformed" in result["error"]
     assert not list(tmp_path.glob("*-edit-*.h5ad"))
+
+
+def test_strip_cap_refuses_a_masked_categories_bystander(tmp_path):
+    """Every write refuses a masked-categories file (#651) — enforced at
+    the snapshot chokepoint, which this h5py-only writer reaches with no
+    categorical read of its own."""
+    from anndata.io import write_elem
+
+    from hca_anndata_tools.testing import assert_no_snapshot_written, make_nullable_string_array
+
+    path = _make_cap_file(tmp_path / "bystander.h5ad", uns_layout="legacy")
+    with h5py.File(path, "r+") as f:
+        n = f["obs"][f["obs"].attrs.get("_index", "_index")].shape[0]
+        write_elem(f["obs"], "bystander", pd.Categorical(["x"] * n))
+        make_nullable_string_array(f["obs/bystander"], "categories", masked=1)
+
+    result = strip_cap_annotations(path)
+
+    assert "masked (null) categories" in result.get("error", ""), result
+    assert "'bystander'" in result["error"]
+    assert_no_snapshot_written(path)
+
+
+def test_strip_cap_of_a_corrupt_cap_column_is_the_repair(tmp_path):
+    """The delete exemption at the chokepoint: a masked-categories CAP
+    column is exactly what this tool removes, so the strip proceeds and
+    the output opens in anndata — CAP files are never repaired here."""
+    from hca_anndata_tools.testing import make_nullable_string_array
+
+    path = _make_cap_file(tmp_path / "corrupt-cap.h5ad", uns_layout="legacy")
+    with h5py.File(path, "r+") as f:
+        make_nullable_string_array(f[f"obs/{_CAP_COLUMNS[0]}"], "categories", masked=1)
+
+    result = strip_cap_annotations(path)
+
+    assert "error" not in result, result.get("error")
+    out = ad.read_h5ad(result["output_path"])
+    assert _CAP_COLUMNS[0] not in out.obs.columns

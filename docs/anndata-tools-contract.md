@@ -78,19 +78,26 @@ And the conversion to the profile splits cleanly on the mask:
   tools are covered by construction rather than by per-tool guards
   (principle 8, read-side; the guards this replaced are deleted, #651).
   And the reads are only half of it: **every write refuses the shape**,
-  including the h5py-only writers that never read a categorical
+  enforced where principle 8 says enforcement lives — inside
+  `snapshot_copy` / `snapshot_copy_hashed`, the chokepoint every in-place
+  surgical write passes through. A tool that never reads a categorical
   (`rename_obs_column`, `drop_obs_columns`, `strip_forbidden_obs_columns`,
-  `set_producer_uns`, `copy_cap`'s target) — they preflight with the
-  shared `masked_categories_error` scan before their snapshot, so no
-  write ever stamps a fresh `-edit-` name onto a file anndata cannot
-  open. The one exemption: obs columns the write itself deletes or
-  replaces wholesale (drop/strip of the corrupt column IS the repair;
-  a CAP column being overwritten never reaches the output — CAP files
-  are never repaired here). The one bypass is read-only:
+  `strip_cap_annotations`, `set_producer_uns`, `copy_cap`'s target) and a
+  tool that reads only its own columns (`rename_cell_ids`, `merge`,
+  `backfill`, `replace_placeholder_values`) are covered identically, for
+  bystander corruption included, and so is whatever surgical tool joins
+  the class next — no write ever stamps a fresh `-edit-` name onto a file
+  anndata cannot open. (Full rewrites and convert refuse earlier, at
+  `open_h5ad`; per-tool preflights like `copy_cap`'s remain a courtesy
+  that fronts expensive work.) The one exemption: obs columns the write
+  itself deletes or replaces wholesale (drop/strip of the corrupt column
+  IS the repair; a CAP column being overwritten never reaches the output
+  — CAP files are never repaired here). The one bypass is read-only:
   `validate_marker_genes` writes nothing and elects principle 3's skip
-  arm so a corrupt file can still be diagnosed — and its result carries
-  a `corruption` notice naming the shape and saying anndata cannot open
-  the file, so no clean verdict can be presented on it.
+  arm so a corrupt file can still be diagnosed — its result carries a
+  `corruption` notice naming the shape and saying anndata cannot open
+  the file, backed by a whole-file scan, so no clean verdict can be
+  presented no matter where the corruption sits.
 
 ## The anndata pin, precisely
 
@@ -126,7 +133,7 @@ determines what files it must accept.
 |---|---|---|---|
 | **Read-only** | Reads, never writes | `get_summary`, `view_data`, `get_storage_info`, `validate_*` | Anything anndata reads. No exceptions. |
 | **Copy-and-transplant** | Reads source, writes a *fresh* file through anndata, moves elements between files | `convert_cellxgene_to_hca` | Anything anndata reads on the source side; the file it writes contains only profile encodings |
-| **In-place surgical** | Snapshots, then rewrites *specific elements* preserving the rest byte-for-byte | `rename_cell_ids`, `merge_obs_categories`, `backfill_obs_from_source` (target side), `replace_placeholder_values`, and the h5py-only writers (`rename_obs_column`, `drop_obs_columns`, `strip_forbidden_obs_columns`, `set_producer_uns`, `copy_cap_annotations`) | Reads everything; normalizes the elements it rewrites (#641); refuses **before the snapshot** for masked values it would have to keep, and for masked *categories* anywhere in the file (#651) — exempting only elements the write itself deletes or replaces wholesale |
+| **In-place surgical** | Snapshots, then rewrites *specific elements* preserving the rest byte-for-byte | `rename_cell_ids`, `merge_obs_categories`, `backfill_obs_from_source` (target side), `replace_placeholder_values`, and the h5py-only writers (`rename_obs_column`, `drop_obs_columns`, `strip_forbidden_obs_columns`, `strip_cap_annotations`, `set_producer_uns`, `copy_cap_annotations`) | Reads everything; normalizes the elements it rewrites (#641); refuses **before the snapshot** for masked values it would have to keep, and for masked *categories* anywhere in the file (#651) — exempting only elements the write itself deletes or replaces wholesale |
 | **Full rewrite** | Streams the whole file through anndata's writer | `compress_h5ad`, `normalize_raw` | Reads everything; the file it writes contains only profile encodings (nullable input: #641 normalize-on-write) |
 
 A tool's *read* side is never allowed to be stricter than its class requires.
@@ -419,9 +426,15 @@ other placeholder-looking value through curator-reviewed mappings.
    as redundant (principle 13). Inspection gained the `masked` dict so
    the report can distinguish the masked verdict from the normalizable
    one (principle 10). Amended same day: **every write refuses the
-   shape**, not only the categorical-reading ones — the h5py-only
-   writers preflight via the shared `masked_categories_error` scan,
-   exempting only obs columns the write itself deletes or replaces
-   wholesale; the sole bypass is the read-only `validate_marker_genes`,
-   which skips per principle 3 and reports the named corruption in a
-   `corruption` result key instead of refusing.
+   shape**, not only the categorical-reading ones — exempting only obs
+   columns the write itself deletes or replaces wholesale; the sole
+   bypass is the read-only `validate_marker_genes`, which skips per
+   principle 3 and reports the named corruption in a `corruption`
+   result key instead of refusing. Amended again 2026-08-28 after a
+   fresh adversarial run refuted the universal quantifier a second
+   time (per-tool preflights left the four categorical-reading
+   surgical tools and `strip_cap_annotations` uncovered for bystander
+   corruption): enforcement now lives inside `snapshot_copy` /
+   `snapshot_copy_hashed` (principle 8), the per-tool guards are
+   deleted, and the marker validator's `corruption` key is backed by a
+   whole-file scan.
