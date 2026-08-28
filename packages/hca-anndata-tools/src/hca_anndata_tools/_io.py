@@ -922,7 +922,7 @@ def masked_string_error(f: h5py.File, ignore_obs_columns: Sequence[str] = ()) ->
             # Skip anything under an ignored obs column — the column itself
             # or its categories child (a categorical group's nullable
             # encoding lives one level down).
-            parts = parent.name.split("/")  # ('', 'obs') or ('', 'obs', col)
+            parts = (parent.name or "").split("/")  # ('', 'obs') or ('', 'obs', col)
             if len(parts) >= 2 and parts[1] == "obs":
                 owner = name if len(parts) == 2 else parts[2]
                 if owner in ignore_obs_columns:
