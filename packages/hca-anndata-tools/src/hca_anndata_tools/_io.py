@@ -17,10 +17,10 @@ import h5py
 import pandas as pd
 from anndata.io import read_elem, write_elem
 
-from ._keys import EDIT_LOG_KEY, PROVENANCE_KEY, UNWRITABLE_REMEDY
+from ._keys import EDIT_LOG_KEY, MASKED_STRING_REMEDY, PROVENANCE_KEY
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Iterator, Sequence
 
     import numpy as np
     from pandas.api.typing import NAType
@@ -55,6 +55,45 @@ def is_missing_value(value: str | NAType, placeholders: set[str]) -> bool:
     return not s or s.lower() in placeholders
 
 
+def iter_dataframe_groups(f: h5py.File) -> Iterator[tuple[str, h5py.Group]]:
+    """Every dataframe group anndata serializes, as ``(label, group)``.
+
+    The one roster: obs, var, raw/var, each obsm/varm/raw-varm frame, and
+    dataframes nested anywhere in uns. Both the masked-categories open scan
+    and the file normalization pass walk this, so a frame added to one
+    cannot silently fall out of the other.
+    """
+    for path in ("obs", "var", "raw/var"):
+        group = f.get(path)
+        if isinstance(group, h5py.Group):
+            yield path, group
+    for holder_name in ("obsm", "varm", "raw/varm"):
+        holder = f.get(holder_name)
+        if not isinstance(holder, h5py.Group):
+            continue
+        label_prefix = "raw.varm" if holder_name == "raw/varm" else holder_name
+        for key in holder:
+            member = holder[key]
+            if isinstance(member, h5py.Group) and encoding_of(member) == "dataframe":
+                yield f"{label_prefix}['{key}']", member
+
+    def walk_uns(prefix: str, group: h5py.Group) -> Iterator[tuple[str, h5py.Group]]:
+        for key in group:
+            member = group[key]
+            if not isinstance(member, h5py.Group):
+                continue
+            label = f"{prefix}['{key}']"
+            enc = encoding_of(member)
+            if enc == "dataframe":
+                yield label, member
+            elif enc in (None, "dict"):
+                yield from walk_uns(label, member)
+
+    uns = f.get("uns")
+    if isinstance(uns, h5py.Group):
+        yield from walk_uns("uns", uns)
+
+
 def _masked_categories_open_error(path: str) -> str | None:
     """Name the masked-categories column pandas' reader refused.
 
@@ -64,32 +103,15 @@ def _masked_categories_open_error(path: str) -> str | None:
     already known bad, and a scan failure must not replace the original
     error with a second traceback.
     """
-
-    def scan(group: h5py.Group, label: str) -> str | None:
-        for col in group:
-            item = group[col]
-            if (
-                isinstance(item, h5py.Group)
-                and "categories" in item
-                and (reason := masked_categories_reason(read_categories(item), f"{label} column '{col}'"))
-            ):
-                return reason
-        return None
-
     with suppress(Exception), h5py.File(path, "r") as f:
-        for frame in ("obs", "var", "raw/var"):
-            group = f.get(frame)
-            if isinstance(group, h5py.Group) and (reason := scan(group, frame)):
-                return reason
-        # obsm/varm DataFrames carry their own categoricals and are read by
-        # anndata just the same.
-        for holder_name in ("obsm", "varm"):
-            holder = f.get(holder_name)
-            if not isinstance(holder, h5py.Group):
-                continue
-            for key in holder:
-                frame_group = holder[key]
-                if isinstance(frame_group, h5py.Group) and (reason := scan(frame_group, f"{holder_name}['{key}']")):
+        for label, group in iter_dataframe_groups(f):
+            for col in group:
+                item = group[col]
+                if (
+                    isinstance(item, h5py.Group)
+                    and "categories" in item
+                    and (reason := masked_categories_reason(read_categories(item), f"{label} column '{col}'"))
+                ):
                     return reason
     return None
 
@@ -182,15 +204,27 @@ def is_writable_element(item: h5py.Group | h5py.Dataset | h5py.Datatype) -> bool
     are both stamped ``array``, and both are Datasets. It would equally *pass*
     an unstamped Group, which then fails at the write.
 
-    Since hca-validation-tools#637 the readers cope with every encoding anndata
-    knows, so a Group element can still be inspected and converted — what it
-    cannot be is renamed or recompressed.
-
-    One predicate, two call sites — :func:`require_writable_index` refuses
-    before a tool takes its snapshot, ``get_storage_info`` reports the same
-    verdict during inspection. They must not be able to disagree.
+    Since hca-validation-tools#637 the readers cope with every encoding
+    anndata knows, and since #641 this predicate is *informational*: it
+    feeds ``get_storage_info``'s report, and no writer refuses on it —
+    ``replace_string_dataset`` normalizes a group target to a plain Dataset
+    as it rewrites it, which is why "writable in place" here means
+    "byte-preserving replace" rather than "rewritable at all".
     """
     return isinstance(item, h5py.Dataset)
+
+
+def require_nullable_children(item: h5py.Group) -> None:
+    """Raise the named corruption error for a truncated values+mask group.
+
+    A stamped nullable group missing a child is a corrupt file (a truncated
+    write); reaching into it directly would leak a raw KeyError. One spelling
+    for every consumer — the readers and the normalizing writers alike.
+    """
+    enc = encoding_of(item) or "nullable"
+    for child in ("values", "mask"):
+        if child not in item:
+            raise ValueError(f"'{item.name}' is stamped '{enc}' but has no '{child}' dataset — the file is corrupt")
 
 
 def read_element(item: h5py.Group | h5py.Dataset | h5py.Datatype) -> np.ndarray:
@@ -229,12 +263,7 @@ def read_element(item: h5py.Group | h5py.Dataset | h5py.Datatype) -> np.ndarray:
     import numpy as np
 
     if isinstance(item, h5py.Group) and (enc := encoding_of(item)) and enc.startswith("nullable-"):
-        # A stamped values+mask group missing a child is a corrupt file (a
-        # truncated write); anndata's reader would leak a raw HDF5 KeyError.
-        # Checked here so every caller gets the named error at once.
-        for child in ("values", "mask"):
-            if child not in item:
-                raise ValueError(f"'{item.name}' is stamped '{enc}' but has no '{child}' dataset — the file is corrupt")
+        require_nullable_children(item)
 
     with warnings.catch_warnings():
         # anndata warns on every read of a legacy unstamped element. encoding_of
@@ -323,11 +352,26 @@ def read_index(group: h5py.Group | h5py.Dataset | h5py.Datatype, name: str, labe
     Callers keep their own ``check_duplicate_ids``.
 
     Raises:
-        ValueError: The index contains missing values.
+        ValueError: The index contains missing values, or is a categorical
+            whose categories are masked (named here, before the read —
+            pandas' own message names no element).
     """
     import numpy as np
 
-    values = read_element(group[name])
+    item = group[name]
+    # A categorical index whose *categories* are masked would otherwise
+    # surface as pandas' unnamed "Categorical categories cannot be null"
+    # out of read_element (principle 11). Named in the shared reader so
+    # rename, backfill, and every other index read refuse identically —
+    # and before paying for the codes (read_categories is
+    # distinct-value-sized).
+    if (
+        isinstance(item, h5py.Group)
+        and "categories" in item
+        and (reason := masked_categories_reason(read_categories(item), f"{label} index '{name}'"))
+    ):
+        raise ValueError(reason)
+    values = read_element(item)
     missing = np.flatnonzero(pd.isna(values))
     if missing.size:
         raise ValueError(
@@ -337,37 +381,13 @@ def read_index(group: h5py.Group | h5py.Dataset | h5py.Datatype, name: str, labe
     return values
 
 
-def unwritable_element_reason(item: h5py.Group | h5py.Dataset | h5py.Datatype, subject: str) -> str | None:
-    """Why ``item`` cannot be written back, or None if it can.
-
-    Checked before a tool takes a snapshot, not after: without it the write
-    failure lands *after* a multi-gigabyte copy, with a message about a missing
-    ``.compression`` attribute (hca-validation-tools#641). What counts as
-    writable is :func:`is_writable_element`.
-
-    One clause for every refusal of this kind — ``subject`` is what varies, and
-    naming something the reader can find in the file is the caller's job. No
-    "Refusing to X" prefix: callers that collect problems into a list add their
-    own, and :func:`require_writable_index` adds it for callers that return one
-    refusal directly.
-    """
-    if is_writable_element(item):
-        return None
-    return (
-        f"{subject} uses the "
-        f"'{encoding_of(item) or 'unstamped ' + type(item).__name__.lower()}' encoding, "
-        f"{UNWRITABLE_REMEDY}"
-    )
-
-
 def masked_categories_reason(cats: pd.Index, subject: str) -> str | None:
     """Why these categories block a rewrite, or None if none are masked.
 
     A masked (pd.NA) category has no value a rewrite could keep —
     ``str(pd.NA)`` is ``"<NA>"`` — and none to compare against anything.
-    Shared the way :func:`unwritable_element_reason` is, so the wording
-    cannot drift between the tools that rewrite categoricals; ``subject``
-    is what varies.
+    Shared so the wording cannot drift between the tools that rewrite
+    categoricals; ``subject`` is what varies.
     """
     n_masked = int(pd.isna(cats).sum())
     if not n_masked:
@@ -376,19 +396,6 @@ def masked_categories_reason(cats: pd.Index, subject: str) -> str | None:
         f"{subject} has {n_masked} masked (null) categories — a masked "
         "category has no value a rewrite could keep; repair the column upstream first"
     )
-
-
-def require_writable_index(
-    group: h5py.Group | h5py.Dataset | h5py.Datatype, name: str, tool: str, label: str = "obs"
-) -> str | None:
-    """Refuse an index this package can read but cannot write back.
-
-    ``label`` names *which* index, the way :func:`read_index`'s does — an obsm
-    frame's index is usually called ``_index`` too, so the dataset name alone
-    cannot tell a caller which frame to fix.
-    """
-    reason = unwritable_element_reason(group[name], f"{label} index '{name}'")
-    return f"Refusing to {tool}: {reason}" if reason else None
 
 
 def read_obs_index(path: str) -> list[str]:
@@ -705,10 +712,37 @@ def storage_like(ds: h5py.Dataset) -> dict:
 
 
 def replace_string_dataset(parent: h5py.Group, name: str, data: np.ndarray) -> None:
-    """Delete and recreate a string dataset, preserving its attrs and storage."""
+    """Delete and recreate a string dataset, preserving its attrs and storage.
+
+    A ``nullable-string-array`` *group* target is normalized as it is
+    rewritten: the new data lands as a plain ``string-array`` Dataset with
+    storage settings carried from the old ``values`` child — every write
+    fixes the format in its own path (#641), so no caller has to refuse an
+    encoding or send the curator to another tool. Callers guarantee ``data``
+    holds no pd.NA (their masked checks run before the snapshot).
+    """
     ds = parent[name]
-    attrs = dict(ds.attrs)
-    storage = storage_like(ds)
+    if isinstance(ds, h5py.Group):
+        if "codes" in ds and "categories" in ds:
+            # A categorical group target — anndata writes a CategoricalIndex
+            # this way. Flatten it: ``data`` is already the full per-row
+            # array, and the row-shaped ``codes`` child carries the storage
+            # settings. ``ordered`` is categorical machinery with no meaning
+            # on a plain dataset, so it does not survive.
+            layout = ds["codes"]
+            dropped = ("encoding-type", "encoding-version", "ordered")
+        else:
+            require_nullable_children(ds)
+            layout = ds["values"]
+            dropped = ("encoding-type", "encoding-version")
+        storage = storage_like(layout)  # pyright: ignore[reportArgumentType]
+        # Preserve whatever else a producer stamped on the group; only what
+        # describes the old encoding changes, because that is what changed.
+        attrs = {k: v for k, v in ds.attrs.items() if k not in dropped}
+        attrs |= {"encoding-type": "string-array", "encoding-version": "0.2.0"}
+    else:
+        attrs = dict(ds.attrs)
+        storage = storage_like(ds)
     del parent[name]
     new_ds = parent.create_dataset(name, data=data, dtype=h5py.string_dtype(encoding="utf-8"), **storage)
     for key, attr_value in attrs.items():
@@ -830,6 +864,115 @@ def replace_categorical_column(parent: h5py.Group, col: str, categories: list[st
     codes_ds = grp.create_dataset("codes", data=codes, **codes_storage)
     codes_ds.attrs["encoding-type"] = "array"
     codes_ds.attrs["encoding-version"] = "0.2.0"
+
+
+def _iter_string_element_targets(f: h5py.File) -> Iterator[tuple[h5py.Group, str]]:
+    """``(parent, name)`` of every element that may hold string values.
+
+    Dataframe members via :func:`iter_dataframe_groups` (a categorical
+    member targets its ``categories`` child), plus the *group-shaped*
+    string carriers nested in uns: nullable arrays (values+mask groups) and
+    the ``categories`` child of a bare uns categorical. Plain h5py Datasets
+    in uns are already plain and are deliberately not walked.
+    One walker for the normalizer, so an element cannot fall between the
+    dataframe and uns halves.
+    """
+    for _, df in iter_dataframe_groups(f):
+        # Sorted: direct_members is a set, and both encodings_normalized and
+        # the masked-element message should be stable between runs.
+        for name in sorted(direct_members(df)):
+            item = df[name]
+            if isinstance(item, h5py.Group):
+                if "categories" in item:
+                    yield item, "categories"
+                else:
+                    yield df, name
+
+    def walk_uns(group: h5py.Group) -> Iterator[tuple[h5py.Group, str]]:
+        for key in group:
+            member = group[key]
+            if not isinstance(member, h5py.Group):
+                continue
+            enc = encoding_of(member)
+            if enc in (None, "dict"):
+                yield from walk_uns(member)
+            elif enc == "dataframe":
+                continue  # covered via iter_dataframe_groups
+            elif "categories" in member:
+                yield member, "categories"
+            else:
+                yield group, key
+
+    uns = f.get("uns")
+    if isinstance(uns, h5py.Group):
+        yield from walk_uns(uns)
+
+
+def _nullable_string_targets(f: h5py.File) -> Iterator[tuple[h5py.Group, str, str]]:
+    """The ``(parent, name, loc)`` triples the file normalizer acts on."""
+    for parent, name in _iter_string_element_targets(f):
+        target = parent[name]
+        if isinstance(target, h5py.Group) and encoding_of(target) == "nullable-string-array":
+            yield parent, name, f"{parent.name}/{name}".removeprefix("/")
+
+
+def masked_string_error(f: h5py.File, ignore_obs_columns: Sequence[str] = ()) -> str | None:
+    """The named refusal for masked nullable-string elements, or None.
+
+    Judged off the tiny on-disk ``mask`` datasets alone — cheap enough to
+    run read-only against a multi-gigabyte *source* before any copy is made
+    (convert), and against an output before anything is rewritten. Names
+    every masked element with its count in one message.
+
+    ``ignore_obs_columns``: obs columns the caller's pipeline deletes before
+    writing (convert's SRE strip) — a masked value there never reaches the
+    output, so refusing on it would make the preflight stricter than the
+    chokepoint it fronts for.
+    """
+    import numpy as np
+
+    masked: list[str] = []
+    for parent, name, loc in _nullable_string_targets(f):
+        if ignore_obs_columns:
+            # Skip anything under an ignored obs column — the column itself
+            # or its categories child (a categorical group's nullable
+            # encoding lives one level down).
+            parts = (parent.name or "").split("/")  # ('', 'obs') or ('', 'obs', col)
+            if len(parts) >= 2 and parts[1] == "obs":
+                owner = name if len(parts) == 2 else parts[2]
+                if owner in ignore_obs_columns:
+                    continue
+        target = parent[name]
+        require_nullable_children(target)  # pyright: ignore[reportArgumentType]
+        if n_masked := int(np.count_nonzero(np.asarray(target["mask"][:]))):  # pyright: ignore[reportIndexIssue]
+            masked.append(f"{loc} ({n_masked})")
+    if masked:
+        return f"{', '.join(masked)} hold(s) {MASKED_STRING_REMEDY}"
+    return None
+
+
+def normalize_file_string_encodings(f: h5py.File) -> tuple[list[str], str | None]:
+    """Normalize every nullable-string element in an open file to the profile.
+
+    Walks :func:`_iter_string_element_targets` — dataframe indexes, plain
+    columns, and categorical ``categories``, plus bare arrays and
+    categoricals nested in uns. Masked elements refuse via
+    :func:`masked_string_error` before anything is rewritten; the rewrite
+    itself is :func:`replace_string_dataset`'s normalizing branch, so this
+    pass and the in-place tools produce the identical on-disk shape.
+    """
+    if err := masked_string_error(f):
+        return [], err
+    normalized: list[str] = []
+    # Materialized before rewriting: replace_string_dataset deletes and
+    # recreates elements inside groups the generator would still be
+    # iterating, and mutating an HDF5 group mid-iteration is undefined.
+    for parent, name, loc in list(_nullable_string_targets(f)):
+        # The values child alone: the mask is known all-zero, and reading
+        # the assembled nullable element would pay for it a second time.
+        replace_string_dataset(parent, name, read_element(parent[name]["values"]))  # pyright: ignore[reportIndexIssue, reportArgumentType]
+        normalized.append(loc)
+    return normalized, None
 
 
 def verify_categorical_integrity(

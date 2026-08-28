@@ -71,7 +71,9 @@ And the conversion to the profile splits cleanly on the mask:
   read-wide guarantee: a *categorical* whose **categories** are masked is a
   file anndata itself cannot read ("Categorical categories cannot be
   null"), so principle 2 does not apply to it — tools that hit it owe a
-  named refusal, nothing more.
+  named refusal, nothing more. The naming lives in the shared readers
+  (`open_h5ad` for columns, `read_index` for indexes), so tools are covered
+  by construction rather than by per-tool guards (principle 8, read-side).
 
 ## The anndata pin, precisely
 
@@ -107,7 +109,7 @@ determines what files it must accept.
 |---|---|---|---|
 | **Read-only** | Reads, never writes | `get_summary`, `view_data`, `get_storage_info`, `validate_*` | Anything anndata reads. No exceptions. |
 | **Copy-and-transplant** | Reads source, writes a *fresh* file through anndata, moves elements between files | `convert_cellxgene_to_hca` | Anything anndata reads on the source side; the file it writes contains only profile encodings |
-| **In-place surgical** | Snapshots, then rewrites *specific elements* preserving the rest byte-for-byte | `rename_cell_ids`, `merge_obs_categories`, `backfill_obs_from_source` (target side), `replace_placeholder_values` | Reads everything; refuses **before the snapshot** when a touched element fails `is_writable_element` |
+| **In-place surgical** | Snapshots, then rewrites *specific elements* preserving the rest byte-for-byte | `rename_cell_ids`, `merge_obs_categories`, `backfill_obs_from_source` (target side), `replace_placeholder_values` | Reads everything; normalizes the elements it rewrites (#641); refuses **before the snapshot** only for masked values it would have to keep |
 | **Full rewrite** | Streams the whole file through anndata's writer | `compress_h5ad`, `normalize_raw` | Reads everything; the file it writes contains only profile encodings (nullable input: #641 normalize-on-write) |
 
 A tool's *read* side is never allowed to be stricter than its class requires.
@@ -179,10 +181,15 @@ target is constrained.
    it refused readable source files and leaked h5py internals on the liver
    shape.)
 
-7. **Refuse before expensive work, with the remedy named.** A tool that will
-   fail must fail before its multi-gigabyte snapshot or stream, and the
-   message names the element, the encoding, and the tracking issue (#641) —
-   not after, and never with a library-internal message.
+7. **Refuse before expensive work — and only for data problems.** A tool
+   that will fail must fail before its multi-gigabyte snapshot or stream,
+   naming the element and the problem, never with a library-internal
+   message. Since #641 encodings are never a reason to refuse: **every
+   write normalizes what it touches, in its own path** — the funnel
+   in-memory, `replace_string_dataset` as it rewrites an element, convert
+   over its whole copy — so no tool depends on a side effect of another
+   tool. What remains refusable is data: masked (null) string values, which
+   no rewrite may flatten.
 
 8. **Enforcement lives at the chokepoint; per-tool preflights are a courtesy.**
    The write boundary is enforced once, at the funnel every full rewrite
@@ -200,14 +207,14 @@ target is constrained.
 
 ### Agreement
 
-10. **Inspection and enforcement answer from the same predicate.** A file
-    `get_storage_info` calls clean cannot be refused by a tool for encoding
-    reasons, and everything it flags is flagged for the reason a tool would
-    actually refuse. When inspection cannot see everything enforcement
-    checks, the inspection report says so explicitly (today the scanned
-    dataframes — obs, var, raw.var, obsm frames — cover indexes, plain
-    nullable columns, and categorical categories; varm and uns are checked
-    only by the write funnel).
+10. **Inspection tells the truth about what writes will do.** Since #641
+    no tool refuses an encoding, so the report's `unsupported` list is
+    informational: the nullable-string elements a write would normalize.
+    A file it calls clean is written byte-compatibly; a flagged file is
+    normalized element-by-element as writes touch it. Where inspection
+    sees less than the writers reach (varm and uns are normalized but not
+    inspected), the report's docs say so. Masked string values remain the
+    one refusal, and every tool names them.
 
 ### Errors
 
@@ -248,7 +255,7 @@ target is constrained.
 
 16. **Skills state the boundary by class, not by tool list.** The gate in
     curate/evaluate speaks in the taxonomy's terms ("in-place surgical tools
-    refuse up front; full rewrites are blocked at the write — #641") rather
+    refuse up front; full rewrites normalize at the write funnel") rather
     than naming tools one by one, so a new tool does not silently fall out of
     the prose. Any specific behavioral claim a skill does make about a tool
     must be pinned by a test.
@@ -276,8 +283,8 @@ selects by. Success then retires the previous snapshot
 
 | Path | Used by | Mechanism |
 |---|---|---|
-| **Copy-and-patch** | in-place surgical tools (rename, merge, backfill, replace_placeholder, copy_cap) | `snapshot_copy` / `snapshot_copy_hashed`: claim → streamed copy (digest inline) → h5py-patch the copy → unlink the claim on any failure |
-| **Full rewrite** | anndata-based tools (compress, normalize, convert, set_uns, …) | `write_h5ad`: profile refusal (`nullable_string_locations`) *before* mutating `adata` → edit log stamped → claim → `adata.write_h5ad` streams → unlink the claim on any failure |
+| **Copy-and-patch** | in-place surgical tools (rename, merge, backfill, replace_placeholder, copy_cap) | `snapshot_copy` / `snapshot_copy_hashed`: claim → streamed copy (digest inline) → h5py-patch the copy → unlink the claim on any failure. (convert's transplant additionally normalizes the copy's remaining nullable-string elements — `normalize_file_string_encodings`.) |
+| **Full rewrite** | anndata-based tools (compress, normalize, set_uns, …) | `write_h5ad`: the masked-string refusal runs first — before `adata` is touched and before the source is hashed → profile normalization (`normalize_nullable_strings` — mask-0 nullable strings flattened to plain, dtype-only and value-identical) → entry validation + source hash (a validation failure after this point leaves only the value-identical normalization applied) → edit log stamped → claim → `adata.write_h5ad` streams → unlink the claim on any failure |
 
 Any destination h5ad — a snapshot or a converted output — is named and
 written through one of these two functions (scratch files in temp dirs are
@@ -331,7 +338,9 @@ other placeholder-looking value through curator-reviewed mappings.
    the shared predicate's. Fix: the source side just reads; the target side
    refuses through `unwritable_element_reason` like every other surgical
    tool. In scope for #642 because the branch's own SKILL.md already claims
-   backfill works on these files.
+   backfill works on these files. (Superseded by Decision 4: #641 deleted
+   `unwritable_element_reason` — the target side now normalizes what it
+   rewrites, and only masked values refuse.)
 
 3. **NA policy: tools never translate; they refuse, skip, or propagate.**
    - *Refuse* = stop the whole operation with a named error, because one
@@ -346,12 +355,18 @@ other placeholder-looking value through curator-reviewed mappings.
    schema sometimes defines — and it is *curator* work, done deliberately
    per column, never a tool's silent default (principle 3).
    `replace_placeholder_values` on masked nullable categories: refuse by
-   name (the target is unwritable there anyway).
+   name (a masked category has no value a rewrite could keep — Decision 4).
 
-4. **#641 is normalize-on-write.** Flatten nullable → plain where the mask
-   is all zero (covers every liver file we hold); refuse by name where any
-   mask bit is set. Not "nullable write support" — principle 5 rules that
-   out as a goal.
+4. **#641 is normalize-on-write — implemented 2026-08-27.** Flatten
+   nullable → plain where the mask is all zero (covers every liver file we
+   hold); refuse by name where any mask bit is set. Not "nullable write
+   support" — principle 5 rules that out as a goal. Implementation:
+   `write.normalize_nullable_strings` (the funnel, in-memory),
+   `_io.normalize_file_string_encodings` (convert's h5py pass), and
+   `_io.replace_string_dataset` (in-place tools normalize the elements they
+   rewrite); full-rewrite results carry `encodings_normalized`. Amended
+   same day: normalization happens in **every** write path — no tool
+   refuses an encoding or relies on another tool's write as the remedy.
 
 5. **"Leave blank → becomes NaN" in the curation instructions is correct,
    and profile-compatible — for the columns it governs.** The mechanism:

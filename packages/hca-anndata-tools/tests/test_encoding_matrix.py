@@ -19,11 +19,14 @@ Two facts discovered while building this, worth keeping on record:
   it as a defect to refuse rather than an encoding to support.
 """
 
+import warnings
+
 import anndata as ad
 import h5py
 import numpy as np
 import pandas as pd
 import pytest
+import scipy.sparse as sp
 
 from hca_anndata_tools._io import (
     encoding_of,
@@ -31,6 +34,7 @@ from hca_anndata_tools._io import (
     read_element,
     read_obs_index,
 )
+from hca_anndata_tools.compress import compress_h5ad
 from hca_anndata_tools.merge_categories import merge_obs_categories
 from hca_anndata_tools.rename import rename_cell_ids
 from hca_anndata_tools.storage import get_storage_info
@@ -110,10 +114,10 @@ def test_masked_index_written_by_anndata_is_refused_by_name(tmp_path):
         read_obs_index(str(path))
 
 
-def test_unique_valued_nullable_column_survives_and_is_governed(tmp_path):
+def test_unique_valued_nullable_column_is_flagged_then_normalized(tmp_path):
     """All-unique values escape strings_to_categoricals, so the column lands
     as a genuine nullable-string-array — the report flags it, and the write
-    funnel refuses the round-trip by name before any bytes."""
+    funnel normalizes the round-trip to the plain profile (#641)."""
     path = tmp_path / "unique_col.h5ad"
     obs = pd.DataFrame({"lib_id": pd.array(["L1", "L2", "L3"], dtype="string")}, index=["c1", "c2", "c3"])
     write_h5ad_with_nullable_strings(ad.AnnData(X=np.zeros((3, 2), dtype=np.float32), obs=obs), path)
@@ -123,16 +127,55 @@ def test_unique_valued_nullable_column_survives_and_is_governed(tmp_path):
     assert "obs/lib_id" in get_storage_info(str(path))["encodings"]["unsupported"]
 
     result = write_h5ad(ad.read_h5ad(path), str(path), _entry())
+    assert "error" not in result, result.get("error")
+    assert "obs['lib_id']" in result["encodings_normalized"]
+    with h5py.File(result["output_path"]) as f:
+        assert encoding_of(f["obs/lib_id"]) == "string-array"
+    assert get_storage_info(result["output_path"])["encodings"]["unsupported_count"] == 0
+
+
+def test_compress_normalizes_the_anndata_written_matrix(tmp_path):
+    """End to end on anndata-authored files: the full liver-shaped matrix —
+    nullable index, nullable categorical categories, numeric nullables —
+    goes through compress_h5ad and comes out entirely inside the profile,
+    values intact. This is the #641 definition of done."""
+    path = tmp_path / "matrix.h5ad"
+    write_h5ad_with_nullable_strings(_matrix_adata(), path)
+    assert get_storage_info(str(path))["encodings"]["unsupported_count"] > 0
+
+    result = compress_h5ad(str(path))
+
+    assert "error" not in result, result.get("error")
+    assert "obs index" in result["encodings_normalized"]
+    enc = get_storage_info(result["output_path"])["encodings"]
+    assert enc["unsupported_count"] == 0
+    assert enc["obs"]["index"] == "string-array"
+    out = ad.read_h5ad(result["output_path"])
+    assert list(out.obs_names) == ["c1", "c2", "c3"]
+    assert list(out.obs["cat_nullable_cats"]) == ["m", "n", "m"]
+    # Numeric nullables are inside the profile and survive untouched.
+    assert str(out.obs["int_nullable"].dtype) == "Int64"
+
+
+def test_masked_column_written_by_anndata_is_refused_at_the_funnel(tmp_path):
+    """The masked half of #641's boundary, on an anndata-authored shape: a
+    masked plain column (write_elem route) refuses at the funnel by name."""
+    path = _masked_column_h5ad(tmp_path)
+
+    result = compress_h5ad(str(path))
+
     assert "error" in result
-    assert "obs['lib_id']" in result["error"]
-    assert "hca-validation-tools#641" in result["error"]
+    assert "obs['sample_id']" in result["error"]
+    assert "masked (null) string" in result["error"]
 
 
-def test_masked_column_via_write_elem_reads_and_reports(tmp_path):
-    """A masked plain column cannot come out of AnnData.write_h5ad (the
-    categorical conversion swallows it), but write_elem — anndata's own
-    serializer, and what transplant code uses — produces it. The selector
-    path must read it and report the masked rows."""
+def _masked_column_h5ad(tmp_path):
+    """A file whose obs carries a masked plain nullable-string column.
+
+    write_elem, not write_h5ad: AnnData's convenience layer would convert
+    the column to a categorical (strings_to_categoricals) and swallow the
+    shape entirely.
+    """
     path = tmp_path / "masked_col.h5ad"
     adata = ad.AnnData(X=np.zeros((3, 2), dtype=np.float32), obs=pd.DataFrame(index=["c1", "c2", "c3"]))
     adata.write_h5ad(path)
@@ -140,6 +183,15 @@ def test_masked_column_via_write_elem_reads_and_reports(tmp_path):
         obs = ad.io.read_elem(f["obs"])
         obs["sample_id"] = pd.array(["s1", pd.NA, "s1"], dtype="string")
         ad.io.write_elem(f, "obs", obs)
+    return path
+
+
+def test_masked_column_via_write_elem_reads_and_reports(tmp_path):
+    """A masked plain column cannot come out of AnnData.write_h5ad (the
+    categorical conversion swallows it), but write_elem — anndata's own
+    serializer, and what transplant code uses — produces it. The selector
+    path must read it and report the masked rows."""
+    path = _masked_column_h5ad(tmp_path)
 
     with h5py.File(path) as f:
         assert encoding_of(f["obs/sample_id"]) == "nullable-string-array"
@@ -206,3 +258,200 @@ def _entry() -> list[dict]:
             "description": "matrix test",
         }
     ]
+
+
+def test_funnel_normalizes_categorical_index_and_bare_uns_shapes(tmp_path, sample_h5ad):
+    """The nullable dtype can hide a level down: a CategoricalIndex whose
+    categories are StringDtype, and bare uns arrays/categoricals — all the
+    read-back shapes of #638-style files. The funnel normalizes every one
+    (an earlier revision missed these and anndata raised after streaming X).
+    """
+    import shutil
+
+    src = tmp_path / "cat_index.h5ad"
+    shutil.copy2(sample_h5ad, src)
+    adata = ad.read_h5ad(src)
+    adata.obs.index = pd.CategoricalIndex(pd.array([f"c{i}" for i in range(adata.n_obs)], dtype="string"))
+    adata.uns["grades"] = pd.Categorical(pd.array(["hi", "lo"], dtype="string"))
+    adata.uns["tags"] = pd.array(["t1", "t2"], dtype="string")
+
+    result = write_h5ad(adata, str(src), _entry())
+
+    assert "error" not in result, result.get("error")
+    assert {"obs index", "uns['grades']", "uns['tags']"} <= set(result["encodings_normalized"])
+    enc = get_storage_info(result["output_path"])["encodings"]
+    assert enc["unsupported_count"] == 0
+    # The container stays categorical — in-profile — with its categories
+    # child normalized; flattening it was the fresh-verifier regression.
+    assert enc["obs"]["index"] == "categorical"
+    out = ad.read_h5ad(result["output_path"])
+    assert list(out.obs_names) == [f"c{i}" for i in range(adata.n_obs)]
+
+
+def test_funnel_leaves_a_plain_string_categorical_index_untouched(tmp_path):
+    """Principle 10's clean-file guarantee, pinned: a plain string
+    CategoricalIndex is in-profile and unflagged, so the funnel must not
+    rewrite or report it (the fresh-verifier round caught it doing both) —
+    and a NaN entry in one is code -1, also in-profile, so it must not be
+    refused either."""
+    from hca_anndata_tools.write import normalize_nullable_strings
+
+    adata = ad.AnnData(X=np.zeros((3, 2), dtype=np.float32), obs=pd.DataFrame(index=["c1", "c2", "c3"]))
+    adata.obs.index = pd.CategoricalIndex(["c1", "c2", "c3"])
+    adata.uns["tbl"] = pd.DataFrame({"v": [1.0, 2.0, 3.0]}, index=pd.CategoricalIndex(["a", np.nan, "b"]))
+
+    normalized, masked = normalize_nullable_strings(adata)
+
+    assert normalized == [] and masked == []
+
+
+def test_file_walk_normalizes_a_bare_uns_categorical(tmp_path):
+    """convert's h5py pass covers uns categoricals too: anndata writes a
+    bare uns Categorical of StringDtype with a nullable-string-array
+    categories child, and the walker must normalize it — the contract's
+    'only profile encodings' claim has no uns carve-out."""
+    from hca_anndata_tools._io import normalize_file_string_encodings
+
+    path = tmp_path / "uns_cat.h5ad"
+    adata = ad.AnnData(X=np.zeros((2, 2), dtype=np.float32), obs=pd.DataFrame(index=["c1", "c2"]))
+    adata.uns["grades"] = pd.Categorical(pd.array(["hi", "lo", "hi"], dtype="string"))
+    write_h5ad_with_nullable_strings(adata, path)
+    with h5py.File(path) as f:
+        assert encoding_of(f["uns/grades/categories"]) == "nullable-string-array"
+
+    with h5py.File(path, "r+") as f:
+        normalized, err = normalize_file_string_encodings(f)
+
+    assert err is None
+    assert "uns/grades/categories" in normalized
+    with h5py.File(path) as f:
+        assert encoding_of(f["uns/grades/categories"]) == "string-array"
+
+
+def test_normalize_raw_reports_encodings_normalized(tmp_path):
+    """The skills claim every write_h5ad-based tool reports what it
+    normalized — pin it for normalize_raw, not just compress."""
+    from hca_anndata_tools.normalize import normalize_raw
+
+    path = tmp_path / "raw_nullable.h5ad"
+    n = 4
+    obs = pd.DataFrame(
+        {"lib": pd.array([f"L{i}" for i in range(n)], dtype="string")},
+        index=[f"c{i}" for i in range(n)],
+    )
+    X = sp.random(n, 3, density=0.9, format="csr", dtype=np.float32)
+    X.data = np.round(X.data * 10) + 1
+    write_h5ad_with_nullable_strings(ad.AnnData(X=X, obs=obs), path)
+
+    result = normalize_raw(str(path))
+
+    assert "error" not in result, result.get("error")
+    assert "obs['lib']" in result["encodings_normalized"]
+
+
+def test_funnel_leaves_a_numeric_categorical_index_alone(tmp_path):
+    """Flattening a numeric CategoricalIndex would hand anndata's string
+    writer integers — a post-stream TypeError on files that write fine. Its
+    serialization is in-profile as it stands, so the funnel must not touch
+    it (caught by review on the first cut)."""
+    path = tmp_path / "numeric_cat_idx.h5ad"
+    adata = ad.AnnData(X=np.zeros((3, 2), dtype=np.float32), obs=pd.DataFrame(index=["c1", "c2", "c3"]))
+    adata.uns["tbl"] = pd.DataFrame({"v": [1.0, 2.0]}, index=pd.CategoricalIndex([10, 20]))
+    adata.write_h5ad(path)
+
+    out = ad.read_h5ad(path)
+    result = write_h5ad(out, str(path), _entry())
+
+    assert "error" not in result, result.get("error")
+    assert "encodings_normalized" not in result
+
+
+def test_everything_stock_anndata_writes_still_writes_through_the_funnel(tmp_path):
+    """The no-regression invariant behind this branch's review lesson.
+
+    The funnel once regressed by flattening *numeric* categorical indexes —
+    a shape no hand-picked test imagined, caught only by review. This test
+    replaces imagination with enumeration: for every generated single-axis
+    variant, if stock anndata writes it, write_h5ad must write it too, with
+    the values intact. New dtype handling that narrows the writable domain
+    fails here mechanically.
+    """
+    base_obs = {"col": ["a", "b", "a"]}
+    base_index = ["c1", "c2", "c3"]
+
+    def build(index=None, extra_col=None, uns_value=None):
+        obs = pd.DataFrame(dict(base_obs), index=pd.Index(base_index))
+        if extra_col is not None:
+            obs["extra"] = extra_col
+        adata = ad.AnnData(X=np.zeros((3, 2), dtype=np.float32), obs=obs)
+        if index is not None:
+            # Assigned post-construction: the AnnData constructor coerces
+            # non-str indexes to str (with a warning), so building through
+            # it would silently test a different shape than intended — the
+            # original regression repro assigned exactly this way.
+            adata.obs.index = pd.Index(index)
+        if uns_value is not None:
+            adata.uns["value"] = uns_value
+        return adata
+
+    variants = {
+        "baseline": {},
+        "index_categorical_str": {"index": pd.CategoricalIndex(base_index)},
+        "index_categorical_int": {"index": pd.CategoricalIndex([1, 2, 3])},
+        "index_int": {"index": [1, 2, 3]},
+        "col_categorical_str": {"extra_col": pd.Categorical(["x", "y", "x"])},
+        "col_categorical_int": {"extra_col": pd.Categorical([1, 2, 1])},
+        "col_int64_nullable": {"extra_col": pd.array([1, pd.NA, 3], dtype="Int64")},
+        "col_boolean_nullable": {"extra_col": pd.array([True, pd.NA, False], dtype="boolean")},
+        "col_float_nan": {"extra_col": [1.0, np.nan, 2.0]},
+        "col_int_plain": {"extra_col": [1, 2, 3]},
+        "col_bool_plain": {"extra_col": [True, False, True]},
+        "uns_numeric_cat_index_df": {"uns_value": pd.DataFrame({"v": [1.0, 2.0]}, index=pd.CategoricalIndex([10, 20]))},
+        "uns_str_cat_index_df": {"uns_value": pd.DataFrame({"v": [1.0, 2.0]}, index=pd.CategoricalIndex(["a", "b"]))},
+        "uns_str_cat_nan_index_df": {
+            "uns_value": pd.DataFrame({"v": [1.0, 2.0, 3.0]}, index=pd.CategoricalIndex(["a", np.nan, "b"]))
+        },
+        "index_categorical_str_with_nan": {"index": pd.CategoricalIndex(["c1", np.nan, "c3"])},
+        "uns_categorical": {"uns_value": pd.Categorical(["x", "y"])},
+        "uns_str_array": {"uns_value": np.array(["p", "q"], dtype=object)},
+        "uns_nested_dict": {"uns_value": {"deep": {"arr": np.array([1, 2])}}},
+    }
+
+    failures = []
+    for name, kwargs in variants.items():
+        stock = tmp_path / f"stock-{name}.h5ad"
+        try:
+            build(**kwargs).write_h5ad(stock)
+        except Exception:
+            continue  # stock anndata refuses it: outside this invariant
+        result = write_h5ad(build(**kwargs), str(stock), _entry())
+        if "error" in result:
+            failures.append(f"{name}: {result['error'][:120]}")
+            continue
+        with warnings.catch_warnings():
+            # Reading an int-indexed file back makes anndata coerce the
+            # index to str with an ImplicitModificationWarning — a property
+            # of the deliberately tested shape, not a defect in the write.
+            warnings.simplefilter("ignore")
+            before = ad.read_h5ad(stock)
+            after = ad.read_h5ad(result["output_path"])
+        if [str(i) for i in after.obs_names] != [str(i) for i in before.obs_names]:
+            failures.append(f"{name}: obs_names changed")
+        for col in before.obs.columns:
+            if list(after.obs[col].astype(str)) != list(before.obs[col].astype(str)):
+                failures.append(f"{name}: column {col!r} values changed")
+    assert not failures, failures
+
+
+def test_funnel_does_not_flatten_an_object_numeric_categorical_index():
+    """object-dtype categories are not necessarily strings — a categorical
+    index over object-boxed numbers must not be flattened into non-strings
+    for anndata's string writer (suppressed-review catch)."""
+    from hca_anndata_tools.write import normalize_nullable_strings
+
+    adata = ad.AnnData(X=np.zeros((3, 2), dtype=np.float32), obs=pd.DataFrame(index=["c1", "c2", "c3"]))
+    adata.obs.index = pd.CategoricalIndex(np.array([1, 2, 3], dtype=object))
+
+    normalized, masked = normalize_nullable_strings(adata)
+
+    assert normalized == [] and masked == []

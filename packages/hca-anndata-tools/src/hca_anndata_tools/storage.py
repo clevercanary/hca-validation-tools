@@ -82,14 +82,16 @@ def _mask_count(item: h5py.Group | h5py.Dataset | h5py.Datatype) -> int | None:
 def _dataframe_encodings(df: h5py.Group, path: str, index_name: str) -> tuple[dict, list[str]]:
     """Encodings of a dataframe's index, its columns, and its categoricals' categories.
 
-    Returns the per-dataframe report and the on-disk paths this package can
-    read but cannot write back, per :func:`~hca_anndata_tools._io.is_writable_element`
-    — indexes, plain nullable columns, and categorical ``categories`` alike,
-    so this report and the write funnel cannot disagree on a dataframe.
-    Categorical ``categories`` are reported because they block a write exactly
-    as an index does — in the files that motivated this
+    Returns the per-dataframe report and the nullable-string paths —
+    indexes, plain columns, and categorical ``categories`` alike.
+    Informational: every write normalizes the flagged elements it touches
+    (#641); nothing refuses them, and only masked string *values* refuse
+    anywhere.
+    Categorical ``categories`` are reported just like indexes and plain
+    columns — in the files that motivated this
     (hca-validation-tools#638) a categorical's categories were themselves a
-    nullable group, and ``merge_obs_categories`` refuses on precisely that.
+    nullable group; since #641 the tools normalize that shape as they
+    rewrite it, and only *masked* categories refuse.
 
     Members are read through :func:`~hca_anndata_tools._io.direct_members`
     because ``index_name`` comes from the file rather than the caller, and
@@ -109,8 +111,21 @@ def _dataframe_encodings(df: h5py.Group, path: str, index_name: str) -> tuple[di
         # state. None is reserved for "the group has no index dataset at all".
         index_enc = encoding_of(index) or "unstamped"
         index_masked = _mask_count(index)
-        if not is_writable_element(index):
+        # Nullable-string only, like the column and categories rules below:
+        # a categorical or nullable-numeric index group is in-profile and
+        # nothing refuses it (rename flattens a categorical index as it
+        # rewrites it). A categorical index can still hide the nullable
+        # dtype in its *categories* child — flagged like a column's, so the
+        # report and the funnel agree (principle 10).
+        if holds_string_values(index) and not is_writable_element(index):
             unsupported.append(f"{path}/{index_name}")
+        elif (
+            isinstance(index, h5py.Group)
+            and "categories" in index
+            and holds_string_values(index["categories"])
+            and not is_writable_element(index["categories"])
+        ):
+            unsupported.append(f"{path}/{index_name}/categories")
 
     categoricals: dict[str, int] = {}
     for name in sorted(members):
@@ -120,17 +135,21 @@ def _dataframe_encodings(df: h5py.Group, path: str, index_name: str) -> tuple[di
         if not isinstance(column, h5py.Group):
             continue
         if "categories" not in column:
-            # Only nullable *strings* are flagged: they are what the write
-            # funnel refuses. Nullable-integer/boolean columns pass through
-            # every tool (anndata writes them ungated), so flagging them
-            # would hard-stop curation on files nothing refuses.
+            # Only nullable *strings* are flagged: they are what writes
+            # normalize. Nullable-integer/boolean columns pass through
+            # every tool untouched (anndata writes them ungated), so
+            # flagging them would be noise nothing acts on.
             if holds_string_values(column):
                 unsupported.append(f"{path}/{name}")
             continue
         categories = column["categories"]
         label = encoding_of(categories) or "unstamped"
         categoricals[label] = categoricals.get(label, 0) + 1
-        if not is_writable_element(categories):
+        # Nullable-string only, like the plain-column rule above:
+        # nullable-*numeric* categories are inside the profile (anndata
+        # writes them ungated), and a full rewrite would emit them again —
+        # flagging them would send a curator on the remedy loop forever.
+        if holds_string_values(categories) and not is_writable_element(categories):
             unsupported.append(f"{path}/{name}/categories")
 
     return {
@@ -196,14 +215,11 @@ def get_storage_info(path: str) -> dict:
     The ``encodings`` block exists so an incompatible on-disk representation
     surfaces during inspection rather than as an opaque HDF5 error partway
     through a curation run on a multi-gigabyte file. Its ``unsupported`` list
-    names the paths this package can read but **cannot write back**, judged by
-    :func:`~hca_anndata_tools._io.is_writable_element` — the same predicate
-    ``rename_cell_ids`` and ``merge_obs_categories`` refuse on, so an
-    inspection called clean here cannot be rejected by those tools.
-    Full-rewrite tools (``compress_h5ad``, ``normalize_raw``) refuse at the
-    shared write funnel, before any bytes are written. A flagged file can
-    still be inspected and converted; it cannot be renamed or recompressed
-    until hca-validation-tools#641 lands.
+    names the nullable-string paths in the file — informational: since #641
+    nothing refuses them; every write normalizes the ones it touches (a full
+    rewrite normalizes everything), so the flags describe the file as it is
+    and clear as writes happen. Masked string values are the one hard stop —
+    no rewrite may flatten them.
 
     Args:
         path: Absolute path to an .h5ad file.

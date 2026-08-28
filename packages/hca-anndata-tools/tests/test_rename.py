@@ -15,7 +15,9 @@ from pathlib import Path
 import anndata as ad
 import h5py
 import numpy as np
+import pandas as pd
 import pytest
+from anndata.io import write_elem
 
 from hca_anndata_tools import rename_cell_ids
 from hca_anndata_tools._io import obs_index_name, read_obs_index
@@ -322,19 +324,30 @@ def test_rename_refuses_malformed_arguments(hca_path, column, value, prefix_from
     assert_no_snapshot_written(hca_path)
 
 
-def test_rename_refuses_an_unwritable_index_before_taking_a_snapshot(tmp_path):
-    """Fail before the copy, not after it — and for the write reason.
+def test_rename_normalizes_a_nullable_index_as_it_rewrites(tmp_path):
+    """Every write fixes the format in its own path (#641): rename on a
+    nullable-index file just works — replace_string_dataset writes the
+    renamed IDs as a plain string-array, no refusal, no other tool."""
+    path = create_hca_h5ad(tmp_path / "test.h5ad")
+    make_nullable_index(path)
 
-    The reads cope with a nullable index, but replace_string_dataset needs a
-    Dataset to copy storage properties from, so the write fails regardless
-    (hca-validation-tools#641). Without the guard that failure lands *after*
-    snapshot_copy_hashed has duplicated a multi-gigabyte file, with a message
-    about a missing .compression attribute.
+    result = rename_cell_ids(
+        str(path), column="sample_id", value="B1_0023", prefix_from="MH_mix_", prefix_to="MH_mix_BR1_"
+    )
 
-    The fixture carries a mask so the assertions can pin *which* guard fired:
-    the writable check refuses a nullable index whether or not it holds nulls,
-    so rename never reaches read_index's missing-value check for the obs index.
-    """
+    assert "error" not in result, result.get("error")
+    assert result["n_renamed"] == len(B1_IDS)
+    with h5py.File(result["output_path"], "r") as f:
+        obs = f["obs"]
+        idx = obs[obs_index_name(obs)]
+        assert isinstance(idx, h5py.Dataset)  # normalized, not a values+mask group
+        assert "MH_mix_BR1_AAA" in idx.asstr()[:]
+
+
+def test_rename_refuses_a_masked_index_before_taking_a_snapshot(tmp_path):
+    """The one remaining encoding-adjacent refusal is a data problem: a
+    masked index has cells with no ID, refused by read_index before the
+    snapshot."""
     path = create_hca_h5ad(tmp_path / "test.h5ad")
     make_nullable_index(path, masked=1)
 
@@ -344,11 +357,7 @@ def test_rename_refuses_an_unwritable_index_before_taking_a_snapshot(tmp_path):
     )
 
     assert "error" in result
-    assert "nullable-string-array" in result["error"]
-    assert "#641" in result["error"]
-    assert "cannot write back" in result["error"]
-    assert "missing value" not in result["error"]
-    # the decisive part: no snapshot was written
+    assert "missing value" in result["error"]
     assert set(tmp_path.iterdir()) == before
 
 
@@ -408,3 +417,93 @@ def test_rename_selects_rows_from_a_nullable_string_selector(tmp_path):
     assert "MH_mix_AAA" in after.obs_names  # masked selector row: untouched
     assert "MH_mix_BR1_CCC" in after.obs_names
     assert "MH_mix_BR1_GGG" in after.obs_names
+
+
+def test_rename_flattens_a_categorical_index(tmp_path):
+    """anndata writes a CategoricalIndex as a categorical *group* — a valid
+    file, not a corrupt one. The rewrite flattens it to a plain string-array
+    with the renamed IDs (an earlier revision raised a false 'file is
+    corrupt' error here, after the snapshot)."""
+    import pandas as pd
+
+    ids = [cell_id for cell_id, _ in HCA_TEST_ROWS]
+    samples = [sample for _, sample in HCA_TEST_ROWS]
+    obs = pd.DataFrame({"sample_id": pd.Categorical(samples)}, index=pd.CategoricalIndex(ids))
+    adata = ad.AnnData(X=np.zeros((len(ids), 2), dtype=np.float32), obs=obs)
+    path = tmp_path / "cat_idx.h5ad"
+    adata.write_h5ad(path)
+    with h5py.File(path) as f:
+        assert isinstance(f["obs/_index"], h5py.Group)  # the shape under test
+
+    result = rename_cell_ids(
+        str(path), column="sample_id", value="B1_0023", prefix_from="MH_mix_", prefix_to="MH_mix_BR1_"
+    )
+
+    assert "error" not in result, result.get("error")
+    with h5py.File(result["output_path"]) as f:
+        idx = f["obs/_index"]
+        assert isinstance(idx, h5py.Dataset)
+        assert "ordered" not in idx.attrs
+        assert "MH_mix_BR1_AAA" in idx.asstr()[:]
+
+
+def test_rename_normalizes_nullable_obsm_frame_indexes_too(tmp_path):
+    """The liver-shaped real case: obs index AND an obsm frame's own index
+    both nullable. Both are rewritten — and therefore both normalized —
+    by the same replace_string_dataset path."""
+    path = create_hca_h5ad(tmp_path / "obsm.h5ad", obsm_dataframe=True)
+    make_nullable_index(path)
+    make_nullable_index(path, frame="obsm/per_cell_scores")
+
+    result = rename_cell_ids(
+        str(path), column="sample_id", value="B1_0023", prefix_from="MH_mix_", prefix_to="MH_mix_BR1_"
+    )
+
+    assert "error" not in result, result.get("error")
+    with h5py.File(result["output_path"]) as f:
+        for frame in ("obs", "obsm/per_cell_scores"):
+            grp = f[frame]
+            idx = grp[obs_index_name(grp)]
+            assert isinstance(idx, h5py.Dataset), frame
+            assert "MH_mix_BR1_AAA" in idx.asstr()[:], frame
+
+
+def test_rename_refuses_a_masked_obsm_frame_index(tmp_path):
+    """A masked obsm sub-index is refused by read_index, by name, before
+    the snapshot — same contract as the obs index."""
+    path = create_hca_h5ad(tmp_path / "obsm_masked.h5ad", obsm_dataframe=True)
+    make_nullable_index(path, frame="obsm/per_cell_scores", masked=1)
+
+    before = set(tmp_path.iterdir())
+    result = rename_cell_ids(
+        str(path), column="sample_id", value="B1_0023", prefix_from="MH_mix_", prefix_to="MH_mix_BR1_"
+    )
+
+    assert "error" in result
+    assert "missing value" in result["error"]
+    assert set(tmp_path.iterdir()) == before
+
+
+def test_rename_names_a_masked_categorical_index(hca_path):
+    """A categorical obs index whose categories are masked used to leak
+    pandas' unnamed 'Categorical categories cannot be null' out of the
+    broad handler (principle 11); the shared index reader now refuses it
+    by name, before the snapshot."""
+    with h5py.File(hca_path, "r+") as f:
+        obs = f["obs"]
+        ids = [v.decode() for v in obs["cellID"][:]]
+        del obs["cellID"]
+        write_elem(obs, "cellID", pd.Categorical(ids))
+        make_nullable_string_array(f["obs/cellID"], "categories", masked=1)
+
+    result = rename_cell_ids(
+        str(hca_path),
+        column="sample_id",
+        value="B1_0023",
+        prefix_from="MH_mix_",
+        prefix_to="MH_mix_BR1_",
+    )
+
+    assert "masked (null) categories" in result.get("error", ""), result
+    assert "obs index 'cellID'" in result["error"]
+    assert_no_snapshot_written(hca_path)

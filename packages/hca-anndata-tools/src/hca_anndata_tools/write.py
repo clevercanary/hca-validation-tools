@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import functools
 import glob
 import hashlib
 import json
@@ -10,13 +11,13 @@ import os
 import re
 import shutil
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 from . import __version__
-from ._keys import EDIT_LOG_KEY, PROVENANCE_KEY, UNWRITABLE_REMEDY
+from ._keys import EDIT_LOG_KEY, MASKED_STRING_REMEDY, PROVENANCE_KEY
 
 if TYPE_CHECKING:
     from anndata import AnnData
@@ -466,24 +467,61 @@ def cleanup_previous_version(source_path: str, output_path: str) -> None:
             Path(source_path).unlink()  # write succeeded; stale file is harmless
 
 
-def nullable_string_locations(adata: AnnData) -> list[str]:
-    """Dataframe locations holding pandas nullable strings (StringDtype).
+def _convert_column(df, col: str) -> None:
+    df[col] = df[col].astype(object)
 
-    The write funnel's half of the write profile: anndata 0.11.4 raises on a
-    ``StringArray`` (``allow_write_nullable_strings`` defaults False, which is
-    the behaviour we want — our output must stay CellxGENE-compatible), but
-    only *after* it has already streamed X into the output file. Checking
-    here refuses before any bytes are written (hca-validation-tools#641
-    tracks converting instead of refusing). Covers the value a column holds
-    and the categories behind a categorical, everywhere anndata serializes
-    one: obs, var, raw.var, the obsm/varm/raw.varm frames, and uns —
-    including DataFrames and bare pandas arrays nested in uns dicts.
+
+def _convert_index(df) -> None:
+    df.index = df.index.astype(object)
+
+
+def _convert_index_categories(df) -> None:
+    df.index = df.index.rename_categories(df.index.categories.astype(object))
+
+
+def _convert_categories(df, col: str) -> None:
+    # Categories cannot hold pd.NA (pandas refuses), so this conversion is
+    # always safe; the codes are untouched.
+    df[col] = df[col].cat.rename_categories(df[col].cat.categories.astype(object))
+
+
+def _convert_uns_array(mapping, key: str) -> None:
+    mapping[key] = mapping[key].astype(object)
+
+
+def _convert_uns_categories(mapping, key: str) -> None:
+    cat = mapping[key]
+    mapping[key] = cat.rename_categories(cat.categories.astype(object))
+
+
+def normalize_nullable_strings(adata: AnnData) -> tuple[list[str], list[str]]:
+    """Convert pandas nullable strings to plain ``str``, in place; name what cannot be.
+
+    The write funnel's half of the write profile (contract principle 5):
+    anndata 0.11.4 raises on a ``StringArray`` — only *after* it has already
+    streamed X into the output — and the profile is plain ``string-array``
+    anyway, so the funnel normalizes instead of writing the nullable
+    encoding. Covers the value a column holds, the categories behind a
+    categorical, and every dataframe anndata serializes: obs, var, raw.var,
+    the obsm/varm/raw.varm frames, and uns — including DataFrames and bare
+    pandas arrays nested in uns dicts.
+
+    Returns ``(normalized, masked)`` — locations converted, and locations
+    holding masked (pd.NA) values. A masked string has **no** plain
+    representation: flattening would fabricate text for missing data and no
+    validator would object, so the caller refuses those by name. The walk
+    collects first and converts after, so when anything is masked *nothing*
+    has been touched — a refusal leaves ``adata`` exactly as passed.
+
+    The conversion itself is dtype-only: values are identical afterwards
+    (``StringDtype`` → ``object``-backed ``str``; a categorical keeps its
+    codes and gets its categories' dtype converted), and re-running it is a
+    no-op. A caller whose write later fails keeps the normalized dtypes —
+    lossless, and the retry writes the same bytes.
     """
     import pandas as pd
 
     def is_nullable_string(dtype) -> bool:
-        if isinstance(dtype, pd.CategoricalDtype):
-            return is_nullable_string(dtype.categories.dtype)
         return isinstance(dtype, pd.StringDtype)
 
     frames = [("obs", adata.obs), ("var", adata.var)]
@@ -493,7 +531,9 @@ def nullable_string_locations(adata: AnnData) -> list[str]:
     frames += [(f"obsm['{k}']", v) for k, v in adata.obsm.items() if isinstance(v, pd.DataFrame)]
     frames += [(f"varm['{k}']", v) for k, v in adata.varm.items() if isinstance(v, pd.DataFrame)]
 
-    found = []
+    # (loc, apply) pairs, collected before anything is converted.
+    actions: list[tuple[str, Callable[[], None]]] = []
+    masked: list[str] = []
 
     def collect_uns(prefix: str, mapping) -> None:
         for k, v in mapping.items():
@@ -502,15 +542,68 @@ def nullable_string_locations(adata: AnnData) -> list[str]:
                 frames.append((loc, v))
             elif isinstance(v, dict):
                 collect_uns(loc, v)
+            elif isinstance(getattr(v, "dtype", None), pd.CategoricalDtype):
+                # A bare Categorical in uns (read back from a #638-shaped
+                # file) carries the nullable dtype in its categories.
+                if isinstance(v, pd.Categorical) and is_nullable_string(v.dtype.categories.dtype):
+                    actions.append((loc, functools.partial(_convert_uns_categories, mapping, k)))
             elif is_nullable_string(getattr(v, "dtype", None)):
-                found.append(loc)
+                if pd.isna(v).any():
+                    masked.append(loc)
+                else:
+                    actions.append((loc, functools.partial(_convert_uns_array, mapping, k)))
 
     collect_uns("uns", adata.uns)
     for name, df in frames:
-        if is_nullable_string(df.index.dtype):
-            found.append(f"{name} index")
-        found += [f"{name}['{col}']" for col in df.columns if is_nullable_string(df[col].dtype)]
-    return found
+        index_dtype = df.index.dtype
+        # The index policy, per case (fresh-verifier round on #649 — the
+        # earlier flatten-any-string-categorical arm refused and rewrote
+        # in-profile files stock anndata writes):
+        # - StringDtype index: the #638 read-back. Masked → refuse (stock
+        #   cannot write it either way); else flatten to plain values.
+        # - Categorical index whose *categories* are StringDtype: the
+        #   nullable dtype hides a level down. Convert the categories'
+        #   dtype only — the container stays categorical (in-profile), and
+        #   NaN entries are code -1, also in-profile: nothing to refuse.
+        # - Every other categorical index (plain-string, numeric,
+        #   object-numeric): in-profile as it stands; untouched.
+        if isinstance(index_dtype, pd.CategoricalDtype):
+            if is_nullable_string(index_dtype.categories.dtype):
+                actions.append((f"{name} index", functools.partial(_convert_index_categories, df)))
+        elif is_nullable_string(index_dtype):
+            if df.index.isna().any():
+                masked.append(f"{name} index")
+            else:
+                actions.append((f"{name} index", functools.partial(_convert_index, df)))
+        for col in df.columns:
+            loc = f"{name}['{col}']"
+            dtype = df[col].dtype
+            if isinstance(dtype, pd.CategoricalDtype):
+                if is_nullable_string(dtype.categories.dtype):
+                    actions.append((loc, functools.partial(_convert_categories, df, col)))
+            elif is_nullable_string(dtype):
+                if df[col].isna().any():
+                    masked.append(loc)
+                else:
+                    actions.append((loc, functools.partial(_convert_column, df, col)))
+
+    if masked:
+        return [], masked
+    for _, apply in actions:
+        apply()
+    return [loc for loc, _ in actions], []
+
+
+def forward_encodings_normalized(write_result: dict, out: dict) -> dict:
+    """Copy ``encodings_normalized`` from a write_h5ad result into ``out``.
+
+    One spelling for every tool that rebuilds its result dict, so the skills'
+    claim that write_h5ad-based tools report what they normalized cannot
+    silently go false for one of them.
+    """
+    if "encodings_normalized" in write_result:
+        out["encodings_normalized"] = write_result["encodings_normalized"]
+    return out
 
 
 def write_h5ad(
@@ -524,7 +617,11 @@ def write_h5ad(
     """Write adata to a new timestamped file with edit log entries.
 
     Computes SHA-256 of the source file, appends edit_entries to
-    adata.uns['provenance']['edit_history'], and writes to a new timestamped path.
+    adata.uns['provenance']['edit_history'], normalizes pandas nullable
+    strings to the plain write profile (see :func:`normalize_nullable_strings`
+    — masked values refuse by name instead), and writes to a new timestamped
+    path. When elements were normalized the result carries their locations
+    under ``encodings_normalized``.
     The original (non-timestamped) file is never modified. If source_path
     is a previous timestamped edit, it is deleted after the new file is
     successfully written — keeping only the original + latest edit on disk.
@@ -556,17 +653,18 @@ def write_h5ad(
         if not Path(source_path).is_file():
             return {"error": f"Source file not found: {source_path}"}
 
-        # Before the uns mutation below: a refusal must leave adata exactly
-        # as the caller passed it, or a fixed-and-retried write re-reads the
-        # just-stamped entries as the existing log and appends them twice.
-        # Post-stamp failure paths restore the log via _unstamp below.
-        if nullable := nullable_string_locations(adata):
-            return {
-                "error": (
-                    f"Refusing to write: {', '.join(nullable)} hold(s) pandas "
-                    f"nullable string values, {UNWRITABLE_REMEDY}"
-                )
-            }
+        # The masked-string refusal runs FIRST — before adata is touched
+        # (normalize_nullable_strings collects before converting) and before
+        # build_edit_log streams the whole source for its SHA-256: a doomed
+        # write on a multi-gigabyte file must not pay for the hash
+        # (principle 7). An entries-validation error after normalization
+        # leaves the dtypes converted — value-identical and idempotent, so
+        # benign — and later failures (occupied name, failed write) restore
+        # the log via _unstamp so a retry never re-reads just-stamped
+        # entries as the existing log.
+        normalized, masked = normalize_nullable_strings(adata)
+        if masked:
+            return {"error": f"Refusing to write: {', '.join(masked)} hold(s) {MASKED_STRING_REMEDY}"}
 
         provenance = adata.uns.get(PROVENANCE_KEY, {})
         had_log = isinstance(provenance, dict) and EDIT_LOG_KEY in provenance
@@ -611,7 +709,13 @@ def write_h5ad(
 
         cleanup_previous_version(source_path, output_path)
 
-        return {"output_path": output_path}
+        result: dict = {"output_path": output_path}
+        if normalized:
+            # The write changed these elements' on-disk encoding (nullable →
+            # plain string-array); surfaced so tools and the edit trail can
+            # say so.
+            result["encodings_normalized"] = normalized
+        return result
 
     except Exception as e:
         return {"error": str(e)}

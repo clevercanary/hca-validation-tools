@@ -16,13 +16,12 @@ have left each of them quietly looking at a key nobody wrote (#631).
 PROVENANCE_KEY = "provenance"
 EDIT_LOG_KEY = "edit_history"
 
-# The shared tail of every "readable but not writable back" refusal — _io's
-# per-element refusals and write_h5ad's funnel refusal compose it, so the
-# wording (and the #641 reference) cannot drift between them. Lives here for
-# the same reason the keys do: modules that must agree about a string, with
-# no dependency cost.
-UNWRITABLE_REMEDY = (
-    "which this package can read but cannot write back "
-    "(hca-validation-tools#641). Re-exporting the file with plain string "
-    "arrays is the workaround available today; it is not the only possible fix."
+# The shared tail of every masked-string refusal — the write funnel, the
+# h5py normalization pass, and whatever masked-refusal site comes next
+# compose it, so the wording cannot drift and the skills' claim that masked
+# values "refuse by name everywhere" stays one sentence, not several.
+MASKED_STRING_REMEDY = (
+    "masked (null) string value(s), which have no plain-string "
+    "representation — flattening would fabricate text for missing data; "
+    "repair the values upstream first"
 )

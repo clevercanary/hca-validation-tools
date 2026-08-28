@@ -10,7 +10,7 @@ from .inspect import (
     _classify_x_at_path,
     _matrices_equal,
 )
-from .write import make_edit_entry, resolve_latest, write_h5ad
+from .write import forward_encodings_normalized, make_edit_entry, resolve_latest, write_h5ad
 
 _TARGET_SUM = 1e4
 
@@ -181,13 +181,14 @@ def normalize_raw(path: str) -> dict:
         if "error" in result:
             return result
 
-        return {
+        out = {
             "output_path": result["output_path"],
             "n_obs": n_obs,
             "n_vars": n_vars,
             "target_sum": _TARGET_SUM,
             "raw_x": plan["raw_x"],
         }
+        return forward_encodings_normalized(result, out)
 
     except Exception as e:
         return {"error": str(e)}

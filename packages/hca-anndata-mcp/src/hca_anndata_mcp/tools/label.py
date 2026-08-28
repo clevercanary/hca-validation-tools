@@ -3,7 +3,7 @@
 from pathlib import Path
 
 from hca_anndata_tools._io import open_h5ad
-from hca_anndata_tools.write import make_edit_entry, resolve_latest, write_h5ad
+from hca_anndata_tools.write import forward_encodings_normalized, make_edit_entry, resolve_latest, write_h5ad
 from hca_schema_validator import HCA_DERIVED_OBS_LABELS, HCALabeler
 
 
@@ -127,7 +127,7 @@ def label_h5ad(path: str) -> dict:
         if "error" in result:
             return result
 
-        return {
+        out = {
             "output_path": result["output_path"],
             "n_obs": n_obs,
             "n_vars": n_vars,
@@ -135,5 +135,6 @@ def label_h5ad(path: str) -> dict:
             "feature_name_nan": feature_name_nan,
             "obs_labels_written": obs_labels_written,
         }
+        return forward_encodings_normalized(result, out)
     except Exception as e:
         return {"error": str(e)}
