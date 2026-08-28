@@ -203,10 +203,11 @@ def validate_marker_genes(path: str, annotation_set: str | None = None) -> dict:
         # file anndata cannot open — the diagnostic still runs (principle
         # 3's skip arm), and this key is how the corruption gets said. The
         # per-column notices cover the columns this validator reads; the
-        # whole-file scan backstops the rest, so a clean verdict on a
-        # corrupt file is impossible no matter where the corruption sits.
-        # Best-effort (read-only): an unrelated scan failure must not
-        # replace the diagnostic.
+        # whole-file scan runs only when they found nothing, because its
+        # one job is preventing a CLEAN verdict on a corrupt file — any
+        # notice at all already prevents one, and the scan names a single
+        # element, not an inventory. Best-effort (read-only): an unrelated
+        # scan failure must not replace the diagnostic.
         if not corruption:
             with contextlib.suppress(Exception), h5py.File(path, "r") as f:
                 if hit := masked_categories_error(f):
