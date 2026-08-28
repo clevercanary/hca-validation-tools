@@ -147,9 +147,8 @@ def masked_categories_error(f: h5py.File, ignore_obs_columns: Sequence[str] = ()
             if enc == "categorical" or (enc is None and "categories" in member):
                 if reason := check(member, label):
                     return reason
-            elif enc in (None, "dict"):
-                if reason := walk_uns(label, member):
-                    return reason
+            elif enc in (None, "dict") and (reason := walk_uns(label, member)):
+                return reason
         return None
 
     uns = f.get("uns")
