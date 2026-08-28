@@ -71,7 +71,9 @@ And the conversion to the profile splits cleanly on the mask:
   read-wide guarantee: a *categorical* whose **categories** are masked is a
   file anndata itself cannot read ("Categorical categories cannot be
   null"), so principle 2 does not apply to it — tools that hit it owe a
-  named refusal, nothing more.
+  named refusal, nothing more. The naming lives in the shared readers
+  (`open_h5ad` for columns, `read_index` for indexes), so tools are covered
+  by construction rather than by per-tool guards (principle 8, read-side).
 
 ## The anndata pin, precisely
 
