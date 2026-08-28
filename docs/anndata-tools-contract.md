@@ -355,7 +355,7 @@ other placeholder-looking value through curator-reviewed mappings.
    schema sometimes defines — and it is *curator* work, done deliberately
    per column, never a tool's silent default (principle 3).
    `replace_placeholder_values` on masked nullable categories: refuse by
-   name (the target is unwritable there anyway).
+   name (a masked category has no value a rewrite could keep — Decision 4).
 
 4. **#641 is normalize-on-write — implemented 2026-08-27.** Flatten
    nullable → plain where the mask is all zero (covers every liver file we
