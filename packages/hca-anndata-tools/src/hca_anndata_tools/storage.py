@@ -87,8 +87,8 @@ def _dataframe_encodings(df: h5py.Group, path: str, index_name: str) -> tuple[di
     Informational: every write normalizes the flagged elements it touches
     (#641); nothing refuses them, and only masked string *values* refuse
     anywhere.
-    Categorical ``categories`` are reported because they block a write exactly
-    as an index does — in the files that motivated this
+    Categorical ``categories`` are reported just like indexes and plain
+    columns — in the files that motivated this
     (hca-validation-tools#638) a categorical's categories were themselves a
     nullable group; since #641 the tools normalize that shape as they
     rewrite it, and only *masked* categories refuse.
