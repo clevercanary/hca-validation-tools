@@ -501,15 +501,10 @@ def test_merge_refuses_a_masked_categories_bystander(tmp_path):
     corruption sits in a column the merge never reads — enforced at the
     snapshot chokepoint, so no fresh -edit- snapshot of a file anndata
     cannot open."""
-    from anndata.io import write_elem
-
-    from hca_anndata_tools.testing import assert_no_snapshot_written, make_nullable_string_array
+    from hca_anndata_tools.testing import add_masked_categorical_column, assert_no_snapshot_written
 
     path = _make(tmp_path / "bystander.h5ad", values=["good", "typo", "good"])
-    with h5py.File(path, "r+") as f:
-        n = f["obs"][f["obs"].attrs.get("_index", "_index")].shape[0]
-        write_elem(f["obs"], "bystander", pd.Categorical(["x"] * n))
-        make_nullable_string_array(f["obs/bystander"], "categories", masked=1)
+    add_masked_categorical_column(path)
 
     result = merge_obs_categories(str(path), column="tissue_label", from_value="typo", to_value="good")
 

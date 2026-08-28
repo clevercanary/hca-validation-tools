@@ -552,17 +552,9 @@ def test_set_producer_uns_refuses_a_masked_categories_file(producer_h5ad):
     """Every write refuses a masked-categories file (#651), the uns-only
     writer included: its snapshot would still wear a fresh -edit- stamp on
     a file anndata cannot open."""
-    import pandas as pd
-    from anndata.io import write_elem
+    from hca_anndata_tools.testing import add_masked_categorical_column, assert_no_snapshot_written
 
-    from hca_anndata_tools.testing import assert_no_snapshot_written, make_nullable_string_array
-
-    # write_elem, not an anndata round-trip: the fixture deliberately holds
-    # producer shapes anndata cannot read back (np.bytes_ short_code).
-    with h5py.File(producer_h5ad, "r+") as f:
-        n = f["obs"][f["obs"].attrs.get("_index", "_index")].shape[0]
-        write_elem(f["obs"], "ann", pd.Categorical(["x"] * n))
-        make_nullable_string_array(f["obs/ann"], "categories", masked=1)
+    add_masked_categorical_column(producer_h5ad, "ann")
 
     result = set_producer_uns(str(producer_h5ad), THE_CORRECTION)
 

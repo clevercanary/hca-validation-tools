@@ -190,16 +190,10 @@ def test_strip_of_a_corrupt_sre_column_is_the_repair(sample_h5ad_for_write):
 def test_strip_refuses_a_masked_categories_file(sample_h5ad_for_write):
     """Every write refuses a masked-categories file (#651) when the corrupt
     column is NOT one this tool deletes."""
-    import h5py
-
-    from hca_anndata_tools.testing import assert_no_snapshot_written, make_nullable_string_array
+    from hca_anndata_tools.testing import add_masked_categorical_column, assert_no_snapshot_written
 
     _to_hca_layout(sample_h5ad_for_write, "self_reported_ethnicity")
-    adata = ad.read_h5ad(sample_h5ad_for_write)
-    adata.obs["ann"] = pd.Categorical(["x"] * adata.n_obs)
-    adata.write_h5ad(sample_h5ad_for_write)
-    with h5py.File(sample_h5ad_for_write, "r+") as f:
-        make_nullable_string_array(f["obs/ann"], "categories", masked=1)
+    add_masked_categorical_column(sample_h5ad_for_write, "ann")
 
     result = strip_forbidden_obs_columns(str(sample_h5ad_for_write))
 

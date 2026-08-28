@@ -823,23 +823,17 @@ def test_snapshot_copy_refuses_a_masked_categories_file(tmp_path):
     principle 8): every surgical write passes through here, so a corrupt
     file cannot gain a fresh -edit- snapshot from ANY tool — including
     ones that never read a categorical."""
-    import h5py
-    import pandas as pd
     import pytest
 
     from hca_anndata_tools.testing import (
+        add_masked_categorical_column,
         assert_no_snapshot_written,
         create_sample_h5ad,
-        make_nullable_string_array,
     )
     from hca_anndata_tools.write import snapshot_copy
 
     path = create_sample_h5ad(tmp_path / "corrupt.h5ad")
-    with h5py.File(path, "r+") as f:
-        from anndata.io import write_elem
-
-        write_elem(f["obs"], "ann", pd.Categorical(["x"] * f["obs"][f["obs"].attrs["_index"]].shape[0]))
-        make_nullable_string_array(f["obs/ann"], "categories", masked=1)
+    add_masked_categorical_column(path, "ann")
 
     with pytest.raises(ValueError, match="masked \\(null\\) categories"), snapshot_copy(str(path)):
         raise AssertionError("body must never run")
@@ -850,18 +844,11 @@ def test_snapshot_copy_exemption_covers_only_the_named_columns(tmp_path):
     """ignore_masked_obs_columns exempts exactly the columns a write
     deletes: the same corrupt file passes with the exemption and refuses
     without it (pinned above)."""
-    import h5py
-    import pandas as pd
-
-    from hca_anndata_tools.testing import create_sample_h5ad, make_nullable_string_array
+    from hca_anndata_tools.testing import add_masked_categorical_column, create_sample_h5ad
     from hca_anndata_tools.write import snapshot_copy
 
     path = create_sample_h5ad(tmp_path / "corrupt-exempt.h5ad")
-    with h5py.File(path, "r+") as f:
-        from anndata.io import write_elem
-
-        write_elem(f["obs"], "ann", pd.Categorical(["x"] * f["obs"][f["obs"].attrs["_index"]].shape[0]))
-        make_nullable_string_array(f["obs/ann"], "categories", masked=1)
+    add_masked_categorical_column(path, "ann")
 
     with snapshot_copy(str(path), ignore_masked_obs_columns=("ann",)) as output_path:
         assert Path(output_path).is_file()

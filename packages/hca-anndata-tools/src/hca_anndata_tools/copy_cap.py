@@ -247,10 +247,13 @@ def copy_cap_annotations(
                 prov = read_provenance(uns)
                 has_prov_cap = prov is not None and "cap" in prov
                 log = read_edit_log_h5py(f)
-                # Every write refuses a masked-categories target (#651) —
-                # except the CAP columns this copy replaces wholesale: CAP
-                # files are never repaired here, and a corrupt CAP column
-                # being overwritten never reaches the output.
+                # The snapshot gate enforces this for every write (#651);
+                # this preflight is the courtesy that fails *earlier*
+                # (principle 8), before the source read and alignment below.
+                # Same exemption as the snapshot call: the CAP columns this
+                # copy replaces wholesale — CAP files are never repaired
+                # here, and an overwritten corrupt column never reaches the
+                # output.
                 masked_err = masked_categories_error(f, ignore_obs_columns=cap_obs_columns(obs_columns))
             return obs_columns, index, var_list, uns_keys, has_prov_cap, log, masked_err
 

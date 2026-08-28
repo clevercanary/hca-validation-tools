@@ -255,6 +255,35 @@ def assert_no_snapshot_written(path) -> None:
     assert not [p for p in Path(path).parent.iterdir() if _is_timestamped(str(p))]
 
 
+def add_masked_categorical_column(path, name: str = "bystander") -> None:
+    """Add an obs column whose *categories* are masked, in place.
+
+    The corrupt-file shape anndata itself cannot open ("Categorical
+    categories cannot be null"), which every write refuses and the
+    read-only diagnostic reports. Six refusal tests need a corrupt
+    column the tool under test does not otherwise touch, so the
+    write-a-categorical-then-mask-its-categories dance lives here rather
+    than in each of them.
+
+    Written through ``write_elem`` rather than an anndata round-trip: some
+    fixtures deliberately hold producer shapes anndata cannot read back.
+
+    Args:
+        path: Path to an existing .h5ad file.
+        name: Obs column name to create.
+    """
+    from anndata.io import write_elem
+
+    with h5py.File(path, "r+") as f:
+        obs = f["obs"]
+        index_name = obs.attrs.get("_index", "_index")
+        if isinstance(index_name, bytes):
+            index_name = index_name.decode()
+        n = obs[index_name].shape[0]
+        write_elem(obs, name, pd.Categorical(["x"] * n))
+        make_nullable_string_array(obs[name], "categories", masked=1)  # pyright: ignore[reportArgumentType]
+
+
 def make_nullable_string_array(parent: h5py.Group, name: str, *, masked: int = 0) -> None:
     """Rewrite an existing string dataset as a ``nullable-string-array`` group.
 

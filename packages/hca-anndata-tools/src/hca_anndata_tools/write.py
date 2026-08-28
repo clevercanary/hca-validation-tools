@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Literal
 import h5py
 
 from . import __version__
+from ._io import masked_categories_error
 from ._keys import EDIT_LOG_KEY, MASKED_STRING_REMEDY, PROVENANCE_KEY
 
 if TYPE_CHECKING:
@@ -165,8 +166,6 @@ def _refuse_masked_categories(path: str, ignore_obs_columns: Sequence[str]) -> N
     repair, and the element never reaches the output. Runs before the
     snapshot name is even claimed; distinct-value-sized reads only.
     """
-    from ._io import masked_categories_error
-
     # Signature check, not a guard: a file that is not HDF5 (or is
     # truncated past its signature) has no categoricals to scan, and the
     # caller's own open owns that failure — the gate's one job is the

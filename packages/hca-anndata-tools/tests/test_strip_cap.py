@@ -462,15 +462,10 @@ def test_strip_cap_refuses_a_masked_categories_bystander(tmp_path):
     """Every write refuses a masked-categories file (#651) — enforced at
     the snapshot chokepoint, which this h5py-only writer reaches with no
     categorical read of its own."""
-    from anndata.io import write_elem
-
-    from hca_anndata_tools.testing import assert_no_snapshot_written, make_nullable_string_array
+    from hca_anndata_tools.testing import add_masked_categorical_column, assert_no_snapshot_written
 
     path = _make_cap_file(tmp_path / "bystander.h5ad", uns_layout="legacy")
-    with h5py.File(path, "r+") as f:
-        n = f["obs"][f["obs"].attrs.get("_index", "_index")].shape[0]
-        write_elem(f["obs"], "bystander", pd.Categorical(["x"] * n))
-        make_nullable_string_array(f["obs/bystander"], "categories", masked=1)
+    add_masked_categorical_column(path)
 
     result = strip_cap_annotations(path)
 
