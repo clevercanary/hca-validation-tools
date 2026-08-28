@@ -130,8 +130,10 @@ def strip_forbidden_obs_columns(path: str) -> dict:
             present = [c for c in _OBS_COLUMNS_TO_STRIP if c in obs]
             # Every write refuses a masked-categories file (#651) — except
             # the columns this tool deletes: stripping the corrupt column
-            # IS the repair.
-            masked_err = masked_categories_error(f_in, ignore_obs_columns=_OBS_COLUMNS_TO_STRIP)
+            # IS the repair. Skipped when there is nothing to strip: the
+            # no-op path writes nothing, and the scan can raise on
+            # unrelated corruption.
+            masked_err = masked_categories_error(f_in, ignore_obs_columns=_OBS_COLUMNS_TO_STRIP) if present else None
 
         if not present:
             return {

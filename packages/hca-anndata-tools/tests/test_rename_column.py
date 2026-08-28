@@ -519,3 +519,23 @@ def test_rename_refuses_a_masked_categories_file(tmp_path):
     assert "masked (null) categories" in result.get("error", ""), result
     assert "tissue" in result["error"]
     assert_no_snapshot_written(path)
+
+
+def test_rename_refuses_a_masked_bare_uns_categorical(tmp_path):
+    """The preflight covers bare categoricals in uns, not just dataframe
+    members — the normalization walker supports the shape, so a corrupt one
+    must refuse here too, not snapshot a file anndata cannot open."""
+    from anndata.io import write_elem
+
+    from hca_anndata_tools.testing import assert_no_snapshot_written, make_nullable_string_array
+
+    path = _make(tmp_path / "masked_uns.h5ad")
+    with h5py.File(path, "r+") as f:
+        write_elem(f["uns"], "grades", pd.Categorical(["hi", "lo", "hi"]))
+        make_nullable_string_array(f["uns/grades"], "categories", masked=1)
+
+    result = rename_obs_column(path, "donor_id", "donor")
+
+    assert "masked (null) categories" in result.get("error", ""), result
+    assert "uns['grades']" in result["error"]
+    assert_no_snapshot_written(path)

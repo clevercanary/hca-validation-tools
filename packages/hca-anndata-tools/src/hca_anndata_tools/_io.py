@@ -109,6 +109,19 @@ def masked_categories_error(f: h5py.File, ignore_obs_columns: Sequence[str] = ()
     Raises anything an unrelated corruption raises; callers that must not
     replace an original error (the open_h5ad scan) handle that themselves.
     """
+
+    def check(item: h5py.Group, subject: str) -> str | None:
+        try:
+            read_categories(item, subject)
+        except ValueError as e:
+            if "masked (null) categories" in str(e):
+                return str(e)
+            # Unrelated corruption (e.g. a truncated nullable group)
+            # propagates — it is a different defect with its own named
+            # error.
+            raise
+        return None
+
     for label, group in iter_dataframe_groups(f):
         index_name = obs_index_name(group)
         for col in group:
@@ -117,15 +130,31 @@ def masked_categories_error(f: h5py.File, ignore_obs_columns: Sequence[str] = ()
             item = group[col]
             if isinstance(item, h5py.Group) and "categories" in item:
                 kind = "index" if col == index_name else "column"
-                try:
-                    read_categories(item, f"{label} {kind} '{col}'")
-                except ValueError as e:
-                    if "masked (null) categories" in str(e):
-                        return str(e)
-                    # Unrelated corruption (e.g. a truncated nullable
-                    # group) propagates — it is a different defect with
-                    # its own named error.
-                    raise
+                if reason := check(item, f"{label} {kind} '{col}'"):
+                    return reason
+
+    # Bare categoricals in uns (uns['grades'] as a pd.Categorical) are a
+    # supported shape the dataframe walk above never visits — the write
+    # funnel normalizes them, so the preflight must see them too, or an
+    # h5py-only writer snapshots a file anndata cannot open.
+    def walk_uns(prefix: str, group: h5py.Group) -> str | None:
+        for key in group:
+            member = group[key]
+            if not isinstance(member, h5py.Group):
+                continue
+            label = f"{prefix}['{key}']"
+            enc = encoding_of(member)
+            if enc == "categorical" or (enc is None and "categories" in member):
+                if reason := check(member, label):
+                    return reason
+            elif enc in (None, "dict"):
+                if reason := walk_uns(label, member):
+                    return reason
+        return None
+
+    uns = f.get("uns")
+    if isinstance(uns, h5py.Group):
+        return walk_uns("uns", uns)
     return None
 
 
