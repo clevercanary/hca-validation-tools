@@ -88,7 +88,10 @@ def validate_marker_genes(path: str, annotation_set: str | None = None) -> dict:
 
         if "organism_ontology_term_id" not in obs_columns:
             return {"error": "organism_ontology_term_id not found in obs columns"}
-        organisms = read_obs_categorical_values(path, "organism_ontology_term_id")
+        corruption: list[str] = []
+        organisms, notice = read_obs_categorical_values(path, "organism_ontology_term_id")
+        if notice:
+            corruption.append(notice)
         # A masked (pd.NA) value is a missing organism, not evidence of a
         # non-human one — and sorted() below cannot order pd.NA anyway.
         organisms = {o for o in organisms if not pd.isna(o)}
@@ -135,7 +138,9 @@ def validate_marker_genes(path: str, annotation_set: str | None = None) -> dict:
         for setname in sets_with_markers:
             marker_col = f"{setname}--marker_gene_evidence"
             # Read only the category values, not the full per-cell column
-            categories = read_obs_categorical_values(path, marker_col)
+            categories, notice = read_obs_categorical_values(path, marker_col)
+            if notice:
+                corruption.append(notice)
             markers = _extract_marker_genes_from_categories(categories)
             all_unique.update(markers)
 
@@ -180,7 +185,7 @@ def validate_marker_genes(path: str, annotation_set: str | None = None) -> dict:
                     out.append(item)
             return out
 
-        return {
+        result = {
             "annotation_sets_with_markers": sets_with_markers,
             "total_unique_markers": len(all_unique),
             "found_in_var": total_found,
@@ -190,6 +195,12 @@ def validate_marker_genes(path: str, annotation_set: str | None = None) -> dict:
             "not_in_gencode": _dedup(all_not_in_gencode),
             "details": details,
         }
+        # This validator is h5py-only, so nothing upstream of it fails on a
+        # file anndata cannot open — the diagnostic still runs (principle
+        # 3's skip arm), and this key is how the corruption gets said.
+        if corruption:
+            result["corruption"] = corruption
+        return result
 
     except Exception as e:
         return {"error": str(e)}

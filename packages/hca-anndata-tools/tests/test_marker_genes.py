@@ -349,6 +349,10 @@ def test_masked_evidence_and_organism_values_are_skipped(tmp_path):
     result = validate_marker_genes(str(path))
 
     assert "error" not in result, result.get("error")
+    # The diagnostic ran, but it must SAY the file is corrupt (#651): this
+    # validator is h5py-only, so no earlier anndata read fails for it.
+    assert len(result["corruption"]) == 2
+    assert all("anndata cannot open it" in n for n in result["corruption"])
     assert result["total_unique_markers"] == 2
     reported = {item["marker_gene"] for item in result["not_in_gencode"]}
     assert reported == {"ZZZFAKE"}

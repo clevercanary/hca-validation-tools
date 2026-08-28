@@ -3,13 +3,13 @@
 from pathlib import Path
 
 import h5py
-import numpy as np
 
 from ._io import (
     direct_members,
     encoding_of,
     holds_string_values,
     is_writable_element,
+    mask_count,
     obs_index_name,
     read_group,
 )
@@ -65,29 +65,17 @@ def _inspect_item(f: h5py.File, name: str) -> dict | None:
     return None
 
 
-def _mask_count(item: h5py.Group | h5py.Dataset | h5py.Datatype) -> int | None:
-    """Number of masked (null) entries in a nullable array, or None.
-
-    Only nullable encodings carry a ``mask``; anything else has no notion of
-    a null and returns None rather than 0, so callers can tell "no nulls"
-    apart from "cannot have nulls".
-    """
-    if isinstance(item, h5py.Group) and isinstance(mask := item.get("mask"), h5py.Dataset):
-        # count_nonzero is a dedicated popcount path; ndarray.sum() on bools
-        # goes through a generic int64 add-reduce and measures ~13x slower.
-        return int(np.count_nonzero(mask[:]))
-    return None
-
-
-def _dataframe_encodings(df: h5py.Group, path: str, index_name: str) -> tuple[dict, list[str], dict[str, int]]:
+def _dataframe_encodings(df: h5py.Group, path: str, index_name: str) -> tuple[dict, dict[str, int]]:
     """Encodings of a dataframe's index, its columns, and its categoricals' categories.
 
-    Returns the per-dataframe report, the nullable-string paths —
-    indexes, plain columns, and categorical ``categories`` alike — and the
-    masked counts for the flagged paths that carry any set mask bits.
-    The two verdicts differ (#651): a mask-0 flagged element is
-    informational — every write normalizes it as it touches it (#641) —
-    while a *masked* one refuses every write, so the report must let a
+    Returns the per-dataframe report and the flagged nullable-string paths —
+    indexes, plain columns, and categorical ``categories`` alike — each
+    mapped to its count of masked values (0 for the ordinary mask-0 case).
+    One mapping rather than parallel collections, so a future flagged shape
+    cannot report the path and silently skip its masked verdict. The two
+    verdicts differ (#651): a mask-0 flagged element is informational —
+    every write normalizes it as it touches it (#641) — while a *masked*
+    one refuses the writes that would rewrite it, so the report must let a
     reader tell them apart.
     Categorical ``categories`` are reported just like indexes and plain
     columns — in the files that motivated this
@@ -101,8 +89,7 @@ def _dataframe_encodings(df: h5py.Group, path: str, index_name: str) -> tuple[di
     ``/`` would otherwise be looked up outside this group. Sorting keeps the
     truncated path sample deterministic between runs.
     """
-    unsupported: list[str] = []
-    masked: dict[str, int] = {}
+    flagged: dict[str, int] = {}
     members = direct_members(df)
 
     index_enc = None
@@ -113,7 +100,7 @@ def _dataframe_encodings(df: h5py.Group, path: str, index_name: str) -> tuple[di
         # string arrays with no encoding-type, and that is a real encoding
         # state. None is reserved for "the group has no index dataset at all".
         index_enc = encoding_of(index) or "unstamped"
-        index_masked = _mask_count(index)
+        index_masked = mask_count(index)
         # Nullable-string only, like the column and categories rules below:
         # a categorical or nullable-numeric index group is in-profile and
         # nothing refuses it (rename flattens a categorical index as it
@@ -121,18 +108,14 @@ def _dataframe_encodings(df: h5py.Group, path: str, index_name: str) -> tuple[di
         # dtype in its *categories* child — flagged like a column's, so the
         # report and the funnel agree (principle 10).
         if holds_string_values(index) and not is_writable_element(index):
-            unsupported.append(f"{path}/{index_name}")
-            if index_masked:
-                masked[f"{path}/{index_name}"] = index_masked
+            flagged[f"{path}/{index_name}"] = index_masked or 0
         elif (
             isinstance(index, h5py.Group)
             and "categories" in index
             and holds_string_values(index["categories"])
             and not is_writable_element(index["categories"])
         ):
-            unsupported.append(f"{path}/{index_name}/categories")
-            if n := _mask_count(index["categories"]):
-                masked[f"{path}/{index_name}/categories"] = n
+            flagged[f"{path}/{index_name}/categories"] = mask_count(index["categories"]) or 0
 
     categoricals: dict[str, int] = {}
     for name in sorted(members):
@@ -147,9 +130,7 @@ def _dataframe_encodings(df: h5py.Group, path: str, index_name: str) -> tuple[di
             # every tool untouched (anndata writes them ungated), so
             # flagging them would be noise nothing acts on.
             if holds_string_values(column):
-                unsupported.append(f"{path}/{name}")
-                if n := _mask_count(column):
-                    masked[f"{path}/{name}"] = n
+                flagged[f"{path}/{name}"] = mask_count(column) or 0
             continue
         categories = column["categories"]
         label = encoding_of(categories) or "unstamped"
@@ -159,19 +140,13 @@ def _dataframe_encodings(df: h5py.Group, path: str, index_name: str) -> tuple[di
         # writes them ungated), and a full rewrite would emit them again —
         # flagging them would send a curator on the remedy loop forever.
         if holds_string_values(categories) and not is_writable_element(categories):
-            unsupported.append(f"{path}/{name}/categories")
-            if n := _mask_count(categories):
-                masked[f"{path}/{name}/categories"] = n
+            flagged[f"{path}/{name}/categories"] = mask_count(categories) or 0
 
-    return (
-        {
-            "index": index_enc,
-            "index_masked": index_masked,
-            "categoricals": categoricals,
-        },
-        unsupported,
-        masked,
-    )
+    return {
+        "index": index_enc,
+        "index_masked": index_masked,
+        "categoricals": categoricals,
+    }, flagged
 
 
 def _encodings_info(f: h5py.File) -> dict:
@@ -188,20 +163,24 @@ def _encodings_info(f: h5py.File) -> dict:
     not flagged: every tool accepts them. The ``masked`` dict separates
     the two verdicts a flagged path can carry (#651): absent from it,
     the element normalizes on the next write that touches it; present,
-    every write refuses it until the values are repaired upstream.
+    the writes that would rewrite it refuse — the in-repo remedies are a
+    backfill that fills the masked values (residuals still refuse) or
+    dropping the column; otherwise repair upstream. ``masked`` shares
+    this block's inspection scope: a masked element in ``varm`` or
+    ``uns`` still refuses writes even though it is not reported here.
+    ``masked_count`` counts flagged *paths* (like ``unsupported_count``),
+    not masked values — the per-path value counts are the dict's values.
     """
     result: dict = {}
-    unsupported: list[str] = []
-    masked: dict[str, int] = {}
+    flagged: dict[str, int] = {}
     for key, path in _DATAFRAMES:
         df = read_group(f, path)
         if df is None:
             result[key] = None
             continue
-        report, bad, bad_masked = _dataframe_encodings(df, path, obs_index_name(df))
+        report, frame_flagged = _dataframe_encodings(df, path, obs_index_name(df))
         result[key] = report
-        unsupported.extend(bad)
-        masked.update(bad_masked)
+        flagged.update(frame_flagged)
 
     # obsm DataFrames carry their own index, which rename_cell_ids reads the
     # same way it reads obs (rename.py). Omitting them would let a file report
@@ -214,14 +193,16 @@ def _encodings_info(f: h5py.File) -> dict:
             member = obsm[name]
             if not isinstance(member, h5py.Group) or encoding_of(member) != "dataframe":
                 continue
-            report, bad, bad_masked = _dataframe_encodings(member, f"obsm/{name}", obs_index_name(member))
+            report, frame_flagged = _dataframe_encodings(member, f"obsm/{name}", obs_index_name(member))
             obsm_frames[name] = report
-            unsupported.extend(bad)
-            masked.update(bad_masked)
+            flagged.update(frame_flagged)
     result["obsm"] = obsm_frames
-    result["unsupported_count"] = len(unsupported)
-    result["unsupported"] = unsupported[:_MAX_UNSUPPORTED_PATHS]
-    result["unsupported_truncated"] = len(unsupported) > _MAX_UNSUPPORTED_PATHS
+    # Both report views derive from the one flagged mapping, here and
+    # nowhere else — a path cannot appear in one and drift out of the other.
+    masked = {p: n for p, n in flagged.items() if n}
+    result["unsupported_count"] = len(flagged)
+    result["unsupported"] = list(flagged)[:_MAX_UNSUPPORTED_PATHS]
+    result["unsupported_truncated"] = len(flagged) > _MAX_UNSUPPORTED_PATHS
     result["masked_count"] = len(masked)
     result["masked"] = dict(list(masked.items())[:_MAX_UNSUPPORTED_PATHS])
     result["masked_truncated"] = len(masked) > _MAX_UNSUPPORTED_PATHS
@@ -243,8 +224,10 @@ def get_storage_info(path: str) -> dict:
     (path → count) separates the two verdicts those paths carry (#651): a
     path absent from ``masked`` is informational — every write normalizes it
     as it touches it (#641), so the flag clears as writes happen — while a
-    path in ``masked`` holds masked string values, the one hard stop: every
-    write refuses it by name until the values are repaired upstream.
+    path in ``masked`` holds masked string values, the one hard stop: the
+    writes that would rewrite it refuse by name. The in-repo remedies are
+    a backfill that fills the masked values (residuals still refuse) or
+    dropping the column; otherwise the data must be repaired upstream.
 
     Args:
         path: Absolute path to an .h5ad file.

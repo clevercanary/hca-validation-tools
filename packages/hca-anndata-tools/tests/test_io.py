@@ -486,3 +486,24 @@ def test_normalizing_a_nullable_group_preserves_producer_attrs(tmp_path):
         assert isinstance(out, h5py.Dataset)
         assert out.attrs["producer-note"] == "keep me"
         assert out.attrs["encoding-type"] == "string-array"
+
+
+def test_read_obs_categorical_values_names_masked_categories(tmp_path):
+    """The unique-values helper is the one deliberate bypass of the
+    masked-categories chokepoint (#651): a read-only diagnostic still gets
+    the values, but the returned corruption notice says the file is one
+    anndata cannot open — a clean verdict on it is impossible to present."""
+    path = tmp_path / "masked_cat_values.h5ad"
+    obs = pd.DataFrame({"ann": pd.Categorical(["a", "b"])}, index=["c0", "c1"])
+    adata = ad.AnnData(X=np.zeros((2, 1), dtype=np.float32), obs=obs)
+    adata.write_h5ad(path)
+    with h5py.File(path, "r+") as f:
+        make_nullable_string_array(f["obs/ann"], "categories", masked=1)
+
+    values, corruption = _io.read_obs_categorical_values(str(path), "ann")
+
+    assert corruption is not None
+    assert "obs column 'ann'" in corruption
+    assert "1 masked (null) categories" in corruption
+    assert "anndata cannot open it" in corruption
+    assert len(values) == 2  # the readable category plus pd.NA

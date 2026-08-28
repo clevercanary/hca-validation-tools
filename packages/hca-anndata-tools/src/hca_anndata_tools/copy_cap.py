@@ -15,6 +15,7 @@ import pandas as pd
 from ._io import (
     check_duplicate_ids,
     ensure_provenance_group,
+    masked_categories_error,
     obs_index_name,
     open_h5ad,
     read_categorical_data,
@@ -231,7 +232,7 @@ def copy_cap_annotations(
         source_obs_subset = pd.DataFrame(source_obs_data, index=source_index_list)  # pyright: ignore[reportArgumentType]
 
         # --- Step 2: Validate target via h5py (no AnnData load) ---
-        def read_target(path: str) -> tuple[list[str], list[str], list[str], set[str], bool, str]:
+        def read_target(path: str) -> tuple[list[str], list[str], list[str], set[str], bool, str, str | None]:
             with h5py.File(path, "r") as f:
                 obs_group = require_obs_group(f)
                 obs_columns = read_column_order(obs_group)
@@ -246,12 +247,19 @@ def copy_cap_annotations(
                 prov = read_provenance(uns)
                 has_prov_cap = prov is not None and "cap" in prov
                 log = read_edit_log_h5py(f)
-            return obs_columns, index, var_list, uns_keys, has_prov_cap, log
+                # Every write refuses a masked-categories target (#651) —
+                # except the CAP columns this copy replaces wholesale: CAP
+                # files are never repaired here, and a corrupt CAP column
+                # being overwritten never reaches the output.
+                masked_err = masked_categories_error(f, ignore_obs_columns=cap_obs_columns(obs_columns))
+            return obs_columns, index, var_list, uns_keys, has_prov_cap, log, masked_err
 
-        target_obs_columns, target_index, target_var_list, target_uns_keys, target_has_prov_cap, raw_log = read_target(
-            target_path
+        target_obs_columns, target_index, target_var_list, target_uns_keys, target_has_prov_cap, raw_log, masked_err = (
+            read_target(target_path)
         )
 
+        if masked_err:
+            return {"error": f"Refusing to copy: {masked_err}"}
         dupe_err = check_duplicate_ids(target_index, "HCA cells") or check_duplicate_ids(target_var_list, "HCA genes")
         if dupe_err:
             return {"error": dupe_err}
@@ -349,7 +357,7 @@ def copy_cap_annotations(
                 target_path = strip_result["output_path"]
                 # Cells and genes are untouched by a strip; only the column
                 # set, uns keys, and edit log need re-reading.
-                target_obs_columns, _, _, target_uns_keys, _, raw_log = read_target(target_path)
+                target_obs_columns, _, _, target_uns_keys, _, raw_log, _ = read_target(target_path)
 
         # --- Step 3: Build aligned temp AnnData ---
         aligned_obs = source_obs_subset.reindex(target_index)

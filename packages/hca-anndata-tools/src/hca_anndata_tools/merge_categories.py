@@ -74,9 +74,7 @@ def _column_problems(obs: h5py.Group, column: str, from_value: str, to_value: st
     # addressed by value. holds_string_values also accepts a
     # nullable-string-array categories *group* — the plain liver shape: the
     # write recreates categories from scratch (replace_categorical_column),
-    # so the encoding is no obstacle and is normalized on the way out. Only
-    # masked categories refuse — by name, inside read_categories (#651),
-    # when the membership check below reads them.
+    # so the encoding is no obstacle and is normalized on the way out.
     cats_item = item["categories"]
     if not holds_string_values(cats_item):  # pyright: ignore[reportArgumentType]
         # Name the dtype where there is one (a Dataset); a non-string *group*
@@ -86,7 +84,14 @@ def _column_problems(obs: h5py.Group, column: str, from_value: str, to_value: st
             f"'{column}' has non-string categories{detail} — this "
             f"tool matches by string value, so it cannot address them"
         ]
-    if missing := [v for v in (from_value, to_value) if v not in _read_categories(obs, column)]:
+    # Read once, and fold the chokepoint's masked-categories refusal (#651)
+    # back into the collect-every-problem contract: a raise here would skip
+    # the aggregation and drop every co-reported problem.
+    try:
+        cats = _read_categories(obs, column)
+    except ValueError as e:
+        return [str(e)]
+    if missing := [v for v in (from_value, to_value) if v not in cats]:
         return [
             f"not categories of '{column}': {missing} — both values must already "
             f"exist (creating a category is a different operation)"

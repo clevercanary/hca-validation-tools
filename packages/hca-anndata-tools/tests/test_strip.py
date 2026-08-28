@@ -166,3 +166,43 @@ def test_strip_skips_cleanly_with_dataset_at_uns(sample_h5ad_for_write, put_data
 
     assert "error" not in result
     assert result["skipped"] is True
+
+
+def test_strip_of_a_corrupt_sre_column_is_the_repair(sample_h5ad_for_write):
+    """The delete exemption (#651): a masked-categories SRE column is
+    exactly what this tool deletes, so the preflight must not refuse — the
+    strip IS the repair, and the output must open in anndata."""
+    import h5py
+
+    from hca_anndata_tools.testing import make_nullable_string_array
+
+    _to_hca_layout(sample_h5ad_for_write, "self_reported_ethnicity")
+    with h5py.File(sample_h5ad_for_write, "r+") as f:
+        make_nullable_string_array(f["obs/self_reported_ethnicity"], "categories", masked=1)
+
+    result = strip_forbidden_obs_columns(str(sample_h5ad_for_write))
+
+    assert "error" not in result, result.get("error")
+    out = ad.read_h5ad(result["output_path"])
+    assert "self_reported_ethnicity" not in out.obs.columns
+
+
+def test_strip_refuses_a_masked_categories_file(sample_h5ad_for_write):
+    """Every write refuses a masked-categories file (#651) when the corrupt
+    column is NOT one this tool deletes."""
+    import h5py
+
+    from hca_anndata_tools.testing import assert_no_snapshot_written, make_nullable_string_array
+
+    _to_hca_layout(sample_h5ad_for_write, "self_reported_ethnicity")
+    adata = ad.read_h5ad(sample_h5ad_for_write)
+    adata.obs["ann"] = pd.Categorical(["x"] * adata.n_obs)
+    adata.write_h5ad(sample_h5ad_for_write)
+    with h5py.File(sample_h5ad_for_write, "r+") as f:
+        make_nullable_string_array(f["obs/ann"], "categories", masked=1)
+
+    result = strip_forbidden_obs_columns(str(sample_h5ad_for_write))
+
+    assert "masked (null) categories" in result.get("error", ""), result
+    assert "'ann'" in result["error"]
+    assert_no_snapshot_written(sample_h5ad_for_write)

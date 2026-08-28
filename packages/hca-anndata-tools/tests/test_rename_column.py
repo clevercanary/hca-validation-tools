@@ -502,3 +502,20 @@ def test_rename_allows_a_plain_column_on_a_cap_file(tmp_path):
 
     assert "error" not in result
     assert "author_note" in ad.read_h5ad(result["output_path"]).obs.columns
+
+
+def test_rename_refuses_a_masked_categories_file(tmp_path):
+    """Every write refuses a masked-categories file (#651): a link move
+    reads no categorical, so without the preflight this tool would snapshot
+    a file anndata cannot open. No exemption — renaming repairs nothing."""
+    from hca_anndata_tools.testing import assert_no_snapshot_written, make_nullable_string_array
+
+    path = _make(tmp_path / "masked.h5ad", columns={"tissue": pd.Categorical(["a", "b", "a"])})
+    with h5py.File(path, "r+") as f:
+        make_nullable_string_array(f["obs/tissue"], "categories", masked=1)
+
+    result = rename_obs_column(path, "donor_id", "donor")
+
+    assert "masked (null) categories" in result.get("error", ""), result
+    assert "tissue" in result["error"]
+    assert_no_snapshot_written(path)

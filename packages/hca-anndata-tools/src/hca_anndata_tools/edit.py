@@ -15,7 +15,6 @@ from ._io import (
     compact_categories,
     open_h5ad,
     read_categorical_data,
-    read_categories,
     read_column_order,
     read_edit_log_h5py,
     read_uns,
@@ -298,10 +297,9 @@ def replace_placeholder_values(
                     return {"error": f"Column '{col}' not found in obs"}
                 item = obs[col]
                 if isinstance(item, h5py.Group) and "categories" in item:
-                    # Masked categories refuse inside read_categories (#651),
-                    # before .lower() and before the n_obs-sized codes read.
-                    cats = read_categories(item, f"Column '{col}'")
-                    codes = item["codes"][:]  # pyright: ignore[reportIndexIssue]
+                    # Masked categories refuse by name inside the shared
+                    # reader (#651), before any .lower() on a category.
+                    cats, codes = read_categorical_data(item, f"Column '{col}'")  # pyright: ignore[reportArgumentType]
                     placeholder_count = 0
                     matches = {}
                     for i in range(len(cats)):

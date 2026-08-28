@@ -77,6 +77,20 @@ And the conversion to the profile splits cleanly on the mask:
   supply the element's name; `read_index` reaches it through them) — so
   tools are covered by construction rather than by per-tool guards
   (principle 8, read-side; the guards this replaced are deleted, #651).
+  And the reads are only half of it: **every write refuses the shape**,
+  including the h5py-only writers that never read a categorical
+  (`rename_obs_column`, `drop_obs_columns`, `strip_forbidden_obs_columns`,
+  `set_producer_uns`, `copy_cap`'s target) — they preflight with the
+  shared `masked_categories_error` scan before their snapshot, so no
+  write ever stamps a fresh `-edit-` name onto a file anndata cannot
+  open. The one exemption: obs columns the write itself deletes or
+  replaces wholesale (drop/strip of the corrupt column IS the repair;
+  a CAP column being overwritten never reaches the output — CAP files
+  are never repaired here). The one bypass is read-only:
+  `validate_marker_genes` writes nothing and elects principle 3's skip
+  arm so a corrupt file can still be diagnosed — and its result carries
+  a `corruption` notice naming the shape and saying anndata cannot open
+  the file, so no clean verdict can be presented on it.
 
 ## The anndata pin, precisely
 
@@ -404,4 +418,10 @@ other placeholder-looking value through curator-reviewed mappings.
    (backfill target, replace_placeholder, merge, read_index) are deleted
    as redundant (principle 13). Inspection gained the `masked` dict so
    the report can distinguish the masked verdict from the normalizable
-   one (principle 10).
+   one (principle 10). Amended same day: **every write refuses the
+   shape**, not only the categorical-reading ones — the h5py-only
+   writers preflight via the shared `masked_categories_error` scan,
+   exempting only obs columns the write itself deletes or replaces
+   wholesale; the sole bypass is the read-only `validate_marker_genes`,
+   which skips per principle 3 and reports the named corruption in a
+   `corruption` result key instead of refusing.

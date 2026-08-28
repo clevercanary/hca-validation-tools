@@ -30,7 +30,7 @@ from ._io import (
     holds_string_values,
     is_missing_value,
     obs_index_name,
-    read_categories,
+    read_categorical_data,
     read_edit_log_h5py,
     read_element,
     read_group,
@@ -82,19 +82,17 @@ def _read_column(obs: h5py.Group, col: str, placeholders: set[str], side: str) -
     """Read one obs column into a uniform shape: (column dict, error).
 
     The dict holds ``kind`` ('categorical' or 'string'), per-row ``values``
-    (object array of strings; a missing row holds None — or pd.NA when its
-    code points at a masked category), and a ``missing``
+    (object array of strings; a missing row holds None — or pd.NA from a
+    masked nullable-string value), and a ``missing``
     mask (NaN, masked, empty, or placeholder). Categorical columns also carry
     ``cats``/``codes``. Layouts with no missing vocabulary this tool
     understands (numeric or boolean values, plain or nullable) are refused
     rather than guessed at.
 
-    Both sides refuse a categorical with masked *categories* — a corrupt
-    file anndata cannot read; the refusal lives in read_categories (#651).
-    Nullable-string columns read and rewrite fine — replace_string_dataset
-    normalizes them (#641); only masked values surviving the fill refuse,
-    checked in the plan phase. Otherwise the read-only source side just
-    reads.
+    Masked *categories* refuse by name for both sides — see the comment at
+    the categorical read below (#651). Nullable-string columns read and
+    rewrite fine — replace_string_dataset normalizes them (#641); only
+    masked values surviving the fill refuse, checked in the plan phase.
 
     The missing predicate runs once per distinct value, never per row — the
     categorical branch works on the categories, the string branch factorizes
@@ -116,13 +114,12 @@ def _read_column(obs: h5py.Group, col: str, placeholders: set[str], side: str) -
                 f"{side} column '{col}' is a categorical of non-string values — "
                 "only string-valued categorical and string obs columns can be backfilled"
             )
-        # read_categories is the masked-categories chokepoint (#651): it
-        # refuses by name for BOTH sides. The source side skips masked
-        # *values* (absence is ordinary there), but masked *categories* are
-        # a corrupt file anndata cannot read — bucketing its cells as
-        # source_missing would report clean success on it.
-        cats = read_categories(item, f"{side} column '{col}'")  # pyright: ignore[reportArgumentType]
-        codes: np.ndarray = item["codes"][:]  # pyright: ignore[reportIndexIssue, reportAssignmentType]
+        # Masked categories refuse by name inside the shared reader (#651),
+        # for BOTH sides. The source side skips masked *values* (absence is
+        # ordinary there), but masked *categories* are a corrupt file
+        # anndata cannot read — bucketing its cells as source_missing would
+        # report clean success on it.
+        cats, codes = read_categorical_data(item, f"{side} column '{col}'")  # pyright: ignore[reportArgumentType]
         cat_values = np.array(list(cats), dtype=object)
         cat_missing = np.array([is_missing_value(c, placeholders) for c in cats], dtype=bool)
         valid = codes >= 0

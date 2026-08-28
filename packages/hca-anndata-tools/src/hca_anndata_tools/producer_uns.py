@@ -34,7 +34,7 @@ from typing import Any
 import h5py
 import numpy as np
 
-from ._io import read_edit_log_h5py, read_group, read_uns, write_edit_log_h5py
+from ._io import masked_categories_error, read_edit_log_h5py, read_group, read_uns, write_edit_log_h5py
 from ._keys import PROVENANCE_KEY
 from ._serialize import make_serializable
 from .guards import is_malformed_name
@@ -479,6 +479,11 @@ def set_producer_uns(path: str, updates: list[dict]) -> dict:
                 plans, problems = _plan(f_in, parsed)
                 if problem := _edit_log_target_problem(f_in):
                     problems.append(problem)
+                # Every write refuses a masked-categories file (#651), the
+                # uns-only writer included: its snapshot would still wear a
+                # fresh -edit- stamp on a file anndata cannot open.
+                if masked_err := masked_categories_error(f_in):
+                    problems.append(masked_err)
                 # Read here, not from the snapshot: a corrupt log is a refusal,
                 # and refusing it now costs a metadata read rather than a full
                 # copy of a file that can run to tens of gigabytes (#597).

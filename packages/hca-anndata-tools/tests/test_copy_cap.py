@@ -715,3 +715,38 @@ def test_copy_refuses_masked_cap_categories(cap_source, tmp_path):
     assert "error" in result
     assert "masked (null) categories" in result["error"]
     assert "author_cell_type--rationale" in result["error"]
+
+
+def test_copy_refuses_a_masked_categories_target(cap_source, tmp_path):
+    """Every write refuses a masked-categories target (#651): a corrupt
+    non-CAP column would survive the copy into a fresh snapshot of a file
+    anndata cannot open."""
+    from hca_anndata_tools.testing import assert_no_snapshot_written, make_nullable_string_array
+
+    target = _make_hca_target(tmp_path / "target_masked_col.h5ad", CELL_IDS)
+    adata = ad.read_h5ad(target)
+    adata.obs["donor"] = pd.Categorical(["d1"] * adata.n_obs)
+    adata.write_h5ad(target)
+    with h5py.File(target, "r+") as f:
+        make_nullable_string_array(f["obs/donor"], "categories", masked=1)
+
+    result = copy_cap_annotations(str(cap_source), str(target))
+
+    assert "masked (null) categories" in result.get("error", ""), result
+    assert "'donor'" in result["error"]
+    assert_no_snapshot_written(target)
+
+
+def test_copy_overwrites_a_corrupt_cap_column_on_the_target(cap_source, hca_target_with_cap):
+    """The wholesale-replacement exemption (#651): a corrupt CAP column on
+    the target is overwritten by this copy — CAP files are never repaired
+    here, and the corrupt element never reaches the output."""
+    from hca_anndata_tools.testing import make_nullable_string_array
+
+    with h5py.File(hca_target_with_cap, "r+") as f:
+        make_nullable_string_array(f["obs/existing--cell_ontology_term_id"], "categories", masked=1)
+
+    result = copy_cap_annotations(str(cap_source), str(hca_target_with_cap), overwrite=True)
+
+    assert "error" not in result, result.get("error")
+    ad.read_h5ad(result["output_path"])  # the output opens in anndata

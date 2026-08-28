@@ -658,3 +658,36 @@ def test_drop_refuses_a_rootless_snapshot(tmp_path):
     assert "atlas.h5ad" in result["error"]
     assert path.is_file()
     assert ad.read_h5ad(path).obs["junk_col"] is not None  # untouched
+
+
+def test_drop_refuses_a_masked_categories_file(sample_h5ad_for_write, no_snapshot):
+    """Every write refuses a masked-categories file (#651): dropping some
+    OTHER column must not stamp a fresh snapshot of a file anndata cannot
+    open."""
+    from hca_anndata_tools.testing import make_nullable_string_array
+
+    _add_obs_cols(sample_h5ad_for_write, "keep_corrupt", "to_drop")
+    with h5py.File(sample_h5ad_for_write, "r+") as f:
+        make_nullable_string_array(f["obs/keep_corrupt"], "categories", masked=1)
+
+    result = drop_obs_columns(str(sample_h5ad_for_write), ["to_drop"])
+
+    assert "masked (null) categories" in result.get("error", ""), result
+    assert "keep_corrupt" in result["error"]
+
+
+def test_drop_of_the_corrupt_column_is_the_repair(sample_h5ad_for_write):
+    """The delete exemption (#651): dropping the masked-categories column
+    itself repairs the file, so the preflight must not refuse it — and the
+    output must open in anndata."""
+    from hca_anndata_tools.testing import make_nullable_string_array
+
+    _add_obs_cols(sample_h5ad_for_write, "corrupt_col")
+    with h5py.File(sample_h5ad_for_write, "r+") as f:
+        make_nullable_string_array(f["obs/corrupt_col"], "categories", masked=1)
+
+    result = drop_obs_columns(str(sample_h5ad_for_write), ["corrupt_col"])
+
+    assert "error" not in result, result.get("error")
+    out = ad.read_h5ad(result["output_path"])
+    assert "corrupt_col" not in out.obs.columns
