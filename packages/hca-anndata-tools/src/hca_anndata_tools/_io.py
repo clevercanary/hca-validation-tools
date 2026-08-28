@@ -124,7 +124,9 @@ def masked_categories_error(f: h5py.File, ignore_obs_columns: Sequence[str] = ()
 
     for label, group in iter_dataframe_groups(f):
         index_name = obs_index_name(group)
-        for col in group:
+        # Sorted like _iter_string_element_targets: with several corrupt
+        # elements, the named one must not vary between runs or platforms.
+        for col in sorted(group):
             if label == "obs" and col in ignore_obs_columns and col != index_name:
                 continue
             item = group[col]
@@ -138,7 +140,7 @@ def masked_categories_error(f: h5py.File, ignore_obs_columns: Sequence[str] = ()
     # funnel normalizes them, so the preflight must see them too, or an
     # h5py-only writer snapshots a file anndata cannot open.
     def walk_uns(prefix: str, group: h5py.Group) -> str | None:
-        for key in group:
+        for key in sorted(group):
             member = group[key]
             if not isinstance(member, h5py.Group):
                 continue
