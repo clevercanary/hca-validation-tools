@@ -107,12 +107,11 @@ def _masked_categories_open_error(path: str) -> str | None:
         for label, group in iter_dataframe_groups(f):
             for col in group:
                 item = group[col]
-                if (
-                    isinstance(item, h5py.Group)
-                    and "categories" in item
-                    and (reason := masked_categories_reason(read_categories(item), f"{label} column '{col}'"))
-                ):
-                    return reason
+                if isinstance(item, h5py.Group) and "categories" in item:
+                    try:
+                        read_categories(item, f"{label} column '{col}'")
+                    except ValueError as e:
+                        return str(e)
     return None
 
 
@@ -361,16 +360,12 @@ def read_index(group: h5py.Group | h5py.Dataset | h5py.Datatype, name: str, labe
     item = group[name]
     # A categorical index whose *categories* are masked would otherwise
     # surface as pandas' unnamed "Categorical categories cannot be null"
-    # out of read_element (principle 11). Named in the shared reader so
-    # rename, backfill, and every other index read refuse identically —
-    # and before paying for the codes (read_categories is
-    # distinct-value-sized).
-    if (
-        isinstance(item, h5py.Group)
-        and "categories" in item
-        and (reason := masked_categories_reason(read_categories(item), f"{label} index '{name}'"))
-    ):
-        raise ValueError(reason)
+    # out of read_element (principle 11). read_categories is the
+    # masked-categories chokepoint and raises the named refusal itself —
+    # this call exists to reach it before read_element does, and costs
+    # only the distinct-value-sized categories read.
+    if isinstance(item, h5py.Group) and "categories" in item:
+        read_categories(item, f"{label} index '{name}'")
     values = read_element(item)
     missing = np.flatnonzero(pd.isna(values))
     if missing.size:
@@ -480,7 +475,7 @@ def read_var_gene_names(path: str) -> tuple[set[str], dict[str, str]]:
 
         item = var[name_col]
         if isinstance(item, h5py.Group) and "categories" in item:
-            categories, codes = read_categorical_data(item)
+            categories, codes = read_categorical_data(item, f"var column '{name_col}'")
             names = [categories[c] if c >= 0 else "" for c in codes]
         else:
             names = list(read_element(item))
@@ -592,25 +587,43 @@ def write_edit_log_h5py(f: h5py.File, log_json: str) -> None:
     write_elem(ensure_provenance_group(f), EDIT_LOG_KEY, log_json)
 
 
-def read_categories(item: h5py.Group) -> pd.Index:
+def read_categories(item: h5py.Group, subject: str) -> pd.Index:
     """Read only the categories of a categorical h5py group.
 
-    Distinct-value-sized, so a caller that may refuse (a masked-categories
-    check) reads this before paying for the n_obs-sized codes.
+    Distinct-value-sized — read before paying for the n_obs-sized codes.
+
+    This is the masked-categories chokepoint (#651): a categorical whose
+    *categories* are masked is a file anndata itself cannot read, and every
+    tool owes it a named refusal rather than pandas' unnamed "Categorical
+    categories cannot be null" or — worse — silent success on values read
+    through as ``pd.NA``. Raising here covers every raw-h5py categorical
+    read by construction; ``subject`` is the caller's name for the element.
+
+    Raises:
+        ValueError: The categories are masked (see
+            :func:`masked_categories_reason`), named via ``subject``.
     """
-    return pd.Index(read_element(item["categories"]))
+    cats = pd.Index(read_element(item["categories"]))
+    if reason := masked_categories_reason(cats, subject):
+        raise ValueError(reason)
+    return cats
 
 
-def read_categorical_data(item: h5py.Group) -> tuple[pd.Index, np.ndarray]:
+def read_categorical_data(item: h5py.Group, subject: str) -> tuple[pd.Index, np.ndarray]:
     """Read categories and codes from a categorical h5py group.
 
     Args:
         item: An h5py Group with 'categories' and 'codes' datasets.
+        subject: The caller's name for the element, for the masked-categories
+            refusal (see :func:`read_categories`).
 
     Returns:
         (categories, codes) — pandas Index of decoded category strings and numpy codes array.
+
+    Raises:
+        ValueError: The categories are masked, named via ``subject``.
     """
-    return read_categories(item), item["codes"][:]
+    return read_categories(item, subject), item["codes"][:]
 
 
 def update_column_order(

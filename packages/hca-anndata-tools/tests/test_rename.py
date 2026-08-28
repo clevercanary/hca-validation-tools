@@ -507,3 +507,24 @@ def test_rename_names_a_masked_categorical_index(hca_path):
     assert "masked (null) categories" in result.get("error", ""), result
     assert "obs index 'cellID'" in result["error"]
     assert_no_snapshot_written(hca_path)
+
+
+def test_rename_refuses_a_masked_categories_selector(hca_path):
+    """A selector column whose categories are masked is a corrupt file
+    anndata cannot read; before #651 the selection matched through pd.NA
+    and the rename silently succeeded, writing an anndata-unreadable
+    snapshot. The read_categories chokepoint refuses it by name."""
+    with h5py.File(hca_path, "r+") as f:
+        make_nullable_string_array(f["obs/sample_id"], "categories", masked=1)
+
+    result = rename_cell_ids(
+        str(hca_path),
+        column="sample_id",
+        value="B1_0023",
+        prefix_from="MH_mix_",
+        prefix_to="MH_mix_BR1_",
+    )
+
+    assert "masked (null) categories" in result.get("error", ""), result
+    assert "obs column 'sample_id'" in result["error"]
+    assert_no_snapshot_written(hca_path)

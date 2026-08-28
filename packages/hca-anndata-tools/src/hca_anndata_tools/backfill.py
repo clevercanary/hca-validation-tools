@@ -29,7 +29,6 @@ from ._io import (
     direct_members,
     holds_string_values,
     is_missing_value,
-    masked_categories_reason,
     obs_index_name,
     read_categories,
     read_edit_log_h5py,
@@ -79,9 +78,7 @@ def _check_arguments(columns) -> list[str]:
     return problems
 
 
-def _read_column(
-    obs: h5py.Group, col: str, placeholders: set[str], side: str, is_target: bool = False
-) -> tuple[dict | None, str | None]:
+def _read_column(obs: h5py.Group, col: str, placeholders: set[str], side: str) -> tuple[dict | None, str | None]:
     """Read one obs column into a uniform shape: (column dict, error).
 
     The dict holds ``kind`` ('categorical' or 'string'), per-row ``values``
@@ -92,12 +89,12 @@ def _read_column(
     understands (numeric or boolean values, plain or nullable) are refused
     rather than guessed at.
 
-    ``is_target`` marks the side whose columns get rewritten. It changes the
-    verdict on one shape: a categorical with masked *categories* (a void
-    category has no value a rewrite could keep) refuses on the target side.
-    Nullable-string targets read and rewrite fine — replace_string_dataset
+    Both sides refuse a categorical with masked *categories* — a corrupt
+    file anndata cannot read; the refusal lives in read_categories (#651).
+    Nullable-string columns read and rewrite fine — replace_string_dataset
     normalizes them (#641); only masked values surviving the fill refuse,
-    checked in the plan phase. The read-only source side just reads.
+    checked in the plan phase. Otherwise the read-only source side just
+    reads.
 
     The missing predicate runs once per distinct value, never per row — the
     categorical branch works on the categories, the string branch factorizes
@@ -119,9 +116,12 @@ def _read_column(
                 f"{side} column '{col}' is a categorical of non-string values — "
                 "only string-valued categorical and string obs columns can be backfilled"
             )
-        cats = read_categories(item)  # pyright: ignore[reportArgumentType]
-        if is_target and (reason := masked_categories_reason(cats, f"Target column '{col}'")):
-            return None, reason
+        # read_categories is the masked-categories chokepoint (#651): it
+        # refuses by name for BOTH sides. The source side skips masked
+        # *values* (absence is ordinary there), but masked *categories* are
+        # a corrupt file anndata cannot read — bucketing its cells as
+        # source_missing would report clean success on it.
+        cats = read_categories(item, f"{side} column '{col}'")  # pyright: ignore[reportArgumentType]
         codes: np.ndarray = item["codes"][:]  # pyright: ignore[reportIndexIssue, reportAssignmentType]
         cat_values = np.array(list(cats), dtype=object)
         cat_missing = np.array([is_missing_value(c, placeholders) for c in cats], dtype=bool)
@@ -197,7 +197,7 @@ def _read_obs_for_backfill(
             return None, {"error": dupe_err}
         col_data = {}
         for col in columns:
-            data, err = _read_column(obs, col, placeholders, side, is_target=is_target)
+            data, err = _read_column(obs, col, placeholders, side)
             if err:
                 return None, {"error": err}
             col_data[col] = data

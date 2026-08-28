@@ -348,3 +348,25 @@ def test_encodings_flags_a_categorical_index_with_nullable_categories(sample_h5a
 
     enc = get_storage_info(str(path))["encodings"]
     assert "obs/_index/categories" in enc["unsupported"]
+
+
+def test_encodings_masked_dict_separates_the_two_verdicts(sample_h5ad, tmp_path):
+    """A mask-0 flagged element normalizes on the next write; a masked one
+    refuses every write (#651). The report separates them: both paths in
+    ``unsupported``, only the masked one in ``masked``, with its count."""
+    path = tmp_path / "two-verdicts.h5ad"
+    shutil.copy2(sample_h5ad, path)
+    with h5py.File(path, "r+") as f:
+        n = f["obs"][f["obs"].attrs.get("_index", "_index")].shape[0]
+        make_plain_string_column(f["obs"], "clean_col", ["a"] * n)
+        make_nullable_string_array(f["obs"], "clean_col")
+        make_plain_string_column(f["obs"], "masked_col", ["b"] * n)
+        make_nullable_string_array(f["obs"], "masked_col", masked=2)
+
+    enc = get_storage_info(str(path))["encodings"]
+
+    assert "obs/clean_col" in enc["unsupported"]
+    assert "obs/masked_col" in enc["unsupported"]
+    assert enc["masked"] == {"obs/masked_col": 2}
+    assert enc["masked_count"] == 1
+    assert enc["masked_truncated"] is False

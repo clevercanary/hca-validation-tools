@@ -13,7 +13,6 @@ from pydantic import TypeAdapter, ValidationError
 from ._io import (
     DEFAULT_PLACEHOLDERS,
     compact_categories,
-    masked_categories_reason,
     open_h5ad,
     read_categorical_data,
     read_categories,
@@ -299,10 +298,9 @@ def replace_placeholder_values(
                     return {"error": f"Column '{col}' not found in obs"}
                 item = obs[col]
                 if isinstance(item, h5py.Group) and "categories" in item:
-                    cats = read_categories(item)
-                    # Before .lower() and before the n_obs-sized codes read.
-                    if reason := masked_categories_reason(cats, f"Column '{col}'"):
-                        return {"error": reason}
+                    # Masked categories refuse inside read_categories (#651),
+                    # before .lower() and before the n_obs-sized codes read.
+                    cats = read_categories(item, f"Column '{col}'")
                     codes = item["codes"][:]  # pyright: ignore[reportIndexIssue]
                     placeholder_count = 0
                     matches = {}
@@ -345,7 +343,7 @@ def replace_placeholder_values(
             palettes = detect_obs_references(uns, list(columns_fixed)).palettes
             for col in columns_fixed:
                 item = f["obs"][col]
-                cats, codes = read_categorical_data(item)  # pyright: ignore[reportArgumentType]
+                cats, codes = read_categorical_data(item, f"Column '{col}'")  # pyright: ignore[reportArgumentType]
 
                 # Set blocked codes to -1 (NaN)
                 blocked = {i for i in range(len(cats)) if cats[i].lower() in bl}

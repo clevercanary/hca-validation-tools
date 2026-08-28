@@ -214,7 +214,7 @@ def copy_cap_annotations(
                             "as categorical; please report upstream."
                         )
                     }
-                categories, codes = read_categorical_data(item)
+                categories, codes = read_categorical_data(item, f"CAP source column '{col}'")
                 source_obs_data[col] = pd.Categorical.from_codes(codes, categories=categories)
 
         if not obs_cols_to_copy:

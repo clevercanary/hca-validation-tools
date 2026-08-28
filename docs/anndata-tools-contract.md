@@ -71,9 +71,12 @@ And the conversion to the profile splits cleanly on the mask:
   read-wide guarantee: a *categorical* whose **categories** are masked is a
   file anndata itself cannot read ("Categorical categories cannot be
   null"), so principle 2 does not apply to it — tools that hit it owe a
-  named refusal, nothing more. The naming lives in the shared readers
-  (`open_h5ad` for columns, `read_index` for indexes), so tools are covered
-  by construction rather than by per-tool guards (principle 8, read-side).
+  named refusal, nothing more. The naming lives in the shared readers —
+  `open_h5ad` for everything anndata reads, and `read_categories` /
+  `read_categorical_data` for every raw-h5py categorical read (callers
+  supply the element's name; `read_index` reaches it through them) — so
+  tools are covered by construction rather than by per-tool guards
+  (principle 8, read-side; the guards this replaced are deleted, #651).
 
 ## The anndata pin, precisely
 
@@ -214,7 +217,11 @@ target is constrained.
     normalized element-by-element as writes touch it. Where inspection
     sees less than the writers reach (varm and uns are normalized but not
     inspected), the report's docs say so. Masked string values remain the
-    one refusal, and every tool names them.
+    one refusal, and every tool names them — and the report separates that
+    verdict from the normalizable one (#651): its `masked` dict (path →
+    count) marks the flagged elements every write refuses, so a reader can
+    tell "clears on the next write" from "repair the data first" without
+    running a write to find out.
 
 ### Errors
 
@@ -384,3 +391,17 @@ other placeholder-looking value through curator-reviewed mappings.
    | categorical | code -1 | yes |
    | float | NaN | yes |
    | plain string | *(none exists)* | no — convert the column to categorical, or refuse |
+
+6. **(2026-08-27) The masked-categories refusal is a chokepoint, not a
+   per-tool guard — #651.** A post-merge adversarial review of #642/#649
+   showed the "covered by construction" claim was narrower than the
+   construction: two raw-h5py categorical reads (rename's selector,
+   backfill's source side) silently succeeded on masked categories — one
+   writing a new snapshot of a file anndata cannot read, the other
+   bucketing corrupt-source cells as `source_missing`. The refusal now
+   lives inside `read_categories` / `read_categorical_data` (callers pass
+   the element's name), and the four duplicated call-site guards
+   (backfill target, replace_placeholder, merge, read_index) are deleted
+   as redundant (principle 13). Inspection gained the `masked` dict so
+   the report can distinguish the masked verdict from the normalizable
+   one (principle 10).

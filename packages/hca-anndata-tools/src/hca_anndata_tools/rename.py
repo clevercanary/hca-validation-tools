@@ -90,7 +90,11 @@ def _selection_mask(obs: h5py.Group, column: str, value: str) -> tuple[np.ndarra
     """
     item = obs[column]
     if isinstance(item, h5py.Group) and "categories" in item:
-        categories, codes = read_categorical_data(item)
+        # Masked categories refuse by name inside read_categorical_data
+        # (#651) — before this shape, a masked-categories selector matched
+        # through pd.NA values and the rename silently succeeded on a file
+        # anndata itself cannot read.
+        categories, codes = read_categorical_data(item, f"obs column '{column}'")
         if value not in categories:
             return np.zeros(codes.shape, dtype=bool), 0
         return codes == categories.get_loc(value), 0

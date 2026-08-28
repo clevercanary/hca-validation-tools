@@ -597,3 +597,19 @@ def test_backfill_leaves_an_unfilled_masked_column_alone(tmp_path):
     with h5py.File(result["output_path"]) as f:
         # untouched: still the nullable group it arrived as
         assert isinstance(f["obs/run_id"], h5py.Group)
+
+
+def test_backfill_refuses_masked_source_categories(target_source):
+    """Masked *source* categories are a corrupt file anndata cannot read —
+    refused by name via the read_categories chokepoint (#651), never
+    silently bucketed as source_missing with a clean success report."""
+    target, source = target_source
+    with h5py.File(source, "r+") as f:
+        make_nullable_string_array(f["obs/library_id"], "categories", masked=1)
+
+    result = backfill_obs_from_source(target, source, columns=["library_id"])
+
+    assert "error" in result, result
+    assert "masked (null) categories" in result["error"]
+    assert "Source column 'library_id'" in result["error"]
+    assert_no_snapshot_written(target)

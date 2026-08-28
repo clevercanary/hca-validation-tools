@@ -263,7 +263,7 @@ def test_read_element_reads_nullable_categories(tmp_path):
     with h5py.File(path, "r+") as f:
         make_nullable_string_array(f["obs"]["cell_type"], "categories")
     with h5py.File(path) as f:
-        cats, codes = read_categorical_data(f["obs"]["cell_type"])
+        cats, codes = read_categorical_data(f["obs"]["cell_type"], "obs column 'cell_type'")
     assert len(cats) > 0
     assert len(codes) > 0
 
