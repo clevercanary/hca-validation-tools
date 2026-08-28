@@ -153,9 +153,9 @@ def _encodings_info(f: h5py.File) -> dict:
     """Report string encodings across obs, var, raw.var and obsm DataFrames.
 
     Attribute reads, plus one mask read per nullable element — bounded by
-    the cell count, never by the matrix — so this is as cheap on a 29 GB
-    atlas as on a small file. A file with no nullable elements reads no
-    data at all.
+    the nullable-element count times the cell count, never by the matrix —
+    so this is as cheap on a 29 GB atlas as on a small file. A file with
+    no nullable elements reads no data at all.
 
     Scope is the listed dataframes' indexes, plain nullable-string
     columns, and categorical ``categories``. ``varm`` and ``uns`` frames

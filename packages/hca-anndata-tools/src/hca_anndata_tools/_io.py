@@ -689,7 +689,7 @@ def read_categories(item: h5py.Group, subject: str) -> pd.Index:
     if n_masked := int(pd.isna(cats).sum()):
         raise ValueError(
             f"{subject} has {n_masked} masked (null) categories — a masked "
-            "category has no value a rewrite could keep; repair the column upstream first"
+            "category has no value a rewrite could keep; repair the data upstream first"
         )
     return cats
 
