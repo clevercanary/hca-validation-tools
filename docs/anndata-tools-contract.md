@@ -126,7 +126,7 @@ determines what files it must accept.
 |---|---|---|---|
 | **Read-only** | Reads, never writes | `get_summary`, `view_data`, `get_storage_info`, `validate_*` | Anything anndata reads. No exceptions. |
 | **Copy-and-transplant** | Reads source, writes a *fresh* file through anndata, moves elements between files | `convert_cellxgene_to_hca` | Anything anndata reads on the source side; the file it writes contains only profile encodings |
-| **In-place surgical** | Snapshots, then rewrites *specific elements* preserving the rest byte-for-byte | `rename_cell_ids`, `merge_obs_categories`, `backfill_obs_from_source` (target side), `replace_placeholder_values` | Reads everything; normalizes the elements it rewrites (#641); refuses **before the snapshot** only for masked values it would have to keep |
+| **In-place surgical** | Snapshots, then rewrites *specific elements* preserving the rest byte-for-byte | `rename_cell_ids`, `merge_obs_categories`, `backfill_obs_from_source` (target side), `replace_placeholder_values`, and the h5py-only writers (`rename_obs_column`, `drop_obs_columns`, `strip_forbidden_obs_columns`, `set_producer_uns`, `copy_cap_annotations`) | Reads everything; normalizes the elements it rewrites (#641); refuses **before the snapshot** for masked values it would have to keep, and for masked *categories* anywhere in the file (#651) — exempting only elements the write itself deletes or replaces wholesale |
 | **Full rewrite** | Streams the whole file through anndata's writer | `compress_h5ad`, `normalize_raw` | Reads everything; the file it writes contains only profile encodings (nullable input: #641 normalize-on-write) |
 
 A tool's *read* side is never allowed to be stricter than its class requires.
