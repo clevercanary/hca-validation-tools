@@ -36,10 +36,11 @@ is out of scope — refused, not repaired, not partially processed. The
 predicate is anndata's own, so this document maintains no list of failure
 modes: whatever `ad.read_h5ad` raises on is out, by definition.
 
-**A load failure reaches the user as anndata's, not as ours** — principles
-11 and 15 say how. What we add on top is what anndata cannot know: that the
-file is out of scope for these tools, and that the fix belongs upstream with
-whoever produced it.
+**A load failure should reach the user as anndata's, not as ours** —
+principles 11 and 15 say how, and #657 is the work: today the tool handlers
+flatten it to `str(e)`, losing the type and the traceback. What we add on
+top is what anndata cannot know: that the file is out of scope for these
+tools, and that the fix belongs upstream with whoever produced it.
 
 **The boundary stops at the MCP wrapper.** This contract governs
 `hca-anndata-tools` and `hca-anndata-mcp`. `hca-schema-validator` is a

@@ -87,8 +87,9 @@ def _dataframe_encodings(df: h5py.Group, path: str, index_name: str) -> tuple[di
     Returns the per-dataframe report and the nullable-string paths —
     indexes, plain columns, and categorical ``categories`` alike.
     Informational: every write normalizes the flagged elements it touches
-    (#641); nothing refuses them, and only masked string *values* refuse —
-    at the write path, not on read.
+    (#641); nothing refuses them. Masked string *values* do refuse — at
+    every write path, and on read wherever a shared reader meets them
+    (``read_index`` raises on a masked index).
     Categorical ``categories`` are reported just like indexes and plain
     columns — in the files that motivated this
     (hca-validation-tools#638) a categorical's categories were themselves a

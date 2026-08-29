@@ -131,9 +131,11 @@ def open_h5ad(path: str, backed: Literal["r", "r+"] | None = "r"):
         ValueError: With the column named, when the file holds a categorical
             whose categories are masked — a shape anndata itself cannot read
             (see :func:`masked_categories_reason`). anndata's own exception
-            is chained (``from e``), so the raw message still reaches the
-            user; the naming is added on top, never in place of it. Only a
-            tool that opens the file through here gets that refusal — see
+            is chained (``from e``), so the naming is added on top rather
+            than in place of it — but the chain survives only as far as a
+            caller that preserves it, and the tool handlers currently return
+            ``str(e)`` and drop it (#657). Only a tool that opens the file
+            through here gets the refusal at all — see
             ``docs/anndata-tools-contract.md`` (Scope) for the reads that
             do not.
     """
