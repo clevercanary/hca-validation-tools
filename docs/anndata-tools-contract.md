@@ -29,6 +29,57 @@ reads and writes them ungated, so the CxG toolchain itself produces and
 accepts them, and refusing them would block files nothing downstream
 rejects.
 
+## Scope: the files we operate on
+
+**We operate on files anndata can read.** A file `ad.read_h5ad` cannot open
+is out of scope — refused, not repaired, not partially processed. The
+predicate is anndata's own, so this document maintains no list of failure
+modes: whatever `ad.read_h5ad` raises on is out, by definition.
+
+**A load failure should reach the user as anndata's, not as ours** —
+principles 11 and 15 say how, and #657 is the work: today the tool handlers
+flatten it to `str(e)`, losing the type and the traceback. What we add on
+top is what anndata cannot know: that the file is out of scope for these
+tools, and that the fix belongs upstream with whoever produced it.
+
+**The boundary stops at the MCP wrapper.** This contract governs
+`hca-anndata-tools` and `hca-anndata-mcp`. `hca-schema-validator` is a
+separate published package with its own conventions — where it flattens a
+load failure (`cell_annotation_validator.py`, "Unable to read h5ad
+file: …"), the fix belongs in the MCP tool that wraps it, not in the
+vendored validator.
+
+*Known deviation, accepted.* The shared readers enforce this where they are
+used: `open_h5ad` fails as anndata fails, naming the offending column, and
+`read_index` refuses a masked categorical index before the read. Some reads
+reach an element without going through either, and so proceed on a file
+anndata cannot open, producing a result that looks successful:
+
+| Tool | Reads without opening through anndata | Instead of refusing |
+|---|---|---|
+| `rename_cell_ids` | the selector column | writes a whole snapshot nobody can open, and reports success |
+| `backfill_obs_from_source` | the source side | buckets cells as `source_missing` that the source had values for |
+| `validate_marker_genes` | gene names | returns a clean report with a marker gene silently dropped |
+
+This holds for *any* unopenable file, not for one exotic shape. The corpus
+carries a real instance: of the 223 files scanned (809 GB), one is a
+truncated download (#658). A truncated h5ad arrives by ordinary means — an
+interrupted transfer — and every read above proceeds on it identically.
+
+The shape that *prompted* this rule, a categorical whose `categories` child
+is masked ("Categorical categories cannot be null"), is a footnote by
+comparison: **0 of the 223** hold it, and on the pinned versions nothing but
+raw h5py can produce one. Checkable in three lines — pandas 2.3.3 raises
+`Categorical categories cannot be null` for a list, an `Index` and a
+`StringDtype` array alike, and anndata 0.11.4 refuses to write the
+nullable-string encoding at all (`allow_write_nullable_strings` is False).
+Re-run it when the anndata pin moves; it is on the list in "The anndata pin,
+precisely".
+
+**Reopen when** a read above is found to have produced a wrong answer on an
+unopenable file in practice. #651 carries the enforcement; #657 carries the
+reporting rule.
+
 ## Worked example: the liver obs index
 
 Every principle below has a concrete face in this file. In the liver
@@ -70,10 +121,11 @@ And the conversion to the profile splits cleanly on the mask:
   an encoding problem to paper over. One shape sits outside even the
   read-wide guarantee: a *categorical* whose **categories** are masked is a
   file anndata itself cannot read ("Categorical categories cannot be
-  null"), so principle 2 does not apply to it — tools that hit it owe a
-  named refusal, nothing more. The naming lives in the shared readers
-  (`open_h5ad` for columns, `read_index` for indexes), so tools are covered
-  by construction rather than by per-tool guards (principle 8, read-side).
+  null"), so principle 2 does not apply to it — the file is out of scope
+  (see Scope, above). The naming does live in the shared readers
+  (`open_h5ad` for columns, `read_index` for indexes), but only tools that
+  go *through* them get it; the three that read past anndata with raw h5py
+  get nothing, which is the accepted deviation Scope records.
 
 ## The anndata pin, precisely
 
@@ -109,8 +161,8 @@ determines what files it must accept.
 |---|---|---|---|
 | **Read-only** | Reads, never writes | `get_summary`, `view_data`, `get_storage_info`, `validate_*` | Anything anndata reads. No exceptions. |
 | **Copy-and-transplant** | Reads source, writes a *fresh* file through anndata, moves elements between files | `convert_cellxgene_to_hca` | Anything anndata reads on the source side; the file it writes contains only profile encodings |
-| **In-place surgical** | Snapshots, then rewrites *specific elements* preserving the rest byte-for-byte | `rename_cell_ids`, `merge_obs_categories`, `backfill_obs_from_source` (target side), `replace_placeholder_values` | Reads everything; normalizes the elements it rewrites (#641); refuses **before the snapshot** only for masked values it would have to keep |
-| **Full rewrite** | Streams the whole file through anndata's writer | `compress_h5ad`, `normalize_raw` | Reads everything; the file it writes contains only profile encodings (nullable input: #641 normalize-on-write) |
+| **In-place surgical** | Snapshots, then rewrites *specific elements* preserving the rest byte-for-byte | `rename_cell_ids`, `merge_obs_categories`, `backfill_obs_from_source` (target side), `replace_placeholder_values` | Reads anything anndata reads; normalizes the elements it rewrites (#641); refuses **before the snapshot** only for masked values it would have to keep |
+| **Full rewrite** | Streams the whole file through anndata's writer | `compress_h5ad`, `normalize_raw` | Reads anything anndata reads; the file it writes contains only profile encodings (nullable input: #641 normalize-on-write) |
 
 A tool's *read* side is never allowed to be stricter than its class requires.
 Concretely: a surgical tool's read-only **source** (backfill's source file, a
@@ -121,8 +173,14 @@ target is constrained.
 
 ### Reading
 
-1. **Read through anndata's registry.** Every read of a stamped element goes
-   through `anndata.io.read_elem` (via `_io.read_element` / `read_index`).
+1. **Read through anndata's registry.** Every read of a stamped element must
+   go through `anndata.io.read_elem` (via `_io.read_element` / `read_index`).
+   Reading an element through the registry is not the same as opening the
+   file through anndata: `read_elem` on a masked `categories` *child*
+   returns `pd.NA` without complaint (which is why `read_index` preflights
+   ahead of it — on the categorical *group* `read_elem` does raise, unnamed).
+   The reads Scope records satisfy this principle and still proceed on an
+   unopenable file.
    A raw h5py read is permitted only where the job is the storage layer
    itself — inspecting or preserving chunking, compression, dtype, attrs —
    and the reason must be stated at the site. "It seemed simpler" is not a
@@ -130,10 +188,10 @@ target is constrained.
 
 2. **We read everything anndata reads.** If `ad.read_h5ad` accepts a file,
    our readers accept it. "Cannot read" is never a valid failure for such a
-   file — the only valid refusals are semantic (principle 4) or write-side
-   (principles 5–6).
+   file — the only valid refusals are semantic (principle 4), write-side
+   (principles 5–6), or out of scope (anndata cannot read the file at all).
 
-3. **`pd.NA` is a legal reader output, and every caller names its policy.**
+3. **`pd.NA` is a legal reader output, and each caller must name its policy.**
    Readers pass masked values through as `pd.NA`; they do not stringify,
    fill, or drop them. Each caller must do exactly one of:
    - **refuse by name** — identifiers and join keys (`read_index` refuses a
@@ -171,7 +229,7 @@ target is constrained.
    principle, not a feature. The boundary is drawn where the evidence is:
    anndata 0.11.4 gates exactly nullable strings
    (`allow_write_nullable_strings`) and nothing else, so nullable
-   integer/boolean columns pass through every tool untouched and unflagged.
+   integer/boolean columns pass through untouched and unflagged.
 
 6. **One predicate judges in-place writability, and nothing else does.**
    `is_writable_element` — container, not encoding name — is the only code
@@ -183,8 +241,7 @@ target is constrained.
 
 7. **Refuse before expensive work — and only for data problems.** A tool
    that will fail must fail before its multi-gigabyte snapshot or stream,
-   naming the element and the problem, never with a library-internal
-   message. Since #641 encodings are never a reason to refuse: **every
+   naming the element and the problem (principle 11). Since #641 encodings are never a reason to refuse: **every
    write normalizes what it touches, in its own path** — the funnel
    in-memory, `replace_string_dataset` as it rewrites an element, convert
    over its whole copy — so no tool depends on a side effect of another
@@ -193,7 +250,10 @@ target is constrained.
 
 8. **Enforcement lives at the chokepoint; per-tool preflights are a courtesy.**
    The write boundary is enforced once, at the funnel every full rewrite
-   passes through (`write_h5ad`), so a new tool is covered by construction.
+   passes through (`write_h5ad`), so a new **full-rewrite** tool inherits it
+   without a guard of its own. Surgical, copy-and-transplant and read-only
+   tools do not pass through that funnel and inherit nothing from it — read
+   the class before assuming a chokepoint reaches a tool.
    Per-tool preflights (rename, merge) exist to fail *earlier*, before the
    snapshot — they are an optimization on top of the chokepoint, never a
    substitute for it. A guard added tool-by-tool is the smell that the
@@ -214,14 +274,19 @@ target is constrained.
     normalized element-by-element as writes touch it. Where inspection
     sees less than the writers reach (varm and uns are normalized but not
     inspected), the report's docs say so. Masked string values remain the
-    one refusal, and every tool names them.
+    one refusal, enforced at the shared readers and at every write path.
+    A tool that reaches an element without either does not check — Scope
+    records those reads.
 
 ### Errors
 
-11. **Every error a user sees is one we wrote.** No h5py or anndata internal
-    (`'Group' object has no attribute 'dtype'`) may reach a user, including
-    laundered through a broad `except` into an error dict. If a broad except
-    is the last line of defense, the defect is upstream of it.
+11. **Every refusal a user sees is one we wrote.** A refusal is a decision
+    we made — a data problem, a semantic conflict, an out-of-profile write —
+    and it carries our words, never an h5py or anndata internal
+    (`'Group' object has no attribute 'dtype'`) leaked as if it were one.
+    That is a rule about *refusals*, not about every string a tool can
+    return: an exception nobody decided is not a refusal, and principle 15
+    says what happens to it.
 
 12. **No guards against things that cannot happen.** No runtime isinstance
     checks on internal paths whose callers are all statically known and
@@ -239,23 +304,37 @@ target is constrained.
     record the reason next to it.
 
 14. **A reader or writer change is never local.** Widening what a reader
-    accepts widens the value domain of every caller; the caller audit is part
+    accepts widens the value domain of its callers; the caller audit is part
     of the same change, not a follow-up. (#642's read fix was correct and
     still produced five caller bugs — the audit was the missing half.)
 
 ### MCP layer
 
-15. **Tools return structured refusals, mutate all-or-nothing, and log.**
-    Every MCP tool returns an error dict with a message under principle 11,
-    never a traceback. An edit either fully applies or leaves the file
-    untouched. Every mutation lands in the edit log. Tools guarantee a
-    *coherent* file, not a valid one — `validate_schema` owns the verdict.
+15. **A refusal is a return; anything that reaches the handler is not ours.**
+    Semantic refusals carry a message and no traceback because they are
+    `return {"error": ...}` — there is no exception, so there is none to
+    withhold. An exception that reaches a tool's broad `except` is something
+    that happened to us, not something we chose: a load failure, a disk full
+    mid-write, a bug of our own. It should be returned whole, chained and
+    tracebacked, because summarizing it to `str(e)` destroys the only thing
+    that would explain it. **No tool does this yet** — every broad handler
+    ends `return {"error": str(e)}`, which is what #657 changes; until then
+    this paragraph is the decision, not a description. The audit is
+    `return {"error": str(e)}` (the handler bodies, all of which need the
+    change) against `return {"error": f"` (the refusals, which are already
+    right). One complication for #657: the refusals we still *raise* from
+    the shared readers arrive by the foreign path and need a type of their
+    own, or they will grow a traceback they should not have.
+    An edit either fully applies or leaves the file untouched. Every
+    mutation lands in the edit log. Tools guarantee a *coherent* file, not a
+    valid one — `validate_schema` owns the verdict.
 
 ### Skills layer
 
 16. **Skills state the boundary by class, not by tool list.** The gate in
-    curate/evaluate speaks in the taxonomy's terms ("in-place surgical tools
-    refuse up front; full rewrites normalize at the write funnel") rather
+    curate/evaluate speaks in the taxonomy's terms ("a file anndata cannot
+    open is out of scope; in-place surgical tools refuse masked values up
+    front; full rewrites normalize at the write funnel") rather
     than naming tools one by one, so a new tool does not silently fall out of
     the prose. Any specific behavioral claim a skill does make about a tool
     must be pinned by a test.
@@ -340,7 +419,10 @@ other placeholder-looking value through curator-reviewed mappings.
    tool. In scope for #642 because the branch's own SKILL.md already claims
    backfill works on these files. (Superseded by Decision 4: #641 deleted
    `unwritable_element_reason` — the target side now normalizes what it
-   rewrites, and only masked values refuse.)
+   rewrites, and only masked values refuse.) (Amended 2026-08-29: the source
+   side reads with raw h5py rather than through the shared readers, so on a
+   file anndata cannot open it reports cells as `source_missing` instead of
+   refusing — the accepted deviation in Scope, #651.)
 
 3. **NA policy: tools never translate; they refuse, skip, or propagate.**
    - *Refuse* = stop the whole operation with a named error, because one
@@ -354,8 +436,9 @@ other placeholder-looking value through curator-reviewed mappings.
    Converting an NA into a schema spelling of "unknown" is real work the
    schema sometimes defines — and it is *curator* work, done deliberately
    per column, never a tool's silent default (principle 3).
-   `replace_placeholder_values` on masked nullable categories: refuse by
-   name (a masked category has no value a rewrite could keep — Decision 4).
+   `replace_placeholder_values` on a categorical whose *categories* are
+   masked: refuse by name (a masked category has no value a rewrite could
+   keep — Decision 4).
 
 4. **#641 is normalize-on-write — implemented 2026-08-27.** Flatten
    nullable → plain where the mask is all zero (covers every liver file we
