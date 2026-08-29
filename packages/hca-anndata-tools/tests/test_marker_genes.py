@@ -354,7 +354,7 @@ def test_masked_evidence_and_organism_values_are_skipped(tmp_path):
     # notice, not an inventory — the scan names the first corrupt element
     # in sorted order, so with two corrupt columns the organism one wins.
     assert "obs column 'organism_ontology_term_id'" in result["corruption"]
-    assert "anndata cannot read the element" in result["corruption"]
+    assert "masked (null) categories" in result["corruption"]
     assert result["total_unique_markers"] == 2
     reported = {item["marker_gene"] for item in result["not_in_gencode"]}
     assert reported == {"ZZZFAKE"}
@@ -419,4 +419,30 @@ def test_marker_validation_names_corruption_it_never_reads(tmp_path):
 
     assert "error" not in result, result.get("error")
     assert "obs column 'tissue'" in result["corruption"]
-    assert "anndata cannot read the element" in result["corruption"]
+    assert "masked (null) categories" in result["corruption"]
+
+
+def test_marker_validation_names_corruption_with_no_evidence_columns(tmp_path):
+    """The early return for files whose annotation sets carry no marker
+    evidence — the common non-CAP shape — must carry the corruption
+    notice too. Guarding only the main return still handed back a clean
+    verdict on a file anndata cannot open (#651)."""
+    n_obs = 4
+    obs = pd.DataFrame(
+        {
+            "organism_ontology_term_id": pd.Categorical(["NCBITaxon:9606"] * n_obs),
+            "test_labels": pd.Categorical(["typeA"] * n_obs),
+            "test_labels--cell_ontology_term_id": pd.Categorical(["CL:0000540"] * n_obs),
+        },
+        index=[f"cell_{i}" for i in range(n_obs)],
+    )
+    var = pd.DataFrame({"feature_name": ["GFAP"]}, index=["ENSG00000131095"])
+    X = sp.random(n_obs, 1, density=0.5, format="csr", dtype=np.float32)
+    path = tmp_path / "no_evidence_corrupt.h5ad"
+    ad.AnnData(X=X, obs=obs, var=var).write_h5ad(path)
+    add_masked_categorical_column(path, "tissue")
+
+    result = validate_marker_genes(str(path))
+
+    assert result["annotation_sets_with_markers"] == []  # the early-return shape
+    assert "obs column 'tissue'" in result["corruption"]

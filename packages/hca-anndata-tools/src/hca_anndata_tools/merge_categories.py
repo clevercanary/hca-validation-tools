@@ -20,6 +20,7 @@ import h5py
 import numpy as np
 
 from ._io import (
+    MaskedCategoriesError,
     direct_members,
     holds_string_values,
     read_categories,
@@ -89,7 +90,7 @@ def _column_problems(obs: h5py.Group, column: str, from_value: str, to_value: st
     # the aggregation and drop every co-reported problem.
     try:
         cats = _read_categories(obs, column)
-    except ValueError as e:
+    except MaskedCategoriesError as e:
         return [str(e)]
     if missing := [v for v in (from_value, to_value) if v not in cats]:
         return [

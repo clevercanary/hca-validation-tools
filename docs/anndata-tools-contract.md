@@ -82,7 +82,13 @@ And the conversion to the profile splits cleanly on the mask:
   `snapshot_copy` / `snapshot_copy_hashed`, the chokepoint every in-place
   surgical write passes through. Bystander corruption included, and
   whatever surgical tool joins the class next covered without an edit
-  here; full rewrites and convert refuse earlier, at `open_h5ad`. The one
+  here; full rewrites and convert refuse earlier, at `open_h5ad` — with
+  one seam: an obs member absent from `column-order` is a member anndata
+  never reads, so the surgical class refuses it while a full rewrite
+  succeeds and drops it. Walking the whole file also means meeting
+  defects no reader here owns (a dangling link, a mask that does not
+  match its values); those answer as `CorruptElementError`, named, never
+  as an h5py internal (principle 11). The one
   exemption: obs columns the write itself deletes (drop/strip of the
   corrupt column IS the repair — `strip_cap` included, which is also how a
   corrupt CAP column leaves an overwrite target: CAP files are never
@@ -92,7 +98,9 @@ And the conversion to the profile splits cleanly on the mask:
   result carries a `corruption` notice from a whole-file scan. Corruption
   in *var* refuses by name instead: with no readable gene names there is
   nothing to validate markers against. Either way, no clean verdict on a
-  corrupt file is possible.
+  corrupt file is possible — the notice attaches at one exit point, so a
+  future early return cannot quietly drop it (it did once: the shape with
+  no marker evidence returned clean).
 
 ## The anndata pin, precisely
 

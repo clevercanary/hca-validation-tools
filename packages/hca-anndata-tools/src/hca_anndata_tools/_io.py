@@ -77,11 +77,20 @@ def iter_dataframe_groups(f: h5py.File) -> Iterator[tuple[str, h5py.Group]]:
             if isinstance(member, h5py.Group) and encoding_of(member) == "dataframe":
                 yield f"{label_prefix}['{key}']", member
 
+    seen: set[tuple[int, int]] = set()
+
     def walk_uns(prefix: str, group: h5py.Group) -> Iterator[tuple[str, h5py.Group]]:
         for key in group:
             member = group[key]
             if not isinstance(member, h5py.Group):
                 continue
+            # HDF5 links can form cycles; without this the walk recurses
+            # until the stack gives out — for every consumer, not just the
+            # masked scan.
+            identity = _object_identity(member)
+            if identity in seen:
+                continue
+            seen.add(identity)
             label = f"{prefix}['{key}']"
             enc = encoding_of(member)
             if enc == "dataframe":
@@ -94,14 +103,51 @@ def iter_dataframe_groups(f: h5py.File) -> Iterator[tuple[str, h5py.Group]]:
         yield from walk_uns("uns", uns)
 
 
+def _object_identity(group: h5py.Group) -> tuple[int, int]:
+    """The HDF5 object's (file, address) — stable across the paths that reach it.
+
+    ``Group.name`` is the path used to *reach* an object, so a link cycle
+    yields endlessly new names and a name-keyed visited set never closes
+    it. The object address does.
+    """
+    info = h5py.h5o.get_info(group.id)
+    return info.fileno, info.addr
+
+
+class CorruptElementError(ValueError):
+    """An element the scan could not read, named by its path.
+
+    The whole-file walk meets shapes no reader here owns — a dangling or
+    broken link, a mask that does not match its values. Principle 11
+    applies to those too: an h5py or numpy internal must not reach a user
+    just because the element it came from is one we were only passing.
+    """
+
+    def __init__(self, subject: str, cause: Exception) -> None:
+        super().__init__(f"{subject} could not be read — the file is corrupt: {cause}")
+        self.subject = subject
+
+
+@contextmanager
+def _named_corruption(subject: str) -> Iterator[None]:
+    """Re-raise anything from an element access as :class:`CorruptElementError`."""
+    try:
+        yield
+    except (MaskedCategoriesError, CorruptElementError):
+        raise
+    except Exception as e:
+        raise CorruptElementError(subject, e) from e
+
+
 class MaskedCategoriesError(ValueError):
     """A categorical whose *categories* are masked — a corrupt file.
 
-    A type rather than a message, because four sites need to tell this
-    refusal from an unrelated one (the write gate, the open scan, merge's
-    problem cascade, the marker validator) and matching on prose is how
-    a reworded message silently changes behavior. ``subject`` and
-    ``n_masked`` are the parts a caller may want to recompose.
+    A type rather than a message: the scan must tell this refusal from an
+    unrelated corruption (it answers with the first, and re-raises the
+    second named), and merge must tell it from an argument problem.
+    Matching on prose is how a reworded message silently changes
+    behavior. ``subject`` and ``n_masked`` are the parts a caller may want
+    to recompose.
     """
 
     def __init__(self, subject: str, n_masked: int) -> None:
@@ -135,8 +181,7 @@ def masked_categories_error(f: h5py.File, ignore_obs_columns: Sequence[str] = ()
 
     Two passes. The dataframe pass walks ``iter_dataframe_groups`` first,
     for the reader-facing labels ("obs index 'cellID'") and the
-    ``ignore_obs_columns`` exemption (obs columns the caller replaces or
-    deletes wholesale). The whole-file pass then walks **every other
+    ``ignore_obs_columns`` exemption (obs columns the caller deletes). The whole-file pass then walks **every other
     group** from the root — the rule is the file format's, not a roster:
     a group holding ``categories`` is a categorical wherever it sits
     (obsm, varm, layers, obsp, uns, anywhere anndata or a producer put
@@ -145,12 +190,31 @@ def masked_categories_error(f: h5py.File, ignore_obs_columns: Sequence[str] = ()
     (hca-validation-tools#651/#652); a roster cannot make a claim of the
     form "every element".
 
-    Reads categories only, never codes. Unrelated corruption propagates:
-    it is a different defect with its own named error, and only
-    :func:`read_categories`' refusal is this function's answer. Callers
-    give it meaning: the write gate (:func:`write.snapshot_copy`) turns a
-    hit into a refusal, and the read-only diagnostics report it.
+    Reads a categorical's categories, never its codes — though a dataset
+    named ``categories`` that belongs to no categorical is read in full,
+    which is the price of not keeping a roster.
+
+    Unrelated corruption propagates as :class:`CorruptElementError` naming
+    the path — walking the whole file means meeting shapes no reader here
+    owns (a dangling link, a mask that does not match its values), and
+    principle 11 holds for those too. Only :func:`read_categories`'
+    refusal is this function's own answer. Callers give it meaning: the
+    write gate (:func:`write.snapshot_copy`) turns a hit into a refusal,
+    and the read-only diagnostics report it.
     """
+    try:
+        return _masked_categories_scan(f, ignore_obs_columns)
+    except (MaskedCategoriesError, CorruptElementError):
+        raise
+    except Exception as e:
+        # The first pass walks a shared iterator that can meet a dangling
+        # link before this module sees the element: principle 11 still
+        # holds, so the failure is named as ours rather than h5py's.
+        raise CorruptElementError("an element of this file", e) from e
+
+
+def _masked_categories_scan(f: h5py.File, ignore_obs_columns: Sequence[str]) -> str | None:
+    """:func:`masked_categories_error`'s two passes, unwrapped."""
     dataframe_paths = set()
     for label, group in iter_dataframe_groups(f):
         dataframe_paths.add(group.name)
@@ -168,23 +232,35 @@ def masked_categories_error(f: h5py.File, ignore_obs_columns: Sequence[str] = ()
                 except MaskedCategoriesError as e:
                     return str(e)
 
+    visited: set[tuple[int, int]] = set()
+
     def walk(prefix: str, group: h5py.Group) -> str | None:
         for key in sorted(group):
-            member = group[key]
-            # A dataframe group was already walked above, with its labels
-            # and exemptions — skipping it here is what keeps the exemption
-            # from being un-exempted by the second pass.
-            if not isinstance(member, h5py.Group) or member.name in dataframe_paths:
-                continue
             label = f"{prefix}['{key}']" if prefix else key
-            # Check *and* recurse: a legacy categorical is exactly an
-            # unstamped group with categories, and a container may nest
-            # one at any depth — doing both cannot miss either shape.
-            if "categories" in member and _may_hold_masked_categories(member):
+            with _named_corruption(label):
+                member = group[key]  # a dangling link raises here
+                # A dataframe group was already walked above, with its
+                # labels and exemptions — skipping it here is what keeps
+                # the exemption from being un-exempted by this pass.
+                if not isinstance(member, h5py.Group) or member.name in dataframe_paths:
+                    continue
+                # HDF5 links can form cycles; a walk without this recurses
+                # until Python's stack gives out.
+                identity = _object_identity(member)
+                if identity in visited:
+                    continue
+                visited.add(identity)
+                # Check *and* recurse: a legacy categorical is exactly an
+                # unstamped group with categories, and a container may nest
+                # one at any depth — doing both cannot miss either shape.
+                may_hold = "categories" in member and _may_hold_masked_categories(member)
+            if may_hold:
                 try:
                     read_categories(member, label)
                 except MaskedCategoriesError as e:
                     return str(e)
+                except Exception as e:
+                    raise CorruptElementError(label, e) from e
             if reason := walk(label, member):
                 return reason
         return None

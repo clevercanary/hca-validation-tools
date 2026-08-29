@@ -67,6 +67,25 @@ def _classify_missing(
     return {"marker_gene": gene, "type": "not_in_gencode"}
 
 
+def _with_corruption(result: dict, path: str) -> dict:
+    """Attach the corruption notice to a successful validation result.
+
+    This validator is h5py-only, so nothing upstream of it fails on a file
+    anndata cannot open — the diagnostic still runs (principle 3's skip
+    arm), and this key is how the corruption gets said. Every non-error
+    return goes through here, because the version that guarded only the
+    main return still handed back a clean verdict on a corrupt file whose
+    annotation sets carry no marker evidence — the common non-CAP shape.
+
+    One whole-file scan rather than per-column notices: it is a superset
+    of what the columns this validator reads could report, so a clean
+    verdict on a corrupt file is impossible wherever the masks sit.
+    """
+    if corruption := masked_categories_error_for_path(path, best_effort=True):
+        result["corruption"] = corruption
+    return result
+
+
 def validate_marker_genes(path: str, annotation_set: str | None = None) -> dict:
     """Validate that CAP marker genes exist in an h5ad file's var.
 
@@ -81,7 +100,12 @@ def validate_marker_genes(path: str, annotation_set: str | None = None) -> dict:
         annotation_set: Specific annotation set to validate. If None, validates all.
 
     Returns:
-        Dict with validation results, or 'error' on failure.
+        Dict with validation results, or 'error' on failure. A
+        ``corruption`` key means the file holds a categorical whose
+        categories are masked — a shape anndata itself cannot open. The
+        validation still ran (this reader is h5py-only), but the file is
+        corrupt and needs upstream repair: report it alongside the marker
+        findings rather than treating the result as a pass.
     """
     try:
         path = resolve_latest(path)
@@ -113,16 +137,19 @@ def validate_marker_genes(path: str, annotation_set: str | None = None) -> dict:
         sets_with_markers = [s for s in sets_to_check if f"{s}--marker_gene_evidence" in obs_columns]
 
         if not sets_with_markers:
-            return {
-                "annotation_sets_with_markers": [],
-                "total_unique_markers": 0,
-                "found_in_var": 0,
-                "missing": 0,
-                "known_renames": [],
-                "missing_from_var": [],
-                "not_in_gencode": [],
-                "details": {},
-            }
+            return _with_corruption(
+                {
+                    "annotation_sets_with_markers": [],
+                    "total_unique_markers": 0,
+                    "found_in_var": 0,
+                    "missing": 0,
+                    "known_renames": [],
+                    "missing_from_var": [],
+                    "not_in_gencode": [],
+                    "details": {},
+                },
+                path,
+            )
 
         gene_names, eid_to_var_name = read_var_gene_names(path)
         _, name_to_ids = load_gencode_reference()
@@ -191,15 +218,7 @@ def validate_marker_genes(path: str, annotation_set: str | None = None) -> dict:
             "not_in_gencode": _dedup(all_not_in_gencode),
             "details": details,
         }
-        # This validator is h5py-only, so nothing upstream of it fails on a
-        # file anndata cannot open — the diagnostic still runs (principle
-        # 3's skip arm), and this key is how the corruption gets said. One
-        # whole-file scan rather than per-column notices: the scan is a
-        # superset of what the columns read here could report, so a clean
-        # verdict on a corrupt file is impossible wherever the masks sit.
-        if corruption := masked_categories_error_for_path(path, best_effort=True):
-            result["corruption"] = corruption
-        return result
+        return _with_corruption(result, path)
 
     except Exception as e:
         return {"error": str(e)}

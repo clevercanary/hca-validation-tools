@@ -162,7 +162,9 @@ def _refuse_masked_categories(path: str, ignore_obs_columns: Sequence[str]) -> N
     cannot open. ``ignore_obs_columns`` exempts the obs columns the caller
     deletes: removing the corrupt column IS the repair, and the element
     never reaches the output. Runs before the
-    snapshot name is even claimed; distinct-value-sized reads only.
+    snapshot name is even claimed, and reads categories rather than codes
+    — bounded by distinct values, except for a stray dataset named
+    ``categories`` belonging to no categorical, which is read whole.
     """
     if reason := masked_categories_error_for_path(path, ignore_obs_columns=ignore_obs_columns):
         raise ValueError(reason)

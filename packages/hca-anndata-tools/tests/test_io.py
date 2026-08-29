@@ -1,5 +1,6 @@
 """Tests for the _io helpers that narrow uns access (#617)."""
 
+import re
 import warnings
 
 import anndata as ad
@@ -560,27 +561,72 @@ def test_masked_scan_still_reads_non_string_categories(tmp_path):
         assert "obs column 'grade'" in (_io.masked_categories_error(f) or "")
 
 
-def test_masked_scan_finds_a_bare_categorical_in_any_container(tmp_path):
-    """The whole-file pass (#651): a masked categorical sitting bare in
-    obsm — outside every dataframe and outside uns — is still found, so
-    the write gate refuses and open_h5ad names it. Three roster-shaped
+@pytest.mark.parametrize("container", ["obsm", "varm", "layers", "obsp"])
+def test_masked_scan_finds_a_bare_categorical_in_any_container(tmp_path, container):
+    """The whole-file pass (#651): a masked categorical sitting bare in a
+    container — outside every dataframe and outside uns — is still found,
+    so the write gate refuses and open_h5ad names it. Three roster-shaped
     drafts of the scan were each refuted by a shape one container over;
-    the rule is the file format's, not a roster's."""
-    path = tmp_path / "bare_obsm.h5ad"
+    the rule is the file format's, not a roster's, so every container is
+    covered by construction and this parametrization is the evidence."""
+    path = tmp_path / f"bare_{container}.h5ad"
     adata = ad.AnnData(X=np.zeros((2, 1), dtype=np.float32), obs=pd.DataFrame(index=["c0", "c1"]))
     adata.write_h5ad(path)
     with h5py.File(path, "r+") as f:
-        write_elem(f["obsm"], "ann", pd.Categorical(["hi", "lo"]))
-        make_nullable_string_array(f["obsm/ann"], "categories", masked=1)
+        holder = f.require_group(container)
+        write_elem(holder, "ann", pd.Categorical(["hi", "lo"]))
+        make_nullable_string_array(holder["ann"], "categories", masked=1)
 
         reason = _io.masked_categories_error(f)
     assert reason is not None
-    assert "obsm['ann']" in reason
+    assert f"{container}['ann']" in reason
 
     from hca_anndata_tools.write import snapshot_copy
 
-    with pytest.raises(ValueError, match="obsm\\['ann'\\]"), snapshot_copy(str(path)):
+    expected = re.escape(f"{container}['ann']")
+    with pytest.raises(ValueError, match=expected), snapshot_copy(str(path)):
         raise AssertionError("body must never run")
 
-    with pytest.raises(ValueError, match="obsm\\['ann'\\]"), _io.open_h5ad(str(path)):
+    with pytest.raises(ValueError, match=expected), _io.open_h5ad(str(path)):
         pass
+
+
+def test_masked_scan_names_the_same_element_under_insertion_order(tmp_path):
+    """h5py iterates alphabetically by default, which makes the scan's
+    sorted() invisible to every other test. A track_order group iterates
+    in insertion order instead: with two corrupt members the scan must
+    still name the alphabetically-first one, not whichever was written
+    first."""
+    path = tmp_path / "track_order.h5ad"
+    adata = ad.AnnData(X=np.zeros((2, 1), dtype=np.float32), obs=pd.DataFrame(index=["c0", "c1"]))
+    adata.write_h5ad(path)
+    with h5py.File(path, "r+") as f:
+        del f["uns"]
+        uns = f.create_group("uns", track_order=True)
+        uns.attrs["encoding-type"] = "dict"
+        for name in ("zebra", "alpha"):  # written in reverse alphabetical order
+            write_elem(uns, name, pd.Categorical(["hi", "lo"]))
+            make_nullable_string_array(uns[name], "categories", masked=1)
+        assert list(uns) == ["zebra", "alpha"], "fixture must iterate in insertion order"
+
+        assert "uns['alpha']" in (_io.masked_categories_error(f) or "")
+
+
+def test_open_h5ad_names_masked_categories_it_cannot_locate(tmp_path):
+    """The scan is best-effort inside open_h5ad, so an unrelated defect
+    can leave it empty-handed. The refusal must still be ours (principle
+    11) rather than pandas' bare 'Categorical categories cannot be null'."""
+    path = tmp_path / "unlocatable.h5ad"
+    adata = ad.AnnData(X=np.zeros((2, 1), dtype=np.float32), obs=pd.DataFrame(index=["c0", "c1"]))
+    adata.obs["registered"] = pd.Categorical(["hi", "lo"])
+    adata.write_h5ad(path)
+    with h5py.File(path, "r+") as f:
+        make_nullable_string_array(f["obs/registered"], "categories", masked=1)
+        # A dangling link the scan meets first, so it raises and the
+        # best-effort wrapper answers None.
+        f["obs"].create_group("aaa")["categories"] = h5py.SoftLink("/nope/missing")
+
+    with pytest.raises(ValueError, match="masked") as excinfo, _io.open_h5ad(str(path)):
+        pass
+    assert str(excinfo.value) != "Categorical categories cannot be null"
+    assert "could not locate" in str(excinfo.value) or "registered" in str(excinfo.value)
