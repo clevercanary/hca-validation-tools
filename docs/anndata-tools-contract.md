@@ -77,8 +77,10 @@ Re-run it when the anndata pin moves; it is on the list in "The anndata pin,
 precisely".
 
 **Reopen when** a read above is found to have produced a wrong answer on an
-unopenable file in practice. #651 carries the enforcement; #657 carries the
-reporting rule.
+unopenable file in practice. #661 carries the enforcement — open through
+anndata before the raw-h5py read — and #657 the reporting rule. (#651 holds
+the findings and the evidence; its own fix design was tried in #652 and
+abandoned, so do not implement it from there.)
 
 ## Worked example: the liver obs index
 
