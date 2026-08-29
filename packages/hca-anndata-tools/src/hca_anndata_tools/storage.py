@@ -68,9 +68,11 @@ def _inspect_item(f: h5py.File, name: str) -> dict | None:
 def _mask_count(item: h5py.Group | h5py.Dataset | h5py.Datatype) -> int | None:
     """Number of masked (null) entries in a nullable array, or None.
 
-    Only nullable encodings carry a ``mask``; anything else has no notion of
-    a null and returns None rather than 0, so callers can tell "no nulls"
-    apart from "cannot have nulls".
+    Only nullable encodings carry a ``mask``; anything else returns None
+    rather than 0, so callers can tell "no nulls" from "no mask to count".
+    The two are not the same, and a categorical is the trap: its nulls are
+    codes of -1, which no mask records and nothing here reports, so None
+    means *unchecked* rather than clean.
     """
     if isinstance(item, h5py.Group) and isinstance(mask := item.get("mask"), h5py.Dataset):
         # count_nonzero is a dedicated popcount path; ndarray.sum() on bools
@@ -85,13 +87,15 @@ def _dataframe_encodings(df: h5py.Group, path: str, index_name: str) -> tuple[di
     Returns the per-dataframe report and the nullable-string paths —
     indexes, plain columns, and categorical ``categories`` alike.
     Informational: every write normalizes the flagged elements it touches
-    (#641); nothing refuses them, and only masked string *values* refuse
-    anywhere.
+    (#641); nothing refuses them, and only masked string *values* refuse —
+    at the write path, not on read.
     Categorical ``categories`` are reported just like indexes and plain
     columns — in the files that motivated this
     (hca-validation-tools#638) a categorical's categories were themselves a
     nullable group; since #641 the tools normalize that shape as they
-    rewrite it, and only *masked* categories refuse.
+    rewrite it. *Masked* categories are refused by name where a reader or a
+    write path meets them, and are also a file anndata cannot open at all
+    (see ``docs/anndata-tools-contract.md``).
 
     Members are read through :func:`~hca_anndata_tools._io.direct_members`
     because ``index_name`` comes from the file rather than the caller, and
@@ -137,7 +141,7 @@ def _dataframe_encodings(df: h5py.Group, path: str, index_name: str) -> tuple[di
         if "categories" not in column:
             # Only nullable *strings* are flagged: they are what writes
             # normalize. Nullable-integer/boolean columns pass through
-            # every tool untouched (anndata writes them ungated), so
+            # untouched (anndata writes them ungated), so
             # flagging them would be noise nothing acts on.
             if holds_string_values(column):
                 unsupported.append(f"{path}/{name}")
@@ -167,10 +171,10 @@ def _encodings_info(f: h5py.File) -> dict:
     on a small file. A file with no nullable index reads no data at all.
 
     Scope is the listed dataframes' indexes, plain nullable-string
-    columns, and categorical ``categories`` — everything a tool would
-    actually refuse. ``varm`` and ``uns`` frames are the write funnel's
-    alone, and nullable-integer/boolean columns are not flagged: every
-    tool accepts them.
+    columns, and categorical ``categories`` — the elements a write
+    normalizes in place. ``varm`` and ``uns`` frames are the write funnel's
+    alone, and nullable-integer/boolean columns are not flagged: anndata
+    writes them ungated.
     """
     result: dict = {}
     unsupported: list[str] = []

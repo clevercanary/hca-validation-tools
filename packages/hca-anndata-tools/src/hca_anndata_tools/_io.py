@@ -130,8 +130,12 @@ def open_h5ad(path: str, backed: Literal["r", "r+"] | None = "r"):
     Raises:
         ValueError: With the column named, when the file holds a categorical
             whose categories are masked — a shape anndata itself cannot read
-            (see :func:`masked_categories_reason`). Every tool that opens
-            files through here gets the named refusal for free.
+            (see :func:`masked_categories_reason`). anndata's own exception
+            is chained (``from e``), so the raw message still reaches the
+            user; the naming is added on top, never in place of it. Only a
+            tool that opens the file through here gets that refusal — see
+            ``docs/anndata-tools-contract.md`` (Scope) for the reads that
+            do not.
     """
     try:
         adata = ad.read_h5ad(path, backed=backed)
