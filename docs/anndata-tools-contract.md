@@ -71,36 +71,44 @@ And the conversion to the profile splits cleanly on the mask:
   read-wide guarantee: a *categorical* whose **categories** are masked is a
   file anndata itself cannot read ("Categorical categories cannot be
   null"), so principle 2 does not apply to it — tools that hit it owe a
-  named refusal, nothing more. `open_h5ad` names it for every tool that
-  reads through anndata, and `read_index` for index reads — but the two
-  tools that read a categorical through **raw h5py** do not:
-  `rename_cell_ids`' selector and `backfill_obs_from_source`' source side
-  read NA-tolerantly and proceed, which on such a file is a silent wrong
-  answer (a snapshot anndata cannot read; corrupt-source cells reported
-  as `source_missing`) rather than a refusal.
+  named refusal, nothing more — and today several tools do not give one.
+  Verified against this branch's code (2026-08-29):
 
-  **Known and accepted** (hca-validation-tools#651). The trigger has never
-  been observed: 0 of 223 real h5ad files hold masked categories, or
-  masked string values at all (scanned 2026-08-29), and none of pandas,
-  anndata 0.11.4, or our own writers can produce one — pandas refuses to
-  construct null categories, and the write profile never emits a nullable
-  string. Closing it needs the refusal inside `read_categories` /
-  `read_categorical_data`, which every raw-h5py categorical read already
-  passes through; hca-validation-tools#652 did exactly that and was closed
-  as insurance against a file shape no producer we feed from emits. Revisit
-  if a foreign producer (an R/Seurat export, a hand-written h5py file) ever
-  lands one. To re-check the corpus, open each file and look for either
-  shape: `_io.masked_string_error(f)` reports masked string *values*, and
-  reading each categorical's `categories` child through
-  `_io.read_categories` refuses on masked *categories* — the scan of all
-  223 files took four seconds.
+  - `open_h5ad` names it for the elements it walks: dataframe columns and
+    indexes in obs, var, `raw/var`, and obsm/varm/uns *frames*. A **bare**
+    categorical in `uns` is outside that walk and still surfaces pandas'
+    unnamed `Categorical categories cannot be null`.
+  - `read_index` names it for index reads.
+  - **Three tools read a categorical through raw h5py and proceed**, because
+    those reads are NA-tolerant since #642: `rename_cell_ids`' selector
+    (writes a snapshot anndata cannot read, and reports "no rows match" if
+    you select the masked value), `backfill_obs_from_source`' source side
+    (reports the cells as `source_missing` and silently drops their values),
+    and `validate_marker_genes` via `read_obs_categorical_values` (returns a
+    clean marker report, with the masked marker gene dropped from the
+    analysis).
 
-  The general rule this taught, which outlives the case: **a claim of the
-  form "every X" belongs in this document only when something mechanical
-  enumerates X.** The sentence this paragraph replaced asserted coverage
-  "by construction" that the construction did not have, and cost eight
-  review rounds before anyone questioned the sentence rather than the
-  code.
+  **Known and accepted** (hca-validation-tools#651). The shape has never been
+  observed: 0 of 223 real h5ad files hold masked categories, or masked string
+  values at all (`_io.masked_string_error(f)` reports both; see
+  `scripts/scan_masked_elements.py`, which produced that count). Nor can any
+  supported pandas or anndata path *originate* one — pandas refuses to build a
+  `Categorical` with null categories through every constructor, including
+  under `settings.override(allow_write_nullable_strings=True)`. It is
+  reachable only from a foreign producer (an R/Seurat export, hand-written
+  h5py). Note the asymmetry: our copy-and-patch writers **propagate** it —
+  `rename_cell_ids` on such a file mints a new snapshot whose categories are
+  still `nullable-string-array` with the mask intact — so one such file
+  entering the pipeline breeds more.
+
+  Closing it means giving those three read sites a refusal. There is no single
+  chokepoint today: `read_categories` is a two-line helper that several sites
+  bypass (`read_obs_categorical_values` reads the `categories` child
+  directly), and simply making it raise would break `open_h5ad`, whose naming
+  scan is built on it inside a `suppress` — the named message would regress to
+  pandas'. hca-validation-tools#652 restructured all of that into a real
+  chokepoint and was closed unmerged as insurance against a shape no producer
+  we feed from originates; its branch is recoverable if one ever appears.
 
 ## The anndata pin, precisely
 
@@ -143,6 +151,23 @@ A tool's *read* side is never allowed to be stricter than its class requires.
 Concretely: a surgical tool's read-only **source** (backfill's source file, a
 selector column) must accept everything anndata reads, even when its write
 target is constrained.
+
+## How to write in this document
+
+**A claim of the form "every X" belongs here only when something mechanical
+enumerates X** — a single function every path provably reaches, a walker over
+the format, a generated test. Otherwise state the enumerated list, which a
+reader can check.
+
+This rule was expensive. The worked example above once asserted that
+masked-categories naming was "covered by construction" by the shared
+readers; the construction did not have it, three tools bypassed it, and the
+sentence survived because it read well. Defending it cost eight review
+rounds and a closed pull request (hca-validation-tools#651/#652) before
+anyone asked the cheap question — *does this shape exist in our data?* —
+which took four seconds to answer (`scripts/scan_masked_elements.py`) and
+settled the whole thing. Claims about file shapes get checked against the
+corpus before they get written down.
 
 ## Principles
 
@@ -241,7 +266,10 @@ target is constrained.
     normalized element-by-element as writes touch it. Where inspection
     sees less than the writers reach (varm and uns are normalized but not
     inspected), the report's docs say so. Masked string values remain the
-    one refusal, and every tool names them.
+    one refusal — named by every tool that rewrites the element, and by
+    `open_h5ad` for the elements it walks. Masked *categories* are the
+    exception in both directions: see the worked example above for the
+    three read sites that proceed without a refusal.
 
 ### Errors
 
