@@ -101,14 +101,26 @@ And the conversion to the profile splits cleanly on the mask:
   still `nullable-string-array` with the mask intact — so one such file
   entering the pipeline breeds more.
 
-  Closing it means giving those three read sites a refusal. There is no single
-  chokepoint today: `read_categories` is a two-line helper that several sites
-  bypass (`read_obs_categorical_values` reads the `categories` child
-  directly), and simply making it raise would break `open_h5ad`, whose naming
-  scan is built on it inside a `suppress` — the named message would regress to
-  pandas'. hca-validation-tools#652 restructured all of that into a real
-  chokepoint and was closed unmerged as insurance against a shape no producer
-  we feed from originates; its branch is recoverable if one ever appears.
+  **If it ever needs closing, ask anndata, don't re-derive it.** The property
+  is "can anndata read this file", and anndata answers it directly:
+  `ad.read_h5ad(path, backed="r")` refuses every placement — obs, uns, obsm,
+  varm, layers, obsp — because it *is* the oracle, with no roster to
+  enumerate and no walker to keep in step with the format. Measured
+  2026-08-29: 0.13 s on a 0.53 GB file, 0.97 s on a 10 GB / 1M-cell atlas,
+  6.7 s on a 21.6 GB / 2.1M-cell one — in front of a snapshot copy of the
+  same file, which costs more.
+
+  `open_h5ad` already *is* that gate for every tool that reads through
+  anndata; closing the gap means routing the h5py-only writers through it too.
+  Refusal is then complete; naming is not — anndata's own message names no
+  element, and `_masked_categories_open_error` recovers the name only for the
+  dataframe elements it walks.
+
+  hca-validation-tools#652 took the other road — a hand-built scan that walks
+  the file and re-derives what anndata already knows — and grew to ~1,200
+  lines over eight review rounds, six of which found defects in the scan
+  rather than in the original problem. It was closed unmerged. The branch is
+  recoverable, but the three lines above are the better answer.
 
 ## The anndata pin, precisely
 
