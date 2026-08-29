@@ -116,6 +116,26 @@ And the conversion to the profile splits cleanly on the mask:
   element, and `_masked_categories_open_error` recovers the name only for the
   dataframe elements it walks.
 
+  **The precedent is upstream.** `cellxgene-schema` — far more h5ad exposure
+  than we have — enumerates no corruption at all. Its `utils.read_h5ad`
+  wraps the open in `except (OSError, TypeError)`, logs "Unable to open …
+  with AnnData", and calls `sys.exit(1)`; the whole of `validate()` then sits
+  under one `except Exception` that appends `f"Unexpected validation error:
+  {e}"`. No walker, no element names, no taxonomy of defects. Their budget
+  goes to schema questions — is this a valid ontology term, is X raw counts —
+  which is where their domain knowledge is. A file anndata cannot read is
+  simply not a candidate for validation.
+
+  That is worth weighing against principle 11 (*every error a user sees is
+  one we wrote*). The principle is right for refusals about **our** semantics:
+  a masked value we decline to flatten, an index we will not join on. Applied
+  to arbitrary file corruption it is what turns a three-line check into a
+  file walker, because naming an element means enumerating elements, and
+  enumerating elements is the roster problem this section exists to warn
+  about. For corruption, "anndata could not read this file, here is its
+  message, plus the element if our scan can find it" satisfies the spirit
+  without the machinery.
+
   hca-validation-tools#652 took the other road — a hand-built scan that walks
   the file and re-derives what anndata already knows — and grew to ~1,200
   lines over eight review rounds, six of which found defects in the scan
