@@ -145,10 +145,8 @@ def open_h5ad(path: str, backed: Literal["r", "r+"] | None = "r"):
             is chained (``from e``), so the naming is added on top rather
             than in place of it — but the chain survives only as far as a
             caller that preserves it, and the tool handlers currently return
-            ``str(e)`` and drop it (#657). Only a tool that opens the file
-            through here gets the refusal at all — see
-            ``docs/anndata-tools-contract.md`` (Scope) for the reads that
-            do not.
+            ``str(e)`` and drop it (#657). Since #661 every tool reaches
+            this refusal, through :func:`gate_h5ad_paths`.
     """
     try:
         adata = ad.read_h5ad(path, backed=backed)

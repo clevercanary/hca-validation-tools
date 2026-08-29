@@ -21,17 +21,17 @@ Two properties are under test here, and they are different in kind:
 from __future__ import annotations
 
 import inspect
-from pathlib import Path
 
 import anndata as ad
 import h5py
 import pytest
 
 import hca_anndata_tools as tools
-from hca_anndata_tools._io import GATED_PATH_PARAMS
+from hca_anndata_tools._io import gate_h5ad_paths
 from hca_anndata_tools.testing import (
     assert_no_snapshot_written,
     create_sample_h5ad,
+    create_truncated_h5ad,
     make_nullable_string_array,
 )
 
@@ -55,22 +55,8 @@ def good(tmp_path) -> str:
 
 @pytest.fixture
 def truncated(tmp_path) -> str:
-    """A half-written h5ad — the ordinary way a file fails to open.
-
-    Half the bytes rather than a fixed count: the sample fixture is ~57 KB, so
-    #661's literal ``read(100_000)`` would copy the whole file and leave a
-    perfectly valid h5ad behind, and every assertion below would be testing
-    nothing. The guard at the end is what actually pins that down.
-    """
-    src = create_sample_h5ad(tmp_path / "src.h5ad")
-    dst = tmp_path / "truncated.h5ad"
-    payload = src.read_bytes()
-    dst.write_bytes(payload[: len(payload) // 2])
-    src.unlink()
-
-    with pytest.raises(OSError):
-        ad.read_h5ad(str(dst), backed="r")
-    return str(dst)
+    """A half-written h5ad — the ordinary way a file fails to open."""
+    return str(create_truncated_h5ad(tmp_path / "truncated.h5ad"))
 
 
 @pytest.fixture
@@ -170,7 +156,7 @@ def _ids() -> list[str]:
 
 
 @pytest.mark.parametrize("index", range(len(_ids())), ids=_ids())
-def test_refuses_truncated_file(index, truncated, good, tmp_path):
+def test_refuses_truncated_file(index, truncated, good):
     """AC1 — every gated path refuses, and no writer leaves a snapshot behind."""
     case_id, fn, kwargs, writes = _cases(truncated, good)[index]
 
@@ -179,11 +165,13 @@ def test_refuses_truncated_file(index, truncated, good, tmp_path):
     assert isinstance(result, dict), f"{case_id} did not return the tool error shape"
     assert "error" in result, f"{case_id} accepted a file anndata cannot open: {result}"
     if writes:
-        assert_no_snapshot_written(tmp_path / "x")
+        # Both fixtures live in the same tmp_path, so one scan covers a
+        # snapshot taken beside either side of a two-file tool.
+        assert_no_snapshot_written(truncated)
 
 
 @pytest.mark.parametrize("index", range(len(_ids())), ids=_ids())
-def test_refuses_masked_categories(index, masked_categories, good, tmp_path):
+def test_refuses_masked_categories(index, masked_categories, good):
     """The deviation on record reaches the same gate as a truncated download."""
     case_id, fn, kwargs, _ = _cases(masked_categories, good)[index]
 
@@ -244,55 +232,62 @@ def test_missing_file_keeps_each_tools_own_message(tmp_path, good):
 def test_every_public_path_is_gated_or_named():
     """AC2 — the roster is complete, and stays complete without anyone's attention.
 
-    Behavioural rather than structural: a tool counts as gated if this file
-    exercises it against an unopenable file, whether it refuses via the
-    decorator or by opening through ``open_h5ad`` in its own body. That keeps
-    the ten already-correct tools from having to take a second, redundant
-    anndata open just to carry a marker.
+    The oracle here is deliberately *not* ``GATED_PATH_PARAMS``. Checking the
+    decorator's names against the same constant the decorator selects with
+    would compare an expression to itself: a path parameter the constant does
+    not name would be defined out of existence rather than flagged. So the
+    expected set is derived independently, from the parameter names alone.
+
+    Two ways a tool can satisfy this. A decorated tool must gate *every* one
+    of its path parameters — that is what ``copy_cap_annotations`` failed,
+    gating its source while its target was snapshotted unopened. An
+    undecorated tool must be exercised by the refusal tests above (the ten
+    that open through ``open_h5ad`` in their own bodies, which keeps them
+    from paying a second, redundant anndata open), and may have only one path
+    to prove: a second one is unprovable that way and needs the decorator.
     """
     covered = {case_id.split("[")[0] for case_id, *_ in _cases("bad", "good")}
 
-    missing = {}
     for name in tools.__all__:
         obj = getattr(tools, name)
-        if not callable(obj) or name in OMISSIONS or name in covered:
+        if not callable(obj) or name in OMISSIONS:
             continue
         try:
             params = inspect.signature(obj).parameters
         except (TypeError, ValueError):
             continue
-        if pathish := [p for p in params if "path" in p.lower()]:
-            missing[name] = pathish
-
-    assert not missing, (
-        f"These public callables take a path but no test above proves they refuse a file "
-        f"anndata cannot open: {missing}. Either gate them with @gate_h5ad_paths and add "
-        f"them to _cases(), or add them to OMISSIONS with the reason they open no h5ad."
-    )
-
-
-def test_two_file_tools_gate_both_sides():
-    """A tool that gates one side of a two-file operation still writes blindly.
-
-    ``copy_cap_annotations`` is why the marker carries names rather than a
-    boolean: it opened its source through anndata and would have passed any
-    per-tool audit, while its target was read with raw h5py and snapshotted.
-    """
-    for name in tools.__all__:
-        obj = getattr(tools, name)
-        if not (gated := getattr(obj, "__gated_paths__", None)):
+        pathish = {p for p in params if "path" in p.lower()}
+        if not pathish:
             continue
-        declared = {p for p in inspect.signature(obj).parameters if p in GATED_PATH_PARAMS}
-        assert set(gated) == declared, (
-            f"{name} gates {sorted(gated)} but takes {sorted(declared)} — "
-            f"a path left ungated is a file written without being opened."
+
+        gated = getattr(obj, "__gated_paths__", None)
+        if gated is not None:
+            assert set(gated) == pathish, (
+                f"{name} gates {sorted(gated)} but takes {sorted(pathish)} — "
+                f"a path left ungated is a file written without being opened. "
+                f"If the new parameter is not an input h5ad, rename it so it "
+                f"does not read as one."
+            )
+            continue
+
+        assert name in covered, (
+            f"{name} takes a path but no refusal test above proves it refuses a file "
+            f"anndata cannot open. Gate it with @gate_h5ad_paths and add it to "
+            f"_cases(), or add it to OMISSIONS with the reason it opens no h5ad."
+        )
+        assert len(pathish) == 1, (
+            f"{name} takes {sorted(pathish)} but is not decorated, so only one of them "
+            f"is proven by its refusal test. Gate it with @gate_h5ad_paths."
         )
 
 
 def test_decorator_refuses_a_function_with_no_path():
-    """Decorating something ungateable is a mistake, caught at import time."""
-    from hca_anndata_tools._io import gate_h5ad_paths
+    """Decorating something ungateable is a mistake, caught at decoration time.
 
+    That is import time for a module the caller imports directly, but
+    ``__init__`` is lazy (``_LAZY_IMPORTS``), so for a tool reached only
+    through the package it is the first attribute access.
+    """
     with pytest.raises(TypeError, match="no parameter"):
 
         @gate_h5ad_paths
@@ -322,4 +317,4 @@ def test_gate_resolves_to_the_latest_snapshot(tmp_path):
     result = tools.get_storage_info(str(original))
 
     assert "error" in result, "the gate opened the original, not the snapshot in use"
-    assert Path(str(snapshot)).is_file()
+    assert snapshot.is_file()

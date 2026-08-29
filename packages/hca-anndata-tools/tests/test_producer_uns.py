@@ -413,10 +413,9 @@ class TestRefusesBeforeCopying:
 
     def test_corrupt_edit_log_refuses_before_the_copy(self, producer_h5ad, no_snapshot):
         with h5py.File(producer_h5ad, "a") as f:
-            prov = f["uns"].require_group("provenance")
+            prov = require_stamped_group(f, "uns/provenance")
             if "edit_history" in prov:
                 del prov["edit_history"]
-            _stamp(prov, "dict")
             _stamp(prov.create_dataset("edit_history", data="{not json"), "string")
 
         result = _set(producer_h5ad, ["ihbca_provenance", "git_branch"], "main")

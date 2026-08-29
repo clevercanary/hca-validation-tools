@@ -11,6 +11,7 @@ import pytest
 
 from hca_anndata_tools.drop import drop_obs_columns
 from hca_anndata_tools.strip_cap import strip_cap_annotations
+from hca_anndata_tools.testing import make_plain_string_column
 
 _CAP_COLUMNS = ["Prelim annotation--cell_fullname", "Prelim annotation--cell_ontology_term_id"]
 
@@ -461,11 +462,9 @@ def test_strip_refuses_a_slash_past_the_report_cap(tmp_path):
         cols = [c.decode() if isinstance(c, bytes) else c for c in f["obs"].attrs["column-order"]]
         padding = [f"pad{i}--cell_fullname" for i in range(8)]
         for name in padding:
-            pad = f["obs"].create_dataset(name, data=[b"x", b"y", b"z"])
             # Stamped as a real writer would: an unstamped element is a
             # different defect from the '/' under test, and anndata warns on it.
-            pad.attrs["encoding-type"] = "string-array"
-            pad.attrs["encoding-version"] = "0.2.0"
+            make_plain_string_column(f["obs"], name, ["x", "y", "z"])
         f["obs"].attrs["column-order"] = [*cols, *padding, "late/bad--cell_fullname"]
 
     assert "error" in strip_cap_annotations(path)
