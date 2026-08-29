@@ -28,7 +28,7 @@ import h5py
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "packages/hca-anndata-tools/src"))
 
-from hca_anndata_tools._io import masked_string_error  # noqa: E402
+from hca_anndata_tools._io import masked_string_error
 
 
 def main(root: str) -> int:
@@ -39,7 +39,7 @@ def main(root: str) -> int:
             with h5py.File(path, "r") as f:
                 if reason := masked_string_error(f):
                     hits.append((path, reason))
-        except Exception as e:  # noqa: BLE001 - a scan must not stop on one bad file
+        except Exception as e:  # a scan must not stop on one bad file
             unreadable.append((path, f"{type(e).__name__}: {e}"))
 
     print(f"real HDF5 .h5ad files scanned: {len(paths)}")
