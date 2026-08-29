@@ -101,11 +101,13 @@ def validate_marker_genes(path: str, annotation_set: str | None = None) -> dict:
 
     Returns:
         Dict with validation results, or 'error' on failure. A
-        ``corruption`` key means the file holds a categorical whose
-        categories are masked — a shape anndata itself cannot open. The
-        validation still ran (this reader is h5py-only), but the file is
-        corrupt and needs upstream repair: report it alongside the marker
-        findings rather than treating the result as a pass.
+        ``corruption`` key names a defect that makes the file unreadable
+        to anndata — a categorical whose categories are masked, or an
+        element the scan could not read at all (a dangling link, a mask
+        that does not fit its values). The validation still ran (this
+        reader is h5py-only), but the file needs repair: report it
+        alongside the marker findings rather than treating the result as
+        a pass.
     """
     try:
         path = resolve_latest(path)
