@@ -123,3 +123,123 @@ elements.
   reproducible rather than asserted.
 - Claims about file shapes get checked against the corpus *before* they are written
   down.
+
+---
+
+## The deeper root cause: an unmade scope decision
+
+The diagnosis above blames universal quantifiers. That is the symptom. The cause is
+that **we never decided whether files anndata cannot read are in scope at all.**
+
+Look at what got built: refusal machinery — which says *out of scope, turn it away* —
+carrying per-element naming and remediation advice, which says *in scope, we help you
+fix it*. Those are different products. Both halves of an unmade decision shipped
+together, and because there was no stable answer to "what should happen here?", every
+review could legitimately find a seam.
+
+One sentence, written on day one, would have ended it:
+
+> Our tools operate on files anndata can read. A file it cannot read is refused at the
+> door, unrepaired.
+
+That is checkable (`ad.read_h5ad` either raises or it doesn't), needs no roster, and
+makes 1,200 lines obviously unnecessary *before* they are written.
+
+## Requirements: four questions before any code
+
+These go at the top of the issue. Any one of them would have stopped this work.
+
+### 1. Trigger — which real file or run motivated this?
+
+Name the artefact. A path, a run, a report, a user complaint. If the honest answer is
+*"none — hypothetically, a file could…"*, that is not a reason to stop, but it is a
+design input with teeth: a hypothetical trigger argues for **cheap and loud** (refuse,
+one line, no machinery) over **thorough and silent** (walk the file, name every
+element, handle every shape).
+
+*Here:* no file. Zero of 223 held the shape, and the corpus was available from the
+first minute. Every fixture had to hand-write HDF5 because no producer emits it — the
+tell was visible on day one and read as a testing inconvenience rather than as data.
+
+### 2. Input domain — what is in scope, as a predicate something can evaluate?
+
+Not prose: a predicate. "Files anndata can read" is a requirement, because
+`ad.read_h5ad(path, backed="r")` decides it. "Well-formed h5ad files" is not, because
+nothing evaluates it and every reviewer will draw the boundary somewhere different.
+
+The test for whether you have a real predicate: *could a test call it?* If the boundary
+can only be described by listing places to look, that list is a roster, and rosters are
+what eight review rounds were spent patching.
+
+*Here:* the contract defined the domain beautifully for **encodings** ("read wide,
+write narrow") and said nothing about **files**. The gap was invisible because the
+adjacent question was answered so well.
+
+### 3. Posture — reject, tolerate, or repair? For which class of defect?
+
+Three different products, three different costs:
+
+- **Reject** — refuse at the boundary, do nothing else. Cheapest. Needs only a
+  predicate.
+- **Tolerate** — proceed, but say what was skipped. Needs a reporting channel and a
+  guarantee that no silent wrong answer escapes.
+- **Repair** — change the file. Most expensive by far, and a *product commitment*: it
+  implies a correctness story for the repaired output, and a promise to keep making it.
+
+Pick one per defect class and write it down. Mixed postures are how you end up with
+naming machinery attached to a refusal.
+
+*Here:* all three at once for one class — rejected at writes, tolerated in the marker
+validator, repair advice in the skills. Nobody chose; each part was locally reasonable.
+
+### 4. Smallest correct answer — what is the least that satisfies this, and why is it not enough?
+
+Write the minimum first, then argue explicitly for anything beyond it. The argument is
+the artefact; without it, scope grows by drift rather than decision.
+
+*Here:* the smallest correct answer was "refuse at the door" — three lines. It was never
+written down, so there was nothing for the bigger design to be measured against, and
+generalisation looked like diligence rather than cost.
+
+## The gap in our build process
+
+`/cc:build` runs: **read the issue → clarify → plan → approve → build**. Two things are
+missing from that sequence, and both were load-bearing here.
+
+**There is no acceptance-test step.** The plan gate asks *what will you do*; it never
+asks *how will we know it is right*. Those are different artefacts, and only the second
+is falsifiable. An acceptance test is one sentence —
+
+> Given a file with X, running Y produces Z.
+
+— and its value is mechanical, not moral: **writing it forces you to construct X.** Had
+that been written for #651, constructing X would have required hand-writing HDF5 in the
+first ten minutes, which is precisely the discovery that ended the arc three days later.
+The acceptance test finds unreachable requirements by making you build the input.
+
+Proposal: between Step 2 (clarify) and Step 3 (plan), add **Step 2.5 — write the
+acceptance tests**, in given/when/then form, in the issue. No plan is presented until
+they exist. They also become the "How to verify" section the PR already requires, so
+the cost is close to zero — it is the same content, written earlier, where it can still
+change the design.
+
+**And the plan gate is design review in name only.** It exists, it is the right place,
+and in practice the plan is read quickly and approved — because a plan written by the
+model reads plausibly, and the questions that would have mattered here ("is this file
+shape real?", "should we be in the repair business at all?") are not prompted by
+anything in the plan's own structure. The four questions above are the fix: they are
+prompts the reviewer can apply without domain immersion, and they attack scope rather
+than correctness.
+
+## What this means for working with a model specifically
+
+**The model will always generalise.** Given a bug, its default is a complete-sounding
+mechanism plus confident prose describing it as total. Reviews catch defects in what
+was built; they do not ask whether it should exist.
+
+So the human's leverage is almost entirely **upstream, in constraining the problem**,
+and almost none of it is downstream in reviewing the solution. This session is a clean
+demonstration: eight excellent adversarial reviews produced ~14 real findings, and the
+two questions that actually ended the work — *does this shape exist?* and *why not just
+ask anndata?* — were both scope questions from the human, asked in seconds, worth more
+than every review round combined.
