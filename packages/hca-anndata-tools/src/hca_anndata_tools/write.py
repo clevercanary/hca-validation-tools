@@ -193,6 +193,12 @@ def snapshot_copy(path: str, *, ignore_masked_obs_columns: Sequence[str] = ()) -
     Args:
         path: Path to the source file. Callers should pass a
             :func:`resolve_latest`-resolved path.
+        ignore_masked_obs_columns: Obs columns this write **deletes**,
+            exempted from the masked-categories gate — removing the
+            corrupt column is the repair, and it never reaches the
+            output. Pass only names the write actually deletes: a column
+            merely rewritten still lands in the snapshot, so exempting it
+            is how a corrupt element gets a fresh ``-edit-`` name.
     Yields:
         Path to the newly created snapshot copy. Use
         :func:`snapshot_copy_hashed` when the caller also needs the source
@@ -227,6 +233,11 @@ def snapshot_copy_hashed(path: str, *, ignore_masked_obs_columns: Sequence[str] 
     streaming copy this requires is slower than ``shutil.copy2`` when the
     digest goes unused: measured on a 6.7 GB file, copy2 2.7 s, copy2 plus a
     separate hash 6.0 s, one streaming pass 4.3 s.
+
+    Args:
+        path: Path to the source file, :func:`resolve_latest`-resolved.
+        ignore_masked_obs_columns: As :func:`snapshot_copy` — obs columns
+            this write deletes, and only those.
 
     Yields:
         ``(output_path, sha256)`` for the newly created snapshot copy.
