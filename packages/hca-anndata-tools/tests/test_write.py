@@ -841,14 +841,20 @@ def test_snapshot_copy_refuses_a_masked_categories_file(tmp_path):
 
 
 def test_snapshot_copy_exemption_covers_only_the_named_columns(tmp_path):
-    """ignore_masked_obs_columns exempts exactly the columns a write
-    deletes: the same corrupt file passes with the exemption and refuses
-    without it (pinned above)."""
+    """ignore_masked_obs_columns exempts exactly the columns named: with
+    two corrupt columns and one exempted, the refusal still fires and
+    names the other; exempting both lets the snapshot proceed."""
+    import pytest
+
     from hca_anndata_tools.testing import add_masked_categorical_column, create_sample_h5ad
     from hca_anndata_tools.write import snapshot_copy
 
     path = create_sample_h5ad(tmp_path / "corrupt-exempt.h5ad")
     add_masked_categorical_column(path, "ann")
+    add_masked_categorical_column(path, "bystander")
 
-    with snapshot_copy(str(path), ignore_masked_obs_columns=("ann",)) as output_path:
+    with pytest.raises(ValueError, match="'bystander'"), snapshot_copy(str(path), ignore_masked_obs_columns=("ann",)):
+        raise AssertionError("body must never run")
+
+    with snapshot_copy(str(path), ignore_masked_obs_columns=("ann", "bystander")) as output_path:
         assert Path(output_path).is_file()

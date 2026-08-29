@@ -133,18 +133,27 @@ def _may_hold_masked_categories(item: h5py.Group) -> bool:
 def masked_categories_error(f: h5py.File, ignore_obs_columns: Sequence[str] = ()) -> str | None:
     """Name the first masked-categories element in this file, or None.
 
-    Scans every categorical anndata would read — the dataframe groups and
-    the bare categoricals nested in uns — and reads only categories, never
-    codes. ``ignore_obs_columns`` skips obs columns the caller replaces or
-    deletes wholesale. Unrelated corruption propagates: it is a different
-    defect with its own named error, and only :func:`read_categories`'
-    refusal is this function's answer.
+    Two passes. The dataframe pass walks ``iter_dataframe_groups`` first,
+    for the reader-facing labels ("obs index 'cellID'") and the
+    ``ignore_obs_columns`` exemption (obs columns the caller replaces or
+    deletes wholesale). The whole-file pass then walks **every other
+    group** from the root — the rule is the file format's, not a roster:
+    a group holding ``categories`` is a categorical wherever it sits
+    (obsm, varm, layers, obsp, uns, anywhere anndata or a producer put
+    it), and everything else is recursed. Three roster-shaped drafts of
+    this scan were each refuted by a shape one container over
+    (hca-validation-tools#651/#652); a roster cannot make a claim of the
+    form "every element".
 
-    Callers give it meaning: the write gate (:func:`write.snapshot_copy`)
-    turns a hit into a refusal, and the read-only diagnostics report it.
+    Reads categories only, never codes. Unrelated corruption propagates:
+    it is a different defect with its own named error, and only
+    :func:`read_categories`' refusal is this function's answer. Callers
+    give it meaning: the write gate (:func:`write.snapshot_copy`) turns a
+    hit into a refusal, and the read-only diagnostics report it.
     """
-
+    dataframe_paths = set()
     for label, group in iter_dataframe_groups(f):
+        dataframe_paths.add(group.name)
         index_name = obs_index_name(group)
         # Sorted like _iter_string_element_targets: with several corrupt
         # elements, the named one must not vary between runs or platforms.
@@ -159,38 +168,28 @@ def masked_categories_error(f: h5py.File, ignore_obs_columns: Sequence[str] = ()
                 except MaskedCategoriesError as e:
                     return str(e)
 
-    # Bare categoricals in uns (uns['grades'] as a pd.Categorical) are a
-    # supported shape the dataframe walk above never visits — the write
-    # funnel normalizes them, so the preflight must see them too, or an
-    # h5py-only writer snapshots a file anndata cannot open.
-    def walk_uns(prefix: str, group: h5py.Group) -> str | None:
+    def walk(prefix: str, group: h5py.Group) -> str | None:
         for key in sorted(group):
             member = group[key]
-            if not isinstance(member, h5py.Group):
+            # A dataframe group was already walked above, with its labels
+            # and exemptions — skipping it here is what keeps the exemption
+            # from being un-exempted by the second pass.
+            if not isinstance(member, h5py.Group) or member.name in dataframe_paths:
                 continue
-            label = f"{prefix}['{key}']"
-            enc = encoding_of(member)
-            if enc == "dataframe":
-                continue  # already walked above, via iter_dataframe_groups
-            # Check *and* recurse rather than choosing: _iter_string_element_targets
-            # recurses every unstamped group while a legacy categorical is
-            # exactly an unstamped group with categories, so picking one
-            # rule leaves the other's shape unscanned. Checking a container
-            # costs nothing (no categories child) and recursing a
-            # categorical finds nothing, so doing both cannot miss either.
+            label = f"{prefix}['{key}']" if prefix else key
+            # Check *and* recurse: a legacy categorical is exactly an
+            # unstamped group with categories, and a container may nest
+            # one at any depth — doing both cannot miss either shape.
             if "categories" in member and _may_hold_masked_categories(member):
                 try:
                     read_categories(member, label)
                 except MaskedCategoriesError as e:
                     return str(e)
-            if enc in (None, "dict") and (reason := walk_uns(label, member)):
+            if reason := walk(label, member):
                 return reason
         return None
 
-    uns = f.get("uns")
-    if isinstance(uns, h5py.Group):
-        return walk_uns("uns", uns)
-    return None
+    return walk("", f)
 
 
 def masked_categories_error_for_path(
@@ -239,10 +238,18 @@ def open_h5ad(path: str, backed: Literal["r", "r+"] | None = "r"):
     try:
         adata = ad.read_h5ad(path, backed=backed)
     except ValueError as e:
-        if "Categorical categories cannot be null" in str(e) and (
-            named := masked_categories_error_for_path(path, best_effort=True)
-        ):
-            raise ValueError(named) from e
+        if "Categorical categories cannot be null" in str(e):
+            named = masked_categories_error_for_path(path, best_effort=True)
+            # Even unlocated, the error stays ours (principle 11): pandas'
+            # bare sentence names no element and no remedy.
+            raise ValueError(
+                named
+                or (
+                    "the file holds a categorical whose categories are masked "
+                    "(null) — a corrupt shape anndata cannot open; the scan "
+                    "could not locate the element"
+                )
+            ) from e
         raise
     try:
         yield adata
@@ -694,8 +701,8 @@ def mask_count(item: h5py.Group | h5py.Dataset | h5py.Datatype) -> int | None:
     a null and returns None rather than 0, so callers can tell "no nulls"
     apart from "cannot have nulls". The one popcount both the write-side
     refusal (masked_string_error) and the storage report use, so the
-    report's "every write refuses this" verdict and the writes' actual
-    refusal cannot drift apart (principle 10).
+    report's masked verdict and the writes' actual refusals derive from
+    the same count (principle 10).
     """
     import numpy as np
 

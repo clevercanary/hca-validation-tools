@@ -21,7 +21,7 @@ EDIT_LOG_KEY = "edit_history"
 # quotes it. One spelling, so "refuse by name everywhere" is one sentence.
 MASKED_CATEGORIES_REMEDY = (
     "masked (null) categories — a masked category has no value a rewrite "
-    "could keep, and anndata itself cannot open the file; repair the data upstream first"
+    "could keep, and anndata cannot read the element; repair the data upstream first"
 )
 
 # The shared tail of every masked-string refusal — the write funnel, the

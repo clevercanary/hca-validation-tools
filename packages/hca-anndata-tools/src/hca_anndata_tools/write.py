@@ -160,8 +160,8 @@ def _refuse_masked_categories(path: str, ignore_obs_columns: Sequence[str]) -> N
     read a categorical (a link move, a column drop, a uns-only write) and
     would otherwise stamp a fresh ``-edit-`` name onto a file anndata
     cannot open. ``ignore_obs_columns`` exempts the obs columns the caller
-    deletes or replaces wholesale: removing the corrupt column IS the
-    repair, and the element never reaches the output. Runs before the
+    deletes: removing the corrupt column IS the repair, and the element
+    never reaches the output. Runs before the
     snapshot name is even claimed; distinct-value-sized reads only.
     """
     if reason := masked_categories_error_for_path(path, ignore_obs_columns=ignore_obs_columns):

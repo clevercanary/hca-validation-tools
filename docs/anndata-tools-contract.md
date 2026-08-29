@@ -83,14 +83,16 @@ And the conversion to the profile splits cleanly on the mask:
   surgical write passes through. Bystander corruption included, and
   whatever surgical tool joins the class next covered without an edit
   here; full rewrites and convert refuse earlier, at `open_h5ad`. The one
-  exemption: obs columns the write itself deletes or replaces wholesale
-  (drop/strip of the corrupt column IS the repair; a CAP column being
-  overwritten never reaches the output — CAP files are never repaired
-  here). The one bypass is read-only: `validate_marker_genes` writes
-  nothing and elects principle 3's skip arm so a corrupt file can still be
-  diagnosed — its result carries a `corruption` notice from a whole-file
-  scan, so no clean verdict can be presented no matter where the
-  corruption sits.
+  exemption: obs columns the write itself deletes (drop/strip of the
+  corrupt column IS the repair — `strip_cap` included, which is also how a
+  corrupt CAP column leaves an overwrite target: CAP files are never
+  repaired here, only removed). The one bypass is read-only:
+  `validate_marker_genes` writes nothing, and on obs-side corruption it
+  elects principle 3's skip arm so the file can still be diagnosed — its
+  result carries a `corruption` notice from a whole-file scan. Corruption
+  in *var* refuses by name instead: with no readable gene names there is
+  nothing to validate markers against. Either way, no clean verdict on a
+  corrupt file is possible.
 
 ## The anndata pin, precisely
 
@@ -126,7 +128,7 @@ determines what files it must accept.
 |---|---|---|---|
 | **Read-only** | Reads, never writes | `get_summary`, `view_data`, `get_storage_info`, `validate_*` | Anything anndata reads. No exceptions. |
 | **Copy-and-transplant** | Reads source, writes a *fresh* file through anndata, moves elements between files | `convert_cellxgene_to_hca` | Anything anndata reads on the source side; the file it writes contains only profile encodings |
-| **In-place surgical** | Snapshots, then rewrites *specific elements* preserving the rest byte-for-byte | `rename_cell_ids`, `merge_obs_categories`, `backfill_obs_from_source` (target side), `replace_placeholder_values`, and the h5py-only writers (`rename_obs_column`, `drop_obs_columns`, `strip_forbidden_obs_columns`, `strip_cap_annotations`, `set_producer_uns`, `copy_cap_annotations`) | Reads everything; normalizes the elements it rewrites (#641); refuses **before the snapshot** for masked values it would have to keep, and for masked *categories* anywhere in the file (#651) — exempting only elements the write itself deletes or replaces wholesale |
+| **In-place surgical** | Snapshots, then rewrites *specific elements* preserving the rest byte-for-byte | `rename_cell_ids`, `merge_obs_categories`, `backfill_obs_from_source` (target side), `replace_placeholder_values`, and the h5py-only writers (`rename_obs_column`, `drop_obs_columns`, `strip_forbidden_obs_columns`, `strip_cap_annotations`, `set_producer_uns`, `copy_cap_annotations`) | Reads everything; normalizes the elements it rewrites (#641); refuses **before the snapshot** for masked values it would have to keep, and for masked *categories* anywhere in the file (#651) — exempting only elements the write itself deletes |
 | **Full rewrite** | Streams the whole file through anndata's writer | `compress_h5ad`, `normalize_raw` | Reads everything; the file it writes contains only profile encodings (nullable input: #641 normalize-on-write) |
 
 A tool's *read* side is never allowed to be stricter than its class requires.
@@ -233,8 +235,10 @@ target is constrained.
     inspected), the report's docs say so. Masked string values remain the
     one refusal, and every tool names them — and the report separates that
     verdict from the normalizable one (#651): its `masked` dict (path →
-    count) marks the flagged elements every write refuses, so a reader can
-    tell "clears on the next write" from "repair the data first" without
+    count) marks the flagged elements whose masks block rewriting — a
+    masked *column* refuses the writes that would rewrite it, and a masked
+    `.../categories` path refuses every write — so a reader can tell
+    "clears on the next write" from "repair the data first" without
     running a write to find out.
 
 ### Errors
@@ -419,7 +423,7 @@ other placeholder-looking value through curator-reviewed mappings.
    as redundant (principle 13). Inspection gained the `masked` dict so
    the report can distinguish the masked verdict from the normalizable
    one (principle 10). **Every write refuses the shape**, exempting only
-   obs columns the write itself deletes or replaces wholesale; the sole
+   obs columns the write itself deletes; the sole
    bypass is the read-only `validate_marker_genes`, which skips per
    principle 3 and reports the named corruption in a `corruption` result
    key instead of refusing.

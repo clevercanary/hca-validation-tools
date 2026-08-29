@@ -198,7 +198,7 @@ def validate_marker_genes(path: str, annotation_set: str | None = None) -> dict:
         # superset of what the columns read here could report, so a clean
         # verdict on a corrupt file is impossible wherever the masks sit.
         if corruption := masked_categories_error_for_path(path, best_effort=True):
-            result["corruption"] = [corruption]
+            result["corruption"] = corruption
         return result
 
     except Exception as e:

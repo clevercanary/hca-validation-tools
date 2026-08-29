@@ -558,3 +558,29 @@ def test_masked_scan_still_reads_non_string_categories(tmp_path):
         cats[0] = np.nan
 
         assert "obs column 'grade'" in (_io.masked_categories_error(f) or "")
+
+
+def test_masked_scan_finds_a_bare_categorical_in_any_container(tmp_path):
+    """The whole-file pass (#651): a masked categorical sitting bare in
+    obsm — outside every dataframe and outside uns — is still found, so
+    the write gate refuses and open_h5ad names it. Three roster-shaped
+    drafts of the scan were each refuted by a shape one container over;
+    the rule is the file format's, not a roster's."""
+    path = tmp_path / "bare_obsm.h5ad"
+    adata = ad.AnnData(X=np.zeros((2, 1), dtype=np.float32), obs=pd.DataFrame(index=["c0", "c1"]))
+    adata.write_h5ad(path)
+    with h5py.File(path, "r+") as f:
+        write_elem(f["obsm"], "ann", pd.Categorical(["hi", "lo"]))
+        make_nullable_string_array(f["obsm/ann"], "categories", masked=1)
+
+        reason = _io.masked_categories_error(f)
+    assert reason is not None
+    assert "obsm['ann']" in reason
+
+    from hca_anndata_tools.write import snapshot_copy
+
+    with pytest.raises(ValueError, match="obsm\\['ann'\\]"), snapshot_copy(str(path)):
+        raise AssertionError("body must never run")
+
+    with pytest.raises(ValueError, match="obsm\\['ann'\\]"), _io.open_h5ad(str(path)):
+        pass

@@ -216,12 +216,17 @@ def get_storage_info(path: str) -> dict:
     (path → count) separates the two verdicts those paths carry (#651): a
     path absent from ``masked`` is informational — every write normalizes it
     as it touches it (#641), so the flag clears as writes happen — while a
-    path in ``masked`` holds masked values, the one hard stop. A masked
-    *column* refuses the writes that would rewrite it, and the in-repo
-    remedies are a backfill that fills the values (residuals still refuse)
-    or dropping the column. A masked ``.../categories`` path is worse: that
-    file is one anndata itself cannot open, so **every** write refuses it
-    and only upstream repair (or dropping the column) clears it.
+    path in ``masked`` holds masked values that block rewriting. A masked
+    *column* refuses only the writes that would rewrite it, and the
+    in-repo remedies are a backfill that fills the values (residuals still
+    refuse) or dropping the column. A masked ``.../categories`` path is
+    worse: that file is one anndata itself cannot open, so **every** write
+    refuses it and only upstream repair (or dropping the column) clears
+    it. The scan behind the write refusal covers the whole file; this
+    report's flags cover only the inspected dataframes and only
+    nullable-*string* elements, so a clean report is not proof no write
+    will refuse (a float-NaN categories array, or a masked element in
+    ``varm``/``uns``, refuses without appearing here).
 
     Args:
         path: Absolute path to an .h5ad file.

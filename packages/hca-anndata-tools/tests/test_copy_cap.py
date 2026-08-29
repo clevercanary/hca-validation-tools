@@ -734,9 +734,11 @@ def test_copy_refuses_a_masked_categories_target(cap_source, tmp_path):
 
 
 def test_copy_overwrites_a_corrupt_cap_column_on_the_target(cap_source, hca_target_with_cap):
-    """The wholesale-replacement exemption (#651): a corrupt CAP column on
-    the target is overwritten by this copy — CAP files are never repaired
-    here, and the corrupt element never reaches the output."""
+    """End-to-end overwrite on a corrupt CAP target column: the pre-strip
+    removes it under strip_cap's own delete exemption (pinned in
+    test_strip_cap_of_a_corrupt_cap_column_is_the_repair), so by the time
+    copy_cap snapshots, no CAP column exists and no exemption is needed —
+    the corrupt element never reaches the output."""
     from hca_anndata_tools.testing import make_nullable_string_array
 
     with h5py.File(hca_target_with_cap, "r+") as f:

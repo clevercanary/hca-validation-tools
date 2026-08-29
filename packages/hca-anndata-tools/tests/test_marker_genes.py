@@ -351,9 +351,10 @@ def test_masked_evidence_and_organism_values_are_skipped(tmp_path):
     assert "error" not in result, result.get("error")
     # The diagnostic ran, but it must SAY the file is corrupt (#651): this
     # validator is h5py-only, so no earlier anndata read fails for it. One
-    # notice, not an inventory — the scan names the first corrupt element.
-    assert len(result["corruption"]) == 1
-    assert "anndata itself cannot open the file" in result["corruption"][0]
+    # notice, not an inventory — the scan names the first corrupt element
+    # in sorted order, so with two corrupt columns the organism one wins.
+    assert "obs column 'organism_ontology_term_id'" in result["corruption"]
+    assert "anndata cannot read the element" in result["corruption"]
     assert result["total_unique_markers"] == 2
     reported = {item["marker_gene"] for item in result["not_in_gencode"]}
     assert reported == {"ZZZFAKE"}
@@ -417,6 +418,5 @@ def test_marker_validation_names_corruption_it_never_reads(tmp_path):
     result = validate_marker_genes(str(path))
 
     assert "error" not in result, result.get("error")
-    assert len(result["corruption"]) == 1
-    assert "obs column 'tissue'" in result["corruption"][0]
-    assert "anndata itself cannot open the file" in result["corruption"][0]
+    assert "obs column 'tissue'" in result["corruption"]
+    assert "anndata cannot read the element" in result["corruption"]

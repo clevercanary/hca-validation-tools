@@ -380,7 +380,10 @@ def copy_cap_annotations(
         # --- Step 4: Write temp, copy target, transplant via h5py ---
         with (
             tempfile.TemporaryDirectory() as tmpdir,
-            snapshot_copy_hashed(target_path, ignore_masked_obs_columns=cap_obs_columns(target_obs_columns)) as (
+            # No exemption: a CAP column can never be present here — with
+            # overwrite the pre-strip removed them all (under strip_cap's own
+            # delete exemption), and without it their presence already refused.
+            snapshot_copy_hashed(target_path) as (
                 output_path,
                 target_sha256,
             ),
