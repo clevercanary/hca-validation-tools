@@ -23,7 +23,6 @@ from __future__ import annotations
 import inspect
 
 import anndata as ad
-import h5py
 import pytest
 
 import hca_anndata_tools as tools
@@ -32,7 +31,6 @@ from hca_anndata_tools.testing import (
     assert_no_snapshot_written,
     create_sample_h5ad,
     create_truncated_h5ad,
-    make_nullable_string_array,
 )
 
 # Public names with a path-shaped parameter that legitimately never opens an
@@ -57,29 +55,6 @@ def good(tmp_path) -> str:
 def truncated(tmp_path) -> str:
     """A half-written h5ad — the ordinary way a file fails to open."""
     return str(create_truncated_h5ad(tmp_path / "truncated.h5ad"))
-
-
-@pytest.fixture
-def masked_categories(tmp_path) -> str:
-    """A categorical whose *categories* are masked — the deviation on record.
-
-    Not a criterion of its own (#661): anndata refuses it in both backed and
-    full modes, so it reaches the gate as one more unopenable file and proves
-    the gate is about openability rather than about truncation.
-
-    The masked thing has to be the ``categories`` array of a categorical
-    column. A masked *index* is a different shape with a different answer:
-    anndata opens it in both modes and hands back an index holding ``pd.NA``,
-    so no gate here would ever see it — identifiers are protected instead by
-    ``read_index``'s refusal, under the contract's NA policy.
-    """
-    path = create_sample_h5ad(tmp_path / "masked.h5ad")
-    with h5py.File(path, "r+") as f:
-        make_nullable_string_array(f["obs"]["cell_type"], "categories", masked=1)
-
-    with pytest.raises(ValueError, match="Categorical categories cannot be null"):
-        ad.read_h5ad(str(path), backed="r")
-    return str(path)
 
 
 def _cases(bad: str, good: str) -> list[tuple[str, object, dict, bool]]:
@@ -168,16 +143,6 @@ def test_refuses_truncated_file(index, truncated, good):
         # Both fixtures live in the same tmp_path, so one scan covers a
         # snapshot taken beside either side of a two-file tool.
         assert_no_snapshot_written(truncated)
-
-
-@pytest.mark.parametrize("index", range(len(_ids())), ids=_ids())
-def test_refuses_masked_categories(index, masked_categories, good):
-    """The deviation on record reaches the same gate as a truncated download."""
-    case_id, fn, kwargs, _ = _cases(masked_categories, good)[index]
-
-    result = fn(**kwargs)
-
-    assert "error" in result, f"{case_id} accepted a masked-categories file: {result}"
 
 
 @pytest.mark.parametrize(

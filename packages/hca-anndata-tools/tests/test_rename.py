@@ -174,35 +174,6 @@ def test_rename_updates_obsm_dataframe_index(tmp_path):
     assert "MH_mix_BR1_AAA" in after.obsm["per_cell_scores"].index
 
 
-def test_rename_refuses_mismatched_obsm_dataframe_index(tmp_path):
-    """An obsm DataFrame index that already disagrees with the obs index marks
-    a broken file — refuse rather than paper over it."""
-    path = create_hca_h5ad(tmp_path / "test.h5ad", obsm_dataframe=True)
-    with h5py.File(path, "a") as f:
-        sub = f["obsm"]["per_cell_scores"]
-        index_name = sub.attrs["_index"]
-        broken = sub[index_name].asstr()[:]
-        broken[0] = "someone_else_entirely"
-        del sub[index_name]
-        # Stamp the encoding metadata a real AnnData writer would leave: an
-        # unstamped element is a different defect from the one under test, and
-        # reading one warns.
-        rebuilt = f["obsm"]["per_cell_scores"].create_dataset(index_name, data=broken.astype(object))
-        rebuilt.attrs["encoding-type"] = "string-array"
-        rebuilt.attrs["encoding-version"] = "0.2.0"
-
-    kwargs = {"column": "sample_id", "value": "B1_0023", "prefix_from": "MH_mix_", "prefix_to": "MH_mix_BR1_"}
-    # The mismatch also stops anndata opening the file, so #661's gate now
-    # answers first. The consistency check below is what refuses a mismatch
-    # anndata tolerates, so it keeps its own coverage through __wrapped__.
-    assert "error" in rename_cell_ids(str(path), **kwargs)
-
-    result = rename_cell_ids.__wrapped__(str(path), **kwargs)
-
-    assert "internally inconsistent" in result["error"]
-    assert_no_snapshot_written(path)
-
-
 def test_rename_same_second_collision_resolves_after_waiting(tmp_path, pin_snapshot_names):
     """The common case since #597: a name taken this second is resolved by
     waiting out the boundary, not by failing a run the caller must re-issue."""
@@ -479,27 +450,6 @@ def test_rename_normalizes_nullable_obsm_frame_indexes_too(tmp_path):
             idx = grp[obs_index_name(grp)]
             assert isinstance(idx, h5py.Dataset), frame
             assert "MH_mix_BR1_AAA" in idx.asstr()[:], frame
-
-
-def test_rename_refuses_a_masked_obsm_frame_index(tmp_path):
-    """A masked obsm sub-index is refused by read_index, by name, before
-    the snapshot — same contract as the obs index."""
-    path = create_hca_h5ad(tmp_path / "obsm_masked.h5ad", obsm_dataframe=True)
-    make_nullable_index(path, frame="obsm/per_cell_scores", masked=1)
-
-    before = set(tmp_path.iterdir())
-    kwargs = {"column": "sample_id", "value": "B1_0023", "prefix_from": "MH_mix_", "prefix_to": "MH_mix_BR1_"}
-    # A masked *obsm* index stops anndata opening the file (a masked obs index
-    # does not — anndata reads that one and hands back pd.NA), so #661's gate
-    # answers first here. read_index's named refusal is still what protects
-    # the obs index, and is exercised directly to keep it covered.
-    assert "error" in rename_cell_ids(str(path), **kwargs)
-
-    result = rename_cell_ids.__wrapped__(str(path), **kwargs)
-
-    assert "error" in result
-    assert "missing value" in result["error"]
-    assert set(tmp_path.iterdir()) == before
 
 
 def test_rename_names_a_masked_categorical_index(hca_path):

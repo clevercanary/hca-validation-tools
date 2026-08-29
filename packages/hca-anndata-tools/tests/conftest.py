@@ -57,21 +57,6 @@ def cellxgene_h5ad(tmp_path) -> Path:
 
 
 @pytest.fixture
-def put_dataset_at_uns():
-    """Replace a file's uns group with a scalar string Dataset — the malformed
-    shape read_uns narrows to None (#617)."""
-
-    def _put(path):
-        with h5py.File(path, "a") as f:
-            if "uns" in f:
-                del f["uns"]
-            f["uns"] = "not a group"
-        return path
-
-    return _put
-
-
-@pytest.fixture
 def h5(tmp_path):
     """A bare open h5py File, for unit tests below the h5ad layer."""
     with h5py.File(tmp_path / "f.h5", "a") as f:
