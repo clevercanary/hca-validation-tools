@@ -13,6 +13,7 @@ from pydantic import TypeAdapter, ValidationError
 from ._io import (
     DEFAULT_PLACEHOLDERS,
     compact_categories,
+    gate_h5ad_paths,
     masked_categories_reason,
     open_h5ad,
     read_categorical_data,
@@ -121,6 +122,7 @@ def list_uns_fields(path: str) -> dict:
         return {"error": str(e)}
 
 
+@gate_h5ad_paths
 def view_edit_log(path: str) -> dict:
     """Return the edit-log entries recorded in an h5ad file.
 
@@ -259,6 +261,7 @@ def set_uns(
         return {"error": str(e)}
 
 
+@gate_h5ad_paths
 def replace_placeholder_values(
     path: str,
     columns: list[str],

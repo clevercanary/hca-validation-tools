@@ -346,7 +346,14 @@ def test_masked_evidence_and_organism_values_are_skipped(tmp_path):
         make_nullable_string_array(f["obs/organism_ontology_term_id"], "categories", masked=1)
         make_nullable_string_array(f["obs/test_labels--marker_gene_evidence"], "categories", masked=1)
 
-    result = validate_marker_genes(str(path))
+    # anndata cannot open a file with masked categories, so since #661 the
+    # public entry point refuses it at the door and never reaches the
+    # skipping logic. The logic is still what protects a file whose masked
+    # categories sit somewhere anndata tolerates, so it is exercised here
+    # through the undecorated function.
+    assert "error" in validate_marker_genes(str(path))
+
+    result = validate_marker_genes.__wrapped__(str(path))
 
     assert "error" not in result, result.get("error")
     assert result["total_unique_markers"] == 2
@@ -375,7 +382,9 @@ def test_all_masked_organism_is_refused_not_passed(tmp_path):
         # The only category is masked: no readable organism value remains.
         make_nullable_string_array(f["obs/organism_ontology_term_id"], "categories", masked=1)
 
-    result = validate_marker_genes(str(path))
+    assert "error" in validate_marker_genes(str(path))
+
+    result = validate_marker_genes.__wrapped__(str(path))
 
     assert "error" in result
     assert "no readable values" in result["error"]

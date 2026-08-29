@@ -7,6 +7,7 @@ import pandas as pd
 from ._gencode import load_gencode_reference
 from ._io import (
     DEFAULT_PLACEHOLDERS,
+    gate_h5ad_paths,
     is_missing_value,
     read_obs_categorical_values,
     read_obs_column_names,
@@ -66,6 +67,7 @@ def _classify_missing(
     return {"marker_gene": gene, "type": "not_in_gencode"}
 
 
+@gate_h5ad_paths
 def validate_marker_genes(path: str, annotation_set: str | None = None) -> dict:
     """Validate that CAP marker genes exist in an h5ad file's var.
 

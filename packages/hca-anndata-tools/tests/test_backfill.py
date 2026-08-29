@@ -252,6 +252,10 @@ def test_backfill_index_is_not_a_column(target_source):
     assert "join key" in result["error"]
 
 
+# Duplicate source IDs are the subject, so anndata's non-unique obs names
+# warning is expected — and since #661 it also fires from the gate's open,
+# outside the pytest.warns block below.
+@pytest.mark.filterwarnings("ignore:Observation names are not unique")
 def test_backfill_duplicate_source_ids_refused(target_source, tmp_path):
     target, _ = target_source
     with pytest.warns(UserWarning, match="Observation names are not unique"):

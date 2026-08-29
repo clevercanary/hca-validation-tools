@@ -27,6 +27,13 @@ def _scalar(group: h5py.Group, name: str, value) -> None:
     group[name].attrs["encoding-version"] = "0.2.0"
 
 
+def _stamp(dataset, encoding: str):
+    """Mark a dataset with the ``encoding-type`` attrs anndata reads."""
+    dataset.attrs["encoding-type"] = encoding
+    dataset.attrs["encoding-version"] = "0.2.0"
+    return dataset
+
+
 @pytest.fixture
 def producer_h5ad(sample_h5ad_for_write: Path) -> Path:
     """A file carrying a nested producer namespace shaped like the real one.
@@ -35,6 +42,16 @@ def producer_h5ad(sample_h5ad_for_write: Path) -> Path:
     variable-length string, a bool, an int, a nested subgroup with a float,
     plus a fixed-length string and a non-scalar array as the shapes the tool
     has to refuse.
+
+    The two refusal shapes carry ``encoding-type`` stamps, which the real
+    files have and an earlier version of this fixture omitted. Unstamped,
+    anndata cannot read them at all ("string indices must be integers", #632)
+    — which since #661 means the file never reaches the tool, and 35 tests
+    below would have been asserting the gate's refusal rather than
+    ``set_producer_uns``'s own. Stamping preserves the ``|S3``/``|S5`` dtypes
+    that are the actual subject of the refusal tests. All eight real breast-v1
+    files open through anndata, so this is the shape the tool meets in
+    production.
     """
     with h5py.File(sample_h5ad_for_write, "a") as f:
         group = require_stamped_group(f, "uns/ihbca_provenance")
@@ -43,8 +60,11 @@ def producer_h5ad(sample_h5ad_for_write: Path) -> Path:
         _scalar(group, "git_dirty", True)
         _scalar(group, "cell_count", np.int64(52681))
         _scalar(group, "small_count", np.int8(5))
-        group.create_dataset("short_code", data=np.bytes_("dev"))
-        group.create_dataset("unmapped_examples", data=np.array([b"ENSG1", b"ENSG2"]))
+        _stamp(group.create_dataset("short_code", data=np.bytes_("dev")), "string")
+        _stamp(
+            group.create_dataset("unmapped_examples", data=np.array([b"ENSG1", b"ENSG2"])),
+            "string-array",
+        )
         nested = require_stamped_group(f, "uns/ihbca_provenance/mapping_stats")
         _scalar(nested, "pct_mapped", np.float64(90.385))
     return sample_h5ad_for_write
@@ -383,7 +403,7 @@ class TestRefusesBeforeCopying:
         with h5py.File(producer_h5ad, "a") as f:
             if "provenance" in f["uns"]:
                 del f["uns"]["provenance"]
-            f["uns"]["provenance"] = "a producer put a string here"
+            _stamp(f["uns"].create_dataset("provenance", data="a producer put a string here"), "string")
 
         result = _set(producer_h5ad, ["ihbca_provenance", "git_branch"], "main")
 
@@ -396,7 +416,8 @@ class TestRefusesBeforeCopying:
             prov = f["uns"].require_group("provenance")
             if "edit_history" in prov:
                 del prov["edit_history"]
-            prov["edit_history"] = "{not json"
+            _stamp(prov, "dict")
+            _stamp(prov.create_dataset("edit_history", data="{not json"), "string")
 
         result = _set(producer_h5ad, ["ihbca_provenance", "git_branch"], "main")
 

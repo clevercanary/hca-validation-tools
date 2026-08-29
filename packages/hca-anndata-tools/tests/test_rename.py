@@ -191,9 +191,13 @@ def test_rename_refuses_mismatched_obsm_dataframe_index(tmp_path):
         rebuilt.attrs["encoding-type"] = "string-array"
         rebuilt.attrs["encoding-version"] = "0.2.0"
 
-    result = rename_cell_ids(
-        str(path), column="sample_id", value="B1_0023", prefix_from="MH_mix_", prefix_to="MH_mix_BR1_"
-    )
+    kwargs = {"column": "sample_id", "value": "B1_0023", "prefix_from": "MH_mix_", "prefix_to": "MH_mix_BR1_"}
+    # The mismatch also stops anndata opening the file, so #661's gate now
+    # answers first. The consistency check below is what refuses a mismatch
+    # anndata tolerates, so it keeps its own coverage through __wrapped__.
+    assert "error" in rename_cell_ids(str(path), **kwargs)
+
+    result = rename_cell_ids.__wrapped__(str(path), **kwargs)
 
     assert "internally inconsistent" in result["error"]
     assert_no_snapshot_written(path)
@@ -236,6 +240,9 @@ def test_rename_same_second_snapshot_refused(tmp_path, pin_snapshot_names):
     assert snapshot.is_file()  # the source snapshot survived
 
 
+# Duplicate cell IDs are the subject here, so anndata's non-unique obs names
+# warning is expected rather than a defect.
+@pytest.mark.filterwarnings("ignore:Observation names are not unique")
 def test_rename_refuses_pre_existing_duplicates(tmp_path):
     """Duplicates the file already had are named as such — the remedy (repair
     the file) differs from the remedy for a collision the rename would cause."""
@@ -251,6 +258,9 @@ def test_rename_refuses_pre_existing_duplicates(tmp_path):
     assert_no_snapshot_written(path)
 
 
+# Duplicate cell IDs are the subject here, so anndata's non-unique obs names
+# warning is expected rather than a defect.
+@pytest.mark.filterwarnings("ignore:Observation names are not unique")
 def test_rename_refuses_pre_existing_duplicates_the_rename_would_resolve(tmp_path):
     """The pre-existing gate fires even when the rename would make the index
     unique — resolving a collision by renaming one side of it is a curation
@@ -361,6 +371,9 @@ def test_rename_refuses_a_masked_index_before_taking_a_snapshot(tmp_path):
     assert set(tmp_path.iterdir()) == before
 
 
+# anndata coerces a fixed-width byte index on read and says so — the fixture's
+# subject, audible since #661 made the tool open the file.
+@pytest.mark.filterwarnings("ignore:Transforming to str index")
 def test_rename_accepts_a_fixed_width_byte_index(tmp_path):
     """The writable guard must judge the container, not the encoding name.
 
@@ -475,9 +488,14 @@ def test_rename_refuses_a_masked_obsm_frame_index(tmp_path):
     make_nullable_index(path, frame="obsm/per_cell_scores", masked=1)
 
     before = set(tmp_path.iterdir())
-    result = rename_cell_ids(
-        str(path), column="sample_id", value="B1_0023", prefix_from="MH_mix_", prefix_to="MH_mix_BR1_"
-    )
+    kwargs = {"column": "sample_id", "value": "B1_0023", "prefix_from": "MH_mix_", "prefix_to": "MH_mix_BR1_"}
+    # A masked *obsm* index stops anndata opening the file (a masked obs index
+    # does not — anndata reads that one and hands back pd.NA), so #661's gate
+    # answers first here. read_index's named refusal is still what protects
+    # the obs index, and is exercised directly to keep it covered.
+    assert "error" in rename_cell_ids(str(path), **kwargs)
+
+    result = rename_cell_ids.__wrapped__(str(path), **kwargs)
 
     assert "error" in result
     assert "missing value" in result["error"]

@@ -7,6 +7,7 @@ from pathlib import Path
 import h5py
 import numpy as np
 
+from ._io import gate_h5ad_paths
 from .cap import cellxgene_schema_version
 from .write import resolve_latest
 
@@ -238,6 +239,7 @@ def _classify_x_at_path(path: str, sample_size: int) -> dict:
     }
 
 
+@gate_h5ad_paths
 def check_x_normalization(path: str, sample_size: int = _DEFAULT_SAMPLE_SIZE) -> dict:
     """Sample X and report whether it looks like raw counts or normalized data.
 
@@ -274,6 +276,7 @@ def check_x_normalization(path: str, sample_size: int = _DEFAULT_SAMPLE_SIZE) ->
         return {"error": str(e)}
 
 
+@gate_h5ad_paths
 def check_schema_type(path: str) -> dict:
     """Report whether an h5ad file declares the CellxGENE or HCA schema.
 

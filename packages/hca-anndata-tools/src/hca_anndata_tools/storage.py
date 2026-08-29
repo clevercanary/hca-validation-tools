@@ -8,6 +8,7 @@ import numpy as np
 from ._io import (
     direct_members,
     encoding_of,
+    gate_h5ad_paths,
     holds_string_values,
     is_writable_element,
     obs_index_name,
@@ -209,6 +210,7 @@ def _encodings_info(f: h5py.File) -> dict:
     return result
 
 
+@gate_h5ad_paths
 def get_storage_info(path: str) -> dict:
     """Get HDF5 storage details for an AnnData .h5ad file.
 

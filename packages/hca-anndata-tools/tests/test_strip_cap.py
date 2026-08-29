@@ -7,6 +7,7 @@ import anndata as ad
 import h5py
 import numpy as np
 import pandas as pd
+import pytest
 
 from hca_anndata_tools.drop import drop_obs_columns
 from hca_anndata_tools.strip_cap import strip_cap_annotations
@@ -156,7 +157,12 @@ def test_strip_refuses_slash_in_column_order(tmp_path):
         cols = [c.decode() if isinstance(c, bytes) else c for c in f["obs"].attrs["column-order"]]
         f["obs"].attrs["column-order"] = [*cols, "bad/name--cell_fullname"]
 
-    result = strip_cap_annotations(path)
+    assert "error" in strip_cap_annotations(path)
+
+    # The slash guard is what stops h5py resolving a link path outside obs on
+    # delete (#623). #661's gate happens to refuse this file first, so the
+    # guard is exercised directly to keep that protection covered.
+    result = strip_cap_annotations.__wrapped__(path)
 
     assert "error" in result
     assert "malformed" in result["error"]
@@ -185,7 +191,9 @@ def test_strip_refuses_index_or_ghost_in_column_order(tmp_path):
                 extra
             ]
 
-        result = strip_cap_annotations(path)
+        assert "error" in strip_cap_annotations(path), extra
+
+        result = strip_cap_annotations.__wrapped__(path)
 
         assert "error" in result, extra
         assert "malformed" in result["error"], extra
@@ -427,13 +435,18 @@ def test_strip_missing_file():
     assert "File not found" in result["error"]
 
 
+# A bare Dataset at uns has no encoding stamp by construction — that is the
+# malformed shape under test, so anndata warns on the way to refusing it.
+@pytest.mark.filterwarnings("ignore:Element '/uns' was written without encoding metadata")
 def test_strip_answers_legibly_with_dataset_at_uns(tmp_path, put_dataset_at_uns):
     """A Dataset at 'uns' used to surface as a raw TypeError (#617); narrowed
     to None, the tool reaches its normal nothing-to-strip answer."""
     path = _make_cap_file(tmp_path / "clean.h5ad", uns_layout="none", cap_columns=False)
     put_dataset_at_uns(path)
 
-    result = strip_cap_annotations(path)
+    assert "error" in strip_cap_annotations(path)
+
+    result = strip_cap_annotations.__wrapped__(path)
 
     assert result.get("nothing_to_strip") is True
 
@@ -448,10 +461,16 @@ def test_strip_refuses_a_slash_past_the_report_cap(tmp_path):
         cols = [c.decode() if isinstance(c, bytes) else c for c in f["obs"].attrs["column-order"]]
         padding = [f"pad{i}--cell_fullname" for i in range(8)]
         for name in padding:
-            f["obs"].create_dataset(name, data=[b"x", b"y", b"z"])
+            pad = f["obs"].create_dataset(name, data=[b"x", b"y", b"z"])
+            # Stamped as a real writer would: an unstamped element is a
+            # different defect from the '/' under test, and anndata warns on it.
+            pad.attrs["encoding-type"] = "string-array"
+            pad.attrs["encoding-version"] = "0.2.0"
         f["obs"].attrs["column-order"] = [*cols, *padding, "late/bad--cell_fullname"]
 
-    result = strip_cap_annotations(path)
+    assert "error" in strip_cap_annotations(path)
+
+    result = strip_cap_annotations.__wrapped__(path)
 
     assert "error" in result
     assert "malformed" in result["error"]

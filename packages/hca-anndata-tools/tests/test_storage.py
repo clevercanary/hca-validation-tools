@@ -5,6 +5,7 @@ from pathlib import Path
 
 import h5py
 import numpy as np
+import pytest
 
 from hca_anndata_tools.storage import _MAX_UNSUPPORTED_PATHS, get_storage_info
 from hca_anndata_tools.testing import (
@@ -92,6 +93,9 @@ def test_encodings_reported_for_plain_file(sample_h5ad):
     assert enc["unsupported_truncated"] is False
 
 
+# anndata coerces a fixed-width byte index on read and says so. That is the
+# fixture's whole subject, audible since #661 made this tool open the file.
+@pytest.mark.filterwarnings("ignore:Transforming to str index")
 def test_encodings_does_not_flag_a_fixed_width_byte_index(sample_h5ad, tmp_path):
     """``array`` on a Dataset is writable — the report must agree with rename.
 
@@ -129,6 +133,10 @@ def test_encodings_flags_nullable_index(sample_h5ad, tmp_path):
     assert "obs/_index" in enc["unsupported"]
 
 
+# Masked index entries all read back as pd.NA, so anndata sees duplicate obs
+# names. Intrinsic to the shape under test, and only audible since #661 made
+# every tool open through anndata.
+@pytest.mark.filterwarnings("ignore:Observation names are not unique")
 def test_encodings_reports_mask_count(sample_h5ad, tmp_path):
     """A masked index is a data problem, counted separately from compatibility."""
     path = _nullable_copy(sample_h5ad, tmp_path / "masked.h5ad", masked=3)
@@ -227,7 +235,12 @@ def test_encodings_covers_obsm_dataframe_indexes(sample_h5ad, tmp_path):
         ds.attrs["encoding-type"] = "string-array"
         make_nullable_string_array(frame, "_index")
 
-    enc = get_storage_info(str(path))["encodings"]
+    # A nullable obsm index also stops anndata opening the file, so #661
+    # refuses it before the report is built. The reporting logic still covers
+    # obsm frames on files that open, and is exercised directly here.
+    assert "encodings" not in get_storage_info(str(path))
+
+    enc = get_storage_info.__wrapped__(str(path))["encodings"]
     assert enc["obsm"]["df_frame"]["index"] == "nullable-string-array"
     assert "obsm/df_frame/_index" in enc["unsupported"]
 
@@ -261,20 +274,29 @@ def test_encodings_failure_does_not_discard_the_rest_of_the_report(sample_h5ad, 
     assert result["encodings"]["error"] == "structural surprise"
 
 
-def test_encodings_unstamped_index_is_labelled_not_null(sample_h5ad, tmp_path):
-    """Older AnnData wrote string arrays with no encoding-type.
+def test_encodings_unstamped_index_is_refused_with_the_file(sample_h5ad, tmp_path):
+    """An unstamped *index* is not a state this report can reach any more.
 
-    That is a real encoding state and must not be reported as ``null``,
-    which the skill treats as "this dataframe is absent".
+    It used to be reported as ``unstamped``. But anndata refuses the whole
+    file over it — ``IORegistryError``, no read method for an empty
+    encoding-type — so since #661 it is out of scope: we operate on files
+    anndata can read, and we are not in the diagnosis business.
+
+    The trade is deliberate and it is a real loss. Naming an unstamped index
+    is exactly what a curator wants from this tool, and the caller now gets
+    anndata's registry error instead. An unstamped *column* still reports
+    normally (below) — only shapes that stop the file opening are gone.
     """
     path = tmp_path / "unstamped.h5ad"
     shutil.copy2(sample_h5ad, path)
     with h5py.File(path, "r+") as f:
         obs = f["obs"]
         del obs[_index_attr(obs)].attrs["encoding-type"]
-    enc = get_storage_info(str(path))["encodings"]
-    assert enc["obs"]["index"] == "unstamped"
-    assert enc["obs"]["index"] is not None
+
+    result = get_storage_info(str(path))
+
+    assert "encodings" not in result
+    assert "No read method registered" in result["error"]
 
 
 def test_encodings_flags_a_plain_nullable_column(sample_h5ad, tmp_path):

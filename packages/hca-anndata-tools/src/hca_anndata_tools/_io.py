@@ -7,10 +7,13 @@
 
 from __future__ import annotations
 
+import functools
 import gc
+import inspect
 import warnings
 from contextlib import contextmanager, suppress
-from typing import TYPE_CHECKING, Literal
+from pathlib import Path
+from typing import TYPE_CHECKING, Literal, ParamSpec
 
 import anndata as ad
 import h5py
@@ -18,9 +21,10 @@ import pandas as pd
 from anndata.io import read_elem, write_elem
 
 from ._keys import EDIT_LOG_KEY, MASKED_STRING_REMEDY, PROVENANCE_KEY
+from .write import resolve_latest
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Sequence
+    from collections.abc import Callable, Iterator, Sequence
 
     import numpy as np
     from pandas.api.typing import NAType
@@ -102,15 +106,22 @@ def _masked_categories_open_error(path: str) -> str | None:
     column is found again via h5py. Best-effort by design: the file is
     already known bad, and a scan failure must not replace the original
     error with a second traceback.
+
+    The index is named as an index rather than as a column. Since #661 this
+    message is what a caller sees for the whole file rather than only what a
+    tool that reached this shape saw, and telling someone to repair a column
+    that is really the obs index sends them looking for the wrong thing.
     """
     with suppress(Exception), h5py.File(path, "r") as f:
         for label, group in iter_dataframe_groups(f):
+            index_name = obs_index_name(group)
             for col in group:
                 item = group[col]
+                role = "index" if col == index_name else "column"
                 if (
                     isinstance(item, h5py.Group)
                     and "categories" in item
-                    and (reason := masked_categories_reason(read_categories(item), f"{label} column '{col}'"))
+                    and (reason := masked_categories_reason(read_categories(item), f"{label} {role} '{col}'"))
                 ):
                     return reason
     return None
@@ -152,6 +163,88 @@ def open_h5ad(path: str, backed: Literal["r", "r+"] | None = "r"):
             adata.file.close()
         del adata
         gc.collect()
+
+
+# The parameter names that carry a caller-supplied h5ad path. Gating is per
+# path, not per tool: copy_cap_annotations opened its source through anndata
+# and read its *target* with raw h5py, so a per-tool audit passed it while an
+# unopenable target was still snapshotted and written (#661).
+GATED_PATH_PARAMS = ("path", "source_path", "target_path")
+
+_P = ParamSpec("_P")
+
+
+def gate_h5ad_paths(fn: Callable[_P, dict]) -> Callable[_P, dict]:
+    """Refuse a file anndata cannot open, before the tool reads it.
+
+    The contract's Scope rule — we operate on files anndata can read — held
+    only for tools that happened to go through :func:`open_h5ad`. Fifteen
+    tools reached the file with raw h5py instead, and so ran to completion on
+    a file nobody can open: the writers among them left a snapshot behind and
+    reported success. This decorator is that rule's enforcement (#661).
+
+    Every parameter named in :data:`GATED_PATH_PARAMS` is opened through
+    anndata first, in declaration order. ``ad.read_h5ad`` is the whole
+    predicate, so there is no list of failure modes here — a truncated
+    download and a masked-categories column arrive as the same refusal.
+
+    **We are not in the diagnosis business.** The gate is unconditional: a
+    tool of ours reporting confidently on a file anndata rejected is the
+    failure being removed, so the storage-layer readers are gated too even
+    though they are how one might otherwise ask *why* a file will not open.
+
+    Three behaviours the wrapper preserves deliberately:
+
+    - **The refusal is anndata's own text.** ``str(e)`` and nothing else, per
+      principle 11 and #661's AC3 — no summary, no explanation of ours.
+    - **It returns rather than raises**, matching the ``{"error": ...}`` shape
+      every tool already returns, so the gate cannot break a caller that
+      expects a dict. This is also the single site #657 needs for these
+      refusals instead of one per tool.
+    - **A missing file falls through untouched**, so each tool keeps its own
+      "File not found" message rather than getting h5py's.
+
+    Paths are resolved with :func:`~hca_anndata_tools.write.resolve_latest`
+    first, so the gate opens the file the tool will actually operate on.
+    Resolving is idempotent, so the tool's own call is left in place.
+
+    Raises:
+        TypeError: At decoration time, if the function has no gated path
+            parameter — a tool that cannot be gated is a mistake here, not a
+            silent no-op.
+    """
+    sig = inspect.signature(fn)
+    gated = [name for name in sig.parameters if name in GATED_PATH_PARAMS]
+    if not gated:
+        raise TypeError(
+            f"{fn.__name__} has no parameter in {GATED_PATH_PARAMS} to gate. "
+            f"A tool that opens an h5ad names its path parameter one of these; "
+            f"one that opens no file should not carry this decorator."
+        )
+
+    @functools.wraps(fn)
+    def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> dict:
+        bound = sig.bind_partial(*args, **kwargs)
+        for name in gated:
+            raw = bound.arguments.get(name)
+            if not isinstance(raw, str):
+                continue
+            resolved = resolve_latest(raw)
+            if not Path(resolved).is_file():
+                continue
+            try:
+                with open_h5ad(resolved, backed="r"):
+                    pass
+            except Exception as e:
+                return {"error": str(e)}
+        return fn(*args, **kwargs)
+
+    # The roster AC2 enumerates against. Set here rather than inferred from
+    # __wrapped__, which any functools.wraps decorator would also set, and
+    # carrying the *names* so the check can catch a tool that gates one side
+    # of a two-file operation and not the other.
+    wrapper.__gated_paths__ = tuple(gated)  # pyright: ignore[reportFunctionMemberAccess]
+    return wrapper
 
 
 def _decode_bytes(val):

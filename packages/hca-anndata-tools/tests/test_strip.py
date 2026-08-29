@@ -5,6 +5,7 @@ from pathlib import Path
 
 import anndata as ad
 import pandas as pd
+import pytest
 
 from hca_anndata_tools.strip import (
     _OBS_COLUMNS_TO_STRIP,
@@ -156,13 +157,19 @@ def test_strip_same_second_snapshot_refused(sample_h5ad_for_write, pin_snapshot_
     assert "already exists" in result["error"]
 
 
+# A bare Dataset at uns carries no encoding stamp by construction — the
+# malformed shape under test, which anndata warns about before refusing it.
+@pytest.mark.filterwarnings("ignore:Element '/uns' was written without encoding metadata")
 def test_strip_skips_cleanly_with_dataset_at_uns(sample_h5ad_for_write, put_dataset_at_uns):
     """The CellxGENE gate used to probe a possible Dataset with `in` (#617);
     narrowed to None, the gate falls through and the no-op path answers."""
     _to_hca_layout(sample_h5ad_for_write)  # HCA layout, no SRE columns
     put_dataset_at_uns(sample_h5ad_for_write)
 
-    result = strip_forbidden_obs_columns(str(sample_h5ad_for_write))
+    # #661 refuses a Dataset at uns at the door — anndata cannot open it.
+    assert "error" in strip_forbidden_obs_columns(str(sample_h5ad_for_write))
+
+    result = strip_forbidden_obs_columns.__wrapped__(str(sample_h5ad_for_write))
 
     assert "error" not in result
     assert result["skipped"] is True

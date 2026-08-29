@@ -34,7 +34,7 @@ from typing import Any
 import h5py
 import numpy as np
 
-from ._io import read_edit_log_h5py, read_group, read_uns, write_edit_log_h5py
+from ._io import gate_h5ad_paths, read_edit_log_h5py, read_group, read_uns, write_edit_log_h5py
 from ._keys import PROVENANCE_KEY
 from ._serialize import make_serializable
 from .guards import is_malformed_name
@@ -419,6 +419,7 @@ def _plan(f: h5py.File, parsed: list[tuple[tuple[str, ...], Any]]) -> tuple[list
     return plans, problems
 
 
+@gate_h5ad_paths
 def set_producer_uns(path: str, updates: list[dict]) -> dict:
     """Overwrite scalar values at nested ``uns`` paths outside the HCA schema.
 

@@ -687,6 +687,9 @@ def test_missing_file():
     assert "error" in result
 
 
+# A bare Dataset at uns carries no encoding stamp by construction — the
+# malformed shape under test, which anndata warns about before refusing it.
+@pytest.mark.filterwarnings("ignore:Element '/uns' was written without encoding metadata")
 def test_copy_survives_dataset_at_uns_in_target(cap_source, hca_target, put_dataset_at_uns):
     """A Dataset at the target's 'uns' used to crash inspection at uns.keys()
     (#617); narrowed to None, the read phase completes and the failure moves
