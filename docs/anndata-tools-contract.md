@@ -71,9 +71,33 @@ And the conversion to the profile splits cleanly on the mask:
   read-wide guarantee: a *categorical* whose **categories** are masked is a
   file anndata itself cannot read ("Categorical categories cannot be
   null"), so principle 2 does not apply to it — tools that hit it owe a
-  named refusal, nothing more. The naming lives in the shared readers
-  (`open_h5ad` for columns, `read_index` for indexes), so tools are covered
-  by construction rather than by per-tool guards (principle 8, read-side).
+  named refusal, nothing more. `open_h5ad` names it for every tool that
+  reads through anndata, and `read_index` for index reads — but the two
+  tools that read a categorical through **raw h5py** do not:
+  `rename_cell_ids`' selector and `backfill_obs_from_source`' source side
+  read NA-tolerantly and proceed, which on such a file is a silent wrong
+  answer (a snapshot anndata cannot read; corrupt-source cells reported
+  as `source_missing`) rather than a refusal.
+
+  **Known and accepted** (hca-validation-tools#651). The trigger has never
+  been observed: 0 of 223 real h5ad files hold masked categories, or
+  masked string values at all (scanned 2026-08-29), and none of pandas,
+  anndata 0.11.4, or our own writers can produce one — pandas refuses to
+  construct null categories, and the write profile never emits a nullable
+  string. Closing it needs the refusal inside `read_categories` /
+  `read_categorical_data`, which every raw-h5py categorical read already
+  passes through; hca-validation-tools#652 did exactly that and was closed
+  as insurance against a file shape no producer we feed from emits. Revisit
+  if a foreign producer (an R/Seurat export, a hand-written h5py file) ever
+  lands one — the one-line check is `masked_string_error` / a categories
+  scan over the corpus.
+
+  The general rule this taught, which outlives the case: **a claim of the
+  form "every X" belongs in this document only when something mechanical
+  enumerates X.** The sentence this paragraph replaced asserted coverage
+  "by construction" that the construction did not have, and cost eight
+  review rounds before anyone questioned the sentence rather than the
+  code.
 
 ## The anndata pin, precisely
 
