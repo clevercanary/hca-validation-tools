@@ -89,8 +89,11 @@ And the conversion to the profile splits cleanly on the mask:
   passes through; hca-validation-tools#652 did exactly that and was closed
   as insurance against a file shape no producer we feed from emits. Revisit
   if a foreign producer (an R/Seurat export, a hand-written h5py file) ever
-  lands one — the one-line check is `masked_string_error` / a categories
-  scan over the corpus.
+  lands one. To re-check the corpus, open each file and look for either
+  shape: `_io.masked_string_error(f)` reports masked string *values*, and
+  reading each categorical's `categories` child through
+  `_io.read_categories` refuses on masked *categories* — the scan of all
+  223 files took four seconds.
 
   The general rule this taught, which outlives the case: **a claim of the
   form "every X" belongs in this document only when something mechanical
