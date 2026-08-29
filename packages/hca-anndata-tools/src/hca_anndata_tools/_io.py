@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import gc
 import warnings
-from contextlib import contextmanager, suppress
+from contextlib import contextmanager
 from typing import TYPE_CHECKING, Literal
 
 import anndata as ad
@@ -73,15 +73,20 @@ def iter_dataframe_groups(f: h5py.File) -> Iterator[tuple[str, h5py.Group]]:
             continue
         label_prefix = "raw.varm" if holder_name == "raw/varm" else holder_name
         for key in holder:
-            member = holder[key]
-            if isinstance(member, h5py.Group) and encoding_of(member) == "dataframe":
-                yield f"{label_prefix}['{key}']", member
+            label = f"{label_prefix}['{key}']"
+            with _named_corruption(label):
+                member = holder[key]  # a dangling link raises here
+                is_frame = isinstance(member, h5py.Group) and encoding_of(member) == "dataframe"
+            if is_frame:
+                yield label, member
 
     seen: set[tuple[int, int]] = set()
 
     def walk_uns(prefix: str, group: h5py.Group) -> Iterator[tuple[str, h5py.Group]]:
         for key in group:
-            member = group[key]
+            label = f"{prefix}['{key}']"
+            with _named_corruption(label):
+                member = group[key]  # a dangling link raises here
             if not isinstance(member, h5py.Group):
                 continue
             # HDF5 links can form cycles; without this the walk recurses
@@ -91,7 +96,6 @@ def iter_dataframe_groups(f: h5py.File) -> Iterator[tuple[str, h5py.Group]]:
             if identity in seen:
                 continue
             seen.add(identity)
-            label = f"{prefix}['{key}']"
             enc = encoding_of(member)
             if enc == "dataframe":
                 yield label, member
@@ -169,9 +173,17 @@ def _may_hold_masked_categories(item: h5py.Group) -> bool:
     Everything else still reads: a nullable group can be masked (its mask
     says whether it is), and a numeric dataset can carry NaN, which is the
     same corrupt shape in another dtype.
+
+    The mask answers only when it *fits*: a mask whose length differs from
+    its values is itself corruption, and short-circuiting on its zero
+    count let a file anndata cannot read pass the gate.
     """
     categories = item["categories"]
     if isinstance(categories, h5py.Group):
+        require_nullable_children(categories)
+        values, mask = categories["values"], categories["mask"]
+        if values.shape != mask.shape:
+            raise ValueError(f"mask has {mask.shape} entries for {values.shape} values — the file is corrupt")
         return bool(mask_count(categories))
     return h5py.check_string_dtype(categories.dtype) is None
 
@@ -215,22 +227,30 @@ def masked_categories_error(f: h5py.File, ignore_obs_columns: Sequence[str] = ()
 
 def _masked_categories_scan(f: h5py.File, ignore_obs_columns: Sequence[str]) -> str | None:
     """:func:`masked_categories_error`'s two passes, unwrapped."""
-    dataframe_paths = set()
+    dataframe_identities = set()
     for label, group in iter_dataframe_groups(f):
-        dataframe_paths.add(group.name)
+        # Identity, not name: the same group reached under a second link
+        # would otherwise get an unexempted second pass under a different
+        # label, and the caller's delete exemption would not apply to it.
+        dataframe_identities.add(_object_identity(group))
         index_name = obs_index_name(group)
         # Sorted like _iter_string_element_targets: with several corrupt
         # elements, the named one must not vary between runs or platforms.
         for col in sorted(group):
-            if label == "obs" and col in ignore_obs_columns and col != index_name:
+            if label == "obs" and col in ignore_obs_columns:
                 continue
-            item = group[col]
-            if isinstance(item, h5py.Group) and "categories" in item and _may_hold_masked_categories(item):
-                kind = "index" if col == index_name else "column"
+            kind = "index" if col == index_name else "column"
+            subject = f"{label} {kind} '{col}'"
+            with _named_corruption(subject):
+                item = group[col]  # a dangling link raises here
+                may_hold = isinstance(item, h5py.Group) and "categories" in item and _may_hold_masked_categories(item)
+            if may_hold:
                 try:
-                    read_categories(item, f"{label} {kind} '{col}'")
+                    read_categories(item, subject)
                 except MaskedCategoriesError as e:
                     return str(e)
+                except Exception as e:
+                    raise CorruptElementError(subject, e) from e
 
     visited: set[tuple[int, int]] = set()
 
@@ -242,7 +262,7 @@ def _masked_categories_scan(f: h5py.File, ignore_obs_columns: Sequence[str]) -> 
                 # A dataframe group was already walked above, with its
                 # labels and exemptions — skipping it here is what keeps
                 # the exemption from being un-exempted by this pass.
-                if not isinstance(member, h5py.Group) or member.name in dataframe_paths:
+                if not isinstance(member, h5py.Group) or _object_identity(member) in dataframe_identities:
                     continue
                 # HDF5 links can form cycles; a walk without this recurses
                 # until Python's stack gives out.
@@ -278,14 +298,20 @@ def masked_categories_error_for_path(
     otherwise carry their own ``h5py.File`` and their own answer to "what
     if this is not an HDF5 file at all".
 
-    ``best_effort`` suppresses every failure and answers None: the two
-    read-only callers are describing a file already known to be bad, and a
-    scan that raises must not replace the error the caller already has.
+    ``best_effort`` keeps the scan's own answers — a masked-categories
+    refusal and a named :class:`CorruptElementError` are both *findings*,
+    and swallowing them let a read-only caller present a clean verdict on
+    a corrupt file. It suppresses only what is not an answer: the open
+    itself, or a failure with no element to name.
     """
     if best_effort:
-        with suppress(Exception), h5py.File(path, "r") as f:
-            return masked_categories_error(f, ignore_obs_columns=ignore_obs_columns)
-        return None
+        try:
+            with h5py.File(path, "r") as f:
+                return masked_categories_error(f, ignore_obs_columns=ignore_obs_columns)
+        except (MaskedCategoriesError, CorruptElementError) as e:
+            return str(e)
+        except Exception:
+            return None
     # Not a guard: a non-HDF5 path holds no categoricals, and the caller's
     # own open owns that failure.
     if not h5py.is_hdf5(path):

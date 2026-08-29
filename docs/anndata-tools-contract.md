@@ -71,7 +71,8 @@ And the conversion to the profile splits cleanly on the mask:
   read-wide guarantee: a *categorical* whose **categories** are masked is a
   file anndata itself cannot read ("Categorical categories cannot be
   null"), so principle 2 does not apply to it — tools that hit it owe a
-  named refusal, nothing more. The naming lives in the shared readers —
+  named refusal, nothing more (with the seams above: for the elements
+  anndata skips, the shape is corrupt to us and invisible to it). The naming lives in the shared readers —
   `open_h5ad` for everything anndata reads, and `read_categories` /
   `read_categorical_data` for every raw-h5py categorical read (callers
   supply the element's name; `read_index` reaches it through them) — so
@@ -83,9 +84,11 @@ And the conversion to the profile splits cleanly on the mask:
   surgical write passes through. Bystander corruption included, and
   whatever surgical tool joins the class next covered without an edit
   here; full rewrites and convert refuse earlier, at `open_h5ad` — with
-  one seam: an obs member absent from `column-order` is a member anndata
-  never reads, so the surgical class refuses it while a full rewrite
-  succeeds and drops it. Walking the whole file also means meeting
+  two seams, both where anndata reads less of the file than we scan: an
+  obs member absent from `column-order`, and a bare categorical at the
+  file root. anndata skips both, so the surgical class refuses those
+  files while a full rewrite succeeds (dropping the member in the first
+  case). Walking the whole file also means meeting
   defects no reader here owns (a dangling link, a mask that does not
   match its values); those answer as `CorruptElementError`, named, never
   as an h5py internal (principle 11). The one
@@ -95,9 +98,10 @@ And the conversion to the profile splits cleanly on the mask:
   repaired here, only removed). The one bypass is read-only:
   `validate_marker_genes` writes nothing, and on obs-side corruption it
   elects principle 3's skip arm so the file can still be diagnosed — its
-  result carries a `corruption` notice from a whole-file scan. Corruption
-  in *var* refuses by name instead: with no readable gene names there is
-  nothing to validate markers against. Either way, no clean verdict on a
+  result carries a `corruption` notice from a whole-file scan. Corruption in the
+  *gene names* refuses by name instead (`var`'s index, `feature_name`, or
+  `gene_name`): with nothing to validate markers against, a notice would
+  be a verdict on nothing. Either way, no clean verdict on a
   corrupt file is possible — the notice attaches at one exit point, so a
   future early return cannot quietly drop it (it did once: the shape with
   no marker evidence returned clean).

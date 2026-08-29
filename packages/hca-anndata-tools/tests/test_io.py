@@ -626,7 +626,82 @@ def test_open_h5ad_names_masked_categories_it_cannot_locate(tmp_path):
         # best-effort wrapper answers None.
         f["obs"].create_group("aaa")["categories"] = h5py.SoftLink("/nope/missing")
 
-    with pytest.raises(ValueError, match="masked") as excinfo, _io.open_h5ad(str(path)):
+    with pytest.raises(ValueError) as excinfo, _io.open_h5ad(str(path)):
         pass
-    assert str(excinfo.value) != "Categorical categories cannot be null"
-    assert "could not locate" in str(excinfo.value) or "registered" in str(excinfo.value)
+    message = str(excinfo.value)
+    assert message != "Categorical categories cannot be null"
+    # The dangling link is met first and named; nothing is swallowed.
+    assert "obs column 'aaa'" in message
+    assert "could not be read" in message
+
+
+def _corrupt_base(path):
+    """A small readable file to plant a structural defect in."""
+    adata = ad.AnnData(
+        X=np.zeros((2, 1), dtype=np.float32),
+        obs=pd.DataFrame({"sex": pd.Categorical(["m", "f"])}, index=["c0", "c1"]),
+    )
+    adata.write_h5ad(path)
+    return path
+
+
+@pytest.mark.parametrize(
+    ("holder", "expected", "link"),
+    [
+        ("uns", "uns['bad']", h5py.SoftLink("/nope")),
+        ("uns", "uns['bad']", h5py.ExternalLink("/nope/gone.h5", "/x")),
+        ("obs", "obs column 'bad'", h5py.SoftLink("/nope")),
+        ("obsm", "obsm['bad']", h5py.SoftLink("/nope")),
+        ("layers", "layers['bad']", h5py.SoftLink("/nope")),
+    ],
+)
+def test_structural_corruption_is_named_never_leaked(tmp_path, holder, expected, link):
+    """The whole-file walk meets defects no reader here owns. Principle 11
+    holds for those too: an h5py internal must not reach a user just
+    because the element it came from is one we were only passing. Without
+    this the suite was green while raw h5py messages escaped every
+    surgical tool (#651)."""
+    path = _corrupt_base(tmp_path / "structural.h5ad")
+    with h5py.File(path, "r+") as f:
+        f.require_group(holder).create_group("bad")["categories"] = link
+
+    with pytest.raises(_io.CorruptElementError) as excinfo, h5py.File(path) as f:
+        _io.masked_categories_error(f)
+    message = str(excinfo.value)
+    # The ELEMENT is named, not just "an element of this file" — a generic
+    # answer is what the outer net gives when nothing named it first.
+    assert expected in message
+    assert "could not be read" in message
+
+
+def test_a_mask_that_does_not_fit_its_values_is_corruption(tmp_path):
+    """A nullable group whose mask length differs from its values is a
+    file anndata cannot read. The mask-count short-circuit skipped it
+    whenever no bit happened to be set, which let a write stamp a fresh
+    -edit- snapshot on an unreadable file."""
+    path = _corrupt_base(tmp_path / "mismatch.h5ad")
+    with h5py.File(path, "r+") as f:
+        group = f["uns"].create_group("bad")
+        group.attrs["encoding-type"] = "categorical"
+        cats = group.create_group("categories")
+        cats.attrs["encoding-type"] = "nullable-string-array"
+        cats.create_dataset("values", data=np.array([b"a", b"b"]))
+        cats.create_dataset("mask", data=np.zeros(7, dtype=bool))  # all-zero, wrong length
+
+    with pytest.raises(ValueError, match="Boolean|mask has"), h5py.File(path) as f:
+        _io.masked_categories_error(f)
+
+
+@pytest.mark.parametrize("link", [h5py.SoftLink, h5py.HardLink])
+def test_link_cycles_terminate(tmp_path, link):
+    """HDF5 links can form cycles. Group.name is the path used to REACH an
+    object, so a cycle yields endlessly new names and a name-keyed visited
+    set never closes it — the sets key on the object address instead."""
+    path = _corrupt_base(tmp_path / f"cycle_{link.__name__}.h5ad")
+    with h5py.File(path, "r+") as f:
+        loop = f["uns"].create_group("loop")
+        loop["self"] = h5py.SoftLink("/uns/loop") if link is h5py.SoftLink else f["uns/loop"]
+
+    with h5py.File(path) as f:
+        assert _io.masked_categories_error(f) is None
+        assert len(list(_io.iter_dataframe_groups(f))) >= 1  # the shared walker terminates too

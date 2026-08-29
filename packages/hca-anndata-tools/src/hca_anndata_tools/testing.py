@@ -263,9 +263,9 @@ def _decode(value):
 def add_masked_categorical_column(path, name: str = "bystander") -> None:
     """Add an obs column whose *categories* are masked, in place.
 
-    The corrupt-file shape anndata itself cannot open ("Categorical
-    categories cannot be null"), which every write refuses and the
-    read-only diagnostic reports. Six refusal tests need a corrupt
+    The corrupt shape anndata cannot read ("Categorical categories cannot
+    be null"), which every write refuses and the read-only diagnostic
+    reports. Six refusal tests need a corrupt
     column the tool under test does not otherwise touch, so the
     write-a-categorical-then-mask-its-categories dance lives here rather
     than in each of them.
