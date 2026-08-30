@@ -245,11 +245,8 @@ def make_plain_string_column(parent: h5py.Group, name: str, values: list[str]) -
 def create_truncated_h5ad(path: Path, source: Path | None = None) -> Path:
     """A half-written h5ad — the ordinary way a file fails to open (#661).
 
-    Half the bytes rather than a fixed count: the sample fixture is ~57 KB, so
-    a literal ``read(100_000)`` would copy the whole file and leave a valid
-    h5ad behind, and every refusal assertion built on it would be vacuous.
-    The guard below is what pins that down, so a caller cannot inherit the
-    problem by growing the fixture.
+    Half the bytes rather than a fixed count, so growing the source fixture
+    cannot quietly produce a still-valid file. Guarded on the way out.
 
     Args:
         path: Where to write the truncated file.

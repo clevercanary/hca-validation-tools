@@ -275,9 +275,7 @@ def test_gate_resolves_to_the_latest_snapshot(tmp_path):
     would slip through if the gate ran before ``resolve_latest``.
     """
     original = create_sample_h5ad(tmp_path / "d.h5ad")
-    snapshot = tmp_path / "d-edit-2026-01-01-00-00-00.h5ad"
-    payload = original.read_bytes()
-    snapshot.write_bytes(payload[: len(payload) // 2])
+    snapshot = create_truncated_h5ad(tmp_path / "d-edit-2026-01-01-00-00-00.h5ad", source=original)
 
     result = tools.get_storage_info(str(original))
 

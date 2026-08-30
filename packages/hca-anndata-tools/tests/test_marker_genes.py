@@ -319,7 +319,7 @@ def test_extract_markers_skips_a_masked_value():
     assert _extract_marker_genes_from_categories(categories) == {"GFAP", "RBFOX3"}
 
 
-def test_masked_evidence_and_organism_values_are_skipped(tmp_path):
+def test_missing_evidence_and_organism_values_are_skipped(tmp_path):
     """End to end on the file shape: missing values in both the organism
     column and a marker-evidence column. They are skipped — no phantom
     "<NA>" gene, no "<NA>" organism error, no "boolean value of NA is
@@ -343,7 +343,7 @@ def test_masked_evidence_and_organism_values_are_skipped(tmp_path):
     )
     var = pd.DataFrame({"feature_name": ["GFAP"]}, index=["ENSG00000131095"])
     X = sp.random(n_obs, 1, density=0.5, format="csr", dtype=np.float32)
-    path = tmp_path / "masked_markers.h5ad"
+    path = tmp_path / "missing_markers.h5ad"
     ad.AnnData(X=X, obs=obs, var=var).write_h5ad(path)
     result = validate_marker_genes(str(path))
 
@@ -353,7 +353,7 @@ def test_masked_evidence_and_organism_values_are_skipped(tmp_path):
     assert reported == {"ZZZFAKE"}
 
 
-def test_all_masked_organism_is_refused_not_passed(tmp_path):
+def test_all_missing_organism_is_refused_not_passed(tmp_path):
     """Absence of organism evidence must not pass the human-only gate — an
     all-missing column would otherwise validate against the human GENCODE
     with the organism never established."""
