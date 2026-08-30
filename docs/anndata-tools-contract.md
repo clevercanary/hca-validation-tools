@@ -196,8 +196,10 @@ target is constrained.
    file through anndata: `read_elem` on a masked `categories` *child*
    returns `pd.NA` without complaint (which is why `read_index` preflights
    ahead of it — on the categorical *group* `read_elem` does raise, unnamed).
-   Since #661 no read proceeds on an unopenable file: the gate opens the
-   file through anndata first, whatever the tool then reads it with.
+   Since #661 no read proceeds on a file its own open rejects. The fifteen
+   tools that had no open at all get one from `gate_h5ad_paths`; the ten that
+   already opened through `open_h5ad` keep their own mode, which reads at
+   least as much, so nothing slips past either.
    A raw h5py read is permitted only where the job is the storage layer
    itself — inspecting or preserving chunking, compression, dtype, attrs —
    and the reason must be stated at the site. "It seemed simpler" is not a
