@@ -54,23 +54,33 @@ it while an unopenable target was still snapshotted and written.
 CAP export is a copy of a record CAP owns. Editing it does not update that
 record — it forks it, leaving a divergent file that CAP will overwrite or
 contradict on its next export, and no way to tell which one a downstream
-reader has. The predicate is a file that declares a CellxGENE schema version
-or carries the legacy CAP layout — one test serves both, since the same
-reasoning covers a CellxGENE export (#533, #596).
+reader has. The intended predicate is a file that declares a CellxGENE schema
+version *or* carries the legacy CAP layout: two ways the same kind of export
+announces itself, and the same reasoning covers a CellxGENE export (#533,
+#596).
 
 What we may do with a CAP export is *read* it: `copy_cap_annotations` copies
 its annotations into an HCA file, and `convert_cellxgene_to_hca` produces a
 new HCA file from it. Both write somewhere else.
 
-**The enforcement is partial, and that is a gap rather than a design.** Seven
-obs-mutating writers refuse it — `rename_cell_ids`, `drop_obs_columns`,
-`strip_forbidden_obs_columns`, `strip_cap_annotations`, `merge_obs_categories`,
-`backfill_obs_from_source`, `rename_obs_column`. Six writers do not check at
-all: `set_uns`, `replace_placeholder_values`, `set_producer_uns`,
-`compress_h5ad`, `normalize_raw`, and `copy_cap_annotations` on its *target*.
-Each of those would happily fork a CAP export. Enumerated here rather than
-asserted, because "every writer refuses it" was the obvious thing to write and
-it is not true.
+**The enforcement is partial and inconsistent — a gap, not a design (#665).**
+Enumerated rather than asserted, because "every writer refuses it" was the
+obvious sentence and it is false twice over:
+
+| Writer | Refuses a schema-version export | Refuses a legacy-layout export |
+|---|---|---|
+| `rename_cell_ids` | yes | yes |
+| `drop_obs_columns` | **no** | yes |
+| `merge_obs_categories` | **no** | yes |
+| `backfill_obs_from_source` | **no** | yes |
+| `rename_obs_column` | **no** | yes |
+| `strip_forbidden_obs_columns` | yes | **no** |
+| `strip_cap_annotations` | yes | **no** |
+| `set_uns`, `replace_placeholder_values`, `set_producer_uns`, `compress_h5ad`, `normalize_raw`, `copy_cap_annotations` (target) | **no** | **no** |
+
+Only `rename_cell_ids` implements the rule as stated. Per principle 8, seven
+hand-rolled preflights with three different predicates is the smell that the
+chokepoint is missing.
 
 One consequence is worth stating, because it looks like an inconsistency and
 is not: **a CAP export never carries one of our `-edit-` snapshots**, since
