@@ -50,6 +50,37 @@ gate is per *path*, not per tool: `copy_cap_annotations` opened its source
 through anndata and read its target with raw h5py, so a per-tool audit passed
 it while an unopenable target was still snapshotted and written.
 
+**CAP is the system of record for its exports; we never write to one.** A
+CAP export is a copy of a record CAP owns. Editing it does not update that
+record — it forks it, leaving a divergent file that CAP will overwrite or
+contradict on its next export, and no way to tell which one a downstream
+reader has. The predicate is a file that declares a CellxGENE schema version
+or carries the legacy CAP layout — one test serves both, since the same
+reasoning covers a CellxGENE export (#533, #596).
+
+What we may do with a CAP export is *read* it: `copy_cap_annotations` copies
+its annotations into an HCA file, and `convert_cellxgene_to_hca` produces a
+new HCA file from it. Both write somewhere else.
+
+**The enforcement is partial, and that is a gap rather than a design.** Seven
+obs-mutating writers refuse it — `rename_cell_ids`, `drop_obs_columns`,
+`strip_forbidden_obs_columns`, `strip_cap_annotations`, `merge_obs_categories`,
+`backfill_obs_from_source`, `rename_obs_column`. Six writers do not check at
+all: `set_uns`, `replace_placeholder_values`, `set_producer_uns`,
+`compress_h5ad`, `normalize_raw`, and `copy_cap_annotations` on its *target*.
+Each of those would happily fork a CAP export. Enumerated here rather than
+asserted, because "every writer refuses it" was the obvious thing to write and
+it is not true.
+
+One consequence is worth stating, because it looks like an inconsistency and
+is not: **a CAP export never carries one of our `-edit-` snapshots**, since
+nothing of ours will write one. `resolve_latest` on a CAP source is therefore
+always identity, and that is why `copy_cap_annotations` resolves its
+`target_path` — an HCA file, versioned like every other writer's output — and
+leaves `source_path` alone. The asymmetry is the rule above showing through,
+not an oversight. Before treating a divergence between the two as a bug, ask
+whether the file it needs can exist.
+
 **A load failure should reach the user as anndata's, not as ours** —
 principles 11 and 15 say how, and #657 is the work: today the tool handlers
 flatten it to `str(e)`, losing the type and the traceback. What we add on
@@ -63,26 +94,25 @@ load failure (`cell_annotation_validator.py`, "Unable to read h5ad
 file: …"), the fix belongs in the MCP tool that wraps it, not in the
 vendored validator.
 
-*Known deviation, accepted.* The shared readers enforce this where they are
-used: `open_h5ad` fails as anndata fails, naming the offending column, and
-`read_index` refuses a masked categorical index before the read. Some reads
-reach an element without going through either, and so proceed on a file
-anndata cannot open, producing a result that looks successful:
+*Closed by #661.* This was a known deviation for as long as the rule was
+documented but unenforced: `rename_cell_ids` read its selector column,
+`backfill_obs_from_source` its source side, and `validate_marker_genes` its
+gene names, all with raw h5py, and so ran to completion on a file nobody can
+open — the writers leaving a snapshot behind and reporting success. Fifteen
+tools were in that state by the time anyone counted. The gate above is the
+enforcement.
 
-| Tool | Reads without opening through anndata | Instead of refusing |
-|---|---|---|
-| `rename_cell_ids` | the selector column | writes a whole snapshot nobody can open, and reports success |
-| `backfill_obs_from_source` | the source side | buckets cells as `source_missing` that the source had values for |
-| `validate_marker_genes` | gene names | returns a clean report with a marker gene silently dropped |
-
-This holds for *any* unopenable file, not for one exotic shape. The corpus
+The evidence that shaped it is worth keeping, because it is also why the test
+suite carries exactly one unopenable fixture. The rule holds for *any*
+unopenable file, not for one exotic shape. The corpus
 carries a real instance: of the 223 files scanned (809 GB), one is a
 truncated download (#658). A truncated h5ad arrives by ordinary means — an
 interrupted transfer — and every read above proceeds on it identically.
 
 The shape that *prompted* this rule, a categorical whose `categories` child
 is masked ("Categorical categories cannot be null"), is a footnote by
-comparison: **0 of the 223** hold it, and on the pinned versions nothing but
+comparison, and enumerating such shapes in fixtures is the mistake #651 was
+closed for: **0 of the 223** hold it, and on the pinned versions nothing but
 raw h5py can produce one. Checkable in three lines — pandas 2.3.3 raises
 `Categorical categories cannot be null` for a list, an `Index` and a
 `StringDtype` array alike, and anndata 0.11.4 refuses to write the
