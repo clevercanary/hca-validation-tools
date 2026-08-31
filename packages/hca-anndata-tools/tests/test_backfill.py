@@ -614,10 +614,10 @@ def test_backfill_categorical_target_from_a_fixed_width_source(tmp_path):
     """A categorical target filled from an unstamped fixed-width source.
 
     anndata's legacy fallback hands that shape back as ``<U``, whose elements
-    are ``np.str_``. h5py's dtype inference for a vlen string only recognizes
-    exact ``str``, so a reader that passed the ``<U`` through failed the
-    category write with "Object dtype has no native HDF5 equivalent". The
-    reader normalizes string output instead, and this pins the whole path.
+    iterate as ``np.str_``. h5py's dtype inference for a vlen string only
+    recognizes exact ``str``, so a reader that passed the ``<U`` through failed
+    the category write with "Object dtype has no native HDF5 equivalent".
+    Normalizing string output at the reader is what keeps that shape writable.
     """
     target = _make_h5ad(tmp_path / "target.h5ad", ["c1", "c2"], {"library_id": [None, "L9"]}, categorical=True)
     long_value = "BRAND_NEW_LIBRARY_VALUE_LONGER_THAN_ANY_EXISTING_ONE"

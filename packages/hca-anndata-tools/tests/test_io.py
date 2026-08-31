@@ -514,3 +514,28 @@ def test_read_element_preserves_non_string_dtypes(tmp_path, values, expected_kin
         out = read_element(f["col"])
     assert out.dtype.kind == expected_kind
     assert list(out) == list(values)
+
+
+@pytest.mark.filterwarnings("ignore::anndata._warnings.OldFormatWarning")
+def test_read_element_gives_every_string_encoding_one_shape(tmp_path):
+    """The other half of the rule: strings normalize, whatever they came as.
+
+    anndata has four ways to hand back string data, and without this they
+    reach callers as three different dtypes holding two value types. The
+    unstamped case is the one that bites — the legacy fallback decodes it
+    itself and returns ``<U``, which cannot take a longer value on assignment
+    and cannot be written to a vlen dtype.
+    """
+    path = tmp_path / "shapes.h5"
+    with h5py.File(path, "w") as f:
+        write_elem(f, "vlen", np.array(["cell_0", "cell_1"], dtype=object))
+        write_elem(f, "stamped_bytes", np.array([b"cell_0", b"cell_1"], dtype="S16"))
+        f.create_dataset("unstamped_bytes", data=np.array([b"cell_0", b"cell_1"], dtype="S"))
+        make_nullable_string_array(f, "vlen")
+
+    with h5py.File(path) as f:
+        for key in ("vlen", "stamped_bytes", "unstamped_bytes"):
+            values = read_element(f[key])
+            assert values.dtype == object, key
+            assert all(isinstance(v, str) for v in values), key
+            assert list(values) == ["cell_0", "cell_1"], key

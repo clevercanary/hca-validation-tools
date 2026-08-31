@@ -394,15 +394,15 @@ def read_element(item: h5py.Group | h5py.Dataset | h5py.Datatype) -> np.ndarray:
     reaches a vlen-string writer, which h5py refuses
     (hca-validation-tools#668).
 
-    The coercion this replaced applied the string rule to every encoding. It
-    was authorised for ``read_string_dataset``, a reader whose domain was
-    strings, and widened when that function was generalised here.
+    The coercion this replaced applied the string rule to every encoding: it
+    came from a string-only reader and widened to all of them when that reader
+    was generalised into this one (hca-validation-tools#642).
 
-    Decoding is part of the string shape: ``read_elem`` dispatches on ``encoding-type``, and a fixed-width
-    byte array is stamped ``array`` (which is what anndata's own
-    ``write_elem`` does for a numpy ``S``-kind array), so it comes back as
-    raw ``bytes`` — no exception, no warning. The readers this replaced all
-    decoded, and skipping it makes cell IDs compare unequal to their
+    Decoding is part of the string shape: a fixed-width byte array is stamped
+    ``array`` (which is what anndata's own ``write_elem`` does for a numpy
+    ``S``-kind array), so it comes back as raw ``bytes`` — no exception, no
+    warning. The readers this replaced all decoded, and skipping it makes
+    cell IDs compare unequal to their
     ``str`` counterparts: a join silently matches nothing rather than
     failing. Only the bytes case pays for the decode.
 
@@ -598,6 +598,13 @@ def read_obs_categorical_values(path: str, column: str) -> set[str | NAType]:
     acceptable because callers operate on full integrated objects, not subsets.
 
     Falls back to reading the full dataset for non-categorical columns.
+
+    The annotation describes the string columns this is used for. A
+    non-string categorical returns its stored scalar type instead — since
+    #668 that is ``np.bool_``/``np.int64``, which ``json.dumps`` refuses
+    where a Python ``bool``/``int`` would have passed. No caller reaches
+    that today (both pass string columns), and ``make_serializable`` covers
+    the types, but a new caller on a non-string column must convert.
     """
     with h5py.File(path, "r") as f:
         item = f["obs"][column]
@@ -1012,12 +1019,7 @@ def replace_categorical_column(parent: h5py.Group, col: str, categories: list[st
     grp.attrs["encoding-version"] = encoding_version
     grp.attrs["ordered"] = ordered
     cat_data = np.array(categories, dtype=object) if categories else np.array([], dtype=h5py.string_dtype())
-    # Name the dtype rather than letting h5py infer it from the object array's
-    # first element: inference only recognizes exact `str`, so an `np.str_` —
-    # what a numpy string array yields on iteration — fails with "Object dtype
-    # has no native HDF5 equivalent". The empty branch above already names the
-    # dtype; this makes the two agree.
-    cat_ds = grp.create_dataset("categories", data=cat_data, dtype=h5py.string_dtype(encoding="utf-8"))
+    cat_ds = grp.create_dataset("categories", data=cat_data)
     cat_ds.attrs["encoding-type"] = "string-array"
     cat_ds.attrs["encoding-version"] = "0.2.0"
     codes_ds = grp.create_dataset("codes", data=codes, **codes_storage)

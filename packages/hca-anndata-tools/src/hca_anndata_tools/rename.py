@@ -249,11 +249,9 @@ def rename_cell_ids(path: str, column: str, value: str, prefix_from: str, prefix
             # No encoding refusal here: replace_string_dataset normalizes a
             # nullable index as it rewrites it (#641), and a *masked* index
             # was already refused by read_index below — before the snapshot.
-            # read_index hands back an object array of str for every string
-            # encoding (#668) — a fixed-width `<U` index could neither take the
-            # longer renamed IDs nor be written to a vlen dtype — and enforces
-            # the index contract, since these IDs are matched against the obsm
-            # frames' copies below.
+            # read_index hands back one shape for every string encoding
+            # (#668, see read_element) and enforces the index contract, since
+            # these IDs are matched against the obsm frames' copies below.
             ids = read_index(obs, index_name, "obs")
 
             # A DataFrame in obsm carries its own duplicate copy of the cell
