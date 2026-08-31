@@ -26,7 +26,7 @@ import pytest
 
 import hca_anndata_tools
 from hca_anndata_mcp import server
-from hca_anndata_tools.testing import create_truncated_h5ad
+from hca_anndata_tools.testing import assert_no_snapshot_written, create_truncated_h5ad
 
 
 @functools.cache
@@ -88,6 +88,9 @@ def test_mcp_only_command_refuses_a_truncated_file(name, fn, truncated):
     assert isinstance(result, dict), f"{name} did not return the command error shape"
     refused = "error" in result or result.get("is_valid") is False
     assert refused, f"{name} accepted a file anndata cannot open: {result}"
+    # The half of AC1 that matters for a writer, asserted at the surface users
+    # reach: label_h5ad and populate_labels both take a snapshot when they run.
+    assert_no_snapshot_written(truncated)
 
 
 def test_every_registered_path_command_is_accounted_for():

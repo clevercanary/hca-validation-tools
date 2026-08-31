@@ -83,13 +83,20 @@ hand-rolled preflights with three different predicates is the smell that the
 chokepoint is missing.
 
 One consequence is worth stating, because it looks like an inconsistency and
-is not: **a CAP export never carries one of our `-edit-` snapshots**, since
-nothing of ours will write one. `resolve_latest` on a CAP source is therefore
-always identity, and that is why `copy_cap_annotations` resolves its
+is not: **under this rule a CAP export carries none of our `-edit-`
+snapshots**, because nothing of ours writes one. So `resolve_latest` on a CAP
+source is identity, and that is why `copy_cap_annotations` resolves its
 `target_path` — an HCA file, versioned like every other writer's output — and
-leaves `source_path` alone. The asymmetry is the rule above showing through,
-not an oversight. Before treating a divergence between the two as a bug, ask
-whether the file it needs can exist.
+leaves `source_path` alone. The asymmetry is the rule showing through, not an
+oversight.
+
+That is what the rule buys, not what the code currently guarantees: the gaps
+below can still fork a CAP export, and `compress_h5ad` on one has been
+observed writing a `cap-edit-<ts>.h5ad` beside it. In that state
+`copy_cap_annotations`' gate resolves the source while its body does not, so
+the two look at different files. The state is off-spec on arrival — a forked
+record is a worse problem than the mismatch — and closing #665 removes it at
+the source. Worth knowing about; not worth a guard here.
 
 **A load failure should reach the user as anndata's, not as ours** —
 principles 11 and 15 say how, and #657 is the work: today the tool handlers

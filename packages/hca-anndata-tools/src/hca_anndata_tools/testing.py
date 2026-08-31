@@ -265,9 +265,14 @@ def create_truncated_h5ad(path: Path, source: Path | None = None) -> Path:
         source.unlink()
 
     try:
-        ad.read_h5ad(str(path), backed="r")
-    except OSError:
+        adata = ad.read_h5ad(str(path), backed="r")
+    except Exception:
+        # Any failure means unopenable, which is all this guard asks. A
+        # truncated file usually raises OSError, but a cut landing mid-element
+        # surfaces as KeyError or IORegistryError instead.
         return path
+    if adata.file is not None:
+        adata.file.close()
     raise AssertionError(f"{path} still opens — it was not truncated")
 
 

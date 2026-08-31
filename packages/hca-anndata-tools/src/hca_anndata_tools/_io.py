@@ -10,6 +10,7 @@ from __future__ import annotations
 import functools
 import gc
 import inspect
+import os
 import warnings
 from contextlib import contextmanager, suppress
 from pathlib import Path
@@ -222,19 +223,27 @@ def gate_h5ad_paths(fn: Callable[_P, dict]) -> Callable[_P, dict]:
 
     @functools.wraps(fn)
     def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> dict:
-        bound = sig.bind_partial(*args, **kwargs)
-        for name in gated:
-            raw = bound.arguments.get(name)
-            if not isinstance(raw, str):
-                continue
-            resolved = resolve_latest(raw)
-            if not Path(resolved).is_file():
-                continue
-            try:
+        try:
+            bound = sig.bind_partial(*args, **kwargs)
+            for name in gated:
+                raw = bound.arguments.get(name)
+                if raw is None:
+                    continue
+                # os.fspath so a pathlib.Path is gated like a str. Skipping
+                # what is not a str fails *open*: the tool then reads the file
+                # anyway, which is the hole this decorator exists to close.
+                resolved = resolve_latest(os.fspath(raw))
+                if not Path(resolved).is_file():
+                    continue
                 with open_h5ad(resolved, backed="r"):
                     pass
-            except Exception as e:
-                return {"error": str(e)}
+        except Exception as e:
+            # Inside the try with the open, not beside it: resolve_latest globs
+            # and Path.is_file stats, and both can raise (a name too long, a
+            # permission error). Before #661 those ran inside each tool's own
+            # handler and came back as {"error": ...}; letting one escape here
+            # would turn a clean error into a tool-call failure.
+            return {"error": str(e)}
         return fn(*args, **kwargs)
 
     # The roster AC2 enumerates against. Set here rather than inferred from
