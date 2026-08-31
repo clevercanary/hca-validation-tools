@@ -86,9 +86,11 @@ def _read_column(
     """Read one obs column into a uniform shape: (column dict, error).
 
     The dict holds ``kind`` ('categorical' or 'string'), per-row ``values``
-    (object array of strings; a missing row holds None — or pd.NA when its
-    code points at a masked category), and a ``missing``
-    mask (NaN, masked, empty, or placeholder). Categorical columns also carry
+    and a ``missing`` mask (NaN, masked, empty, or placeholder). The
+    categorical branch builds ``values`` as an object array where a missing
+    row holds None (or pd.NA when its code points at a masked category); the
+    string branch hands back the reader's object array of str, whose missing
+    rows are marked in the mask. Categorical columns also carry
     ``cats``/``codes``. Layouts with no missing vocabulary this tool
     understands (numeric or boolean values, plain or nullable) are refused
     rather than guessed at.

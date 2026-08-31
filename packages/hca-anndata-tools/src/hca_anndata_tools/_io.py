@@ -371,18 +371,40 @@ def read_element(item: h5py.Group | h5py.Dataset | h5py.Datatype) -> np.ndarray:
     (hca-validation-tools#637). Reaching into ``values`` ourselves would
     re-implement the registry badly and break again on the next encoding.
 
-    Returns an object array of decoded ``str``, matching what the hand-rolled
-    readers returned. Two details are load-bearing:
+    Two output shapes, split on whether the values are strings.
 
-    * **``dtype=object``** — a fixed-width unicode dtype would silently clip
-      longer values assigned in later (see ``rename_cell_ids``).
-    * **Decoding.** ``read_elem`` dispatches on ``encoding-type``, and a
-      fixed-width byte array is stamped ``array`` (which is what anndata's own
-      ``write_elem`` does for a numpy ``S``-kind array), so it comes back as
-      raw ``bytes`` — no exception, no warning. The readers this replaced all
-      decoded, and skipping it makes cell IDs compare unequal to their
-      ``str`` counterparts: a join silently matches nothing rather than
-      failing. Only the bytes case pays for the decode.
+    **String values come back as an object array of ``str``.** That is this
+    function's own output contract, not a favour to a downstream caller: the
+    encodings anndata uses for strings (``string-array``,
+    ``nullable-string-array``, a stamped ``S`` array, an unstamped ``S``
+    dataset that the legacy fallback hands back as ``<U``) would otherwise
+    reach callers as four different dtypes holding three value types. One
+    shape means a comparison, a join, or a rewrite behaves the same on all of
+    them — and a fixed-width ``<U`` array cannot be assigned a longer value
+    or written to a vlen dtype, so leaving it unwidened breaks rename and
+    backfill on files they used to handle.
+
+    **Everything else passes through at the dtype that is on disk.** A
+    ``bool`` categories array arrives as ``bool``, an ``int64`` one as
+    ``int64``. ``object`` is numpy's black hole — it means "arbitrary Python
+    values", so flattening a bool into it erases the distinction between
+    "these are strings" and "these are values someone widened". anndata's
+    *write* registry then resolves ``object`` as strings — correctly, since
+    for everything anndata itself produces it is — and a boolean CAP category
+    reaches a vlen-string writer, which h5py refuses
+    (hca-validation-tools#668).
+
+    The coercion this replaced applied the string rule to every encoding. It
+    was authorised for ``read_string_dataset``, a reader whose domain was
+    strings, and widened when that function was generalised here.
+
+    Decoding is part of the string shape: ``read_elem`` dispatches on ``encoding-type``, and a fixed-width
+    byte array is stamped ``array`` (which is what anndata's own
+    ``write_elem`` does for a numpy ``S``-kind array), so it comes back as
+    raw ``bytes`` — no exception, no warning. The readers this replaced all
+    decoded, and skipping it makes cell IDs compare unequal to their
+    ``str`` counterparts: a join silently matches nothing rather than
+    failing. Only the bytes case pays for the decode.
 
     Masked entries surface as ``pd.NA``; callers that cannot tolerate a
     missing value must check before converting to str, because ``str(pd.NA)``
@@ -412,11 +434,15 @@ def read_element(item: h5py.Group | h5py.Dataset | h5py.Datatype) -> np.ndarray:
         # allocates a bytes object per row that the next line discards:
         # 0.33s and 427 MB peak becomes 0.20s and 278 MB on a 2M-row index.
         return np.array([v.decode("utf-8") for v in raw.flat], dtype=object).reshape(raw.shape)
-    values = np.asarray(raw, dtype=object)
-    if values.size and isinstance(values.flat[0], bytes):
+    if raw.dtype.kind == "U":
+        # Fixed-width unicode, from anndata's unstamped-dataset fallback: it
+        # decodes an S-kind array itself and hands back `<U`. Already str, so
+        # only the width has to go.
+        return raw.astype(object)
+    if raw.size and isinstance(raw.flat[0], bytes):
         # Variable-length bytes have no fixed-width array to decode off.
-        values = np.array([_decode_bytes(v) for v in values.flat], dtype=object).reshape(values.shape)
-    return values
+        return np.array([_decode_bytes(v) for v in raw.flat], dtype=object).reshape(raw.shape)
+    return raw
 
 
 def index_length(item: h5py.Group | h5py.Dataset | h5py.Datatype) -> int:
@@ -986,7 +1012,12 @@ def replace_categorical_column(parent: h5py.Group, col: str, categories: list[st
     grp.attrs["encoding-version"] = encoding_version
     grp.attrs["ordered"] = ordered
     cat_data = np.array(categories, dtype=object) if categories else np.array([], dtype=h5py.string_dtype())
-    cat_ds = grp.create_dataset("categories", data=cat_data)
+    # Name the dtype rather than letting h5py infer it from the object array's
+    # first element: inference only recognizes exact `str`, so an `np.str_` —
+    # what a numpy string array yields on iteration — fails with "Object dtype
+    # has no native HDF5 equivalent". The empty branch above already names the
+    # dtype; this makes the two agree.
+    cat_ds = grp.create_dataset("categories", data=cat_data, dtype=h5py.string_dtype(encoding="utf-8"))
     cat_ds.attrs["encoding-type"] = "string-array"
     cat_ds.attrs["encoding-version"] = "0.2.0"
     codes_ds = grp.create_dataset("codes", data=codes, **codes_storage)
@@ -1176,10 +1207,11 @@ def verify_obs_transplant(
                 if not np.array_equal(temp_item["codes"][:], out_item["codes"][:]):
                     return f"Verification failed: codes mismatch for column '{col}'"
             else:
-                # read_elem, not read_element: this branch compares whatever the
-                # column holds, and object-boxing a float column costs ~14x here
-                # for no gain. dtype=object exists for callers that assign
-                # longer strings back in; a comparison does not.
+                # read_elem, not read_element: this branch compares whatever
+                # the column holds, and read_element's bytes decode costs a
+                # Python-level pass per row for no gain — a comparison does not
+                # care whether the two sides are bytes or str, only that both
+                # sides are read the same way.
                 # Not np.array_equal: it raises on object arrays holding
                 # pd.NA and calls NaN != NaN, so a byte-perfect float or
                 # nullable column would fail verification. Series.equals

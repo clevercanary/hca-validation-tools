@@ -37,7 +37,9 @@ def _make_cap_source(
         {
             "author_cell_type": pd.Categorical(labels),
             "author_cell_type--cell_fullname": pd.Categorical([f"{label} cell" for label in labels]),
-            "author_cell_type--cell_ontology_exists": pd.Categorical(["True"] * n),
+            # Real booleans, as CAP actually serializes these (#668). The string
+            # "True" is what let a bool-category crash ship undetected.
+            "author_cell_type--cell_ontology_exists": pd.Categorical([True] * n),
             "author_cell_type--cell_ontology_term_id": pd.Categorical(rng.choice(["CL:0000540", "CL:0000127"], n)),
             "author_cell_type--cell_ontology_term": pd.Categorical(rng.choice(["neuron", "astrocyte"], n)),
             "author_cell_type--rationale": pd.Categorical(["morphology"] * n),
@@ -45,7 +47,7 @@ def _make_cap_source(
             "author_cell_type--canonical_marker_genes": pd.Categorical(["unknown"] * n),
             "author_cell_type--synonyms": pd.Categorical(["unknown"] * n),
             "author_cell_type--category_fullname": pd.Categorical(["neural cell"] * n),
-            "author_cell_type--category_cell_ontology_exists": pd.Categorical(["True"] * n),
+            "author_cell_type--category_cell_ontology_exists": pd.Categorical([True] * n),
             "author_cell_type--category_cell_ontology_term_id": pd.Categorical(["CL:0002319"] * n),
             "author_cell_type--category_cell_ontology_term": pd.Categorical(["neural cell"] * n),
             # Demographic columns (should NOT be copied)
@@ -700,3 +702,39 @@ def test_copy_refuses_masked_cap_categories(cap_source, tmp_path):
     assert "error" in result
     assert "masked (null) categories" in result["error"]
     assert "author_cell_type--rationale" in result["error"]
+
+
+# --- non-string categories survive at their own dtype (#668) ---------------
+
+
+@pytest.mark.parametrize(
+    ("categories", "expected_kind"),
+    [
+        ([True, False], "b"),
+        ([1, 2], "i"),
+        ([1.5, 2.5], "f"),
+    ],
+    ids=["bool", "int", "float"],
+)
+def test_copy_preserves_non_string_category_dtype(tmp_path, hca_target, categories, expected_kind):
+    """CAP writes --cell_ontology_exists with boolean categories, and a
+    coercing reader turned them into an object array that anndata's writer
+    resolved as strings — h5py then refused the conversion outright.
+
+    The dtype assertion is the load-bearing half. Stringifying to "True" /
+    "False" would silence the crash while corrupting the values, and would
+    diverge from the boolean columns already shipped in gut and liver.
+    """
+    source = _make_cap_source(tmp_path / "typed_cap.h5ad", CELL_IDS)
+    adata = ad.read_h5ad(source)
+    values = [categories[i % len(categories)] for i in range(adata.n_obs)]
+    adata.obs["author_cell_type--cell_ontology_exists"] = pd.Categorical(values)
+    adata.write_h5ad(source)
+
+    result = copy_cap_annotations(str(source), str(hca_target))
+    assert "error" not in result, result.get("error")
+
+    written = ad.read_h5ad(result["output_path"])
+    out = written.obs["author_cell_type--cell_ontology_exists"]
+    assert out.cat.categories.dtype.kind == expected_kind
+    assert sorted(out.cat.categories) == sorted(categories)

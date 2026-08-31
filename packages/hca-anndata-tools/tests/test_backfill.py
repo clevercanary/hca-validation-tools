@@ -601,3 +601,35 @@ def test_backfill_leaves_an_unfilled_masked_column_alone(tmp_path):
     with h5py.File(result["output_path"]) as f:
         # untouched: still the nullable group it arrived as
         assert isinstance(f["obs/run_id"], h5py.Group)
+
+
+# --- legacy producer shapes reach the fill sites as str (#668) --------------
+
+
+# Unstamped on purpose: an S-kind array with no encoding metadata is a real
+# producer shape, and anndata warns on every read of one. The warning is about
+# the fixture, not the behaviour under test.
+@pytest.mark.filterwarnings("ignore::anndata._warnings.OldFormatWarning")
+def test_backfill_categorical_target_from_a_fixed_width_source(tmp_path):
+    """A categorical target filled from an unstamped fixed-width source.
+
+    anndata's legacy fallback hands that shape back as ``<U``, whose elements
+    are ``np.str_``. h5py's dtype inference for a vlen string only recognizes
+    exact ``str``, so a reader that passed the ``<U`` through failed the
+    category write with "Object dtype has no native HDF5 equivalent". The
+    reader normalizes string output instead, and this pins the whole path.
+    """
+    target = _make_h5ad(tmp_path / "target.h5ad", ["c1", "c2"], {"library_id": [None, "L9"]}, categorical=True)
+    long_value = "BRAND_NEW_LIBRARY_VALUE_LONGER_THAN_ANY_EXISTING_ONE"
+    source = _make_h5ad(tmp_path / "source.h5ad", ["c1"], {"library_id": [long_value]}, categorical=False)
+
+    with h5py.File(source, "r+") as f:
+        obs = f["obs"]
+        del obs["library_id"]
+        obs.create_dataset("library_id", data=np.array([long_value.encode()], dtype="S"))
+
+    result = backfill_obs_from_source(target, source, columns=["library_id"])
+    assert "error" not in result, result.get("error")
+
+    written = ad.read_h5ad(result["output_path"])
+    assert written.obs["library_id"].tolist() == [long_value, "L9"]

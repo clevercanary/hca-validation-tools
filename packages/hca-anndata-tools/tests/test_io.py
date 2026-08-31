@@ -486,3 +486,31 @@ def test_normalizing_a_nullable_group_preserves_producer_attrs(tmp_path):
         assert isinstance(out, h5py.Dataset)
         assert out.attrs["producer-note"] == "keep me"
         assert out.attrs["encoding-type"] == "string-array"
+
+
+# --- readers report the dtype that is on disk (hca-validation-tools#668) ----
+
+
+@pytest.mark.parametrize(
+    ("values", "expected_kind"),
+    [
+        (np.array([True, False]), "b"),
+        (np.array([1, 2], dtype=np.int64), "i"),
+        (np.array([1.5, 2.5]), "f"),
+    ],
+    ids=["bool", "int", "float"],
+)
+def test_read_element_preserves_non_string_dtypes(tmp_path, values, expected_kind):
+    """No coercion: what anndata reads passes through untouched.
+
+    Flattening these to object erases the distinction between "strings" and
+    "values someone widened", and anndata's write registry resolves object as
+    strings — which is how a boolean CAP category reached a vlen-string writer.
+    """
+    path = tmp_path / "dtypes.h5"
+    with h5py.File(path, "w") as f:
+        write_elem(f, "col", values)
+    with h5py.File(path) as f:
+        out = read_element(f["col"])
+    assert out.dtype.kind == expected_kind
+    assert list(out) == list(values)
