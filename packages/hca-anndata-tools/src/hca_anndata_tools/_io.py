@@ -194,8 +194,14 @@ def gate_h5ad_paths(fn: Callable[_P, dict]) -> Callable[_P, dict]:
 
     Three behaviours the wrapper preserves deliberately:
 
-    - **The refusal is anndata's own text.** ``str(e)`` and nothing else, per
-      principle 11 and #661's AC3 — no summary, no explanation of ours.
+    - **The refusal is anndata's own text**, with one deliberate exception.
+      ``str(e)`` and nothing else — no summary, no explanation of ours — for
+      every failure but one. Opening goes through :func:`open_h5ad` rather
+      than ``ad.read_h5ad`` precisely so that the exception survives: a
+      masked-categories file makes pandas raise "Categorical categories
+      cannot be null" naming no column, and a caller cannot act on that, so
+      ``open_h5ad`` names the column and chains the original. Principle 11
+      endorses it and #661's AC3 carves it out by name.
     - **It returns rather than raises**, matching the ``{"error": ...}`` shape
       every tool already returns, so the gate cannot break a caller that
       expects a dict. This is also the single site #657 needs for these

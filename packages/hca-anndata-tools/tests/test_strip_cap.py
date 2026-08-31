@@ -399,10 +399,7 @@ def _add_resolvable_slash_column(path, name: str) -> None:
     """
     with h5py.File(path, "a") as f:
         sub, leaf = name.split("/", 1)
-        group = f["obs"].require_group(sub)
-        column = group.create_dataset(leaf, data=np.array([b"x", b"y", b"z"]))
-        column.attrs["encoding-type"] = "string-array"
-        column.attrs["encoding-version"] = "0.2.0"
+        make_plain_string_column(f["obs"].require_group(sub), leaf, ["x", "y", "z"])
         columns = [c.decode() if isinstance(c, bytes) else c for c in f["obs"].attrs["column-order"]]
         f["obs"].attrs["column-order"] = [*columns, name]
 
