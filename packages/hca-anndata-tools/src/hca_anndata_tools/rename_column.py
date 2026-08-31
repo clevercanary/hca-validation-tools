@@ -24,6 +24,7 @@ from anndata.io import write_elem
 
 from ._io import (
     direct_members,
+    gate_h5ad_paths,
     read_column_order,
     read_edit_log_h5py,
     read_uns,
@@ -146,6 +147,7 @@ def _validate_request(
     return problems
 
 
+@gate_h5ad_paths
 def rename_obs_column(path: str, column: str, new_name: str) -> dict:
     """Rename one obs column, preserving everything except its name.
 

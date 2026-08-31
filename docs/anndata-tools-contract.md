@@ -36,6 +36,83 @@ is out of scope — refused, not repaired, not partially processed. The
 predicate is anndata's own, so this document maintains no list of failure
 modes: whatever `ad.read_h5ad` raises on is out, by definition.
 
+**We are not in the diagnosis business.** A file anndata cannot open gets
+anndata's own error and nothing else. We do not inspect it, report on its
+storage layer, describe what is wrong with it, or partially process it.
+That makes the gate unconditional: the storage-layer readers are gated too,
+even though they are how one might otherwise ask *why* a file will not open.
+Wanting to know why is a diagnosis need, and a tool of ours reporting
+confidently on a file anndata rejected is the failure this rule removes.
+
+**Enforced by `_io.gate_h5ad_paths` (#661)**, which opens every parameter
+named in `GATED_PATH_PARAMS` through anndata before the tool body runs. The
+gate is per *path*, not per tool: `copy_cap_annotations` opened its source
+through anndata and read its target with raw h5py, so a per-tool audit passed
+it while an unopenable target was still snapshotted and written.
+
+**CAP is the system of record for its exports; we never write to one.** A
+CAP export is a copy of a record CAP owns. Editing it does not update that
+record — it forks it, leaving a divergent file that CAP will overwrite or
+contradict on its next export, and no way to tell which one a downstream
+reader has. The intended predicate is a file that declares a CellxGENE schema
+version *or* carries the legacy CAP layout: two ways the same kind of export
+announces itself, and the same reasoning covers a CellxGENE export (#533,
+#596).
+
+What we may do with a CAP export is *read* it: `copy_cap_annotations` copies
+its annotations into an HCA file, and `convert_cellxgene_to_hca` produces a
+new HCA file from it. Both write somewhere else.
+
+**The enforcement is partial and inconsistent — a gap, not a design (#665).**
+Enumerated rather than asserted, because "every writer refuses it" was the
+obvious sentence and it is false twice over:
+
+| Writer | Refuses a schema-version export | Refuses a legacy-layout export |
+|---|---|---|
+| `rename_cell_ids` | yes | yes |
+| `drop_obs_columns` | **no** | yes |
+| `merge_obs_categories` | **no** | yes |
+| `backfill_obs_from_source` | **no** | yes |
+| `rename_obs_column` | **no** | yes |
+| `strip_forbidden_obs_columns` | yes | **no** |
+| `strip_cap_annotations` | yes | **no** |
+| `set_uns`, `replace_placeholder_values`, `set_producer_uns`, `compress_h5ad`, `normalize_raw`, `copy_cap_annotations` (target) | **no** | **no** |
+
+Only `rename_cell_ids` implements the rule as stated. Per principle 8, seven
+hand-rolled preflights with three different predicates is the smell that the
+chokepoint is missing.
+
+One consequence is worth stating, because it looks like an inconsistency and
+is not: **under this rule a CAP export carries none of our `-edit-`
+snapshots**, because nothing of ours writes one. So `resolve_latest` on a CAP
+source is identity, and that is why `copy_cap_annotations` resolves its
+`target_path` — an HCA file, versioned like every other writer's output — and
+leaves `source_path` alone. The asymmetry is the rule showing through, not an
+oversight.
+
+That is what the rule buys, not what the code currently guarantees: the gaps
+below can still fork a CAP export, and `compress_h5ad` on one has been
+observed writing a `cap-edit-<ts>.h5ad` beside it. In that state
+`copy_cap_annotations`' gate resolves the source while its body does not, so
+the two look at different files. The state is off-spec on arrival — a forked
+record is a worse problem than the mismatch — and closing #665 removes it at
+the source. Worth knowing about; not worth a guard here.
+
+**We do not support `/` in a name, and will not.** h5py resolves a member
+name as a *path*, not a literal key: `obs["sub/col"]` walks into a subgroup
+and `obs["/uns/title"]` leaves `obs` altogether — `"/uns/title" in obs` is
+`True`. So a `/` in an obs `column-order` entry turns `del obs[name]` into a
+delete somewhere else in the file (#623). We refuse such a file rather than
+resolve, quote or escape the name; there is no reading of a `/` name we want
+to be right about.
+
+Note this is *not* covered by the anndata gate above, and cannot be. A
+dangling `/` entry makes the file unopenable, so the gate catches that one by
+accident — but a `/` entry that **resolves** opens perfectly cleanly, and it
+is the dangerous one, because it is the one where the delete finds something
+to delete. `guards.is_malformed_name` is what refuses it, checked against
+every `column-order` entry rather than the first few the message would name.
+
 **A load failure should reach the user as anndata's, not as ours** —
 principles 11 and 15 say how, and #657 is the work: today the tool handlers
 flatten it to `str(e)`, losing the type and the traceback. What we add on
@@ -49,26 +126,25 @@ load failure (`cell_annotation_validator.py`, "Unable to read h5ad
 file: …"), the fix belongs in the MCP tool that wraps it, not in the
 vendored validator.
 
-*Known deviation, accepted.* The shared readers enforce this where they are
-used: `open_h5ad` fails as anndata fails, naming the offending column, and
-`read_index` refuses a masked categorical index before the read. Some reads
-reach an element without going through either, and so proceed on a file
-anndata cannot open, producing a result that looks successful:
+*Closed by #661.* This was a known deviation for as long as the rule was
+documented but unenforced: `rename_cell_ids` read its selector column,
+`backfill_obs_from_source` its source side, and `validate_marker_genes` its
+gene names, all with raw h5py, and so ran to completion on a file nobody can
+open — the writers leaving a snapshot behind and reporting success. Fifteen
+tools were in that state by the time anyone counted. The gate above is the
+enforcement.
 
-| Tool | Reads without opening through anndata | Instead of refusing |
-|---|---|---|
-| `rename_cell_ids` | the selector column | writes a whole snapshot nobody can open, and reports success |
-| `backfill_obs_from_source` | the source side | buckets cells as `source_missing` that the source had values for |
-| `validate_marker_genes` | gene names | returns a clean report with a marker gene silently dropped |
-
-This holds for *any* unopenable file, not for one exotic shape. The corpus
+The evidence that shaped it is worth keeping, because it is also why the test
+suite carries exactly one unopenable fixture. The rule holds for *any*
+unopenable file, not for one exotic shape. The corpus
 carries a real instance: of the 223 files scanned (809 GB), one is a
 truncated download (#658). A truncated h5ad arrives by ordinary means — an
 interrupted transfer — and every read above proceeds on it identically.
 
 The shape that *prompted* this rule, a categorical whose `categories` child
 is masked ("Categorical categories cannot be null"), is a footnote by
-comparison: **0 of the 223** hold it, and on the pinned versions nothing but
+comparison, and enumerating such shapes in fixtures is the mistake #651 was
+closed for: **0 of the 223** hold it, and on the pinned versions nothing but
 raw h5py can produce one. Checkable in three lines — pandas 2.3.3 raises
 `Categorical categories cannot be null` for a list, an `Index` and a
 `StringDtype` array alike, and anndata 0.11.4 refuses to write the
@@ -76,9 +152,9 @@ nullable-string encoding at all (`allow_write_nullable_strings` is False).
 Re-run it when the anndata pin moves; it is on the list in "The anndata pin,
 precisely".
 
-**Reopen when** a read above is found to have produced a wrong answer on an
-unopenable file in practice. #651 carries the enforcement; #657 carries the
-reporting rule.
+**Reopen when** a tool is found reaching a file it did not open through
+anndata. #661 carried the enforcement and closed the deviation; #657 still
+carries the reporting rule (the type and traceback, not the message).
 
 ## Worked example: the liver obs index
 
@@ -122,10 +198,13 @@ And the conversion to the profile splits cleanly on the mask:
   read-wide guarantee: a *categorical* whose **categories** are masked is a
   file anndata itself cannot read ("Categorical categories cannot be
   null"), so principle 2 does not apply to it — the file is out of scope
-  (see Scope, above). The naming does live in the shared readers
-  (`open_h5ad` for columns, `read_index` for indexes), but only tools that
-  go *through* them get it; the three that read past anndata with raw h5py
-  get nothing, which is the accepted deviation Scope records.
+  (see Scope, above). The naming lives in the shared readers (`open_h5ad`
+  for columns, `read_index` for indexes), and since #661 every tool reaches
+  them: the gate opens each path through anndata before the tool body runs,
+  so a masked-categories file is named the same way whichever tool met it.
+  A masked *index* is a different shape with a different answer — anndata
+  reads it and hands back `pd.NA`, so no gate sees it and `read_index`'s
+  refusal is what protects identifiers.
 
 ## The anndata pin, precisely
 
@@ -179,8 +258,10 @@ target is constrained.
    file through anndata: `read_elem` on a masked `categories` *child*
    returns `pd.NA` without complaint (which is why `read_index` preflights
    ahead of it — on the categorical *group* `read_elem` does raise, unnamed).
-   The reads Scope records satisfy this principle and still proceed on an
-   unopenable file.
+   Since #661 no read proceeds on a file its own open rejects. The fifteen
+   tools that had no open at all get one from `gate_h5ad_paths`; the ten that
+   already opened through `open_h5ad` keep their own mode, which reads at
+   least as much, so nothing slips past either.
    A raw h5py read is permitted only where the job is the storage layer
    itself — inspecting or preserving chunking, compression, dtype, attrs —
    and the reason must be stated at the site. "It seemed simpler" is not a
@@ -287,6 +368,21 @@ target is constrained.
     That is a rule about *refusals*, not about every string a tool can
     return: an exception nobody decided is not a refusal, and principle 15
     says what happens to it.
+
+    **The scope gate is the one deliberate exception, and it proves the
+    rule.** "This file is out of scope" is not a decision we made about the
+    file's contents — anndata made it, and we have nothing to add, because we
+    are not in the diagnosis business (see Scope). So `gate_h5ad_paths`
+    passes anndata's message through verbatim rather than wrapping it. The
+    single place we do add words is `open_h5ad`'s masked-categories rename,
+    where pandas names no column and a caller cannot act on the message
+    without one; the original is chained.
+
+    The trade is real and worth naming: a tool's own refusal was often more
+    specific than anndata's. `get_storage_info` used to report an unstamped
+    obs index as `unstamped`, which is exactly what a curator wants to know,
+    and now returns anndata's `IORegistryError` instead. That is the price of
+    the rule, paid deliberately.
 
 12. **No guards against things that cannot happen.** No runtime isinstance
     checks on internal paths whose callers are all statically known and
@@ -421,8 +517,9 @@ other placeholder-looking value through curator-reviewed mappings.
    `unwritable_element_reason` — the target side now normalizes what it
    rewrites, and only masked values refuse.) (Amended 2026-08-29: the source
    side reads with raw h5py rather than through the shared readers, so on a
-   file anndata cannot open it reports cells as `source_missing` instead of
-   refusing — the accepted deviation in Scope, #651.)
+   file anndata cannot open it used to report cells as `source_missing`
+   instead of refusing. Closed by #661 — both sides are now gated, and the
+   source side refuses with anndata's own message.)
 
 3. **NA policy: tools never translate; they refuse, skip, or propagate.**
    - *Refuse* = stop the whole operation with a named error, because one

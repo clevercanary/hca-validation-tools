@@ -20,6 +20,7 @@ from pathlib import Path
 import h5py
 
 from ._io import (
+    gate_h5ad_paths,
     read_edit_log_h5py,
     read_group,
     update_column_order,
@@ -71,6 +72,7 @@ def _strip_forbidden_obs_columns_h5py(f_out: h5py.File) -> list[str]:
     return stripped
 
 
+@gate_h5ad_paths
 def strip_forbidden_obs_columns(path: str) -> dict:
     """Strip HCA-forbidden obs columns from an HCA-layout h5ad file.
 

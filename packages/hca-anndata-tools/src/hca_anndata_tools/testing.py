@@ -242,6 +242,40 @@ def make_plain_string_column(parent: h5py.Group, name: str, values: list[str]) -
     ds.attrs["encoding-version"] = "0.2.0"
 
 
+def create_truncated_h5ad(path: Path, source: Path | None = None) -> Path:
+    """A half-written h5ad — the ordinary way a file fails to open (#661).
+
+    Half the bytes rather than a fixed count, so growing the source fixture
+    cannot quietly produce a still-valid file. Guarded on the way out.
+
+    Args:
+        path: Where to write the truncated file.
+        source: An existing h5ad to truncate. Defaults to a fresh sample,
+            written beside ``path`` and removed once copied.
+
+    Returns:
+        ``path``, holding a file ``ad.read_h5ad`` raises ``OSError`` on.
+    """
+    temporary = source is None
+    if source is None:
+        source = create_sample_h5ad(path.parent / "_truncation-source.h5ad")
+    payload = source.read_bytes()
+    path.write_bytes(payload[: len(payload) // 2])
+    if temporary:
+        source.unlink()
+
+    try:
+        adata = ad.read_h5ad(str(path), backed="r")
+    except Exception:
+        # Any failure means unopenable, which is all this guard asks. A
+        # truncated file usually raises OSError, but a cut landing mid-element
+        # surfaces as KeyError or IORegistryError instead.
+        return path
+    if adata.file is not None:
+        adata.file.close()
+    raise AssertionError(f"{path} still opens — it was not truncated")
+
+
 def assert_no_snapshot_written(path) -> None:
     """No ``-edit-<timestamp>`` snapshot exists beside ``path``.
 

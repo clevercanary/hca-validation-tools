@@ -7,10 +7,14 @@
 
 from __future__ import annotations
 
+import functools
 import gc
+import inspect
+import os
 import warnings
 from contextlib import contextmanager, suppress
-from typing import TYPE_CHECKING, Literal
+from pathlib import Path
+from typing import TYPE_CHECKING, Literal, ParamSpec
 
 import anndata as ad
 import h5py
@@ -18,9 +22,10 @@ import pandas as pd
 from anndata.io import read_elem, write_elem
 
 from ._keys import EDIT_LOG_KEY, MASKED_STRING_REMEDY, PROVENANCE_KEY
+from .write import resolve_latest
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Sequence
+    from collections.abc import Callable, Iterator, Sequence
 
     import numpy as np
     from pandas.api.typing import NAType
@@ -102,15 +107,22 @@ def _masked_categories_open_error(path: str) -> str | None:
     column is found again via h5py. Best-effort by design: the file is
     already known bad, and a scan failure must not replace the original
     error with a second traceback.
+
+    The index is named as an index rather than as a column. Since #661 this
+    message is what a caller sees for the whole file rather than only what a
+    tool that reached this shape saw, and telling someone to repair a column
+    that is really the obs index sends them looking for the wrong thing.
     """
     with suppress(Exception), h5py.File(path, "r") as f:
         for label, group in iter_dataframe_groups(f):
+            index_name = obs_index_name(group)
             for col in group:
                 item = group[col]
+                role = "index" if col == index_name else "column"
                 if (
                     isinstance(item, h5py.Group)
                     and "categories" in item
-                    and (reason := masked_categories_reason(read_categories(item), f"{label} column '{col}'"))
+                    and (reason := masked_categories_reason(read_categories(item), f"{label} {role} '{col}'"))
                 ):
                     return reason
     return None
@@ -134,10 +146,8 @@ def open_h5ad(path: str, backed: Literal["r", "r+"] | None = "r"):
             is chained (``from e``), so the naming is added on top rather
             than in place of it — but the chain survives only as far as a
             caller that preserves it, and the tool handlers currently return
-            ``str(e)`` and drop it (#657). Only a tool that opens the file
-            through here gets the refusal at all — see
-            ``docs/anndata-tools-contract.md`` (Scope) for the reads that
-            do not.
+            ``str(e)`` and drop it (#657). Since #661 every tool reaches
+            this refusal, through :func:`gate_h5ad_paths`.
     """
     try:
         adata = ad.read_h5ad(path, backed=backed)
@@ -152,6 +162,118 @@ def open_h5ad(path: str, backed: Literal["r", "r+"] | None = "r"):
             adata.file.close()
         del adata
         gc.collect()
+
+
+# The parameter names that carry a caller-supplied h5ad path. Gating is per
+# path, not per tool: copy_cap_annotations opened its source through anndata
+# and read its *target* with raw h5py, so a per-tool audit passed it while an
+# unopenable target was still snapshotted and written (#661).
+GATED_PATH_PARAMS = ("path", "source_path", "target_path")
+
+_P = ParamSpec("_P")
+
+
+def gate_h5ad_paths(fn: Callable[_P, dict]) -> Callable[_P, dict]:
+    """Refuse a file anndata cannot open, before the tool reads it.
+
+    The contract's Scope rule — we operate on files anndata can read — held
+    only for tools that happened to go through :func:`open_h5ad`. Fifteen
+    tools reached the file with raw h5py instead, and so ran to completion on
+    a file nobody can open: the writers among them left a snapshot behind and
+    reported success. This decorator is that rule's enforcement (#661).
+
+    Every parameter named in :data:`GATED_PATH_PARAMS` is opened through
+    anndata first, in declaration order. ``ad.read_h5ad`` is the whole
+    predicate, so there is no list of failure modes here — a truncated
+    download and a masked-categories column arrive as the same refusal.
+
+    **We are not in the diagnosis business.** The gate is unconditional: a
+    tool of ours reporting confidently on a file anndata rejected is the
+    failure being removed, so the storage-layer readers are gated too even
+    though they are how one might otherwise ask *why* a file will not open.
+
+    Three behaviours the wrapper preserves deliberately:
+
+    - **The refusal is anndata's own text**, with one deliberate exception.
+      ``str(e)`` and nothing else — no summary, no explanation of ours — for
+      every failure but one. Opening goes through :func:`open_h5ad` rather
+      than ``ad.read_h5ad`` precisely so that the exception survives: a
+      masked-categories file makes pandas raise "Categorical categories
+      cannot be null" naming no column, and a caller cannot act on that, so
+      ``open_h5ad`` names the column and chains the original. Principle 11
+      endorses it and #661's AC3 carves it out by name.
+    - **It returns rather than raises**, matching the ``{"error": ...}`` shape
+      every tool already returns, so the gate cannot break a caller that
+      expects a dict. This is also the single site #657 needs for these
+      refusals instead of one per tool.
+    - **A missing file falls through untouched**, so each tool keeps its own
+      "File not found" message rather than getting h5py's.
+
+    Paths are resolved with :func:`~hca_anndata_tools.write.resolve_latest`
+    first, matching what each tool does to the same parameter, so the gate
+    opens the file the tool goes on to read. Resolving is idempotent, so the
+    tool's own call is left in place.
+
+    One parameter is deliberately not resolved by its tool:
+    ``copy_cap_annotations``' ``source_path``, because a CAP export is not
+    ours to write and so carries none of our ``-edit-`` snapshots — under that
+    rule ``resolve_latest`` on it is identity and the two agree. The rule is a
+    spec, not a runtime guarantee: the enforcement gaps in #665 can still fork
+    a CAP export, and in that state the gate and the body look at different
+    files. Not guarded here — the state is off-spec on arrival, and the guard
+    would mean resolving the source, i.e. preferring the fork. See
+    ``docs/anndata-tools-contract.md`` (Scope).
+
+    Raises:
+        TypeError: At decoration time, if the function has no gated path
+            parameter — a tool that cannot be gated is a mistake here, not a
+            silent no-op.
+    """
+    sig = inspect.signature(fn)
+    gated = [name for name in sig.parameters if name in GATED_PATH_PARAMS]
+    if not gated:
+        raise TypeError(
+            f"{fn.__name__} has no parameter in {GATED_PATH_PARAMS} to gate. "
+            f"A tool that opens an h5ad names its path parameter one of these; "
+            f"one that opens no file should not carry this decorator."
+        )
+
+    @functools.wraps(fn)
+    def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> dict:
+        # Bound outside the handler below: bind_partial raises TypeError on a
+        # signature mismatch, and that is a programmer error, not a file
+        # problem. Swallowing it into {"error": ...} would also be
+        # inconsistent — bind_partial tolerates a *missing* argument, so that
+        # half of the same mistake reaches fn() and raises anyway.
+        bound = sig.bind_partial(*args, **kwargs)
+        try:
+            for name in gated:
+                raw = bound.arguments.get(name)
+                if raw is None:
+                    continue
+                # os.fspath so a pathlib.Path is gated like a str. Skipping
+                # what is not a str fails *open*: the tool then reads the file
+                # anyway, which is the hole this decorator exists to close.
+                resolved = resolve_latest(os.fspath(raw))
+                if not Path(resolved).is_file():
+                    continue
+                with open_h5ad(resolved, backed="r"):
+                    pass
+        except Exception as e:
+            # Inside the try with the open, not beside it: resolve_latest globs
+            # and Path.is_file stats, and both can raise (a name too long, a
+            # permission error). Before #661 those ran inside each tool's own
+            # handler and came back as {"error": ...}; letting one escape here
+            # would turn a clean error into a tool-call failure.
+            return {"error": str(e)}
+        return fn(*args, **kwargs)
+
+    # The roster AC2 enumerates against. Set here rather than inferred from
+    # __wrapped__, which any functools.wraps decorator would also set, and
+    # carrying the *names* so the check can catch a tool that gates one side
+    # of a two-file operation and not the other.
+    wrapper.__gated_paths__ = tuple(gated)  # pyright: ignore[reportFunctionMemberAccess]
+    return wrapper
 
 
 def _decode_bytes(val):

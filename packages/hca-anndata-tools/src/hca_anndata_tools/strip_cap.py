@@ -24,6 +24,7 @@ import h5py
 
 from ._io import (
     direct_members,
+    gate_h5ad_paths,
     obs_index_name,
     read_column_order,
     read_edit_log_h5py,
@@ -80,6 +81,7 @@ _LEGACY_TOP_LEVEL_PROVENANCE: tuple[str, ...] = (
 )
 
 
+@gate_h5ad_paths
 def strip_cap_annotations(path: str) -> dict:
     """Remove all CAP annotation material from an HCA-layout h5ad file.
 

@@ -23,6 +23,7 @@ import pandas as pd
 from ._io import (
     _decode_bytes,
     direct_members,
+    gate_h5ad_paths,
     holds_string_values,
     obs_index_name,
     read_categorical_data,
@@ -136,6 +137,7 @@ def _compute_new_ids(
     return new_ids, examples
 
 
+@gate_h5ad_paths
 def rename_cell_ids(path: str, column: str, value: str, prefix_from: str, prefix_to: str) -> dict:
     """Rename the cell IDs of rows selected by an obs column value.
 

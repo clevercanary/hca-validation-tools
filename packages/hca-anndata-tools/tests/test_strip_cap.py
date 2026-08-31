@@ -10,6 +10,7 @@ import pandas as pd
 
 from hca_anndata_tools.drop import drop_obs_columns
 from hca_anndata_tools.strip_cap import strip_cap_annotations
+from hca_anndata_tools.testing import make_plain_string_column
 
 _CAP_COLUMNS = ["Prelim annotation--cell_fullname", "Prelim annotation--cell_ontology_term_id"]
 
@@ -146,50 +147,6 @@ def test_strip_warns_on_double_separator_suffix(tmp_path):
 
     assert "error" not in result
     assert result["unknown_cap_suffix_columns"] == ["Prelim annotation--new_field--cell_fullname"]
-
-
-def test_strip_refuses_slash_in_column_order(tmp_path):
-    """A '/' in a column-order entry would make h5py resolve a link path on
-    deletion — a malformed file is refused before any write."""
-    path = _make_cap_file(tmp_path / "slash.h5ad", uns_layout="legacy")
-    with h5py.File(path, "a") as f:
-        cols = [c.decode() if isinstance(c, bytes) else c for c in f["obs"].attrs["column-order"]]
-        f["obs"].attrs["column-order"] = [*cols, "bad/name--cell_fullname"]
-
-    result = strip_cap_annotations(path)
-
-    assert "error" in result
-    assert "malformed" in result["error"]
-    assert not list(tmp_path.glob("*-edit-*.h5ad"))
-
-
-def test_strip_refuses_index_or_ghost_in_column_order(tmp_path):
-    """A malformed column-order listing the obs index (here named with '--')
-    or a non-existent column is refused — deleting either would corrupt the
-    output (parity with drop.py/rename.py's validators)."""
-    obs = pd.DataFrame(
-        {"set--cell_fullname": pd.Categorical(["a", "b"])},
-        index=pd.Index(["c1", "c2"], name="cell--id"),
-    )
-    adata = ad.AnnData(X=np.zeros((2, 2), dtype=np.float32), obs=obs)
-    adata.uns["cellannotation_metadata"] = {"set": {}}
-    adata.uns["cellannotation_schema_version"] = "1.0.0"
-    adata.uns["provenance"] = {"edit_history": json.dumps([_IMPORT_ENTRY])}
-    path = str(tmp_path / "badindex.h5ad")
-    adata.write_h5ad(path)
-
-    for extra in ("cell--id", "ghost--cell_fullname"):
-        with h5py.File(path, "a") as f:
-            cols = [c.decode() if isinstance(c, bytes) else c for c in f["obs"].attrs["column-order"]]
-            f["obs"].attrs["column-order"] = [c for c in cols if c not in ("cell--id", "ghost--cell_fullname")] + [
-                extra
-            ]
-
-        result = strip_cap_annotations(path)
-
-        assert "error" in result, extra
-        assert "malformed" in result["error"], extra
-    assert not list(tmp_path.glob("*-edit-*.h5ad"))
 
 
 def test_strip_alias_output_does_not_unlink_source(tmp_path, pin_snapshot_names):
@@ -427,15 +384,37 @@ def test_strip_missing_file():
     assert "File not found" in result["error"]
 
 
-def test_strip_answers_legibly_with_dataset_at_uns(tmp_path, put_dataset_at_uns):
-    """A Dataset at 'uns' used to surface as a raw TypeError (#617); narrowed
-    to None, the tool reaches its normal nothing-to-strip answer."""
-    path = _make_cap_file(tmp_path / "clean.h5ad", uns_layout="none", cap_columns=False)
-    put_dataset_at_uns(path)
+def _add_resolvable_slash_column(path, name: str) -> None:
+    """List a `/` name in obs column-order that h5py can actually resolve.
+
+    h5py looks a member up as a *path*, not a literal key, so `obs["sub/col"]`
+    walks into a subgroup and `obs["/uns/title"]` leaves obs altogether — which
+    is what makes a `/` in column-order dangerous: `del obs[name]` reaches
+    outside the group being edited (#623).
+
+    The name must resolve. A dangling `/` name (`ghost/col` with no such
+    member) is a file anndata cannot open, so it never reaches the guard —
+    it is refused at the door by #661's gate instead. The resolvable form
+    opens cleanly and is the one the guard has to catch.
+    """
+    with h5py.File(path, "a") as f:
+        sub, leaf = name.split("/", 1)
+        make_plain_string_column(f["obs"].require_group(sub), leaf, ["x", "y", "z"])
+        columns = [c.decode() if isinstance(c, bytes) else c for c in f["obs"].attrs["column-order"]]
+        f["obs"].attrs["column-order"] = [*columns, name]
+
+
+def test_strip_refuses_slash_in_column_order(tmp_path):
+    """A '/' in a column-order entry would make h5py resolve a link path on
+    deletion — a malformed file is refused before any write."""
+    path = _make_cap_file(tmp_path / "slash.h5ad", uns_layout="legacy")
+    _add_resolvable_slash_column(path, "sub/bad--cell_fullname")
 
     result = strip_cap_annotations(path)
 
-    assert result.get("nothing_to_strip") is True
+    assert "error" in result
+    assert "malformed" in result["error"]
+    assert not list(tmp_path.glob("*-edit-*.h5ad"))
 
 
 def test_strip_refuses_a_slash_past_the_report_cap(tmp_path):
@@ -445,11 +424,36 @@ def test_strip_refuses_a_slash_past_the_report_cap(tmp_path):
     resolves it as a link path outside obs (#623)."""
     path = _make_cap_file(tmp_path / "late-slash.h5ad", uns_layout="legacy")
     with h5py.File(path, "a") as f:
-        cols = [c.decode() if isinstance(c, bytes) else c for c in f["obs"].attrs["column-order"]]
+        columns = [c.decode() if isinstance(c, bytes) else c for c in f["obs"].attrs["column-order"]]
         padding = [f"pad{i}--cell_fullname" for i in range(8)]
         for name in padding:
-            f["obs"].create_dataset(name, data=[b"x", b"y", b"z"])
-        f["obs"].attrs["column-order"] = [*cols, *padding, "late/bad--cell_fullname"]
+            make_plain_string_column(f["obs"], name, ["x", "y", "z"])
+        f["obs"].attrs["column-order"] = [*columns, *padding]
+    _add_resolvable_slash_column(path, "sub/late--cell_fullname")
+
+    result = strip_cap_annotations(path)
+
+    assert "error" in result
+    assert "malformed" in result["error"]
+    assert not list(tmp_path.glob("*-edit-*.h5ad"))
+
+
+def test_strip_refuses_the_obs_index_in_column_order(tmp_path):
+    """column-order listing the obs index (here named with '--') is malformed —
+    deleting it would destroy every cell identity in the file."""
+    obs = pd.DataFrame(
+        {"set--cell_fullname": pd.Categorical(["a", "b"])},
+        index=pd.Index(["c1", "c2"], name="cell--id"),
+    )
+    adata = ad.AnnData(X=np.zeros((2, 2), dtype=np.float32), obs=obs)
+    adata.uns["cellannotation_metadata"] = {"set": {}}
+    adata.uns["cellannotation_schema_version"] = "1.0.0"
+    adata.uns["provenance"] = {"edit_history": json.dumps([_IMPORT_ENTRY])}
+    path = str(tmp_path / "badindex.h5ad")
+    adata.write_h5ad(path)
+    with h5py.File(path, "a") as f:
+        columns = [c.decode() if isinstance(c, bytes) else c for c in f["obs"].attrs["column-order"]]
+        f["obs"].attrs["column-order"] = [*columns, "cell--id"]
 
     result = strip_cap_annotations(path)
 

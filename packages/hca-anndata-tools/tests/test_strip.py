@@ -154,15 +154,3 @@ def test_strip_same_second_snapshot_refused(sample_h5ad_for_write, pin_snapshot_
     assert "self_reported_ethnicity" in ad.read_h5ad(sample_h5ad_for_write).obs.columns  # nor modified
     assert "error" in result
     assert "already exists" in result["error"]
-
-
-def test_strip_skips_cleanly_with_dataset_at_uns(sample_h5ad_for_write, put_dataset_at_uns):
-    """The CellxGENE gate used to probe a possible Dataset with `in` (#617);
-    narrowed to None, the gate falls through and the no-op path answers."""
-    _to_hca_layout(sample_h5ad_for_write)  # HCA layout, no SRE columns
-    put_dataset_at_uns(sample_h5ad_for_write)
-
-    result = strip_forbidden_obs_columns(str(sample_h5ad_for_write))
-
-    assert "error" not in result
-    assert result["skipped"] is True

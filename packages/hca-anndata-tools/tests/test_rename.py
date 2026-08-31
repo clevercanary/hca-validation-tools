@@ -174,31 +174,6 @@ def test_rename_updates_obsm_dataframe_index(tmp_path):
     assert "MH_mix_BR1_AAA" in after.obsm["per_cell_scores"].index
 
 
-def test_rename_refuses_mismatched_obsm_dataframe_index(tmp_path):
-    """An obsm DataFrame index that already disagrees with the obs index marks
-    a broken file — refuse rather than paper over it."""
-    path = create_hca_h5ad(tmp_path / "test.h5ad", obsm_dataframe=True)
-    with h5py.File(path, "a") as f:
-        sub = f["obsm"]["per_cell_scores"]
-        index_name = sub.attrs["_index"]
-        broken = sub[index_name].asstr()[:]
-        broken[0] = "someone_else_entirely"
-        del sub[index_name]
-        # Stamp the encoding metadata a real AnnData writer would leave: an
-        # unstamped element is a different defect from the one under test, and
-        # reading one warns.
-        rebuilt = f["obsm"]["per_cell_scores"].create_dataset(index_name, data=broken.astype(object))
-        rebuilt.attrs["encoding-type"] = "string-array"
-        rebuilt.attrs["encoding-version"] = "0.2.0"
-
-    result = rename_cell_ids(
-        str(path), column="sample_id", value="B1_0023", prefix_from="MH_mix_", prefix_to="MH_mix_BR1_"
-    )
-
-    assert "internally inconsistent" in result["error"]
-    assert_no_snapshot_written(path)
-
-
 def test_rename_same_second_collision_resolves_after_waiting(tmp_path, pin_snapshot_names):
     """The common case since #597: a name taken this second is resolved by
     waiting out the boundary, not by failing a run the caller must re-issue."""
@@ -236,6 +211,9 @@ def test_rename_same_second_snapshot_refused(tmp_path, pin_snapshot_names):
     assert snapshot.is_file()  # the source snapshot survived
 
 
+# Duplicate cell IDs are the subject here, so anndata's non-unique obs names
+# warning is expected rather than a defect.
+@pytest.mark.filterwarnings("ignore:Observation names are not unique")
 def test_rename_refuses_pre_existing_duplicates(tmp_path):
     """Duplicates the file already had are named as such — the remedy (repair
     the file) differs from the remedy for a collision the rename would cause."""
@@ -251,6 +229,9 @@ def test_rename_refuses_pre_existing_duplicates(tmp_path):
     assert_no_snapshot_written(path)
 
 
+# Duplicate cell IDs are the subject here, so anndata's non-unique obs names
+# warning is expected rather than a defect.
+@pytest.mark.filterwarnings("ignore:Observation names are not unique")
 def test_rename_refuses_pre_existing_duplicates_the_rename_would_resolve(tmp_path):
     """The pre-existing gate fires even when the rename would make the index
     unique — resolving a collision by renaming one side of it is a curation
@@ -361,6 +342,9 @@ def test_rename_refuses_a_masked_index_before_taking_a_snapshot(tmp_path):
     assert set(tmp_path.iterdir()) == before
 
 
+# anndata coerces a fixed-width byte index on read and says so — the fixture's
+# subject, audible since #661 made the tool open the file.
+@pytest.mark.filterwarnings("ignore:Transforming to str index")
 def test_rename_accepts_a_fixed_width_byte_index(tmp_path):
     """The writable guard must judge the container, not the encoding name.
 
@@ -466,22 +450,6 @@ def test_rename_normalizes_nullable_obsm_frame_indexes_too(tmp_path):
             idx = grp[obs_index_name(grp)]
             assert isinstance(idx, h5py.Dataset), frame
             assert "MH_mix_BR1_AAA" in idx.asstr()[:], frame
-
-
-def test_rename_refuses_a_masked_obsm_frame_index(tmp_path):
-    """A masked obsm sub-index is refused by read_index, by name, before
-    the snapshot — same contract as the obs index."""
-    path = create_hca_h5ad(tmp_path / "obsm_masked.h5ad", obsm_dataframe=True)
-    make_nullable_index(path, frame="obsm/per_cell_scores", masked=1)
-
-    before = set(tmp_path.iterdir())
-    result = rename_cell_ids(
-        str(path), column="sample_id", value="B1_0023", prefix_from="MH_mix_", prefix_to="MH_mix_BR1_"
-    )
-
-    assert "error" in result
-    assert "missing value" in result["error"]
-    assert set(tmp_path.iterdir()) == before
 
 
 def test_rename_names_a_masked_categorical_index(hca_path):

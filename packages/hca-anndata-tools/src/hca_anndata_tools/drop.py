@@ -25,6 +25,7 @@ import h5py
 
 from ._io import (
     direct_members,
+    gate_h5ad_paths,
     read_edit_log_h5py,
     read_uns,
     update_column_order,
@@ -101,6 +102,7 @@ def _validate_request(
     return problems
 
 
+@gate_h5ad_paths
 def drop_obs_columns(path: str, columns: list[str] | tuple[str, ...]) -> dict:
     """Drop the named obs columns from an h5ad file.
 

@@ -3,7 +3,6 @@
 from pathlib import Path
 
 import anndata as ad
-import h5py
 import numpy as np
 import pandas as pd
 import pytest
@@ -15,7 +14,7 @@ from hca_anndata_tools.marker_genes import (
     _extract_marker_genes_from_categories,
     validate_marker_genes,
 )
-from hca_anndata_tools.testing import make_nullable_index, make_nullable_string_array
+from hca_anndata_tools.testing import make_nullable_index
 
 # -- GENCODE reference loader tests --------------------------------------------
 
@@ -320,32 +319,32 @@ def test_extract_markers_skips_a_masked_value():
     assert _extract_marker_genes_from_categories(categories) == {"GFAP", "RBFOX3"}
 
 
-def test_masked_evidence_and_organism_values_are_skipped(tmp_path):
-    """End to end on the file shape: nullable categories with masked entries
-    in both the organism column and a marker-evidence column. The masked
-    values are skipped — no phantom "<NA>" gene, no "<NA>" organism error,
-    no "boolean value of NA is ambiguous"."""
+def test_missing_evidence_and_organism_values_are_skipped(tmp_path):
+    """End to end on the file shape: missing values in both the organism
+    column and a marker-evidence column. They are skipped — no phantom
+    "<NA>" gene, no "<NA>" organism error, no "boolean value of NA is
+    ambiguous".
+
+    The missing entries are absent *values* in an ordinary categorical, which
+    is what a real file carries. An earlier version of this fixture masked the
+    *categories* instead — a shape anndata cannot read at all, so since #661
+    it never reached this logic and the test was only exercising the gate.
+    """
     n_obs = 4
     obs = pd.DataFrame(
         {
-            # "AAA_pending" sorts before the human term, so masked=1 masks it.
-            "organism_ontology_term_id": pd.Categorical(["AAA_pending"] + ["NCBITaxon:9606"] * 3),
+            "organism_ontology_term_id": pd.Categorical([None] + ["NCBITaxon:9606"] * 3),
             "test_labels": pd.Categorical(["typeA"] * n_obs),
-            # "AAA_missing" sorts first, so masked=1 masks it, keeping the
-            # real GFAP and the ZZZFAKE typo.
-            "test_labels--marker_gene_evidence": pd.Categorical(["AAA_missing", "GFAP", "GFAP", "ZZZFAKE"]),
+            # One missing entry, the real GFAP twice, and the ZZZFAKE typo.
+            "test_labels--marker_gene_evidence": pd.Categorical([None, "GFAP", "GFAP", "ZZZFAKE"]),
             "test_labels--cell_ontology_term_id": pd.Categorical(["CL:0000540"] * n_obs),
         },
         index=[f"cell_{i}" for i in range(n_obs)],
     )
     var = pd.DataFrame({"feature_name": ["GFAP"]}, index=["ENSG00000131095"])
     X = sp.random(n_obs, 1, density=0.5, format="csr", dtype=np.float32)
-    path = tmp_path / "masked_markers.h5ad"
+    path = tmp_path / "missing_markers.h5ad"
     ad.AnnData(X=X, obs=obs, var=var).write_h5ad(path)
-    with h5py.File(path, "r+") as f:
-        make_nullable_string_array(f["obs/organism_ontology_term_id"], "categories", masked=1)
-        make_nullable_string_array(f["obs/test_labels--marker_gene_evidence"], "categories", masked=1)
-
     result = validate_marker_genes(str(path))
 
     assert "error" not in result, result.get("error")
@@ -354,13 +353,13 @@ def test_masked_evidence_and_organism_values_are_skipped(tmp_path):
     assert reported == {"ZZZFAKE"}
 
 
-def test_all_masked_organism_is_refused_not_passed(tmp_path):
+def test_all_missing_organism_is_refused_not_passed(tmp_path):
     """Absence of organism evidence must not pass the human-only gate — an
-    all-masked column would otherwise validate against the human GENCODE
+    all-missing column would otherwise validate against the human GENCODE
     with the organism never established."""
     obs = pd.DataFrame(
         {
-            "organism_ontology_term_id": pd.Categorical(["NCBITaxon:9606"] * 2),
+            "organism_ontology_term_id": pd.Categorical([None, None]),
             "test_labels": pd.Categorical(["typeA"] * 2),
             "test_labels--marker_gene_evidence": pd.Categorical(["GFAP"] * 2),
             "test_labels--cell_ontology_term_id": pd.Categorical(["CL:0000540"] * 2),
@@ -369,12 +368,8 @@ def test_all_masked_organism_is_refused_not_passed(tmp_path):
     )
     var = pd.DataFrame({"feature_name": ["GFAP"]}, index=["ENSG00000131095"])
     X = sp.random(2, 1, density=0.5, format="csr", dtype=np.float32)
-    path = tmp_path / "masked_organism.h5ad"
+    path = tmp_path / "missing_organism.h5ad"
     ad.AnnData(X=X, obs=obs, var=var).write_h5ad(path)
-    with h5py.File(path, "r+") as f:
-        # The only category is masked: no readable organism value remains.
-        make_nullable_string_array(f["obs/organism_ontology_term_id"], "categories", masked=1)
-
     result = validate_marker_genes(str(path))
 
     assert "error" in result

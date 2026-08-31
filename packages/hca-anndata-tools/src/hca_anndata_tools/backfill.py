@@ -27,6 +27,7 @@ from ._io import (
     DEFAULT_PLACEHOLDERS,
     check_duplicate_ids,
     direct_members,
+    gate_h5ad_paths,
     holds_string_values,
     is_missing_value,
     masked_categories_reason,
@@ -262,6 +263,7 @@ def _verify_backfill(f: h5py.File, per_column: dict, fills: dict, placeholders: 
     return None
 
 
+@gate_h5ad_paths
 def backfill_obs_from_source(target_path: str, source_path: str, columns: list[str]) -> dict:
     """Copy obs values from a source h5ad into a target, filling only gaps.
 

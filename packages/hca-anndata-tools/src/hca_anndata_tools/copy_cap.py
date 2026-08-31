@@ -15,6 +15,7 @@ import pandas as pd
 from ._io import (
     check_duplicate_ids,
     ensure_provenance_group,
+    gate_h5ad_paths,
     obs_index_name,
     open_h5ad,
     read_categorical_data,
@@ -119,6 +120,7 @@ def _get_obs_columns_to_copy(
     return columns
 
 
+@gate_h5ad_paths
 def copy_cap_annotations(
     source_path: str,
     target_path: str,

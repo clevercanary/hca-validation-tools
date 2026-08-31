@@ -21,6 +21,7 @@ import numpy as np
 
 from ._io import (
     direct_members,
+    gate_h5ad_paths,
     holds_string_values,
     masked_categories_reason,
     read_categories,
@@ -155,6 +156,7 @@ def _validate_request(
     return problems
 
 
+@gate_h5ad_paths
 def merge_obs_categories(path: str, column: str, from_value: str, to_value: str) -> dict:
     """Recode every cell in ``from_value`` to ``to_value`` and drop the empty category.
 
