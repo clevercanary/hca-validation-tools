@@ -240,8 +240,13 @@ def gate_h5ad_paths(fn: Callable[_P, dict]) -> Callable[_P, dict]:
 
     @functools.wraps(fn)
     def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> dict:
+        # Bound outside the handler below: bind_partial raises TypeError on a
+        # signature mismatch, and that is a programmer error, not a file
+        # problem. Swallowing it into {"error": ...} would also be
+        # inconsistent — bind_partial tolerates a *missing* argument, so that
+        # half of the same mistake reaches fn() and raises anyway.
+        bound = sig.bind_partial(*args, **kwargs)
         try:
-            bound = sig.bind_partial(*args, **kwargs)
             for name in gated:
                 raw = bound.arguments.get(name)
                 if raw is None:
