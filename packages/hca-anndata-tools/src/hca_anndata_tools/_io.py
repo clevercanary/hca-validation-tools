@@ -210,8 +210,19 @@ def gate_h5ad_paths(fn: Callable[_P, dict]) -> Callable[_P, dict]:
       "File not found" message rather than getting h5py's.
 
     Paths are resolved with :func:`~hca_anndata_tools.write.resolve_latest`
-    first, so the gate opens the file the tool will actually operate on.
-    Resolving is idempotent, so the tool's own call is left in place.
+    first, matching what each tool does to the same parameter, so the gate
+    opens the file the tool goes on to read. Resolving is idempotent, so the
+    tool's own call is left in place.
+
+    One parameter is deliberately not resolved by its tool:
+    ``copy_cap_annotations``' ``source_path``, because a CAP export is not
+    ours to write and so carries none of our ``-edit-`` snapshots — under that
+    rule ``resolve_latest`` on it is identity and the two agree. The rule is a
+    spec, not a runtime guarantee: the enforcement gaps in #665 can still fork
+    a CAP export, and in that state the gate and the body look at different
+    files. Not guarded here — the state is off-spec on arrival, and the guard
+    would mean resolving the source, i.e. preferring the fork. See
+    ``docs/anndata-tools-contract.md`` (Scope).
 
     Raises:
         TypeError: At decoration time, if the function has no gated path
