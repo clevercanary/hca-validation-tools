@@ -33,14 +33,23 @@ from hca_anndata_tools.testing import (
     create_truncated_h5ad,
 )
 
-# Public names with a path-shaped parameter that legitimately never opens an
-# h5ad. Named individually, with the reason, so that "everything else is
-# gated" is a claim this file can make without a judgement call at read time.
+# Public names with a path-shaped parameter that never opens an h5ad. Named
+# individually, with the reason, so that "everything else is gated" is a claim
+# this file can make without a judgement call at read time.
+#
+# The test is "opens no h5ad", not "touches no file": several of these stat a
+# directory, glob it, or read the bytes to hash them. What none of them does
+# is decode the file as an h5ad, which is the only thing the gate can check
+# and the only thing an unopenable file breaks.
 OMISSIONS = {
-    "locate_files": "takes a directory to scan; opens no h5ad",
-    "write_h5ad": "takes an in-memory AnnData; source_path only names the output",
-    "generate_output_path": "derives an output name from a path string; opens nothing",
-    "resolve_latest": "globs for the newest snapshot name; opens nothing",
+    "locate_files": "scans a directory for h5ad files; opens none of them",
+    "write_h5ad": (
+        "takes an in-memory AnnData. It does stat source_path and read its bytes for the "
+        "provenance sha256, but never decodes it as an h5ad — and its callers have already "
+        "gated the path the AnnData came from"
+    ),
+    "generate_output_path": "derives a name and checks the lineage root is beside it; opens no h5ad",
+    "resolve_latest": "globs the directory for the newest snapshot name; opens nothing",
     "strip_timestamp": "string manipulation on a filename",
 }
 
