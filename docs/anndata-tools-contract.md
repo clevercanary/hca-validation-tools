@@ -98,6 +98,21 @@ the two look at different files. The state is off-spec on arrival — a forked
 record is a worse problem than the mismatch — and closing #665 removes it at
 the source. Worth knowing about; not worth a guard here.
 
+**We do not support `/` in a name, and will not.** h5py resolves a member
+name as a *path*, not a literal key: `obs["sub/col"]` walks into a subgroup
+and `obs["/uns/title"]` leaves `obs` altogether — `"/uns/title" in obs` is
+`True`. So a `/` in an obs `column-order` entry turns `del obs[name]` into a
+delete somewhere else in the file (#623). We refuse such a file rather than
+resolve, quote or escape the name; there is no reading of a `/` name we want
+to be right about.
+
+Note this is *not* covered by the anndata gate above, and cannot be. A
+dangling `/` entry makes the file unopenable, so the gate catches that one by
+accident — but a `/` entry that **resolves** opens perfectly cleanly, and it
+is the dangerous one, because it is the one where the delete finds something
+to delete. `guards.is_malformed_name` is what refuses it, checked against
+every `column-order` entry rather than the first few the message would name.
+
 **A load failure should reach the user as anndata's, not as ours** —
 principles 11 and 15 say how, and #657 is the work: today the tool handlers
 flatten it to `str(e)`, losing the type and the traceback. What we add on
