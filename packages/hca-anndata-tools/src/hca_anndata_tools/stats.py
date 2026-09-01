@@ -3,6 +3,7 @@
 import numpy as np
 import pandas as pd
 
+from ._errors import Refusal
 from ._io import open_h5ad
 from .write import resolve_latest
 
@@ -123,6 +124,6 @@ def _apply_filter(
         "notin": lambda s, v: ~s.isin(v if isinstance(v, list) else [v]),
     }
     if operator not in ops:
-        raise ValueError(f"Unknown operator: {operator}")
+        raise Refusal(f"Unknown operator: {operator}")
     mask = ops[operator](series, value)
     return df[mask]  # pyright: ignore[reportReturnType]

@@ -11,7 +11,11 @@ import pytest
 import scipy.sparse as sp
 
 from hca_anndata_tools.copy_cap import copy_cap_annotations
-from hca_anndata_tools.testing import make_nullable_index, make_nullable_string_array
+from hca_anndata_tools.testing import (
+    assert_no_snapshot_written,
+    make_nullable_index,
+    make_nullable_string_array,
+)
 from hca_anndata_tools.write import EDIT_LOG_KEY
 
 # --- Fixtures ---
@@ -386,6 +390,9 @@ def test_var_overlap_refuses_a_masked_var_index(cap_source, tmp_path):
     assert "error" in result
     assert "HCA genes" in result["error"]
     assert "missing value" in result["error"]
+    # read_index *raises* this one, so it reaches the broad handler. It is
+    # still ours, and a Refusal is reported without frames (#669).
+    assert "traceback" not in result
 
 
 # --- Failure cases ---
@@ -464,6 +471,9 @@ def test_copy_rejects_non_categorical_source_column(cap_source, hca_target):
     assert "error" in result
     assert "not categorical" in result["error"].lower()
     assert col in result["error"]
+    # A refusal is a return, so there is no traceback to withhold (#669).
+    # Wrapping it in frames would make an already-specific message worse.
+    assert "traceback" not in result
 
 
 def test_copy_below_threshold_fails(cap_source, tmp_path):
@@ -738,3 +748,79 @@ def test_copy_preserves_non_string_category_dtype(tmp_path, hca_target, categori
     out = written.obs["author_cell_type--cell_ontology_exists"]
     assert out.cat.categories.dtype.kind == expected_kind
     assert sorted(out.cat.categories) == sorted(categories)
+
+
+# --- what the broad handler reports (#669) ---------------------------------
+
+
+def _boom(*_args, **_kwargs):
+    """Stand-in for a helper that fails for a reason nobody anticipated."""
+    raise ValueError("synthetic failure from a patched helper")
+
+
+def test_unexpected_failure_carries_where_it_came_from(monkeypatch, cap_source, hca_target):
+    """An exception nobody decided is returned whole, not summarized.
+
+    Diagnosing #668 meant recovering the raising frame with a ``sys.settrace``
+    hook, because the tool returned a bare h5py sentence that named no column
+    and no stage. The frames are what carry that, so they travel in the
+    result — under their own key, so the summary line an MCP client renders
+    stays one line (contract principle 15).
+
+    The trigger is injected rather than real: #668's boolean-categorical
+    crash is fixed, and a test that depends on a live defect stops testing
+    anything the day it is repaired.
+    """
+    # read_column_order runs in step 1, well before the snapshot block, so
+    # the run fails with nothing written. validate_marker_genes would work
+    # too, but it runs after the edit is committed — pinning the error shape
+    # at a point where the file has already changed invites a later reader to
+    # assume "error" means "nothing happened".
+    monkeypatch.setattr("hca_anndata_tools.copy_cap.read_column_order", _boom)
+
+    result = copy_cap_annotations(str(cap_source), str(hca_target))
+
+    assert result["error"] == "ValueError: synthetic failure from a patched helper"
+    # The frames name the function that raised and where it lives — the two
+    # facts the old str(e) discarded.
+    assert "_boom" in result["traceback"]
+    assert "test_copy_cap.py" in result["traceback"]
+    assert json.dumps(result)
+
+
+def test_a_failed_run_leaves_no_snapshot(monkeypatch, cap_source, hca_target):
+    """Contract principle 9 survives the new handler.
+
+    The failure is injected *inside* the snapshot's ``with`` block, so the
+    snapshot exists when it raises — the case where a handler that unlinked
+    (or forgot to) would show.
+    """
+    monkeypatch.setattr("hca_anndata_tools.copy_cap.verify_obs_transplant", _boom)
+
+    result = copy_cap_annotations(str(cap_source), str(hca_target))
+
+    assert "traceback" in result
+    assert_no_snapshot_written(hca_target)
+
+
+@pytest.mark.filterwarnings("ignore::anndata._warnings.OldFormatWarning")
+def test_a_raised_refusal_gains_no_traceback_either(cap_source, hca_target):
+    """GuardRefusal arrives by the exception path but is still ours.
+
+    Contract principle 15 names this exact complication: the refusals we
+    *raise* from the shared readers reach the broad handler, and without a
+    type of their own they would grow a traceback they should not have.
+
+    obs as a Dataset rather than deleted on purpose. Deleting it fails the
+    scope gate's open first (principle 11's deliberate passthrough), so the
+    file never reaches require_obs_group and the case under test would not
+    run — a pre-modern layout is the shape that actually gets there.
+    """
+    with h5py.File(cap_source, "a") as f:
+        del f["obs"]
+        f.create_dataset("obs", data=np.arange(len(CELL_IDS)))
+
+    result = copy_cap_annotations(str(cap_source), str(hca_target))
+
+    assert result["error"] == "obs is not a group — the file predates the modern h5ad layout"
+    assert "traceback" not in result

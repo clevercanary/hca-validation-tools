@@ -13,6 +13,7 @@ import h5py
 import numpy as np
 import pandas as pd
 
+from ._errors import Refusal
 from ._io import (
     ensure_provenance_group,
     masked_string_error,
@@ -255,7 +256,7 @@ def convert_cellxgene_to_hca(
                 # claimed output.
                 encodings_normalized, norm_err = normalize_file_string_encodings(f_out)
                 if norm_err:
-                    raise ValueError(f"Refusing to convert: {norm_err}")
+                    raise Refusal(f"Refusing to convert: {norm_err}")
 
                 # Transplant edit_history into provenance
                 if EDIT_LOG_KEY in prov_out:

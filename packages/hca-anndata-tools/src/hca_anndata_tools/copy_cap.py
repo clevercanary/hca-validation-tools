@@ -12,6 +12,7 @@ import h5py
 import numpy as np
 import pandas as pd
 
+from ._errors import failure_result
 from ._io import (
     check_duplicate_ids,
     ensure_provenance_group,
@@ -148,7 +149,10 @@ def copy_cap_annotations(
 
     Returns:
         Dict with output_path, copied columns/keys, and marker gene
-        validation results, or 'error' on failure.
+        validation results. On failure, 'error' — plus 'traceback' when the
+        failure was an exception rather than a refusal we authored, since
+        that is the only case where there are frames worth carrying
+        (contract principle 15).
     """
     try:
         target_path = resolve_latest(target_path)
@@ -459,4 +463,6 @@ def copy_cap_annotations(
 
     except Exception as e:
         # No unlink here: snapshot_copy_hashed removes the snapshot itself.
-        return {"error": str(e)}
+        # failure_result decides whether this is ours (a Refusal, reported
+        # verbatim) or something that happened to us (reported with frames).
+        return failure_result(e)

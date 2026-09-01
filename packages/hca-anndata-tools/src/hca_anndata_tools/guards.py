@@ -30,6 +30,7 @@ from dataclasses import dataclass
 
 import h5py
 
+from ._errors import Refusal
 from ._io import direct_members, obs_index_name, read_batch_condition
 from .cap import LEGACY_LAYOUT_DESCRIPTION, cap_obs_columns, is_cap_declared, is_legacy_cap_layout
 
@@ -47,13 +48,15 @@ __all__ = [
 ]
 
 
-class GuardRefusal(Exception):
+class GuardRefusal(Refusal):
     """A precondition the caller must fix before the tool can run.
 
-    Carries the message verbatim: every mutating tool ends in
-    ``except Exception as e: return {"error": str(e)}``, so raising produces
-    the same error dict a returned refusal would, without threading an
-    optional group through the call site.
+    Carries the message verbatim: a tool's broad handler routes it through
+    :func:`_errors.failure_result`, which reports a :class:`Refusal` as the
+    refusal it is — message only, no traceback — so raising produces the same
+    error dict a returned refusal would, without threading an optional group
+    through the call site. Raising it from a function whose handler predates
+    that (#657 has the list) would grow a traceback it should not have.
     """
 
 
