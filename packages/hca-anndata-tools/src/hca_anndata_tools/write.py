@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 from . import __version__
+from ._errors import Refusal
 from ._keys import EDIT_LOG_KEY, MASKED_STRING_REMEDY, PROVENANCE_KEY
 
 if TYPE_CHECKING:
@@ -34,7 +35,7 @@ _REQUIRED_ENTRY_KEYS = {"timestamp", "tool", "tool_version", "operation", "descr
 SAME_SECOND_SNAPSHOT_ERROR = "An edit snapshot for this second already exists — retry in a moment."
 
 
-class MissingLineageRootError(RuntimeError):
+class MissingLineageRootError(Refusal):
     """The source is an edit snapshot whose original is not beside it.
 
     Editing it anyway would end with :func:`cleanup_previous_version`
@@ -44,11 +45,13 @@ class MissingLineageRootError(RuntimeError):
     """
 
 
-class SameSecondSnapshotError(RuntimeError):
+class SameSecondSnapshotError(Refusal):
     """A snapshot could not be named distinctly from the file it copies.
 
-    Carries :data:`SAME_SECOND_SNAPSHOT_ERROR` as its message, so a caller
-    whose handler returns ``{"error": str(e)}`` reports it unchanged.
+    Carries :data:`SAME_SECOND_SNAPSHOT_ERROR` as its message, so a handler
+    routing through :func:`_errors.failure_result` reports it unchanged. The
+    message is a retry instruction; dressed in a traceback it would read as a
+    crash.
     """
 
 

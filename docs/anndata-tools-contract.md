@@ -413,14 +413,28 @@ target is constrained.
     that happened to us, not something we chose: a load failure, a disk full
     mid-write, a bug of our own. It should be returned whole, chained and
     tracebacked, because summarizing it to `str(e)` destroys the only thing
-    that would explain it. **No tool does this yet** — every broad handler
-    ends `return {"error": str(e)}`, which is what #657 changes; until then
-    this paragraph is the decision, not a description. The audit is
-    `return {"error": str(e)}` (the handler bodies, all of which need the
-    change) against `return {"error": f"` (the refusals, which are already
-    right). One complication for #657: the refusals we still *raise* from
-    the shared readers arrive by the foreign path and need a type of their
-    own, or they will grow a traceback they should not have.
+    that would explain it. It travels as two keys: a one-line `error` naming
+    the exception type and its message, and the frames beside it under
+    `traceback` — an MCP client renders the first, an agent diagnosing the
+    failure reads the second. Both are bounded, so a single failure cannot
+    fill a caller's context.
+
+    **The line is drawn by origin, not by mechanism.** A refusal is ours
+    whether it was returned or raised, so the ones that travel by the stack
+    carry `_errors.Refusal` and a handler reports them verbatim. `_io`'s null
+    index, the corrupt-nullable-group message, `convert`'s "Refusing to
+    convert", and the two mutating-write refusals are all of this kind; they
+    read as decisions, and a traceback would dress a retry instruction up as
+    a crash. `_errors.failure_result` makes that call once, for every
+    handler — a per-site judgement gets it wrong eventually, silently, since
+    a refusal wearing a traceback still returns under `error` and the tests
+    assert on substrings.
+
+    **`copy_cap_annotations` is the only tool doing this so far** (#669);
+    every other broad handler still ends `return {"error": str(e)}`, which is
+    what #657 finishes by replacing each with `return failure_result(e)`. The
+    audit is `return {"error": str(e)}` (the handler bodies still to change)
+    against `return {"error": f"` (the refusals, which are already right).
     An edit either fully applies or leaves the file untouched. Every
     mutation lands in the edit log. Tools guarantee a *coherent* file, not a
     valid one — `validate_schema` owns the verdict.

@@ -21,6 +21,7 @@ import h5py
 import pandas as pd
 from anndata.io import read_elem, write_elem
 
+from ._errors import Refusal
 from ._keys import EDIT_LOG_KEY, MASKED_STRING_REMEDY, PROVENANCE_KEY
 from .write import resolve_latest
 
@@ -153,7 +154,7 @@ def open_h5ad(path: str, backed: Literal["r", "r+"] | None = "r"):
         adata = ad.read_h5ad(path, backed=backed)
     except ValueError as e:
         if "Categorical categories cannot be null" in str(e) and (named := _masked_categories_open_error(path)):
-            raise ValueError(named) from e
+            raise Refusal(named) from e
         raise
     try:
         yield adata
@@ -352,7 +353,7 @@ def require_nullable_children(item: h5py.Group) -> None:
     enc = encoding_of(item) or "nullable"
     for child in ("values", "mask"):
         if child not in item:
-            raise ValueError(f"'{item.name}' is stamped '{enc}' but has no '{child}' dataset — the file is corrupt")
+            raise Refusal(f"'{item.name}' is stamped '{enc}' but has no '{child}' dataset — the file is corrupt")
 
 
 def read_element(item: h5py.Group | h5py.Dataset | h5py.Datatype) -> np.ndarray:
@@ -524,11 +525,11 @@ def read_index(group: h5py.Group | h5py.Dataset | h5py.Datatype, name: str, labe
         and "categories" in item
         and (reason := masked_categories_reason(read_categories(item), f"{label} index '{name}'"))
     ):
-        raise ValueError(reason)
+        raise Refusal(reason)
     values = read_element(item)
     missing = np.flatnonzero(pd.isna(values))
     if missing.size:
-        raise ValueError(
+        raise Refusal(
             f"{label} index '{name}' has {missing.size} missing value(s) "
             f"(first at row {missing[0]}) — an entry with no identifier cannot be joined on"
         )
