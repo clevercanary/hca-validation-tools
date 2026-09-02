@@ -345,7 +345,7 @@ def test_raw_x_without_raw_var_is_refused_before_the_walk(tmp_path):
     assert "traceback" not in result
 
 
-def testchunk_bounds_do_not_wrap_on_int32_indptr():
+def test_chunk_bounds_do_not_wrap_on_int32_indptr():
     """scipy stores indptr as int32 while nnz fits; adding the budget in that
     dtype wraps negative near 2^31 and would force one-row chunks."""
     from hca_anndata_tools.qc import chunk_bounds
