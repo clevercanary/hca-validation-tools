@@ -146,8 +146,9 @@ def _finding(code: str, count: int, ids: np.ndarray, matrix: str) -> dict:
 
 def _walk(f: h5py.File, key: str, n_obs: int, n_var: int, chunk_nnz: int, check_integers: bool) -> tuple:
     """The single pass. Returns ``(counts, flagged, genes_per_cell, gene_seen)``:
-    per-code value counts, per-code cell flags, stored values per cell, and
-    whether each gene has a stored value anywhere.
+    per-code value counts, per-code cell flags, non-zero entries per cell
+    (genes detected — explicit zeros are eliminated first), and whether each
+    gene has a non-zero entry anywhere.
 
     Nothing here is sized by the chunk's entry count except the masks over
     ``data``: flagged cells come from ``searchsorted`` on ``indptr`` for the
@@ -177,8 +178,10 @@ def _walk(f: h5py.File, key: str, n_obs: int, n_var: int, chunk_nnz: int, check_
             hits = np.flatnonzero(mask)
             if hits.size:
                 counts[code] += int(hits.size)
-                along = np.searchsorted(indptr, hits, side="right") - 1 + chunk.start
-                flagged[code][along if chunk.axis == "row" else indices[hits]] = True
+                if chunk.axis == "row":
+                    flagged[code][np.searchsorted(indptr, hits, side="right") - 1 + chunk.start] = True
+                else:
+                    flagged[code][indices[hits]] = True
 
         stored = np.diff(indptr)
         if chunk.axis == "row":
