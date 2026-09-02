@@ -184,6 +184,20 @@ async def test_error_handling(client):
 
 
 @pytest.mark.asyncio
+async def test_check_raw_counts(client, sample_h5ad):
+    """Round-trip through the server: the result shape survives serialization.
+    The sample's lone X holds uniform floats, so the integer criterion is
+    reported as not applicable rather than as a finding."""
+    data = await _call(client, "check_raw_counts", {"path": str(sample_h5ad)})
+    assert "error" not in data
+    assert data["matrix"] == "X"
+    assert data["format"] == "csr"
+    assert data["n_obs"] == 50 and data["n_var"] == 20
+    assert data["integer_check"]["status"] == "not_applicable"
+    assert {f["code"] for f in data["findings"]} <= {"zero_count_cells", "undetected_genes"}
+
+
+@pytest.mark.asyncio
 async def test_registered_tool_names(client):
     """Registration smoke test: the wrapper unit tests import the functions
     directly, so only this catches a tool missing from server.py's
@@ -198,4 +212,5 @@ async def test_registered_tool_names(client):
         "merge_obs_categories",
         "drop_obs_columns",
         "strip_forbidden_obs_columns",
+        "check_raw_counts",
     } <= names
