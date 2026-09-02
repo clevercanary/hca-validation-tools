@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from .normalize import normalize_raw
     from .plot import plot_embedding
     from .producer_uns import set_producer_uns
+    from .qc import check_raw_counts
     from .rename import rename_cell_ids
     from .rename_column import rename_obs_column
     from .stats import get_descriptive_stats
@@ -76,6 +77,7 @@ _LAZY_IMPORTS = {
     "backfill_obs_from_source": ".backfill",
     "check_x_normalization": ".inspect",
     "check_schema_type": ".inspect",
+    "check_raw_counts": ".qc",
 }
 
 __all__ = list(_LAZY_IMPORTS)  # pyright: ignore[reportUnsupportedDunderAll]
