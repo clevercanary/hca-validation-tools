@@ -32,7 +32,7 @@ import scipy.sparse as sp
 from anndata.io import sparse_dataset
 
 from ._errors import Refusal, failure_result
-from ._io import describe_matrix, gate_h5ad_paths, obs_index_name, read_index
+from ._io import MatrixFormat, describe_matrix, gate_h5ad_paths, obs_index_name, read_index
 from .inspect import resolve_count_matrix
 from .write import resolve_latest
 
@@ -197,25 +197,62 @@ def _walk(f: h5py.File, key: str, n_obs: int, n_var: int, chunk_nnz: int, check_
     return counts, flagged, genes_per_cell, gene_seen
 
 
+@dataclass(frozen=True)
+class CountMatrix:
+    """The count matrix a read-only check walks, with what every such check
+    needs to know before its first chunk. See :func:`open_count_matrix`."""
+
+    key: str
+    integer_check: dict
+    format: MatrixFormat
+    n_obs: int
+    n_var: int
+    dtype: str
+    nnz: int | None
+    obs_ids: np.ndarray
+
+    def envelope(self, path: str) -> dict:
+        """The result keys every count-matrix check reports, in one order."""
+        return {
+            "filename": Path(path).name,
+            "matrix": self.key,
+            "format": self.format,
+            "dtype": self.dtype,
+            "n_obs": self.n_obs,
+            "n_var": self.n_var,
+            "nnz": self.nnz,
+        }
+
+
+def open_count_matrix(f: h5py.File) -> CountMatrix:
+    """Resolve, describe, and index-check the count matrix in an open file.
+
+    The preamble every count-matrix check shares (this gate, #677's duplicate
+    hash): which matrix, its format and shape, and the obs index that names
+    its rows. anndata's backed open does not check the index against the
+    matrix, so a shortened obs passes the gate; it is read here and refused
+    by name, rather than IndexError on the first finding or name the wrong
+    cell when none fires.
+    """
+    key, integer_check = resolve_count_matrix(f)
+    item = f[key]
+    fmt, (n_obs, n_var), dtype = describe_matrix(item, key)
+    nnz = None
+    if isinstance(item, h5py.Group):
+        indptr = item["indptr"]
+        assert isinstance(indptr, h5py.Dataset)
+        nnz = int(indptr[-1])
+    obs = f["obs"]
+    obs_ids = read_index(obs, obs_index_name(obs), "obs")
+    if len(obs_ids) != n_obs:
+        raise Refusal(f"obs has {len(obs_ids)} IDs but {key} has {n_obs} rows")
+    return CountMatrix(key, integer_check, fmt, n_obs, n_var, dtype, nnz, obs_ids)
+
+
 def _check_raw_counts_at_path(path: str, chunk_nnz: int) -> dict:
     with h5py.File(path, "r") as f:
-        key, integer_check = resolve_count_matrix(f)
-        item = f[key]
-        fmt, (n_obs, n_var), dtype = describe_matrix(item, key)
-        nnz = None
-        if isinstance(item, h5py.Group):
-            indptr = item["indptr"]
-            assert isinstance(indptr, h5py.Dataset)
-            nnz = int(indptr[-1])
-
-        # anndata's backed open does not check the indexes against the matrix,
-        # so a shortened obs or raw/var passes the gate; read them now and refuse
-        # by name, rather than IndexError on the first finding or name the
-        # wrong cell when none fires.
-        obs = f["obs"]
-        obs_ids = read_index(obs, obs_index_name(obs), "obs")
-        if len(obs_ids) != n_obs:
-            raise Refusal(f"obs has {len(obs_ids)} IDs but {key} has {n_obs} rows")
+        cm = open_count_matrix(f)
+        key, n_obs, n_var = cm.key, cm.n_obs, cm.n_var
         var_key = "raw/var" if key == "raw/X" else "var"
         if var_key not in f:
             raise Refusal(f"{key} is present but {var_key} is not, so its genes cannot be named")
@@ -229,29 +266,19 @@ def _check_raw_counts_at_path(path: str, chunk_nnz: int) -> dict:
             findings.append(_finding("empty_matrix", 1, np.asarray([]), key))
         else:
             counts, flagged, genes_per_cell, gene_seen = _walk(
-                f, key, n_obs, n_var, chunk_nnz, integer_check["status"] == "applied"
+                f, key, n_obs, n_var, chunk_nnz, cm.integer_check["status"] == "applied"
             )
             for code in _VALUE_CODES:
                 if counts[code]:
-                    findings.append(_finding(code, counts[code], obs_ids[flagged[code]], key))
+                    findings.append(_finding(code, counts[code], cm.obs_ids[flagged[code]], key))
             zero_rows = np.flatnonzero(genes_per_cell == 0)
             if zero_rows.size:
-                findings.append(_finding("zero_count_cells", zero_rows.size, obs_ids[zero_rows], key))
+                findings.append(_finding("zero_count_cells", zero_rows.size, cm.obs_ids[zero_rows], key))
             unseen = np.flatnonzero(~gene_seen)
             if unseen.size:
                 findings.append(_finding("undetected_genes", unseen.size, var_ids[unseen], key))
 
-    return {
-        "filename": Path(path).name,
-        "matrix": key,
-        "format": fmt,
-        "dtype": dtype,
-        "n_obs": n_obs,
-        "n_var": n_var,
-        "nnz": nnz,
-        "integer_check": integer_check,
-        "findings": findings,
-    }
+    return {**cm.envelope(path), "integer_check": cm.integer_check, "findings": findings}
 
 
 @gate_h5ad_paths

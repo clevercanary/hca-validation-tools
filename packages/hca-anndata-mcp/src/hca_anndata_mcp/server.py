@@ -15,6 +15,7 @@ from hca_anndata_mcp.tools.strip import strip_forbidden_obs_columns
 from hca_anndata_mcp.tools.strip_cap import strip_cap_annotations
 from hca_anndata_mcp.tools.validate import validate_cell_annotation, validate_schema
 from hca_anndata_tools import (
+    check_duplicate_cells,
     check_raw_counts,
     check_schema_type,
     check_x_normalization,
@@ -132,6 +133,11 @@ mcp = FastMCP(
         "plus cells with no counts and genes detected nowhere; empty findings with "
         "integer_check.status 'applied' means the counts are clean, while 'not_applicable' means "
         "the file has no raw matrix and X is not counts, "
+        "check_duplicate_cells to find cells whose raw count rows are byte-identical (a port of "
+        "Lattice's evaluate_dup_counts): one hashing pass over the same matrix check_raw_counts "
+        "gates, then only the colliding rows are re-read and compared exactly; reports groups of "
+        "duplicate cell IDs, the surplus-cell count, and how many rows were stored non-canonically "
+        "(information, not a defect); CSC storage is refused by name, "
         "check_schema_type to identify CellxGENE vs HCA layout and report the schema version, "
         "validate_schema to run the HCA schema validator and report is_valid / errors / warnings, "
         "validate_cell_annotation to run the HCA Cell Annotation validator (structural CAP checks: "
@@ -178,6 +184,7 @@ mcp.tool()(normalize_raw)
 mcp.tool()(view_edit_log)
 mcp.tool()(check_x_normalization)
 mcp.tool()(check_raw_counts)
+mcp.tool()(check_duplicate_cells)
 mcp.tool()(check_schema_type)
 mcp.tool()(validate_schema)
 mcp.tool()(validate_cell_annotation)

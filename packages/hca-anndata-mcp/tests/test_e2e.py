@@ -198,6 +198,17 @@ async def test_check_raw_counts(client, sample_h5ad):
 
 
 @pytest.mark.asyncio
+async def test_check_duplicate_cells(client, sample_h5ad):
+    """Round-trip through the server: the sample's random rows do not collide."""
+    data = await _call(client, "check_duplicate_cells", {"path": str(sample_h5ad)})
+    assert "error" not in data
+    assert data["matrix"] == "X"
+    assert data["n_obs"] == 50 and data["n_var"] == 20
+    assert data["non_canonical_rows"] == 0
+    assert data["findings"] == []
+
+
+@pytest.mark.asyncio
 async def test_registered_tool_names(client):
     """Registration smoke test: the wrapper unit tests import the functions
     directly, so only this catches a tool missing from server.py's
@@ -213,4 +224,5 @@ async def test_registered_tool_names(client):
         "drop_obs_columns",
         "strip_forbidden_obs_columns",
         "check_raw_counts",
+        "check_duplicate_cells",
     } <= names
