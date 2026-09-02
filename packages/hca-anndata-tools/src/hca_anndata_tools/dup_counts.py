@@ -219,8 +219,9 @@ def _group_duplicates(
     bucket is contiguous in that order, every bucket but the one that may
     straddle the batch boundary is complete when the batch ends and is
     emitted and released then — so memory is one batch plus one bucket, not
-    one copy of every distinct duplicated row. Groups come back ascending by
-    first member.
+    one copy of every distinct duplicated row. The key holds indices and data
+    as separate members, so two rows group only when both match exactly.
+    Groups come back ascending by first member.
     """
     values, counts = np.unique(hashes[stored], return_counts=True)
     colliding = values[counts > 1]
@@ -232,7 +233,7 @@ def _group_duplicates(
     reader = _RowReader(f, cm)
     offsets = np.concatenate([[0], np.cumsum(reader.sizes(candidates))])
     groups: list[list[int]] = []
-    pending: dict[tuple[int, bytes], list[int]] = defaultdict(list)
+    pending: dict[tuple[int, bytes, bytes], list[int]] = defaultdict(list)
 
     def emit(complete_before: int | None) -> None:
         """Move every bucket whose hash is not ``complete_before`` out of ``pending``."""
@@ -248,7 +249,7 @@ def _group_duplicates(
         indptr, indices, data = np.asarray(m.indptr), np.asarray(m.indices), np.asarray(m.data)
         for i, row in enumerate(ascending):
             a, b = int(indptr[i]), int(indptr[i + 1])
-            pending[(int(hashes[row]), indices[a:b].tobytes() + data[a:b].tobytes())].append(int(row))
+            pending[(int(hashes[row]), indices[a:b].tobytes(), data[a:b].tobytes())].append(int(row))
         del m, indptr, indices, data
         emit(complete_before=int(hashes[batch[-1]]))  # the last hash may continue into the next batch
     emit(complete_before=None)
