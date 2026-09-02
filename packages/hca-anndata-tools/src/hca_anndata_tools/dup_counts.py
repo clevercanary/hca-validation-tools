@@ -117,8 +117,10 @@ SAMPLE_GROUP_LIMIT = 20
 
 
 def _row_hash(values: np.ndarray) -> np.int64:
-    """A stable 64-bit hash of a row's canonical values (deviation 4)."""
-    return np.frombuffer(hashlib.blake2b(values.tobytes(), digest_size=8).digest(), dtype=np.int64)[0]
+    """A stable 64-bit hash of a row's canonical values (deviation 4).
+
+    Decoded little-endian so the same digest is the same integer on any host."""
+    return np.frombuffer(hashlib.blake2b(values.tobytes(), digest_size=8).digest(), dtype="<i8")[0]
 
 
 def _non_canonical_rows(m: sp.csr_matrix) -> int:
