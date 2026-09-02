@@ -104,7 +104,7 @@ from .qc import (
     DEFAULT_CHUNK_NNZ,
     SAMPLE_ID_LIMIT,
     CountMatrix,
-    _chunk_bounds,
+    chunk_bounds,
     dense_block_as_csr,
     finding,
     iter_matrix_chunks,
@@ -241,7 +241,7 @@ def _group_duplicates(
             if len(members) > 1:
                 groups.append(sorted(members))
 
-    for start, stop in _chunk_bounds(offsets, chunk_nnz):
+    for start, stop in chunk_bounds(offsets, chunk_nnz):
         batch = candidates[start:stop]
         ascending = np.sort(batch)  # the reader wants rows ascending; hash order is restored by key
         m = reader.read(ascending)

@@ -67,7 +67,7 @@ class MatrixChunk:
     matrix: sp.csr_matrix | sp.csc_matrix
 
 
-def _chunk_bounds(indptr: np.ndarray, chunk_nnz: int) -> Iterator[tuple[int, int]]:
+def chunk_bounds(indptr: np.ndarray, chunk_nnz: int) -> Iterator[tuple[int, int]]:
     """Consecutive ``(start, stop)`` ranges along the compressed axis whose
     stored entries fit in ``chunk_nnz``. A range is never empty: a single row
     or column over budget is yielded alone."""
@@ -129,7 +129,7 @@ def iter_matrix_chunks(
     ds = sparse_dataset(item)
     indptr = np.asarray(item["indptr"][:])  # pyright: ignore[reportIndexIssue]
     along: Literal["row", "col"] = "row" if fmt == "csr" else "col"
-    for start, stop in _chunk_bounds(indptr, chunk_nnz):
+    for start, stop in chunk_bounds(indptr, chunk_nnz):
         slab = ds[start:stop] if along == "row" else ds[:, start:stop]
         yield MatrixChunk(along, start, slab)  # pyright: ignore[reportArgumentType]
         del slab  # otherwise it lives until the next read completes: two chunks resident
@@ -205,6 +205,7 @@ def _walk(f: h5py.File, key: str, n_obs: int, n_var: int, chunk_nnz: int, check_
         m.eliminate_zeros()  # an explicit zero is not a count; NaN survives (NaN != 0)
         data = m.data
         if data.size == 0:
+            del chunk, m, data  # nothing to tally, but still the last reference to the slab
             continue
         indptr = np.asarray(m.indptr)
         indices = np.asarray(m.indices)
