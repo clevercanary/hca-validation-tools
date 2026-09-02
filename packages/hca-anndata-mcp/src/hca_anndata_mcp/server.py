@@ -133,7 +133,6 @@ mcp = FastMCP(
         "plus cells with no counts and genes detected nowhere; empty findings with "
         "integer_check.status 'applied' means the counts are clean, while 'not_applicable' means "
         "the file has no raw matrix and X is not counts, "
-        "check_duplicate_cells to find cells whose count rows are byte-identical, "
         "check_schema_type to identify CellxGENE vs HCA layout and report the schema version, "
         "validate_schema to run the HCA schema validator and report is_valid / errors / warnings, "
         "validate_cell_annotation to run the HCA Cell Annotation validator (structural CAP checks: "
