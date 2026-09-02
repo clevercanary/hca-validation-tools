@@ -17,10 +17,12 @@ import pandas as pd
 import pytest
 import scipy.sparse as sp
 
+from hca_anndata_tools._errors import Refusal
 from hca_anndata_tools.qc import SAMPLE_ID_LIMIT, check_raw_counts, iter_matrix_chunks
 from hca_anndata_tools.testing import make_nullable_index
 
 FORMATS = ["csr", "csc", "dense"]
+_AS_FORMAT = {"csr": sp.csr_matrix, "csc": sp.csc_matrix, "dense": np.asarray}
 
 # 6 cells x 5 genes, every row and column non-zero, integer-valued floats.
 BASE = np.array(
@@ -36,25 +38,17 @@ BASE = np.array(
 )
 
 
-def _as_format(dense: np.ndarray, fmt: str):
-    if fmt == "csr":
-        return sp.csr_matrix(dense)
-    if fmt == "csc":
-        return sp.csc_matrix(dense)
-    return np.asarray(dense)
-
-
 def _write(path, X: np.ndarray, fmt: str, *, raw: np.ndarray | None = None, var_extra: dict | None = None):
     """Write ``X`` (and optionally ``raw``) in ``fmt``. Cell IDs are ``c<i>``, genes ``g<j>``."""
     n_obs, n_var = X.shape
     adata = ad.AnnData(
-        X=_as_format(X, fmt),
+        X=_AS_FORMAT[fmt](X),
         obs=pd.DataFrame(index=[f"c{i}" for i in range(n_obs)]),  # pyright: ignore[reportArgumentType]
         var=pd.DataFrame(var_extra or {}, index=[f"g{j}" for j in range(n_var)]),  # pyright: ignore[reportArgumentType]
     )
     if raw is not None:
         adata.raw = ad.AnnData(
-            X=_as_format(raw, fmt),
+            X=_AS_FORMAT[fmt](raw),
             var=pd.DataFrame(index=[f"g{j}" for j in range(raw.shape[1])]),  # pyright: ignore[reportArgumentType]
         )
     adata.write_h5ad(path)
@@ -68,27 +62,23 @@ def _codes(result: dict) -> dict[str, dict]:
 
 # --- one fixture per finding code, gated matrix is raw/X ---------------------
 
-
-def _with(defect):
-    m = BASE.copy()
-    defect(m)
-    return m
-
-
+# code -> (index into BASE, value written there, IDs the finding must name)
 DEFECTS = {
-    "negative_values": (lambda m: m.__setitem__((1, 1), -3.0), 1, ["c1"]),
-    "non_finite_values": (lambda m: m.__setitem__((2, 3), np.nan), 1, ["c2"]),
-    "non_integer_values": (lambda m: m.__setitem__((3, 2), 2.5), 1, ["c3"]),
-    "zero_count_cells": (lambda m: m.__setitem__((4, slice(None)), 0.0), 1, ["c4"]),
-    "undetected_genes": (lambda m: m.__setitem__((slice(None), 2), 0.0), 1, ["g2"]),
+    "negative_values": ((1, 1), -3.0, ["c1"]),
+    "non_finite_values": ((2, 3), np.nan, ["c2"]),
+    "non_integer_values": ((3, 2), 2.5, ["c3"]),
+    "zero_count_cells": ((4, slice(None)), 0.0, ["c4"]),
+    "undetected_genes": ((slice(None), 2), 0.0, ["g2"]),
 }
 
 
 @pytest.mark.parametrize("fmt", FORMATS)
 @pytest.mark.parametrize("code", list(DEFECTS))
 def test_each_code_fires_alone_on_raw_x(tmp_path, fmt, code):
-    defect, count, ids = DEFECTS[code]
-    path = _write(tmp_path / f"{code}.h5ad", BASE, fmt, raw=_with(defect))
+    index, value, ids = DEFECTS[code]
+    raw = BASE.copy()
+    raw[index] = value
+    path = _write(tmp_path / f"{code}.h5ad", BASE, fmt, raw=raw)
 
     result = check_raw_counts(str(path))
 
@@ -97,7 +87,7 @@ def test_each_code_fires_alone_on_raw_x(tmp_path, fmt, code):
     assert result["integer_check"]["status"] == "applied"
     found = _codes(result)
     assert list(found) == [code]
-    assert found[code]["count"] == count
+    assert found[code]["count"] == 1
     assert found[code]["sample_ids"] == ids
     assert found[code]["matrix"] == "raw/X"
 
@@ -111,16 +101,8 @@ def test_clean_matrix_yields_no_findings(tmp_path, fmt):
     assert _codes(result) == {}
     assert result["n_obs"] == 6
     assert result["n_var"] == 5
-    assert result["dtype"] == "float32"
+    assert result["dtype"] == "float32"  # float storage of integer values passes the integer criterion
     assert result["nnz"] == (None if fmt == "dense" else int(np.count_nonzero(BASE)))
-    assert result["chunks"] >= 1
-
-
-def test_float_dtype_with_integer_values_passes_integer_criterion(tmp_path):
-    path = _write(tmp_path / "f.h5ad", BASE, "csr", raw=BASE)
-    result = check_raw_counts(str(path))
-    assert result["dtype"] == "float32"
-    assert "non_integer_values" not in _codes(result)
 
 
 def test_integer_dtype_skips_float_only_criteria(tmp_path):
@@ -232,7 +214,6 @@ def test_empty_matrix_is_the_only_finding(tmp_path, shape):
     result = check_raw_counts(str(path))
 
     assert [f["code"] for f in result["findings"]] == ["empty_matrix"]
-    assert result["chunks"] == 0
 
 
 def test_nullable_string_index_runs_to_completion(tmp_path):
@@ -271,7 +252,7 @@ def test_missing_file_names_the_path(tmp_path):
     assert result["error"].startswith("File not found")
 
 
-# --- bounded memory: many chunks, same answer -------------------------------
+# --- the chunk iterator: bounded memory, same answer, the axis contract ------
 
 
 @pytest.mark.parametrize("fmt", FORMATS)
@@ -287,7 +268,7 @@ def test_chunks_respect_the_budget_and_agree_with_one_pass(tmp_path, fmt):
     path = _write(tmp_path / "big.h5ad", m, fmt, raw=m)
 
     with h5py.File(path, "r") as f:
-        chunks = list(iter_matrix_chunks(f, "raw/X", budget))
+        chunks = list(iter_matrix_chunks(f, "raw/X", budget, axis="any"))
     assert len(chunks) > 1
     for chunk in chunks:
         assert chunk.matrix.nnz <= budget or (chunk.matrix.shape[0 if chunk.axis == "row" else 1] == 1)
@@ -298,12 +279,7 @@ def test_chunks_respect_the_budget_and_agree_with_one_pass(tmp_path, fmt):
     assert [c.start for c in chunks] == sorted(c.start for c in chunks)
 
     chunked = check_raw_counts(str(path), chunk_nnz=budget)
-    whole = check_raw_counts(str(path))
-    assert chunked["chunks"] > 1
-    assert whole["chunks"] == 1
-    chunked.pop("chunks")
-    whole.pop("chunks")
-    assert chunked == whole
+    assert chunked == check_raw_counts(str(path))
     assert set(_codes(chunked)) == {
         "negative_values",
         "zero_count_cells",
@@ -313,9 +289,22 @@ def test_chunks_respect_the_budget_and_agree_with_one_pass(tmp_path, fmt):
     }
 
 
-def test_csc_is_walked_by_column(tmp_path):
+def test_csc_is_walked_by_column_only_on_request(tmp_path):
+    """The seam #677 is written against: a row consumer must not silently
+    receive column slabs."""
     path = _write(tmp_path / "csc.h5ad", BASE, "csc", raw=BASE)
     with h5py.File(path, "r") as f:
-        chunks = list(iter_matrix_chunks(f, "raw/X", 4))
+        with pytest.raises(Refusal, match="csc_matrix.*axis='any'"):
+            list(iter_matrix_chunks(f, "raw/X", 4))
+        chunks = list(iter_matrix_chunks(f, "raw/X", 4, axis="any"))
     assert {c.axis for c in chunks} == {"col"}
     assert sum(c.matrix.shape[1] for c in chunks) == 5
+
+
+@pytest.mark.parametrize("fmt", ["csr", "dense"])
+def test_row_walk_is_the_default_for_row_formats(tmp_path, fmt):
+    path = _write(tmp_path / "rows.h5ad", BASE, fmt, raw=BASE)
+    with h5py.File(path, "r") as f:
+        chunks = list(iter_matrix_chunks(f, "raw/X", 4))
+    assert {c.axis for c in chunks} == {"row"}
+    assert sum(c.matrix.shape[0] for c in chunks) == 6

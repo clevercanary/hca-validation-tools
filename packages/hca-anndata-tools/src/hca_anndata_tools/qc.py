@@ -14,7 +14,9 @@ files the write tools refuse.
 
 The chunk iterator is public on purpose. #677 (duplicate cells by row hash)
 needs exactly this pass and must not pay for a second one; it hashes each
-chunk's rows as they go by.
+chunk's rows as they go by. ``_walk`` is likewise the per-chunk consumer the
+sibling reports (#687 per-cell totals, #688 gene-subset fractions) extend
+rather than re-run.
 """
 
 from __future__ import annotations
@@ -22,7 +24,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, cast
+from typing import Literal
 
 import h5py
 import numpy as np
@@ -30,25 +32,22 @@ import scipy.sparse as sp
 from anndata.io import sparse_dataset
 
 from ._errors import Refusal, failure_result
-from ._io import encoding_of, gate_h5ad_paths, obs_index_name, read_index
-from ._serialize import make_serializable
-from .inspect import _DEFAULT_SAMPLE_SIZE, _classify_x_at_path
+from ._io import describe_matrix, gate_h5ad_paths, obs_index_name, read_index
+from .inspect import resolve_count_matrix
 from .write import resolve_latest
 
-# Stored entries per chunk. Bounds peak memory by the size of one chunk's
-# data + indices (float32 + int32: ~8 bytes an entry, so ~160 MB here) rather
-# than by the matrix, whatever the cell count. A single row or column holding
-# more than this is read whole — the bound is per chunk, and a chunk is never
-# smaller than one row.
+# Stored entries per chunk. Bounds peak memory by the size of one chunk —
+# data + indices on disk (float32 + int32: 8 bytes an entry, 160 MB here) plus
+# the boolean masks built over it — rather than by the matrix, whatever the
+# cell count. A single row or column holding more than this is read whole:
+# the bound is per chunk, and a chunk is never smaller than one row.
 DEFAULT_CHUNK_NNZ = 20_000_000
 
 # IDs reported per finding. Enough to recognise a pattern (one sample, one
 # prefix), not enough to fill a caller's context.
 SAMPLE_ID_LIMIT = 20
 
-MatrixFormat = Literal["csr", "csc", "dense"]
-
-_SPARSE_ENCODINGS: dict[str, MatrixFormat] = {"csr_matrix": "csr", "csc_matrix": "csc"}
+_VALUE_CODES = ("negative_values", "non_finite_values", "non_integer_values")
 
 
 @dataclass(frozen=True)
@@ -57,40 +56,12 @@ class MatrixChunk:
 
     ``axis`` says which dimension the slab spans: ``"row"`` for CSR and dense
     matrices (``matrix`` is rows ``start:start+n`` x all columns), ``"col"``
-    for CSC (all rows x columns ``start:start+n``). CSC is walked by column
-    because that is the axis it stores contiguously; slicing it by row reads
-    the whole matrix per slice.
+    for CSC (all rows x columns ``start:start+n``).
     """
 
     axis: Literal["row", "col"]
     start: int
     matrix: sp.csr_matrix | sp.csc_matrix
-
-
-def describe_matrix(
-    item: h5py.Group | h5py.Dataset | h5py.Datatype, key: str
-) -> tuple[MatrixFormat, tuple[int, int], str]:
-    """The walkable format, shape, and stored dtype of the matrix at ``key``.
-
-    Raises:
-        Refusal: The element is neither a dense 2-D dataset nor a sparse
-            group stamped ``csr_matrix`` / ``csc_matrix``. Not reachable
-            through today's anndata pin, which reads nothing else into ``X``;
-            named here so that an anndata that learns a new format fails this
-            gate loudly instead of being walked as if it were CSR.
-    """
-    if isinstance(item, h5py.Dataset):
-        if item.ndim != 2:
-            raise Refusal(f"{key} is a {item.ndim}-D dataset; the count gate walks 2-D matrices only")
-        return "dense", (int(item.shape[0]), int(item.shape[1])), str(item.dtype)
-    if isinstance(item, h5py.Group) and (fmt := _SPARSE_ENCODINGS.get(encoding_of(item) or "")):
-        shape = tuple(int(n) for n in item.attrs["shape"])
-        data = item["data"]
-        assert isinstance(data, h5py.Dataset)
-        return fmt, (shape[0], shape[1]), str(data.dtype)
-    raise Refusal(
-        f"{key} has encoding {encoding_of(item)!r}; the count gate reads csr_matrix, csc_matrix, and dense arrays"
-    )
 
 
 def _chunk_bounds(indptr: np.ndarray, chunk_nnz: int) -> Iterator[tuple[int, int]]:
@@ -102,12 +73,21 @@ def _chunk_bounds(indptr: np.ndarray, chunk_nnz: int) -> Iterator[tuple[int, int
     while start < n:
         stop = int(np.searchsorted(indptr, indptr[start] + chunk_nnz, side="right")) - 1
         stop = max(stop, start + 1)
-        yield start, min(stop, n)
+        yield start, stop
         start = stop
 
 
-def iter_matrix_chunks(f: h5py.File, key: str, chunk_nnz: int = DEFAULT_CHUNK_NNZ) -> Iterator[MatrixChunk]:
+def iter_matrix_chunks(
+    f: h5py.File, key: str, chunk_nnz: int = DEFAULT_CHUNK_NNZ, *, axis: Literal["row", "any"] = "row"
+) -> Iterator[MatrixChunk]:
     """Walk the matrix at ``key`` in slabs of at most ``chunk_nnz`` stored entries.
+
+    ``axis`` is what the consumer needs. ``"row"`` (the default, and what a
+    per-cell consumer such as #677's row hash wants) refuses a CSC matrix by
+    name: CSC stores columns contiguously, so a bounded row slab is not
+    available from it. ``"any"`` accepts CSC and walks it by column, for a
+    consumer that only needs every stored entry once, whichever way it
+    arrives — this gate.
 
     Sparse matrices are read through anndata's backed classes
     (``anndata.io.sparse_dataset``): a range slice on the compressed axis is
@@ -127,27 +107,22 @@ def iter_matrix_chunks(f: h5py.File, key: str, chunk_nnz: int = DEFAULT_CHUNK_NN
         assert isinstance(item, h5py.Dataset)
         rows_per_block = max(1, chunk_nnz // max(n_cols, 1))
         for start in range(0, n_rows, rows_per_block):
-            block = np.asarray(item[start : start + rows_per_block, :])
-            yield MatrixChunk("row", start, sp.csr_matrix(block))
+            yield MatrixChunk("row", start, sp.csr_matrix(item[start : start + rows_per_block, :]))
         return
+
+    if fmt == "csc" and axis == "row":
+        raise Refusal(
+            f"{key} is csc_matrix, which cannot be walked by row in bounded memory; "
+            f"pass axis='any' to walk it by column"
+        )
 
     assert isinstance(item, h5py.Group)
     ds = sparse_dataset(item)
     indptr = np.asarray(item["indptr"][:])  # pyright: ignore[reportIndexIssue]
-    if fmt == "csr":
-        for start, stop in _chunk_bounds(indptr, chunk_nnz):
-            yield MatrixChunk("row", start, ds[start:stop])  # pyright: ignore[reportArgumentType]
-    else:
-        for start, stop in _chunk_bounds(indptr, chunk_nnz):
-            yield MatrixChunk("col", start, ds[:, start:stop])  # pyright: ignore[reportArgumentType]
-
-
-def _entry_positions(chunk: MatrixChunk) -> tuple[np.ndarray, np.ndarray]:
-    """Global ``(row, col)`` of every stored entry in the chunk, in data order."""
-    indptr = np.asarray(chunk.matrix.indptr)
-    along = np.repeat(np.arange(len(indptr) - 1), np.diff(indptr)) + chunk.start
-    across = np.asarray(chunk.matrix.indices)
-    return (along, across) if chunk.axis == "row" else (across, along)
+    along: Literal["row", "col"] = "row" if fmt == "csr" else "col"
+    for start, stop in _chunk_bounds(indptr, chunk_nnz):
+        slab = ds[start:stop] if along == "row" else ds[:, start:stop]
+        yield MatrixChunk(along, start, slab)  # pyright: ignore[reportArgumentType]
 
 
 def _finding(code: str, count: int, ids: np.ndarray, matrix: str) -> dict:
@@ -159,45 +134,56 @@ def _finding(code: str, count: int, ids: np.ndarray, matrix: str) -> dict:
     }
 
 
-def _walk(f: h5py.File, key: str, n_obs: int, n_var: int, dtype: str, chunk_nnz: int, check_integers: bool) -> dict:
-    """The single pass. Returns per-code value counts, per-row flags, and
-    per-column seen flags; the caller turns them into findings."""
-    integer_dtype = np.dtype(dtype).kind in "iu"
-    counts = {"negative_values": 0, "non_finite_values": 0, "non_integer_values": 0}
-    flagged = {code: np.zeros(n_obs, dtype=bool) for code in counts}
-    row_nonzero = np.zeros(n_obs, dtype=np.int64)
-    col_seen = np.zeros(n_var, dtype=bool)
-    chunks = 0
+def _walk(f: h5py.File, key: str, n_obs: int, n_var: int, chunk_nnz: int, check_integers: bool) -> tuple:
+    """The single pass. Returns ``(counts, flagged, genes_per_cell, gene_seen)``:
+    per-code value counts, per-code cell flags, stored values per cell, and
+    whether each gene has a stored value anywhere.
 
-    for chunk in iter_matrix_chunks(f, key, chunk_nnz):
-        chunks += 1
-        data = np.asarray(chunk.matrix.data)
+    Nothing here is sized by the chunk's entry count except the masks over
+    ``data``: flagged cells come from ``searchsorted`` on ``indptr`` for the
+    few hits, and the per-cell / per-gene tallies come from ``indptr`` and a
+    boolean scatter of ``indices``. Building a per-entry row array was
+    measured at 3x the whole walk's cost on a 20M-entry chunk.
+    """
+    counts: dict[str, int] = dict.fromkeys(_VALUE_CODES, 0)
+    flagged = {code: np.zeros(n_obs, dtype=bool) for code in _VALUE_CODES}
+    genes_per_cell = np.zeros(n_obs, dtype=np.int64)
+    gene_seen = np.zeros(n_var, dtype=bool)
+
+    for chunk in iter_matrix_chunks(f, key, chunk_nnz, axis="any"):
+        m = chunk.matrix
+        m.eliminate_zeros()  # an explicit zero is not a count; NaN survives (NaN != 0)
+        data = m.data
         if data.size == 0:
             continue
-        rows, cols = _entry_positions(chunk)
+        indptr = np.asarray(m.indptr)
+        indices = np.asarray(m.indices)
 
-        finite = np.ones(data.shape, dtype=bool) if integer_dtype else np.isfinite(data)
-        masks = {"negative_values": finite & (data < 0)}
-        if not integer_dtype:
-            masks["non_finite_values"] = ~finite
-            if check_integers:
-                # Same test check_x_normalization applies to its sample.
-                masks["non_integer_values"] = finite & (np.mod(data, 1) != 0)
+        finite = np.isfinite(data)
+        masks = {"negative_values": finite & (data < 0), "non_finite_values": ~finite}
+        if check_integers and data.dtype.kind == "f":
+            masks["non_integer_values"] = finite & (data != np.floor(data))
         for code, mask in masks.items():
-            if mask.any():
-                counts[code] += int(mask.sum())
-                flagged[code][rows[mask]] = True
+            hits = np.flatnonzero(mask)
+            if hits.size:
+                counts[code] += int(hits.size)
+                along = np.searchsorted(indptr, hits, side="right") - 1 + chunk.start
+                flagged[code][along if chunk.axis == "row" else indices[hits]] = True
 
-        nonzero = data != 0  # NaN != 0: a non-finite entry still counts as "a value is here"
-        row_nonzero += np.bincount(rows[nonzero], minlength=n_obs)
-        col_seen |= np.bincount(cols[nonzero], minlength=n_var) > 0
+        stored = np.diff(indptr)
+        if chunk.axis == "row":
+            genes_per_cell[chunk.start : chunk.start + stored.size] += stored
+            gene_seen[indices] = True
+        else:
+            gene_seen[chunk.start : chunk.start + stored.size] |= stored > 0
+            genes_per_cell += np.bincount(indices, minlength=n_obs)
 
-    return {"counts": counts, "flagged": flagged, "row_nonzero": row_nonzero, "col_seen": col_seen, "chunks": chunks}
+    return counts, flagged, genes_per_cell, gene_seen
 
 
 def _check_raw_counts_at_path(path: str, chunk_nnz: int) -> dict:
     with h5py.File(path, "r") as f:
-        key = "raw/X" if "raw/X" in f else "X"
+        key, integer_check = resolve_count_matrix(f)
         item = f[key]
         fmt, (n_obs, n_var), dtype = describe_matrix(item, key)
         nnz = None
@@ -206,19 +192,32 @@ def _check_raw_counts_at_path(path: str, chunk_nnz: int) -> dict:
             assert isinstance(indptr, h5py.Dataset)
             nnz = int(indptr[-1])
 
-    # Without raw.X the integer criterion has meaning only if X still holds
-    # counts. The package's own classifier decides; its verdict is the
-    # reason, verbatim, so the result never hedges.
-    integer_check = {"status": "applied", "reason": f"{key} is gated as the raw count matrix"}
-    if key == "X":
-        verdict = _classify_x_at_path(path, _DEFAULT_SAMPLE_SIZE)["verdict"]
-        if verdict == "normalized":
-            integer_check = {
-                "status": "not_applicable",
-                "reason": "no raw.X, and check_x_normalization classifies X as normalized",
-            }
+        findings = []
+        if n_obs == 0 or n_var == 0:
+            findings.append(_finding("empty_matrix", 1, np.asarray([]), key))
+        else:
+            obs = f["obs"]
+            obs_ids = read_index(obs, obs_index_name(obs), "obs")
+            counts, flagged, genes_per_cell, gene_seen = _walk(
+                f, key, n_obs, n_var, chunk_nnz, integer_check["status"] == "applied"
+            )
+            for code in _VALUE_CODES:
+                if counts[code]:
+                    findings.append(_finding(code, counts[code], obs_ids[flagged[code]], key))
+            zero_rows = np.flatnonzero(genes_per_cell == 0)
+            if zero_rows.size:
+                findings.append(_finding("zero_count_cells", zero_rows.size, obs_ids[zero_rows], key))
+            # On X this is the vendored validator's check (feature_is_filtered),
+            # and two tools disagreeing about one gene helps nobody; raw.X has
+            # no such check anywhere else.
+            if key == "raw/X":
+                unseen = np.flatnonzero(~gene_seen)
+                if unseen.size:
+                    var = f["raw/var"]
+                    var_ids = read_index(var, obs_index_name(var), "raw.var")
+                    findings.append(_finding("undetected_genes", unseen.size, var_ids[unseen], key))
 
-    result = {
+    return {
         "filename": Path(path).name,
         "matrix": key,
         "format": fmt,
@@ -227,38 +226,8 @@ def _check_raw_counts_at_path(path: str, chunk_nnz: int) -> dict:
         "n_var": n_var,
         "nnz": nnz,
         "integer_check": integer_check,
-        "chunks": 0,
-        "findings": [],
+        "findings": findings,
     }
-    if n_obs == 0 or n_var == 0:
-        result["findings"] = [_finding("empty_matrix", 1, np.asarray([]), key)]
-        return result
-
-    with h5py.File(path, "r") as f:
-        obs = f["obs"]
-        obs_ids = read_index(obs, obs_index_name(obs), "obs")
-        var = f["raw/var"] if key == "raw/X" else f["var"]
-        var_ids = read_index(var, obs_index_name(var), "raw.var" if key == "raw/X" else "var")
-        walked = _walk(f, key, n_obs, n_var, dtype, chunk_nnz, integer_check["status"] == "applied")
-
-    findings = []
-    for code in ("negative_values", "non_finite_values", "non_integer_values"):
-        if walked["counts"][code]:
-            findings.append(_finding(code, walked["counts"][code], obs_ids[walked["flagged"][code]], key))
-    zero_rows = np.flatnonzero(walked["row_nonzero"] == 0)
-    if zero_rows.size:
-        findings.append(_finding("zero_count_cells", zero_rows.size, obs_ids[zero_rows], key))
-    # On X this is the vendored validator's check (feature_is_filtered), and
-    # two tools disagreeing about one gene helps nobody; raw.X has no such
-    # check anywhere else.
-    if key == "raw/X":
-        unseen = np.flatnonzero(~walked["col_seen"])
-        if unseen.size:
-            findings.append(_finding("undetected_genes", unseen.size, var_ids[unseen], key))
-
-    result["chunks"] = walked["chunks"]
-    result["findings"] = findings
-    return cast(dict, make_serializable(result))
 
 
 @gate_h5ad_paths
@@ -278,9 +247,8 @@ def check_raw_counts(path: str, chunk_nnz: int = DEFAULT_CHUNK_NNZ) -> dict:
         ``format`` (``csr`` / ``csc`` / ``dense``), ``dtype``, ``n_obs``,
         ``n_var``, ``nnz`` (``None`` for dense), ``integer_check``
         (``status`` ``applied`` / ``not_applicable`` with its ``reason``),
-        ``chunks`` read, and ``findings`` — empty when the matrix is clean.
-        Each finding: ``code``, ``count``, ``sample_ids`` (at most 20),
-        ``matrix``. Codes:
+        and ``findings`` — empty when the matrix is clean. Each finding:
+        ``code``, ``count``, ``sample_ids`` (at most 20), ``matrix``. Codes:
 
         - ``negative_values`` — count of values below zero; IDs of cells holding one
         - ``non_finite_values`` — count of NaN / Inf; IDs of cells holding one

@@ -14,12 +14,12 @@ import os
 import warnings
 from contextlib import contextmanager, suppress
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, ParamSpec
+from typing import TYPE_CHECKING, Literal, ParamSpec, cast
 
 import anndata as ad
 import h5py
 import pandas as pd
-from anndata.io import read_elem, write_elem
+from anndata.io import read_elem, sparse_dataset, write_elem
 
 from ._errors import Refusal
 from ._keys import EDIT_LOG_KEY, MASKED_STRING_REMEDY, PROVENANCE_KEY
@@ -294,6 +294,39 @@ def encoding_of(item: h5py.Group | h5py.Dataset | h5py.Datatype) -> str | None:
     neither an isinstance dance nor a pyright suppression.
     """
     return _decode_bytes(item.attrs.get("encoding-type"))
+
+
+MatrixFormat = Literal["csr", "csc", "dense"]
+
+_SPARSE_MATRIX_ENCODINGS = ("csr_matrix", "csc_matrix")
+
+
+def describe_matrix(
+    item: h5py.Group | h5py.Dataset | h5py.Datatype, key: str
+) -> tuple[MatrixFormat, tuple[int, int], str]:
+    """The walkable format, shape, and stored dtype of the matrix at ``key``.
+
+    The matrix taxonomy's one home, as :func:`holds_string_values` is for
+    strings: a dense 2-D dataset, or a sparse group anndata's backed classes
+    read — which also answer the shape and dtype, so nothing is re-derived
+    from attrs here.
+
+    Raises:
+        Refusal: Anything else. Not reachable through today's anndata pin,
+            which reads nothing else into ``X``; named so that an anndata
+            that learns a new format fails loudly instead of being walked as
+            if it were CSR.
+    """
+    if isinstance(item, h5py.Dataset):
+        if item.ndim != 2:
+            raise Refusal(f"{key} is a {item.ndim}-D dataset; the matrix readers walk 2-D matrices only")
+        return "dense", (int(item.shape[0]), int(item.shape[1])), str(item.dtype)
+    if isinstance(item, h5py.Group) and encoding_of(item) in _SPARSE_MATRIX_ENCODINGS:
+        ds = sparse_dataset(item)
+        return cast(MatrixFormat, ds.format), (int(ds.shape[0]), int(ds.shape[1])), str(ds.dtype)
+    raise Refusal(
+        f"{key} has encoding {encoding_of(item)!r}; the matrix readers walk csr_matrix, csc_matrix, and dense arrays"
+    )
 
 
 def holds_string_values(item: h5py.Group | h5py.Dataset | h5py.Datatype) -> bool:

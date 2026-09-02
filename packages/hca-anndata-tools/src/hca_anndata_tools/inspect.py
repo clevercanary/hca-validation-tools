@@ -199,6 +199,28 @@ def _verdict_from_sample(sample: np.ndarray) -> dict:
     }
 
 
+def resolve_count_matrix(f: h5py.File) -> tuple[str, dict]:
+    """Which matrix holds the counts, and whether it can be trusted as counts.
+
+    ``raw/X`` when present. Otherwise ``X`` — and then the sampled verdict
+    decides: a lone ``X`` the sample calls normalized is not counts, and any
+    criterion that only makes sense on counts (integer-valued, per-cell
+    totals) has no meaning on it. Returned as ``status`` ``applied`` /
+    ``not_applicable`` with the verdict as its ``reason``, verbatim, so the
+    tools that share this decision (#686, #677, #687, #688) never spell it
+    differently and never hedge.
+    """
+    if "raw/X" in f:
+        return "raw/X", {"status": "applied", "reason": "raw/X is gated as the raw count matrix"}
+    verdict = _verdict_from_sample(_sample_matrix(f, "X", _DEFAULT_SAMPLE_SIZE))["verdict"]
+    if verdict == "normalized":
+        return "X", {
+            "status": "not_applicable",
+            "reason": "no raw.X, and check_x_normalization classifies X as normalized",
+        }
+    return "X", {"status": "applied", "reason": f"no raw.X; check_x_normalization classifies X as {verdict}"}
+
+
 def _classify_matrix_at_path(path: str, key: str, sample_size: int) -> dict:
     """Sample the matrix at ``key`` and return its verdict dict.
 
