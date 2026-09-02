@@ -7,6 +7,7 @@ from pathlib import Path
 import h5py
 import numpy as np
 
+from ._errors import Refusal
 from ._io import gate_h5ad_paths
 from .cap import cellxgene_schema_version
 from .write import resolve_latest
@@ -212,6 +213,8 @@ def resolve_count_matrix(f: h5py.File) -> tuple[str, dict]:
     """
     if "raw/X" in f:
         return "raw/X", {"status": "applied", "reason": "raw/X is gated as the raw count matrix"}
+    if "X" not in f:
+        raise Refusal("neither raw/X nor X is present; there is no count matrix to gate")
     verdict = _verdict_from_sample(_sample_matrix(f, "X", _DEFAULT_SAMPLE_SIZE))["verdict"]
     if verdict == "normalized":
         return "X", {

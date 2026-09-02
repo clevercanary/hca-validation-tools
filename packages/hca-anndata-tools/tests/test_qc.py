@@ -308,3 +308,59 @@ def test_row_walk_is_the_default_for_row_formats(tmp_path, fmt):
         chunks = list(iter_matrix_chunks(f, "raw/X", 4))
     assert {c.axis for c in chunks} == {"row"}
     assert sum(c.matrix.shape[0] for c in chunks) == 6
+
+
+# --- refusals for files the gate opens but the walk cannot trust ------------
+
+
+def test_file_with_no_matrix_is_refused_by_name(tmp_path):
+    path = tmp_path / "nox.h5ad"
+    ad.AnnData(
+        obs=pd.DataFrame(index=["c0", "c1"]),  # pyright: ignore[reportArgumentType]
+        var=pd.DataFrame(index=["g0"]),  # pyright: ignore[reportArgumentType]
+    ).write_h5ad(path)
+
+    result = check_raw_counts(str(path))
+
+    assert "neither raw/X nor X" in result["error"]
+    assert "traceback" not in result
+
+
+def test_obs_shorter_than_matrix_is_refused_by_name(tmp_path):
+    m = BASE.copy()
+    m[1, 1] = -3.0
+    path = _write(tmp_path / "short-obs.h5ad", BASE, "csr", raw=m)
+    with h5py.File(path, "r+") as f:
+        obs = f["obs"]
+        del obs["_index"]
+        obs.create_dataset("_index", data=np.array([f"c{i}" for i in range(4)], dtype="S"))
+        obs["_index"].attrs["encoding-type"] = "string-array"
+        obs["_index"].attrs["encoding-version"] = "0.2.0"
+
+    result = check_raw_counts.__wrapped__(str(path))  # pyright: ignore[reportFunctionMemberAccess]
+
+    assert "obs has 4 IDs but raw/X has 6 rows" in result["error"]
+    assert "traceback" not in result
+
+
+def test_raw_x_without_raw_var_is_refused_before_the_walk(tmp_path):
+    """Refused whether or not a gene happens to be all-zero: the refusal must
+    not depend on the data."""
+    path = _write(tmp_path / "no-raw-var.h5ad", BASE, "csr", raw=BASE)
+    with h5py.File(path, "r+") as f:
+        del f["raw/var"]
+
+    result = check_raw_counts.__wrapped__(str(path))  # pyright: ignore[reportFunctionMemberAccess]
+
+    assert "raw/var is not" in result["error"]
+    assert "traceback" not in result
+
+
+def test_chunk_bounds_do_not_wrap_on_int32_indptr():
+    """scipy stores indptr as int32 while nnz fits; adding the budget in that
+    dtype wraps negative near 2^31 and would force one-row chunks."""
+    from hca_anndata_tools.qc import _chunk_bounds
+
+    indptr = np.array([0, 2_140_000_000, 2_140_000_005, 2_140_000_010], dtype=np.int32)
+    bounds = list(_chunk_bounds(indptr, 20_000_000))
+    assert bounds == [(0, 1), (1, 3)]

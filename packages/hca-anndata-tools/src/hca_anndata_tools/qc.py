@@ -36,11 +36,13 @@ from ._io import describe_matrix, gate_h5ad_paths, obs_index_name, read_index
 from .inspect import resolve_count_matrix
 from .write import resolve_latest
 
-# Stored entries per chunk. Bounds peak memory by the size of one chunk —
-# data + indices on disk (float32 + int32: 8 bytes an entry, 160 MB here) plus
-# the boolean masks built over it — rather than by the matrix, whatever the
-# cell count. A single row or column holding more than this is read whole:
-# the bound is per chunk, and a chunk is never smaller than one row.
+# Stored entries per chunk. Bounds peak memory by the chunk, not the matrix,
+# whatever the cell count: one chunk is data + indices (float32 + int32, 8
+# bytes an entry, 160 MB here), and the walk's working set was measured at
+# about 2x that — the masks built over the chunk, plus the next slab arriving
+# while they are still live — so ~350 MB at this default. A single row or
+# column holding more than this is read whole: the bound is per chunk, and a
+# chunk is never smaller than one row.
 DEFAULT_CHUNK_NNZ = 20_000_000
 
 # IDs reported per finding. Enough to recognise a pattern (one sample, one
@@ -68,6 +70,10 @@ def _chunk_bounds(indptr: np.ndarray, chunk_nnz: int) -> Iterator[tuple[int, int
     """Consecutive ``(start, stop)`` ranges along the compressed axis whose
     stored entries fit in ``chunk_nnz``. A range is never empty: a single row
     or column over budget is yielded alone."""
+    # int64 on purpose: scipy keeps indptr int32 while nnz fits, and under
+    # NumPy 2 an int32 scalar plus a Python int stays int32 — near 2^31 the
+    # bound wraps negative and every remaining row becomes its own chunk.
+    indptr = np.asarray(indptr, dtype=np.int64)
     n = len(indptr) - 1
     start = 0
     while start < n:
@@ -123,6 +129,7 @@ def iter_matrix_chunks(
     for start, stop in _chunk_bounds(indptr, chunk_nnz):
         slab = ds[start:stop] if along == "row" else ds[:, start:stop]
         yield MatrixChunk(along, start, slab)  # pyright: ignore[reportArgumentType]
+        del slab  # otherwise it lives until the next read completes: two chunks resident
 
 
 def _finding(code: str, count: int, ids: np.ndarray, matrix: str) -> dict:
@@ -177,6 +184,7 @@ def _walk(f: h5py.File, key: str, n_obs: int, n_var: int, chunk_nnz: int, check_
         else:
             gene_seen[chunk.start : chunk.start + stored.size] |= stored > 0
             genes_per_cell += np.bincount(indices, minlength=n_obs)
+        del m, data, indices, finite, masks  # free this chunk before the iterator reads the next
 
     return counts, flagged, genes_per_cell, gene_seen
 
@@ -192,12 +200,27 @@ def _check_raw_counts_at_path(path: str, chunk_nnz: int) -> dict:
             assert isinstance(indptr, h5py.Dataset)
             nnz = int(indptr[-1])
 
+        # anndata's backed open does not check the indexes against the matrix,
+        # so a shortened obs or raw/var passes the gate; read them now and refuse
+        # by name, rather than IndexError on the first finding or name the
+        # wrong cell when none fires.
+        obs = f["obs"]
+        obs_ids = read_index(obs, obs_index_name(obs), "obs")
+        if len(obs_ids) != n_obs:
+            raise Refusal(f"obs has {len(obs_ids)} IDs but {key} has {n_obs} rows")
+        var_ids = None
+        if key == "raw/X":
+            if "raw/var" not in f:
+                raise Refusal("raw/X is present but raw/var is not, so its genes cannot be named")
+            var = f["raw/var"]
+            var_ids = read_index(var, obs_index_name(var), "raw.var")
+            if len(var_ids) != n_var:
+                raise Refusal(f"raw/var has {len(var_ids)} IDs but raw/X has {n_var} columns")
+
         findings = []
         if n_obs == 0 or n_var == 0:
             findings.append(_finding("empty_matrix", 1, np.asarray([]), key))
         else:
-            obs = f["obs"]
-            obs_ids = read_index(obs, obs_index_name(obs), "obs")
             counts, flagged, genes_per_cell, gene_seen = _walk(
                 f, key, n_obs, n_var, chunk_nnz, integer_check["status"] == "applied"
             )
@@ -210,11 +233,9 @@ def _check_raw_counts_at_path(path: str, chunk_nnz: int) -> dict:
             # On X this is the vendored validator's check (feature_is_filtered),
             # and two tools disagreeing about one gene helps nobody; raw.X has
             # no such check anywhere else.
-            if key == "raw/X":
+            if var_ids is not None:
                 unseen = np.flatnonzero(~gene_seen)
                 if unseen.size:
-                    var = f["raw/var"]
-                    var_ids = read_index(var, obs_index_name(var), "raw.var")
                     findings.append(_finding("undetected_genes", unseen.size, var_ids[unseen], key))
 
     return {
@@ -247,7 +268,10 @@ def check_raw_counts(path: str, chunk_nnz: int = DEFAULT_CHUNK_NNZ) -> dict:
         ``format`` (``csr`` / ``csc`` / ``dense``), ``dtype``, ``n_obs``,
         ``n_var``, ``nnz`` (``None`` for dense), ``integer_check``
         (``status`` ``applied`` / ``not_applicable`` with its ``reason``),
-        and ``findings`` — empty when the matrix is clean. Each finding:
+        and ``findings``. Empty findings with ``integer_check.status ==
+        "applied"`` means the counts are clean; with ``not_applicable`` it
+        means the file has no raw matrix and ``X`` is not counts, so only the
+        criteria that hold for any matrix were run. Each finding:
         ``code``, ``count``, ``sample_ids`` (at most 20), ``matrix``. Codes:
 
         - ``negative_values`` — count of values below zero; IDs of cells holding one
