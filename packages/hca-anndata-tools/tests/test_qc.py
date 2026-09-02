@@ -15,14 +15,12 @@ import h5py
 import numpy as np
 import pandas as pd
 import pytest
-import scipy.sparse as sp
 
 from hca_anndata_tools._errors import Refusal
 from hca_anndata_tools.qc import SAMPLE_ID_LIMIT, check_raw_counts, iter_matrix_chunks
-from hca_anndata_tools.testing import make_nullable_index
+from hca_anndata_tools.testing import make_nullable_index, write_matrix_h5ad
 
 FORMATS = ["csr", "csc", "dense"]
-_AS_FORMAT = {"csr": sp.csr_matrix, "csc": sp.csc_matrix, "dense": np.asarray}
 
 # 6 cells x 5 genes, every row and column non-zero, integer-valued floats.
 BASE = np.array(
@@ -38,21 +36,7 @@ BASE = np.array(
 )
 
 
-def _write(path, X: np.ndarray, fmt: str, *, raw: np.ndarray | None = None, var_extra: dict | None = None):
-    """Write ``X`` (and optionally ``raw``) in ``fmt``. Cell IDs are ``c<i>``, genes ``g<j>``."""
-    n_obs, n_var = X.shape
-    adata = ad.AnnData(
-        X=_AS_FORMAT[fmt](X),
-        obs=pd.DataFrame(index=[f"c{i}" for i in range(n_obs)]),  # pyright: ignore[reportArgumentType]
-        var=pd.DataFrame(var_extra or {}, index=[f"g{j}" for j in range(n_var)]),  # pyright: ignore[reportArgumentType]
-    )
-    if raw is not None:
-        adata.raw = ad.AnnData(
-            X=_AS_FORMAT[fmt](raw),
-            var=pd.DataFrame(index=[f"g{j}" for j in range(raw.shape[1])]),  # pyright: ignore[reportArgumentType]
-        )
-    adata.write_h5ad(path)
-    return path
+_write = write_matrix_h5ad
 
 
 def _codes(result: dict) -> dict[str, dict]:
@@ -364,10 +348,10 @@ def test_raw_x_without_raw_var_is_refused_before_the_walk(tmp_path):
 def test_chunk_bounds_do_not_wrap_on_int32_indptr():
     """scipy stores indptr as int32 while nnz fits; adding the budget in that
     dtype wraps negative near 2^31 and would force one-row chunks."""
-    from hca_anndata_tools.qc import _chunk_bounds
+    from hca_anndata_tools.qc import chunk_bounds
 
     indptr = np.array([0, 2_140_000_000, 2_140_000_005, 2_140_000_010], dtype=np.int32)
-    bounds = list(_chunk_bounds(indptr, 20_000_000))
+    bounds = list(chunk_bounds(indptr, 20_000_000))
     assert bounds == [(0, 1), (1, 3)]
 
 

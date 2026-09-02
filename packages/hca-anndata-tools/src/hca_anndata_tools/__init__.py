@@ -9,6 +9,7 @@ if TYPE_CHECKING:
     from .convert import convert_cellxgene_to_hca
     from .copy_cap import copy_cap_annotations
     from .drop import drop_obs_columns
+    from .dup_counts import check_duplicate_cells
     from .edit import (
         list_uns_fields,
         replace_placeholder_values,
@@ -78,6 +79,7 @@ _LAZY_IMPORTS = {
     "check_x_normalization": ".inspect",
     "check_schema_type": ".inspect",
     "check_raw_counts": ".qc",
+    "check_duplicate_cells": ".dup_counts",
 }
 
 __all__ = list(_LAZY_IMPORTS)  # pyright: ignore[reportUnsupportedDunderAll]
