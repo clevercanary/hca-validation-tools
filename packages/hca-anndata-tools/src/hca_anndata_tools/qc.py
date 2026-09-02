@@ -12,11 +12,12 @@ for a count. And it is not a writer: it returns findings and touches nothing,
 so it runs on every file anndata can open, including the nullable-string
 files the write tools refuse.
 
-The chunk iterator is public on purpose. #677 (duplicate cells by row hash)
-needs exactly this pass and must not pay for a second one; it hashes each
-chunk's rows as they go by. ``_walk`` is likewise the per-chunk consumer the
-sibling reports (#687 per-cell totals, #688 gene-subset fractions) extend
-rather than re-run.
+The chunk iterator is public on purpose: #677 (duplicate cells by row hash)
+walks the same matrix through it, so the two tools share one bounded read
+path rather than two. Each is still its own pass over the file; a shared
+per-chunk driver that runs several consumers in one pass is a possibility the
+sibling reports (#687 per-cell totals, #688 gene-subset fractions) may
+justify, not something ``_walk`` provides today.
 """
 
 from __future__ import annotations

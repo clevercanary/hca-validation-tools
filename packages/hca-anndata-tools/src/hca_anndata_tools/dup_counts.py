@@ -56,7 +56,12 @@ Deviations from the original, each with its reason:
    filter is dropped.
 6. **Dense matrices accepted.** The original refuses anything but CSR; the
    chunk iterator hands dense blocks on as CSR, so they walk the same way.
-   CSC is refused by name (the iterator's ``axis="row"`` contract).
+   CSC is refused by name.
+7. **Explicit zeros dropped before hashing.** scipy's canonical format
+   permits a stored zero, so the original hashes ``[1, 0, 2]`` and ``[1, 2]``
+   as different rows. A stored zero is not a count; here the two are the same
+   cell, and a row of nothing but stored zeros is an empty row (deviation 3).
+   ``non_canonical_rows`` does not count them, since scipy does not either.
 
 Pass two is bounded by the colliding rows, not the matrix, and on real data
 those are the duplicates themselves: each is re-read once (one HDF5 read per
@@ -78,6 +83,7 @@ import numpy as np
 import scipy.sparse as sp
 from anndata.io import sparse_dataset
 
+from ._errors import Refusal
 from ._io import gate_h5ad_paths
 from .qc import (
     DEFAULT_CHUNK_NNZ,
@@ -93,9 +99,6 @@ from .qc import (
 
 # Groups reported per finding; each group lists at most SAMPLE_ID_LIMIT IDs.
 SAMPLE_GROUP_LIMIT = 20
-
-# Pass-one hash of a row with no stored values. Never grouped (deviation 3).
-_EMPTY_ROW = np.int64(-1)
 
 
 def _row_hash(values: np.ndarray) -> np.int64:
@@ -130,9 +133,11 @@ def _canonicalize(m: sp.csr_matrix) -> sp.csr_matrix:
     return m
 
 
-def _hash_rows(f: h5py.File, cm: CountMatrix, chunk_nnz: int) -> tuple[np.ndarray, int]:
-    """Pass one: a hash per row of the canonical values, and the non-canonical row count."""
-    hashes = np.full(cm.n_obs, _EMPTY_ROW, dtype=np.int64)
+def _hash_rows(f: h5py.File, cm: CountMatrix, chunk_nnz: int) -> tuple[np.ndarray, np.ndarray, int]:
+    """Pass one: a hash per row of the canonical values, which rows hold a
+    value at all (deviation 3), and the non-canonical row count."""
+    hashes = np.zeros(cm.n_obs, dtype=np.int64)
+    stored = np.zeros(cm.n_obs, dtype=bool)
     non_canonical = 0
     for chunk in iter_matrix_chunks(f, cm.key, chunk_nnz, axis="row"):
         m = chunk.matrix
@@ -145,33 +150,49 @@ def _hash_rows(f: h5py.File, cm: CountMatrix, chunk_nnz: int) -> tuple[np.ndarra
             start, stop = int(indptr[i]), int(indptr[i + 1])
             if stop > start:
                 hashes[chunk.start + i] = _row_hash(data[start:stop])
+                stored[chunk.start + i] = True
         del chunk, m, data, indptr  # the loop variable is the last reference to the slab
-    return hashes, non_canonical
+    return hashes, stored, non_canonical
 
 
-def _read_rows(f: h5py.File, cm: CountMatrix, rows: np.ndarray) -> sp.csr_matrix:
-    """The named rows, ascending, as canonical CSR — the slab comes back in that order."""
-    item = f[cm.key]
-    if cm.format == "dense":
-        assert isinstance(item, h5py.Dataset)
-        return _canonicalize(dense_block_as_csr(item[rows, :]))
-    assert isinstance(item, h5py.Group)
-    slab = sparse_dataset(item)[rows]
-    assert isinstance(slab, sp.csr_matrix)
-    return _canonicalize(slab)
+class _RowReader:
+    """Pass two's access to named rows, opened once: the backed sparse class
+    and its ``indptr`` are built a single time rather than per batch (anndata
+    re-reads ``indptr`` for every new instance)."""
+
+    def __init__(self, f: h5py.File, cm: CountMatrix):
+        self.cm = cm
+        item = f[cm.key]
+        if cm.format == "dense":
+            assert isinstance(item, h5py.Dataset)
+            self.dense = item
+            self.ds = None
+            self.indptr = None
+        else:
+            assert isinstance(item, h5py.Group)
+            self.dense = None
+            self.ds = sparse_dataset(item)
+            self.indptr = np.asarray(item["indptr"][:], dtype=np.int64)  # pyright: ignore[reportIndexIssue]
+
+    def sizes(self, rows: np.ndarray) -> np.ndarray:
+        """Stored entries per named row (dense: every column)."""
+        if self.indptr is None:
+            return np.full(rows.size, self.cm.n_var, dtype=np.int64)
+        return self.indptr[rows + 1] - self.indptr[rows]
+
+    def read(self, rows: np.ndarray) -> sp.csr_matrix:
+        """The named rows, ascending, as canonical CSR — the slab comes back in that order."""
+        if self.dense is not None:
+            return _canonicalize(dense_block_as_csr(self.dense[rows, :]))
+        assert self.ds is not None
+        slab = self.ds[rows]
+        assert isinstance(slab, sp.csr_matrix)
+        return _canonicalize(slab)
 
 
-def _row_sizes(f: h5py.File, cm: CountMatrix, rows: np.ndarray) -> np.ndarray:
-    """Stored entries per named row, from ``indptr`` (dense: every column)."""
-    if cm.format == "dense":
-        return np.full(rows.size, cm.n_var, dtype=np.int64)
-    item = f[cm.key]
-    assert isinstance(item, h5py.Group)
-    indptr = np.asarray(item["indptr"][:], dtype=np.int64)  # pyright: ignore[reportIndexIssue]
-    return indptr[rows + 1] - indptr[rows]
-
-
-def _group_duplicates(f: h5py.File, cm: CountMatrix, hashes: np.ndarray, chunk_nnz: int) -> list[list[int]]:
+def _group_duplicates(
+    f: h5py.File, cm: CountMatrix, hashes: np.ndarray, stored: np.ndarray, chunk_nnz: int
+) -> list[list[int]]:
     """Pass two: exact groups among the rows whose pass-one hash collides.
 
     Candidates are read back in batches of at most ``chunk_nnz`` stored
@@ -179,18 +200,18 @@ def _group_duplicates(f: h5py.File, cm: CountMatrix, hashes: np.ndarray, chunk_n
     iterator uses. Each row's canonical ``(indices, data)`` bytes is the group
     key (deviation 4). Groups come back ascending by first member.
     """
-    stored = hashes[hashes != _EMPTY_ROW]
-    values, counts = np.unique(stored, return_counts=True)
+    values, counts = np.unique(hashes[stored], return_counts=True)
     colliding = values[counts > 1]
     if colliding.size == 0:
         return []
-    candidates = np.flatnonzero(np.isin(hashes, colliding))  # ascending, from flatnonzero
+    candidates = np.flatnonzero(stored & np.isin(hashes, colliding))  # ascending, from flatnonzero
 
+    reader = _RowReader(f, cm)
     groups: dict[bytes, list[int]] = defaultdict(list)
-    offsets = np.concatenate([[0], np.cumsum(_row_sizes(f, cm, candidates))])
+    offsets = np.concatenate([[0], np.cumsum(reader.sizes(candidates))])
     for start, stop in _chunk_bounds(offsets, chunk_nnz):
         rows = candidates[start:stop]
-        m = _read_rows(f, cm, rows)
+        m = reader.read(rows)
         indptr, indices, data = np.asarray(m.indptr), np.asarray(m.indices), np.asarray(m.data)
         for i, row in enumerate(rows):
             a, b = int(indptr[i]), int(indptr[i + 1])
@@ -202,8 +223,13 @@ def _group_duplicates(f: h5py.File, cm: CountMatrix, hashes: np.ndarray, chunk_n
 def _check_duplicate_cells_at_path(path: str, chunk_nnz: int) -> dict:
     with h5py.File(path, "r") as f:
         cm = open_count_matrix(f)
-        hashes, non_canonical = _hash_rows(f, cm, chunk_nnz)
-        groups = _group_duplicates(f, cm, hashes, chunk_nnz)
+        if cm.format == "csc":
+            raise Refusal(
+                f"{cm.key} is stored csc_matrix, and duplicate rows cannot be read from it in bounded "
+                f"memory; re-store the matrix as csr_matrix to check it"
+            )
+        hashes, stored, non_canonical = _hash_rows(f, cm, chunk_nnz)
+        groups = _group_duplicates(f, cm, hashes, stored, chunk_nnz)
     findings = []
     if groups:
         surplus = [row for g in groups for row in g[1:]]

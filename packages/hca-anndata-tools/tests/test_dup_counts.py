@@ -188,6 +188,7 @@ def test_csc_is_refused_by_name(tmp_path):
     result = check_duplicate_cells(str(path))
 
     assert "csc_matrix" in result["error"]
+    assert "re-store the matrix as csr_matrix" in result["error"]  # the remedy the caller owns, not the iterator's
     assert "traceback" not in result
 
 
@@ -249,3 +250,38 @@ def test_chunked_walk_agrees_with_one_pass(tmp_path, fmt):
     assert chunked == whole
     assert _groups(chunked) == [["c3", "c77"], ["c10", "c50", "c99"]]
     assert chunked["findings"][0]["count"] == 3
+
+
+def test_explicit_zero_does_not_separate_duplicates(tmp_path):
+    """Deviation 7: a stored zero is not a count. c6 is c2 with an explicit
+    zero stored at gene 1; scipy calls that canonical, so non_canonical_rows
+    stays 0, and the two are one cell."""
+    import anndata as ad
+    import pandas as pd
+    import scipy.sparse as sp
+
+    dense = BASE.copy()
+    dense[6] = dense[2]
+    m = sp.csr_matrix(dense)
+    # insert an explicit zero at (6, 1): rebuild row 6's slice by hand
+    a, b = m.indptr[6], m.indptr[7]
+    indices = np.concatenate([m.indices[:a], [0, 1, 3], m.indices[b:]])
+    data = np.concatenate([m.data[:a], [1.0, 0.0, 2.0], m.data[b:]]).astype(np.float32)
+    indptr = m.indptr.copy()
+    indptr[7:] += 1
+    raw = sp.csr_matrix((data, indices, indptr), shape=m.shape)
+    assert raw.has_canonical_format and raw.nnz == m.nnz + 1
+    adata = ad.AnnData(
+        X=sp.csr_matrix(dense),
+        obs=pd.DataFrame(index=[f"c{i}" for i in range(8)]),  # pyright: ignore[reportArgumentType]
+        var=pd.DataFrame(index=[f"g{j}" for j in range(5)]),  # pyright: ignore[reportArgumentType]
+    )
+    adata.raw = ad.AnnData(X=raw, var=adata.var.copy())
+    path = tmp_path / "explicit-zero.h5ad"
+    adata.write_h5ad(path)
+
+    result = check_duplicate_cells(str(path))
+
+    assert result["nnz"] == m.nnz + 1  # the zero is really stored
+    assert result["non_canonical_rows"] == 0
+    assert _groups(result) == [["c2", "c6"]]
