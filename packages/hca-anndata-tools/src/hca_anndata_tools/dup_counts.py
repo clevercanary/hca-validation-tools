@@ -44,27 +44,38 @@ Deviations from the original, each with its reason:
    chunk iterator hands dense blocks on as CSR, so they walk the same way.
    CSC is refused by name (the iterator's ``axis="row"`` contract).
 
-Pass two is bounded by the colliding rows, not the matrix. On real data those
-are the duplicates themselves. A pathological file whose every row collides
-on hash but differs in content would hold most of the matrix in memory while
-grouping; that limit is accepted rather than engineered around.
+Pass two is bounded by the colliding rows, not the matrix, and on real data
+those are the duplicates themselves: each is re-read once (one HDF5 read per
+scattered row, about 1.6 ms on a gzip file) and one copy of each *distinct*
+row's bytes is held while grouping. A file with very many duplicates — a
+source dataset ingested twice — pays minutes and holds a row per group; a
+pathological file whose every row collides on hash but differs in content
+would hold most of the matrix. Both are accepted rather than engineered
+around: the exact comparison is the point.
 """
 
 from __future__ import annotations
 
 import hashlib
 from collections import defaultdict
-from pathlib import Path
 
 import h5py
 import numpy as np
 import scipy.sparse as sp
 from anndata.io import sparse_dataset
 
-from ._errors import failure_result
 from ._io import gate_h5ad_paths
-from .qc import DEFAULT_CHUNK_NNZ, SAMPLE_ID_LIMIT, CountMatrix, iter_matrix_chunks, open_count_matrix
-from .write import resolve_latest
+from .qc import (
+    DEFAULT_CHUNK_NNZ,
+    SAMPLE_ID_LIMIT,
+    CountMatrix,
+    _chunk_bounds,
+    dense_block_as_csr,
+    finding,
+    iter_matrix_chunks,
+    open_count_matrix,
+    run_count_check,
+)
 
 # Groups reported per finding; each group lists at most SAMPLE_ID_LIMIT IDs.
 SAMPLE_GROUP_LIMIT = 20
@@ -75,27 +86,25 @@ _EMPTY_ROW = np.int64(-1)
 
 def _row_hash(values: np.ndarray) -> np.int64:
     """A stable 64-bit hash of a row's canonical values (deviation 4)."""
-    return np.int64(int.from_bytes(hashlib.blake2b(values.tobytes(), digest_size=8).digest(), "little", signed=True))
+    return np.frombuffer(hashlib.blake2b(values.tobytes(), digest_size=8).digest(), dtype=np.int64)[0]
 
 
 def _non_canonical_rows(m: sp.csr_matrix) -> int:
     """Rows whose stored indices are unsorted or repeated, before canonicalizing.
 
-    A row is canonical when its indices strictly increase. ``np.diff`` over the
-    whole ``indices`` array with the row boundaries masked out finds every
-    violation in one pass; the violating positions map back to rows through
-    ``indptr``.
+    scipy's own flag answers the common case in one C pass; the per-row count
+    is computed only for a chunk that fails it. A row is canonical when its
+    indices strictly increase, so every position where ``np.diff`` is not
+    positive is a violation unless it is a row start, where the comparison
+    crossed into the previous row.
     """
+    if m.has_canonical_format:
+        return 0
     indices = np.asarray(m.indices)
     indptr = np.asarray(m.indptr)
-    if indices.size < 2:
-        return 0
-    bad = np.flatnonzero(np.diff(indices) <= 0) + 1  # position of the offending entry
-    # Positions at a row start compare against the previous row: not a violation.
-    bad = bad[~np.isin(bad, indptr[1:-1])]
-    if bad.size == 0:
-        return 0
+    bad = np.flatnonzero(np.diff(indices) <= 0) + 1
     rows = np.searchsorted(indptr, bad, side="right") - 1
+    rows = rows[indptr[rows] != bad]
     return int(np.unique(rows).size)
 
 
@@ -122,74 +131,78 @@ def _hash_rows(f: h5py.File, cm: CountMatrix, chunk_nnz: int) -> tuple[np.ndarra
             start, stop = int(indptr[i]), int(indptr[i + 1])
             if stop > start:
                 hashes[chunk.start + i] = _row_hash(data[start:stop])
-        del m, data, indptr
+        del chunk, m, data, indptr  # the loop variable is the last reference to the slab
     return hashes, non_canonical
 
 
 def _read_rows(f: h5py.File, cm: CountMatrix, rows: np.ndarray) -> sp.csr_matrix:
-    """The named rows, as canonical CSR, read through the same paths as pass one."""
+    """The named rows, ascending, as canonical CSR — the slab comes back in that order."""
     item = f[cm.key]
     if cm.format == "dense":
         assert isinstance(item, h5py.Dataset)
-        block = item[np.sort(rows), :]  # h5py wants a sorted selection
-        if block.dtype == np.float16:
-            block = block.astype(np.float32)
-        return _canonicalize(sp.csr_matrix(block))
+        return _canonicalize(dense_block_as_csr(item[rows, :]))
     assert isinstance(item, h5py.Group)
-    slab = sparse_dataset(item)[np.sort(rows)]
+    slab = sparse_dataset(item)[rows]
     assert isinstance(slab, sp.csr_matrix)
     return _canonicalize(slab)
 
 
-def _group_duplicates(f: h5py.File, cm: CountMatrix, hashes: np.ndarray, chunk_nnz: int) -> list[np.ndarray]:
+def _row_sizes(f: h5py.File, cm: CountMatrix, rows: np.ndarray) -> np.ndarray:
+    """Stored entries per named row, from ``indptr`` (dense: every column)."""
+    if cm.format == "dense":
+        return np.full(rows.size, cm.n_var, dtype=np.int64)
+    item = f[cm.key]
+    assert isinstance(item, h5py.Group)
+    indptr = np.asarray(item["indptr"][:], dtype=np.int64)  # pyright: ignore[reportIndexIssue]
+    return indptr[rows + 1] - indptr[rows]
+
+
+def _group_duplicates(f: h5py.File, cm: CountMatrix, hashes: np.ndarray, chunk_nnz: int) -> list[list[int]]:
     """Pass two: exact groups among the rows whose pass-one hash collides.
 
-    Candidates are read back in batches bounded by ``chunk_nnz`` stored
-    entries (their sizes are known from pass one's walk only in aggregate, so
-    the batch is sized by row count against the mean row). Each row's
-    canonical ``(indices, data)`` bytes is the group key (deviation 4).
+    Candidates are read back in batches of at most ``chunk_nnz`` stored
+    entries, sized from their exact row lengths with the same bounds the
+    iterator uses. Each row's canonical ``(indices, data)`` bytes is the group
+    key (deviation 4). Groups come back ascending by first member.
     """
     stored = hashes[hashes != _EMPTY_ROW]
     values, counts = np.unique(stored, return_counts=True)
     colliding = values[counts > 1]
     if colliding.size == 0:
         return []
-    candidates = np.flatnonzero(np.isin(hashes, colliding))
+    candidates = np.flatnonzero(np.isin(hashes, colliding))  # ascending, from flatnonzero
 
     groups: dict[bytes, list[int]] = defaultdict(list)
-    mean_row = max(1, (cm.nnz or cm.n_obs * cm.n_var) // max(cm.n_obs, 1))
-    batch_rows = max(1, chunk_nnz // mean_row)
-    for start in range(0, candidates.size, batch_rows):
-        rows = np.sort(candidates[start : start + batch_rows])
+    offsets = np.concatenate([[0], np.cumsum(_row_sizes(f, cm, candidates))])
+    for start, stop in _chunk_bounds(offsets, chunk_nnz):
+        rows = candidates[start:stop]
         m = _read_rows(f, cm, rows)
         indptr, indices, data = np.asarray(m.indptr), np.asarray(m.indices), np.asarray(m.data)
         for i, row in enumerate(rows):
             a, b = int(indptr[i]), int(indptr[i + 1])
             groups[indices[a:b].tobytes() + data[a:b].tobytes()].append(int(row))
         del m, indptr, indices, data
-    return [np.asarray(sorted(rows)) for rows in groups.values() if len(rows) > 1]
+    return sorted(sorted(members) for members in groups.values() if len(members) > 1)
 
 
 def _check_duplicate_cells_at_path(path: str, chunk_nnz: int) -> dict:
     with h5py.File(path, "r") as f:
         cm = open_count_matrix(f)
-        findings = []
-        non_canonical = 0
-        if cm.n_obs and cm.n_var:
-            hashes, non_canonical = _hash_rows(f, cm, chunk_nnz)
-            groups = sorted(_group_duplicates(f, cm, hashes, chunk_nnz), key=lambda g: int(g[0]))
-            if groups:
-                findings.append(
-                    {
-                        "code": "duplicate_cells",
-                        "count": int(sum(len(g) - 1 for g in groups)),
-                        "groups": len(groups),
-                        "sample_groups": [
-                            [str(v) for v in cm.obs_ids[g][:SAMPLE_ID_LIMIT]] for g in groups[:SAMPLE_GROUP_LIMIT]
-                        ],
-                        "matrix": cm.key,
-                    }
-                )
+        hashes, non_canonical = _hash_rows(f, cm, chunk_nnz)
+        groups = _group_duplicates(f, cm, hashes, chunk_nnz)
+    findings = []
+    if groups:
+        surplus = [row for g in groups for row in g[1:]]
+        findings.append(
+            finding(
+                "duplicate_cells",
+                len(surplus),
+                cm.obs_ids[surplus],
+                cm.key,
+                groups=len(groups),
+                sample_groups=[[str(v) for v in cm.obs_ids[g[:SAMPLE_ID_LIMIT]]] for g in groups[:SAMPLE_GROUP_LIMIT]],
+            )
+        )
     return {**cm.envelope(path), "non_canonical_rows": non_canonical, "findings": findings}
 
 
@@ -217,16 +230,9 @@ def check_duplicate_cells(path: str, chunk_nnz: int = DEFAULT_CHUNK_NNZ) -> dict
         stored with unsorted or repeated indices — information, not a
         defect), and ``findings``: empty when no two cells share a row, else
         one ``duplicate_cells`` finding with ``count`` (surplus cells: each
-        group's size minus one), ``groups``, ``sample_groups`` (at most 20
-        groups of at most 20 cell IDs each, in row order), and ``matrix``.
-        On failure, ``error`` is returned instead.
+        group's size minus one), ``sample_ids`` (those surplus cells, at most
+        20), ``groups``, ``sample_groups`` (at most 20 groups of at most 20
+        cell IDs each, ascending by first member), and ``matrix``. On
+        failure, ``error`` is returned instead.
     """
-    try:
-        if not isinstance(chunk_nnz, int) or chunk_nnz < 1:
-            return {"error": f"chunk_nnz must be a positive int, got {chunk_nnz!r}"}
-        path = resolve_latest(path)
-        if not Path(path).is_file():
-            return {"error": f"File not found: {path}"}
-        return _check_duplicate_cells_at_path(path, chunk_nnz)
-    except Exception as e:
-        return failure_result(e)
+    return run_count_check(path, chunk_nnz, _check_duplicate_cells_at_path)

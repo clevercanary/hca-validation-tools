@@ -376,3 +376,26 @@ def make_nullable_index(path, frame: str = "obs", *, masked: int = 0) -> None:
         assert isinstance(group, h5py.Group), f"{frame!r} is not a dataframe group"
         name = group.attrs.get("_index", "_index")
         make_nullable_string_array(group, name.decode("utf-8") if isinstance(name, bytes) else name, masked=masked)
+
+
+def write_matrix_h5ad(path, X, fmt: str, *, raw=None, var_extra: dict | None = None):
+    """Write dense ``X`` (and optionally ``raw``) as ``fmt`` — ``csr``, ``csc``, or ``dense``.
+
+    Cell IDs are ``c<i>``, genes ``g<j>``. The matrix-check tests build every
+    fixture from dense numpy through anndata's own writer, never through the
+    readers under test, so a reader's bug cannot hide in its own fixture.
+    """
+    as_format = {"csr": sp.csr_matrix, "csc": sp.csc_matrix, "dense": np.asarray}
+    n_obs, n_var = X.shape
+    adata = ad.AnnData(
+        X=as_format[fmt](X),
+        obs=pd.DataFrame(index=[f"c{i}" for i in range(n_obs)]),  # pyright: ignore[reportArgumentType]
+        var=pd.DataFrame(var_extra or {}, index=[f"g{j}" for j in range(n_var)]),  # pyright: ignore[reportArgumentType]
+    )
+    if raw is not None:
+        adata.raw = ad.AnnData(
+            X=as_format[fmt](raw),
+            var=pd.DataFrame(index=[f"g{j}" for j in range(raw.shape[1])]),  # pyright: ignore[reportArgumentType]
+        )
+    adata.write_h5ad(path)
+    return path

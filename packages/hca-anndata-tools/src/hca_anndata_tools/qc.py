@@ -21,7 +21,7 @@ rather than re-run.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -115,10 +115,7 @@ def iter_matrix_chunks(
         assert isinstance(item, h5py.Dataset)
         rows_per_block = max(1, chunk_nnz // max(n_cols, 1))
         for start in range(0, n_rows, rows_per_block):
-            block = item[start : start + rows_per_block, :]
-            if block.dtype == np.float16:  # anndata reads it; scipy.sparse will not hold it
-                block = block.astype(np.float32)
-            yield MatrixChunk("row", start, sp.csr_matrix(block))
+            yield MatrixChunk("row", start, dense_block_as_csr(item[start : start + rows_per_block, :]))
         return
 
     if fmt == "csc" and axis == "row":
@@ -137,13 +134,52 @@ def iter_matrix_chunks(
         del slab  # otherwise it lives until the next read completes: two chunks resident
 
 
-def _finding(code: str, count: int, ids: np.ndarray, matrix: str) -> dict:
+def dense_block_as_csr(block: np.ndarray) -> sp.csr_matrix:
+    """A dense row block as CSR, the one shape every consumer sees.
+
+    float16 is upcast first: anndata writes and reads it, scipy.sparse will
+    not hold it. A zero on disk carries no information a count check needs,
+    so dropping it is what makes the per-row "any value at all" question the
+    same for every format.
+    """
+    if block.dtype == np.float16:
+        block = block.astype(np.float32)
+    return sp.csr_matrix(block)
+
+
+def finding(code: str, count: int, ids: np.ndarray | list, matrix: str, **detail) -> dict:
+    """One finding: what, how many, which cells (or genes), on which matrix.
+
+    ``sample_ids`` always names what ``count`` counts, capped, so a renderer
+    that knows nothing about codes can still say "which". ``detail`` is
+    additive structure a code may carry beyond that (a duplicate finding's
+    groups, say) and never replaces it.
+    """
     return {
         "code": code,
         "count": int(count),
         "sample_ids": [str(v) for v in ids[:SAMPLE_ID_LIMIT]],
         "matrix": matrix,
+        **detail,
     }
+
+
+def run_count_check(path: str, chunk_nnz: int, body: Callable[[str, int], dict]) -> dict:
+    """The handler every count-matrix tool shares: validate, resolve, run, report.
+
+    ``body`` gets the resolved path and returns the result dict; anything it
+    raises comes back through :func:`failure_result`, so a refusal keeps its
+    words and an accident keeps its traceback.
+    """
+    try:
+        if not isinstance(chunk_nnz, int) or chunk_nnz < 1:
+            return {"error": f"chunk_nnz must be a positive int, got {chunk_nnz!r}"}
+        path = resolve_latest(path)
+        if not Path(path).is_file():
+            return {"error": f"File not found: {path}"}
+        return body(path, chunk_nnz)
+    except Exception as e:
+        return failure_result(e)
 
 
 def _walk(f: h5py.File, key: str, n_obs: int, n_var: int, chunk_nnz: int, check_integers: bool) -> tuple:
@@ -192,7 +228,9 @@ def _walk(f: h5py.File, key: str, n_obs: int, n_var: int, chunk_nnz: int, check_
         else:
             gene_seen[chunk.start : chunk.start + stored.size] |= stored > 0
             genes_per_cell += np.bincount(indices, minlength=n_obs)
-        del m, data, indices, finite, masks  # free this chunk before the iterator reads the next
+        # The loop variable is the last reference to the slab; without dropping
+        # it too, the previous chunk stays resident while the next one is read.
+        del chunk, m, data, indices, finite, masks
 
     return counts, flagged, genes_per_cell, gene_seen
 
@@ -210,6 +248,11 @@ class CountMatrix:
     dtype: str
     nnz: int | None
     obs_ids: np.ndarray
+
+    @property
+    def var_key(self) -> str:
+        """The dataframe that names this matrix's columns."""
+        return "raw/var" if self.key == "raw/X" else "var"
 
     def envelope(self, path: str) -> dict:
         """The result keys every count-matrix check reports, in one order."""
@@ -252,31 +295,29 @@ def open_count_matrix(f: h5py.File) -> CountMatrix:
 def _check_raw_counts_at_path(path: str, chunk_nnz: int) -> dict:
     with h5py.File(path, "r") as f:
         cm = open_count_matrix(f)
-        key, n_obs, n_var = cm.key, cm.n_obs, cm.n_var
-        var_key = "raw/var" if key == "raw/X" else "var"
-        if var_key not in f:
-            raise Refusal(f"{key} is present but {var_key} is not, so its genes cannot be named")
-        var = f[var_key]
-        var_ids = read_index(var, obs_index_name(var), var_key.replace("/", "."))
-        if len(var_ids) != n_var:
-            raise Refusal(f"{var_key} has {len(var_ids)} IDs but {key} has {n_var} columns")
+        if cm.var_key not in f:
+            raise Refusal(f"{cm.key} is present but {cm.var_key} is not, so its genes cannot be named")
+        var = f[cm.var_key]
+        var_ids = read_index(var, obs_index_name(var), cm.var_key.replace("/", "."))
+        if len(var_ids) != cm.n_var:
+            raise Refusal(f"{cm.var_key} has {len(var_ids)} IDs but {cm.key} has {cm.n_var} columns")
 
         findings = []
-        if n_obs == 0 or n_var == 0:
-            findings.append(_finding("empty_matrix", 1, np.asarray([]), key))
+        if cm.n_obs == 0 or cm.n_var == 0:
+            findings.append(finding("empty_matrix", 1, [], cm.key))
         else:
             counts, flagged, genes_per_cell, gene_seen = _walk(
-                f, key, n_obs, n_var, chunk_nnz, cm.integer_check["status"] == "applied"
+                f, cm.key, cm.n_obs, cm.n_var, chunk_nnz, cm.integer_check["status"] == "applied"
             )
             for code in _VALUE_CODES:
                 if counts[code]:
-                    findings.append(_finding(code, counts[code], cm.obs_ids[flagged[code]], key))
+                    findings.append(finding(code, counts[code], cm.obs_ids[flagged[code]], cm.key))
             zero_rows = np.flatnonzero(genes_per_cell == 0)
             if zero_rows.size:
-                findings.append(_finding("zero_count_cells", zero_rows.size, cm.obs_ids[zero_rows], key))
+                findings.append(finding("zero_count_cells", zero_rows.size, cm.obs_ids[zero_rows], cm.key))
             unseen = np.flatnonzero(~gene_seen)
             if unseen.size:
-                findings.append(_finding("undetected_genes", unseen.size, var_ids[unseen], key))
+                findings.append(finding("undetected_genes", unseen.size, var_ids[unseen], cm.key))
 
     return {**cm.envelope(path), "integer_check": cm.integer_check, "findings": findings}
 
@@ -323,12 +364,4 @@ def check_raw_counts(path: str, chunk_nnz: int = DEFAULT_CHUNK_NNZ) -> dict:
 
         On failure, ``error`` is returned instead.
     """
-    try:
-        if not isinstance(chunk_nnz, int) or chunk_nnz < 1:
-            return {"error": f"chunk_nnz must be a positive int, got {chunk_nnz!r}"}
-        path = resolve_latest(path)
-        if not Path(path).is_file():
-            return {"error": f"File not found: {path}"}
-        return _check_raw_counts_at_path(path, chunk_nnz)
-    except Exception as e:
-        return failure_result(e)
+    return run_count_check(path, chunk_nnz, _check_raw_counts_at_path)

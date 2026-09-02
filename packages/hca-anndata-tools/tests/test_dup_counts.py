@@ -9,19 +9,15 @@ port kept it.
 
 from __future__ import annotations
 
-import anndata as ad
 import h5py
 import numpy as np
-import pandas as pd
 import pytest
-import scipy.sparse as sp
 
 from hca_anndata_tools.dup_counts import SAMPLE_GROUP_LIMIT, check_duplicate_cells
 from hca_anndata_tools.qc import SAMPLE_ID_LIMIT
-from hca_anndata_tools.testing import make_nullable_index
+from hca_anndata_tools.testing import make_nullable_index, write_matrix_h5ad
 
 ROW_FORMATS = ["csr", "dense"]
-_AS_FORMAT = {"csr": sp.csr_matrix, "csc": sp.csc_matrix, "dense": np.asarray}
 
 # 8 cells x 5 genes, all rows distinct, every row non-empty.
 BASE = np.array(
@@ -38,21 +34,7 @@ BASE = np.array(
     dtype=np.float32,
 )
 
-
-def _write(path, X: np.ndarray, fmt: str, *, raw: np.ndarray | None = None):
-    n_obs, n_var = X.shape
-    adata = ad.AnnData(
-        X=_AS_FORMAT[fmt](X),
-        obs=pd.DataFrame(index=[f"c{i}" for i in range(n_obs)]),  # pyright: ignore[reportArgumentType]
-        var=pd.DataFrame(index=[f"g{j}" for j in range(n_var)]),  # pyright: ignore[reportArgumentType]
-    )
-    if raw is not None:
-        adata.raw = ad.AnnData(
-            X=_AS_FORMAT[fmt](raw),
-            var=pd.DataFrame(index=[f"g{j}" for j in range(raw.shape[1])]),  # pyright: ignore[reportArgumentType]
-        )
-    adata.write_h5ad(path)
-    return path
+_write = write_matrix_h5ad
 
 
 def _groups(result: dict) -> list[list[str]]:
@@ -87,7 +69,7 @@ def test_one_duplicated_cell_is_one_group_of_two(tmp_path, fmt):
     assert _groups(result) == [["c2", "c6"]]
     (finding,) = result["findings"]
     assert finding["count"] == 1
-    assert finding["groups"] == 1
+    assert finding["sample_ids"] == ["c6"]  # the surplus cell, what count counts
     assert finding["matrix"] == "raw/X"
 
 
@@ -101,7 +83,7 @@ def test_two_independent_pairs_are_two_groups(tmp_path):
 
     assert _groups(result) == [["c0", "c7"], ["c2", "c6"]]
     assert result["findings"][0]["count"] == 2
-    assert result["findings"][0]["groups"] == 2
+    assert result["findings"][0]["sample_ids"] == ["c7", "c6"]
 
 
 def test_triplet_is_one_group_with_two_surplus(tmp_path):
