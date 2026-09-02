@@ -345,13 +345,13 @@ def test_raw_x_without_raw_var_is_refused_before_the_walk(tmp_path):
     assert "traceback" not in result
 
 
-def test_chunk_bounds_do_not_wrap_on_int32_indptr():
+def testchunk_bounds_do_not_wrap_on_int32_indptr():
     """scipy stores indptr as int32 while nnz fits; adding the budget in that
     dtype wraps negative near 2^31 and would force one-row chunks."""
-    from hca_anndata_tools.qc import _chunk_bounds
+    from hca_anndata_tools.qc import chunk_bounds
 
     indptr = np.array([0, 2_140_000_000, 2_140_000_005, 2_140_000_010], dtype=np.int32)
-    bounds = list(_chunk_bounds(indptr, 20_000_000))
+    bounds = list(chunk_bounds(indptr, 20_000_000))
     assert bounds == [(0, 1), (1, 3)]
 
 
