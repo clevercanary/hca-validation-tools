@@ -231,7 +231,7 @@ def _walk(f: h5py.File, key: str, n_obs: int, n_var: int, chunk_nnz: int, check_
             genes_per_cell += np.bincount(indices, minlength=n_obs)
         # The loop variable is the last reference to the slab; without dropping
         # it too, the previous chunk stays resident while the next one is read.
-        del chunk, m, data, indices, finite, masks
+        del chunk, m, data, indices, indptr, stored, finite, masks
 
     return counts, flagged, genes_per_cell, gene_seen
 
