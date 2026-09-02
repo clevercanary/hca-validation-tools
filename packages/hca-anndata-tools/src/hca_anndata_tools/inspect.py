@@ -203,7 +203,10 @@ def _verdict_from_sample(sample: np.ndarray) -> dict:
 def resolve_count_matrix(f: h5py.File) -> tuple[str, dict]:
     """Which matrix holds the counts, and whether it can be trusted as counts.
 
-    ``raw/X`` when present. Otherwise ``X`` — and then the sampled verdict
+    ``raw/X`` when present, asserted to be counts rather than sampled: the
+    schema gives it no other meaning, so a normalized ``raw/X`` is a defect
+    for the caller to report, not a state to accommodate. Otherwise ``X`` —
+    and then the sampled verdict
     decides: a lone ``X`` the sample calls normalized is not counts, and any
     criterion that only makes sense on counts (integer-valued, per-cell
     totals) has no meaning on it. Returned as ``status`` ``applied`` /

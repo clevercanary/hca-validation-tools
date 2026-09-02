@@ -194,7 +194,7 @@ async def test_check_raw_counts(client, sample_h5ad):
     assert data["format"] == "csr"
     assert data["n_obs"] == 50 and data["n_var"] == 20
     assert data["integer_check"]["status"] == "not_applicable"
-    assert {f["code"] for f in data["findings"]} <= {"zero_count_cells"}
+    assert {f["code"] for f in data["findings"]} <= {"zero_count_cells", "undetected_genes"}
 
 
 @pytest.mark.asyncio

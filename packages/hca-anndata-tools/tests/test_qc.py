@@ -190,18 +190,21 @@ def test_lone_x_fractional_past_the_classifier_sample_is_a_finding(tmp_path):
 
 
 @pytest.mark.parametrize("fmt", FORMATS)
-def test_undetected_genes_is_not_checked_on_x(tmp_path, fmt):
-    """A gene zero in every cell of X is the vendored validator's business
-    (feature_is_filtered); the gate says nothing about it there."""
+def test_undetected_genes_is_reported_on_a_lone_x(tmp_path, fmt):
+    """The vendored validator scans X for all-zero genes only when raw exists
+    (its feature_is_filtered consistency check); on a lone X nobody else
+    reports one, so the gate does, naming the gene from var."""
     m = BASE.copy()
     m[:, 2] = 0
-    filtered = {"feature_is_filtered": [False, False, True, False, False]}
-    path = _write(tmp_path / "x-only.h5ad", m, fmt, var_extra=filtered)
+    path = _write(tmp_path / "x-only.h5ad", m, fmt)
 
     result = check_raw_counts(str(path))
 
     assert result["matrix"] == "X"
-    assert _codes(result) == {}
+    found = _codes(result)
+    assert list(found) == ["undetected_genes"]
+    assert found["undetected_genes"]["sample_ids"] == ["g2"]
+    assert found["undetected_genes"]["matrix"] == "X"
 
 
 # --- edges -------------------------------------------------------------------
@@ -228,7 +231,7 @@ def test_nullable_string_index_runs_to_completion(tmp_path):
 
 def test_unknown_sparse_encoding_is_refused_by_name(tmp_path):
     """Behind the gate this is unreachable today (anndata reads nothing else
-    into X); the internal entry point pins the refusal for the day it does."""
+    into X); the undecorated entry point pins the refusal for the day it does."""
     path = _write(tmp_path / "coo.h5ad", BASE, "csr", raw=BASE)
     with h5py.File(path, "r+") as f:
         f["raw/X"].attrs["encoding-type"] = "coo_matrix"
@@ -364,3 +367,36 @@ def test_chunk_bounds_do_not_wrap_on_int32_indptr():
     indptr = np.array([0, 2_140_000_000, 2_140_000_005, 2_140_000_010], dtype=np.int32)
     bounds = list(_chunk_bounds(indptr, 20_000_000))
     assert bounds == [(0, 1), (1, 3)]
+
+
+def test_legacy_h5sparse_group_is_walked(tmp_path):
+    """Pre-0.8 anndata stamped sparse groups with h5sparse_format instead of
+    encoding-type. anndata still opens them, so the gate must too (principle 2)."""
+    m = BASE.copy()
+    m[1, 1] = -3.0
+    path = _write(tmp_path / "legacy.h5ad", BASE, "csr", raw=m)
+    with h5py.File(path, "r+") as f:
+        g = f["raw/X"]
+        del g.attrs["encoding-type"]
+        del g.attrs["encoding-version"]
+        g.attrs["h5sparse_format"] = "csr"
+        g.attrs["h5sparse_shape"] = g.attrs["shape"]
+
+    result = check_raw_counts(str(path))
+
+    assert result["format"] == "csr"
+    assert list(_codes(result)) == ["negative_values"]
+
+
+def test_dense_float16_is_walked(tmp_path):
+    """anndata writes and reads a float16 dense X; scipy.sparse refuses the
+    dtype, so the block is upcast before it becomes a chunk."""
+    m = BASE.astype(np.float16)
+    m[4, :] = 0  # a defect the sampled classifier does not react to
+    path = _write(tmp_path / "f16.h5ad", m, "dense")
+
+    result = check_raw_counts(str(path))
+
+    assert result["dtype"] == "float16"
+    assert result["integer_check"]["status"] == "applied"
+    assert list(_codes(result)) == ["zero_count_cells"]

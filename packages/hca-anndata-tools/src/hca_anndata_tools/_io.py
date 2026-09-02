@@ -309,7 +309,10 @@ def describe_matrix(
     The matrix taxonomy's one home, as :func:`holds_string_values` is for
     strings: a dense 2-D dataset, or a sparse group anndata's backed classes
     read — which also answer the shape and dtype, so nothing is re-derived
-    from attrs here.
+    from attrs here. A sparse group is one stamped ``csr_matrix`` /
+    ``csc_matrix``, or the pre-0.8 layout that carries ``h5sparse_format``
+    instead of an ``encoding-type``; anndata still opens the latter, and
+    principle 2 says we read what anndata reads.
 
     Raises:
         Refusal: Anything else. Not reachable through today's anndata pin,
@@ -321,7 +324,9 @@ def describe_matrix(
         if item.ndim != 2:
             raise Refusal(f"{key} is a {item.ndim}-D dataset; the matrix readers walk 2-D matrices only")
         return "dense", (int(item.shape[0]), int(item.shape[1])), str(item.dtype)
-    if isinstance(item, h5py.Group) and encoding_of(item) in _SPARSE_MATRIX_ENCODINGS:
+    if isinstance(item, h5py.Group) and (
+        encoding_of(item) in _SPARSE_MATRIX_ENCODINGS or "h5sparse_format" in item.attrs
+    ):
         ds = sparse_dataset(item)
         return cast(MatrixFormat, ds.format), (int(ds.shape[0]), int(ds.shape[1])), str(ds.dtype)
     raise Refusal(

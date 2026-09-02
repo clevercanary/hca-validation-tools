@@ -113,7 +113,10 @@ def iter_matrix_chunks(
         assert isinstance(item, h5py.Dataset)
         rows_per_block = max(1, chunk_nnz // max(n_cols, 1))
         for start in range(0, n_rows, rows_per_block):
-            yield MatrixChunk("row", start, sp.csr_matrix(item[start : start + rows_per_block, :]))
+            block = item[start : start + rows_per_block, :]
+            if block.dtype == np.float16:  # anndata reads it; scipy.sparse will not hold it
+                block = block.astype(np.float32)
+            yield MatrixChunk("row", start, sp.csr_matrix(block))
         return
 
     if fmt == "csc" and axis == "row":
@@ -208,14 +211,13 @@ def _check_raw_counts_at_path(path: str, chunk_nnz: int) -> dict:
         obs_ids = read_index(obs, obs_index_name(obs), "obs")
         if len(obs_ids) != n_obs:
             raise Refusal(f"obs has {len(obs_ids)} IDs but {key} has {n_obs} rows")
-        var_ids = None
-        if key == "raw/X":
-            if "raw/var" not in f:
-                raise Refusal("raw/X is present but raw/var is not, so its genes cannot be named")
-            var = f["raw/var"]
-            var_ids = read_index(var, obs_index_name(var), "raw.var")
-            if len(var_ids) != n_var:
-                raise Refusal(f"raw/var has {len(var_ids)} IDs but raw/X has {n_var} columns")
+        var_key = "raw/var" if key == "raw/X" else "var"
+        if var_key not in f:
+            raise Refusal(f"{key} is present but {var_key} is not, so its genes cannot be named")
+        var = f[var_key]
+        var_ids = read_index(var, obs_index_name(var), var_key.replace("/", "."))
+        if len(var_ids) != n_var:
+            raise Refusal(f"{var_key} has {len(var_ids)} IDs but {key} has {n_var} columns")
 
         findings = []
         if n_obs == 0 or n_var == 0:
@@ -230,13 +232,9 @@ def _check_raw_counts_at_path(path: str, chunk_nnz: int) -> dict:
             zero_rows = np.flatnonzero(genes_per_cell == 0)
             if zero_rows.size:
                 findings.append(_finding("zero_count_cells", zero_rows.size, obs_ids[zero_rows], key))
-            # On X this is the vendored validator's check (feature_is_filtered),
-            # and two tools disagreeing about one gene helps nobody; raw.X has
-            # no such check anywhere else.
-            if var_ids is not None:
-                unseen = np.flatnonzero(~gene_seen)
-                if unseen.size:
-                    findings.append(_finding("undetected_genes", unseen.size, var_ids[unseen], key))
+            unseen = np.flatnonzero(~gene_seen)
+            if unseen.size:
+                findings.append(_finding("undetected_genes", unseen.size, var_ids[unseen], key))
 
     return {
         "filename": Path(path).name,
@@ -259,6 +257,14 @@ def check_raw_counts(path: str, chunk_nnz: int = DEFAULT_CHUNK_NNZ) -> dict:
     never loads the matrix — one streaming pass in chunks of at most
     ``chunk_nnz`` stored entries.
 
+    ``raw.X`` is asserted to be counts, not classified: the schema gives it no
+    other meaning, so a ``raw.X`` holding normalized values is a defect and
+    comes back as ``non_integer_values`` with ``count`` equal to every stored
+    entry. (``normalize_raw`` samples the same matrix and refuses instead —
+    it is about to write on top of it; this tool exists to report it.) A lone
+    ``X`` is different: the schema allows it to be normalized, so there the
+    classifier decides whether the integer criterion applies.
+
     Args:
         path: Path to an .h5ad file.
         chunk_nnz: Stored entries per chunk; bounds peak memory. Must be >= 1.
@@ -280,8 +286,7 @@ def check_raw_counts(path: str, chunk_nnz: int = DEFAULT_CHUNK_NNZ) -> dict:
           holding one. Not applied when ``X`` is the gated matrix and
           ``check_x_normalization`` calls it normalized.
         - ``zero_count_cells`` — cells whose every value is zero
-        - ``undetected_genes`` — genes that are zero in every cell; ``raw.X``
-          only, since the vendored validator already checks ``X``
+        - ``undetected_genes`` — genes that are zero in every cell
         - ``empty_matrix`` — ``n_obs`` or ``n_var`` is zero; nothing else runs
 
         On failure, ``error`` is returned instead.
