@@ -129,7 +129,7 @@ mcp = FastMCP(
         "check_x_normalization to classify X as raw-counts / normalized / indeterminate, "
         "check_raw_counts to walk the raw count matrix (raw.X, else X) once, read-only and in "
         "bounded chunks, and report values a count cannot hold — negative, NaN/Inf, fractional — "
-        "plus cells with no counts and (raw.X only) genes detected nowhere; empty findings with "
+        "plus cells with no counts and genes detected nowhere; empty findings with "
         "integer_check.status 'applied' means the counts are clean, while 'not_applicable' means "
         "the file has no raw matrix and X is not counts, "
         "check_schema_type to identify CellxGENE vs HCA layout and report the schema version, "
