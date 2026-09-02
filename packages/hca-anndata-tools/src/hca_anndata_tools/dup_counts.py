@@ -71,6 +71,21 @@ source dataset ingested twice — pays minutes and holds a row per group; a
 pathological file whose every row collides on hash but differs in content
 would hold most of the matrix. Both are accepted rather than engineered
 around: the exact comparison is the point.
+
+Two assumptions, considered and kept, because real atlas cells carry
+hundreds of detected genes:
+
+- On a lone ``X`` the classifier calls normalized, identical rows are taken
+  to mean identical cells. Two *different* cells become identical under
+  per-cell normalization only when every detected gene scales by the same
+  factor — a proportional count vector across hundreds of genes, which does
+  not occur in practice.
+- Pass one hashes values without column positions, as the original does.
+  Rows sharing a value sequence but not a gene set (every count equal to 1
+  over the same number of genes, say) collide and are all re-read in pass
+  two; that is slower, never wrong, and was measured at zero collisions
+  across seven gut-v1 source datasets. A QC-filtered cell with 200 or more
+  genes essentially never has every count equal to 1.
 """
 
 from __future__ import annotations
@@ -195,29 +210,47 @@ def _group_duplicates(
 ) -> list[list[int]]:
     """Pass two: exact groups among the rows whose pass-one hash collides.
 
-    Candidates are read back in batches of at most ``chunk_nnz`` stored
-    entries, sized from their exact row lengths with the same bounds the
-    iterator uses. Each row's canonical ``(indices, data)`` bytes is the group
-    key (deviation 4). Groups come back ascending by first member.
+    Candidates are visited in pass-one hash order, in batches of at most
+    ``chunk_nnz`` stored entries sized from their exact row lengths with the
+    same bounds the iterator uses. Within a batch each row's canonical
+    ``(indices, data)`` bytes is the group key (deviation 4). Because a hash
+    bucket is contiguous in that order, every bucket but the one that may
+    straddle the batch boundary is complete when the batch ends and is
+    emitted and released then — so memory is one batch plus one bucket, not
+    one copy of every distinct duplicated row. Groups come back ascending by
+    first member.
     """
     values, counts = np.unique(hashes[stored], return_counts=True)
     colliding = values[counts > 1]
     if colliding.size == 0:
         return []
-    candidates = np.flatnonzero(stored & np.isin(hashes, colliding))  # ascending, from flatnonzero
+    candidates = np.flatnonzero(stored & np.isin(hashes, colliding))
+    candidates = candidates[np.argsort(hashes[candidates], kind="stable")]  # hash order, rows ascending within
 
     reader = _RowReader(f, cm)
-    groups: dict[bytes, list[int]] = defaultdict(list)
     offsets = np.concatenate([[0], np.cumsum(reader.sizes(candidates))])
+    groups: list[list[int]] = []
+    pending: dict[tuple[int, bytes], list[int]] = defaultdict(list)
+
+    def emit(complete_before: int | None) -> None:
+        """Move every bucket whose hash is not ``complete_before`` out of ``pending``."""
+        for key in [k for k in pending if k[0] != complete_before]:
+            members = pending.pop(key)
+            if len(members) > 1:
+                groups.append(sorted(members))
+
     for start, stop in _chunk_bounds(offsets, chunk_nnz):
-        rows = candidates[start:stop]
-        m = reader.read(rows)
+        batch = candidates[start:stop]
+        ascending = np.sort(batch)  # the reader wants rows ascending; hash order is restored by key
+        m = reader.read(ascending)
         indptr, indices, data = np.asarray(m.indptr), np.asarray(m.indices), np.asarray(m.data)
-        for i, row in enumerate(rows):
+        for i, row in enumerate(ascending):
             a, b = int(indptr[i]), int(indptr[i + 1])
-            groups[indices[a:b].tobytes() + data[a:b].tobytes()].append(int(row))
+            pending[(int(hashes[row]), indices[a:b].tobytes() + data[a:b].tobytes())].append(int(row))
         del m, indptr, indices, data
-    return sorted(sorted(members) for members in groups.values() if len(members) > 1)
+        emit(complete_before=int(hashes[batch[-1]]))  # the last hash may continue into the next batch
+    emit(complete_before=None)
+    return sorted(groups)
 
 
 def _check_duplicate_cells_at_path(path: str, chunk_nnz: int) -> dict:

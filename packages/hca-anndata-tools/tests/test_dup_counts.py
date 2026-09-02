@@ -285,3 +285,21 @@ def test_explicit_zero_does_not_separate_duplicates(tmp_path):
     assert result["nnz"] == m.nnz + 1  # the zero is really stored
     assert result["non_canonical_rows"] == 0
     assert _groups(result) == [["c2", "c6"]]
+
+
+def test_groups_survive_batch_boundaries(tmp_path):
+    """With a one-row budget every pass-two batch holds a single row, so every
+    hash bucket straddles a boundary and is carried over; the groups must be
+    the same as in one batch."""
+    rng = np.random.default_rng(11)
+    m = rng.integers(0, 4, size=(60, 30)).astype(np.float32)
+    m[40] = m[5]
+    m[55] = m[5]
+    m[33] = m[12]
+    path = _write(tmp_path / "straddle.h5ad", m, "csr", raw=m)
+
+    one_row_batches = check_duplicate_cells(str(path), chunk_nnz=1)
+    whole = check_duplicate_cells(str(path))
+
+    assert one_row_batches == whole
+    assert _groups(whole) == [["c5", "c40", "c55"], ["c12", "c33"]]
