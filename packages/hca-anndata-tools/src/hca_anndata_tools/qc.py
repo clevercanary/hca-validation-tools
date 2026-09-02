@@ -106,6 +106,8 @@ def iter_matrix_chunks(
     information a count check needs, and dropping it is what makes the
     per-row "any value at all" test the same question for every format.
     """
+    if not isinstance(chunk_nnz, int) or chunk_nnz < 1:
+        raise ValueError(f"chunk_nnz must be a positive int, got {chunk_nnz!r}")
     item = f[key]
     fmt, (n_rows, n_cols), _ = describe_matrix(item, key)
 

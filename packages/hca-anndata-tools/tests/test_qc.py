@@ -248,6 +248,8 @@ def test_unknown_sparse_encoding_is_refused_by_name(tmp_path):
 def test_bad_chunk_nnz_is_refused(tmp_path):
     path = _write(tmp_path / "c.h5ad", BASE, "csr")
     assert "chunk_nnz" in check_raw_counts(str(path), chunk_nnz=0)["error"]
+    with h5py.File(path, "r") as f, pytest.raises(ValueError, match="chunk_nnz"):
+        list(iter_matrix_chunks(f, "X", 0))
 
 
 def test_missing_file_names_the_path(tmp_path):
