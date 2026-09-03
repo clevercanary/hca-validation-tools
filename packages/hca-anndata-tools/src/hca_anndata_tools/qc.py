@@ -154,7 +154,7 @@ def finding(code: str, count: int, ids: np.ndarray | list, matrix: str, **detail
     ``sample_ids`` always names what ``count`` counts, capped, so a renderer
     that knows nothing about codes can still say "which". A finding about the
     matrix as a whole (``empty_matrix``, ``wrong_shape``) has ``count`` 1 and
-    no ``sample_ids``: the ``matrix`` field already names it. ``detail`` is
+    an empty ``sample_ids``: the ``matrix`` field already names it. ``detail`` is
     additive structure a code may carry beyond that (a duplicate finding's
     groups, say) and never replaces it.
     """

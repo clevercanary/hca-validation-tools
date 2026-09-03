@@ -25,7 +25,7 @@ import h5py
 import numpy as np
 
 from ._io import encoding_of, gate_h5ad_paths, obs_index_name, read_group, read_index
-from .qc import DEFAULT_CHUNK_NNZ, finding, run_read_check
+from .qc import DEFAULT_CHUNK_NNZ, SAMPLE_ID_LIMIT, finding, run_read_check
 
 # obsm encodings this check reads; None is an unstamped dataset from an
 # older anndata. A DataFrame or sparse group is reported as skipped.
@@ -141,14 +141,17 @@ def _scan_embedding(ds: h5py.Dataset, label: str, obs_ids: np.ndarray, chunk_nnz
     else:
         info = np.iinfo(ds.dtype)
         col_min, col_max = np.full(n_cols, info.max, ds.dtype), np.full(n_cols, info.min, ds.dtype)
-    bad_rows: list[np.ndarray] = []
+    n_bad = 0
+    first_bad: list[np.ndarray] = []  # only the rows a finding will name
     for start in range(0, n_rows, rows_per_chunk):
         block = np.asarray(ds[start : start + rows_per_chunk])
         if is_float:
             finite = np.isfinite(block)
             bad = ~finite.all(axis=1)
             if bad.any():
-                bad_rows.append(np.flatnonzero(bad) + start)
+                n_bad += int(bad.sum())
+                if sum(map(len, first_bad)) < SAMPLE_ID_LIMIT:
+                    first_bad.append(np.flatnonzero(bad)[:SAMPLE_ID_LIMIT] + start)
                 # fmin / fmax ignore NaN, so masking Inf to NaN in place folds
                 # each column's finite range without a warning or a copy.
                 block[~finite] = np.nan
@@ -158,9 +161,8 @@ def _scan_embedding(ds: h5py.Dataset, label: str, obs_ids: np.ndarray, chunk_nnz
         del block  # release the slab and its masks before the next read
 
     findings: list[dict] = []
-    if bad_rows:
-        rows = np.concatenate(bad_rows)
-        findings.append(finding("non_finite_values", len(rows), obs_ids[rows], label))
+    if n_bad:
+        findings.append(finding("non_finite_values", n_bad, obs_ids[np.concatenate(first_bad)], label))
     has_finite = col_min <= col_max  # a column with no finite value keeps its +inf / -inf seeds
     dead = has_finite & (col_min == col_max)
     if dead.any():
