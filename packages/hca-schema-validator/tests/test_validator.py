@@ -3,14 +3,14 @@
 import tempfile
 from pathlib import Path
 
-import anndata as ad
+import anndata
 import numpy as np
 import pandas as pd
 import pytest
 import yaml
 
-from hca_schema_validator import DONOR_GRAIN_COLUMNS, HCA_DERIVED_OBS_LABELS, HCAValidator, check_donor_consistency
-from hca_schema_validator.validator import DESOUPED_COUNTS_LAYER
+from hca_schema_validator import HCA_DERIVED_OBS_LABELS, HCAValidator, check_donor_consistency
+from hca_schema_validator.validator import DESOUPED_COUNTS_LAYER, DONOR_GRAIN_COLUMNS
 
 # Test fixtures directory
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "h5ads"
@@ -1652,23 +1652,20 @@ def test_x_disagreeing_with_raw_x_in_both_directions_errors():
 # Donor-level consistency (#680)
 
 
-def _donor_check_messages(validator):
-    """Filter validator messages to those from the donor-consistency check.
+def _donor_check_via_validator(validator, adata):
+    """Run the check directly and assert every message it produced reached the report.
 
-    Every message from the check opens with ``obs['<col>']`` for one of the
-    donor-grain columns. The curie and enum validators name the bare column
-    ("Column 'sex_ontology_term_id' in dataframe 'obs'") and the cosmetic check
-    names the label column (``obs['sex']``), so the pattern is unique to this
-    check.
+    Proves the wiring without text-filtering the report, which other checks can
+    collide with (the cosmetic check names the source column when a label has no
+    term-ID column; the feature-ID check names obs['organism_ontology_term_id']).
+    validate_adata prefixes each message with "ERROR: " / "WARNING: ", so match
+    on the suffix.
     """
-
-    def from_donor_check(message):
-        return any(f"obs['{col}']" in message for col in DONOR_GRAIN_COLUMNS)
-
-    return (
-        [w for w in validator.warnings if from_donor_check(w)],
-        [e for e in validator.errors if from_donor_check(e)],
-    )
+    warnings, errors = check_donor_consistency(adata)
+    for expected, reported in ((warnings, validator.warnings), (errors, validator.errors)):
+        for message in expected:
+            assert any(m.endswith(message) for m in reported), (message, reported)
+    return warnings, errors
 
 
 def _with_cell_y_set(adata, col, value):
@@ -1681,7 +1678,7 @@ def _with_cell_y_set(adata, col, value):
 
 def _obs_only_adata(**columns):
     n = len(next(iter(columns.values())))
-    return ad.AnnData(obs=pd.DataFrame(columns, index=[f"cell_{i}" for i in range(n)]))
+    return anndata.AnnData(obs=pd.DataFrame(columns, index=[f"cell_{i}" for i in range(n)]))
 
 
 def test_donor_check_silent_on_clean_fixture():
@@ -1689,7 +1686,7 @@ def test_donor_check_silent_on_clean_fixture():
 
     is_valid, validator = _validate_from_fixture(adata)
     assert is_valid, validator.errors
-    assert _donor_check_messages(validator) == ([], [])
+    assert _donor_check_via_validator(validator, adata) == ([], [])
 
 
 def test_donor_check_error_on_sex_conflict():
@@ -1697,7 +1694,7 @@ def test_donor_check_error_on_sex_conflict():
 
     modified = _with_cell_y_set(adata, "sex_ontology_term_id", "PATO:0000384")  # X stays PATO:0000383
     is_valid, validator = _validate_from_fixture(modified)
-    warnings, errors = _donor_check_messages(validator)
+    warnings, errors = _donor_check_via_validator(validator, modified)
     assert not is_valid
     assert warnings == []
     assert len(errors) == 1
@@ -1709,7 +1706,7 @@ def test_donor_check_warning_on_disease_conflict():
 
     modified = _with_cell_y_set(adata, "disease_ontology_term_id", "PATO:0000461")  # X stays MONDO:0100096
     is_valid, validator = _validate_from_fixture(modified)
-    warnings, errors = _donor_check_messages(validator)
+    warnings, errors = _donor_check_via_validator(validator, modified)
     assert is_valid, validator.errors
     assert errors == []
     assert len(warnings) == 1
@@ -1722,11 +1719,12 @@ def test_donor_check_unknown_plus_value_is_fill_in_warning():
 
     modified = _with_cell_y_set(adata, "sex_ontology_term_id", "unknown")
     is_valid, validator = _validate_from_fixture(modified)
-    warnings, errors = _donor_check_messages(validator)
+    warnings, errors = _donor_check_via_validator(validator, modified)
     assert is_valid, validator.errors
     assert errors == []
     assert len(warnings) == 1
-    assert "can be filled in" in warnings[0] and "'donor_1' has ['PATO:0000383', 'unknown']" in warnings[0], warnings
+    assert "can be filled in" in warnings[0], warnings
+    assert "'donor_1' has ['PATO:0000383', 'unknown']" in warnings[0], warnings
 
 
 def test_donor_check_ignores_nulls():
@@ -1741,6 +1739,26 @@ def test_donor_check_ignores_nulls():
 def test_donor_check_sentinels_only_are_silent():
     adata = _obs_only_adata(donor_id=["d1", "d1"], sex_ontology_term_id=["unknown", "na"])
     assert check_donor_consistency(adata) == ([], [])
+
+
+def test_donor_check_not_applicable_is_a_claim():
+    # manner_of_death "not applicable" means alive; alive plus a Hardy category is a conflict.
+    adata = _obs_only_adata(donor_id=["d1", "d1"], manner_of_death=["1", "not applicable"])
+    warnings, errors = check_donor_consistency(adata)
+    assert warnings == []
+    assert len(errors) == 1 and "'d1' has ['1', 'not applicable']" in errors[0], errors
+
+
+@pytest.mark.parametrize("reserved", ["pooled", "unknown", "na"])
+def test_donor_check_skips_donor_ids_that_are_not_an_individual(reserved):
+    # A pool of a male and a female donor, or cells of unknown provenance, is not a mis-join.
+    adata = _obs_only_adata(
+        donor_id=[reserved, reserved, "d1", "d1"],
+        sex_ontology_term_id=["PATO:0000383", "PATO:0000384", "PATO:0000383", "PATO:0000384"],
+    )
+    _, errors = check_donor_consistency(adata)
+    assert len(errors) == 1, errors
+    assert "'d1' has [" in errors[0] and f"'{reserved}'" not in errors[0], errors
 
 
 def test_donor_check_caps_donors_and_values():
@@ -1761,7 +1779,7 @@ def test_donor_check_caps_donors_and_values():
     assert "'d00' has ['0', '1', '2', '3', '4', and 1 more]" in mod_error, mod_error
 
 
-def test_donor_check_unused_categories_are_not_donors():
+def test_donor_check_unused_categories_are_not_donors(recwarn):
     adata = _obs_only_adata(
         donor_id=pd.Categorical(["d1", "d1", "d2"], categories=["d1", "d2", "ghost"]),
         sex_ontology_term_id=pd.Categorical(
@@ -1769,6 +1787,28 @@ def test_donor_check_unused_categories_are_not_donors():
         ),
     )
     assert check_donor_consistency(adata) == ([], [])
+    # A categorical groupby that still saw the unused categories would warn about observed=False.
+    assert [str(w.message) for w in recwarn] == []
+
+
+def test_donor_check_values_compare_as_strings():
+    # Only reachable in memory (anndata's writer NaNs mixed object columns), but the
+    # public function accepts any AnnData: 1 and "1" are the same claim.
+    adata = _obs_only_adata(
+        donor_id=pd.Series([1, "1"], dtype=object),
+        manner_of_death=pd.Series([1, "1"], dtype=object),
+    )
+    assert check_donor_consistency(adata) == ([], [])
+
+
+def test_donor_check_overflow_of_one_is_singular():
+    donors = [f"d{i:02d}" for i in range(11)]
+    adata = _obs_only_adata(
+        donor_id=donors + donors,
+        sex_ontology_term_id=["PATO:0000383"] * 11 + ["PATO:0000384"] * 11,
+    )
+    _, errors = check_donor_consistency(adata)
+    assert "; and 1 more donor. Either" in errors[0], errors
 
 
 def test_donor_check_silent_when_donor_id_absent():
@@ -1783,27 +1823,34 @@ def test_donor_check_skips_absent_columns():
     assert len(errors) == 1 and "organism_ontology_term_id" in errors[0], errors
 
 
+# LinkML Donor slots that are not donor-level metadata, with the reason each is
+# left out of the consistency check. A new Donor slot fails the parity test
+# until it is either added to DONOR_GRAIN_COLUMNS or listed here with a reason.
+_DONOR_SLOTS_NOT_CHECKED = {
+    "donor_id": "the grouping key",
+    "dataset_id": "join column; one donor legitimately spans datasets (#680)",
+    "sex_ontology_term": "deprecated label column",
+}
+
+
 def test_donor_grain_columns_match_linkml_donor_slots():
-    """The error-tier columns are exactly the LinkML Donor slots stored in obs.
+    """The error-tier columns are exactly the LinkML Donor slots, minus the listed exclusions.
 
     The validator cannot import the LinkML schema (it is not a published
     package), so the column map is a constant; this reads the schema by repo
     path and fails if the two ever drift. #680, and #540 for the eventual
     generation of the validator config from LinkML.
     """
-    donor_yaml = Path(__file__).resolve().parents[3] / "shared" / "src" / "hca_validation" / "schema" / "donor.yaml"
+    repo_root = Path(__file__).resolve().parents[3]
+    if not (repo_root / "release-please-config.json").is_file():
+        pytest.skip("the LinkML schema lives in the monorepo checkout, not in the sdist")
+    donor_yaml = repo_root / "shared" / "src" / "hca_validation" / "schema" / "donor.yaml"
     assert donor_yaml.is_file(), f"LinkML donor schema not found at {donor_yaml}"
-    schema = yaml.safe_load(donor_yaml.read_text())
-    donor = schema["classes"]["Donor"]
-    identifiers = {slot for slot, usage in (donor.get("slot_usage") or {}).items() if usage.get("identifier")}
-    local_slots = schema.get("slots") or {}
+    donor_slots = set(yaml.safe_load(donor_yaml.read_text())["classes"]["Donor"]["slots"])
+    assert set(_DONOR_SLOTS_NOT_CHECKED) <= donor_slots, "exclusion list names a slot Donor no longer has"
 
-    def stored_in_obs(slot):
-        return (local_slots.get(slot, {}).get("annotations") or {}).get("annDataLocation") == "obs"
-
-    donor_obs_slots = {slot for slot in donor["slots"] if slot not in identifiers and stored_in_obs(slot)}
     error_tier = {col for col, severity in DONOR_GRAIN_COLUMNS.items() if severity == "error"}
     warning_tier = {col for col, severity in DONOR_GRAIN_COLUMNS.items() if severity == "warning"}
-    assert error_tier == donor_obs_slots
+    assert error_tier == donor_slots - set(_DONOR_SLOTS_NOT_CHECKED)
     # The warning tier is deliberately sample-grain; a slot moving onto Donor must be promoted.
-    assert not warning_tier & set(donor["slots"])
+    assert not warning_tier & donor_slots

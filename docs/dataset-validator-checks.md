@@ -51,6 +51,8 @@ Runs the full vendored schema validator against the unmodified CELLxGENE schema 
 - **GENCODE-aware feature-ID warnings** — warning text includes a GENCODE version label, plus a dataset-organism vs. feature-ID-organism mismatch warning (excluding exempt organisms).
 - **Warning reordering** — feature-ID warnings pushed to the end.
 - **Expression matrix contract** — see §4.1. Not inherited from CELLxGENE, which checks that `raw.X` is raw but never looks at `X`.
+- **Producer label columns** (`check_cosmetic_labels`) — a populated `obs['sex']`, `obs['tissue']`, etc. must have its `*_ontology_term_id` source column (else warning) and every label must equal the canonical ontology label for the row's term (else error). #377, #443.
+- **Donor-level consistency** — see §4.2.
 
 All other rules come from the vendored base class (§5).
 
@@ -95,6 +97,17 @@ Silent when `raw.X` is absent: the vendored `_validate_raw` owns that case. Also
 Sampling: checks 1–4 scan both matrices in full; 5–9 use the first 200 cells, since the identity is per-cell and independent across cells.
 
 Assay coverage: these run on every file, and do **not** yet inherit the ATAC-seq / Methyl-seq / methylation-profiling / snmC-seq exemptions that `hca_schema_definition.yaml` declares for raw-layer validation. HCA does not currently accept those assays; see the open issue before it does.
+
+### 4.2 Donor-level consistency (`check_donor_consistency`)
+
+Every obs row is otherwise validated on its own, so one `donor_id` carrying two sexes — a mis-join of two individuals, or a producer error — passed. This check groups obs by `donor_id` alone (one individual legitimately spans several `dataset_id` values in an integrated object) and looks at each donor's distinct non-null values per column. Port of the donor-metadata cell in Lattice's CELLxGENE curation notebook; the deviations are listed at the constant block in `validator.py`. #680.
+
+| column | two or more real values | one real value + an unknown sentinel |
+|---|---|---|
+| `organism_ontology_term_id`, `sex_ontology_term_id`, `manner_of_death` (the LinkML Donor slots) | **error** | warning: can be filled in |
+| `development_stage_ontology_term_id`, `disease_ontology_term_id` (Sample grain; longitudinal or tumor-plus-adjacent donors legitimately vary) | warning | warning: can be filled in |
+
+Unknown values are `unknown`, `na`, and the empty string, on every column; `not applicable` is a claim. Null is never a claim. Rows whose `donor_id` is `pooled`, `unknown`, or `na` are skipped, since none of those names one individual. One message per column and bucket, naming at most 10 donors with at most 5 values each. Silent when `donor_id` is absent. Reads obs only.
 
 ---
 

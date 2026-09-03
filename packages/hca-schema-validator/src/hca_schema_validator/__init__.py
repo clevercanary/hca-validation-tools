@@ -9,10 +9,9 @@ __schema_reference_url__ = "https://data.humancellatlas.org/metadata"  # Static 
 from .cell_annotation_validator import HCACellAnnotationValidator
 from .labeler import HCA_DERIVED_OBS_LABELS, HCALabeler
 from .populator import populate_in_memory
-from .validator import DONOR_GRAIN_COLUMNS, HCAValidator, check_cosmetic_labels, check_donor_consistency
+from .validator import HCAValidator, check_cosmetic_labels, check_donor_consistency
 
 __all__ = [
-    "DONOR_GRAIN_COLUMNS",
     "HCA_DERIVED_OBS_LABELS",
     "HCACellAnnotationValidator",
     "HCALabeler",
