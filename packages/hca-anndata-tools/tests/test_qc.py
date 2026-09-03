@@ -229,9 +229,15 @@ def test_unknown_sparse_encoding_is_refused_by_name(tmp_path):
     assert "traceback" not in result
 
 
-def test_bad_chunk_nnz_is_refused(tmp_path):
+@pytest.mark.parametrize("chunk_nnz", [0, -1, 2.0, "8"])
+def test_bad_chunk_nnz_is_refused(tmp_path, chunk_nnz):
+    # The handler's own domain check, shared by every chunked read-only tool.
     path = _write(tmp_path / "c.h5ad", BASE, "csr")
-    assert "chunk_nnz" in check_raw_counts(str(path), chunk_nnz=0)["error"]
+    assert "chunk_nnz must be a positive int" in check_raw_counts(str(path), chunk_nnz=chunk_nnz)["error"]
+
+
+def test_iterator_refuses_bad_chunk_nnz(tmp_path):
+    path = _write(tmp_path / "c.h5ad", BASE, "csr")
     with h5py.File(path, "r") as f, pytest.raises(ValueError, match="chunk_nnz"):
         list(iter_matrix_chunks(f, "X", 0))
 

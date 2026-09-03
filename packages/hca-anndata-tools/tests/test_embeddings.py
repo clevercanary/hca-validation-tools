@@ -13,6 +13,7 @@ import h5py
 import numpy as np
 import pandas as pd
 import pytest
+import scipy.sparse as sp
 
 from hca_anndata_tools.embeddings import check_embeddings
 from hca_anndata_tools.qc import SAMPLE_ID_LIMIT
@@ -21,20 +22,28 @@ N_OBS = 8
 RNG = np.random.default_rng(685)
 
 
-def _write(path, **obsm):
-    adata = ad.AnnData(obs=pd.DataFrame(index=[f"c{i}" for i in range(N_OBS)]))  # pyright: ignore[reportArgumentType]
+def _ids(n: int) -> list[str]:
+    return [f"c{i}" for i in range(n)]
+
+
+def _write(path, n: int = N_OBS, **obsm):
+    adata = ad.AnnData(obs=pd.DataFrame(index=_ids(n)))  # pyright: ignore[reportArgumentType]
     for key, value in obsm.items():
         adata.obsm[key] = value
     adata.write_h5ad(path)
     return path
 
 
+def _normal(n_cols: int, n: int = N_OBS):
+    return RNG.standard_normal((n, n_cols)).astype(np.float32)
+
+
 def _umap():
-    return RNG.standard_normal((N_OBS, 2)).astype(np.float32)
+    return _normal(2)
 
 
 def _pca():
-    return RNG.standard_normal((N_OBS, 10)).astype(np.float32)
+    return _normal(10)
 
 
 def _codes(result: dict) -> dict[str, dict]:
@@ -167,22 +176,55 @@ def test_integer_embedding_passes_finiteness_and_is_checked_for_variance(tmp_pat
 
 def test_sample_ids_are_capped(tmp_path):
     n = SAMPLE_ID_LIMIT + 5
-    adata = ad.AnnData(obs=pd.DataFrame(index=[f"c{i}" for i in range(n)]))  # pyright: ignore[reportArgumentType]
-    adata.obsm["X_umap"] = np.full((n, 2), np.nan, np.float32)
-    adata.write_h5ad(tmp_path / "a.h5ad")
-    codes = _codes(check_embeddings(tmp_path / "a.h5ad"))
+    codes = _codes(check_embeddings(_write(tmp_path / "a.h5ad", n, X_umap=np.full((n, 2), np.nan, np.float32))))
     f = codes["obsm/X_umap", "non_finite_values"]
     assert f["count"] == n and len(f["sample_ids"]) == SAMPLE_ID_LIMIT
 
 
 def test_dataframe_entry_is_skipped_not_checked(tmp_path):
-    frame = pd.DataFrame({"a": np.full(N_OBS, np.nan)}, index=[f"c{i}" for i in range(N_OBS)])
+    frame = pd.DataFrame({"a": np.full(N_OBS, np.nan)}, index=_ids(N_OBS))
     result = check_embeddings(_write(tmp_path / "a.h5ad", X_umap=_umap(), table=frame))
     assert _codes(result) == {}
     assert "table" not in result["embeddings"]
     assert [s["key"] for s in result["skipped"]] == ["table"]
     assert result["skipped"][0]["encoding"] == "dataframe"
     assert "not an array" in result["skipped"][0]["reason"]
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        pytest.param(np.zeros((N_OBS, 2), bool), id="bool"),
+        pytest.param(np.full((N_OBS, 2), np.nan + 0j, np.complex128), id="complex"),
+    ],
+)
+def test_non_numeric_array_is_skipped_not_judged(tmp_path, value):
+    # A bool mask is legitimately all-False and a complex NaN is not an embedding defect;
+    # neither is judged, and the real embedding beside it still is.
+    result = check_embeddings(_write(tmp_path / "a.h5ad", X_umap=_umap(), other=value))
+    assert _codes(result) == {}
+    assert list(result["embeddings"]) == ["X_umap"]
+    assert [s["key"] for s in result["skipped"]] == ["other"]
+    assert str(value.dtype) in result["skipped"][0]["reason"]
+
+
+def test_legacy_string_dataset_is_skipped_not_crashed(tmp_path):
+    # Pre-0.8 anndata wrote obsm arrays with no encoding attrs; a string one must not
+    # reach the numeric scan and take every other key down with a traceback.
+    path = _write(tmp_path / "a.h5ad", X_umap=np.zeros((N_OBS, 2), np.float32))
+    with h5py.File(path, "r+") as f:
+        f["obsm"].create_dataset("old", data=np.array([[b"a", b"b"]] * N_OBS))
+    with pytest.warns(ad.OldFormatWarning):
+        result = check_embeddings(path)
+    assert [s["key"] for s in result["skipped"]] == ["old"]
+    assert "|S1" in result["skipped"][0]["reason"]
+    assert set(_codes(result)) == {("obsm/X_umap", "all_zero")}
+
+
+def test_sparse_entry_is_skipped_not_checked(tmp_path):
+    result = check_embeddings(_write(tmp_path / "a.h5ad", X_umap=_umap(), sparse=sp.csr_matrix(np.zeros((N_OBS, 3)))))
+    assert _codes(result) == {}
+    assert [(s["key"], s["encoding"]) for s in result["skipped"]] == [("sparse", "csr_matrix")]
 
 
 def test_unstamped_dataset_is_checked(tmp_path):
@@ -211,11 +253,7 @@ def test_wrong_row_count_is_refused_at_the_gate(tmp_path):
     assert "obsm" in result["error"] and "incorrect shape" in result["error"], result
 
 
-@pytest.mark.parametrize("chunk_nnz", [0, -1, 2.0, "8"])
-def test_bad_chunk_nnz_is_refused(tmp_path, chunk_nnz):
-    result = check_embeddings(_write(tmp_path / "a.h5ad", X_umap=_umap()), chunk_nnz=chunk_nnz)
-    assert "chunk_nnz must be a positive int" in result["error"]
-
-
-def test_missing_file_is_an_error(tmp_path):
-    assert "error" in check_embeddings(str(tmp_path / "nope.h5ad"))
+def test_handler_refusals_reach_the_caller(tmp_path):
+    # The shared handler's own domain is covered in test_qc; this proves the wiring.
+    assert "chunk_nnz must be a positive int" in check_embeddings(_write(tmp_path / "a.h5ad"), chunk_nnz=0)["error"]
+    assert "not found" in check_embeddings(str(tmp_path / "nope.h5ad"))["error"].lower()
