@@ -8,6 +8,7 @@ if TYPE_CHECKING:
     from .compress import compress_h5ad
     from .convert import convert_cellxgene_to_hca
     from .copy_cap import copy_cap_annotations
+    from .donor_sex import check_donor_sex
     from .drop import drop_obs_columns
     from .dup_counts import check_duplicate_cells
     from .edit import (
@@ -82,6 +83,7 @@ _LAZY_IMPORTS = {
     "check_raw_counts": ".qc",
     "check_duplicate_cells": ".dup_counts",
     "check_embeddings": ".embeddings",
+    "check_donor_sex": ".donor_sex",
 }
 
 __all__ = list(_LAZY_IMPORTS)  # pyright: ignore[reportUnsupportedDunderAll]

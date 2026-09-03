@@ -220,6 +220,16 @@ async def test_check_embeddings(client, sample_h5ad):
 
 
 @pytest.mark.asyncio
+async def test_check_donor_sex(client, sample_h5ad):
+    """Round-trip through the server: the sample's var has no Ensembl IDs, so the check is not applicable."""
+    data = await _call(client, "check_donor_sex", {"path": str(sample_h5ad)})
+    assert "error" not in data
+    assert data["status"]["status"] == "not_applicable"
+    assert data["genes_found"] == {"male": [], "female": []}
+    assert data["donors"] == [] and data["findings"] == []
+
+
+@pytest.mark.asyncio
 async def test_registered_tool_names(client):
     """Registration smoke test: the wrapper unit tests import the functions
     directly, so only this catches a tool missing from server.py's
@@ -237,4 +247,5 @@ async def test_registered_tool_names(client):
         "check_raw_counts",
         "check_duplicate_cells",
         "check_embeddings",
+        "check_donor_sex",
     } <= names

@@ -115,6 +115,7 @@ def _cases(bad: str, good: str) -> list[tuple[str, object, dict, bool]]:
         ("check_raw_counts", tools.check_raw_counts, {"path": bad}, False),
         ("check_duplicate_cells", tools.check_duplicate_cells, {"path": bad}, False),
         ("check_embeddings", tools.check_embeddings, {"path": bad}, False),
+        ("check_donor_sex", tools.check_donor_sex, {"path": bad}, False),
         ("get_storage_info", tools.get_storage_info, {"path": bad}, False),
         # --- Already correct: open through open_h5ad in the body. Here so the
         # AC2 roster covers the whole public surface rather than only the
