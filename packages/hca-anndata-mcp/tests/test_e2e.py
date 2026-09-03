@@ -209,6 +209,17 @@ async def test_check_duplicate_cells(client, sample_h5ad):
 
 
 @pytest.mark.asyncio
+async def test_check_embeddings(client, sample_h5ad):
+    """Round-trip through the server: the sample's random UMAP and PCA are live."""
+    data = await _call(client, "check_embeddings", {"path": str(sample_h5ad)})
+    assert "error" not in data
+    assert data["n_obs"] == 50
+    assert {k: v["shape"] for k, v in data["embeddings"].items()} == {"X_pca": [50, 10], "X_umap": [50, 2]}
+    assert data["skipped"] == []
+    assert data["findings"] == []
+
+
+@pytest.mark.asyncio
 async def test_registered_tool_names(client):
     """Registration smoke test: the wrapper unit tests import the functions
     directly, so only this catches a tool missing from server.py's
@@ -225,4 +236,5 @@ async def test_registered_tool_names(client):
         "strip_forbidden_obs_columns",
         "check_raw_counts",
         "check_duplicate_cells",
+        "check_embeddings",
     } <= names
