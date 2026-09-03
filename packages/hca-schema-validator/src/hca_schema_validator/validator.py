@@ -1377,7 +1377,10 @@ _DONOR_ID_NOT_AN_INDIVIDUAL = frozenset({"pooled", "unknown", "na"})
 
 
 def check_donor_consistency(adata):
-    """Report donors whose donor-level obs metadata is not constant. #680.
+    """Report donors whose obs metadata varies where one individual's should not. #680.
+
+    Error-tier columns are donor-level facts; warning-tier columns are sample
+    facts that usually follow the donor but legitimately vary in some studies.
 
     Groups obs by ``donor_id`` alone — the same individual can legitimately
     appear under several ``dataset_id`` values in an integrated object —
@@ -1456,17 +1459,18 @@ def _format_donor_values(donors):
 
 
 def _donor_conflict_message(col, conflicts, severity):
-    message = (
-        f"obs['{col}'] varies within {_plural(len(conflicts), 'donor')} — donor-level "
-        f"metadata must be constant per donor_id: {_format_donor_values(conflicts)}. "
-        f"Either the donor_id merges two individuals, or the value is wrong in some rows."
-    )
-    if severity == "warning":
-        message += (
-            " This is legitimate for longitudinal sampling or a donor who contributed "
-            "both healthy and diseased tissue; otherwise treat it as a mis-join."
+    found = f"obs['{col}'] varies within {_plural(len(conflicts), 'donor')}"
+    if severity == "error":
+        return (
+            f"{found} — donor-level metadata must be constant per donor_id: "
+            f"{_format_donor_values(conflicts)}. Either the donor_id merges two "
+            f"individuals, or the value is wrong in some rows."
         )
-    return message
+    return (
+        f"{found}: {_format_donor_values(conflicts)}. This is sample-level metadata "
+        f"that usually follows the donor; legitimate for longitudinal sampling or a "
+        f"donor who contributed both healthy and diseased tissue, otherwise a mis-join."
+    )
 
 
 def _donor_fill_in_message(col, fillable):
