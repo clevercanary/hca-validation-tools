@@ -1749,16 +1749,17 @@ def test_donor_check_not_applicable_is_a_claim():
     assert len(errors) == 1 and "'d1' has ['1', 'not applicable']" in errors[0], errors
 
 
-@pytest.mark.parametrize("reserved", ["pooled", "unknown", "na"])
+@pytest.mark.parametrize("reserved", ["pooled", "unknown", "na", ""])
 def test_donor_check_skips_donor_ids_that_are_not_an_individual(reserved):
-    # A pool of a male and a female donor, or cells of unknown provenance, is not a mis-join.
+    # A pool of a male and a female donor, cells of unknown provenance, or a missing ID is not a mis-join.
     adata = _obs_only_adata(
         donor_id=[reserved, reserved, "d1", "d1"],
         sex_ontology_term_id=["PATO:0000383", "PATO:0000384", "PATO:0000383", "PATO:0000384"],
     )
     _, errors = check_donor_consistency(adata)
     assert len(errors) == 1, errors
-    assert "'d1' has [" in errors[0] and f"'{reserved}'" not in errors[0], errors
+    assert "'d1' has [" in errors[0], errors
+    assert f"'{reserved}' has [" not in errors[0], errors
 
 
 def test_donor_check_caps_donors_and_values():

@@ -1372,8 +1372,9 @@ _DONOR_REPORT_MAX_VALUES = 5
 # enum validator already errors on it, so this set only decides the tier of
 # the donor message. "not applicable" is a claim (manner_of_death: alive).
 _NOT_A_CLAIM = frozenset({"unknown", "na", ""})
-# donor_id values that do not name one individual (see the deviation note).
-_DONOR_ID_NOT_AN_INDIVIDUAL = frozenset({"pooled", "unknown", "na"})
+# donor_id values that do not name one individual (see the deviation note);
+# an empty string is a missing ID, which the column validator already rejects.
+_DONOR_ID_NOT_AN_INDIVIDUAL = frozenset({"pooled", "unknown", "na", ""})
 
 
 def check_donor_consistency(adata):

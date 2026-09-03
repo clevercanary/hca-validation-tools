@@ -107,7 +107,7 @@ Every obs row is otherwise validated on its own, so one `donor_id` carrying two 
 | `organism_ontology_term_id`, `sex_ontology_term_id`, `manner_of_death` (the LinkML Donor slots) | **error** | warning: can be filled in |
 | `development_stage_ontology_term_id`, `disease_ontology_term_id` (Sample grain; longitudinal or tumor-plus-adjacent donors legitimately vary) | warning | warning: can be filled in |
 
-Unknown values are `unknown`, `na`, and the empty string, on every column; `not applicable` is a claim. Null is never a claim. Rows whose `donor_id` is `pooled`, `unknown`, or `na` are skipped, since none of those names one individual. One message per column and bucket, naming at most 10 donors with at most 5 values each. Silent when `donor_id` is absent. Reads obs only.
+Unknown values are `unknown`, `na`, and the empty string, on every column; `not applicable` is a claim. Null is never a claim. Rows whose `donor_id` is `pooled`, `unknown`, `na`, or empty are skipped, since none of those names one individual. One message per column and bucket, naming at most 10 donors with at most 5 values each. Silent when `donor_id` is absent. Reads obs only.
 
 ---
 
