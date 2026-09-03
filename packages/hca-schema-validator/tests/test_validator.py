@@ -1652,16 +1652,17 @@ def test_x_disagreeing_with_raw_x_in_both_directions_errors():
 # Donor-level consistency (#680)
 
 
-def _donor_check_via_validator(validator, adata):
-    """Run the check directly and assert every message it produced reached the report.
+def _donor_check_via_validator(validator):
+    """Run the check on the validator's read-back AnnData and assert every message reached the report.
 
     Proves the wiring without text-filtering the report, which other checks can
     collide with (the cosmetic check names the source column when a label has no
     term-ID column; the feature-ID check names obs['organism_ontology_term_id']).
-    validate_adata prefixes each message with "ERROR: " / "WARNING: ", so match
-    on the suffix.
+    Using validator.adata rather than the pre-write fixture keeps the comparison
+    like-for-like across h5ad serialization. validate_adata prefixes each message
+    with "ERROR: " / "WARNING: ", so match on the suffix.
     """
-    warnings, errors = check_donor_consistency(adata)
+    warnings, errors = check_donor_consistency(validator.adata)
     for expected, reported in ((warnings, validator.warnings), (errors, validator.errors)):
         for message in expected:
             assert any(m.endswith(message) for m in reported), (message, reported)
@@ -1686,7 +1687,7 @@ def test_donor_check_silent_on_clean_fixture():
 
     is_valid, validator = _validate_from_fixture(adata)
     assert is_valid, validator.errors
-    assert _donor_check_via_validator(validator, adata) == ([], [])
+    assert _donor_check_via_validator(validator) == ([], [])
 
 
 def test_donor_check_error_on_sex_conflict():
@@ -1694,7 +1695,7 @@ def test_donor_check_error_on_sex_conflict():
 
     modified = _with_cell_y_set(adata, "sex_ontology_term_id", "PATO:0000384")  # X stays PATO:0000383
     is_valid, validator = _validate_from_fixture(modified)
-    warnings, errors = _donor_check_via_validator(validator, modified)
+    warnings, errors = _donor_check_via_validator(validator)
     assert not is_valid
     assert warnings == []
     assert len(errors) == 1
@@ -1706,7 +1707,7 @@ def test_donor_check_warning_on_disease_conflict():
 
     modified = _with_cell_y_set(adata, "disease_ontology_term_id", "PATO:0000461")  # X stays MONDO:0100096
     is_valid, validator = _validate_from_fixture(modified)
-    warnings, errors = _donor_check_via_validator(validator, modified)
+    warnings, errors = _donor_check_via_validator(validator)
     assert is_valid, validator.errors
     assert errors == []
     assert len(warnings) == 1
@@ -1719,7 +1720,7 @@ def test_donor_check_unknown_plus_value_is_fill_in_warning():
 
     modified = _with_cell_y_set(adata, "sex_ontology_term_id", "unknown")
     is_valid, validator = _validate_from_fixture(modified)
-    warnings, errors = _donor_check_via_validator(validator, modified)
+    warnings, errors = _donor_check_via_validator(validator)
     assert is_valid, validator.errors
     assert errors == []
     assert len(warnings) == 1
