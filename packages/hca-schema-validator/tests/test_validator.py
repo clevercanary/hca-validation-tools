@@ -3,11 +3,13 @@
 import tempfile
 from pathlib import Path
 
+import anndata as ad
 import numpy as np
 import pandas as pd
 import pytest
+import yaml
 
-from hca_schema_validator import HCA_DERIVED_OBS_LABELS, HCAValidator
+from hca_schema_validator import DONOR_GRAIN_COLUMNS, HCA_DERIVED_OBS_LABELS, HCAValidator, check_donor_consistency
 from hca_schema_validator.validator import DESOUPED_COUNTS_LAYER
 
 # Test fixtures directory
@@ -1644,3 +1646,164 @@ def test_x_disagreeing_with_raw_x_in_both_directions_errors():
     )
 
     _assert_only_x_error(is_valid, validator, "in both directions")
+
+
+# ---------------------------------------------------------------------------
+# Donor-level consistency (#680)
+
+
+def _donor_check_messages(validator):
+    """Filter validator messages to those from the donor-consistency check.
+
+    Every message from the check opens with ``obs['<col>']`` for one of the
+    donor-grain columns. The curie and enum validators name the bare column
+    ("Column 'sex_ontology_term_id' in dataframe 'obs'") and the cosmetic check
+    names the label column (``obs['sex']``), so the pattern is unique to this
+    check.
+    """
+
+    def from_donor_check(message):
+        return any(f"obs['{col}']" in message for col in DONOR_GRAIN_COLUMNS)
+
+    return (
+        [w for w in validator.warnings if from_donor_check(w)],
+        [e for e in validator.errors if from_donor_check(e)],
+    )
+
+
+def _with_cell_y_set(adata, col, value):
+    """Copy the fixture with obs[col] of cell "Y" changed; the fixture columns are categorical."""
+    modified = adata.copy()
+    modified.obs[col] = modified.obs[col].astype(str)
+    modified.obs.loc["Y", col] = value
+    return modified
+
+
+def _obs_only_adata(**columns):
+    n = len(next(iter(columns.values())))
+    return ad.AnnData(obs=pd.DataFrame(columns, index=[f"cell_{i}" for i in range(n)]))
+
+
+def test_donor_check_silent_on_clean_fixture():
+    from .fixtures.hca_fixtures import adata
+
+    is_valid, validator = _validate_from_fixture(adata)
+    assert is_valid, validator.errors
+    assert _donor_check_messages(validator) == ([], [])
+
+
+def test_donor_check_error_on_sex_conflict():
+    from .fixtures.hca_fixtures import adata
+
+    modified = _with_cell_y_set(adata, "sex_ontology_term_id", "PATO:0000384")  # X stays PATO:0000383
+    is_valid, validator = _validate_from_fixture(modified)
+    warnings, errors = _donor_check_messages(validator)
+    assert not is_valid
+    assert warnings == []
+    assert len(errors) == 1
+    assert "'donor_1' has ['PATO:0000383', 'PATO:0000384']" in errors[0], errors
+
+
+def test_donor_check_warning_on_disease_conflict():
+    from .fixtures.hca_fixtures import adata
+
+    modified = _with_cell_y_set(adata, "disease_ontology_term_id", "PATO:0000461")  # X stays MONDO:0100096
+    is_valid, validator = _validate_from_fixture(modified)
+    warnings, errors = _donor_check_messages(validator)
+    assert is_valid, validator.errors
+    assert errors == []
+    assert len(warnings) == 1
+    assert "'donor_1' has ['MONDO:0100096', 'PATO:0000461']" in warnings[0], warnings
+    assert "longitudinal" in warnings[0]
+
+
+def test_donor_check_unknown_plus_value_is_fill_in_warning():
+    from .fixtures.hca_fixtures import adata
+
+    modified = _with_cell_y_set(adata, "sex_ontology_term_id", "unknown")
+    is_valid, validator = _validate_from_fixture(modified)
+    warnings, errors = _donor_check_messages(validator)
+    assert is_valid, validator.errors
+    assert errors == []
+    assert len(warnings) == 1
+    assert "can be filled in" in warnings[0] and "'donor_1' has ['PATO:0000383', 'unknown']" in warnings[0], warnings
+
+
+def test_donor_check_ignores_nulls():
+    adata = _obs_only_adata(
+        donor_id=["d1", "d1", "d1"],
+        sex_ontology_term_id=["PATO:0000383", None, np.nan],
+        manner_of_death=pd.Categorical(["1", None, "1"]),
+    )
+    assert check_donor_consistency(adata) == ([], [])
+
+
+def test_donor_check_sentinels_only_are_silent():
+    adata = _obs_only_adata(donor_id=["d1", "d1"], sex_ontology_term_id=["unknown", "na"])
+    assert check_donor_consistency(adata) == ([], [])
+
+
+def test_donor_check_caps_donors_and_values():
+    donors = [f"d{i:02d}" for i in range(12)]
+    adata = _obs_only_adata(
+        donor_id=donors + donors + ["d00"] * 4,
+        sex_ontology_term_id=["PATO:0000383"] * 12 + ["PATO:0000384"] * 12 + ["PATO:0000383"] * 4,
+        manner_of_death=["0"] * 12 + ["1"] * 12 + ["2", "3", "4", "not applicable"],
+    )
+    warnings, errors = check_donor_consistency(adata)
+    assert warnings == []
+    assert len(errors) == 2, errors
+    sex_error = next(e for e in errors if "sex_ontology_term_id" in e)
+    assert "varies within 12 donors" in sex_error
+    assert sex_error.count(" has [") == 10
+    assert "; and 2 more donors. Either the donor_id merges two individuals" in sex_error
+    mod_error = next(e for e in errors if "manner_of_death" in e)
+    assert "'d00' has ['0', '1', '2', '3', '4', and 1 more]" in mod_error, mod_error
+
+
+def test_donor_check_unused_categories_are_not_donors():
+    adata = _obs_only_adata(
+        donor_id=pd.Categorical(["d1", "d1", "d2"], categories=["d1", "d2", "ghost"]),
+        sex_ontology_term_id=pd.Categorical(
+            ["PATO:0000383", "PATO:0000383", "PATO:0000384"], categories=["PATO:0000383", "PATO:0000384", "unknown"]
+        ),
+    )
+    assert check_donor_consistency(adata) == ([], [])
+
+
+def test_donor_check_silent_when_donor_id_absent():
+    adata = _obs_only_adata(sex_ontology_term_id=["PATO:0000383", "PATO:0000384"])
+    assert check_donor_consistency(adata) == ([], [])
+
+
+def test_donor_check_skips_absent_columns():
+    adata = _obs_only_adata(donor_id=["d1", "d1"], organism_ontology_term_id=["NCBITaxon:9606", "NCBITaxon:10090"])
+    warnings, errors = check_donor_consistency(adata)
+    assert warnings == []
+    assert len(errors) == 1 and "organism_ontology_term_id" in errors[0], errors
+
+
+def test_donor_grain_columns_match_linkml_donor_slots():
+    """The error-tier columns are exactly the LinkML Donor slots stored in obs.
+
+    The validator cannot import the LinkML schema (it is not a published
+    package), so the column map is a constant; this reads the schema by repo
+    path and fails if the two ever drift. #680, and #540 for the eventual
+    generation of the validator config from LinkML.
+    """
+    donor_yaml = Path(__file__).resolve().parents[3] / "shared" / "src" / "hca_validation" / "schema" / "donor.yaml"
+    assert donor_yaml.is_file(), f"LinkML donor schema not found at {donor_yaml}"
+    schema = yaml.safe_load(donor_yaml.read_text())
+    donor = schema["classes"]["Donor"]
+    identifiers = {slot for slot, usage in (donor.get("slot_usage") or {}).items() if usage.get("identifier")}
+    local_slots = schema.get("slots") or {}
+
+    def stored_in_obs(slot):
+        return (local_slots.get(slot, {}).get("annotations") or {}).get("annDataLocation") == "obs"
+
+    donor_obs_slots = {slot for slot in donor["slots"] if slot not in identifiers and stored_in_obs(slot)}
+    error_tier = {col for col, severity in DONOR_GRAIN_COLUMNS.items() if severity == "error"}
+    warning_tier = {col for col, severity in DONOR_GRAIN_COLUMNS.items() if severity == "warning"}
+    assert error_tier == donor_obs_slots
+    # The warning tier is deliberately sample-grain; a slot moving onto Donor must be promoted.
+    assert not warning_tier & set(donor["slots"])

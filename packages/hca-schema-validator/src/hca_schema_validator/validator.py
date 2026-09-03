@@ -90,6 +90,11 @@ class HCAValidator(Validator):
         self.warnings.extend(warnings)
         self.errors.extend(errors)
 
+    def _check_donor_consistency(self):
+        warnings, errors = check_donor_consistency(self.adata, self.schema_def)
+        self.warnings.extend(warnings)
+        self.errors.extend(errors)
+
     def _deep_check(self):
         """
         The base class skips raw validation when *any* errors exist, but raw
@@ -107,6 +112,7 @@ class HCAValidator(Validator):
 
         self._check_cosmetic_label_columns()
         self._check_x_normalization()
+        self._check_donor_consistency()
 
     def _validate_list(self, list_name, current_list, element_type):
         """
@@ -1309,3 +1315,172 @@ def _lookup_canonical_label(term_id, exceptions):
         return ONTOLOGY_PARSER.get_term_label(term_id)
     except (KeyError, ValueError):
         return None
+
+
+# ---------------------------------------------------------------------------
+# Donor-level consistency (#680)
+#
+# Port of the donor-metadata cell of Lattice's curation QA notebook (cell 37;
+# there is no library function), pinned at commit
+# ``8778a14f2a5a7039acf3ce74b3da220c24521905``:
+# https://github.com/Lattice-Data/lattice-tools/blob/8778a14f2a5a7039acf3ce74b3da220c24521905/cellxgene_resources/curation_qa.ipynb
+#
+# Lattice runs value_counts over five fields (donor_id, sex, development_stage,
+# self_reported_ethnicity, disease) and reports every donor_id that appears
+# under more than one combination as ERROR. The cell's markdown tells the
+# curator to drop disease when a donor contributed healthy and diseased tissue
+# and to drop development_stage for longitudinal studies.
+#
+# Deviations from Lattice:
+# * organism and manner_of_death are added: both are Donor slots in the HCA
+#   LinkML schema. CELLxGENE has no manner_of_death, and Lattice's datasets
+#   are single-organism.
+# * ethnicity is dropped: HCA does not carry it (#409).
+# * development_stage and disease are warnings, not errors. The HCA schema
+#   puts both at Sample grain (age at sampling; "disease, if expected to
+#   impact the sample"), so a longitudinal or tumor-plus-adjacent donor
+#   legitimately carries two values. A mis-join looks identical, so the
+#   signal is kept, but as a warning.
+# * one real value plus an unknown sentinel is a fill-in warning, not a
+#   conflict. That split is borrowed from Lattice's sex check (cell 41),
+#   which its donor cell does not do.
+# * null is not a claim and never counts. Lattice's value_counts silently
+#   drops any row with a null in any of its five fields.
+# * the report is capped per column; Lattice displays the whole DataFrame.
+#
+# tests/test_validator.py asserts the error-tier columns equal the Donor
+# slots in shared/src/hca_validation/schema/donor.yaml, so this map cannot
+# drift from the LinkML schema unnoticed.
+DONOR_GRAIN_COLUMNS: dict[str, str] = {
+    "organism_ontology_term_id": "error",
+    "sex_ontology_term_id": "error",
+    "manner_of_death": "error",
+    "development_stage_ontology_term_id": "warning",
+    "disease_ontology_term_id": "warning",
+}
+_DONOR_REPORT_MAX_DONORS = 10
+_DONOR_REPORT_MAX_VALUES = 5
+# Enum members that mean "not known" rather than a claim. Term-ID columns
+# declare their sentinels as curie exceptions in the schema definition
+# instead, and `_collect_curie_exceptions` reads those.
+_ENUM_UNKNOWN_VALUES = frozenset({"unknown", ""})
+
+
+def check_donor_consistency(adata, schema_def=None):
+    """Report donors whose donor-level obs metadata is not constant. #680.
+
+    Groups obs by ``donor_id`` and, for each column in
+    :data:`DONOR_GRAIN_COLUMNS` that is present, looks at the distinct
+    non-null values per donor:
+
+    * two or more values that are not unknown sentinels → a conflict, at the
+      column's severity (error for donor-grain slots, warning for the two
+      sample-grain columns Lattice also checks);
+    * exactly one real value alongside a sentinel → a warning that the
+      sentinel rows can be filled in;
+    * anything else → silent.
+
+    The key is ``donor_id`` alone: the same individual can legitimately appear
+    under several ``dataset_id`` values in an integrated object.
+
+    Reads obs only. Emits one message per column and bucket, naming at most
+    ``_DONOR_REPORT_MAX_DONORS`` donors with at most
+    ``_DONOR_REPORT_MAX_VALUES`` values each, so one bad donor in a
+    multi-million-cell file is one line. Silent when ``donor_id`` is absent
+    (the column checks already report that).
+
+    Args:
+        adata: An AnnData object.
+        schema_def: Loaded HCA schema definition dict; the bundled one is used
+            when omitted.
+
+    Returns:
+        ``(warnings, errors)`` — two lists of strings.
+    """
+    if schema_def is None:
+        schema_def = _load_default_schema_def()
+
+    warnings: list[str] = []
+    errors: list[str] = []
+
+    obs = getattr_anndata(adata, "obs")
+    if obs is None or "donor_id" not in obs.columns:
+        return warnings, errors
+
+    obs_components = schema_def.get("components", {}).get("obs", {}).get("columns", {})
+    for col, severity in DONOR_GRAIN_COLUMNS.items():
+        if col not in obs.columns:
+            continue
+        sentinels = _donor_column_sentinels(obs_components.get(col, {}))
+        conflicts, fillable = _donor_value_sets(obs, col, sentinels)
+        if conflicts:
+            message = _donor_conflict_message(col, conflicts, severity)
+            (errors if severity == "error" else warnings).append(message)
+        if fillable:
+            warnings.append(_donor_fill_in_message(col, fillable))
+
+    return warnings, errors
+
+
+def _donor_column_sentinels(col_def):
+    sentinels = _collect_curie_exceptions(col_def)
+    sentinels.update(v for v in col_def.get("enum", []) if v in _ENUM_UNKNOWN_VALUES)
+    return sentinels
+
+
+def _donor_value_sets(obs, col, sentinels):
+    # Deduplicate the (donor, value) pairs first — one pass over n_obs — then
+    # go to object dtype so categoricals cannot contribute unused categories
+    # as phantom groups. Null rows are not claims and are dropped.
+    pairs = obs[["donor_id", col]].drop_duplicates().astype(object).dropna()
+    conflicts: dict[str, list[str]] = {}
+    fillable: dict[str, list[str]] = {}
+    for donor, values in pairs.groupby("donor_id", sort=True)[col]:
+        distinct = sorted(str(v) for v in values)
+        if len(distinct) < 2:
+            continue
+        real = [v for v in distinct if v not in sentinels]
+        if len(real) >= 2:
+            conflicts[str(donor)] = distinct
+        elif len(real) == 1:
+            fillable[str(donor)] = distinct
+    return conflicts, fillable
+
+
+def _plural(n, noun):
+    return f"{n} {noun}" if n == 1 else f"{n} {noun}s"
+
+
+def _format_donor_values(donors):
+    parts = []
+    for donor, values in list(donors.items())[:_DONOR_REPORT_MAX_DONORS]:
+        shown = ", ".join(f"'{v}'" for v in values[:_DONOR_REPORT_MAX_VALUES])
+        if len(values) > _DONOR_REPORT_MAX_VALUES:
+            shown += f", and {len(values) - _DONOR_REPORT_MAX_VALUES} more"
+        parts.append(f"'{donor}' has [{shown}]")
+    text = "; ".join(parts)
+    if len(donors) > _DONOR_REPORT_MAX_DONORS:
+        text += f"; and {len(donors) - _DONOR_REPORT_MAX_DONORS} more donors"
+    return text
+
+
+def _donor_conflict_message(col, conflicts, severity):
+    message = (
+        f"obs['{col}'] varies within {_plural(len(conflicts), 'donor')} — donor-level "
+        f"metadata must be constant per donor_id: {_format_donor_values(conflicts)}. "
+        f"Either the donor_id merges two individuals, or the value is wrong in some rows."
+    )
+    if severity == "warning":
+        message += (
+            " This is legitimate for longitudinal sampling or a donor who contributed "
+            "both healthy and diseased tissue; otherwise treat it as a mis-join."
+        )
+    return message
+
+
+def _donor_fill_in_message(col, fillable):
+    verb = "mixes" if len(fillable) == 1 else "mix"
+    return (
+        f"obs['{col}']: {_plural(len(fillable), 'donor')} {verb} an unknown sentinel with "
+        f"a real value and can be filled in: {_format_donor_values(fillable)}."
+    )
