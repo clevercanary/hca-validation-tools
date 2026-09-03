@@ -40,9 +40,9 @@ _NUMERIC_KINDS = "fiu"
 def check_embeddings(path: str, chunk_nnz: int = DEFAULT_CHUNK_NNZ) -> dict:
     """Check every embedding in ``obsm`` for the shapes an embedding cannot have.
 
-    Read-only: one pass per array-encoded ``obsm`` key, in row chunks of at
-    most ``chunk_nnz`` values, so the scan's own memory is bounded whatever
-    the array's size. The gate's anndata open (#667) materialises ``obsm``
+    Read-only: one pass per array-encoded ``obsm`` key, in row chunks sized
+    to about ``chunk_nnz`` values and never less than one full row, so the
+    scan's own memory is bounded whatever the array's size. The gate's anndata open (#667) materialises ``obsm``
     once before that, as it does for every tool. The count matrix is never
     touched.
 
