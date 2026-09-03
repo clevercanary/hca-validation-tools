@@ -109,7 +109,7 @@ from .qc import (
     finding,
     iter_matrix_chunks,
     open_count_matrix,
-    run_count_check,
+    run_read_check,
 )
 
 # Groups reported per finding; each group lists at most SAMPLE_ID_LIMIT IDs.
@@ -311,4 +311,4 @@ def check_duplicate_cells(path: str, chunk_nnz: int = DEFAULT_CHUNK_NNZ) -> dict
         cell IDs each, ascending by first member), and ``matrix``. On
         failure, ``error`` is returned instead.
     """
-    return run_count_check(path, chunk_nnz, _check_duplicate_cells_at_path)
+    return run_read_check(path, chunk_nnz, _check_duplicate_cells_at_path)

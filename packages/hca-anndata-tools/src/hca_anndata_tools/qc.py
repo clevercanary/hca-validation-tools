@@ -149,10 +149,12 @@ def dense_block_as_csr(block: np.ndarray) -> sp.csr_matrix:
 
 
 def finding(code: str, count: int, ids: np.ndarray | list, matrix: str, **detail) -> dict:
-    """One finding: what, how many, which cells (or genes), on which matrix.
+    """One finding: what, how many, which cells (or genes, or columns), on which matrix.
 
     ``sample_ids`` always names what ``count`` counts, capped, so a renderer
-    that knows nothing about codes can still say "which". ``detail`` is
+    that knows nothing about codes can still say "which". A finding about the
+    matrix as a whole (``empty_matrix``, ``wrong_shape``) has ``count`` 1 and
+    an empty ``sample_ids``: the ``matrix`` field already names it. ``detail`` is
     additive structure a code may carry beyond that (a duplicate finding's
     groups, say) and never replaces it.
     """
@@ -165,8 +167,10 @@ def finding(code: str, count: int, ids: np.ndarray | list, matrix: str, **detail
     }
 
 
-def run_count_check(path: str, chunk_nnz: int, body: Callable[[str, int], dict]) -> dict:
-    """The handler every count-matrix tool shares: validate, resolve, run, report.
+def run_read_check(path: str, chunk_nnz: int, body: Callable[[str, int], dict]) -> dict:
+    """The handler every read-only chunked check shares: validate, resolve, run, report.
+
+    Nothing here is matrix-specific — the embedding gate (#685) uses it too.
 
     ``body`` gets the resolved path and returns the result dict; anything it
     raises comes back through :func:`failure_result`, so a refusal keeps its
@@ -366,4 +370,4 @@ def check_raw_counts(path: str, chunk_nnz: int = DEFAULT_CHUNK_NNZ) -> dict:
 
         On failure, ``error`` is returned instead.
     """
-    return run_count_check(path, chunk_nnz, _check_raw_counts_at_path)
+    return run_read_check(path, chunk_nnz, _check_raw_counts_at_path)

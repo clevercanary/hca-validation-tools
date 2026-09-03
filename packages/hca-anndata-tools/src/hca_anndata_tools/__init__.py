@@ -16,6 +16,7 @@ if TYPE_CHECKING:
         set_uns,
         view_edit_log,
     )
+    from .embeddings import check_embeddings
     from .files import locate_files
     from .inspect import check_schema_type, check_x_normalization
     from .marker_genes import validate_marker_genes
@@ -80,6 +81,7 @@ _LAZY_IMPORTS = {
     "check_schema_type": ".inspect",
     "check_raw_counts": ".qc",
     "check_duplicate_cells": ".dup_counts",
+    "check_embeddings": ".embeddings",
 }
 
 __all__ = list(_LAZY_IMPORTS)  # pyright: ignore[reportUnsupportedDunderAll]
