@@ -70,7 +70,7 @@ def test_one_duplicated_cell_is_one_group_of_two(tmp_path, fmt):
     (finding,) = result["findings"]
     assert finding["count"] == 1
     assert finding["sample_ids"] == ["c6"]  # the surplus cell, what count counts
-    assert finding["matrix"] == "raw/X"
+    assert finding["element"] == "raw/X"
 
 
 def test_two_independent_pairs_are_two_groups(tmp_path):

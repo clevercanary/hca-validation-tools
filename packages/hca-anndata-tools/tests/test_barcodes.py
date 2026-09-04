@@ -64,7 +64,7 @@ def test_no_cell_has_a_barcode(tmp_path):
     f = result["findings"][0]
     assert f["count"] == n
     assert f["sample_ids"] == ids[:SAMPLE_ID_LIMIT]
-    assert f["matrix"] == "obs/cellID"
+    assert f["element"] == "obs/cellID"
     assert f["shapes"] == [{"shape": "cell_#", "cells": n}]
 
 
@@ -118,11 +118,31 @@ def test_legacy_v1_barcodes_are_counted_by_length(tmp_path):
     assert result["findings"] == []
 
 
-def test_run_longer_than_a_barcode_counts_as_sixteen_and_short_runs_at_their_length(tmp_path):
+def test_every_run_is_counted_at_its_own_length(tmp_path):
+    # A 20-base run is not a 10x barcode; filing it under 16 would hide exactly
+    # what the length count exists to show. An 11-base run is below Lattice's floor.
     ids = [f"a_{_barcode(20)}", f"b_{_barcode(12)}", f"c_{_barcode(13)}", f"d_{_barcode(11)}"]
     result = _ok(check_barcodes(_write(tmp_path / "a.h5ad", ids)))
-    assert result["structure"]["by_length"] == {"16": 1, "13": 1, "12": 1, "0": 1}
+    assert result["structure"]["by_length"] == {"20": 1, "13": 1, "12": 1, "0": 1}
+    assert result["structure"]["shapes"][0]["shape"] in {"a_<20nt>", "b_<12nt>", "c_<13nt>", "d_" + ids[3][2:]}
     assert result["findings"][0]["sample_ids"] == [ids[3]]
+
+
+def test_two_barcodes_in_one_id_collapse_to_one_shape(tmp_path):
+    # A multiome ID carries a GEX and an ATAC barcode; both must collapse or every cell is its own shape.
+    ids = [f"{_barcode()}_{_barcode()}-1" for _ in range(6)]
+    result = _ok(check_barcodes(_write(tmp_path / "a.h5ad", ids)))
+    assert result["structure"]["shapes"] == [{"shape": "<16nt>_<16nt>-#", "cells": 6}]
+    assert result["structure"]["by_length"] == {"16": 6}
+
+
+def test_uuid_index_yields_one_shape_per_cell_but_the_count_is_exact(tmp_path):
+    import uuid
+
+    ids = [str(uuid.UUID(int=i * 7919 + 12345, version=4)) for i in range(8)]
+    result = _ok(check_barcodes(_write(tmp_path / "a.h5ad", ids)))
+    assert result["findings"][0]["count"] == 8
+    assert len(result["structure"]["shapes"]) == 8  # documented: nothing to collapse but digits
 
 
 # --- AC10: the list is bounded -----------------------------------------------
@@ -158,7 +178,7 @@ def test_result_is_fixed_and_serializable(tmp_path):
     result = _ok(check_barcodes(_write(tmp_path / "a.h5ad", ids)))
     assert set(result) == {"filename", "n_obs", "structure", "findings"}
     assert set(result["structure"]) == {"with_barcode", "fraction", "by_length", "shapes"}
-    assert set(result["findings"][0]) == {"code", "count", "sample_ids", "matrix", "shapes"}
+    assert set(result["findings"][0]) == {"code", "count", "sample_ids", "element", "shapes"}
     assert result["filename"] == "a.h5ad"
     json.dumps(result)  # no numpy scalars
     assert not any(k in result for k in ("is_valid", "verdict", "passed"))

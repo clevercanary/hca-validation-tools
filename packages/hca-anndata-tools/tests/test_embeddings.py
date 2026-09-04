@@ -48,7 +48,7 @@ def _pca():
 
 def _codes(result: dict) -> dict[str, dict]:
     assert "error" not in result, result
-    return {(f["matrix"], f["code"]): f for f in result["findings"]}
+    return {(f["element"], f["code"]): f for f in result["findings"]}
 
 
 def test_clean_fixture_has_no_findings(tmp_path):

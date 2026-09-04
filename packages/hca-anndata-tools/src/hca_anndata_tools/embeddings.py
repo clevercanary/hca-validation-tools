@@ -59,7 +59,7 @@ def check_embeddings(path: str, chunk_nnz: int = DEFAULT_CHUNK_NNZ) -> dict:
         empty ``skipped`` means every embedding passed; no ``obsm`` at all is
         a clean result with an empty map (#526 owns whether one must exist).
         Each finding: ``code``, ``count``, ``sample_ids`` (at most 20),
-        ``matrix`` (``obsm/<key>``). Every offending key is reported. Codes:
+        ``element`` (``obsm/<key>``). Every offending key is reported. Codes:
 
         - ``wrong_shape`` — not 2-D, or no columns; ``shape`` carried.
           Nothing else runs on that key.

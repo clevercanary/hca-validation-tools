@@ -308,7 +308,7 @@ def check_duplicate_cells(path: str, chunk_nnz: int = DEFAULT_CHUNK_NNZ) -> dict
         one ``duplicate_cells`` finding with ``count`` (surplus cells: each
         group's size minus one), ``sample_ids`` (those surplus cells, at most
         20), ``groups``, ``sample_groups`` (at most 20 groups of at most 20
-        cell IDs each, ascending by first member), and ``matrix``. On
+        cell IDs each, ascending by first member), and ``element``. On
         failure, ``error`` is returned instead.
     """
     return run_read_check(path, chunk_nnz, _check_duplicate_cells_at_path)

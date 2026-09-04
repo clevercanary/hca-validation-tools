@@ -29,8 +29,8 @@ https://github.com/Lattice-Data/lattice-tools/blob/8778a14f2a5a7039acf3ce74b3da2
 
 The original: for each obs index value, search for a run of twelve or more
 ``ACTG`` characters and keep the first sixteen of it as the cell's barcode;
-warn ``No barcodes found`` when no value has one. That extraction is carried
-verbatim (:data:`BARCODE_RUN`, :data:`BARCODE_MAX_LENGTH`). A 10x barcode is
+warn ``No barcodes found`` when no value has one. The search is carried
+verbatim (:data:`BARCODE_RUN`). A 10x barcode is
 sixteen bases (fourteen on the 2014 Chromium v1 chemistry), and every 10x
 pipeline writes it into the cell ID, so an index with none is one whose IDs
 were regenerated — positional integers, ``cell_<N>``, ``blood_qc-<N>`` — and
@@ -52,7 +52,12 @@ Deviations from the original, each with its reason:
    source dataset; the original's all-or-nothing warning is silent on it.
    The finding carries the shapes of the barcode-less IDs so it names the
    family (``Krzak#_#``), not a bare count.
-3. **Read-only through the shared gate**, obs index only. The original
+3. **The run's true length, not the first sixteen.** The original cuts to
+   sixteen because that is what the whitelist lookup joins on. A histogram
+   that did the same would file a 24-base Parse or a 32-base concatenated
+   multiome run under ``16`` beside genuine 10x barcodes, which is the one
+   thing a length count is for. The cut moves to #696 with the lookup.
+4. **Read-only through the shared gate**, obs index only. The original
    works on a loaded ``obs``; the body here reads one dataset from the file
    and touches no matrix. (The gate's own anndata open still materialises
    obs and obsm first, as for every tool — see :func:`check_barcodes`.)
@@ -69,12 +74,11 @@ import h5py
 from ._io import gate_h5ad_paths, obs_index_name, read_index
 from .qc import SAMPLE_ID_LIMIT, finding, run_read_check
 
-# ``extract_barcodes`` in the original: the run to search for, and how much
-# of it is the barcode. Twelve is Lattice's floor, not a 10x length; a
-# twelve- or thirteen-base run is reported at its own length and joins
-# nothing in #696.
+# ``extract_barcodes`` in the original: the run to search for. Twelve is
+# Lattice's floor, not a 10x length; every run is reported at its own length
+# here, and the cut to sixteen the original makes belongs to the whitelist
+# lookup (#696).
 BARCODE_RUN = re.compile(r"[ACTG]{12,}")
-BARCODE_MAX_LENGTH = 16
 # Run length recorded for a value with no barcode.
 NO_BARCODE = 0
 # Shapes listed per report; enough to see every study in an integrated
@@ -105,9 +109,12 @@ def check_barcodes(path: str, shapes: int = DEFAULT_SHAPES) -> dict:
         ``structure`` has ``with_barcode``, ``fraction`` (of cells whose ID
         holds a barcode), ``by_length`` (cells per barcode length,
         ``"0"`` for none; ``"16"`` is every 10x chemistry since 2016,
-        ``"14"`` the 2014 Chromium v1), and ``shapes`` — the distinct ID
-        patterns with the barcode shown as ``<Nnt>`` and digit runs as
-        ``#``, each with its cell count. ``findings`` is empty when every
+        ``"14"`` the 2014 Chromium v1, anything longer is a run that is not
+        a 10x barcode on its own), and ``shapes`` — the distinct ID patterns
+        with each barcode shown as ``<Nnt>`` and digit runs as ``#``, each
+        with its cell count. IDs whose per-cell variation is neither digits
+        nor a barcode (a UUID index) yield one shape per cell, so their
+        ``shapes`` lists singletons. ``findings`` is empty when every
         cell has a barcode; otherwise it holds one ``no_barcode_in_index``
         in the shared finding shape — ``count`` = barcode-less cells,
         ``sample_ids`` = up to 20 of their IDs — plus ``shapes``, the
@@ -119,21 +126,21 @@ def check_barcodes(path: str, shapes: int = DEFAULT_SHAPES) -> dict:
 
 
 def barcode_shape(value: str) -> tuple[int, str]:
-    """Lattice's extraction on one ID: ``(barcode length, shape)``.
+    """Lattice's search on one ID: ``(barcode length, shape)``.
 
-    The length is the first ``ACTG`` run of twelve or more, cut to sixteen,
-    or :data:`NO_BARCODE`. The shape is the value with every digit run
-    collapsed to ``#`` and that run replaced by ``<Nnt>``; with no run, just
-    the digit collapse, so ``Krzak2023_119779`` reads ``Krzak#_#``.
+    The length is that of the first ``ACTG`` run of twelve or more, or
+    :data:`NO_BARCODE`. The shape is the value with every digit run
+    collapsed to ``#`` and every such run replaced by ``<Nnt>``, so a
+    multiome ID carrying two barcodes reads ``<16nt>_<16nt>-#``; with no
+    run, just the digit collapse, so ``Krzak2023_119779`` reads ``Krzak#_#``.
     """
     # Digits collapse first: a barcode run holds no digit and ``#`` is not a
-    # base, so the search finds the same run in the collapsed string.
+    # base, so the search finds the same runs in the collapsed string.
     shape = _DIGIT_RUN.sub("#", value)
-    m = BARCODE_RUN.search(shape)
-    if m is None:
+    first = BARCODE_RUN.search(shape)
+    if first is None:
         return NO_BARCODE, shape
-    length = min(len(m[0]), BARCODE_MAX_LENGTH)
-    return length, f"{shape[: m.start()]}<{length}nt>{shape[m.end() :]}"
+    return len(first[0]), BARCODE_RUN.sub(lambda m: f"<{len(m[0])}nt>", shape)
 
 
 def _check_barcodes_at_path(path: str, shapes: int) -> dict:
@@ -144,7 +151,8 @@ def _check_barcodes_at_path(path: str, shapes: int) -> dict:
 
     # One pass; every reported number is a projection of these tallies. The
     # barcode-less IDs are kept only up to the finding's cap — the count
-    # comes from ``by_length`` — so nothing here is sized by the index.
+    # comes from ``by_length`` — so only the shape tallies can grow with the
+    # index, and only when every ID has its own shape (a UUID index).
     all_shapes: Counter[str] = Counter()
     missing_shapes: Counter[str] = Counter()
     missing_ids: list[str] = []

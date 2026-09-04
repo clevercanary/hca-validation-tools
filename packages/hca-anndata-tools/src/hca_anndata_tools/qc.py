@@ -32,7 +32,7 @@ import numpy as np
 import scipy.sparse as sp
 from anndata.io import sparse_dataset
 
-from ._errors import Refusal, failure_result
+from ._errors import Refusal, failure_result, positive_int_error
 from ._io import MatrixFormat, describe_matrix, gate_h5ad_paths, obs_index_name, read_index
 from .inspect import resolve_count_matrix
 from .write import resolve_latest
@@ -107,8 +107,8 @@ def iter_matrix_chunks(
     information a count check needs, and dropping it is what makes the
     per-row "any value at all" test the same question for every format.
     """
-    if not isinstance(chunk_nnz, int) or chunk_nnz < 1:
-        raise ValueError(f"chunk_nnz must be a positive int, got {chunk_nnz!r}")
+    if error := positive_int_error("chunk_nnz", chunk_nnz):
+        raise ValueError(error)
     item = f[key]
     fmt, (n_rows, n_cols), _ = describe_matrix(item, key)
 
@@ -148,17 +148,16 @@ def dense_block_as_csr(block: np.ndarray) -> sp.csr_matrix:
     return sp.csr_matrix(block)
 
 
-def finding(code: str, count: int, ids: np.ndarray | list, matrix: str, **detail) -> dict:
+def finding(code: str, count: int, ids: np.ndarray | list, element: str, **detail) -> dict:
     """One finding: what, how many, which cells (or genes, or columns), on which element.
 
-    ``matrix`` is the HDF5 element the finding was computed from — a count
+    ``element`` is the HDF5 element the finding was computed from — a count
     matrix (``X``, ``raw/X``), an embedding (``obsm/<key>``), or an index
-    (``obs/<name>``, #679) — so a renderer can say *where* without knowing
-    the code. The name predates the non-matrix users and is kept for the
-    released JSON. ``sample_ids`` always names what ``count`` counts, capped,
-    so the same renderer can say "which". A finding about the element as a
-    whole (``empty_matrix``, ``wrong_shape``) has ``count`` 1 and an empty
-    ``sample_ids``: the ``matrix`` field already names it. ``detail`` is
+    (``obs/<name>``) — so a renderer can say *where* without knowing the
+    code. ``sample_ids`` always names what ``count`` counts, capped, so the
+    same renderer can say "which". A finding about the element as a whole
+    (``empty_matrix``, ``wrong_shape``) has ``count`` 1 and an empty
+    ``sample_ids``: the ``element`` field already names it. ``detail`` is
     additive structure a code may carry beyond that (a duplicate finding's
     groups, say) and never replaces it.
     """
@@ -166,7 +165,7 @@ def finding(code: str, count: int, ids: np.ndarray | list, matrix: str, **detail
         "code": code,
         "count": int(count),
         "sample_ids": [str(v) for v in ids[:SAMPLE_ID_LIMIT]],
-        "matrix": matrix,
+        "element": element,
         **detail,
     }
 
@@ -205,18 +204,6 @@ def run_read_check(path: str, value: int, body: Callable[[str, int], dict], knob
         return body(resolved, value)
 
     return run_read(path, checked)
-
-
-def positive_int_error(name: str, value: object) -> str | None:
-    """Why ``value`` is not a positive int for the ``name`` argument, or None when it is.
-
-    The one wording every tool knob (``chunk_nnz``, ``shapes``, ...) refuses with.
-    ``bool`` is rejected explicitly: ``isinstance(True, int)`` holds, and a
-    knob set to ``True`` meaning ``1`` is a mistake, not a request.
-    """
-    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
-        return f"{name} must be a positive int, got {value!r}"
-    return None
 
 
 def _walk(f: h5py.File, key: str, n_obs: int, n_var: int, chunk_nnz: int, check_integers: bool) -> tuple:
@@ -399,7 +386,8 @@ def check_raw_counts(path: str, chunk_nnz: int = DEFAULT_CHUNK_NNZ) -> dict:
         "applied"`` means the counts are clean; with ``not_applicable`` it
         means the file has no raw matrix and ``X`` is not counts, so only the
         criteria that hold for any matrix were run. Each finding:
-        ``code``, ``count``, ``sample_ids`` (at most 20), ``matrix``. Codes:
+        ``code``, ``count``, ``sample_ids`` (at most 20), ``element`` (the
+        matrix gated). Codes:
 
         - ``negative_values`` — count of values below zero; IDs of cells holding one
         - ``non_finite_values`` — count of NaN / Inf; IDs of cells holding one

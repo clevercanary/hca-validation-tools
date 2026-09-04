@@ -88,6 +88,19 @@ def describe_exception(exc: BaseException) -> tuple[str, str]:
     return summary, formatted
 
 
+def positive_int_error(name: str, value: object) -> str | None:
+    """Why ``value`` is not a positive int for the ``name`` argument, or None when it is.
+
+    The one wording every tool knob (``chunk_nnz``, ``sample_size``,
+    ``shapes``) refuses with. ``bool`` is rejected explicitly:
+    ``isinstance(True, int)`` holds, and a knob set to ``True`` meaning ``1``
+    is a mistake, not a request.
+    """
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        return f"{name} must be a positive int, got {value!r}"
+    return None
+
+
 def failure_result(exc: Exception) -> dict[str, str]:
     """The error dict a tool's broad ``except`` should return.
 
