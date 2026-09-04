@@ -64,10 +64,9 @@ from collections import Counter
 from pathlib import Path
 
 import h5py
-import numpy as np
 
 from ._io import gate_h5ad_paths, obs_index_name, read_index
-from .qc import finding, run_read
+from .qc import SAMPLE_ID_LIMIT, finding, positive_int_error, run_read
 
 # ``extract_barcodes`` in the original: the run to search for, and how much
 # of it is the barcode. Twelve is Lattice's floor, not a 10x length; a
@@ -99,8 +98,8 @@ def check_barcodes(path: str, shapes: int = DEFAULT_SHAPES) -> dict:
 
     Returns:
         Dict with ``filename``, ``n_obs``, ``structure``, and ``findings``.
-        ``structure`` has ``cells``, ``with_barcode``, ``fraction`` (of cells
-        whose ID holds a barcode), ``by_length`` (cells per barcode length,
+        ``structure`` has ``with_barcode``, ``fraction`` (of cells whose ID
+        holds a barcode), ``by_length`` (cells per barcode length,
         ``"0"`` for none; ``"16"`` is every 10x chemistry since 2016,
         ``"14"`` the 2014 Chromium v1), and ``shapes`` — the distinct ID
         patterns with the barcode shown as ``<Nnt>`` and digit runs as
@@ -112,8 +111,8 @@ def check_barcodes(path: str, shapes: int = DEFAULT_SHAPES) -> dict:
         rather than a number. No pass/fail verdict on the file. On failure,
         ``error`` is returned instead.
     """
-    if not isinstance(shapes, int) or shapes < 1:
-        return {"error": f"shapes must be a positive int, got {shapes!r}"}
+    if error := positive_int_error("shapes", shapes):
+        return {"error": error}
     return run_read(path, lambda resolved: _check_barcodes_at_path(resolved, shapes))
 
 
@@ -121,17 +120,18 @@ def barcode_shape(value: str) -> tuple[int, str]:
     """Lattice's extraction on one ID: ``(barcode length, shape)``.
 
     The length is the first ``ACTG`` run of twelve or more, cut to sixteen,
-    or :data:`NO_BARCODE`. The shape is the value with that run replaced by
-    ``<Nnt>`` and every digit run collapsed to ``#``; with no run, just the
-    digit collapse, so ``Krzak2023_119779`` reads ``Krzak#_#``.
+    or :data:`NO_BARCODE`. The shape is the value with every digit run
+    collapsed to ``#`` and that run replaced by ``<Nnt>``; with no run, just
+    the digit collapse, so ``Krzak2023_119779`` reads ``Krzak#_#``.
     """
-    m = BARCODE_RUN.search(value)
+    # Digits collapse first: a barcode run holds no digit and ``#`` is not a
+    # base, so the search finds the same run in the collapsed string.
+    shape = _DIGIT_RUN.sub("#", value)
+    m = BARCODE_RUN.search(shape)
     if m is None:
-        return NO_BARCODE, _DIGIT_RUN.sub("#", value)
-    length = min(m.end() - m.start(), BARCODE_MAX_LENGTH)
-    before = _DIGIT_RUN.sub("#", value[: m.start()])
-    after = _DIGIT_RUN.sub("#", value[m.end() :])
-    return length, f"{before}<{length}nt>{after}"
+        return NO_BARCODE, shape
+    length = min(len(m[0]), BARCODE_MAX_LENGTH)
+    return length, f"{shape[: m.start()]}<{length}nt>{shape[m.end() :]}"
 
 
 def _check_barcodes_at_path(path: str, shapes: int) -> dict:
@@ -140,32 +140,40 @@ def _check_barcodes_at_path(path: str, shapes: int) -> dict:
         index_name = obs_index_name(obs)
         ids = read_index(obs, index_name, "obs")
 
-    described = [barcode_shape(str(v)) for v in ids]
-    lengths = np.fromiter((length for length, _ in described), dtype=np.int64, count=len(described))
-    all_shapes = Counter(shape for _, shape in described)
-    missing = lengths == NO_BARCODE
-    n_obs = len(ids)
-    with_barcode = n_obs - int(missing.sum())
+    # One pass; every reported number is a projection of these tallies. The
+    # barcode-less IDs are kept only up to the finding's cap — the count
+    # comes from ``by_length`` — so nothing here is sized by the index.
+    all_shapes: Counter[str] = Counter()
+    missing_shapes: Counter[str] = Counter()
+    missing_ids: list[str] = []
+    by_length: Counter[int] = Counter()
+    for value in ids:
+        length, shape = barcode_shape(str(value))
+        all_shapes[shape] += 1
+        by_length[length] += 1
+        if length == NO_BARCODE:
+            missing_shapes[shape] += 1
+            if len(missing_ids) < SAMPLE_ID_LIMIT:
+                missing_ids.append(str(value))
 
+    n_obs = len(ids)
+    n_missing = by_length[NO_BARCODE]
+    with_barcode = n_obs - n_missing
     findings: list[dict] = []
-    if missing.any():
-        missing_shapes = Counter(shape for (length, shape) in described if length == NO_BARCODE)
+    if n_missing:
         findings.append(
             finding(
                 "no_barcode_in_index",
-                int(missing.sum()),
-                ids[missing],
+                n_missing,
+                missing_ids,
                 f"obs/{index_name}",
                 shapes=_top(missing_shapes, shapes),
             )
         )
-
-    by_length = Counter(int(length) for length in lengths)
     return {
         "filename": Path(path).name,
         "n_obs": n_obs,
         "structure": {
-            "cells": n_obs,
             "with_barcode": with_barcode,
             "fraction": with_barcode / n_obs if n_obs else 0.0,
             "by_length": {str(length): count for length, count in sorted(by_length.items(), reverse=True)},

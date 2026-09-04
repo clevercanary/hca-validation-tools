@@ -47,7 +47,6 @@ def test_every_cell_has_a_barcode(tmp_path):
     ids = [f"Kong2023_N{i}_L1-{_barcode()}" for i in range(12)]
     result = _ok(check_barcodes(_write(tmp_path / "a.h5ad", ids)))
     assert result["n_obs"] == 12
-    assert result["structure"]["cells"] == 12
     assert result["structure"]["with_barcode"] == 12
     assert result["structure"]["fraction"] == 1.0
     assert result["structure"]["by_length"] == {"16": 12}
@@ -145,7 +144,7 @@ def test_finding_shapes_are_capped_too(tmp_path):
     assert result["findings"][0]["count"] == 5
 
 
-@pytest.mark.parametrize("shapes", [0, -1, 2.5, "20"])
+@pytest.mark.parametrize("shapes", [0, -1, 2.5, "20", True])
 def test_shapes_must_be_a_positive_int(tmp_path, shapes):
     result = check_barcodes(_write(tmp_path / "a.h5ad", ["cell_0"]), shapes=shapes)
     assert result == {"error": f"shapes must be a positive int, got {shapes!r}"}
@@ -158,7 +157,7 @@ def test_result_is_fixed_and_serializable(tmp_path):
     ids = [f"S_{_barcode()}", "cell_1"]
     result = _ok(check_barcodes(_write(tmp_path / "a.h5ad", ids)))
     assert set(result) == {"filename", "n_obs", "structure", "findings"}
-    assert set(result["structure"]) == {"cells", "with_barcode", "fraction", "by_length", "shapes"}
+    assert set(result["structure"]) == {"with_barcode", "fraction", "by_length", "shapes"}
     assert set(result["findings"][0]) == {"code", "count", "sample_ids", "matrix", "shapes"}
     assert result["filename"] == "a.h5ad"
     json.dumps(result)  # no numpy scalars
@@ -167,7 +166,7 @@ def test_result_is_fixed_and_serializable(tmp_path):
 
 def test_empty_obs_is_a_clean_result(tmp_path):
     result = _ok(check_barcodes(_write(tmp_path / "a.h5ad", [])))
-    assert result["structure"] == {"cells": 0, "with_barcode": 0, "fraction": 0.0, "by_length": {}, "shapes": []}
+    assert result["structure"] == {"with_barcode": 0, "fraction": 0.0, "by_length": {}, "shapes": []}
     assert result["findings"] == []
 
 

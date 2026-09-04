@@ -149,12 +149,16 @@ def dense_block_as_csr(block: np.ndarray) -> sp.csr_matrix:
 
 
 def finding(code: str, count: int, ids: np.ndarray | list, matrix: str, **detail) -> dict:
-    """One finding: what, how many, which cells (or genes, or columns), on which matrix.
+    """One finding: what, how many, which cells (or genes, or columns), on which element.
 
-    ``sample_ids`` always names what ``count`` counts, capped, so a renderer
-    that knows nothing about codes can still say "which". A finding about the
-    matrix as a whole (``empty_matrix``, ``wrong_shape``) has ``count`` 1 and
-    an empty ``sample_ids``: the ``matrix`` field already names it. ``detail`` is
+    ``matrix`` is the HDF5 element the finding was computed from — a count
+    matrix (``X``, ``raw/X``), an embedding (``obsm/<key>``), or an index
+    (``obs/<name>``, #679) — so a renderer can say *where* without knowing
+    the code. The name predates the non-matrix users and is kept for the
+    released JSON. ``sample_ids`` always names what ``count`` counts, capped,
+    so the same renderer can say "which". A finding about the element as a
+    whole (``empty_matrix``, ``wrong_shape``) has ``count`` 1 and an empty
+    ``sample_ids``: the ``matrix`` field already names it. ``detail`` is
     additive structure a code may carry beyond that (a duplicate finding's
     groups, say) and never replaces it.
     """
@@ -188,9 +192,21 @@ def run_read(path: str, body: Callable[[str], dict]) -> dict:
 
 def run_read_check(path: str, chunk_nnz: int, body: Callable[[str, int], dict]) -> dict:
     """:func:`run_read` for the chunked checks: validates ``chunk_nnz`` first, then hands it to ``body``."""
-    if not isinstance(chunk_nnz, int) or chunk_nnz < 1:
-        return {"error": f"chunk_nnz must be a positive int, got {chunk_nnz!r}"}
+    if error := positive_int_error("chunk_nnz", chunk_nnz):
+        return {"error": error}
     return run_read(path, lambda resolved: body(resolved, chunk_nnz))
+
+
+def positive_int_error(name: str, value: object) -> str | None:
+    """Why ``value`` is not a positive int for the ``name`` argument, or None when it is.
+
+    The one wording every tool knob (``chunk_nnz``, ``shapes``) refuses with.
+    ``bool`` is rejected explicitly: ``isinstance(True, int)`` holds, and a
+    knob set to ``True`` meaning ``1`` is a mistake, not a request.
+    """
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        return f"{name} must be a positive int, got {value!r}"
+    return None
 
 
 def _walk(f: h5py.File, key: str, n_obs: int, n_var: int, chunk_nnz: int, check_integers: bool) -> tuple:
