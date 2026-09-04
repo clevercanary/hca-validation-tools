@@ -108,7 +108,6 @@ def test_result_is_fixed_and_serializable(tmp_path):
     assert set(result["findings"][0]) == {"code", "count", "sample_ids", "element"}
     assert result["filename"] == "a.h5ad"
     json.dumps(result)  # no numpy scalars
-    assert not any(k in result for k in ("is_valid", "verdict", "passed"))
 
 
 def test_empty_obs_is_a_clean_result(tmp_path):

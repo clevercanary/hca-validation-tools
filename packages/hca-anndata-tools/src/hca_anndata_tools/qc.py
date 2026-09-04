@@ -32,7 +32,7 @@ import numpy as np
 import scipy.sparse as sp
 from anndata.io import sparse_dataset
 
-from ._errors import Refusal, failure_result, positive_int_error
+from ._errors import Refusal, failure_result, require_positive_int
 from ._io import MatrixFormat, describe_matrix, gate_h5ad_paths, obs_index_name, read_index
 from .inspect import resolve_count_matrix
 from .write import resolve_latest
@@ -107,8 +107,7 @@ def iter_matrix_chunks(
     information a count check needs, and dropping it is what makes the
     per-row "any value at all" test the same question for every format.
     """
-    if error := positive_int_error("chunk_nnz", chunk_nnz):
-        raise ValueError(error)
+    require_positive_int("chunk_nnz", chunk_nnz)
     item = f[key]
     fmt, (n_rows, n_cols), _ = describe_matrix(item, key)
 
@@ -192,14 +191,12 @@ def run_read(path: str, body: Callable[[str], dict]) -> dict:
 def run_read_check(path: str, chunk_nnz: int, body: Callable[[str, int], dict]) -> dict:
     """:func:`run_read` for the chunked checks: refuses a bad ``chunk_nnz`` by name, then hands it to ``body``.
 
-    The knob check runs inside :func:`run_read`'s handler, so every path out
-    of a tool is a dict — a ``repr`` that raises while the refusal is
-    formatted comes back as a failure result, not an exception.
+    The knob check runs inside :func:`run_read`'s handler, once per tool and
+    before any read, so every exit is a dict.
     """
 
     def checked(resolved: str) -> dict:
-        if error := positive_int_error("chunk_nnz", chunk_nnz):
-            return {"error": error}
+        require_positive_int("chunk_nnz", chunk_nnz)
         return body(resolved, chunk_nnz)
 
     return run_read(path, checked)

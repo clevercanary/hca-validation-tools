@@ -30,9 +30,8 @@ https://github.com/Lattice-Data/lattice-tools/blob/8778a14f2a5a7039acf3ce74b3da2
 The original: for each obs index value, search for a run of twelve or more
 ``ACTG`` characters and keep the first sixteen of it as the cell's barcode;
 warn ``No barcodes found`` when no value has one. The search is carried
-verbatim (:data:`BARCODE_RUN`). A 10x barcode is sixteen bases (fourteen on
-the 2014 Chromium v1 chemistry), and every 10x pipeline writes it into the
-cell ID, so an index with none is one whose IDs were regenerated —
+verbatim (:data:`BARCODE_RUN`). Every 10x pipeline writes the barcode into
+the cell ID, so an index with none is one whose IDs were regenerated —
 positional integers, ``cell_<N>``, ``blood_qc-<N>`` — and can no longer be
 joined to anything upstream. Lattice goes on to look each barcode up in the
 union of the 10x whitelists; that half is #696, because the whitelists are
@@ -52,27 +51,22 @@ Deviations from the original, each with its reason:
    that did the same would file a 24-base Parse or a 32-base concatenated
    multiome run under ``16`` beside genuine 10x barcodes, which is the one
    thing a length count is for. The cut moves to #696 with the lookup.
-3. **Read-only through the shared gate**, obs index only. The original
-   works on a loaded ``obs``; the body here reads one dataset from the file
-   and touches no matrix. (The gate's own anndata open still materialises
-   obs and obsm first, as for every tool — see :func:`check_barcodes`.)
+3. **Read-only, obs index only.** The original works on a loaded ``obs``;
+   the body here reads one dataset from the file and touches no matrix.
 """
 
 from __future__ import annotations
 
 import re
-from collections import Counter
 from pathlib import Path
 
 import h5py
+import numpy as np
 
 from ._io import gate_h5ad_paths, obs_index_name, read_index
-from .qc import SAMPLE_ID_LIMIT, finding, run_read
+from .qc import finding, run_read
 
-# ``extract_barcodes`` in the original: the run to search for. Twelve is
-# Lattice's floor, not a 10x length; every run is reported at its own length
-# here, and the cut to sixteen the original makes belongs to the whitelist
-# lookup (#696).
+# Lattice's search, verbatim. Twelve is its floor, not a 10x length.
 BARCODE_RUN = re.compile(r"[ACTG]{12,}")
 # Run length recorded for a value with no barcode.
 NO_BARCODE = 0
@@ -112,7 +106,7 @@ def check_barcodes(path: str) -> dict:
 def barcode_length(value: str) -> int:
     """Lattice's search on one ID: the length of the first ``ACTG`` run of twelve or more, or :data:`NO_BARCODE`."""
     m = BARCODE_RUN.search(value)
-    return len(m[0]) if m else NO_BARCODE
+    return m.end() - m.start() if m else NO_BARCODE
 
 
 def _check_barcodes_at_path(path: str) -> dict:
@@ -121,30 +115,26 @@ def _check_barcodes_at_path(path: str) -> dict:
         index_name = obs_index_name(obs)
         ids = read_index(obs, index_name, "obs")
 
-    # One pass; every reported number is a projection of ``by_length``. The
-    # barcode-less IDs are kept only up to the finding's cap, so nothing here
-    # is sized by the index.
-    by_length: Counter[int] = Counter()
-    missing_ids: list[str] = []
-    for value in ids:
-        length = barcode_length(str(value))
-        by_length[length] += 1
-        if length == NO_BARCODE and len(missing_ids) < SAMPLE_ID_LIMIT:
-            missing_ids.append(str(value))
-
+    # ``read_index`` returns str for every string encoding; an index stored
+    # as numbers (not anndata's own writing) is stringified once, not per ID.
+    if ids.dtype.kind != "O":
+        ids = ids.astype(str).astype(object)
+    lengths = np.fromiter(map(barcode_length, ids), dtype=np.int64, count=len(ids))
+    missing = lengths == NO_BARCODE
     n_obs = len(ids)
-    n_missing = by_length[NO_BARCODE]
+    n_missing = int(missing.sum())
     with_barcode = n_obs - n_missing
     findings: list[dict] = []
     if n_missing:
-        findings.append(finding("no_barcode_in_index", n_missing, missing_ids, f"obs/{index_name}"))
+        findings.append(finding("no_barcode_in_index", n_missing, ids[missing], f"obs/{index_name}"))
+    values, counts = np.unique(lengths, return_counts=True)
     return {
         "filename": Path(path).name,
         "n_obs": n_obs,
         "structure": {
             "with_barcode": with_barcode,
             "fraction": with_barcode / n_obs if n_obs else 0.0,
-            "by_length": {str(length): count for length, count in sorted(by_length.items(), reverse=True)},
+            "by_length": {str(int(v)): int(c) for v, c in sorted(zip(values, counts, strict=True), reverse=True)},
         },
         "findings": findings,
     }
