@@ -202,8 +202,8 @@ def _check_donor_sex_at_path(path: str, chunk_nnz: int) -> dict:
             return result
         result["gene_panel"] = {"status": "applied"}
         panel = {var_ids[c] for c in (*male_cols, *female_cols)}
-        if duplicated := check_duplicate_ids([v for v in var_ids if v in panel], cm.var_key):
-            raise Refusal(f"a panel gene is listed twice, so its column is ambiguous: {duplicated}")
+        if duplicated := check_duplicate_ids([v for v in var_ids if v in panel], f"{cm.var_key} panel genes"):
+            raise Refusal(f"a sex-panel gene is listed twice, so its column is ambiguous: {duplicated}")
         obs = read_group(f, "obs")
         # The anndata gate refuses an obs that is not a dataframe group (a compound
         # dataset fails its own read), so this narrows for pyright only.
