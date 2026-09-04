@@ -260,6 +260,21 @@ class CountMatrix:
         """The dataframe that names this matrix's columns."""
         return "raw/var" if self.key == "raw/X" else "var"
 
+    def read_var_ids(self, f: h5py.File) -> np.ndarray:
+        """The var index that names this matrix's columns, refused by name when it cannot.
+
+        The var half of the preamble ``open_count_matrix`` does for obs: the
+        dataframe must exist and its index must be as wide as the matrix.
+        anndata's backed open checks neither for ``raw/var``.
+        """
+        if self.var_key not in f:
+            raise Refusal(f"{self.key} is present but {self.var_key} is not, so its genes cannot be named")
+        var = f[self.var_key]
+        var_ids = read_index(var, obs_index_name(var), self.var_key.replace("/", "."))
+        if len(var_ids) != self.n_var:
+            raise Refusal(f"{self.var_key} has {len(var_ids)} IDs but {self.key} has {self.n_var} columns")
+        return var_ids
+
     def envelope(self, path: str) -> dict:
         """The result keys every count-matrix check reports, in one order."""
         return {
@@ -301,12 +316,7 @@ def open_count_matrix(f: h5py.File) -> CountMatrix:
 def _check_raw_counts_at_path(path: str, chunk_nnz: int) -> dict:
     with h5py.File(path, "r") as f:
         cm = open_count_matrix(f)
-        if cm.var_key not in f:
-            raise Refusal(f"{cm.key} is present but {cm.var_key} is not, so its genes cannot be named")
-        var = f[cm.var_key]
-        var_ids = read_index(var, obs_index_name(var), cm.var_key.replace("/", "."))
-        if len(var_ids) != cm.n_var:
-            raise Refusal(f"{cm.var_key} has {len(var_ids)} IDs but {cm.key} has {cm.n_var} columns")
+        var_ids = cm.read_var_ids(f)
 
         findings = []
         if cm.n_obs == 0 or cm.n_var == 0:

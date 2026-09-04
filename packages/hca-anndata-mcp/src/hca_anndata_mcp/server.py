@@ -15,6 +15,7 @@ from hca_anndata_mcp.tools.strip import strip_forbidden_obs_columns
 from hca_anndata_mcp.tools.strip_cap import strip_cap_annotations
 from hca_anndata_mcp.tools.validate import validate_cell_annotation, validate_schema
 from hca_anndata_tools import (
+    check_donor_sex,
     check_duplicate_cells,
     check_embeddings,
     check_raw_counts,
@@ -182,6 +183,7 @@ mcp.tool()(check_x_normalization)
 mcp.tool()(check_raw_counts)
 mcp.tool()(check_duplicate_cells)
 mcp.tool()(check_embeddings)
+mcp.tool()(check_donor_sex)
 mcp.tool()(check_schema_type)
 mcp.tool()(validate_schema)
 mcp.tool()(validate_cell_annotation)
