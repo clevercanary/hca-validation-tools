@@ -190,17 +190,27 @@ def run_read(path: str, body: Callable[[str], dict]) -> dict:
         return failure_result(e)
 
 
-def run_read_check(path: str, chunk_nnz: int, body: Callable[[str, int], dict]) -> dict:
-    """:func:`run_read` for the chunked checks: validates ``chunk_nnz`` first, then hands it to ``body``."""
-    if error := positive_int_error("chunk_nnz", chunk_nnz):
-        return {"error": error}
-    return run_read(path, lambda resolved: body(resolved, chunk_nnz))
+def run_read_check(path: str, value: int, body: Callable[[str, int], dict], knob: str = "chunk_nnz") -> dict:
+    """:func:`run_read` for a check with one positive-int knob.
+
+    Refuses a bad ``value`` by ``knob``'s name, then hands it to ``body``.
+    The knob check runs inside :func:`run_read`'s handler, so every path out
+    of a tool is a dict — a ``repr`` that raises while the refusal is
+    formatted comes back as a failure result, not an exception.
+    """
+
+    def checked(resolved: str) -> dict:
+        if error := positive_int_error(knob, value):
+            return {"error": error}
+        return body(resolved, value)
+
+    return run_read(path, checked)
 
 
 def positive_int_error(name: str, value: object) -> str | None:
     """Why ``value`` is not a positive int for the ``name`` argument, or None when it is.
 
-    The one wording every tool knob (``chunk_nnz``, ``shapes``) refuses with.
+    The one wording every tool knob (``chunk_nnz``, ``shapes``, ...) refuses with.
     ``bool`` is rejected explicitly: ``isinstance(True, int)`` holds, and a
     knob set to ``True`` meaning ``1`` is a mistake, not a request.
     """

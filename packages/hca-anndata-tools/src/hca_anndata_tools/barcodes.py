@@ -53,8 +53,9 @@ Deviations from the original, each with its reason:
    The finding carries the shapes of the barcode-less IDs so it names the
    family (``Krzak#_#``), not a bare count.
 3. **Read-only through the shared gate**, obs index only. The original
-   works on a loaded ``obs``; this reads one dataset from the file, so it
-   costs seconds on a two-million-cell object and touches no matrix.
+   works on a loaded ``obs``; the body here reads one dataset from the file
+   and touches no matrix. (The gate's own anndata open still materialises
+   obs and obsm first, as for every tool — see :func:`check_barcodes`.)
 """
 
 from __future__ import annotations
@@ -66,7 +67,7 @@ from pathlib import Path
 import h5py
 
 from ._io import gate_h5ad_paths, obs_index_name, read_index
-from .qc import SAMPLE_ID_LIMIT, finding, positive_int_error, run_read
+from .qc import SAMPLE_ID_LIMIT, finding, run_read_check
 
 # ``extract_barcodes`` in the original: the run to search for, and how much
 # of it is the barcode. Twelve is Lattice's floor, not a 10x length; a
@@ -87,10 +88,13 @@ _DIGIT_RUN = re.compile(r"\d+")
 def check_barcodes(path: str, shapes: int = DEFAULT_SHAPES) -> dict:
     """Report which cells carry a 10x barcode in their ID, and what the IDs look like.
 
-    Read-only: reads the obs index and nothing else — no obs column, no
-    matrix, no ``obsm`` — so it finishes in seconds on a two-million-cell
-    object. Needs no reference data; whether a barcode is on a 10x whitelist,
-    and which chemistry it implies, is #696.
+    Read-only. The body reads the obs index and nothing else — no obs
+    column, no matrix, no ``obsm`` — so its own cost is a regex pass over the
+    IDs, a few seconds on a two-million-cell object. The gate's anndata open
+    (#667) materialises the file's obs, obsm, and uns once before that, as it
+    does for every tool, and on a wide obs that open is the larger share of
+    the wall time. Needs no reference data; whether a barcode is on a 10x
+    whitelist, and which chemistry it implies, is #696.
 
     Args:
         path: Path to an .h5ad file.
@@ -111,9 +115,7 @@ def check_barcodes(path: str, shapes: int = DEFAULT_SHAPES) -> dict:
         rather than a number. No pass/fail verdict on the file. On failure,
         ``error`` is returned instead.
     """
-    if error := positive_int_error("shapes", shapes):
-        return {"error": error}
-    return run_read(path, lambda resolved: _check_barcodes_at_path(resolved, shapes))
+    return run_read_check(path, shapes, _check_barcodes_at_path, knob="shapes")
 
 
 def barcode_shape(value: str) -> tuple[int, str]:
