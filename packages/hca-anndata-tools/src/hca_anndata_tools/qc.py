@@ -167,24 +167,30 @@ def finding(code: str, count: int, ids: np.ndarray | list, matrix: str, **detail
     }
 
 
-def run_read_check(path: str, chunk_nnz: int, body: Callable[[str, int], dict]) -> dict:
-    """The handler every read-only chunked check shares: validate, resolve, run, report.
+def run_read(path: str, body: Callable[[str], dict]) -> dict:
+    """The handler every read-only check shares: resolve, run, report.
 
-    Nothing here is matrix-specific — the embedding gate (#685) uses it too.
+    Nothing here is matrix-specific — the embedding gate (#685) and the
+    barcode report (#679) use it too.
 
     ``body`` gets the resolved path and returns the result dict; anything it
     raises comes back through :func:`failure_result`, so a refusal keeps its
     words and an accident keeps its traceback.
     """
     try:
-        if not isinstance(chunk_nnz, int) or chunk_nnz < 1:
-            return {"error": f"chunk_nnz must be a positive int, got {chunk_nnz!r}"}
         path = resolve_latest(path)
         if not Path(path).is_file():
             return {"error": f"File not found: {path}"}
-        return body(path, chunk_nnz)
+        return body(path)
     except Exception as e:
         return failure_result(e)
+
+
+def run_read_check(path: str, chunk_nnz: int, body: Callable[[str, int], dict]) -> dict:
+    """:func:`run_read` for the chunked checks: validates ``chunk_nnz`` first, then hands it to ``body``."""
+    if not isinstance(chunk_nnz, int) or chunk_nnz < 1:
+        return {"error": f"chunk_nnz must be a positive int, got {chunk_nnz!r}"}
+    return run_read(path, lambda resolved: body(resolved, chunk_nnz))
 
 
 def _walk(f: h5py.File, key: str, n_obs: int, n_var: int, chunk_nnz: int, check_integers: bool) -> tuple:
