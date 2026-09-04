@@ -160,10 +160,12 @@ def check_donor_sex(path: str, chunk_nnz: int = DEFAULT_CHUNK_NNZ) -> dict:
 
         ``donors`` has one row per donor — two when a donor has both droplet
         and plate-based libraries, the plate-based row's ``donor_id``
-        suffixed ``-smartseq`` and its ``smart_seq`` flag set: ``donor_id``,
-        ``smart_seq``, ``cells``, ``male_counts``, ``female_counts``,
-        ``total_counts``, ``ratio`` (``null`` when the female sum is zero),
-        ``inferred``, ``annotated`` (``male`` / ``female`` / ``unknown``),
+        suffixed ``-smartseq`` and its ``smart_seq`` flag set (the suffixed
+        row is dropped only when that would collide with a donor literally
+        so named, which is then refused): ``donor_id``, ``smart_seq``,
+        ``cells``, ``male_counts``, ``female_counts``, ``total_counts``,
+        ``ratio`` (``null`` when the female sum is zero), ``inferred``,
+        ``annotated`` (``male`` / ``female`` / ``unknown``),
         ``annotated_term`` (the obs value verbatim, ``null`` when the column
         is absent), ``verdict``. Verdicts, in precedence order:
 
@@ -181,7 +183,9 @@ def check_donor_sex(path: str, chunk_nnz: int = DEFAULT_CHUNK_NNZ) -> dict:
         Refused by name, since each is a defect another check owns and a
         call over it would be against an arbitrary value: a donor carrying
         two annotated sexes or two organisms (#680), a missing or unknown
-        term in ``sex_ontology_term_id`` or ``organism_ontology_term_id``,
+        term in ``sex_ontology_term_id``, a missing term or absent column
+        for ``organism_ontology_term_id`` (the schema requires it), a
+        ``donor_id`` that collides with another donor's ``-smartseq`` row,
         a panel gene listed twice in var, and a NaN or negative count in a
         panel gene (``check_raw_counts``). On failure, ``error`` is returned
         instead.
@@ -213,6 +217,8 @@ def _check_donor_sex_at_path(path: str, chunk_nnz: int) -> dict:
         donor = read_key_column(obs, "donor_id", "obs column")
         annotated = _obs_column(obs, "sex_ontology_term_id")
         assay = _obs_column(obs, "assay_ontology_term_id")
+        if "organism_ontology_term_id" not in obs:
+            raise Refusal("obs has no organism_ontology_term_id column, so the panel cannot be known to apply")
         organism = _obs_column(obs, "organism_ontology_term_id")
         male, female = _sum_gene_sets(f, cm.key, cm.format, cm.n_obs, male_cols, female_cols, chunk_nnz)
 
@@ -311,6 +317,7 @@ def _donor_rows(
 
     key = donor_codes * 2 + smart  # (donor, chemistry) → one integer per row
     n_keys = len(donors) * 2
+    _refuse_suffix_collisions(donors, smart, donor_codes)
     cells = np.bincount(key, minlength=n_keys)
     male_sum = np.bincount(key, weights=male, minlength=n_keys)
     female_sum = np.bincount(key, weights=female, minlength=n_keys)
@@ -338,6 +345,21 @@ def _donor_rows(
             }
         )
     return rows
+
+
+def _refuse_suffix_collisions(donors, smart: np.ndarray, donor_codes: np.ndarray) -> None:
+    """A plate-based row is named ``<donor>-smartseq``; refuse when a donor is literally so named.
+
+    Rows are keyed on (donor, chemistry), so the check itself is unambiguous;
+    the display ID and the finding's ``sample_ids`` would not be.
+    """
+    plate_donors = {str(donors[d]) for d in np.unique(donor_codes[smart])}
+    collisions = sorted(name for name in plate_donors if f"{name}{SMART_SEQ_SUFFIX}" in set(map(str, donors)))
+    if collisions:
+        raise Refusal(
+            f"donor(s) {collisions} have plate-based libraries, and a donor named "
+            f"'<donor>{SMART_SEQ_SUFFIX}' also exists, so the split rows cannot be told apart"
+        )
 
 
 def _per_donor_value(donor_codes: np.ndarray, donors, values: np.ndarray | None, column: str) -> list:
@@ -371,8 +393,7 @@ def _annotated_sex(term: str | None, donor) -> str:
 
 
 def _is_human(term: str | None, donor) -> bool:
-    if term is None:
-        return True  # the schema requires the column; a file without it fails elsewhere
+    assert term is not None, "the organism column's absence is refused before grouping"
     return term == HUMAN
 
 

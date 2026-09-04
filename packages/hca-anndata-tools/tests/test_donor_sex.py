@@ -244,14 +244,23 @@ def test_two_sexes_across_chemistries_is_still_refused(tmp_path):
     assert "error" in result and "donor 'd' carries several sex_ontology_term_id values" in result["error"], result
 
 
-def test_donor_named_like_a_suffixed_key_does_not_collide(tmp_path):
-    # Grouping is on (donor, chemistry), not on the display string, so a droplet donor literally
-    # named "X-smartseq" and a plate-based donor "X" stay two rows with their own verdicts.
+def test_donor_named_like_a_suffixed_key_is_refused_by_name(tmp_path):
+    # Grouping is on (donor, chemistry), but the display ID and findings would not tell the plate
+    # row of "X" from the droplet donor literally named "X-smartseq".
     donors = [_male(donor="X-smartseq", assay=DROPLET), _female(donor="X", assay=SMART)]
     result = check_donor_sex(_write(tmp_path / "a.h5ad", donors))
-    assert "error" not in result, result
-    rows = sorted((r["donor_id"], r["smart_seq"], r["inferred"], r["verdict"]) for r in result["donors"])
-    assert rows == [("X-smartseq", False, "male", "agree"), ("X-smartseq", True, "female", "agree")]
+    assert "error" in result and "['X'] have plate-based libraries" in result["error"], result
+
+
+def test_suffixed_name_without_a_plate_donor_is_fine(tmp_path):
+    donors = [_male(donor="X-smartseq", assay=DROPLET), _female(donor="X", assay=DROPLET)]
+    rows = _rows(check_donor_sex(_write(tmp_path / "a.h5ad", donors)))
+    assert {k: v["verdict"] for k, v in rows.items()} == {"X-smartseq": "agree", "X": "agree"}
+
+
+def test_absent_organism_column_is_refused_by_name(tmp_path):
+    result = check_donor_sex(_drop_obs_column(_write(tmp_path / "a.h5ad", [_male()]), "organism_ontology_term_id"))
+    assert "error" in result and "no organism_ontology_term_id column" in result["error"], result
 
 
 def test_donor_with_two_organisms_is_refused_by_name(tmp_path):
