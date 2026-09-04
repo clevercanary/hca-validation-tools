@@ -230,6 +230,18 @@ async def test_check_donor_sex(client, sample_h5ad):
 
 
 @pytest.mark.asyncio
+async def test_check_barcodes(client, sample_h5ad):
+    """Round-trip through the server: the sample's IDs are ``cell_<i>``, so no cell has a barcode."""
+    data = await _call(client, "check_barcodes", {"path": str(sample_h5ad)})
+    assert "error" not in data
+    assert data["n_obs"] == 50
+    assert data["structure"]["with_barcode"] == 0 and data["structure"]["fraction"] == 0.0
+    assert [f["code"] for f in data["findings"]] == ["no_barcode_in_index"]
+    assert data["findings"][0]["count"] == 50
+    assert data["findings"][0]["sample_ids"][:2] == ["cell_0", "cell_1"]
+
+
+@pytest.mark.asyncio
 async def test_registered_tool_names(client):
     """Registration smoke test: the wrapper unit tests import the functions
     directly, so only this catches a tool missing from server.py's
@@ -248,4 +260,5 @@ async def test_registered_tool_names(client):
         "check_duplicate_cells",
         "check_embeddings",
         "check_donor_sex",
+        "check_barcodes",
     } <= names

@@ -7,7 +7,7 @@ from pathlib import Path
 import h5py
 import numpy as np
 
-from ._errors import Refusal
+from ._errors import Refusal, require_positive_int
 from ._io import gate_h5ad_paths
 from .cap import cellxgene_schema_version
 from .write import resolve_latest
@@ -297,8 +297,7 @@ def check_x_normalization(path: str, sample_size: int = _DEFAULT_SAMPLE_SIZE) ->
         - ``"indeterminate"`` — sample contained no nonzero values.
     """
     try:
-        if not isinstance(sample_size, int) or sample_size < 1:
-            return {"error": f"sample_size must be a positive int, got {sample_size!r}"}
+        require_positive_int("sample_size", sample_size)
         return _classify_x_at_path(resolve_latest(path), sample_size)
     except Exception as e:
         return {"error": str(e)}

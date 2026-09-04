@@ -146,7 +146,7 @@ def test_check_x_normalization_rejects_non_positive_sample_size(tmp_path):
     X = sp.csr_matrix(rng.integers(0, 10, size=(5, 5)).astype(np.float32))
     path = _write_h5ad(tmp_path / "sized.h5ad", X)
 
-    for bad in (0, -1):
+    for bad in (0, -1, True):
         result = check_x_normalization(str(path), sample_size=bad)
         assert "error" in result
         assert "sample_size" in result["error"]

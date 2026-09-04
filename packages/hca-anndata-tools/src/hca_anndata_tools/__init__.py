@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .backfill import backfill_obs_from_source
+    from .barcodes import check_barcodes
     from .cap import get_cap_annotations
     from .compress import compress_h5ad
     from .convert import convert_cellxgene_to_hca
@@ -84,6 +85,7 @@ _LAZY_IMPORTS = {
     "check_duplicate_cells": ".dup_counts",
     "check_embeddings": ".embeddings",
     "check_donor_sex": ".donor_sex",
+    "check_barcodes": ".barcodes",
 }
 
 __all__ = list(_LAZY_IMPORTS)  # pyright: ignore[reportUnsupportedDunderAll]

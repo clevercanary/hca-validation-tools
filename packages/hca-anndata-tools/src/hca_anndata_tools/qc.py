@@ -32,7 +32,7 @@ import numpy as np
 import scipy.sparse as sp
 from anndata.io import sparse_dataset
 
-from ._errors import Refusal, failure_result
+from ._errors import Refusal, failure_result, require_positive_int
 from ._io import MatrixFormat, describe_matrix, gate_h5ad_paths, obs_index_name, read_index
 from .inspect import resolve_count_matrix
 from .write import resolve_latest
@@ -107,8 +107,7 @@ def iter_matrix_chunks(
     information a count check needs, and dropping it is what makes the
     per-row "any value at all" test the same question for every format.
     """
-    if not isinstance(chunk_nnz, int) or chunk_nnz < 1:
-        raise ValueError(f"chunk_nnz must be a positive int, got {chunk_nnz!r}")
+    require_positive_int("chunk_nnz", chunk_nnz)
     item = f[key]
     fmt, (n_rows, n_cols), _ = describe_matrix(item, key)
 
@@ -148,13 +147,16 @@ def dense_block_as_csr(block: np.ndarray) -> sp.csr_matrix:
     return sp.csr_matrix(block)
 
 
-def finding(code: str, count: int, ids: np.ndarray | list, matrix: str, **detail) -> dict:
-    """One finding: what, how many, which cells (or genes, or columns), on which matrix.
+def finding(code: str, count: int, ids: np.ndarray | list, element: str, **detail) -> dict:
+    """One finding: what, how many, which cells (or genes, or columns), on which element.
 
-    ``sample_ids`` always names what ``count`` counts, capped, so a renderer
-    that knows nothing about codes can still say "which". A finding about the
-    matrix as a whole (``empty_matrix``, ``wrong_shape``) has ``count`` 1 and
-    an empty ``sample_ids``: the ``matrix`` field already names it. ``detail`` is
+    ``element`` is the HDF5 element the finding was computed from — a count
+    matrix (``X``, ``raw/X``), an embedding (``obsm/<key>``), or an index
+    (``obs/<name>``) — so a renderer can say *where* without knowing the
+    code. ``sample_ids`` always names what ``count`` counts, capped, so the
+    same renderer can say "which". A finding about the element as a whole
+    (``empty_matrix``, ``wrong_shape``) has ``count`` 1 and an empty
+    ``sample_ids``: the ``element`` field already names it. ``detail`` is
     additive structure a code may carry beyond that (a duplicate finding's
     groups, say) and never replaces it.
     """
@@ -162,29 +164,42 @@ def finding(code: str, count: int, ids: np.ndarray | list, matrix: str, **detail
         "code": code,
         "count": int(count),
         "sample_ids": [str(v) for v in ids[:SAMPLE_ID_LIMIT]],
-        "matrix": matrix,
+        "element": element,
         **detail,
     }
 
 
-def run_read_check(path: str, chunk_nnz: int, body: Callable[[str, int], dict]) -> dict:
-    """The handler every read-only chunked check shares: validate, resolve, run, report.
+def run_read(path: str, body: Callable[[str], dict]) -> dict:
+    """The handler every read-only check shares: resolve, run, report.
 
-    Nothing here is matrix-specific — the embedding gate (#685) uses it too.
+    Nothing here is matrix-specific — the embedding gate (#685) and the
+    barcode report (#679) use it too.
 
     ``body`` gets the resolved path and returns the result dict; anything it
     raises comes back through :func:`failure_result`, so a refusal keeps its
     words and an accident keeps its traceback.
     """
     try:
-        if not isinstance(chunk_nnz, int) or chunk_nnz < 1:
-            return {"error": f"chunk_nnz must be a positive int, got {chunk_nnz!r}"}
         path = resolve_latest(path)
         if not Path(path).is_file():
             return {"error": f"File not found: {path}"}
-        return body(path, chunk_nnz)
+        return body(path)
     except Exception as e:
         return failure_result(e)
+
+
+def run_read_check(path: str, chunk_nnz: int, body: Callable[[str, int], dict]) -> dict:
+    """:func:`run_read` for the chunked checks: refuses a bad ``chunk_nnz`` by name, then hands it to ``body``.
+
+    The knob check runs inside :func:`run_read`'s handler, once per tool and
+    before any read, so every exit is a dict.
+    """
+
+    def checked(resolved: str) -> dict:
+        require_positive_int("chunk_nnz", chunk_nnz)
+        return body(resolved, chunk_nnz)
+
+    return run_read(path, checked)
 
 
 def _walk(f: h5py.File, key: str, n_obs: int, n_var: int, chunk_nnz: int, check_integers: bool) -> tuple:
@@ -367,7 +382,8 @@ def check_raw_counts(path: str, chunk_nnz: int = DEFAULT_CHUNK_NNZ) -> dict:
         "applied"`` means the counts are clean; with ``not_applicable`` it
         means the file has no raw matrix and ``X`` is not counts, so only the
         criteria that hold for any matrix were run. Each finding:
-        ``code``, ``count``, ``sample_ids`` (at most 20), ``matrix``. Codes:
+        ``code``, ``count``, ``sample_ids`` (at most 20), ``element`` (the
+        matrix gated). Codes:
 
         - ``negative_values`` — count of values below zero; IDs of cells holding one
         - ``non_finite_values`` — count of NaN / Inf; IDs of cells holding one

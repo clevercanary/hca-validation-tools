@@ -73,7 +73,7 @@ def test_each_code_fires_alone_on_raw_x(tmp_path, fmt, code):
     assert list(found) == [code]
     assert found[code]["count"] == 1
     assert found[code]["sample_ids"] == ids
-    assert found[code]["matrix"] == "raw/X"
+    assert found[code]["element"] == "raw/X"
 
 
 @pytest.mark.parametrize("fmt", FORMATS)
@@ -188,7 +188,7 @@ def test_undetected_genes_is_reported_on_a_lone_x(tmp_path, fmt):
     found = _codes(result)
     assert list(found) == ["undetected_genes"]
     assert found["undetected_genes"]["sample_ids"] == ["g2"]
-    assert found["undetected_genes"]["matrix"] == "X"
+    assert found["undetected_genes"]["element"] == "X"
 
 
 # --- edges -------------------------------------------------------------------
@@ -229,7 +229,7 @@ def test_unknown_sparse_encoding_is_refused_by_name(tmp_path):
     assert "traceback" not in result
 
 
-@pytest.mark.parametrize("chunk_nnz", [0, -1, 2.0, "8"])
+@pytest.mark.parametrize("chunk_nnz", [0, -1, 2.0, "8", True])
 def test_bad_chunk_nnz_is_refused(tmp_path, chunk_nnz):
     # The handler's own domain check, shared by every chunked read-only tool.
     path = _write(tmp_path / "c.h5ad", BASE, "csr")

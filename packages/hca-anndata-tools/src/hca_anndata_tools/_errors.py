@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import traceback
 
-__all__ = ["Refusal", "describe_exception", "failure_result"]
+__all__ = ["Refusal", "describe_exception", "failure_result", "require_positive_int"]
 
 
 class Refusal(ValueError):
@@ -86,6 +86,19 @@ def describe_exception(exc: BaseException) -> tuple[str, str]:
         # last, and it is the one the caller saw.
         formatted = _TRUNCATION_NOTE + formatted[-_MAX_CHARS:]
     return summary, formatted
+
+
+def require_positive_int(name: str, value: object) -> None:
+    """Refuse, by ``name``, a tool knob that is not a positive int.
+
+    The one wording every knob (``chunk_nnz``, ``sample_size``) refuses
+    with, raised as :class:`Refusal` so :func:`failure_result` returns it as
+    ``{"error": ...}`` with no traceback. ``bool`` is rejected explicitly:
+    ``isinstance(True, int)`` holds, and a knob set to ``True`` meaning ``1``
+    is a mistake, not a request.
+    """
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise Refusal(f"{name} must be a positive int, got {value!r}")
 
 
 def failure_result(exc: Exception) -> dict[str, str]:
