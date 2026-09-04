@@ -238,7 +238,7 @@ async def test_check_barcodes(client, sample_h5ad):
     assert data["structure"]["with_barcode"] == 0 and data["structure"]["fraction"] == 0.0
     assert [f["code"] for f in data["findings"]] == ["no_barcode_in_index"]
     assert data["findings"][0]["count"] == 50
-    assert data["findings"][0]["shapes"] == [{"shape": "cell_#", "cells": 50}]
+    assert data["findings"][0]["sample_ids"][:2] == ["cell_0", "cell_1"]
 
 
 @pytest.mark.asyncio

@@ -189,19 +189,18 @@ def run_read(path: str, body: Callable[[str], dict]) -> dict:
         return failure_result(e)
 
 
-def run_read_check(path: str, value: int, body: Callable[[str, int], dict], knob: str = "chunk_nnz") -> dict:
-    """:func:`run_read` for a check with one positive-int knob.
+def run_read_check(path: str, chunk_nnz: int, body: Callable[[str, int], dict]) -> dict:
+    """:func:`run_read` for the chunked checks: refuses a bad ``chunk_nnz`` by name, then hands it to ``body``.
 
-    Refuses a bad ``value`` by ``knob``'s name, then hands it to ``body``.
     The knob check runs inside :func:`run_read`'s handler, so every path out
     of a tool is a dict — a ``repr`` that raises while the refusal is
     formatted comes back as a failure result, not an exception.
     """
 
     def checked(resolved: str) -> dict:
-        if error := positive_int_error(knob, value):
+        if error := positive_int_error("chunk_nnz", chunk_nnz):
             return {"error": error}
-        return body(resolved, value)
+        return body(resolved, chunk_nnz)
 
     return run_read(path, checked)
 

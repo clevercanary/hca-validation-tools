@@ -91,8 +91,8 @@ def describe_exception(exc: BaseException) -> tuple[str, str]:
 def positive_int_error(name: str, value: object) -> str | None:
     """Why ``value`` is not a positive int for the ``name`` argument, or None when it is.
 
-    The one wording every tool knob (``chunk_nnz``, ``sample_size``,
-    ``shapes``) refuses with. ``bool`` is rejected explicitly:
+    The one wording every tool knob (``chunk_nnz``, ``sample_size``)
+    refuses with. ``bool`` is rejected explicitly:
     ``isinstance(True, int)`` holds, and a knob set to ``True`` meaning ``1``
     is a mistake, not a request.
     """
