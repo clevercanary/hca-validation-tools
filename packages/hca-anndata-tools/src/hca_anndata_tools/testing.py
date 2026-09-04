@@ -1,5 +1,6 @@
 """Test utilities for hca-anndata-tools and downstream packages."""
 
+from collections.abc import Sequence
 from pathlib import Path
 
 import anndata as ad
@@ -378,24 +379,50 @@ def make_nullable_index(path, frame: str = "obs", *, masked: int = 0) -> None:
         make_nullable_string_array(group, name.decode("utf-8") if isinstance(name, bytes) else name, masked=masked)
 
 
-def write_matrix_h5ad(path, X, fmt: str, *, raw=None, var_extra: dict | None = None):
+MATRIX_FORMATS = ("csr", "csc", "dense")
+
+
+def write_matrix_h5ad(
+    path,
+    X,
+    fmt: str,
+    *,
+    raw=None,
+    var_extra: dict | None = None,
+    obs: pd.DataFrame | None = None,
+    var_index: Sequence[str] | None = None,
+    raw_var_index: Sequence[str] | None = None,
+):
     """Write dense ``X`` (and optionally ``raw``) as ``fmt`` — ``csr``, ``csc``, or ``dense``.
 
-    Cell IDs are ``c<i>``, genes ``g<j>``. The matrix-check tests build every
-    fixture from dense numpy through anndata's own writer, never through the
-    readers under test, so a reader's bug cannot hide in its own fixture.
+    Cell IDs are ``c<i>`` and genes ``g<j>`` unless ``obs`` (a frame whose
+    index is the cell IDs), ``var_index``, or ``raw_var_index`` is given.
+    ``raw`` names its genes from ``raw_var_index`` when given, else
+    ``var_index`` when that is as wide as ``raw``, else ``g<j>``. The
+    matrix-check tests build every fixture from dense numpy through
+    anndata's own writer, never through the readers under test, so a
+    reader's bug cannot hide in its own fixture.
     """
     as_format = {"csr": sp.csr_matrix, "csc": sp.csc_matrix, "dense": np.asarray}
     n_obs, n_var = X.shape
+    genes = list(var_index) if var_index is not None else [f"g{j}" for j in range(n_var)]
     adata = ad.AnnData(
         X=as_format[fmt](X),
-        obs=pd.DataFrame(index=[f"c{i}" for i in range(n_obs)]),  # pyright: ignore[reportArgumentType]
-        var=pd.DataFrame(var_extra or {}, index=[f"g{j}" for j in range(n_var)]),  # pyright: ignore[reportArgumentType]
+        obs=obs if obs is not None else pd.DataFrame(index=[f"c{i}" for i in range(n_obs)]),  # pyright: ignore[reportArgumentType]
+        var=pd.DataFrame(var_extra or {}, index=genes),  # pyright: ignore[reportArgumentType]
     )
     if raw is not None:
+        if raw_var_index is not None:
+            raw_genes = list(raw_var_index)
+        elif var_index is not None and raw.shape[1] == n_var:
+            raw_genes = genes
+        else:
+            raw_genes = [f"g{j}" for j in range(raw.shape[1])]
+        if len(raw_genes) != raw.shape[1]:
+            raise ValueError(f"raw has {raw.shape[1]} columns but its var index has {len(raw_genes)} names")
         adata.raw = ad.AnnData(
             X=as_format[fmt](raw),
-            var=pd.DataFrame(index=[f"g{j}" for j in range(raw.shape[1])]),  # pyright: ignore[reportArgumentType]
+            var=pd.DataFrame(index=raw_genes),  # pyright: ignore[reportArgumentType]
         )
     adata.write_h5ad(path)
     return path

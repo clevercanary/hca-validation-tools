@@ -224,7 +224,7 @@ async def test_check_donor_sex(client, sample_h5ad):
     """Round-trip through the server: the sample's var has no Ensembl IDs, so the check is not applicable."""
     data = await _call(client, "check_donor_sex", {"path": str(sample_h5ad)})
     assert "error" not in data
-    assert data["status"]["status"] == "not_applicable"
+    assert data["gene_panel"]["status"] == "not_applicable"
     assert data["genes_found"] == {"male": [], "female": []}
     assert data["donors"] == [] and data["findings"] == []
 

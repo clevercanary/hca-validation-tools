@@ -297,7 +297,7 @@ def test_details_per_set(marker_h5ad):
 def test_read_var_gene_names_refuses_a_masked_var_index(tmp_path):
     """A masked Ensembl ID is a lookup key with no value.
 
-    _strip_ensembl_version would meet pd.NA and raise an AttributeError about
+    strip_ensembl_version would meet pd.NA and raise an AttributeError about
     NAType — the opaque failure hca-validation-tools#637 replaces with a named
     refusal wherever an index is read.
     """

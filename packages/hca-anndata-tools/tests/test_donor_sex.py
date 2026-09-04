@@ -2,75 +2,83 @@
 
 Fixtures are built from a dense matrix whose var index carries the real
 Ensembl IDs of Lattice's 17 genes plus fillers, written through anndata's
-own writer and converted to the format under test — never through the
-readers under test (contract, principle 17). Each defect fixture is the
-clean two-donor base plus one change.
+own writer (``testing.write_matrix_h5ad``) and converted to the format under
+test — never through the readers under test (contract, principle 17). Each
+defect fixture is the clean two-donor base plus one change.
 """
 
 from __future__ import annotations
 
+import json
+
 import anndata as ad
+import h5py
 import numpy as np
 import pandas as pd
 import pytest
-import scipy.sparse as sp
 
 from hca_anndata_tools.donor_sex import (
     COUNT_FLOOR,
     FEMALE_GENES,
+    FEMALE_RATIO,
     MALE_GENES,
+    MALE_RATIO,
     SMART_SEQ_ASSAYS,
+    _assign_sex,
     check_donor_sex,
 )
+from hca_anndata_tools.testing import (
+    MATRIX_FORMATS,
+    make_plain_string_column,
+    write_h5ad_with_nullable_strings,
+    write_matrix_h5ad,
+)
 
-FORMATS = ["csr", "csc", "dense"]
 MALE_IDS = list(MALE_GENES)
 FEMALE_IDS = list(FEMALE_GENES)
 FILLERS = ["ENSG00000000003", "ENSG00000000005", "ENSG00000000419"]
 VAR = MALE_IDS + FEMALE_IDS + FILLERS  # 7 + 10 + 3 = 20 genes
 MALE, FEMALE = "PATO:0000384", "PATO:0000383"
+HUMAN = "NCBITaxon:9606"
 DROPLET = "EFO:0009922"
-SMART = next(iter(sorted(SMART_SEQ_ASSAYS)))
+SMART = min(SMART_SEQ_ASSAYS)
+OBS_COLUMNS = ("donor_id", "sex_ontology_term_id", "assay_ontology_term_id", "organism_ontology_term_id")
 
 
-def _cells(n, male_per_gene, female_per_gene, filler=3.0):
-    """``n`` cells whose male genes hold ``male_per_gene`` counts each, female genes ``female_per_gene``."""
-    block = np.zeros((n, len(VAR)), dtype=np.float32)
-    block[:, : len(MALE_IDS)] = male_per_gene
-    block[:, len(MALE_IDS) : len(MALE_IDS) + len(FEMALE_IDS)] = female_per_gene
-    block[:, -len(FILLERS) :] = filler
-    return block
+def _donor(male_per_gene, female_per_gene, *, donor="d", sex=MALE, n=4, assay=DROPLET, organism=HUMAN, filler=3.0):
+    """``n`` cells of one donor; each male gene holds ``male_per_gene`` counts, each female gene ``female_per_gene``."""
+    cells = np.zeros((n, len(VAR)), dtype=np.float32)
+    cells[:, : len(MALE_IDS)] = male_per_gene
+    cells[:, len(MALE_IDS) : len(MALE_IDS) + len(FEMALE_IDS)] = female_per_gene
+    cells[:, -len(FILLERS) :] = filler
+    return cells, (donor, sex, assay, organism)
 
 
-def _write(path, blocks, fmt="csr", *, var=None, as_raw=False):
-    """``blocks``: list of (cells, donor, sex, assay, organism)."""
-    X = np.vstack([b[0] for b in blocks])
-    n = X.shape[0]
+def _male(**kw):
+    return _donor(10, 10, **{"donor": "m1", "sex": MALE, **kw})  # 70 / 100 per cell → ratio 0.7
+
+
+def _female(**kw):
+    return _donor(0, 20, **{"donor": "f1", "sex": FEMALE, **kw})  # 0 / 200 per cell → ratio 0
+
+
+def _write(path, donors, fmt="csr", *, var=None, as_raw=False):
+    X = np.vstack([cells for cells, _ in donors])
+    sizes = [len(cells) for cells, _ in donors]
     obs = pd.DataFrame(
-        {
-            "donor_id": pd.Categorical([b[1] for b in blocks for _ in range(len(b[0]))]),
-            "sex_ontology_term_id": pd.Categorical([b[2] for b in blocks for _ in range(len(b[0]))]),
-            "assay_ontology_term_id": pd.Categorical([b[3] for b in blocks for _ in range(len(b[0]))]),
-            "organism_ontology_term_id": pd.Categorical([b[4] for b in blocks for _ in range(len(b[0]))]),
-        },
-        index=[f"c{i}" for i in range(n)],  # pyright: ignore[reportArgumentType]
+        {col: pd.Categorical(np.repeat([meta[i] for _, meta in donors], sizes)) for i, col in enumerate(OBS_COLUMNS)},
+        index=[f"c{i}" for i in range(X.shape[0])],  # pyright: ignore[reportArgumentType]
     )
-    as_format = {"csr": sp.csr_matrix, "csc": sp.csc_matrix, "dense": np.asarray}
-    var_index = var if var is not None else VAR
-    adata = ad.AnnData(X=as_format[fmt](X), obs=obs, var=pd.DataFrame(index=var_index))  # pyright: ignore[reportArgumentType]
-    if as_raw:
-        adata.raw = adata
-        adata.X = as_format[fmt](np.log1p(X))
+    return write_matrix_h5ad(
+        path, np.log1p(X) if as_raw else X, fmt, raw=X if as_raw else None, obs=obs, var_index=var or VAR
+    )
+
+
+def _drop_obs_column(path, name):
+    adata = ad.read_h5ad(path)
+    del adata.obs[name]
     adata.write_h5ad(path)
     return path
-
-
-def _male_donor(donor="m1", sex=MALE, n=4, assay=DROPLET, organism="NCBITaxon:9606"):
-    return (_cells(n, male_per_gene=10, female_per_gene=10), donor, sex, assay, organism)  # ratio 0.7
-
-
-def _female_donor(donor="f1", sex=FEMALE, n=4, assay=DROPLET, organism="NCBITaxon:9606"):
-    return (_cells(n, male_per_gene=0, female_per_gene=20), donor, sex, assay, organism)  # ratio 0
 
 
 def _rows(result):
@@ -82,142 +90,292 @@ def _codes(result):
     return {f["code"]: f for f in result["findings"]}
 
 
-@pytest.mark.parametrize("fmt", FORMATS)
+@pytest.mark.parametrize("fmt", MATRIX_FORMATS)
 def test_clean_two_donors_agree(tmp_path, fmt):
-    result = check_donor_sex(_write(tmp_path / "a.h5ad", [_male_donor(), _female_donor()], fmt))
-    rows = _rows(result)
-    assert result["status"] == {"status": "applied"}
+    result = check_donor_sex(_write(tmp_path / "a.h5ad", [_male(), _female()], fmt))
+    assert result["gene_panel"] == {"status": "applied"}
     assert result["genes_found"] == {"male": list(MALE_GENES.values()), "female": list(FEMALE_GENES.values())}
-    assert rows["m1"]["verdict"] == "agree" and rows["m1"]["inferred"] == "male" and rows["m1"]["ratio"] == 0.7
-    assert rows["f1"]["verdict"] == "agree" and rows["f1"]["inferred"] == "female" and rows["f1"]["ratio"] == 0.0
-    assert rows["m1"]["cells"] == 4 and rows["m1"]["male_counts"] == 280.0 and rows["m1"]["female_counts"] == 400.0
+    assert _rows(result) == {
+        "m1": {
+            "donor_id": "m1",
+            "smart_seq": False,
+            "cells": 4,
+            "male_counts": 280.0,
+            "female_counts": 400.0,
+            "total_counts": 680.0,
+            "ratio": 0.7,
+            "inferred": "male",
+            "annotated": "male",
+            "annotated_term": MALE,
+            "verdict": "agree",
+        },
+        "f1": {
+            "donor_id": "f1",
+            "smart_seq": False,
+            "cells": 4,
+            "male_counts": 0.0,
+            "female_counts": 800.0,
+            "total_counts": 800.0,
+            "ratio": 0.0,
+            "inferred": "female",
+            "annotated": "female",
+            "annotated_term": FEMALE,
+            "verdict": "agree",
+        },
+    }
+    assert result["integer_check"]["status"] == "applied"
     assert result["findings"] == []
+    json.dumps(result)  # every value is a native type
 
 
 def test_raw_x_is_the_matrix_when_present(tmp_path):
-    result = check_donor_sex(_write(tmp_path / "a.h5ad", [_male_donor(), _female_donor()], as_raw=True))
+    result = check_donor_sex(_write(tmp_path / "a.h5ad", [_male(), _female()], as_raw=True))
     assert result["matrix"] == "raw/X"
     assert _rows(result)["m1"]["male_counts"] == 280.0  # counts, not the log1p X
 
 
 def test_male_annotated_with_no_y_expression_is_a_contradiction(tmp_path):
-    result = check_donor_sex(_write(tmp_path / "a.h5ad", [_female_donor(donor="d", sex=MALE)]))
-    rows = _rows(result)
-    assert rows["d"]["inferred"] == "female" and rows["d"]["annotated"] == "male"
-    assert rows["d"]["verdict"] == "contradiction"
-    assert _codes(result)["sex_contradiction"]["sample_ids"] == ["d"]
+    result = check_donor_sex(_write(tmp_path / "a.h5ad", [_female(sex=MALE)]))
+    row = _rows(result)["f1"]
+    assert (row["inferred"], row["annotated"], row["verdict"]) == ("female", "male", "contradiction")
+    assert _codes(result)["sex_contradiction"]["sample_ids"] == ["f1"]
 
 
 def test_female_annotated_with_male_ratio_is_a_contradiction(tmp_path):
-    result = check_donor_sex(_write(tmp_path / "a.h5ad", [_male_donor(donor="d", sex=FEMALE)]))
-    assert _rows(result)["d"]["verdict"] == "contradiction"
+    assert _rows(check_donor_sex(_write(tmp_path / "a.h5ad", [_male(sex=FEMALE)])))["m1"]["verdict"] == "contradiction"
 
 
 def test_zero_female_counts_is_male_with_null_ratio(tmp_path):
-    # Lattice divides by zero to +inf and calls it male; we report the ratio as null.
-    block = (_cells(3, male_per_gene=20, female_per_gene=0), "d", MALE, DROPLET, "NCBITaxon:9606")
-    row = _rows(check_donor_sex(_write(tmp_path / "a.h5ad", [block])))["d"]
-    assert row["ratio"] is None and row["inferred"] == "male" and row["verdict"] == "agree"
+    # Lattice divides by zero to +inf and calls it male; the ratio is reported as null.
+    row = _rows(check_donor_sex(_write(tmp_path / "a.h5ad", [_donor(20, 0, n=3)])))["d"]
+    assert (row["ratio"], row["inferred"], row["verdict"]) == (None, "male", "agree")
 
 
 def test_annotated_unknown_but_inferable_is_fill_in(tmp_path):
-    result = check_donor_sex(_write(tmp_path / "a.h5ad", [_male_donor(donor="d", sex="unknown")]))
-    assert _rows(result)["d"]["verdict"] == "fill_in"
-    assert _codes(result)["sex_fillable"]["sample_ids"] == ["d"]
+    result = check_donor_sex(_write(tmp_path / "a.h5ad", [_male(sex="unknown")]))
+    assert _rows(result)["m1"]["verdict"] == "fill_in"
+    assert _codes(result)["sex_fillable"]["sample_ids"] == ["m1"]
 
 
 def test_absent_sex_column_reads_as_unknown(tmp_path):
-    path = _write(tmp_path / "a.h5ad", [_male_donor(donor="d")])
+    path = _drop_obs_column(_write(tmp_path / "a.h5ad", [_male()]), "sex_ontology_term_id")
+    row = _rows(check_donor_sex(path))["m1"]
+    assert (row["annotated"], row["annotated_term"], row["verdict"]) == ("unknown", None, "fill_in")
+
+
+@pytest.mark.parametrize("term", ["female", "PATO:0001340", "na", ""])
+def test_sex_term_outside_the_vocabulary_is_refused_by_name(tmp_path, term):
+    # A label or stray term in a controlled column is a schema defect, not an unknown.
+    result = check_donor_sex(_write(tmp_path / "a.h5ad", [_male(sex=term)]))
+    assert "error" in result and f"donor 'm1' has sex_ontology_term_id {term!r}" in result["error"], result
+
+
+def test_missing_sex_term_is_refused_not_read_as_unknown(tmp_path):
+    path = _write(tmp_path / "a.h5ad", [_male()])
     adata = ad.read_h5ad(path)
-    del adata.obs["sex_ontology_term_id"]
+    adata.obs["sex_ontology_term_id"] = pd.Categorical([MALE, MALE, None, None])
     adata.write_h5ad(path)
-    row = _rows(check_donor_sex(path))["d"]
-    assert row["annotated"] == "unknown" and row["verdict"] == "fill_in"
+    result = check_donor_sex(path)
+    assert "error" in result and "sex_ontology_term_id'] has 2 missing value" in result["error"], result
+
+
+def test_normalized_only_x_is_not_applicable(tmp_path):
+    # No raw, and X classifies as normalized: the sums would be log values, not counts.
+    X = np.vstack([cells for cells, _ in [_male(), _female()]])
+    normalized = np.log1p(X / X.sum(axis=1, keepdims=True) * 1e4).astype(np.float32)
+    path = _write(tmp_path / "a.h5ad", [(normalized[:4], _male()[1]), (normalized[4:], _female()[1])])
+    result = check_donor_sex(path)
+    assert "error" not in result, result
+    assert result["integer_check"]["status"] == "not_applicable"
+    assert result["gene_panel"]["status"] == "not_applicable" and "not counts" in result["gene_panel"]["reason"]
+    assert result["donors"] == [] and result["findings"] == []
 
 
 def test_below_floor(tmp_path):
-    block = (_cells(2, male_per_gene=1, female_per_gene=1), "d", MALE, DROPLET, "NCBITaxon:9606")  # 34 counts
-    result = check_donor_sex(_write(tmp_path / "a.h5ad", [block]))
+    result = check_donor_sex(_write(tmp_path / "a.h5ad", [_donor(1, 1, n=2)]))  # 17 per cell, 34 total
     row = _rows(result)["d"]
     assert row["total_counts"] == 34.0 < COUNT_FLOOR
-    assert row["inferred"] is None and row["verdict"] == "below_floor"
+    assert (row["inferred"], row["verdict"]) == (None, "below_floor")
     assert _codes(result)["sex_below_floor"]["sample_ids"] == ["d"]
 
 
+def test_exactly_the_floor_is_called(tmp_path):
+    # 100 counts: 7 male genes x 10 + 10 female genes x 3 = 70 + 30, one cell.
+    row = _rows(check_donor_sex(_write(tmp_path / "a.h5ad", [_donor(10, 3, n=1)])))["d"]
+    assert row["total_counts"] == COUNT_FLOOR == 100.0
+    assert row["verdict"] == "agree"
+
+
 def test_ratio_between_the_cuts_is_indeterminate(tmp_path):
-    block = (_cells(4, male_per_gene=10, female_per_gene=35), "d", MALE, DROPLET, "NCBITaxon:9606")  # 70/350 = 0.2
-    row = _rows(check_donor_sex(_write(tmp_path / "a.h5ad", [block])))["d"]
-    assert row["ratio"] == 0.2 and row["inferred"] == "unknown" and row["verdict"] == "indeterminate"
+    row = _rows(check_donor_sex(_write(tmp_path / "a.h5ad", [_donor(10, 35)])))["d"]  # 70 / 350 = 0.2
+    assert (row["ratio"], row["inferred"], row["verdict"]) == (0.2, "unknown", "indeterminate")
+
+
+@pytest.mark.parametrize(
+    ("ratio", "expected"),
+    [
+        (MALE_RATIO + 0.001, "male"),
+        (MALE_RATIO, "unknown"),
+        (MALE_RATIO - 0.001, "unknown"),
+        (FEMALE_RATIO + 0.001, "unknown"),
+        (FEMALE_RATIO, "unknown"),
+        (FEMALE_RATIO - 0.001, "female"),
+        (None, "male"),
+    ],
+)
+def test_assign_sex_at_the_cuts(ratio, expected):
+    # Lattice's cuts are strict on both sides: > 0.35 male, < 0.05 female.
+    assert _assign_sex(ratio) == expected
 
 
 def test_donor_with_droplet_and_smart_seq_libraries_is_two_rows(tmp_path):
-    blocks = [_male_donor(donor="d", assay=DROPLET), _female_donor(donor="d", sex=MALE, assay=SMART)]
-    rows = _rows(check_donor_sex(_write(tmp_path / "a.h5ad", blocks)))
-    assert set(rows) == {"d", "d-smartseq"}
-    assert rows["d"]["verdict"] == "agree"
-    assert rows["d-smartseq"]["verdict"] == "contradiction"
+    donors = [_male(donor="d", assay=DROPLET), _female(donor="d", sex=MALE, assay=SMART)]
+    rows = _rows(check_donor_sex(_write(tmp_path / "a.h5ad", donors)))
+    assert {k: (v["smart_seq"], v["verdict"]) for k, v in rows.items()} == {
+        "d": (False, "agree"),
+        "d-smartseq": (True, "contradiction"),
+    }
+
+
+def test_two_sexes_across_chemistries_is_still_refused(tmp_path):
+    # The consistency check runs on the donor, not on the (donor, chemistry) row.
+    donors = [_male(donor="d", sex=MALE, assay=DROPLET), _male(donor="d", sex=FEMALE, assay=SMART)]
+    result = check_donor_sex(_write(tmp_path / "a.h5ad", donors))
+    assert "error" in result and "donor 'd' carries several sex_ontology_term_id values" in result["error"], result
+
+
+def test_donor_named_like_a_suffixed_key_does_not_collide(tmp_path):
+    # Grouping is on (donor, chemistry), not on the display string, so a droplet donor literally
+    # named "X-smartseq" and a plate-based donor "X" stay two rows with their own verdicts.
+    donors = [_male(donor="X-smartseq", assay=DROPLET), _female(donor="X", assay=SMART)]
+    result = check_donor_sex(_write(tmp_path / "a.h5ad", donors))
+    assert "error" not in result, result
+    rows = sorted((r["donor_id"], r["smart_seq"], r["inferred"], r["verdict"]) for r in result["donors"])
+    assert rows == [("X-smartseq", False, "male", "agree"), ("X-smartseq", True, "female", "agree")]
+
+
+def test_donor_with_two_organisms_is_refused_by_name(tmp_path):
+    donors = [_male(donor="d"), _male(donor="d", organism="NCBITaxon:10090")]
+    result = check_donor_sex(_write(tmp_path / "a.h5ad", donors))
+    assert "error" in result and "donor 'd' carries several organism_ontology_term_id values" in result["error"]
 
 
 def test_non_human_donor_is_not_applicable(tmp_path):
-    blocks = [_male_donor(), _male_donor(donor="mouse", organism="NCBITaxon:10090")]
-    rows = _rows(check_donor_sex(_write(tmp_path / "a.h5ad", blocks)))
-    assert rows["m1"]["verdict"] == "agree" and rows["mouse"]["verdict"] == "not_applicable"
+    donors = [_male(), _male(donor="mouse", organism="NCBITaxon:10090")]
+    rows = _rows(check_donor_sex(_write(tmp_path / "a.h5ad", donors)))
+    assert {k: v["verdict"] for k, v in rows.items()} == {"m1": "agree", "mouse": "not_applicable"}
 
 
 def test_var_missing_every_male_gene_is_not_applicable(tmp_path):
     var = [f"ENSG0000099999{i}" for i in range(7)] + FEMALE_IDS + FILLERS  # male slots renamed to fillers
-    result = check_donor_sex(_write(tmp_path / "a.h5ad", [_male_donor(), _female_donor()], var=var))
+    result = check_donor_sex(_write(tmp_path / "a.h5ad", [_male(), _female()], var=var))
     assert "error" not in result
-    assert result["status"]["status"] == "not_applicable"
-    assert "ZFY" in result["status"]["reason"] and "PUDP" not in result["status"]["reason"]
-    assert result["genes_found"]["male"] == [] and len(result["genes_found"]["female"]) == 10
+    assert result["gene_panel"]["status"] == "not_applicable"
+    assert "ZFY" in result["gene_panel"]["reason"] and "PUDP" not in result["gene_panel"]["reason"]
+    assert result["genes_found"] == {"male": [], "female": list(FEMALE_GENES.values())}
     assert result["donors"] == [] and result["findings"] == []
+
+
+def test_panel_gene_listed_twice_is_refused_by_name(tmp_path):
+    var = VAR[:-1] + [MALE_IDS[0]]  # ZFY appears at column 0 and again at the last column
+    result = check_donor_sex(_write(tmp_path / "a.h5ad", [_male(), _female()], var=var))
+    assert "error" in result and "listed twice" in result["error"] and MALE_IDS[0] in result["error"], result
+
+
+@pytest.mark.parametrize("bad", [np.nan, -2.0])
+def test_nan_or_negative_panel_count_is_refused_by_name(tmp_path, bad):
+    # raw.X is counts by assertion (the classifier does not run on it), so a defect there is
+    # refused rather than summed; on a lone X the classifier would call it not counts first.
+    cells, meta = _male()
+    cells[0, 0] = bad  # ZFY in the first cell
+    result = check_donor_sex(_write(tmp_path / "a.h5ad", [(cells, meta)], as_raw=True))
+    assert "error" in result and "male-gene count is" in result["error"] and "1 stored value" in result["error"], result
+
+
+def test_lone_x_with_a_nan_is_not_counts(tmp_path):
+    cells, meta = _male()
+    cells[0, 0] = np.nan
+    result = check_donor_sex(_write(tmp_path / "a.h5ad", [(cells, meta)]))
+    assert "error" not in result and result["gene_panel"]["status"] == "not_applicable", result
 
 
 def test_ensembl_version_suffixes_are_ignored(tmp_path):
     var = [f"{g}.{i + 1}" for i, g in enumerate(VAR)]
-    result = check_donor_sex(_write(tmp_path / "a.h5ad", [_male_donor(), _female_donor()], var=var))
-    assert result["status"] == {"status": "applied"}
+    result = check_donor_sex(_write(tmp_path / "a.h5ad", [_male(), _female()], var=var))
+    assert result["gene_panel"] == {"status": "applied"}
     assert _rows(result)["m1"]["verdict"] == "agree"
 
 
-@pytest.mark.parametrize("fmt", ["csc", "dense"])
-def test_other_formats_match_csr(tmp_path, fmt):
-    blocks = [_male_donor(), _female_donor(), _male_donor(donor="u", sex="unknown")]
-    csr = check_donor_sex(_write(tmp_path / "csr.h5ad", blocks, "csr"))
-    other = check_donor_sex(_write(tmp_path / f"{fmt}.h5ad", blocks, fmt))
-    assert other["donors"] == csr["donors"] and other["findings"] == csr["findings"]
+def test_csc_direct_read_matches_the_csr_pass(tmp_path):
+    # CSC takes a separate code path (each panel column read on its own), so pin it against CSR
+    # on a fixture with every verdict bucket a clean file can hold and the panel columns scattered
+    # through var the way a real atlas has them.
+    rng = np.random.default_rng(678)
+    order = rng.permutation(len(VAR))
+    var = [VAR[i] for i in order]
+    donors = [_male(), _female(), _male(donor="u", sex="unknown"), _donor(1, 1, donor="low", n=2)]
+    donors = [(cells[:, order], meta) for cells, meta in donors]
+    csr = check_donor_sex(_write(tmp_path / "csr.h5ad", donors, "csr", var=var))
+    csc = check_donor_sex(_write(tmp_path / "csc.h5ad", donors, "csc", var=var))
+    assert csc["donors"] == csr["donors"] and csc["findings"] == csr["findings"]
+    assert _rows(csr)["m1"]["male_counts"] == 280.0
 
 
-def test_chunk_boundary_sums_a_donor_across_chunks(tmp_path):
+@pytest.mark.parametrize("fmt", ["csr", "dense"])
+def test_chunk_boundary_sums_a_donor_across_chunks(tmp_path, fmt):
     # 4 cells x 20 genes, every entry stored: 80 entries; chunk_nnz=30 forces several chunks
-    # through one donor in every format.
-    for fmt in FORMATS:
-        path = _write(tmp_path / f"{fmt}.h5ad", [_male_donor(donor="d", n=4)], fmt)
-        whole = _rows(check_donor_sex(path))["d"]
-        chunked = _rows(check_donor_sex(path, chunk_nnz=30))["d"]
-        assert chunked == whole, fmt
-        assert chunked["male_counts"] == 280.0
+    # through one donor on the streaming formats. (CSC reads whole columns and ignores chunk_nnz.)
+    path = _write(tmp_path / f"{fmt}.h5ad", [_male(donor="d")], fmt)
+    whole = _rows(check_donor_sex(path))["d"]
+    chunked = _rows(check_donor_sex(path, chunk_nnz=30))["d"]
+    assert chunked == whole
+    assert chunked["male_counts"] == 280.0
 
 
 def test_donor_with_two_annotated_sexes_is_refused_by_name(tmp_path):
-    blocks = [_male_donor(donor="d", sex=MALE), _male_donor(donor="d", sex=FEMALE)]
-    result = check_donor_sex(_write(tmp_path / "a.h5ad", blocks))
+    result = check_donor_sex(_write(tmp_path / "a.h5ad", [_male(donor="d", sex=MALE), _male(donor="d", sex=FEMALE)]))
     assert "error" in result and "several sex_ontology_term_id values" in result["error"]
 
 
 def test_missing_donor_id_is_refused_by_name(tmp_path):
-    path = _write(tmp_path / "a.h5ad", [_male_donor()])
-    adata = ad.read_h5ad(path)
-    del adata.obs["donor_id"]
-    adata.write_h5ad(path)
-    result = check_donor_sex(path)
+    result = check_donor_sex(_drop_obs_column(_write(tmp_path / "a.h5ad", [_male()]), "donor_id"))
     assert "error" in result and "donor_id" in result["error"]
 
 
+def test_raw_x_without_raw_var_is_refused_by_name(tmp_path):
+    path = _write(tmp_path / "a.h5ad", [_male()], as_raw=True)
+    with h5py.File(path, "r+") as f:
+        del f["raw/var"]
+    result = check_donor_sex(path)
+    assert "error" in result and "raw/X is present but raw/var is not" in result["error"], result
+
+
+def test_var_shorter_than_the_matrix_is_refused_by_name(tmp_path):
+    # anndata's backed open does not check var against the matrix width (as open_count_matrix
+    # notes for obs), so a shortened var would otherwise mis-locate the panel columns.
+    path = _write(tmp_path / "a.h5ad", [_male()])
+    with h5py.File(path, "r+") as f:
+        var = f["var"]
+        assert isinstance(var, h5py.Group)
+        index = str(var.attrs["_index"])
+        ids = [v.decode() for v in var[index][...][:-1]]  # pyright: ignore[reportIndexIssue]
+        del var[index]
+        make_plain_string_column(var, index, ids)
+    result = check_donor_sex(path)
+    assert "error" in result and "has 19 IDs but X has 20 columns" in result["error"], result
+
+
+def test_masked_donor_id_is_refused_not_grouped(tmp_path):
+    # A masked donor would otherwise become the literal donor "<NA>" (#637); the key column refuses it.
+    path = _write(tmp_path / "a.h5ad", [_male(), _female()])
+    adata = ad.read_h5ad(path)
+    adata.obs["donor_id"] = pd.array(["m1", "m1", None, None, "f1", "f1", "f1", "f1"], dtype="string")
+    write_h5ad_with_nullable_strings(adata, path)
+    result = check_donor_sex(path)
+    assert "error" in result and "obs column 'donor_id' has 2 missing value" in result["error"], result
+
+
 def test_handler_refusals_reach_the_caller(tmp_path):
-    assert (
-        "chunk_nnz must be a positive int"
-        in check_donor_sex(_write(tmp_path / "a.h5ad", [_male_donor()]), chunk_nnz=0)["error"]
-    )
+    path = _write(tmp_path / "a.h5ad", [_male()])
+    assert "chunk_nnz must be a positive int" in check_donor_sex(path, chunk_nnz=0)["error"]
     assert "not found" in check_donor_sex(str(tmp_path / "nope.h5ad"))["error"].lower()

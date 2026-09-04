@@ -508,7 +508,7 @@ def index_length(item: h5py.Group | h5py.Dataset | h5py.Datatype) -> int:
     return read_element(item).shape[0]
 
 
-def _strip_ensembl_version(eid: str) -> str:
+def strip_ensembl_version(eid: str) -> str:
     """Strip version suffix from Ensembl ID: ENSG00000173947.7 -> ENSG00000173947."""
     if eid.startswith("ENSG") and "." in eid:
         return eid.rsplit(".", 1)[0]
@@ -526,6 +526,11 @@ def obs_index_name(obs: h5py.Group | h5py.Dataset | h5py.Datatype) -> str:
 
 def read_index(group: h5py.Group | h5py.Dataset | h5py.Datatype, name: str, label: str) -> np.ndarray:
     """Read a dataframe index, enforcing what every index read needs.
+
+    The body is :func:`read_key_column`; an index is the key column every
+    dataframe has. A tool that groups by another column (``donor_id`` in
+    ``check_donor_sex``) reads it through ``read_key_column`` directly, so a
+    masked donor cannot collapse into a phantom ``"<NA>"`` donor.
 
     An index is a join key, and a missing value in one is never legitimate:
     ``str(pd.NA)`` is ``"<NA>"``, so masked rows collapse to a single
@@ -549,6 +554,16 @@ def read_index(group: h5py.Group | h5py.Dataset | h5py.Datatype, name: str, labe
             whose categories are masked (named here, before the read —
             pandas' own message names no element).
     """
+    return read_key_column(group, name, f"{label} index")
+
+
+def read_key_column(group: h5py.Group | h5py.Dataset | h5py.Datatype, name: str, what: str) -> np.ndarray:
+    """Read a column that will be joined or grouped on, refusing masked values by name.
+
+    ``what`` is the phrase a refusal opens with (``"obs index"``,
+    ``"obs column"``); see :func:`read_index` for why a missing key is never
+    legitimate.
+    """
     import numpy as np
 
     item = group[name]
@@ -561,14 +576,14 @@ def read_index(group: h5py.Group | h5py.Dataset | h5py.Datatype, name: str, labe
     if (
         isinstance(item, h5py.Group)
         and "categories" in item
-        and (reason := masked_categories_reason(read_categories(item), f"{label} index '{name}'"))
+        and (reason := masked_categories_reason(read_categories(item), f"{what} '{name}'"))
     ):
         raise Refusal(reason)
     values = read_element(item)
     missing = np.flatnonzero(pd.isna(values))
     if missing.size:
         raise Refusal(
-            f"{label} index '{name}' has {missing.size} missing value(s) "
+            f"{what} '{name}' has {missing.size} missing value(s) "
             f"(first at row {missing[0]}) — an entry with no identifier cannot be joined on"
         )
     return values
@@ -663,7 +678,7 @@ def read_var_gene_names(path: str) -> tuple[set[str], dict[str, str]]:
     with h5py.File(path, "r") as f:
         var = f["var"]
         # read_index, not read_element: these Ensembl IDs are lookup keys, and
-        # _strip_ensembl_version would hit pd.NA with an AttributeError about
+        # strip_ensembl_version would hit pd.NA with an AttributeError about
         # NAType — the opaque failure this module now refuses by name.
         index = list(read_index(var, obs_index_name(var), "var"))
 
@@ -691,7 +706,7 @@ def read_var_gene_names(path: str) -> tuple[set[str], dict[str, str]]:
 
         gene_names = set(names)
 
-        eid_to_var_name = {_strip_ensembl_version(eid): name for eid, name in zip(index, names, strict=True)}
+        eid_to_var_name = {strip_ensembl_version(eid): name for eid, name in zip(index, names, strict=True)}
 
         return gene_names, eid_to_var_name
 
