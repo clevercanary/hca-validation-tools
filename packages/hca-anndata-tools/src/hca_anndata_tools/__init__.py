@@ -45,7 +45,7 @@ if TYPE_CHECKING:
         write_h5ad,
     )
 
-__version__ = "0.7.0"
+__version__ = "0.7.1"
 
 _LAZY_IMPORTS = {
     "locate_files": ".files",
