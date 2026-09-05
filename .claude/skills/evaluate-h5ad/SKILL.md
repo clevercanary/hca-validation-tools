@@ -22,7 +22,7 @@ First batch — cheap, obs-sized:
 6. **get_cap_annotations** — CAP cell annotation sets, if present
 7. **view_edit_log** — read `uns/provenance/edit_history` so edit history is already in hand when synthesizing the report
 8. **check_embeddings** — every numeric array-encoded entry in `obsm` is 2-D, finite, and not degenerate (all-zero, constant, or zero-variance columns); other entries (a DataFrame, a sparse matrix, a bool, string, or complex array) are not value-checked and come back under `skipped`; a row-count mismatch fails anndata's open and arrives as the tool's `error`, not a finding
-9. **check_barcodes** — which cell IDs contain a nucleotide run of 12 or more bases, by run length (Lattice `extract_barcodes`). Structural only: a 16-base run is the shape of a 10x v2/v3 barcode and a 14-base run of Chromium v1, but nothing here checks a whitelist (that is #696), so never call a run a 10x barcode
+9. **check_barcodes** — which cell IDs contain a run of 12 or more A/C/G/T bases, by run length (Lattice `extract_barcodes`). Structural only: a 16-base run is the shape of a 10x v2/v3 barcode and a 14-base run of Chromium v1, but nothing here checks a whitelist (that is #696), so never call a run a 10x barcode
 
 Second batch, once `get_summary` and `get_cap_annotations` are back, in this order — the dependent calls first, the matrix passes last:
 
