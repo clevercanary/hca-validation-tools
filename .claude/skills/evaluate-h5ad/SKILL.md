@@ -1,6 +1,6 @@
 ---
 name: evaluate-h5ad
-description: Evaluate an h5ad file for HCA readiness — checks metadata, compression, the count matrix and embeddings (values a count cannot hold, duplicated cells, donor sex vs expression, 10x barcodes), CAP annotations, and edit history.
+description: Evaluate an h5ad file for HCA readiness — checks metadata, compression, the count matrix and embeddings (values a count cannot hold, duplicated cells, donor sex vs expression, barcode-shaped cell IDs), CAP annotations, and edit history.
 argument-hint: <absolute-path-to-h5ad-file>
 ---
 
