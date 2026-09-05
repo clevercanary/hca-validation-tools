@@ -63,7 +63,7 @@ The five read-only checks, rendered before anything about metadata so a bad matr
 | `check_embeddings` | `obsm` (`K` arrays checked) | **clean** — or `N finding(s)` |
 | `check_duplicate_cells` | the matrix | **clean** — or `N surplus cell(s) in G group(s)` |
 | `check_donor_sex` | the matrix; `M` male / `F` female panel genes found | **all D donors agree** — only when every `donors[].verdict` is `agree`; otherwise the verdict counts, e.g. `41 agree · 3 indeterminate · 1 contradiction` |
-| `check_barcodes` | obs index | **every cell ID contains a nucleotide run** — or `N cell ID(s) without one` |
+| `check_barcodes` | obs index | **every cell ID contains a run of 12+ bases** — or `N cell ID(s) without one` |
 
 The Result cell is one of three disjoint cases:
 
