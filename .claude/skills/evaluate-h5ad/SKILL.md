@@ -69,7 +69,7 @@ The Result cell is one of three disjoint cases:
 
 - **`error` present** → the error text verbatim. A by-name refusal (duplicate cells on CSC storage, donor sex on a donor with two annotated sexes) is the tool working, not failing (`docs/anndata-tools-contract.md`, principle 4); name the check that owns the defect when the message does.
 - **A caveat present** → the caveat with its `reason`, alongside the finding count. The caveats are `check_raw_counts.integer_check.status == "not_applicable"` (no `raw.X` and `X` is not counts, so only the criteria that hold for any matrix ran), `check_donor_sex.gene_panel.status == "not_applicable"` (no inference made), and a non-empty `check_embeddings.skipped` (name each `key`).
-- **Otherwise, empty `findings`** → **clean**.
+- **Otherwise, empty `findings`** → **clean** — except for `check_donor_sex`, where `indeterminate` and `not_applicable` verdicts produce no finding, so its clean case is every `donors[].verdict == "agree"` (as its row says), and anything else renders the verdict counts.
 
 Then one block per tool with non-empty `findings`, as a table:
 
