@@ -131,6 +131,15 @@ VERDICT_FILL_IN = "fill_in"
 VERDICT_BELOW_FLOOR = "below_floor"
 VERDICT_INDETERMINATE = "indeterminate"
 VERDICT_NOT_APPLICABLE = "not_applicable"
+# Every verdict, in the precedence order ``_verdict`` applies them; ``verdict_counts`` keys on this.
+VERDICTS = (
+    VERDICT_NOT_APPLICABLE,
+    VERDICT_BELOW_FLOOR,
+    VERDICT_INDETERMINATE,
+    VERDICT_FILL_IN,
+    VERDICT_AGREE,
+    VERDICT_CONTRADICTION,
+)
 
 
 @gate_h5ad_paths
@@ -156,13 +165,22 @@ def check_donor_sex(path: str, chunk_nnz: int = DEFAULT_CHUNK_NNZ) -> dict:
         reports it), ``gene_panel`` (``status`` ``applied``, or
         ``not_applicable`` with a ``reason``: the matrix is not counts, or
         either gene set is absent from var), ``genes_found`` (``male`` and
-        ``female`` symbol lists), ``donors``, and ``findings``.
+        ``female`` symbol lists), ``verdict_counts``, ``donors``, and
+        ``findings``.
 
-        ``donors`` has one row per donor — two when a donor has both droplet
-        and plate-based libraries, the plate-based row's ``donor_id``
-        suffixed ``-smartseq`` and its ``smart_seq`` flag set (the suffixed
-        row is dropped only when that would collide with a donor literally
-        so named, which is then refused): ``donor_id``, ``smart_seq``,
+        ``verdict_counts`` maps every verdict below to the number of donor
+        rows that received it (zero included), so its values sum to the
+        number of rows evaluated; it is empty when ``gene_panel`` is
+        ``not_applicable``. One row is evaluated per donor — two when a
+        donor has both droplet and plate-based libraries, the plate-based
+        row's ``donor_id`` suffixed ``-smartseq`` and its ``smart_seq`` flag
+        set (the suffixed row is dropped only when that would collide with a
+        donor literally so named, which is then refused).
+
+        ``donors`` carries only the rows whose verdict is not ``agree``
+        (#700): an atlas with hundreds of agreeing donors would otherwise
+        return a table that fits no tool result, and ``verdict_counts``
+        already says how many agreed. Each row: ``donor_id``, ``smart_seq``,
         ``cells``, ``male_counts``, ``female_counts``, ``total_counts``,
         ``ratio`` (``null`` when the female sum is zero), ``inferred``,
         ``annotated`` (``male`` / ``female`` / ``unknown``),
@@ -178,7 +196,8 @@ def check_donor_sex(path: str, chunk_nnz: int = DEFAULT_CHUNK_NNZ) -> dict:
         Findings, each counting donors and naming them in ``sample_ids``:
         ``sex_contradiction``, ``sex_fillable``, ``sex_below_floor``. Empty
         findings with ``gene_panel.status == "applied"`` means every callable
-        donor agrees with its annotation.
+        donor agrees with its annotation; every donor agrees when
+        ``donors`` is empty, i.e. ``verdict_counts`` is all ``agree``.
 
         Refused by name, since each is a defect another check owns and a
         call over it would be against an arbitrary value: a donor carrying
@@ -202,7 +221,8 @@ def _check_donor_sex_at_path(path: str, chunk_nnz: int) -> dict:
         female_cols, female_found = _locate(var_ids, FEMALE_GENES)
         result["genes_found"] = {"male": male_found, "female": female_found}
         if (reason := _not_applicable_reason(cm, male_found, female_found)) is not None:
-            result.update(gene_panel={"status": VERDICT_NOT_APPLICABLE, "reason": reason}, donors=[], findings=[])
+            result["gene_panel"] = {"status": VERDICT_NOT_APPLICABLE, "reason": reason}
+            result.update(verdict_counts={}, donors=[], findings=[])
             return result
         result["gene_panel"] = {"status": "applied"}
         panel = {var_ids[c] for c in (*male_cols, *female_cols)}
@@ -223,7 +243,9 @@ def _check_donor_sex_at_path(path: str, chunk_nnz: int) -> dict:
         male, female = _sum_gene_sets(f, cm.key, cm.format, cm.n_obs, male_cols, female_cols, chunk_nnz)
 
     rows = _donor_rows(donor, annotated, assay, organism, male, female)
-    result["donors"] = rows
+    result["verdict_counts"] = {v: sum(r["verdict"] == v for r in rows) for v in VERDICTS}
+    # Agreeing rows are counted, not listed: a few hundred of them overflow a tool result (#700).
+    result["donors"] = [r for r in rows if r["verdict"] != VERDICT_AGREE]
     result["findings"] = _findings(rows, cm.key)
     return result
 

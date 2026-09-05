@@ -226,7 +226,7 @@ async def test_check_donor_sex(client, sample_h5ad):
     assert "error" not in data
     assert data["gene_panel"]["status"] == "not_applicable"
     assert data["genes_found"] == {"male": [], "female": []}
-    assert data["donors"] == [] and data["findings"] == []
+    assert data["verdict_counts"] == {} and data["donors"] == [] and data["findings"] == []
 
 
 @pytest.mark.asyncio

@@ -59,14 +59,14 @@ The five read-only checks, rendered before anything about metadata so a bad matr
 | `check_raw_counts` | the matrix | **clean** — or `N finding(s)` |
 | `check_embeddings` | `obsm` (`K` arrays checked) | **clean** — or `N finding(s)` |
 | `check_duplicate_cells` | the matrix | **clean** — or `N surplus cell(s) in G group(s)` |
-| `check_donor_sex` | the matrix; `M` male / `F` female panel genes found | **all D donors agree** — only when every `donors[].verdict` is `agree`; otherwise the verdict counts, e.g. `41 agree · 3 indeterminate · 1 contradiction` |
+| `check_donor_sex` | the matrix; `M` male / `F` female panel genes found | **all D donors agree** — only when `donors` is empty (`D` is `verdict_counts.agree`); otherwise the non-zero entries of `verdict_counts`, e.g. `41 agree · 3 indeterminate · 1 contradiction` |
 | `check_barcodes` | obs index | **every cell ID contains a run of 12+ bases** — or `N cell ID(s) without one` |
 
 The Result cell is one of three disjoint cases:
 
 - **`error` present** → the error text verbatim. A by-name refusal (duplicate cells on CSC storage, donor sex on a donor with two annotated sexes) is the tool working, not failing (`docs/anndata-tools-contract.md`, principle 4); name the check that owns the defect when the message does.
 - **A caveat present** → the caveat with its `reason`, alongside the finding count. The caveats are `check_raw_counts.integer_check.status == "not_applicable"` (no `raw.X` and `X` is not counts, so only the criteria that hold for any matrix ran), `check_donor_sex.gene_panel.status == "not_applicable"` (no inference made), and a non-empty `check_embeddings.skipped` (name each `key`).
-- **Otherwise, empty `findings`** → **clean** — except for `check_donor_sex`, where `indeterminate` and `not_applicable` verdicts produce no finding, so its clean case is every `donors[].verdict == "agree"` (as its row says), and anything else renders the verdict counts.
+- **Otherwise, empty `findings`** → **clean** — except for `check_donor_sex`, where `indeterminate` and `not_applicable` verdicts produce no finding, so its clean case is an empty `donors` — the tool omits `agree` rows, so an empty table means every donor agreed (as its row says) — and anything else renders the verdict counts.
 
 Then one block per tool with non-empty `findings`, as a table:
 
@@ -74,15 +74,13 @@ Then one block per tool with non-empty `findings`, as a table:
 |---|---|---|---|
 | `non_finite_values` | `raw/X` | 1,204 | `AAACCTGAGAAACCAT-1`, … |
 
-Cite `count`, never the length of `sample_ids` (a sample of at most 20 — the same rule as `unsupported_truncated` in Section 4), and say what unit the IDs are in: the code and `element` tell you whether they are cells, genes, or `obsm` columns. Render any extra keys a finding carries beyond the four (`sample_groups` on `duplicate_cells`, one row per entry — a sample of at most 20 groups of at most 20 IDs, so cite `groups` for the total; `shape` on `wrong_shape`; `value` on `constant`). Two top-level fields render on their own line: `check_duplicate_cells.non_canonical_rows` (information, never a finding) and, whenever any `donors[].verdict` is not `agree` (`indeterminate` and `not_applicable` produce no finding, so do not key this on `findings`), `check_donor_sex.donors` filtered to those rows:
+Cite `count`, never the length of `sample_ids` (a sample of at most 20 — the same rule as `unsupported_truncated` in Section 4), and say what unit the IDs are in: the code and `element` tell you whether they are cells, genes, or `obsm` columns. Render any extra keys a finding carries beyond the four (`sample_groups` on `duplicate_cells`, one row per entry — a sample of at most 20 groups of at most 20 IDs, so cite `groups` for the total; `shape` on `wrong_shape`; `value` on `constant`). Two top-level fields render on their own line: `check_duplicate_cells.non_canonical_rows` (information, never a finding) and, whenever `check_donor_sex.donors` is non-empty (`indeterminate` and `not_applicable` produce no finding, so do not key this on `findings`), those rows as returned — the tool already omits `agree` rows, and `verdict_counts` carries the totals:
 
 | Donor | Cells | Ratio (male/female) | Inferred | Annotated | Verdict |
 |---|---|---|---|---|---|
 | `D12` | 4,201 | 1.84 | male | female | **contradiction** |
 
 Ratio is `null` when the female sum is zero: render `∞` when `male_counts` is above zero and `—` when both sums are zero. A `null` `inferred` (only below-floor rows; a non-human donor still gets an inference, its verdict is what says `not_applicable`) renders as `—`. A `-smartseq` suffix on `donor_id` is one donor's plate-based libraries split into their own row, not a second donor. Verdict meanings are in the tool's docstring; `contradiction` is the relay-to-producer case (Section 8). `undetected_genes` in a lineage subset is expected (the genes were detected in cells the subset dropped) and gets one clause of context, not alarm.
-
-Interim, until `check_donor_sex` trims its own output (#700): on an atlas with a few hundred donors the `donors` table pushes the result past the client's tool-result size limit and the whole result is saved to a file. That is not an error. One `jq` over the file gives everything the two tables need: `{n_donors: (.donors|length), verdicts: (.donors|group_by(.verdict)|map({(.[0].verdict): length})|add), findings, rows: (.donors|map(select(.verdict != "agree")))}`.
 
 ## 3. HCA metadata readiness
 
