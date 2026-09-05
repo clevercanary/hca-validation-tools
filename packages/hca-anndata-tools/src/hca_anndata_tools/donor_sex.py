@@ -73,6 +73,8 @@ Deviations from the original, each with its reason:
 
 from __future__ import annotations
 
+from collections import Counter
+
 import h5py
 import numpy as np
 import pandas as pd
@@ -196,8 +198,7 @@ def check_donor_sex(path: str, chunk_nnz: int = DEFAULT_CHUNK_NNZ) -> dict:
         Findings, each counting donors and naming them in ``sample_ids``:
         ``sex_contradiction``, ``sex_fillable``, ``sex_below_floor``. Empty
         findings with ``gene_panel.status == "applied"`` means every callable
-        donor agrees with its annotation; every donor agrees when
-        ``donors`` is empty, i.e. ``verdict_counts`` is all ``agree``.
+        donor agrees with its annotation.
 
         Refused by name, since each is a defect another check owns and a
         call over it would be against an arbitrary value: a donor carrying
@@ -243,7 +244,8 @@ def _check_donor_sex_at_path(path: str, chunk_nnz: int) -> dict:
         male, female = _sum_gene_sets(f, cm.key, cm.format, cm.n_obs, male_cols, female_cols, chunk_nnz)
 
     rows = _donor_rows(donor, annotated, assay, organism, male, female)
-    result["verdict_counts"] = {v: sum(r["verdict"] == v for r in rows) for v in VERDICTS}
+    tally = Counter(r["verdict"] for r in rows)
+    result["verdict_counts"] = {v: tally[v] for v in VERDICTS}
     # Agreeing rows are counted, not listed: a few hundred of them overflow a tool result (#700).
     result["donors"] = [r for r in rows if r["verdict"] != VERDICT_AGREE]
     result["findings"] = _findings(rows, cm.key)
