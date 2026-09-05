@@ -25,7 +25,7 @@ Run all of the following MCP tool calls in parallel to gather data:
 11. **check_donor_sex** — each donor's sex inferred from Y-linked and X-escapee expression, compared with `sex_ontology_term_id` (Lattice `evaluate_donors_sex`)
 12. **check_barcodes** — which cells carry a 10x barcode in the obs index, by run length (Lattice `extract_barcodes`)
 
-Tools 8–12 take only the path and are read-only, so they run on every file, including ones whose nullable-string encodings block the write tools. They walk the matrix, so on a multi-gigabyte object the batch now takes minutes rather than seconds (about 8 minutes on the 21 GB breast integrated object, dominated by duplicate cells and donor sex at 2–3 minutes each); that is expected and not a reason to skip them. Each returns `findings` (a list, empty when clean, each entry `code` / `count` / `sample_ids` / `element`), or a top-level `error` when it could not run.
+Tools 8–12 take only the path and are read-only, so they run on every file, including ones whose nullable-string encodings block the write tools. They walk the matrix, so on a multi-gigabyte object the batch now takes minutes rather than seconds — measured 2026-09-04: 8 min 11 s for the whole batch on the 21 GB breast integrated object (raw counts, duplicate cells, and donor sex at 2.5–3 minutes each), 9 min on the 8.7 GB liver CAP export, whose wide CAP obs makes every tool's open slow. That is expected and not a reason to skip them. A call that runs past two minutes is moved to the background by the client and its result arrives as a notification; keep going and pick it up when it lands. Each returns `findings` (a list, empty when clean, each entry `code` / `count` / `sample_ids` / `element`), or a top-level `error` when it could not run.
 
 Then, only if `get_cap_annotations` reports `has_cap_annotations: true`, call both of these in parallel:
 - **validate_marker_genes** — CAP marker-gene coverage against the target's var gene-name source (`var['feature_name']` preferred, else `var['gene_name']`, else `var.index`).
@@ -82,6 +82,8 @@ Two tools carry more than the shared finding shape:
 | Donor | Cells | Ratio (male/female) | Inferred | Annotated | Verdict |
 |---|---|---|---|---|---|
 | `D12` | 4,201 | 1.84 | male | female | **contradiction** |
+
+  On an atlas with a few hundred donors the `donors` table pushes the result past the client's tool-result size limit and the whole result is saved to a file instead of returned inline. That is not an error: summarize it from the file with `jq` — `{n_donors: (.donors|length), verdicts: (.donors|group_by(.verdict)|map({(.[0].verdict): length})|add), findings}` gives the table row, and `.donors|map(select(.verdict != "agree"))` gives the rows for the table above.
 
   Ratio is `null` when the female sum is zero; render as `∞`. A `-smartseq` suffix on `donor_id` is the tool splitting one donor's plate-based libraries into their own row, not a second donor. `contradiction` is the one that matters: the annotation and the expression disagree, and neither this tool nor any of ours decides which is right — it goes back to the producer. `fill_in` means the annotation is `unknown` but the expression is clear, a curation opportunity. `below_floor` and `indeterminate` are non-calls, not disagreements.
 
