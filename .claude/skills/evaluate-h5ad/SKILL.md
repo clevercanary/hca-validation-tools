@@ -22,7 +22,7 @@ First batch — cheap, obs-sized:
 6. **get_cap_annotations** — CAP cell annotation sets, if present
 7. **view_edit_log** — read `uns/provenance/edit_history` so edit history is already in hand when synthesizing the report
 8. **check_embeddings** — every array in `obsm` is 2-D, finite, and not degenerate (all-zero, constant, or zero-variance columns); a row-count mismatch fails anndata's open and arrives as the tool's `error`, not a finding
-9. **check_barcodes** — which cells carry a 10x barcode in the obs index, by run length (Lattice `extract_barcodes`)
+9. **check_barcodes** — which cell IDs contain a nucleotide run of 12 or more bases, by run length (Lattice `extract_barcodes`). Structural only: a 16-base run is the shape of a 10x v2/v3 barcode and a 14-base run of Chromium v1, but nothing here checks a whitelist (that is #696), so never call a run a 10x barcode
 
 Second batch, once `get_summary` and `get_cap_annotations` are back — the dependent calls (`get_descriptive_stats` and, when CAP is present, the two validators below) first, then the matrix passes:
 
@@ -50,7 +50,7 @@ One compact block (bullets or a short table) with:
 - Schema type (from `check_schema_type`) — include the version only when schema is CellxGENE (HCA is unversioned)
 - X verdict (from `check_x_normalization`: `raw_counts` / `normalized` / `indeterminate`) + whether `raw.X` is present
 - Provenance: render `N donors · M samples · K libraries` from `get_descriptive_stats.columns[<col>].unique` for `donor_id` / `sample_id` / `library_id`. Skip any metric whose column wasn't returned or whose `unique` is 0.
-- Barcodes (from `check_barcodes.structure`): `with_barcode` of `n_obs` cells carry a 10x barcode (`fraction` as a percentage), then the `by_length` histogram inline, longest run first, e.g. `16: 2,101,441 · 14: 27,064 · 0: 12` (the run-length legend is in the tool's docstring). No verdict here — a barcode-less ID family is a fact about provenance, not a defect; its finding, if any, renders in Section 2. Skip the bullet if the tool returned `error`.
+- Cell IDs (from `check_barcodes.structure`): `with_barcode` of `n_obs` cell IDs contain a nucleotide run (`fraction` as a percentage), then the `by_length` histogram inline, longest run first, e.g. `16-base: 2,101,441 · 14-base: 27,064 · none: 12`. Say what was measured — a run of A/C/G/T in the ID, with 16 the length of a 10x v2/v3 barcode and 14 of Chromium v1 — and not that the cells carry 10x barcodes: no whitelist is consulted (#696). No verdict here — an ID family without a run is a fact about provenance, not a defect; its finding, if any, renders in Section 2. Skip the bullet if the tool returned `error`.
 - Labels: is `feature_name` in `var_columns`? which of the derived HCA obs labels (`tissue`, `cell_type`, `assay`, `disease`, `sex`, `organism`, `development_stage`) appear in `obs_columns`? Also note whether any labeling entry (`populate_labels`, or the older `label_h5ad`) exists in the edit log. If derived label columns are present but no labeling entry is logged and their `*_ontology_term_id` counterparts also exist, flag as "possible producer drift — values may disagree with `_ontology_term_id`" (don't quantify drift here; `/curate-h5ad` handles that when `populate_labels` runs, which verifies every populated row against canonical and reports each disagreement with row counts). Separately flag `obs['self_reported_ethnicity']` / `obs['self_reported_ethnicity_ontology_term_id']` if either is present — HCA forbids these for privacy. On a CellxGENE-layout input the next step (`convert_cellxgene_to_hca`) strips both columns automatically as a side-effect of converting; on an HCA-layout input run `strip_forbidden_obs_columns` to remove them mechanically.
 
 ## 2. Matrix & embedding gate
@@ -63,7 +63,7 @@ The five read-only checks, rendered before anything about metadata so a bad matr
 | `check_embeddings` | `obsm` (`K` arrays checked) | **clean** — or `N finding(s)` |
 | `check_duplicate_cells` | the matrix | **clean** — or `N surplus cell(s) in G group(s)` |
 | `check_donor_sex` | the matrix; `M` male / `F` female panel genes found | **all D donors agree** — only when every `donors[].verdict` is `agree`; otherwise the verdict counts, e.g. `41 agree · 3 indeterminate · 1 contradiction` |
-| `check_barcodes` | obs index | **every cell has a barcode** — or `N cell(s) without one` |
+| `check_barcodes` | obs index | **every cell ID contains a nucleotide run** — or `N cell ID(s) without one` |
 
 The Result cell is one of three disjoint cases:
 
