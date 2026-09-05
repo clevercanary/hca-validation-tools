@@ -24,21 +24,18 @@ First batch — cheap, obs-sized:
 8. **check_embeddings** — every array in `obsm` is 2-D, finite, and not degenerate (all-zero, constant, or zero-variance columns); a row-count mismatch fails anndata's open and arrives as the tool's `error`, not a finding
 9. **check_barcodes** — which cell IDs contain a nucleotide run of 12 or more bases, by run length (Lattice `extract_barcodes`). Structural only: a 16-base run is the shape of a 10x v2/v3 barcode and a 14-base run of Chromium v1, but nothing here checks a whitelist (that is #696), so never call a run a 10x barcode
 
-Second batch, once `get_summary` and `get_cap_annotations` are back — the dependent calls (`get_descriptive_stats` and, when CAP is present, the two validators below) first, then the matrix passes:
+Second batch, once `get_summary` and `get_cap_annotations` are back, in this order — the dependent calls first, the matrix passes last:
 
-10. **check_raw_counts** — one streaming pass over `raw.X` (else `X`): negative, NaN/Inf, or fractional values, zero-count cells, undetected genes
-11. **check_duplicate_cells** — cells whose raw count rows are byte-identical after canonicalization (Lattice `evaluate_dup_counts`)
-12. **check_donor_sex** — each donor's sex inferred from Y-linked and X-escapee expression, compared with `sex_ontology_term_id` (Lattice `evaluate_donors_sex`)
+10. **get_descriptive_stats** — `columns` set to the intersection of `["donor_id", "sample_id", "library_id"]` and the obs column names from `get_summary.obs_columns` (a list of `{name, dtype}` objects — extract `name`), which is why it waits for `get_summary`. Used only for the Provenance bullet in Section 1.
+11. **validate_marker_genes** — only if `get_cap_annotations` reports `has_cap_annotations: true`. CAP marker-gene coverage against the target's var gene-name source (`var['feature_name']` preferred, else `var['gene_name']`, else `var.index`).
+12. **validate_cell_annotation** — only if `has_cap_annotations: true`. HCA Cell Annotation structural checks (annotation-set presence, well-formed `cellannotation_schema_version`, per-set metadata is a dict, required `--<suffix>` obs columns). This is the validator the dataset-validator service runs under the `hcaCellAnnotation` key at upload time; running it here surfaces issues during curation instead of post-upload.
+13. **check_raw_counts** — one streaming pass over `raw.X` (else `X`): negative, NaN/Inf, or fractional values, zero-count cells, undetected genes
+14. **check_duplicate_cells** — cells whose raw count rows are byte-identical after canonicalization (Lattice `evaluate_dup_counts`)
+15. **check_donor_sex** — each donor's sex inferred from Y-linked and X-escapee expression, compared with `sex_ontology_term_id` (Lattice `evaluate_donors_sex`)
 
-Tools 8–12 take only the path and are read-only, so they run on any file anndata opens. The three matrix passes stream the matrix (raw counts and duplicate cells always in full; donor sex in full on CSR and dense, but only its 17 panel columns on CSC), so on a multi-gigabyte object expect minutes, not seconds — the time scales with stored entries, and a wide obs slows every tool's open. That is expected and not a reason to skip them; results of backgrounded calls arrive as notifications, so keep going and pick them up when they land. Each check returns `findings` in the shared shape its docstring describes (empty when clean), or a top-level `error` when it could not run.
+The `has_cap_annotations` gate on 11 and 12 already implies HCA-layout, so both tools have what they need; skipping them on non-CAP files avoids redundant calls (and on a no-CAP file `validate_cell_annotation` would only emit the obvious `NO_SETS_ERROR`).
 
-Only if `get_cap_annotations` reports `has_cap_annotations: true`, call both of these:
-- **validate_marker_genes** — CAP marker-gene coverage against the target's var gene-name source (`var['feature_name']` preferred, else `var['gene_name']`, else `var.index`).
-- **validate_cell_annotation** — HCA Cell Annotation structural checks (annotation-set presence, well-formed `cellannotation_schema_version`, per-set metadata is a dict, required `--<suffix>` obs columns). This is the validator the dataset-validator service runs under the `hcaCellAnnotation` key at upload time; running it here surfaces issues during curation instead of post-upload.
-
-The `has_cap_annotations` gate already implies HCA-layout, so both tools have what they need; skipping on non-CAP files avoids redundant calls (and on a no-CAP file `validate_cell_annotation` would only emit the obvious `NO_SETS_ERROR`).
-
-**get_descriptive_stats** takes `columns` set to the intersection of `["donor_id", "sample_id", "library_id"]` and the obs column names from `get_summary.obs_columns` (a list of `{name, dtype}` objects — extract `name`), which is why it waits for `get_summary`. Used only for the Provenance bullet in Section 1.
+Tools 8, 9, and 13–15 take only the path and are read-only, so they run on any file anndata opens. The three matrix passes stream the matrix (raw counts and duplicate cells always in full; donor sex in full on CSR and dense, but only its 17 panel columns on CSC), so on a multi-gigabyte object expect minutes, not seconds — the time scales with stored entries, and a wide obs slows every tool's open. That is expected and not a reason to skip them; results of backgrounded calls arrive as notifications, so keep going and pick them up when they land. Each check returns `findings` in the shared shape its docstring describes (empty when clean), or a top-level `error` when it could not run.
 
 Then synthesize the results into a report with these sections in order. Use markdown tables wherever multiple items share the same shape; keep prose tight.
 
