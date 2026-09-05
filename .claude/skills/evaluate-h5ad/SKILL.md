@@ -21,7 +21,7 @@ First batch — cheap, obs-sized:
 5. **list_uns_fields** — HCA schema field completeness (required vs set vs missing)
 6. **get_cap_annotations** — CAP cell annotation sets, if present
 7. **view_edit_log** — read `uns/provenance/edit_history` so edit history is already in hand when synthesizing the report
-8. **check_embeddings** — every array in `obsm` is 2-D with `n_obs` rows, finite, and not degenerate (all-zero, constant, or zero-variance columns)
+8. **check_embeddings** — every array in `obsm` is 2-D, finite, and not degenerate (all-zero, constant, or zero-variance columns); a row-count mismatch fails anndata's open and arrives as the tool's `error`, not a finding
 9. **check_barcodes** — which cells carry a 10x barcode in the obs index, by run length (Lattice `extract_barcodes`)
 
 Second batch, once `get_summary` and `get_cap_annotations` are back — the dependent calls (`get_descriptive_stats` and, when CAP is present, the two validators below) first, then the matrix passes:
@@ -62,7 +62,7 @@ The five read-only checks, rendered before anything about metadata so a bad matr
 | `check_raw_counts` | the matrix | **clean** — or `N finding(s)` |
 | `check_embeddings` | `obsm` (`K` arrays checked) | **clean** — or `N finding(s)` |
 | `check_duplicate_cells` | the matrix | **clean** — or `N surplus cell(s) in G group(s)` |
-| `check_donor_sex` | the matrix; `M` male / `F` female panel genes found | **all D donors agree** — or the finding counts |
+| `check_donor_sex` | the matrix; `M` male / `F` female panel genes found | **all D donors agree** — only when every `donors[].verdict` is `agree`; otherwise the verdict counts, e.g. `41 agree · 3 indeterminate · 1 contradiction` |
 | `check_barcodes` | obs index | **every cell has a barcode** — or `N cell(s) without one` |
 
 The Result cell is one of three disjoint cases:
@@ -77,13 +77,13 @@ Then one block per tool with non-empty `findings`, as a table:
 |---|---|---|---|
 | `non_finite_values` | `raw/X` | 1,204 | `AAACCTGAGAAACCAT-1`, … |
 
-Cite `count`, never the length of `sample_ids` (a sample of at most 20 — the same rule as `unsupported_truncated` in Section 4), and say what unit the IDs are in: the code and `element` tell you whether they are cells, genes, or `obsm` columns. Render any extra keys a finding carries beyond the four (`groups` and `sample_groups` on `duplicate_cells`, one row per group; `shape` on `wrong_shape`; `value` on `constant`). Two top-level fields render on their own line: `check_duplicate_cells.non_canonical_rows` (information, never a finding) and, when `check_donor_sex` has any finding, its `donors` filtered to rows whose `verdict` is not `agree`:
+Cite `count`, never the length of `sample_ids` (a sample of at most 20 — the same rule as `unsupported_truncated` in Section 4), and say what unit the IDs are in: the code and `element` tell you whether they are cells, genes, or `obsm` columns. Render any extra keys a finding carries beyond the four (`sample_groups` on `duplicate_cells`, one row per entry — a sample of at most 20 groups of at most 20 IDs, so cite `groups` for the total; `shape` on `wrong_shape`; `value` on `constant`). Two top-level fields render on their own line: `check_duplicate_cells.non_canonical_rows` (information, never a finding) and, whenever any `donors[].verdict` is not `agree` (`indeterminate` and `not_applicable` produce no finding, so do not key this on `findings`), `check_donor_sex.donors` filtered to those rows:
 
 | Donor | Cells | Ratio (male/female) | Inferred | Annotated | Verdict |
 |---|---|---|---|---|---|
 | `D12` | 4,201 | 1.84 | male | female | **contradiction** |
 
-Ratio is `null` when the female sum is zero; render as `∞`. A `-smartseq` suffix on `donor_id` is one donor's plate-based libraries split into their own row, not a second donor. Verdict meanings are in the tool's docstring; `contradiction` is the relay-to-producer case (Section 8). `undetected_genes` in a lineage subset is expected (the genes were detected in cells the subset dropped) and gets one clause of context, not alarm.
+Ratio is `null` when the female sum is zero: render `∞` when `male_counts` is above zero and `—` when both sums are zero. A `null` `inferred` (below-floor and non-human rows) renders as `—`. A `-smartseq` suffix on `donor_id` is one donor's plate-based libraries split into their own row, not a second donor. Verdict meanings are in the tool's docstring; `contradiction` is the relay-to-producer case (Section 8). `undetected_genes` in a lineage subset is expected (the genes were detected in cells the subset dropped) and gets one clause of context, not alarm.
 
 Interim, until `check_donor_sex` trims its own output: on an atlas with a few hundred donors the `donors` table pushes the result past the client's tool-result size limit and the whole result is saved to a file. That is not an error. One `jq` over the file gives everything the two tables need: `{n_donors: (.donors|length), verdicts: (.donors|group_by(.verdict)|map({(.[0].verdict): length})|add), findings, rows: (.donors|map(select(.verdict != "agree")))}`.
 
@@ -128,7 +128,7 @@ Then apply two checks, which mean different things and must not be merged:
 - **`index_masked` greater than 0 — data.** Report this as a *separate and more serious* issue: the index contains null values. A null cell ID corrupts every join silently, and unlike an unsupported encoding it is a problem with the data rather than with our tools. `index_masked` is `null` when the index carries no mask of its own — usually because the encoding cannot hold nulls, which is not the same as `0`. A *categorical* index is the exception, and it cuts the other way: its nulls are codes of -1 over plain categories, which `_mask_count` cannot see and `unsupported` does not list — the report comes back clean on a file whose cell IDs contain nulls. On a categorical index `null` means *not checked*; only a tool that reads the index through `read_index` will refuse it (#659).
 
 ## 5. Embeddings
-- List each `obsm` key with its shape and dtype (from `check_embeddings.embeddings`).
+- List each `obsm` key with its shape (from `get_summary.obsm_keys`, which has every key) and dtype (from `check_embeddings.embeddings` where present; a key that is only in `check_embeddings.skipped` was not value-checked — say so with its `reason`).
 - Does `uns['default_embedding']` exist? Does it name a real `obsm` key?
 - Value-level problems (NaN rows, zero-variance columns) are already in Section 2; refer back rather than repeating them here.
 
@@ -187,7 +187,7 @@ Render every entry returned by `view_edit_log` as a table, oldest first:
 Format the timestamp as `YYYY-MM-DD HH:MM:SS` (drop the `T` and the fractional seconds and timezone — entries are always UTC). Use the entry's `description` field verbatim. If the file has no edit log, say "No edit history — file hasn't been edited through `hca-anndata-tools`."
 
 ## 8. Summary & recommendations
-- One-line readiness verdict: ready / needs work / not started. A value-level gate finding forces at least **needs work** — `negative_values`, `non_finite_values`, `non_integer_values`, `zero_count_cells`, or any `check_embeddings` code — because those are objective defects no metadata state offsets. `undetected_genes`, `no_barcode_in_index`, `sex_below_floor`, and `sex_fillable` are informational and do not.
+- One-line readiness verdict: ready / needs work / not started. A value-level gate finding forces at least **needs work** — `negative_values`, `non_finite_values`, `non_integer_values`, `zero_count_cells`, `empty_matrix`, or any `check_embeddings` code — because those are objective defects no metadata state offsets. `undetected_genes`, `no_barcode_in_index`, `sex_below_floor`, and `sex_fillable` are informational and do not.
 - Prioritized list of next actions, most important first, gate findings leading. `sex_contradiction` and `duplicate_cells` are **relay-to-producer** actions — no tool of ours fixes either, and which annotation is right or which duplicate to keep is the producer's call — so name the donors or the group count so the message can be written from the report.
 - If `check_schema_type` reported `cellxgene`, the first action is `convert_cellxgene_to_hca`.
 - If the file is HCA-layout and has no labeling edit-log entry (`populate_labels`, or the older `label_h5ad`), recommend running `/curate-h5ad` so `populate_labels` fills `var['feature_name']` and the obs ontology labels before CAP handoff or marker-gene validation.
