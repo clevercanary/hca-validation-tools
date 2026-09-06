@@ -105,8 +105,10 @@ def list_candidates(source_dir: Path, target: Path) -> list[Path]:
     resolution every tool applies to a path, so a source beside its own
     ``-edit-`` snapshots is one candidate, named by its newest file.
     """
-    if not source_dir.is_dir():
+    if not source_dir.exists():
         raise Refusal(f"source directory {source_dir} does not exist")
+    if not source_dir.is_dir():
+        raise Refusal(f"source directory {source_dir} is not a directory")
     stems = {strip_timestamp(p.name) for p in source_dir.glob("*.h5ad") if p.is_file()}
     if not stems:
         raise Refusal(f"source directory {source_dir} holds no .h5ad file")

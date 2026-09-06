@@ -236,6 +236,13 @@ def test_missing_source_dir_is_refused_by_name(tree):
     assert result["error"] == f"source directory {tree.sources} does not exist"
 
 
+def test_source_dir_that_is_a_file_is_refused_by_name(tree):
+    tree.sources.parent.mkdir(parents=True)
+    tree.sources.write_text("not a directory")
+    result = find_source_datasets(str(tree.target(_ids("a", 3))))
+    assert result["error"] == f"source directory {tree.sources} is not a directory"
+
+
 def test_empty_source_dir_is_refused_by_name(tree):
     tree.sources.mkdir(parents=True)
     (tree.sources / "notes.md").write_text("not a dataset")
