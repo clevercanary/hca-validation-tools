@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.1](https://github.com/clevercanary/hca-validation-tools/compare/hca-schema-validator-v0.15.0...hca-schema-validator-v0.15.1) (2026-09-06)
+
+
+### Features
+
+* **hca-schema-validator:** donor-level metadata must be constant within a donor_id ([#692](https://github.com/clevercanary/hca-validation-tools/issues/692)) ([3d5202f](https://github.com/clevercanary/hca-validation-tools/commit/3d5202f4a005c9e09afb990752263fe71f246095))
+
 ## [0.15.0](https://github.com/clevercanary/hca-validation-tools/compare/hca-schema-validator-v0.14.2...hca-schema-validator-v0.15.0) (2026-08-18)
 
 
