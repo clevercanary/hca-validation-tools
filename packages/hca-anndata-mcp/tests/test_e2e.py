@@ -243,6 +243,14 @@ async def test_check_barcodes(client, sample_h5ad):
 
 
 @pytest.mark.asyncio
+async def test_find_source_datasets(client, sample_h5ad):
+    """Round-trip through the server: the sample sits in a plain tmp dir, so the layout is absent and it refuses."""
+    data = await _call(client, "find_source_datasets", {"path": str(sample_h5ad)})
+    assert "error" in data
+    assert "integrated-objects" in data["error"]
+
+
+@pytest.mark.asyncio
 async def test_registered_tool_names(client):
     """Registration smoke test: the wrapper unit tests import the functions
     directly, so only this catches a tool missing from server.py's
@@ -262,4 +270,5 @@ async def test_registered_tool_names(client):
         "check_embeddings",
         "check_donor_sex",
         "check_barcodes",
+        "find_source_datasets",
     } <= names

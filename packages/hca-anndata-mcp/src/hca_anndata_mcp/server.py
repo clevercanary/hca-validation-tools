@@ -25,6 +25,7 @@ from hca_anndata_tools import (
     compress_h5ad,
     convert_cellxgene_to_hca,
     copy_cap_annotations,
+    find_source_datasets,
     get_cap_annotations,
     get_descriptive_stats,
     get_storage_info,
@@ -44,6 +45,8 @@ mcp = FastMCP(
     instructions=(
         "Explore AnnData h5ad files interactively. "
         "Use locate_files to find files, get_summary for an overview, "
+        "find_source_datasets to report which tracker source datasets an integrated object's cells come from "
+        "(cell-ID intersection over the tracker layout; read-only), "
         "get_storage_info for HDF5 compression/chunk details, "
         "get_descriptive_stats for distributions, view_data to inspect raw values, "
         "plot_embedding to visualize UMAP/PCA embeddings, "
@@ -186,6 +189,7 @@ mcp.tool()(check_duplicate_cells)
 mcp.tool()(check_embeddings)
 mcp.tool()(check_donor_sex)
 mcp.tool()(check_barcodes)
+mcp.tool()(find_source_datasets)
 mcp.tool()(check_schema_type)
 mcp.tool()(validate_schema)
 mcp.tool()(validate_cell_annotation)
