@@ -40,6 +40,10 @@ from .write import resolve_latest, strip_timestamp
 INTEGRATED_DIR = "integrated-objects"
 SOURCE_SUBDIR = Path("source-datasets") / "tracker-source"
 
+# The partition verdict: a code, as every sibling check reports, so a reader
+# switches on it and composes any prose from ``target``'s counts.
+PARTITIONS = ("exact", "incomplete")
+
 
 @gate_h5ad_paths
 def find_source_datasets(path: str) -> dict:
@@ -72,8 +76,10 @@ def find_source_datasets(path: str) -> dict:
         zero-match rows kept so the reader sees what was tried), ``target``
         (``n_obs``, ``accounted`` = cells matched by at least one candidate,
         ``unaccounted`` = cells no candidate accounts for, ``claimed_twice`` =
-        cells matched by more than one), ``partition`` (``"exact"`` when
-        every cell is accounted for exactly once, otherwise the reason), and
+        cells matched by more than one), ``partition`` — one of
+        :data:`PARTITIONS`: ``"exact"`` when every cell is accounted for
+        exactly once, otherwise ``"incomplete"``, with ``target`` and
+        ``findings`` carrying the why — and
         ``findings`` — ``unaccounted_cells`` and ``cells_claimed_twice`` in
         the shared finding shape, IDs capped at 20. On failure, ``error`` is
         returned instead.
@@ -179,14 +185,11 @@ def _find_source_datasets_at_path(path: str) -> dict:
 
     unaccounted, twice = np.flatnonzero(claims == 0), np.flatnonzero(claims > 1)
     element = f"obs/{index_name}"
-    findings, reasons = [], []
-    for code, where, prose in (
-        ("unaccounted_cells", unaccounted, f"of {n_obs} target cells unaccounted for"),
-        ("cells_claimed_twice", twice, "target cells claimed by more than one source"),
-    ):
-        if where.size:
-            findings.append(finding(code, where.size, target_ids[where[:SAMPLE_ID_LIMIT]], element))
-            reasons.append(f"{where.size} {prose}")
+    findings = [
+        finding(code, where.size, target_ids[where[:SAMPLE_ID_LIMIT]], element)
+        for code, where in (("unaccounted_cells", unaccounted), ("cells_claimed_twice", twice))
+        if where.size
+    ]
     return {
         "filename": target.name,
         "source_dir": str(source_dir),
@@ -197,6 +200,6 @@ def _find_source_datasets_at_path(path: str) -> dict:
             "unaccounted": int(unaccounted.size),
             "claimed_twice": int(twice.size),
         },
-        "partition": "exact" if not reasons else "; ".join(reasons),
+        "partition": "exact" if not findings else "incomplete",
         "findings": findings,
     }

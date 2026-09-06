@@ -19,7 +19,7 @@ import pytest
 import scipy.sparse as sp
 
 from hca_anndata_tools.qc import SAMPLE_ID_LIMIT
-from hca_anndata_tools.sources import INTEGRATED_DIR, SOURCE_SUBDIR, find_source_datasets
+from hca_anndata_tools.sources import INTEGRATED_DIR, PARTITIONS, SOURCE_SUBDIR, find_source_datasets
 from hca_anndata_tools.testing import create_truncated_h5ad, make_nullable_string_array
 
 
@@ -117,7 +117,7 @@ def test_unaccounted_cells(tree):
 
     n = len(missing)
     assert result["target"] == {"n_obs": 5 + n, "accounted": 5, "unaccounted": n, "claimed_twice": 0}
-    assert result["partition"] == f"{n} of {5 + n} target cells unaccounted for"
+    assert result["partition"] == "incomplete"
     assert [f["code"] for f in result["findings"]] == ["unaccounted_cells"]
     f = result["findings"][0]
     assert f["count"] == n
@@ -132,19 +132,31 @@ def test_cells_claimed_twice(tree):
     result = _ok(find_source_datasets(str(tree.target(a + b))))
 
     assert result["target"] == {"n_obs": 10, "accounted": 10, "unaccounted": 0, "claimed_twice": 2}
-    assert result["partition"] == "2 target cells claimed by more than one source"
+    assert result["partition"] == "incomplete"
     assert [f["code"] for f in result["findings"]] == ["cells_claimed_twice"]
     assert result["findings"][0]["sample_ids"] == a[:2]
     assert _rows(result)["b.h5ad"]["matched_by_id"] == 6
 
 
-def test_unaccounted_and_claimed_twice_reasons_combine(tree):
+def test_unaccounted_and_claimed_twice_both_reported(tree):
     a = _ids("a", 4)
     tree.source("a", a)
     tree.source("a-again", a)
     result = _ok(find_source_datasets(str(tree.target(a + _ids("m", 1)))))
-    assert result["partition"] == "1 of 5 target cells unaccounted for; 4 target cells claimed by more than one source"
-    assert [f["code"] for f in result["findings"]] == ["unaccounted_cells", "cells_claimed_twice"]
+    assert result["partition"] == "incomplete"
+    assert result["target"] == {"n_obs": 5, "accounted": 4, "unaccounted": 1, "claimed_twice": 4}
+    assert [(f["code"], f["count"]) for f in result["findings"]] == [
+        ("unaccounted_cells", 1),
+        ("cells_claimed_twice", 4),
+    ]
+
+
+def test_partition_is_always_a_known_code(tree):
+    a = _ids("a", 2)
+    tree.source("a", a)
+    for target_ids in (a, a + _ids("m", 1)):
+        result = _ok(find_source_datasets(str(tree.target(target_ids))))
+        assert result["partition"] in PARTITIONS
 
 
 @pytest.mark.filterwarnings("ignore:Observation names are not unique")
