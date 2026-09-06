@@ -23,16 +23,17 @@ shape leaves room for it beside ``matched``.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import h5py
 import numpy as np
 import pandas as pd
 
-from ._errors import Refusal, describe_exception
-from ._io import check_duplicate_ids, gate_h5ad_paths, obs_index_name, open_h5ad, read_index
-from .qc import finding, run_read
-from .write import resolve_latest
+from ._errors import Refusal, failure_result
+from ._io import check_duplicate_ids, gate_h5ad_paths, obs_index_name, open_h5ad, read_index, read_obs_index
+from .qc import SAMPLE_ID_LIMIT, finding, run_read
+from .write import resolve_latest, strip_timestamp
 
 # The tracker layout, as two names: the ancestor that marks an integrated
 # object, and the path from that ancestor's parent to its source datasets.
@@ -62,11 +63,12 @@ def find_source_datasets(path: str) -> dict:
         path: Path to an integrated-object .h5ad under the tracker layout.
 
     Returns:
-        Dict with ``filename``, ``n_obs``, ``source_dir``, ``sources`` (one
-        row per candidate — ``filename``, ``n_obs``, ``matched``,
-        ``fraction_of_target``, plus ``error`` when it could not be read —
-        ordered by ``fraction_of_target`` descending, zero-match rows kept so
-        the reader sees what was tried), ``target`` (``n_obs``, ``accounted``
+        Dict with ``filename``, ``source_dir``, ``sources`` (one row per
+        candidate — ``filename``, ``n_obs``, ``matched``,
+        ``fraction_of_target``, plus ``error`` — and ``traceback`` for an
+        accident — when it could not be read; ordered by
+        ``fraction_of_target`` descending, zero-match rows kept so the reader
+        sees what was tried), ``target`` (``n_obs``, ``accounted``
         = cells matched by at least one candidate, ``unaccounted`` = cells no
         candidate accounts for, ``claimed_twice`` = cells matched by more than
         one), ``partition`` (``"exact"`` when every cell is accounted for
@@ -90,13 +92,18 @@ def source_directory(target: Path) -> Path:
 
 
 def list_candidates(source_dir: Path, target: Path) -> list[Path]:
-    """Every source dataset in ``source_dir``: the top-level ``.h5ad`` files, edit variants collapsed to the latest."""
+    """Every source dataset in ``source_dir``: the top-level ``.h5ad`` files, edit variants collapsed to the latest.
+
+    One listing, then one :func:`resolve_latest` per distinct stem — the same
+    resolution every tool applies to a path, so a source beside its own
+    ``-edit-`` snapshots is one candidate, named by its newest file.
+    """
     if not source_dir.is_dir():
         raise Refusal(f"source directory {source_dir} does not exist")
-    files = sorted(source_dir.glob("*.h5ad"))
-    if not files:
+    stems = {strip_timestamp(p.name) for p in source_dir.glob("*.h5ad")}
+    if not stems:
         raise Refusal(f"source directory {source_dir} holds no .h5ad file")
-    candidates = sorted({Path(resolve_latest(str(p))) for p in files})
+    candidates = sorted(Path(resolve_latest(str(source_dir / stem))) for stem in stems)
     target_resolved = target.resolve()
     for candidate in candidates:
         if candidate.resolve() == target_resolved:
@@ -106,73 +113,81 @@ def list_candidates(source_dir: Path, target: Path) -> list[Path]:
     return candidates
 
 
-def _read_obs_ids(path: str) -> tuple[np.ndarray, str]:
-    """The obs index of a file anndata can open, with the index dataset's name."""
-    with open_h5ad(path, backed="r"):
-        pass  # the Scope rule: a file anndata rejects is refused, not read around
-    with h5py.File(path, "r") as f:
-        obs = f["obs"]
-        name = obs_index_name(obs)
-        return read_index(obs, name, "obs"), name
+def _read_candidate_ids(path: Path) -> list[str]:
+    """A candidate's obs index, behind the Scope rule the decorator applies to the target only."""
+    with open_h5ad(str(path), backed="r"):
+        pass  # a file anndata rejects is refused, not read around
+    return read_obs_index(str(path))
 
 
 def _find_source_datasets_at_path(path: str) -> dict:
-    target = Path(path)
+    # Lexically normalised, not resolved: a ``..`` hop must not slip a file
+    # from outside the layout past the ancestor walk, while a symlinked tree
+    # (a scratch copy of the layout) keeps the layout it was built with —
+    # which is why ``Path.resolve()``, ruff's suggestion, is the wrong call.
+    target = Path(os.path.abspath(path))  # noqa: PTH100
     source_dir = source_directory(target)
     candidates = list_candidates(source_dir, target)
 
-    target_ids, index_name = _read_obs_ids(path)
-    if (dup := check_duplicate_ids(target_ids, "obs")) is not None:
-        raise Refusal(f"{dup}; an intersection over duplicate IDs has no single meaning")
-    n_obs = len(target_ids)
+    with h5py.File(path, "r") as f:  # the gate has opened the target through anndata already
+        obs = f["obs"]
+        index_name = obs_index_name(obs)
+        target_ids = read_index(obs, index_name, "obs")
     index = pd.Index(target_ids)
+    if (dup := check_duplicate_ids(index, "obs")) is not None:
+        raise Refusal(f"{dup}; an intersection over duplicate IDs has no single meaning")
+    n_obs = len(index)
     claims = np.zeros(n_obs, dtype=np.int64)
 
     rows = []
     for candidate in candidates:
-        row: dict = {"filename": candidate.name, "n_obs": None, "matched": 0, "fraction_of_target": 0.0}
         try:
-            ids, _ = _read_obs_ids(str(candidate))
-            hits = index.isin(ids)
-            claims += hits
-            row["n_obs"] = len(ids)
-            row["matched"] = int(hits.sum())
-            row["fraction_of_target"] = row["matched"] / n_obs if n_obs else 0.0
+            ids = _read_candidate_ids(candidate)
+            # Probe the candidate's IDs against the target's hash engine, built
+            # once above; unique positions so a duplicated source ID counts once.
+            hit = np.unique(index.get_indexer(ids))
+            hit = hit[hit >= 0]
+            claims[hit] += 1
+            row = {
+                "filename": candidate.name,
+                "n_obs": len(ids),
+                "matched": int(hit.size),
+                "fraction_of_target": hit.size / n_obs if n_obs else 0.0,
+            }
         except Exception as e:
-            row["error"] = describe_exception(e)[0]
+            row = {
+                "filename": candidate.name,
+                "n_obs": None,
+                "matched": 0,
+                "fraction_of_target": 0.0,
+                **failure_result(e),
+            }
         rows.append(row)
     rows.sort(key=lambda r: (-r["fraction_of_target"], r["filename"]))
 
-    unaccounted = claims == 0
-    twice = claims > 1
-    n_unaccounted, n_twice = int(unaccounted.sum()), int(twice.sum())
+    unaccounted, twice = np.flatnonzero(claims == 0), np.flatnonzero(claims > 1)
+    element = f"obs/{index_name}"
+    findings, reasons = [], []
+    for code, where, prose in (
+        ("unaccounted_cells", unaccounted, f"of {n_obs} target cells unaccounted for"),
+        ("cells_claimed_twice", twice, "target cells claimed by more than one source"),
+    ):
+        if where.size:
+            findings.append(finding(code, where.size, target_ids[where[:SAMPLE_ID_LIMIT]], element))
+            reasons.append(f"{where.size} {prose}")
     n_errors = sum("error" in r for r in rows)
-
-    reasons = []
-    if n_unaccounted:
-        reasons.append(f"{n_unaccounted} of {n_obs} target cells unaccounted for")
-    if n_twice:
-        reasons.append(f"{n_twice} target cells claimed by more than one source")
     if n_errors:
         reasons.append(f"{n_errors} candidate(s) could not be read")
 
-    element = f"obs/{index_name}"
-    findings = []
-    if n_unaccounted:
-        findings.append(finding("unaccounted_cells", n_unaccounted, target_ids[unaccounted], element))
-    if n_twice:
-        findings.append(finding("cells_claimed_twice", n_twice, target_ids[twice], element))
-
     return {
         "filename": target.name,
-        "n_obs": n_obs,
         "source_dir": str(source_dir),
         "sources": rows,
         "target": {
             "n_obs": n_obs,
-            "accounted": n_obs - n_unaccounted,
-            "unaccounted": n_unaccounted,
-            "claimed_twice": n_twice,
+            "accounted": n_obs - unaccounted.size,
+            "unaccounted": int(unaccounted.size),
+            "claimed_twice": int(twice.size),
         },
         "partition": "exact" if not reasons else "; ".join(reasons),
         "findings": findings,

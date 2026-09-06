@@ -41,7 +41,7 @@ class Tree:
         self.sources = self.project / SOURCE_SUBDIR
 
     def target(self, ids: list[str], where: str = "tracker-source", name: str = "atlas-r1-wip-3.h5ad", X=None) -> Path:
-        return _write(self.integrated / where / name if where else self.integrated / name, ids, X)
+        return _write(self.integrated / where / name, ids, X)
 
     def source(self, name: str, ids: list[str]) -> Path:
         return _write(self.sources / f"{name}.h5ad", ids)
@@ -70,7 +70,6 @@ def test_exact_partition(tree):
     tree.source("b-r1-wip-1", b)
     result = _ok(find_source_datasets(str(tree.target(a + b))))
 
-    assert result["n_obs"] == 40
     assert result["source_dir"] == str(tree.sources)
     assert result["partition"] == "exact"
     assert result["target"] == {"n_obs": 40, "accounted": 40, "unaccounted": 0, "claimed_twice": 0}
@@ -195,6 +194,27 @@ def test_target_outside_layout_is_refused_by_name(tmp_path):
     result = find_source_datasets(str(target))
     assert "error" in result
     assert INTEGRATED_DIR in result["error"] and str(target) in result["error"]
+
+
+def test_dotdot_hop_out_of_the_layout_is_refused(tree):
+    """``integrated-objects/../loose/x.h5ad`` names a file outside the layout; the walk sees the normalised path."""
+    tree.source("a", _ids("a", 3))
+    tree.integrated.mkdir(parents=True)
+    loose = _write(tree.project / "loose" / "atlas.h5ad", _ids("a", 3))
+    hop = tree.integrated / ".." / "loose" / "atlas.h5ad"
+    assert hop.exists() and hop.samefile(loose)
+    result = find_source_datasets(str(hop))
+    assert "error" in result and INTEGRATED_DIR in result["error"]
+
+
+def test_dotdot_hop_within_the_layout_still_resolves(tree):
+    a = _ids("a", 3)
+    tree.source("a", a)
+    tree.target(a)
+    hop = tree.integrated / "cap-source" / ".." / "tracker-source" / "atlas-r1-wip-3.h5ad"
+    (tree.integrated / "cap-source").mkdir()
+    result = _ok(find_source_datasets(str(hop)))
+    assert result["partition"] == "exact" and result["filename"] == "atlas-r1-wip-3.h5ad"
 
 
 def test_missing_source_dir_is_refused_by_name(tree):
