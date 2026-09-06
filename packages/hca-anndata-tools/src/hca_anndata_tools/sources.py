@@ -13,12 +13,12 @@ its sources are every ``.h5ad`` at the top of the sibling
 target outside the layout is refused by name rather than guessed at, because
 a wrong candidate directory would report a confident, wrong provenance.
 
-Matching is by cell ID only. It reads the obs index of every file and no
-matrix, so a two-million-cell atlas against seven sources is a set
-intersection per source. A content tier — hashing each cell's raw count row
+Matching is by cell ID only. Beyond the anndata open that gates each file,
+it reads the obs index and no matrix, so a two-million-cell atlas against
+seven sources is a set intersection per source. A content tier — hashing each cell's raw count row
 on the pair's shared var axis, which is what recovers provenance for the
 positional or synthetic IDs of liver-v1 and MSK — is a follow-up; the result
-shape leaves room for it beside ``matched``.
+shape leaves room for it beside ``matched_by_id``.
 """
 
 from __future__ import annotations
@@ -30,8 +30,8 @@ import h5py
 import numpy as np
 import pandas as pd
 
-from ._errors import Refusal, failure_result
-from ._io import check_duplicate_ids, gate_h5ad_paths, obs_index_name, open_h5ad, read_index, read_obs_index
+from ._errors import Refusal
+from ._io import check_duplicate_ids, gate_h5ad_paths, obs_index_name, open_h5ad, read_index
 from .qc import SAMPLE_ID_LIMIT, finding, run_read
 from .write import resolve_latest, strip_timestamp
 
@@ -48,31 +48,32 @@ def find_source_datasets(path: str) -> dict:
     Read-only. Locates the candidates from the tracker layout — the sibling
     ``source-datasets/tracker-source/`` of the nearest ``integrated-objects``
     ancestor of ``path`` — and intersects each candidate's obs index with the
-    target's. Reads obs indexes only; no matrix in any file is touched.
+    target's. No matrix in any file is touched: beyond the anndata open
+    that gates each file (which materialises its obs, var, and uns), only
+    the obs index is read.
 
     Refuses by name when ``path`` is not under an ``integrated-objects``
     directory, when the source directory does not exist or holds no
     ``.h5ad``, when a candidate resolves to the target itself, or when the
     target's obs index has duplicate IDs (an intersection over duplicates has
-    no single meaning). ``-edit-`` snapshots in the source directory collapse
-    to the latest per stem, as every tool resolves a path. A candidate that
-    cannot be read gets its row with ``error`` and zero counts, and the run
-    continues.
+    no single meaning), or when any file's obs index is not stored as
+    strings (an integer index is bad input, not something to convert). A
+    candidate anndata cannot open is refused in anndata's own words, as the
+    gate refuses the target. ``-edit-`` snapshots in the source directory
+    collapse to the latest per stem, as every tool resolves a path.
 
     Args:
         path: Path to an integrated-object .h5ad under the tracker layout.
 
     Returns:
         Dict with ``filename``, ``source_dir``, ``sources`` (one row per
-        candidate — ``filename``, ``n_obs``, ``matched``,
-        ``fraction_of_target``, plus ``error`` — and ``traceback`` for an
-        accident — when it could not be read; ordered by
-        ``fraction_of_target`` descending, zero-match rows kept so the reader
-        sees what was tried), ``target`` (``n_obs``, ``accounted``
-        = cells matched by at least one candidate, ``unaccounted`` = cells no
-        candidate accounts for, ``claimed_twice`` = cells matched by more than
-        one), ``partition`` (``"exact"`` when every cell is accounted for
-        exactly once and every candidate was read, otherwise the reason), and
+        candidate — ``filename``, ``n_obs``, ``matched_by_id``,
+        ``fraction_of_target``; ordered by ``fraction_of_target`` descending,
+        zero-match rows kept so the reader sees what was tried), ``target``
+        (``n_obs``, ``accounted`` = cells matched by at least one candidate,
+        ``unaccounted`` = cells no candidate accounts for, ``claimed_twice`` =
+        cells matched by more than one), ``partition`` (``"exact"`` when
+        every cell is accounted for exactly once, otherwise the reason), and
         ``findings`` — ``unaccounted_cells`` and ``cells_claimed_twice`` in
         the shared finding shape, IDs capped at 20. On failure, ``error`` is
         returned instead.
@@ -100,24 +101,46 @@ def list_candidates(source_dir: Path, target: Path) -> list[Path]:
     """
     if not source_dir.is_dir():
         raise Refusal(f"source directory {source_dir} does not exist")
-    stems = {strip_timestamp(p.name) for p in source_dir.glob("*.h5ad")}
+    stems = {strip_timestamp(p.name) for p in source_dir.glob("*.h5ad") if p.is_file()}
     if not stems:
         raise Refusal(f"source directory {source_dir} holds no .h5ad file")
     candidates = sorted(Path(resolve_latest(str(source_dir / stem))) for stem in stems)
-    target_resolved = target.resolve()
     for candidate in candidates:
-        if candidate.resolve() == target_resolved:
+        if candidate.samefile(target):  # symlink or hard link alike; both paths exist here
             raise Refusal(
                 f"{candidate.name} in {source_dir} is the target itself; an integrated object is not its own source"
             )
     return candidates
 
 
-def _read_candidate_ids(path: Path) -> list[str]:
-    """A candidate's obs index, behind the Scope rule the decorator applies to the target only."""
-    with open_h5ad(str(path), backed="r"):
-        pass  # a file anndata rejects is refused, not read around
-    return read_obs_index(str(path))
+def _require_string_ids(ids: np.ndarray, label: str) -> None:
+    """Cell IDs are strings; an index stored as numbers is bad input, refused rather than converted."""
+    if ids.dtype.kind != "O":
+        raise Refusal(f"{label} obs index is stored as {ids.dtype}, not strings; cell IDs must be strings to match")
+
+
+def _read_ids(path: Path) -> tuple[np.ndarray, str]:
+    """A file's obs index in its stored dtype (so a numeric index is seen as one), with the index dataset's name."""
+    with h5py.File(path, "r") as f:
+        obs = f["obs"]
+        name = obs_index_name(obs)
+        ids = read_index(obs, name, "obs")
+    _require_string_ids(ids, path.name)
+    return ids, name
+
+
+def _read_candidate_ids(path: Path) -> np.ndarray:
+    """A candidate's obs index, behind the Scope rule the decorator applies to the target only.
+
+    A file anndata rejects is refused in anndata's own words, as the gate
+    refuses the target, rather than read around.
+    """
+    try:
+        with open_h5ad(str(path), backed="r"):
+            pass
+    except Exception as e:
+        raise Refusal(f"{path.name}: {e}") from e
+    return _read_ids(path)[0]
 
 
 def _find_source_datasets_at_path(path: str) -> dict:
@@ -129,10 +152,7 @@ def _find_source_datasets_at_path(path: str) -> dict:
     source_dir = source_directory(target)
     candidates = list_candidates(source_dir, target)
 
-    with h5py.File(path, "r") as f:  # the gate has opened the target through anndata already
-        obs = f["obs"]
-        index_name = obs_index_name(obs)
-        target_ids = read_index(obs, index_name, "obs")
+    target_ids, index_name = _read_ids(target)  # the gate has opened the target through anndata already
     index = pd.Index(target_ids)
     if (dup := check_duplicate_ids(index, "obs")) is not None:
         raise Refusal(f"{dup}; an intersection over duplicate IDs has no single meaning")
@@ -141,28 +161,20 @@ def _find_source_datasets_at_path(path: str) -> dict:
 
     rows = []
     for candidate in candidates:
-        try:
-            ids = _read_candidate_ids(candidate)
-            # Probe the candidate's IDs against the target's hash engine, built
-            # once above; unique positions so a duplicated source ID counts once.
-            hit = np.unique(index.get_indexer(ids))
-            hit = hit[hit >= 0]
-            claims[hit] += 1
-            row = {
+        ids = _read_candidate_ids(candidate)
+        # Probe the candidate's IDs against the target's hash engine, built
+        # once above; unique positions so a duplicated source ID counts once.
+        hit = np.unique(index.get_indexer(ids))
+        hit = hit[hit >= 0]
+        claims[hit] += 1
+        rows.append(
+            {
                 "filename": candidate.name,
                 "n_obs": len(ids),
-                "matched": int(hit.size),
+                "matched_by_id": int(hit.size),
                 "fraction_of_target": hit.size / n_obs if n_obs else 0.0,
             }
-        except Exception as e:
-            row = {
-                "filename": candidate.name,
-                "n_obs": None,
-                "matched": 0,
-                "fraction_of_target": 0.0,
-                **failure_result(e),
-            }
-        rows.append(row)
+        )
     rows.sort(key=lambda r: (-r["fraction_of_target"], r["filename"]))
 
     unaccounted, twice = np.flatnonzero(claims == 0), np.flatnonzero(claims > 1)
@@ -175,10 +187,6 @@ def _find_source_datasets_at_path(path: str) -> dict:
         if where.size:
             findings.append(finding(code, where.size, target_ids[where[:SAMPLE_ID_LIMIT]], element))
             reasons.append(f"{where.size} {prose}")
-    n_errors = sum("error" in r for r in rows)
-    if n_errors:
-        reasons.append(f"{n_errors} candidate(s) could not be read")
-
     return {
         "filename": target.name,
         "source_dir": str(source_dir),

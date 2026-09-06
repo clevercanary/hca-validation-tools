@@ -45,8 +45,6 @@ mcp = FastMCP(
     instructions=(
         "Explore AnnData h5ad files interactively. "
         "Use locate_files to find files, get_summary for an overview, "
-        "find_source_datasets to report which tracker source datasets an integrated object's cells come from "
-        "(cell-ID intersection over the tracker layout; read-only), "
         "get_storage_info for HDF5 compression/chunk details, "
         "get_descriptive_stats for distributions, view_data to inspect raw values, "
         "plot_embedding to visualize UMAP/PCA embeddings, "

@@ -8,9 +8,11 @@ lists. The tool reads nothing but those indexes, and the CSC case proves it.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import anndata as ad
+import h5py
 import numpy as np
 import pandas as pd
 import pytest
@@ -18,7 +20,7 @@ import scipy.sparse as sp
 
 from hca_anndata_tools.qc import SAMPLE_ID_LIMIT
 from hca_anndata_tools.sources import INTEGRATED_DIR, SOURCE_SUBDIR, find_source_datasets
-from hca_anndata_tools.testing import create_truncated_h5ad
+from hca_anndata_tools.testing import create_truncated_h5ad, make_nullable_string_array
 
 
 def _ids(prefix: str, n: int) -> list[str]:
@@ -78,7 +80,7 @@ def test_exact_partition(tree):
     assert _rows(result)["a-r1-wip-1.h5ad"] == {
         "filename": "a-r1-wip-1.h5ad",
         "n_obs": 30,
-        "matched": 30,
+        "matched_by_id": 30,
         "fraction_of_target": 0.75,
     }
 
@@ -94,7 +96,7 @@ def test_zero_match_candidate_is_listed_last_with_zeros(tree):
     assert _rows(result)["unrelated.h5ad"] == {
         "filename": "unrelated.h5ad",
         "n_obs": 5,
-        "matched": 0,
+        "matched_by_id": 0,
         "fraction_of_target": 0.0,
     }
 
@@ -133,7 +135,7 @@ def test_cells_claimed_twice(tree):
     assert result["partition"] == "2 target cells claimed by more than one source"
     assert [f["code"] for f in result["findings"]] == ["cells_claimed_twice"]
     assert result["findings"][0]["sample_ids"] == a[:2]
-    assert _rows(result)["b.h5ad"]["matched"] == 6
+    assert _rows(result)["b.h5ad"]["matched_by_id"] == 6
 
 
 def test_unaccounted_and_claimed_twice_reasons_combine(tree):
@@ -150,7 +152,7 @@ def test_candidate_duplicates_count_as_a_set(tree):
     a = _ids("a", 3)
     tree.source("a", a + a)  # a source with every ID twice
     result = _ok(find_source_datasets(str(tree.target(a))))
-    assert _rows(result)["a.h5ad"] == {"filename": "a.h5ad", "n_obs": 6, "matched": 3, "fraction_of_target": 1.0}
+    assert _rows(result)["a.h5ad"] == {"filename": "a.h5ad", "n_obs": 6, "matched_by_id": 3, "fraction_of_target": 1.0}
     assert result["partition"] == "exact"
 
 
@@ -231,6 +233,24 @@ def test_empty_source_dir_is_refused_by_name(tree):
     assert result["error"] == f"source directory {tree.sources} holds no .h5ad file"
 
 
+def test_non_file_entries_named_h5ad_are_not_candidates(tree):
+    """A directory or a dangling symlink named ``*.h5ad`` is not a dataset; the gate's own ``is_file`` rule applies."""
+    a = _ids("a", 5)
+    tree.source("a", a)
+    (tree.sources / "dir.h5ad").mkdir()
+    (tree.sources / "dangling.h5ad").symlink_to(tree.sources / "gone.h5ad")
+    result = _ok(find_source_datasets(str(tree.target(a))))
+    assert [r["filename"] for r in result["sources"]] == ["a.h5ad"]
+    assert result["partition"] == "exact"
+
+
+def test_source_dir_holding_only_a_directory_named_h5ad_is_empty(tree):
+    tree.sources.mkdir(parents=True)
+    (tree.sources / "dir.h5ad").mkdir()
+    result = find_source_datasets(str(tree.target(_ids("a", 3))))
+    assert result["error"] == f"source directory {tree.sources} holds no .h5ad file"
+
+
 def test_candidate_that_is_the_target_is_refused(tree):
     a = _ids("a", 3)
     tree.source("other", _ids("z", 2))
@@ -239,6 +259,16 @@ def test_candidate_that_is_the_target_is_refused(tree):
     result = find_source_datasets(str(target))
     assert "error" in result
     assert "self.h5ad" in result["error"] and "is the target itself" in result["error"]
+
+
+def test_hard_link_to_the_target_is_refused(tree):
+    a = _ids("a", 3)
+    tree.source("other", _ids("z", 2))
+    target = tree.target(a)
+    os.link(target, tree.sources / "copy.h5ad")
+    result = find_source_datasets(str(target))
+    assert "error" in result
+    assert "copy.h5ad" in result["error"] and "is the target itself" in result["error"]
 
 
 def test_edit_variants_collapse_to_the_latest(tree):
@@ -275,20 +305,66 @@ def test_duplicate_target_ids_are_refused(tree):
     assert "duplicate IDs" in result["error"] and "a_0" in result["error"]
 
 
-def test_unopenable_candidate_gets_an_error_row_and_the_run_continues(tree):
+def test_unopenable_candidate_fails_the_run_in_anndatas_words(tree):
     a = _ids("a", 5)
     good = tree.source("a", a)
     create_truncated_h5ad(tree.sources / "broken.h5ad", source=good)
-    result = _ok(find_source_datasets(str(tree.target(a))))
+    result = find_source_datasets(str(tree.target(a)))
+    assert set(result) == {"error"}  # a refusal: no traceback, no partial result
+    assert result["error"].startswith("broken.h5ad: ")
 
-    rows = _rows(result)
-    assert rows["a.h5ad"]["matched"] == 5
-    broken = rows["broken.h5ad"]
-    assert broken["n_obs"] is None and broken["matched"] == 0 and broken["fraction_of_target"] == 0.0
-    assert broken["error"]
-    assert result["target"]["accounted"] == 5
-    assert result["partition"] == "1 candidate(s) could not be read"
-    assert result["findings"] == []
+
+def test_candidate_anndata_rejects_but_h5py_opens_is_refused_not_matched(tree):
+    """Pins the candidate-side Scope gate: a masked categorical in a non-index
+    column is a file h5py reads happily and anndata refuses. Without the gate
+    the candidate would match every cell; with it the run is refused, naming
+    the column."""
+    a = _ids("a", 5)
+    tree.source("a", a)
+    bad = tree.sources / "masked.h5ad"
+    obs = pd.DataFrame({"family": pd.Categorical(["x", "y", "x", "y", "x"])}, index=pd.Index(a, name="cellID"))
+    ad.AnnData(obs=obs).write_h5ad(bad)
+    with h5py.File(bad, "r+") as f:
+        make_nullable_string_array(f["obs/family"], "categories", masked=1)  # pyright: ignore[reportArgumentType]
+    result = find_source_datasets(str(tree.target(a)))
+    assert set(result) == {"error"}
+    assert result["error"].startswith("masked.h5ad: ") and "obs column 'family'" in result["error"]
+
+
+def _store_index_as_int64(path: Path) -> None:
+    """Rewrite a file's obs index dataset as int64 in place — the shape a producer's ``RangeIndex`` leaves behind."""
+    with h5py.File(path, "r+") as f:
+        obs = f["obs"]
+        assert isinstance(obs, h5py.Group)
+        name = obs.attrs["_index"]
+        n = obs[name].shape[0]  # pyright: ignore[reportAttributeAccessIssue]
+        del obs[name]
+        ds = obs.create_dataset(name, data=np.arange(n, dtype=np.int64))
+        ds.attrs["encoding-type"] = "array"  # what anndata stamps on a numeric dataset
+        ds.attrs["encoding-version"] = "0.2.0"
+
+
+@pytest.mark.filterwarnings("ignore:Transforming to str index")
+def test_integer_target_index_is_refused_not_converted(tree):
+    a = _ids("a", 3)
+    tree.source("a", a)
+    target = tree.target(a)
+    _store_index_as_int64(target)
+    result = find_source_datasets(str(target))
+    assert set(result) == {"error"}
+    assert (
+        result["error"] == f"{target.name} obs index is stored as int64, not strings; cell IDs must be strings to match"
+    )
+
+
+@pytest.mark.filterwarnings("ignore:Transforming to str index")
+def test_integer_candidate_index_is_refused_not_converted(tree):
+    a = _ids("a", 3)
+    bad = tree.source("ints", a)
+    _store_index_as_int64(bad)
+    result = find_source_datasets(str(tree.target(a)))
+    assert set(result) == {"error"}
+    assert result["error"].startswith("ints.h5ad obs index is stored as int64")
 
 
 def test_missing_target_keeps_the_tools_own_message(tree):
