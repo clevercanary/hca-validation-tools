@@ -51,7 +51,9 @@ Deviations from the original, each with its reason:
    a non-human donor is ``not_applicable`` rather than the whole file bailing.
 3. **A verdict per donor, not a plot.** The original returns a dataframe
    and a dotplot for a curator to read; this returns one verdict per donor
-   and three findings in the shared shape, so an agent can act on it.
+   (tallied in ``verdict_counts``; listed in ``donors``, capped per
+   verdict, when it is not ``agree``) and three findings in the shared
+   shape, so an agent can act on it.
    Lattice's notebook treats an annotated ``unknown`` that is inferable as
    a warning and male-vs-female disagreement as an error; those are the
    ``sex_fillable`` and ``sex_contradiction`` codes.
@@ -89,7 +91,7 @@ from ._io import (
     read_key_column,
     strip_ensembl_version,
 )
-from .qc import DEFAULT_CHUNK_NNZ, finding, iter_matrix_chunks, open_count_matrix, run_read_check
+from .qc import DEFAULT_CHUNK_NNZ, SAMPLE_ID_LIMIT, finding, iter_matrix_chunks, open_count_matrix, run_read_check
 
 # ``ref_files/sex_analysis_genes.json`` at the pinned commit, keyed by Ensembl ID.
 MALE_GENES: dict[str, str] = {
@@ -172,17 +174,19 @@ def check_donor_sex(path: str, chunk_nnz: int = DEFAULT_CHUNK_NNZ) -> dict:
 
         ``verdict_counts`` maps every verdict below to the number of donor
         rows that received it (zero included), so its values sum to the
-        number of rows evaluated; it is empty when ``gene_panel`` is
-        ``not_applicable``. One row is evaluated per donor — two when a
+        number of rows evaluated; every value is zero when ``gene_panel``
+        is ``not_applicable``. One row is evaluated per donor — two when a
         donor has both droplet and plate-based libraries, the plate-based
         row's ``donor_id`` suffixed ``-smartseq`` and its ``smart_seq`` flag
         set (the suffixed row is dropped only when that would collide with a
         donor literally so named, which is then refused).
 
-        ``donors`` carries only the rows whose verdict is not ``agree``
-        (#700): an atlas with hundreds of agreeing donors would otherwise
-        return a table that fits no tool result, and ``verdict_counts``
-        already says how many agreed. Each row: ``donor_id``, ``smart_seq``,
+        ``donors`` carries only the rows whose verdict is not ``agree``, at
+        most 20 per verdict in donor order (#700): an atlas with hundreds of
+        agreeing donors would otherwise return a table that fits no tool
+        result, and ``verdict_counts`` holds the totals, so cite it rather
+        than the table's length. A split donor's agreeing chemistry row is
+        omitted like any other ``agree`` row. Each row: ``donor_id``, ``smart_seq``,
         ``cells``, ``male_counts``, ``female_counts``, ``total_counts``,
         ``ratio`` (``null`` when the female sum is zero), ``inferred``,
         ``annotated`` (``male`` / ``female`` / ``unknown``),
@@ -223,7 +227,7 @@ def _check_donor_sex_at_path(path: str, chunk_nnz: int) -> dict:
         result["genes_found"] = {"male": male_found, "female": female_found}
         if (reason := _not_applicable_reason(cm, male_found, female_found)) is not None:
             result["gene_panel"] = {"status": VERDICT_NOT_APPLICABLE, "reason": reason}
-            result.update(verdict_counts={}, donors=[], findings=[])
+            result.update(verdict_counts=dict.fromkeys(VERDICTS, 0), donors=[], findings=[])
             return result
         result["gene_panel"] = {"status": "applied"}
         panel = {var_ids[c] for c in (*male_cols, *female_cols)}
@@ -246,10 +250,25 @@ def _check_donor_sex_at_path(path: str, chunk_nnz: int) -> dict:
     rows = _donor_rows(donor, annotated, assay, organism, male, female)
     tally = Counter(r["verdict"] for r in rows)
     result["verdict_counts"] = {v: tally[v] for v in VERDICTS}
-    # Agreeing rows are counted, not listed: a few hundred of them overflow a tool result (#700).
-    result["donors"] = [r for r in rows if r["verdict"] != VERDICT_AGREE]
+    result["donors"] = _listed_rows(rows)
     result["findings"] = _findings(rows, cm.key)
     return result
+
+
+def _listed_rows(rows: list[dict]) -> list[dict]:
+    """The rows a reader needs: never ``agree``, and at most SAMPLE_ID_LIMIT per verdict, in donor order.
+
+    A few hundred rows overflow a tool result (#700); ``verdict_counts`` carries the totals.
+    """
+    seen: Counter[str] = Counter()
+    listed = []
+    for row in rows:
+        if row["verdict"] == VERDICT_AGREE:
+            continue
+        seen[row["verdict"]] += 1
+        if seen[row["verdict"]] <= SAMPLE_ID_LIMIT:
+            listed.append(row)
+    return listed
 
 
 def _not_applicable_reason(cm, male_found: list[str], female_found: list[str]) -> str | None:

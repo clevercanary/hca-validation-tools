@@ -7,6 +7,7 @@ import pytest_asyncio
 from fastmcp.client import Client
 
 from hca_anndata_mcp.server import mcp
+from hca_anndata_tools.donor_sex import VERDICTS
 
 
 @pytest_asyncio.fixture
@@ -226,7 +227,7 @@ async def test_check_donor_sex(client, sample_h5ad):
     assert "error" not in data
     assert data["gene_panel"]["status"] == "not_applicable"
     assert data["genes_found"] == {"male": [], "female": []}
-    assert data["verdict_counts"] == {} and data["donors"] == [] and data["findings"] == []
+    assert data["verdict_counts"] == dict.fromkeys(VERDICTS, 0) and data["donors"] == [] and data["findings"] == []
 
 
 @pytest.mark.asyncio

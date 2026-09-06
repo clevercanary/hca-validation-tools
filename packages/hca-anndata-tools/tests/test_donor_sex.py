@@ -26,6 +26,7 @@ from hca_anndata_tools.donor_sex import (
     SMART_SEQ_ASSAYS,
     VERDICTS,
     _assign_sex,
+    _verdict,
     check_donor_sex,
 )
 from hca_anndata_tools.qc import SAMPLE_ID_LIMIT
@@ -110,6 +111,7 @@ def test_clean_two_donors_agree(tmp_path, fmt):
 
 
 def test_raw_x_is_the_matrix_when_present(tmp_path):
+    # m1 is annotated female so its row is a contradiction and stays listed; agreeing rows are not (#700).
     result = check_donor_sex(_write(tmp_path / "a.h5ad", [_male(sex=FEMALE), _female()], as_raw=True))
     assert result["matrix"] == "raw/X"
     assert _rows(result)["m1"]["male_counts"] == 280.0  # counts, not the log1p X
@@ -142,7 +144,8 @@ def test_female_annotated_with_male_ratio_is_a_contradiction(tmp_path):
 
 
 def test_zero_female_counts_is_male_with_null_ratio(tmp_path):
-    # Lattice divides by zero to +inf and calls it male; the ratio is reported as null.
+    # Lattice divides by zero to +inf and calls it male; the ratio is reported as null. Annotated
+    # female so the row is a contradiction and stays listed; an agreeing row is not (#700).
     row = _rows(check_donor_sex(_write(tmp_path / "a.h5ad", [_donor(20, 0, n=3, sex=FEMALE)])))["d"]
     assert (row["ratio"], row["inferred"], row["verdict"]) == (None, "male", "contradiction")
 
@@ -184,7 +187,7 @@ def test_normalized_only_x_is_not_applicable(tmp_path):
     assert "error" not in result, result
     assert result["integer_check"]["status"] == "not_applicable"
     assert result["gene_panel"]["status"] == "not_applicable" and "not counts" in result["gene_panel"]["reason"]
-    assert result["verdict_counts"] == {} and result["donors"] == [] and result["findings"] == []
+    assert result["verdict_counts"] == _counts() and result["donors"] == [] and result["findings"] == []
 
 
 def test_below_floor(tmp_path):
@@ -196,7 +199,8 @@ def test_below_floor(tmp_path):
 
 
 def test_exactly_the_floor_is_called(tmp_path):
-    # 100 counts: 7 male genes x 10 + 10 female genes x 3 = 70 + 30, one cell.
+    # 100 counts: 7 male genes x 10 + 10 female genes x 3 = 70 + 30, one cell. Annotated unknown so
+    # the row is a fill_in and stays listed; an agreeing row is not (#700).
     row = _rows(check_donor_sex(_write(tmp_path / "a.h5ad", [_donor(10, 3, n=1, sex="unknown")])))["d"]
     assert row["total_counts"] == COUNT_FLOOR == 100.0
     assert (row["inferred"], row["verdict"]) == ("male", "fill_in")
@@ -225,10 +229,12 @@ def test_assign_sex_at_the_cuts(ratio, expected):
 
 
 def test_donor_with_droplet_and_smart_seq_libraries_is_two_rows(tmp_path):
-    donors = [_male(donor="d", assay=DROPLET), _female(donor="d", sex=MALE, assay=SMART)]
+    # The droplet half is indeterminate (70 / 350 = 0.2) rather than agreeing, so both rows stay listed.
+    donors = [_donor(10, 35, donor="d", assay=DROPLET), _female(donor="d", sex=MALE, assay=SMART)]
     result = check_donor_sex(_write(tmp_path / "a.h5ad", donors))
-    assert result["verdict_counts"] == _counts(agree=1, contradiction=1)  # counts rows, not donor names
+    assert result["verdict_counts"] == _counts(indeterminate=1, contradiction=1)  # counts rows, not donor names
     assert {k: (v["smart_seq"], v["verdict"]) for k, v in _rows(result).items()} == {
+        "d": (False, "indeterminate"),
         "d-smartseq": (True, "contradiction"),
     }
 
@@ -279,7 +285,7 @@ def test_var_missing_every_male_gene_is_not_applicable(tmp_path):
     assert result["gene_panel"]["status"] == "not_applicable"
     assert "ZFY" in result["gene_panel"]["reason"] and "PUDP" not in result["gene_panel"]["reason"]
     assert result["genes_found"] == {"male": [], "female": list(FEMALE_GENES.values())}
-    assert result["verdict_counts"] == {} and result["donors"] == [] and result["findings"] == []
+    assert result["verdict_counts"] == _counts() and result["donors"] == [] and result["findings"] == []
 
 
 def test_panel_gene_listed_twice_is_refused_by_name(tmp_path):
@@ -312,6 +318,18 @@ def test_ensembl_version_suffixes_are_ignored(tmp_path):
     assert result["verdict_counts"] == _counts(agree=2) and _rows(result) == {}
 
 
+def test_verdicts_lists_every_verdict_the_check_can_give():
+    # `verdict_counts` keys on VERDICTS, so a verdict `_verdict` can return but VERDICTS lacks would
+    # vanish from the map and break "values sum to rows evaluated".
+    produced = {
+        _verdict(human, inferred, annotated)
+        for human in (True, False)
+        for inferred in (None, "unknown", "male", "female")
+        for annotated in ("unknown", "male", "female")
+    }
+    assert produced == set(VERDICTS) and len(VERDICTS) == len(set(VERDICTS))
+
+
 def test_agreeing_donors_are_counted_not_listed(tmp_path):
     # More agreeing donors than any sample list carries (#700): a 300-donor atlas must fit in one
     # tool result, so `donors` holds only the rows that need a reader, and `verdict_counts` holds
@@ -324,6 +342,17 @@ def test_agreeing_donors_are_counted_not_listed(tmp_path):
     assert sum(result["verdict_counts"].values()) == len(donors)
     assert [(r["donor_id"], r["verdict"]) for r in result["donors"]] == [("c", "contradiction"), ("u", "fill_in")]
     assert _codes(result).keys() == {"sex_contradiction", "sex_fillable"}
+
+
+def test_each_listed_verdict_is_capped_at_the_sample_limit(tmp_path):
+    # Any verdict can dominate an atlas (every donor of a pre-curation source is `fill_in` when the sex
+    # column is missing), so each one lists at most SAMPLE_ID_LIMIT rows, in donor order, and
+    # `verdict_counts` holds the total the reader cites.
+    fillable = [_male(donor=f"u{i:02d}", sex="unknown") for i in range(SAMPLE_ID_LIMIT + 5)]
+    result = check_donor_sex(_write(tmp_path / "a.h5ad", [*fillable, _female(donor="c", sex=MALE)]))
+    assert result["verdict_counts"] == _counts(fill_in=len(fillable), contradiction=1)
+    assert [r["donor_id"] for r in result["donors"]] == ["c", *(f"u{i:02d}" for i in range(SAMPLE_ID_LIMIT))]
+    assert _codes(result)["sex_fillable"]["count"] == len(fillable)
 
 
 def test_csc_direct_read_matches_the_csr_pass(tmp_path):
@@ -346,6 +375,7 @@ def test_csc_direct_read_matches_the_csr_pass(tmp_path):
 def test_chunk_boundary_sums_a_donor_across_chunks(tmp_path, fmt):
     # 4 cells x 20 genes, every entry stored: 80 entries; chunk_nnz=30 forces several chunks
     # through one donor on the streaming formats. (CSC reads whole columns and ignores chunk_nnz.)
+    # Annotated female so the row is a contradiction and stays listed; an agreeing row is not (#700).
     path = _write(tmp_path / f"{fmt}.h5ad", [_male(donor="d", sex=FEMALE)], fmt)
     whole = _rows(check_donor_sex(path))["d"]
     chunked = _rows(check_donor_sex(path, chunk_nnz=30))["d"]
