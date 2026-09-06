@@ -29,6 +29,7 @@ if TYPE_CHECKING:
     from .qc import check_raw_counts
     from .rename import rename_cell_ids
     from .rename_column import rename_obs_column
+    from .sources import find_source_datasets
     from .stats import get_descriptive_stats
     from .storage import get_storage_info
     from .strip import strip_forbidden_obs_columns
@@ -86,6 +87,7 @@ _LAZY_IMPORTS = {
     "check_embeddings": ".embeddings",
     "check_donor_sex": ".donor_sex",
     "check_barcodes": ".barcodes",
+    "find_source_datasets": ".sources",
 }
 
 __all__ = list(_LAZY_IMPORTS)  # pyright: ignore[reportUnsupportedDunderAll]
