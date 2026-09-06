@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.7.1](https://github.com/clevercanary/hca-validation-tools/compare/hca-anndata-tools-v0.7.0...hca-anndata-tools-v0.7.1) (2026-09-06)
+
+
+### Features
+
+* **hca-anndata-tools:** check_donor_sex returns verdict_counts and omits agreeing donors ([#704](https://github.com/clevercanary/hca-validation-tools/issues/704)) ([f5b7f2b](https://github.com/clevercanary/hca-validation-tools/commit/f5b7f2b5f83a0dec124bc6aed01eeeac0c1ab163))
+* **hca-anndata-tools:** count gate — one streaming pass over the raw count matrix ([#690](https://github.com/clevercanary/hca-validation-tools/issues/690)) ([da36e02](https://github.com/clevercanary/hca-validation-tools/commit/da36e02a0dd84dc437af60cbaf6990e2652ac2fe))
+* **hca-anndata-tools:** duplicate cells by raw count content hash — a port of Lattice's evaluate_dup_counts ([#691](https://github.com/clevercanary/hca-validation-tools/issues/691)) ([f10e5c0](https://github.com/clevercanary/hca-validation-tools/commit/f10e5c024fcc3049134b8134ed198cbd902ad078))
+* **hca-anndata-tools:** embedding gate — every obsm array is finite and non-degenerate ([#694](https://github.com/clevercanary/hca-validation-tools/issues/694)) ([17ac589](https://github.com/clevercanary/hca-validation-tools/commit/17ac58941d80c00b27fa389c91024274c1c967b4))
+* **hca-anndata-tools:** find_source_datasets — which tracker source datasets an integrated object is built from ([#706](https://github.com/clevercanary/hca-validation-tools/issues/706)) ([a386a6f](https://github.com/clevercanary/hca-validation-tools/commit/a386a6f4bcdadf3871b2560bedb07b9c74e87222))
+* **hca-anndata-tools:** infer donor sex from expression and compare with the annotation — a port of Lattice's evaluate_donors_sex ([#695](https://github.com/clevercanary/hca-validation-tools/issues/695)) ([61e36c7](https://github.com/clevercanary/hca-validation-tools/commit/61e36c7f4d85d833bc99e4ee688cba9391daf497))
+* **hca-anndata-tools:** normalize nullable strings on write — every write fixes the format in its own path ([#649](https://github.com/clevercanary/hca-validation-tools/issues/649)) ([fa1dd12](https://github.com/clevercanary/hca-validation-tools/commit/fa1dd12f2374caee10b028418cb37d9dc394ff40))
+* **hca-anndata-tools:** report dataframe string encodings in get_storage_info ([#639](https://github.com/clevercanary/hca-validation-tools/issues/639)) ([36e6032](https://github.com/clevercanary/hca-validation-tools/commit/36e6032cef62b424536fecb0c358d54a94bcaaa7))
+* **hca-anndata-tools:** report which cells carry a 10x barcode in the obs index — a port of Lattice's extract_barcodes ([#697](https://github.com/clevercanary/hca-validation-tools/issues/697)) ([c872a7c](https://github.com/clevercanary/hca-validation-tools/commit/c872a7cf4abedc2ee2c91168e4ee8f185b201c10)), closes [#679](https://github.com/clevercanary/hca-validation-tools/issues/679)
+
+
+### Bug Fixes
+
+* **hca-anndata-tools:** carry the traceback out of copy_cap's broad handler ([#673](https://github.com/clevercanary/hca-validation-tools/issues/673)) ([2ed6bfa](https://github.com/clevercanary/hca-validation-tools/commit/2ed6bfafecccec81eedc2f48667b682632e09972))
+* **hca-anndata-tools:** open through anndata in every tool that touches a file ([#667](https://github.com/clevercanary/hca-validation-tools/issues/667)) ([8d1a0da](https://github.com/clevercanary/hca-validation-tools/commit/8d1a0da52a548f58599791d46b7a91666cc001b4)), closes [#661](https://github.com/clevercanary/hca-validation-tools/issues/661)
+* **hca-anndata-tools:** read string elements through anndata's registry, not hand-rolled slices ([#642](https://github.com/clevercanary/hca-validation-tools/issues/642)) ([d602072](https://github.com/clevercanary/hca-validation-tools/commit/d60207293ec6da4f2f209516d6cbfd61aaef1bc0))
+* **hca-anndata-tools:** scope read_element's object coercion to strings ([#670](https://github.com/clevercanary/hca-validation-tools/issues/670)) ([c2277ba](https://github.com/clevercanary/hca-validation-tools/commit/c2277ba3a22de57c3db8afe9a153b646df6014ee)), closes [#668](https://github.com/clevercanary/hca-validation-tools/issues/668)
+
+
+### Documentation
+
+* **hca-anndata-tools:** say we don't operate on files anndata can't open ([#660](https://github.com/clevercanary/hca-validation-tools/issues/660)) ([7102467](https://github.com/clevercanary/hca-validation-tools/commit/71024679761dad1950df0946f85ebe2b27581238)), closes [#656](https://github.com/clevercanary/hca-validation-tools/issues/656)
+
 ## [0.7.0](https://github.com/clevercanary/hca-validation-tools/compare/hca-anndata-tools-v0.6.4...hca-anndata-tools-v0.7.0) (2026-08-25)
 
 
