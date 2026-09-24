@@ -1,3 +1,5 @@
 ensembl_cache/
 retired_identifier_classification.csv
 .ipynb_checkpoints/
+__pycache__/
+.pytest_cache/
