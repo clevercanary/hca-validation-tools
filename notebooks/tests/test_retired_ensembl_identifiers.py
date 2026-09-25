@@ -47,13 +47,13 @@ def load_function(code_cells, name):
             continue
         preamble = [
             n for n in tree.body
-            if isinstance(n, (ast.Import, ast.ImportFrom))
-            or (isinstance(n, ast.Assign) and isinstance(n.value, (ast.Constant, ast.Set,
-                                                                   ast.List, ast.Dict, ast.Tuple)))
+            if isinstance(n, ast.Import | ast.ImportFrom)
+            or (isinstance(n, ast.Assign)
+                and isinstance(n.value, ast.Constant | ast.Set | ast.List | ast.Dict | ast.Tuple))
         ]
         namespace: dict = {"pd": pd}
         module = ast.Module(body=[*preamble, target], type_ignores=[])
-        exec(compile(ast.fix_missing_locations(module), "<notebook>", "exec"), namespace)  # noqa: S102
+        exec(compile(ast.fix_missing_locations(module), "<notebook>", "exec"), namespace)
         return namespace[name]
     raise AssertionError(f"no cell defines {name}()")
 
@@ -66,8 +66,8 @@ def test_notebook_is_valid_json(nb):
 
 
 def test_every_code_cell_parses(code_cells):
-    for i, src in enumerate(code_cells):
-        ast.parse(src)  # raises SyntaxError naming the cell if not
+    for src in code_cells:
+        ast.parse(src)  # raises SyntaxError naming the offending cell
 
 
 def test_no_stored_outputs(nb):
@@ -112,8 +112,6 @@ def test_coerce_gives_numeric_columns_numeric_dtypes(code_cells):
                               "start": ["10000"], "end": ["9999"], "score": ["0.99"]}))
     assert df["start"].iloc[0] > df["end"].iloc[0], "numeric comparison expected"
     assert df["chrom"].iloc[0] == "5", "chromosome must stay a string"
-    # the bug this guards: '10000' <= '9999' is True as strings
-    assert not ("10000" <= "9999") is False
 
 
 def test_resolve_follows_a_chain_beyond_the_atlas(code_cells):
@@ -151,21 +149,35 @@ def test_resolve_terminates_on_a_cycle(code_cells):
 
 # --- the knee estimator --------------------------------------------------
 
-def knee_of(curve, fraction=0.02):
-    """The notebook's rule, restated: first release explaining all but a small tail."""
-    releases = sorted(curve)
-    tail = max(1, int(fraction * curve[releases[0]]))
-    return next((r for r in releases if curve[r] <= tail), None)
+
+def knee_from_notebook(code_cells, curve):
+    """Run the notebook's own knee rule over `curve`.
+
+    The rule is inline in the section 8 cell rather than a function, so we lift
+    the statements that compute it and evaluate them against a supplied curve.
+    Testing a restatement of the rule would pass even if the notebook reverted
+    to the strict minimum, which is the regression this is here to catch.
+    """
+    for src in code_cells:
+        if "knee" not in src or "tail" not in src:
+            continue
+        lines = [ln.strip() for ln in src.splitlines()]
+        wanted = [ln for ln in lines if ln.startswith(("start ", "tail ", "knee "))]
+        assert wanted, "section 8 no longer computes a knee"
+        namespace = {"curve": curve, "ordered": sorted(curve), "best": [min(curve, key=curve.get)]}
+        exec("\n".join(wanted), namespace)
+        return namespace["knee"]
+    raise AssertionError("no cell computes a knee")
 
 
-def test_knee_ignores_a_trailing_outlier():
-    """The bug this guards: a strict minimum is set by whichever gene is last
-    accounted for, so a handful of stray genes drag it many releases right."""
+def test_knee_ignores_a_trailing_outlier(code_cells):
+    """A strict minimum is set by whichever gene is accounted for last, so a
+    handful of strays drag it many releases right. The knee must not follow."""
     curve = {87: 230, 90: 38, 92: 3, 93: 3, 100: 2, 105: 0}
-    assert knee_of(curve) == 92        # where the bulk is explained
-    assert min(curve, key=curve.get) == 105   # where the strict minimum lands
+    assert knee_from_notebook(code_cells, curve) == 92
+    assert min(curve, key=curve.get) == 105, "the strict minimum is the thing being avoided"
 
 
-def test_knee_is_the_minimum_when_there_is_no_tail():
+def test_knee_is_the_minimum_when_there_is_no_tail(code_cells):
     curve = {87: 100, 92: 50, 98: 0, 104: 0}
-    assert knee_of(curve) == 98
+    assert knee_from_notebook(code_cells, curve) == 98
