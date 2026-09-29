@@ -134,6 +134,7 @@ def test_male_annotated_with_no_y_expression_is_a_contradiction(tmp_path):
         "donor_id": "f1",
         "smart_seq": False,
         "cells": 4,
+        "donor_cells": 4,
         "male_counts": 0.0,
         "female_counts": 800.0,
         "total_counts": 800.0,
@@ -582,8 +583,8 @@ def test_panel_reference_reports_what_each_side_of_the_comparison_rests_on(tmp_p
     ]
     result = check_donor_sex(_write(tmp_path / "a.h5ad", donors))
     assert result["panel_reference"] == {
-        "male": {"donors": 1, "cells": 4},
-        "female": {"donors": 2, "cells": 32},
+        "male": {"donors": 1, "cells": 4, "smart_seq_cells": 0},
+        "female": {"donors": 2, "cells": 32, "smart_seq_cells": 0},
     }
     # f_big is contradicted and is 30 of its side's 32 cells, so the female column is
     # very nearly its own signal — exactly the case the counts are emitted to expose.
@@ -600,7 +601,10 @@ def test_panel_reference_counts_only_the_donors_the_summary_used(tmp_path):
         _donor(9999, 1, donor="nh", sex=MALE, organism="NCBITaxon:10090"),
     ]
     reference = check_donor_sex(_write(tmp_path / "a.h5ad", donors))["panel_reference"]
-    assert reference == {"male": {"donors": 1, "cells": 4}, "female": {"donors": 1, "cells": 4}}
+    assert reference == {
+        "male": {"donors": 1, "cells": 4, "smart_seq_cells": 0},
+        "female": {"donors": 1, "cells": 4, "smart_seq_cells": 0},
+    }
 
 
 def test_panel_reference_counts_a_split_donor_once(tmp_path):
@@ -610,8 +614,17 @@ def test_panel_reference_counts_a_split_donor_once(tmp_path):
         _donor(1, 100, donor="f", sex=FEMALE, n=6, assay=SMART),
         _donor(100, 1, donor="m", sex=MALE, n=4),
     ]
-    reference = check_donor_sex(_write(tmp_path / "a.h5ad", donors))["panel_reference"]
-    assert reference == {"male": {"donors": 1, "cells": 4}, "female": {"donors": 1, "cells": 10}}
+    result = check_donor_sex(_write(tmp_path / "a.h5ad", donors))
+    assert result["panel_reference"] == {
+        "male": {"donors": 1, "cells": 4, "smart_seq_cells": 0},
+        "female": {"donors": 1, "cells": 10, "smart_seq_cells": 6},
+    }
+    # Each of the donor's rows reports the whole donor's contribution, not its own:
+    # its agreeing chemistry row is dropped from `donors`, so the row's own `cells`
+    # would understate what the reference side actually rests on.
+    for row in result["donors"]:
+        if row["donor_id"].startswith("f"):
+            assert row["donor_cells"] == 10
 
 
 def test_a_bad_sex_term_is_refused_before_the_matrix_is_read(tmp_path, monkeypatch):

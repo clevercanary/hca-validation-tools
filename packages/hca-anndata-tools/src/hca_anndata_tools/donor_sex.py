@@ -505,6 +505,7 @@ def _donor_rows(grouping: _Grouping, per_gene: np.ndarray, panel_genes: list[dic
                 "donor_id": f"{grouping.donors[d]}{SMART_SEQ_SUFFIX}" if is_smart else str(grouping.donors[d]),
                 "smart_seq": bool(is_smart),
                 "cells": int(cells[k]),
+                "donor_cells": int(cells[d * 2] + cells[d * 2 + 1]),
                 "male_counts": float(male_sum[k]),
                 "female_counts": float(female_sum[k]),
                 "total_counts": total,
@@ -561,8 +562,20 @@ def _panel_reference(rows: list[dict]) -> dict:
     panel — rather than the donor — is the problem, dismissing its own
     contradiction. The sizes are emitted so a reader can divide that donor's
     own ``cells`` by its side's total and see whether the comparison rests on
-    anyone else. Whether to weight by donor instead is open (#712); reporting
-    what the weighting rests on is true either way.
+    anyone else. A donor split across chemistries contributes both of its rows
+    here, so the row's own ``cells`` is not its contribution — ``donor_cells``
+    on each row is, and is what that division wants.
+
+    ``smart_seq_cells`` is reported for a second reason. This module splits a
+    donor's plate-based libraries into their own row because the ratio differs
+    by chemistry, but ``panel_summary`` pools both — so where chemistry falls
+    unevenly across the annotated sexes, some of what reads as separation is
+    protocol. Stratifying the summary by chemistry would change the statistic
+    and is left to #712; saying how much of each side is plate-based lets a
+    reader see whether the question arises at all.
+
+    Whether to weight by donor rather than by cell is open on the same issue;
+    reporting what the weighting rests on is true either way.
     """
     reference = {}
     for sex in ("male", "female"):
@@ -571,7 +584,11 @@ def _panel_reference(rows: list[dict]) -> dict:
         # donor, and what this field is for is how many independent donors stand
         # behind the mean. Cells still sum across both of its rows.
         base = {r["donor_id"].removesuffix(SMART_SEQ_SUFFIX) if r["smart_seq"] else r["donor_id"] for r in subset}
-        reference[sex] = {"donors": len(base), "cells": sum(r["cells"] for r in subset)}
+        reference[sex] = {
+            "donors": len(base),
+            "cells": sum(r["cells"] for r in subset),
+            "smart_seq_cells": sum(r["cells"] for r in subset if r["smart_seq"]),
+        }
     return reference
 
 
