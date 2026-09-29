@@ -234,9 +234,12 @@ def check_donor_sex(path: str, chunk_nnz: int = DEFAULT_CHUNK_NNZ) -> dict:
         keyed on the *annotated* sex, so it says how well each gene actually
         separates the sexes **in this file**. A working gene sits far from 1 —
         far above it on the male panel, far below it on the female panel — and a
-        gene that has stopped discriminating sits near 1, as four of the seven
-        Y-linked genes do on intron-inclusive remaps, where gametolog homology
-        misassigns reads between the X and Y copies. ``null`` when the female
+        gene that has stopped discriminating sits near 1. Any Y-linked gene can
+        end up there: all seven have an X copy and the homology runs through the
+        introns, so intron-inclusive counting can misassign reads between them.
+        Which genes it happens to, and how many, is a property of the file — on
+        the atlas in #707 it was four of the seven, and that is an observation,
+        not a rate to expect. ``null`` when the female
         mean is zero, and for every gene on a cohort annotated one sex
         throughout, which has no comparison to draw. Empty when ``gene_panel`` is ``not_applicable``.
         A contradiction should be read against it before it is relayed (#707).
@@ -557,10 +560,12 @@ def _male_dominance(male_genes: list[dict], male_sum: float) -> tuple[str | None
     """The male-panel gene carrying the largest share of the male sum, and that share.
 
     A male call resting on a single gene is the signature of gametolog
-    cross-mapping (#707): all seven Y-linked genes have an X copy, homology
-    runs through the introns, and on intron-inclusive counting four of them
-    stop discriminating. On the file that prompted #707, ``ZFY`` alone carried
-    61% of a female donor's male signal. Reported, never acted on: which genes
+    cross-mapping (#707): all seven Y-linked genes have an X copy and the
+    homology runs through the introns, so intron-inclusive counting can misassign
+    reads between them and leave a gene expressed in both sexes. On the atlas in
+    #707 four of the seven had gone that way and ``ZFY`` alone carried 61% of a
+    female donor's male signal; how many go that way in another file is that
+    file's question, which ``panel_summary`` answers. Reported, never acted on: which genes
     are trustworthy is a property of how the file was aligned, not of the tool.
     """
     if male_sum <= 0:
