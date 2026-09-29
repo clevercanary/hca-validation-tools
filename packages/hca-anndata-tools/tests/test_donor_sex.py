@@ -453,10 +453,12 @@ def test_handler_refusals_reach_the_caller(tmp_path):
 
 
 # --- per-gene evidence (#707) ------------------------------------------------
-# Four of the seven Y-linked panel genes are X-Y gametologs whose homology runs
-# through the introns, so on intron-inclusive counting they stop discriminating
-# and can carry a female donor over the male cut. The fixture below is that
-# shape: DDX3Y/KDM5D/EIF1AY separate the sexes, ZFY/USP9Y/UTY/NLGN4Y do not.
+# All seven Y-linked panel genes are X-Y gametologs, and the homology runs through
+# the introns, so on intron-inclusive counting any of them can take reads from its
+# X copy and carry a female donor over the male cut. Which ones actually do is a
+# property of the file, not of the panel. The fixture below is one such shape, the
+# one seen on the pancreas atlas in #707: DDX3Y/KDM5D/EIF1AY separate the sexes
+# while ZFY/USP9Y/UTY/NLGN4Y do not. It is a fixture, not a claim about those four.
 
 DIRTY = {"ZFY": 200, "USP9Y": 100, "UTY": 100, "NLGN4Y": 100}
 

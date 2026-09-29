@@ -126,7 +126,11 @@ FEMALE_GENES: dict[str, str] = {
     "ENSG00000225470": "JPX",
 }
 # ``assign_sex`` and ``calculate_sex`` in the original.
-XIST_ID = "ENSG00000229807"  # surfaced on its own: the single most decisive gene in practice (#707)
+# Surfaced on its own because it is the panel's only gene whose signal comes from an
+# inactive X rather than from the Y, so it is independent evidence rather than more of
+# the same (#707). How well it separates is still a per-file question: panel_summary
+# measures it, and inflated ambient XIST is a known way for it to mislead.
+XIST_ID = "ENSG00000229807"
 assert FEMALE_GENES[XIST_ID] == "XIST", "XIST_ID must name the panel's XIST entry"
 
 MALE_RATIO = 0.35  # male / female above this is male
