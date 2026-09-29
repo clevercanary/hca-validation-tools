@@ -198,8 +198,11 @@ def check_donor_sex(path: str, chunk_nnz: int = DEFAULT_CHUNK_NNZ) -> dict:
         agreeing donors would otherwise return a table that fits no tool
         result, and ``verdict_counts`` holds the totals, so cite it rather
         than the table's length. A split donor's agreeing chemistry row is
-        omitted like any other ``agree`` row. Each row: ``donor_id``, ``smart_seq``,
-        ``cells``, ``male_counts``, ``female_counts``, ``total_counts``,
+        omitted like any other ``agree`` row. Each row: ``donor_id``,
+        ``smart_seq``, ``cells`` (this chemistry row's cells), ``donor_cells``
+        (the donor's total across both of its chemistry rows, which is its
+        contribution to ``panel_reference`` and so the numerator any share of
+        it wants), ``male_counts``, ``female_counts``, ``total_counts``,
         ``ratio`` (``null`` when the female sum is zero), ``inferred``,
         ``annotated`` (``male`` / ``female`` / ``unknown``),
         ``annotated_term`` (the obs value verbatim, ``null`` when the column
@@ -233,13 +236,17 @@ def check_donor_sex(path: str, chunk_nnz: int = DEFAULT_CHUNK_NNZ) -> dict:
         throughout, which has no comparison to draw. Empty when ``gene_panel`` is ``not_applicable``.
         A contradiction should be read against it before it is relayed (#707).
 
-        ``panel_reference`` gives the ``donors`` and ``cells`` behind each side
-        of that comparison, as ``male`` and ``female``. The means are weighted
-        by cells, so a side resting on one large donor is a side that donor
-        largely defines — and when that donor is the contradicted one, the
-        summary would appear to excuse it. Dividing that donor's own ``cells``
-        by its side's total is the check, and these are the numbers for it.
-        Empty when ``gene_panel`` is ``not_applicable``.
+        ``panel_reference`` gives ``donors``, ``cells`` and ``smart_seq_cells``
+        behind each side of that comparison, as ``male`` and ``female``. The
+        means are weighted by cells, so a side resting on one large donor is a
+        side that donor largely defines — and when that donor is the
+        contradicted one, the summary would appear to excuse it. The check is
+        that donor's ``donor_cells`` over its side's ``cells``; its row's own
+        ``cells`` is the wrong numerator, since a split donor's agreeing
+        chemistry row is not listed but still counts toward the side.
+        ``smart_seq_cells`` says how much of each side is plate-based, because
+        the summary pools chemistries whose ratios differ. Empty when
+        ``gene_panel`` is ``not_applicable``.
 
         Findings, each counting donors and naming them in ``sample_ids``:
         ``sex_contradiction``, ``sex_fillable``, ``sex_below_floor``. Empty
@@ -615,10 +622,12 @@ def _panel_summary(rows: list[dict], panel_genes: list[dict]) -> list[dict]:
     in neither column.
 
     The reference set is therefore the annotation, which is the thing a
-    contradiction disputes. While contradicted donors are a small fraction of
-    the file that is harmless, but on a file whose sex column is systematically
-    wrong a working gene also separates near 1 — indistinguishable here from one
-    that has degraded. The measure weakens as the contradicted fraction grows.
+    contradiction disputes. While contradicted donors are a small share of
+    their side's cells that is harmless, but on a file whose sex column is
+    systematically wrong a working gene also reads near 1 — indistinguishable
+    here from one that has degraded. The measure weakens as the contradicted
+    share grows, and the share that matters is of cells, not of donors, since
+    that is what the means are weighted by: ``panel_reference`` reports it.
 
     A cohort annotated one sex throughout — breast, prostate, ovary — has no
     comparison to draw, so every ratio is ``null`` and the whole table is means
