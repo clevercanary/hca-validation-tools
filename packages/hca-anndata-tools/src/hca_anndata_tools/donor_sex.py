@@ -89,6 +89,7 @@ from dataclasses import dataclass
 import h5py
 import numpy as np
 import pandas as pd
+import scipy.sparse as sp
 from anndata.io import sparse_dataset
 
 from ._errors import Refusal
@@ -454,14 +455,18 @@ def _sum_panel_genes(
     donors holds about half what it did. It is only larger when donors are
     nearly as numerous as cells, which means ``donor_id`` is carrying a
     per-cell value rather than a donor — a defect this check does not detect
-    and does not claim to. Which panel a column belongs to is its position:
-    the male panel
-    fills the first ``len(male_cols)``, so a NaN or negative count is still
-    refused against the panel it belongs to.
+    and does not claim to.
+
+    Which panel a column belongs to is its position — the male panel fills the
+    first ``len(male_cols)`` — so a NaN or negative count is still refused
+    against the panel it belongs to, and on the streaming path that position is
+    read straight off the CSR indices without a COO copy. The grouped sum
+    itself is a product with a one-hot cell-to-row matrix, so scipy performs
+    the scatter.
     """
     cols = np.asarray([*male_cols, *female_cols])
-    n_genes, n_male = len(cols), len(male_cols)
-    acc = np.zeros((grouping.n_keys, n_genes), dtype=np.float64)
+    n_male = len(male_cols)
+    acc = np.zeros((grouping.n_keys, len(cols)), dtype=np.float64)
     if fmt == "csc":
         ds = sparse_dataset(f[key])  # pyright: ignore[reportArgumentType]
         for j, col in enumerate(cols):
@@ -475,16 +480,16 @@ def _sum_panel_genes(
         # Both panels in one slice: the column gather costs a pass over the
         # chunk's stored entries whatever it selects, so slicing per panel
         # would read the whole chunk twice.
-        coo = chunk.matrix[:, cols].tocoo()
-        male = coo.col < n_male
-        _refuse_uncountable(coo.data[male], "male")
-        _refuse_uncountable(coo.data[~male], "female")
-        # (row, gene) pairs flattened into a single index so one bincount
-        # scatters the whole block; the accumulator is reshaped back after.
-        flat = keys[coo.row] * n_genes + coo.col
-        acc += np.bincount(flat, weights=coo.data, minlength=grouping.n_keys * n_genes).reshape(
-            grouping.n_keys, n_genes
-        )
+        block = chunk.matrix[:, cols]
+        # CSR indices are column positions within the slice, so which panel a
+        # stored value belongs to is read straight off them.
+        male = block.indices < n_male
+        _refuse_uncountable(block.data[male], "male")
+        _refuse_uncountable(block.data[~male], "female")
+        # The grouped sum is a product with a one-hot cell-to-row matrix, so
+        # scipy does the scatter rather than index arithmetic here.
+        into_rows = sp.csr_matrix((np.ones(n_rows), (keys, np.arange(n_rows))), shape=(grouping.n_keys, n_rows))
+        acc += (into_rows @ block).toarray()
     return acc
 
 
