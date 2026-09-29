@@ -601,3 +601,27 @@ def test_panel_reference_counts_only_the_donors_the_summary_used(tmp_path):
     ]
     reference = check_donor_sex(_write(tmp_path / "a.h5ad", donors))["panel_reference"]
     assert reference == {"male": {"donors": 1, "cells": 4}, "female": {"donors": 1, "cells": 4}}
+
+
+def test_panel_reference_counts_a_split_donor_once(tmp_path):
+    """Two chemistries are two rows but one donor; only the cells add up twice."""
+    donors = [
+        _donor(1, 100, donor="f", sex=FEMALE, n=4),
+        _donor(1, 100, donor="f", sex=FEMALE, n=6, assay=SMART),
+        _donor(100, 1, donor="m", sex=MALE, n=4),
+    ]
+    reference = check_donor_sex(_write(tmp_path / "a.h5ad", donors))["panel_reference"]
+    assert reference == {"male": {"donors": 1, "cells": 4}, "female": {"donors": 1, "cells": 10}}
+
+
+def test_a_bad_sex_term_is_refused_before_the_matrix_is_read(tmp_path, monkeypatch):
+    # The refusal existed already; what is pinned here is that it fires from the obs-only
+    # grouping, so a 20 GB object is not streamed only for the result to be thrown away.
+    from hca_anndata_tools import donor_sex
+
+    def _no(*args, **kwargs):
+        raise AssertionError("the matrix was read despite an unusable sex_ontology_term_id")
+
+    monkeypatch.setattr(donor_sex, "_sum_panel_genes", _no)
+    result = check_donor_sex(_write(tmp_path / "a.h5ad", [_male(sex="PATO:0000999"), _female()]))
+    assert "error" in result and "PATO:0000999" in result["error"]

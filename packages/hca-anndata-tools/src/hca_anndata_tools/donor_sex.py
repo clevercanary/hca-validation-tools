@@ -296,9 +296,10 @@ def _check_donor_sex_at_path(path: str, chunk_nnz: int) -> dict:
         if "organism_ontology_term_id" not in obs:
             raise Refusal("obs has no organism_ontology_term_id column, so the panel cannot be known to apply")
         organism = _obs_column(obs, "organism_ontology_term_id")
-        # Grouped before the matrix is touched, so the refusals that only need
-        # obs — two sexes or organisms on one donor, a -smartseq name collision —
-        # are raised without streaming a 20 GB object first.
+        # Grouped before the matrix is touched, so every refusal that only needs
+        # obs — two sexes or organisms on one donor, a -smartseq name collision,
+        # a term outside the sex vocabulary — is raised without streaming a 20 GB
+        # object first.
         grouping = _donor_grouping(donor, annotated, assay, organism)
         per_gene = _sum_panel_genes(f, cm.key, cm.format, male_cols, female_cols, chunk_nnz, grouping)
 
@@ -389,6 +390,7 @@ class _Grouping:
     key: np.ndarray
     donors: np.ndarray | pd.Index
     sex_term: list[str | None]
+    annotated_sex: list[str]
     organism_term: list[str | None]
 
     @property
@@ -412,10 +414,15 @@ def _donor_grouping(
     sex_term = _per_donor_value(donor_codes, donors, annotated, "sex_ontology_term_id")
     organism_term = _per_donor_value(donor_codes, donors, organism, "organism_ontology_term_id")
     _refuse_suffix_collisions(donors, smart, donor_codes)
+    # Mapped here rather than while rows are built, so a term that is neither a PATO
+    # sex nor 'unknown' is refused with the other obs-only defects instead of after a
+    # multi-gigabyte pass that its own refusal then throws away.
+    annotated_sex = [_annotated_sex(term, donors[d]) for d, term in enumerate(sex_term)]
     return _Grouping(
         key=(donor_codes * 2 + smart).astype(np.intp),  # (donor, chemistry) -> one integer per row
         donors=donors,
         sex_term=sex_term,
+        annotated_sex=annotated_sex,
         organism_term=organism_term,
     )
 
@@ -488,7 +495,7 @@ def _donor_rows(grouping: _Grouping, per_gene: np.ndarray, panel_genes: list[dic
         total = float(male_sum[k] + female_sum[k])
         ratio = float(male_sum[k] / female_sum[k]) if female_sum[k] > 0 else None
         inferred = _assign_sex(ratio) if total >= COUNT_FLOOR else None
-        annotated_sex = _annotated_sex(grouping.sex_term[d], grouping.donors[d])
+        annotated_sex = grouping.annotated_sex[d]
         gene_rows = _per_gene_rows(per_gene[k], panel_genes, int(cells[k]))
         male_genes = [g for g in gene_rows if g["panel"] == "male"]
         dominant_gene, dominant_share = _male_dominance(male_genes, float(male_sum[k]))
@@ -560,7 +567,11 @@ def _panel_reference(rows: list[dict]) -> dict:
     reference = {}
     for sex in ("male", "female"):
         subset = _annotated(rows, sex)
-        reference[sex] = {"donors": len(subset), "cells": sum(r["cells"] for r in subset)}
+        # A donor with both droplet and plate-based libraries is two rows but one
+        # donor, and what this field is for is how many independent donors stand
+        # behind the mean. Cells still sum across both of its rows.
+        base = {r["donor_id"].removesuffix(SMART_SEQ_SUFFIX) if r["smart_seq"] else r["donor_id"] for r in subset}
+        reference[sex] = {"donors": len(base), "cells": sum(r["cells"] for r in subset)}
     return reference
 
 
