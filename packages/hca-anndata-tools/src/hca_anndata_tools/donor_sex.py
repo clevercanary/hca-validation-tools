@@ -582,10 +582,11 @@ def _panel_reference(rows: list[dict]) -> dict:
     enough to do that would flatten the ratios and so appear to show that the
     panel — rather than the donor — is the problem, dismissing its own
     contradiction. The sizes are emitted so a reader can divide that donor's
-    own ``cells`` by its side's total and see whether the comparison rests on
-    anyone else. A donor split across chemistries contributes both of its rows
-    here, so the row's own ``cells`` is not its contribution — ``donor_cells``
-    on each row is, and is what that division wants.
+    ``donor_cells`` by its side's ``cells`` and see whether the comparison
+    rests on anyone else. Use ``donor_cells``, never the row's own ``cells``: a
+    donor split across chemistries contributes both of its rows to this total
+    while only the contradicted one is listed, so the row's own count
+    understates it.
 
     ``smart_seq_cells`` is reported for a second reason. This module splits a
     donor's plate-based libraries into their own row because the ratio differs
