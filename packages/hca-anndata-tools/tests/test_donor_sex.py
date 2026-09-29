@@ -204,7 +204,7 @@ def test_normalized_only_x_is_not_applicable(tmp_path):
     assert result["integer_check"]["status"] == "not_applicable"
     assert result["gene_panel"]["status"] == "not_applicable" and "not counts" in result["gene_panel"]["reason"]
     assert result["verdict_counts"] == _counts() and result["donors"] == [] and result["findings"] == []
-    assert result["panel_summary"] == []  # nothing was summed, so there is nothing to characterise
+    assert result["panel_summary"] == [] and result["panel_reference"] == {}  # nothing summed to characterise
 
 
 def test_below_floor(tmp_path):
@@ -303,7 +303,7 @@ def test_var_missing_every_male_gene_is_not_applicable(tmp_path):
     assert "ZFY" in result["gene_panel"]["reason"] and "PUDP" not in result["gene_panel"]["reason"]
     assert result["genes_found"] == {"male": [], "female": list(FEMALE_GENES.values())}
     assert result["verdict_counts"] == _counts() and result["donors"] == [] and result["findings"] == []
-    assert result["panel_summary"] == []  # nothing was summed, so there is nothing to characterise
+    assert result["panel_summary"] == [] and result["panel_reference"] == {}  # nothing summed to characterise
 
 
 def test_panel_gene_listed_twice_is_refused_by_name(tmp_path):
@@ -569,3 +569,35 @@ def test_per_gene_rides_only_on_contradiction_rows(tmp_path):
     assert "per_gene" not in rows["u"] and "per_gene" not in rows["low"]
     for donor in ("u", "low"):  # the summary fields every row keeps
         assert {"male_counts", "female_counts", "male_dominant_gene", "xist_per_cell"} <= rows[donor].keys()
+
+
+def test_panel_reference_reports_what_each_side_of_the_comparison_rests_on(tmp_path):
+    # The means are cell-weighted, so a side resting on one large donor is a side that
+    # donor defines — and when it is the contradicted one, the summary would appear to
+    # excuse it. These counts are what let a reader divide and see that for themselves.
+    donors = [
+        _donor(100, 1, donor="m", sex=MALE, n=4),
+        _donor(1, 100, donor="f_small", sex=FEMALE, n=2),
+        _donor(1, 100, donor="f_big", sex=FEMALE, n=30, genes=DIRTY),
+    ]
+    result = check_donor_sex(_write(tmp_path / "a.h5ad", donors))
+    assert result["panel_reference"] == {
+        "male": {"donors": 1, "cells": 4},
+        "female": {"donors": 2, "cells": 32},
+    }
+    # f_big is contradicted and is 30 of its side's 32 cells, so the female column is
+    # very nearly its own signal — exactly the case the counts are emitted to expose.
+    contradicted = _rows(result)["f_big"]
+    assert contradicted["verdict"] == "contradiction"
+    assert contradicted["cells"] / result["panel_reference"]["female"]["cells"] > 0.9
+
+
+def test_panel_reference_counts_only_the_donors_the_summary_used(tmp_path):
+    """Annotated unknown and non-human donors are in no column, so they are in no count."""
+    donors = [
+        *_gametolog_donors(),
+        _donor(9999, 1, donor="u", sex="unknown"),
+        _donor(9999, 1, donor="nh", sex=MALE, organism="NCBITaxon:10090"),
+    ]
+    reference = check_donor_sex(_write(tmp_path / "a.h5ad", donors))["panel_reference"]
+    assert reference == {"male": {"donors": 1, "cells": 4}, "female": {"donors": 1, "cells": 4}}

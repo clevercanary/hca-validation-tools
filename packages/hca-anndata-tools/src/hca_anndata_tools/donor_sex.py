@@ -75,9 +75,10 @@ Deviations from the original, each with its reason:
    dotplot of each panel gene across donors, which is what lets a curator see
    that a call rests on one gene. Returning only the ratio dropped that, and
    the ratio alone cannot distinguish a real contradiction from a gametolog
-   cross-mapping (#707). Each row carries its per-gene counts, and
-   ``panel_summary`` carries how well each gene separates the annotated
-   sexes across the file.
+   cross-mapping (#707). A contradicted row carries its per-gene counts —
+   only that verdict, since it is the one adjudicated gene by gene and the
+   table is capped (#700) — and ``panel_summary`` carries how well each gene
+   separates the annotated sexes across the file.
 """
 
 from __future__ import annotations
@@ -181,7 +182,7 @@ def check_donor_sex(path: str, chunk_nnz: int = DEFAULT_CHUNK_NNZ) -> dict:
         ``not_applicable`` with a ``reason``: the matrix is not counts, or
         either gene set is absent from var), ``genes_found`` (``male`` and
         ``female`` symbol lists), ``verdict_counts``, ``panel_summary``,
-        ``donors``, and ``findings``.
+        ``panel_reference``, ``donors``, and ``findings``.
 
         ``verdict_counts`` maps every verdict below to the number of donor
         rows that received it (zero included), so its values sum to the
@@ -232,6 +233,14 @@ def check_donor_sex(path: str, chunk_nnz: int = DEFAULT_CHUNK_NNZ) -> dict:
         throughout, which has no comparison to draw. Empty when ``gene_panel`` is ``not_applicable``.
         A contradiction should be read against it before it is relayed (#707).
 
+        ``panel_reference`` gives the ``donors`` and ``cells`` behind each side
+        of that comparison, as ``male`` and ``female``. The means are weighted
+        by cells, so a side resting on one large donor is a side that donor
+        largely defines — and when that donor is the contradicted one, the
+        summary would appear to excuse it. Dividing that donor's own ``cells``
+        by its side's total is the check, and these are the numbers for it.
+        Empty when ``gene_panel`` is ``not_applicable``.
+
         Findings, each counting donors and naming them in ``sample_ids``:
         ``sex_contradiction``, ``sex_fillable``, ``sex_below_floor``. Empty
         findings with ``gene_panel.status == "applied"`` means every callable
@@ -263,7 +272,13 @@ def _check_donor_sex_at_path(path: str, chunk_nnz: int) -> dict:
         result["genes_found"] = {"male": male_found, "female": female_found}
         if (reason := _not_applicable_reason(cm, male_found, female_found)) is not None:
             result["gene_panel"] = {"status": VERDICT_NOT_APPLICABLE, "reason": reason}
-            result.update(verdict_counts=dict.fromkeys(VERDICTS, 0), panel_summary=[], donors=[], findings=[])
+            result.update(
+                verdict_counts=dict.fromkeys(VERDICTS, 0),
+                panel_summary=[],
+                panel_reference={},
+                donors=[],
+                findings=[],
+            )
             return result
         result["gene_panel"] = {"status": "applied"}
         panel = {var_ids[c] for c in (*male_cols, *female_cols)}
@@ -291,6 +306,7 @@ def _check_donor_sex_at_path(path: str, chunk_nnz: int) -> dict:
     tally = Counter(r["verdict"] for r in rows)
     result["verdict_counts"] = {v: tally[v] for v in VERDICTS}
     result["panel_summary"] = _panel_summary(rows, panel_genes)
+    result["panel_reference"] = _panel_reference(rows)
     result["donors"] = _listed_rows(rows)
     result["findings"] = _findings(rows, cm.key)
     return result
@@ -417,10 +433,15 @@ def _sum_panel_genes(
     :func:`qc.iter_matrix_chunks`; that pass is the cost of the check.
 
     Accumulating per gene rather than folding straight into two panel totals
-    is what lets a reader see which genes carry a donor's signal (#707), and
-    it costs nothing: the accumulator is sized by donors, not by cells, so it
-    replaces two per-cell vectors with an array that does not grow with the
-    file. Which panel a column belongs to is its position: the male panel
+    is what lets a reader see which genes carry a donor's signal (#707). The
+    accumulator is sized by donors where the two per-cell vectors it replaces
+    were sized by cells, so on any real file it is the smaller of the two: the
+    crossover is 17 cells per donor, and a 2.1M-cell atlas with a few hundred
+    donors holds about half what it did. It is only larger when donors are
+    nearly as numerous as cells, which means ``donor_id`` is carrying a
+    per-cell value rather than a donor — a defect this check does not detect
+    and does not claim to. Which panel a column belongs to is its position:
+    the male panel
     fills the first ``len(male_cols)``, so a NaN or negative count is still
     refused against the panel it belongs to.
     """
@@ -524,6 +545,30 @@ def _male_dominance(male_genes: list[dict], male_sum: float) -> tuple[str | None
     return top["symbol"], top["counts"] / male_sum
 
 
+def _panel_reference(rows: list[dict]) -> dict:
+    """How many donors and cells stand behind each side of ``panel_summary``.
+
+    The means are weighted by cells, so one donor holding most of its side's
+    cells largely sets that side. Left implicit, a contradicted donor big
+    enough to do that would flatten the ratios and so appear to show that the
+    panel — rather than the donor — is the problem, dismissing its own
+    contradiction. The sizes are emitted so a reader can divide that donor's
+    own ``cells`` by its side's total and see whether the comparison rests on
+    anyone else. Whether to weight by donor instead is open (#712); reporting
+    what the weighting rests on is true either way.
+    """
+    reference = {}
+    for sex in ("male", "female"):
+        subset = _annotated(rows, sex)
+        reference[sex] = {"donors": len(subset), "cells": sum(r["cells"] for r in subset)}
+    return reference
+
+
+def _annotated(rows: list[dict], sex: str) -> list[dict]:
+    """The rows this sex's column is computed from: annotated it, and human enough for the panel to apply."""
+    return [r for r in rows if r["annotated"] == sex and r["verdict"] != VERDICT_NOT_APPLICABLE]
+
+
 def _panel_summary(rows: list[dict], panel_genes: list[dict]) -> list[dict]:
     """Each panel gene's mean per-cell count in donors annotated male against donors annotated female.
 
@@ -535,8 +580,11 @@ def _panel_summary(rows: list[dict], panel_genes: list[dict]) -> list[dict]:
     is the whole diagnosis, and it needs no threshold tuned to any dataset.
 
     Means are weighted by cells, so a donor contributes in proportion to what it
-    actually measured. Donors annotated ``unknown``, and non-human donors whose
-    panel does not apply, are in neither column.
+    actually measured — which also means a donor holding most of its side's
+    cells largely sets that side, so ``panel_reference`` reports each side's
+    donor and cell count rather than leaving that to be assumed. Donors
+    annotated ``unknown``, and non-human donors whose panel does not apply, are
+    in neither column.
 
     The reference set is therefore the annotation, which is the thing a
     contradiction disputes. While contradicted donors are a small fraction of
@@ -552,7 +600,7 @@ def _panel_summary(rows: list[dict], panel_genes: list[dict]) -> list[dict]:
     """
     means: dict[str, list[float | None]] = {}
     for sex in ("male", "female"):
-        subset = [r for r in rows if r["annotated"] == sex and r["verdict"] != VERDICT_NOT_APPLICABLE]
+        subset = _annotated(rows, sex)
         cells = sum(r["cells"] for r in subset)
         means[sex] = [
             (sum(r["per_gene"][j]["counts"] for r in subset) / cells if cells else None)
