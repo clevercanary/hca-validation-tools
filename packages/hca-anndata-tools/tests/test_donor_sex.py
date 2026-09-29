@@ -608,10 +608,17 @@ def test_panel_reference_counts_only_the_donors_the_summary_used(tmp_path):
 
 
 def test_panel_reference_counts_a_split_donor_once(tmp_path):
-    """Two chemistries are two rows but one donor; only the cells add up twice."""
+    """Two chemistries are two rows but one donor; only the cells add up twice.
+
+    The droplet row is given male expression against a female annotation so it is
+    contradicted and therefore listed, while its Smart-seq sibling agrees and is
+    dropped (#700). That is the shape `donor_cells` exists for: the listed row is 4
+    cells, but the donor puts all 10 into the reference side it would be judged
+    against, so its own `cells` is the wrong numerator for that share.
+    """
     donors = [
-        _donor(1, 100, donor="f", sex=FEMALE, n=4),
-        _donor(1, 100, donor="f", sex=FEMALE, n=6, assay=SMART),
+        _donor(100, 1, donor="f", sex=FEMALE, n=4),  # droplet, male signal -> contradiction
+        _donor(1, 100, donor="f", sex=FEMALE, n=6, assay=SMART),  # plate-based, agrees
         _donor(100, 1, donor="m", sex=MALE, n=4),
     ]
     result = check_donor_sex(_write(tmp_path / "a.h5ad", donors))
@@ -619,12 +626,9 @@ def test_panel_reference_counts_a_split_donor_once(tmp_path):
         "male": {"donors": 1, "cells": 4, "smart_seq_cells": 0},
         "female": {"donors": 1, "cells": 10, "smart_seq_cells": 6},
     }
-    # Each of the donor's rows reports the whole donor's contribution, not its own:
-    # its agreeing chemistry row is dropped from `donors`, so the row's own `cells`
-    # would understate what the reference side actually rests on.
-    for row in result["donors"]:
-        if row["donor_id"].startswith("f"):
-            assert row["donor_cells"] == 10
+    (listed,) = [r for r in result["donors"] if r["donor_id"].startswith("f")]
+    assert listed["verdict"] == "contradiction" and listed["smart_seq"] is False
+    assert listed["cells"] == 4 and listed["donor_cells"] == 10
 
 
 def test_a_bad_sex_term_is_refused_before_the_matrix_is_read(tmp_path, monkeypatch):
@@ -638,3 +642,32 @@ def test_a_bad_sex_term_is_refused_before_the_matrix_is_read(tmp_path, monkeypat
     monkeypatch.setattr(donor_sex, "_sum_panel_genes", _no)
     result = check_donor_sex(_write(tmp_path / "a.h5ad", [_male(sex="PATO:0000999"), _female()]))
     assert "error" in result and "PATO:0000999" in result["error"]
+
+
+def test_a_null_ratio_covers_two_different_shapes(tmp_path):
+    """`male_over_female` is null for infinite separation and for a silent gene alike.
+
+    Both encode as null, so the skill has to read the two means to tell them apart —
+    a positive male mean over a zero female mean is maximal separation, while zero
+    over zero is a gene that says nothing. Pinned here because `evaluate-h5ad` renders
+    them differently (`∞` against `—`) and a skill's claim about a tool needs a test.
+    """
+    donors = [
+        _donor(100, 1, donor="m", sex=MALE, genes={"ZFY": 0}),
+        _donor(0, 100, donor="f", sex=FEMALE, genes={"ZFY": 0}),
+    ]
+    summary = _summary(check_donor_sex(_write(tmp_path / "a.h5ad", donors)))
+
+    infinite = summary["DDX3Y"]  # present in males, wholly absent from females
+    assert infinite["male_over_female"] is None
+    assert infinite["mean_per_cell_annotated_male"] == pytest.approx(100.0)
+    assert infinite["mean_per_cell_annotated_female"] == 0.0
+
+    silent = summary["ZFY"]  # zeroed in both, so the ratio is 0/0
+    assert silent["male_over_female"] is None
+    assert silent["mean_per_cell_annotated_male"] == 0.0
+    assert silent["mean_per_cell_annotated_female"] == 0.0
+
+    # And the third null shape, a side with no donors at all, is already covered by
+    # test_a_single_annotated_sex_cohort_has_no_separation_to_report.
+    assert summary["XIST"]["male_over_female"] == pytest.approx(0.01)
