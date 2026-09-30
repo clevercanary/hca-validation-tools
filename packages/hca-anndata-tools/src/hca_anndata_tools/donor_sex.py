@@ -71,15 +71,25 @@ Deviations from the original, each with its reason:
 8. **A matrix that is not counts is not judged.** The original assumes
    ``raw.X`` is raw. Here the same classifier ``check_raw_counts`` uses
    decides, and a normalized-only ``X`` returns ``not_applicable``.
+9. **The per-gene evidence is kept.** The original's second return value is a
+   dotplot of each panel gene across donors, which is what lets a curator see
+   that a call rests on one gene. Returning only the ratio dropped that, and
+   the ratio alone cannot distinguish a real contradiction from a gametolog
+   cross-mapping (#707). A contradicted row carries its per-gene counts —
+   only that verdict, since it is the one adjudicated gene by gene and the
+   table is capped (#700) — and ``panel_summary`` carries how well each gene
+   separates the annotated sexes across the file.
 """
 
 from __future__ import annotations
 
 from collections import Counter
+from dataclasses import dataclass
 
 import h5py
 import numpy as np
 import pandas as pd
+import scipy.sparse as sp
 from anndata.io import sparse_dataset
 
 from ._errors import Refusal
@@ -116,6 +126,13 @@ FEMALE_GENES: dict[str, str] = {
     "ENSG00000225470": "JPX",
 }
 # ``assign_sex`` and ``calculate_sex`` in the original.
+# Surfaced on its own because it is the panel's only gene whose signal comes from an
+# inactive X rather than from the Y, so it is independent evidence rather than more of
+# the same (#707). How well it separates is still a per-file question: panel_summary
+# measures it, and inflated ambient XIST is a known way for it to mislead.
+XIST_ID = "ENSG00000229807"
+assert FEMALE_GENES[XIST_ID] == "XIST", "XIST_ID must name the panel's XIST entry"
+
 MALE_RATIO = 0.35  # male / female above this is male
 FEMALE_RATIO = 0.05  # below this is female; between is unknown
 COUNT_FLOOR = 100  # donors with fewer counts across both sets are not called
@@ -169,8 +186,8 @@ def check_donor_sex(path: str, chunk_nnz: int = DEFAULT_CHUNK_NNZ) -> dict:
         reports it), ``gene_panel`` (``status`` ``applied``, or
         ``not_applicable`` with a ``reason``: the matrix is not counts, or
         either gene set is absent from var), ``genes_found`` (``male`` and
-        ``female`` symbol lists), ``verdict_counts``, ``donors``, and
-        ``findings``.
+        ``female`` symbol lists), ``verdict_counts``, ``panel_summary``,
+        ``panel_reference``, ``donors``, and ``findings``.
 
         ``verdict_counts`` maps every verdict below to the number of donor
         rows that received it (zero included), so its values sum to the
@@ -186,18 +203,58 @@ def check_donor_sex(path: str, chunk_nnz: int = DEFAULT_CHUNK_NNZ) -> dict:
         agreeing donors would otherwise return a table that fits no tool
         result, and ``verdict_counts`` holds the totals, so cite it rather
         than the table's length. A split donor's agreeing chemistry row is
-        omitted like any other ``agree`` row. Each row: ``donor_id``, ``smart_seq``,
-        ``cells``, ``male_counts``, ``female_counts``, ``total_counts``,
+        omitted like any other ``agree`` row. Each row: ``donor_id``,
+        ``smart_seq``, ``cells`` (this chemistry row's cells), ``donor_cells``
+        (the donor's total across both of its chemistry rows, which is its
+        contribution to ``panel_reference`` and so the numerator any share of
+        it wants), ``male_counts``, ``female_counts``, ``total_counts``,
         ``ratio`` (``null`` when the female sum is zero), ``inferred``,
         ``annotated`` (``male`` / ``female`` / ``unknown``),
         ``annotated_term`` (the obs value verbatim, ``null`` when the column
-        is absent), ``verdict``. Verdicts, in precedence order:
+        is absent), ``verdict``, and the per-gene evidence: ``per_gene`` (one
+        entry per panel gene present — ``symbol``, ``panel``, ``counts``,
+        ``per_cell`` — carried on ``contradiction`` rows only, since it is 17
+        entries a row and those are the rows adjudicated gene by gene),
+        ``xist_counts`` and ``xist_per_cell`` (``null`` when
+        ``XIST`` is absent from var), and ``male_dominant_gene`` with
+        ``male_dominant_share``, the male-panel gene carrying the largest
+        share of the male sum and that share (both ``null`` when the male sum
+        is zero). Verdicts, in precedence order:
 
         - ``not_applicable`` — the donor is not human
         - ``below_floor`` — fewer than 100 counts across both gene sets
         - ``indeterminate`` — ratio between 0.05 and 0.35, inclusive
         - ``fill_in`` — annotated ``unknown`` (or absent) but the ratio is clear
         - ``agree`` / ``contradiction`` — the ratio's call against the annotation
+
+        ``panel_summary`` has one entry per panel gene present —
+        ``gene_id``, ``symbol``, ``panel``, ``mean_per_cell_annotated_male``,
+        ``mean_per_cell_annotated_female``, and ``male_over_female``, the one
+        ratio of the two in that order for every gene on either panel. It is
+        keyed on the *annotated* sex, so it says how well each gene actually
+        separates the sexes **in this file**. A working gene sits far from 1 —
+        far above it on the male panel, far below it on the female panel — and a
+        gene that has stopped discriminating sits near 1. Any Y-linked gene can
+        end up there: all seven have an X copy and the homology runs through the
+        introns, so intron-inclusive counting can misassign reads between them.
+        Which genes it happens to, and how many, is a property of the file — on
+        the atlas in #707 it was four of the seven, and that is an observation,
+        not a rate to expect. ``null`` when the female
+        mean is zero, and for every gene on a cohort annotated one sex
+        throughout, which has no comparison to draw. Empty when ``gene_panel`` is ``not_applicable``.
+        A contradiction should be read against it before it is relayed (#707).
+
+        ``panel_reference`` gives ``donors``, ``cells`` and ``smart_seq_cells``
+        behind each side of that comparison, as ``male`` and ``female``. The
+        means are weighted by cells, so a side resting on one large donor is a
+        side that donor largely defines — and when that donor is the
+        contradicted one, the summary would appear to excuse it. The check is
+        that donor's ``donor_cells`` over its side's ``cells``; its row's own
+        ``cells`` is the wrong numerator, since a split donor's agreeing
+        chemistry row is not listed but still counts toward the side.
+        ``smart_seq_cells`` says how much of each side is plate-based, because
+        the summary pools chemistries whose ratios differ. Empty when
+        ``gene_panel`` is ``not_applicable``.
 
         Findings, each counting donors and naming them in ``sample_ids``:
         ``sex_contradiction``, ``sex_fillable``, ``sex_below_floor``. Empty
@@ -222,12 +279,21 @@ def _check_donor_sex_at_path(path: str, chunk_nnz: int) -> dict:
         cm = open_count_matrix(f)
         result = {**cm.envelope(path), "integer_check": cm.integer_check}
         var_ids = [strip_ensembl_version(v) for v in cm.read_var_ids(f)]
-        male_cols, male_found = _locate(var_ids, MALE_GENES)
-        female_cols, female_found = _locate(var_ids, FEMALE_GENES)
+        male_cols, male_genes = _locate(var_ids, MALE_GENES, "male")
+        female_cols, female_genes = _locate(var_ids, FEMALE_GENES, "female")
+        panel_genes = male_genes + female_genes  # accumulator column order: male panel then female
+        male_found = [g["symbol"] for g in male_genes]
+        female_found = [g["symbol"] for g in female_genes]
         result["genes_found"] = {"male": male_found, "female": female_found}
         if (reason := _not_applicable_reason(cm, male_found, female_found)) is not None:
             result["gene_panel"] = {"status": VERDICT_NOT_APPLICABLE, "reason": reason}
-            result.update(verdict_counts=dict.fromkeys(VERDICTS, 0), donors=[], findings=[])
+            result.update(
+                verdict_counts=dict.fromkeys(VERDICTS, 0),
+                panel_summary=[],
+                panel_reference={},
+                donors=[],
+                findings=[],
+            )
             return result
         result["gene_panel"] = {"status": "applied"}
         panel = {var_ids[c] for c in (*male_cols, *female_cols)}
@@ -245,11 +311,18 @@ def _check_donor_sex_at_path(path: str, chunk_nnz: int) -> dict:
         if "organism_ontology_term_id" not in obs:
             raise Refusal("obs has no organism_ontology_term_id column, so the panel cannot be known to apply")
         organism = _obs_column(obs, "organism_ontology_term_id")
-        male, female = _sum_gene_sets(f, cm.key, cm.format, cm.n_obs, male_cols, female_cols, chunk_nnz)
+        # Grouped before the matrix is touched, so every refusal that only needs
+        # obs — two sexes or organisms on one donor, a -smartseq name collision,
+        # a term outside the sex vocabulary — is raised without streaming a 20 GB
+        # object first.
+        grouping = _donor_grouping(donor, annotated, assay, organism)
+        per_gene = _sum_panel_genes(f, cm.key, cm.format, male_cols, female_cols, chunk_nnz, grouping)
 
-    rows = _donor_rows(donor, annotated, assay, organism, male, female)
+    rows = _donor_rows(grouping, per_gene, panel_genes)
     tally = Counter(r["verdict"] for r in rows)
     result["verdict_counts"] = {v: tally[v] for v in VERDICTS}
+    result["panel_summary"] = _panel_summary(rows, panel_genes)
+    result["panel_reference"] = _panel_reference(rows)
     result["donors"] = _listed_rows(rows)
     result["findings"] = _findings(rows, cm.key)
     return result
@@ -259,6 +332,11 @@ def _listed_rows(rows: list[dict]) -> list[dict]:
     """The rows a reader needs: never ``agree``, and at most SAMPLE_ID_LIMIT per verdict, in donor order.
 
     A few hundred rows overflow a tool result (#700); ``verdict_counts`` carries the totals.
+    ``per_gene`` is 17 entries a row and roughly quintuples this table, so it rides
+    only on ``contradiction`` rows — the one verdict that has to be adjudicated
+    against the individual genes. Every other row keeps its panel totals, its
+    dominant gene and its XIST, and ``panel_summary`` is the per-gene view for the
+    file as a whole.
     """
     seen: Counter[str] = Counter()
     listed = []
@@ -267,7 +345,9 @@ def _listed_rows(rows: list[dict]) -> list[dict]:
             continue
         seen[row["verdict"]] += 1
         if seen[row["verdict"]] <= SAMPLE_ID_LIMIT:
-            listed.append(row)
+            listed.append(
+                row if row["verdict"] == VERDICT_CONTRADICTION else {k: v for k, v in row.items() if k != "per_gene"}
+            )
     return listed
 
 
@@ -293,11 +373,14 @@ def _refuse_uncountable(values: np.ndarray, panel: str) -> None:
         raise Refusal(f"a {panel}-gene count is negative in {int((values < 0).sum())} stored value(s)")
 
 
-def _locate(var_ids: list[str], genes: dict[str, str]) -> tuple[list[int], list[str]]:
-    """Column positions and symbols of the genes present, in the panel's order."""
+def _locate(var_ids: list[str], genes: dict[str, str], panel: str) -> tuple[list[int], list[dict]]:
+    """Column positions and descriptions of the panel's genes present in var, in the panel's order."""
     position = {eid: i for i, eid in enumerate(var_ids)}
-    found = [(position[eid], symbol) for eid, symbol in genes.items() if eid in position]
-    return [col for col, _ in found], [symbol for _, symbol in found]
+    found = [(position[eid], eid, symbol) for eid, symbol in genes.items() if eid in position]
+    return (
+        [col for col, _, _ in found],
+        [{"gene_id": eid, "symbol": symbol, "panel": panel} for _, eid, symbol in found],
+    )
 
 
 def _obs_column(obs: h5py.Group, name: str) -> np.ndarray | None:
@@ -310,60 +393,120 @@ def _obs_column(obs: h5py.Group, name: str) -> np.ndarray | None:
     return np.asarray(read_element(obs[name]), dtype=object)
 
 
-def _sum_gene_sets(
-    f: h5py.File, key: str, fmt: str, n_obs: int, male_cols: list[int], female_cols: list[int], chunk_nnz: int
-) -> tuple[np.ndarray, np.ndarray]:
-    """Per-cell count sums over each gene set.
+@dataclass(frozen=True)
+class _Grouping:
+    """Cells grouped into one row per (donor, chemistry), with the per-donor values each row is judged against.
 
-    CSC stores columns contiguously, so each of the 17 panel columns is
-    read on its own through anndata's backed class and folded into the
-    accumulator: peak memory is one column plus the two per-cell vectors,
-    and the other 30,000 columns are never touched. CSR and dense need
-    every stored entry once to find the hits, so they stream through
-    :func:`qc.iter_matrix_chunks`; that pass is the cost of the check.
+    ``key`` maps each cell to its row, so the matrix pass can accumulate
+    straight into row order. Every donor reserves a droplet and a plate-based
+    row; the empty ones are dropped when rows are built.
     """
-    panels = (("male", np.asarray(male_cols)), ("female", np.asarray(female_cols)))
-    sums = (np.zeros(n_obs, dtype=np.float64), np.zeros(n_obs, dtype=np.float64))
-    if fmt == "csc":
-        ds = sparse_dataset(f[key])  # pyright: ignore[reportArgumentType]
-        for (panel, cols), into in zip(panels, sums, strict=True):
-            for col in cols:
-                column = ds[:, int(col) : int(col) + 1]
-                _refuse_uncountable(column.data, panel)
-                into[column.indices] += column.data
-        return sums
-    for chunk in iter_matrix_chunks(f, key, chunk_nnz, axis="row"):
-        n_rows = chunk.matrix.get_shape()[0]
-        rows = slice(chunk.start, chunk.start + n_rows)
-        for (panel, cols), into in zip(panels, sums, strict=True):
-            block = chunk.matrix[:, cols]
-            _refuse_uncountable(block.data, panel)
-            into[rows] += np.asarray(block.sum(axis=1), dtype=np.float64).ravel()
-    return sums
+
+    key: np.ndarray
+    donors: np.ndarray | pd.Index
+    sex_term: list[str | None]
+    annotated_sex: list[str]
+    organism_term: list[str | None]
+
+    @property
+    def n_keys(self) -> int:
+        return len(self.donors) * 2
 
 
-def _donor_rows(
-    donor: np.ndarray,
-    annotated: np.ndarray | None,
-    assay: np.ndarray | None,
-    organism: np.ndarray | None,
-    male: np.ndarray,
-    female: np.ndarray,
-) -> list[dict]:
-    """One row per (donor, chemistry), computed on integer codes rather than per-cell strings."""
+def _donor_grouping(
+    donor: np.ndarray, annotated: np.ndarray | None, assay: np.ndarray | None, organism: np.ndarray | None
+) -> _Grouping:
+    """Group cells by (donor, chemistry) and settle every per-donor refusal.
+
+    Done before the matrix is read so that a donor carrying two annotated
+    sexes, two organisms, or a name that collides with a ``-smartseq`` row is
+    refused without first streaming the matrix.
+    """
     donor_codes, donors = pd.factorize(pd.Series(donor).astype(str), sort=True)
     smart = np.zeros(len(donor), dtype=bool)
     if assay is not None:
         smart = pd.Series(assay).isin(SMART_SEQ_ASSAYS).to_numpy()
     sex_term = _per_donor_value(donor_codes, donors, annotated, "sex_ontology_term_id")
     organism_term = _per_donor_value(donor_codes, donors, organism, "organism_ontology_term_id")
-
-    key = donor_codes * 2 + smart  # (donor, chemistry) → one integer per row
-    n_keys = len(donors) * 2
     _refuse_suffix_collisions(donors, smart, donor_codes)
-    cells = np.bincount(key, minlength=n_keys)
-    male_sum = np.bincount(key, weights=male, minlength=n_keys)
-    female_sum = np.bincount(key, weights=female, minlength=n_keys)
+    # Mapped here rather than while rows are built, so a term that is neither a PATO
+    # sex nor 'unknown' is refused with the other obs-only defects instead of after a
+    # multi-gigabyte pass that its own refusal then throws away.
+    annotated_sex = [_annotated_sex(term, donors[d]) for d, term in enumerate(sex_term)]
+    return _Grouping(
+        key=(donor_codes * 2 + smart).astype(np.intp),  # (donor, chemistry) -> one integer per row
+        donors=donors,
+        sex_term=sex_term,
+        annotated_sex=annotated_sex,
+        organism_term=organism_term,
+    )
+
+
+def _sum_panel_genes(
+    f: h5py.File, key: str, fmt: str, male_cols: list[int], female_cols: list[int], chunk_nnz: int, grouping: _Grouping
+) -> np.ndarray:
+    """Count sums per (donor row, panel gene), one column per panel gene present in var.
+
+    CSC stores columns contiguously, so each of the 17 panel columns is
+    read on its own through anndata's backed class and folded into the
+    accumulator: peak memory is one column plus the accumulator, and the
+    other 30,000 columns are never touched. CSR and dense need every stored
+    entry once to find the hits, so they stream through
+    :func:`qc.iter_matrix_chunks`; that pass is the cost of the check.
+
+    Accumulating per gene rather than folding straight into two panel totals
+    is what lets a reader see which genes carry a donor's signal (#707). The
+    accumulator is sized by donors where the two per-cell vectors it replaces
+    were sized by cells, so on any real file it is the smaller of the two: the
+    crossover is 17 cells per donor, and a 2.1M-cell atlas with a few hundred
+    donors holds about half what it did. It is only larger when donors are
+    nearly as numerous as cells, which means ``donor_id`` is carrying a
+    per-cell value rather than a donor — a defect this check does not detect
+    and does not claim to.
+
+    Which panel a column belongs to is its position — the male panel fills the
+    first ``len(male_cols)`` — so a NaN or negative count is still refused
+    against the panel it belongs to, and on the streaming path that position is
+    read straight off the CSR indices without a COO copy. The grouped sum
+    itself is a product with a one-hot cell-to-row matrix, so scipy performs
+    the scatter.
+    """
+    cols = np.asarray([*male_cols, *female_cols])
+    n_male = len(male_cols)
+    acc = np.zeros((grouping.n_keys, len(cols)), dtype=np.float64)
+    if fmt == "csc":
+        ds = sparse_dataset(f[key])  # pyright: ignore[reportArgumentType]
+        for j, col in enumerate(cols):
+            column = ds[:, int(col) : int(col) + 1]
+            _refuse_uncountable(column.data, "male" if j < n_male else "female")
+            acc[:, j] += np.bincount(grouping.key[column.indices], weights=column.data, minlength=grouping.n_keys)
+        return acc
+    for chunk in iter_matrix_chunks(f, key, chunk_nnz, axis="row"):
+        n_rows = chunk.matrix.get_shape()[0]
+        keys = grouping.key[chunk.start : chunk.start + n_rows]
+        # Both panels in one slice: the column gather costs a pass over the
+        # chunk's stored entries whatever it selects, so slicing per panel
+        # would read the whole chunk twice.
+        block = chunk.matrix[:, cols]
+        # CSR indices are column positions within the slice, so which panel a
+        # stored value belongs to is read straight off them.
+        male = block.indices < n_male
+        _refuse_uncountable(block.data[male], "male")
+        _refuse_uncountable(block.data[~male], "female")
+        # The grouped sum is a product with a one-hot cell-to-row matrix, so
+        # scipy does the scatter rather than index arithmetic here.
+        into_rows = sp.csr_matrix((np.ones(n_rows), (keys, np.arange(n_rows))), shape=(grouping.n_keys, n_rows))
+        acc += (into_rows @ block).toarray()
+    return acc
+
+
+def _donor_rows(grouping: _Grouping, per_gene: np.ndarray, panel_genes: list[dict]) -> list[dict]:
+    """One row per (donor, chemistry), from the per-gene sums the matrix pass accumulated."""
+    n_male = sum(g["panel"] == "male" for g in panel_genes)
+    xist_at = next((i for i, g in enumerate(panel_genes) if g["gene_id"] == XIST_ID), None)
+    cells = np.bincount(grouping.key, minlength=grouping.n_keys)
+    male_sum = per_gene[:, :n_male].sum(axis=1)
+    female_sum = per_gene[:, n_male:].sum(axis=1)
 
     rows: list[dict] = []
     for k in np.flatnonzero(cells):
@@ -371,23 +514,164 @@ def _donor_rows(
         total = float(male_sum[k] + female_sum[k])
         ratio = float(male_sum[k] / female_sum[k]) if female_sum[k] > 0 else None
         inferred = _assign_sex(ratio) if total >= COUNT_FLOOR else None
-        annotated_sex = _annotated_sex(sex_term[d], donors[d])
+        annotated_sex = grouping.annotated_sex[d]
+        gene_rows = _per_gene_rows(per_gene[k], panel_genes, int(cells[k]))
+        male_genes = [g for g in gene_rows if g["panel"] == "male"]
+        dominant_gene, dominant_share = _male_dominance(male_genes, float(male_sum[k]))
+        xist = gene_rows[xist_at] if xist_at is not None else None
         rows.append(
             {
-                "donor_id": f"{donors[d]}{SMART_SEQ_SUFFIX}" if is_smart else str(donors[d]),
+                "donor_id": f"{grouping.donors[d]}{SMART_SEQ_SUFFIX}" if is_smart else str(grouping.donors[d]),
                 "smart_seq": bool(is_smart),
                 "cells": int(cells[k]),
+                "donor_cells": int(cells[d * 2] + cells[d * 2 + 1]),
                 "male_counts": float(male_sum[k]),
                 "female_counts": float(female_sum[k]),
                 "total_counts": total,
                 "ratio": ratio,
                 "inferred": inferred,
                 "annotated": annotated_sex,
-                "annotated_term": sex_term[d],
-                "verdict": _verdict(_is_human(organism_term[d], donors[d]), inferred, annotated_sex),
+                "annotated_term": grouping.sex_term[d],
+                "verdict": _verdict(_is_human(grouping.organism_term[d], grouping.donors[d]), inferred, annotated_sex),
+                "xist_counts": xist["counts"] if xist else None,
+                "xist_per_cell": xist["per_cell"] if xist else None,
+                "male_dominant_gene": dominant_gene,
+                "male_dominant_share": dominant_share,
+                "per_gene": gene_rows,
             }
         )
     return rows
+
+
+def _per_gene_rows(sums: np.ndarray, panel_genes: list[dict], n_cells: int) -> list[dict]:
+    """Each panel gene's counts for one row, as a sum and as a per-cell mean.
+
+    Both, because they answer different questions: the sum is what the ratio
+    and the 100-count floor are expressed in, and the per-cell mean is what
+    makes one donor comparable with another.
+    """
+    return [
+        {"symbol": g["symbol"], "panel": g["panel"], "counts": float(s), "per_cell": float(s) / n_cells}
+        for g, s in zip(panel_genes, sums, strict=True)
+    ]
+
+
+def _male_dominance(male_genes: list[dict], male_sum: float) -> tuple[str | None, float | None]:
+    """The male-panel gene carrying the largest share of the male sum, and that share.
+
+    A male call resting on a single gene is the signature of gametolog
+    cross-mapping (#707): all seven Y-linked genes have an X copy and the
+    homology runs through the introns, so intron-inclusive counting can misassign
+    reads between them and leave a gene expressed in both sexes. On the atlas in
+    #707 four of the seven had gone that way and ``ZFY`` alone carried 61% of a
+    female donor's male signal; how many go that way in another file is that
+    file's question, which ``panel_summary`` answers. Reported, never acted on: which genes
+    are trustworthy is a property of how the file was aligned, not of the tool.
+    """
+    if male_sum <= 0:
+        return None, None
+    top = max(male_genes, key=lambda g: g["counts"])
+    return top["symbol"], top["counts"] / male_sum
+
+
+def _panel_reference(rows: list[dict]) -> dict:
+    """How many donors and cells stand behind each side of ``panel_summary``.
+
+    The means are weighted by cells, so one donor holding most of its side's
+    cells largely sets that side. Left implicit, a contradicted donor big
+    enough to do that would flatten the ratios and so appear to show that the
+    panel — rather than the donor — is the problem, dismissing its own
+    contradiction. The sizes are emitted so a reader can divide that donor's
+    ``donor_cells`` by its side's ``cells`` and see whether the comparison
+    rests on anyone else. Use ``donor_cells``, never the row's own ``cells``: a
+    donor split across chemistries contributes both of its rows to this total
+    while only the contradicted one is listed, so the row's own count
+    understates it.
+
+    ``smart_seq_cells`` is reported for a second reason. This module splits a
+    donor's plate-based libraries into their own row because the ratio differs
+    by chemistry, but ``panel_summary`` pools both — so where chemistry falls
+    unevenly across the annotated sexes, some of what reads as separation is
+    protocol. Stratifying the summary by chemistry would change the statistic
+    and is left to #712; saying how much of each side is plate-based lets a
+    reader see whether the question arises at all.
+
+    Whether to weight by donor rather than by cell is open on the same issue;
+    reporting what the weighting rests on is true either way.
+    """
+    reference = {}
+    for sex in ("male", "female"):
+        subset = _annotated(rows, sex)
+        # A donor with both droplet and plate-based libraries is two rows but one
+        # donor, and what this field is for is how many independent donors stand
+        # behind the mean. Cells still sum across both of its rows.
+        base = {r["donor_id"].removesuffix(SMART_SEQ_SUFFIX) if r["smart_seq"] else r["donor_id"] for r in subset}
+        reference[sex] = {
+            "donors": len(base),
+            "cells": sum(r["cells"] for r in subset),
+            "smart_seq_cells": sum(r["cells"] for r in subset if r["smart_seq"]),
+        }
+    return reference
+
+
+def _annotated(rows: list[dict], sex: str) -> list[dict]:
+    """The rows this sex's column is computed from: annotated it, and human enough for the panel to apply."""
+    return [r for r in rows if r["annotated"] == sex and r["verdict"] != VERDICT_NOT_APPLICABLE]
+
+
+def _panel_summary(rows: list[dict], panel_genes: list[dict]) -> list[dict]:
+    """Each panel gene's mean per-cell count in donors annotated male against donors annotated female.
+
+    Split on the *annotated* sex rather than the inferred one. The inference is
+    the thing in question, and on the file that prompted #707 every donor
+    inferred male, so an inferred split would have shown nothing. Against the
+    annotation, a male-panel gene that still discriminates separates the two by
+    orders of magnitude and one that has stopped sits near or below 1 — which
+    is the whole diagnosis, and it needs no threshold tuned to any dataset.
+
+    Means are weighted by cells, so a donor contributes in proportion to what it
+    actually measured — which also means a donor holding most of its side's
+    cells largely sets that side, so ``panel_reference`` reports each side's
+    donor and cell count rather than leaving that to be assumed. Donors
+    annotated ``unknown``, and non-human donors whose panel does not apply, are
+    in neither column.
+
+    The reference set is therefore the annotation, which is the thing a
+    contradiction disputes. While contradicted donors are a small share of
+    their side's cells that is harmless, but on a file whose sex column is
+    systematically wrong a working gene also reads near 1 — indistinguishable
+    here from one that has degraded. The measure weakens as the contradicted
+    share grows, and the share that matters is of cells, not of donors, since
+    that is what the means are weighted by: ``panel_reference`` reports it.
+
+    A cohort annotated one sex throughout — breast, prostate, ovary — has no
+    comparison to draw, so every ratio is ``null`` and the whole table is means
+    with nothing to divide. That is the honest answer rather than a
+    number, but it means this evidence cannot adjudicate a contradiction on a
+    single-sex cohort; that needs the study's own metadata.
+    """
+    means: dict[str, list[float | None]] = {}
+    for sex in ("male", "female"):
+        subset = _annotated(rows, sex)
+        cells = sum(r["cells"] for r in subset)
+        means[sex] = [
+            (sum(r["per_gene"][j]["counts"] for r in subset) / cells if cells else None)
+            for j in range(len(panel_genes))
+        ]
+
+    summary = []
+    for j, gene in enumerate(panel_genes):
+        male_mean, female_mean = means["male"][j], means["female"][j]
+        summary.append(
+            {
+                **gene,
+                "mean_per_cell_annotated_male": male_mean,
+                "mean_per_cell_annotated_female": female_mean,
+                "male_over_female": (male_mean / female_mean) if male_mean is not None and female_mean else None,
+            }
+        )
+
+    return summary
 
 
 def _refuse_suffix_collisions(donors, smart: np.ndarray, donor_codes: np.ndarray) -> None:
@@ -397,7 +681,8 @@ def _refuse_suffix_collisions(donors, smart: np.ndarray, donor_codes: np.ndarray
     the display ID and the finding's ``sample_ids`` would not be.
     """
     plate_donors = {str(donors[d]) for d in np.unique(donor_codes[smart])}
-    collisions = sorted(name for name in plate_donors if f"{name}{SMART_SEQ_SUFFIX}" in set(map(str, donors)))
+    every_name = set(map(str, donors))  # hoisted: in the comprehension it was rebuilt per plate donor
+    collisions = sorted(name for name in plate_donors if f"{name}{SMART_SEQ_SUFFIX}" in every_name)
     if collisions:
         raise Refusal(
             f"donor(s) {collisions} have plate-based libraries, and a donor named "

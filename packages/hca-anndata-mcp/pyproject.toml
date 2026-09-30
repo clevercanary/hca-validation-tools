@@ -1,6 +1,6 @@
 [project]
 name = "hca-anndata-mcp"
-version = "0.8.0"
+version = "0.8.2"
 description = "MCP server for interactive exploration of AnnData h5ad files"
 authors = [{ name = "Clever Canary", email = "dave@clevercanary.com" }]
 license = "MIT"
@@ -15,9 +15,17 @@ requires-python = ">=3.10,<4.0"
 # bump, so <1 would accept versions this package was never tested against.
 # hca-anndata-tools admits 0.7 because this package was updated for the
 # 0.7 breaking change (#619) in the same PR that made it.
+#
+# The lower bound is what this package can actually import. Seven of the
+# symbols it imports at module scope first appear in hca-anndata-tools 0.7.1,
+# so against any earlier release the server raises ImportError before serving
+# anything — no tool is available, not just the new ones (#693). Check the
+# floor against the sibling's exports whenever an import is added; nothing
+# mechanical does it, because [tool.uv.sources] resolves from the checkout
+# and hides the mismatch locally.
 dependencies = [
     "fastmcp>=2,<3",
-    "hca-anndata-tools>=0.6,<0.8",
+    "hca-anndata-tools>=0.7.1,<0.8",
     "hca-schema-validator>=0.15,<0.16",
 ]
 
