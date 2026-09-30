@@ -201,3 +201,9 @@ response.json
 
 # macOS
 .DS_Store
+
+# Drafting space for outbound correspondence with atlas teams — notes to the
+# breast, gut, immune and pancreas teams while they are being written. These
+# are not code and do not belong in a tools repo, but they should not be one
+# `git clean` from gone either. Anything sent lands in hca-ingest-coordination.
+notes/
