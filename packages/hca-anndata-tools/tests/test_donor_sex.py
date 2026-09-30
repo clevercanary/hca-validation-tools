@@ -41,6 +41,7 @@ MALE_IDS = list(MALE_GENES)
 FEMALE_IDS = list(FEMALE_GENES)
 FILLERS = ["ENSG00000000003", "ENSG00000000005", "ENSG00000000419"]
 VAR = MALE_IDS + FEMALE_IDS + FILLERS  # 7 + 10 + 3 = 20 genes
+SYMBOL_TO_ID = {symbol: eid for eid, symbol in {**MALE_GENES, **FEMALE_GENES}.items()}
 MALE, FEMALE = "PATO:0000384", "PATO:0000383"
 HUMAN = "NCBITaxon:9606"
 DROPLET = "EFO:0009922"
@@ -48,12 +49,20 @@ SMART = min(SMART_SEQ_ASSAYS)
 OBS_COLUMNS = ("donor_id", "sex_ontology_term_id", "assay_ontology_term_id", "organism_ontology_term_id")
 
 
-def _donor(male_per_gene, female_per_gene, *, donor="d", sex=MALE, n=4, assay=DROPLET, organism=HUMAN, filler=3.0):
-    """``n`` cells of one donor; each male gene holds ``male_per_gene`` counts, each female gene ``female_per_gene``."""
+def _donor(
+    male_per_gene, female_per_gene, *, donor="d", sex=MALE, n=4, assay=DROPLET, organism=HUMAN, filler=3.0, genes=None
+):
+    """``n`` cells of one donor; each male gene holds ``male_per_gene`` counts, each female gene ``female_per_gene``.
+
+    ``genes`` overrides named panel genes by symbol, which is what a gametolog
+    fixture needs: a panel where some genes separate the sexes and others do not.
+    """
     cells = np.zeros((n, len(VAR)), dtype=np.float32)
     cells[:, : len(MALE_IDS)] = male_per_gene
     cells[:, len(MALE_IDS) : len(MALE_IDS) + len(FEMALE_IDS)] = female_per_gene
     cells[:, -len(FILLERS) :] = filler
+    for symbol, value in (genes or {}).items():
+        cells[:, VAR.index(SYMBOL_TO_ID[symbol])] = value
     return cells, (donor, sex, assay, organism)
 
 
@@ -119,21 +128,29 @@ def test_raw_x_is_the_matrix_when_present(tmp_path):
 
 def test_male_annotated_with_no_y_expression_is_a_contradiction(tmp_path):
     result = check_donor_sex(_write(tmp_path / "a.h5ad", [_female(sex=MALE)]))
-    assert result["donors"] == [
-        {
-            "donor_id": "f1",
-            "smart_seq": False,
-            "cells": 4,
-            "male_counts": 0.0,
-            "female_counts": 800.0,
-            "total_counts": 800.0,
-            "ratio": 0.0,
-            "inferred": "female",
-            "annotated": "male",
-            "annotated_term": MALE,
-            "verdict": "contradiction",
-        }
-    ]
+    (row,) = result["donors"]
+    per_gene = row["per_gene"]  # pinned below rather than inline: 17 entries
+    assert {k: v for k, v in row.items() if k != "per_gene"} == {
+        "donor_id": "f1",
+        "smart_seq": False,
+        "cells": 4,
+        "donor_cells": 4,
+        "male_counts": 0.0,
+        "female_counts": 800.0,
+        "total_counts": 800.0,
+        "ratio": 0.0,
+        "inferred": "female",
+        "annotated": "male",
+        "annotated_term": MALE,
+        "verdict": "contradiction",
+        "xist_counts": 80.0,
+        "xist_per_cell": 20.0,
+        "male_dominant_gene": None,  # no male counts at all, so no gene carries them
+        "male_dominant_share": None,
+    }
+    assert [g["symbol"] for g in per_gene] == list(MALE_GENES.values()) + list(FEMALE_GENES.values())
+    assert all(g["counts"] == 0.0 for g in per_gene if g["panel"] == "male")
+    assert all(g["counts"] == 80.0 and g["per_cell"] == 20.0 for g in per_gene if g["panel"] == "female")
     assert result["verdict_counts"] == _counts(contradiction=1)
     assert _codes(result)["sex_contradiction"]["sample_ids"] == ["f1"]
     json.dumps(result)  # every value is a native type
@@ -188,6 +205,7 @@ def test_normalized_only_x_is_not_applicable(tmp_path):
     assert result["integer_check"]["status"] == "not_applicable"
     assert result["gene_panel"]["status"] == "not_applicable" and "not counts" in result["gene_panel"]["reason"]
     assert result["verdict_counts"] == _counts() and result["donors"] == [] and result["findings"] == []
+    assert result["panel_summary"] == [] and result["panel_reference"] == {}  # nothing summed to characterise
 
 
 def test_below_floor(tmp_path):
@@ -286,6 +304,7 @@ def test_var_missing_every_male_gene_is_not_applicable(tmp_path):
     assert "ZFY" in result["gene_panel"]["reason"] and "PUDP" not in result["gene_panel"]["reason"]
     assert result["genes_found"] == {"male": [], "female": list(FEMALE_GENES.values())}
     assert result["verdict_counts"] == _counts() and result["donors"] == [] and result["findings"] == []
+    assert result["panel_summary"] == [] and result["panel_reference"] == {}  # nothing summed to characterise
 
 
 def test_panel_gene_listed_twice_is_refused_by_name(tmp_path):
@@ -367,6 +386,7 @@ def test_csc_direct_read_matches_the_csr_pass(tmp_path):
     csr = check_donor_sex(_write(tmp_path / "csr.h5ad", donors, "csr", var=var))
     csc = check_donor_sex(_write(tmp_path / "csc.h5ad", donors, "csc", var=var))
     assert csc["donors"] == csr["donors"] and csc["findings"] == csr["findings"]
+    assert csc["panel_summary"] == csr["panel_summary"]  # per-gene sums agree column by column
     assert csc["verdict_counts"] == csr["verdict_counts"] == _counts(agree=2, fill_in=1, below_floor=1)
     assert _rows(csr)["u"]["male_counts"] == 280.0
 
@@ -430,3 +450,226 @@ def test_handler_refusals_reach_the_caller(tmp_path):
     path = _write(tmp_path / "a.h5ad", [_male()])
     assert "chunk_nnz must be a positive int" in check_donor_sex(path, chunk_nnz=0)["error"]
     assert "not found" in check_donor_sex(str(tmp_path / "nope.h5ad"))["error"].lower()
+
+
+# --- per-gene evidence (#707) ------------------------------------------------
+# All seven Y-linked panel genes are X-Y gametologs, and the homology runs through
+# the introns, so on intron-inclusive counting any of them can take reads from its
+# X copy and carry a female donor over the male cut. Which ones actually do is a
+# property of the file, not of the panel. The fixture below is one such shape, the
+# one seen on the pancreas atlas in #707: DDX3Y/KDM5D/EIF1AY separate the sexes
+# while ZFY/USP9Y/UTY/NLGN4Y do not. It is a fixture, not a claim about those four.
+
+DIRTY = {"ZFY": 200, "USP9Y": 100, "UTY": 100, "NLGN4Y": 100}
+
+
+def _gametolog_donors():
+    return [_donor(100, 1, donor="m", sex=MALE), _donor(1, 100, donor="f", sex=FEMALE, genes=DIRTY)]
+
+
+def _summary(result):
+    assert "error" not in result, result
+    return {g["symbol"]: g for g in result["panel_summary"]}
+
+
+@pytest.mark.parametrize("fmt", MATRIX_FORMATS)
+def test_per_gene_counts_sum_to_the_panel_totals(tmp_path, fmt):
+    result = check_donor_sex(_write(tmp_path / "a.h5ad", _gametolog_donors(), fmt))
+    for row in _rows(result).values():
+        for panel, total in (("male", row["male_counts"]), ("female", row["female_counts"])):
+            assert sum(g["counts"] for g in row["per_gene"] if g["panel"] == panel) == total
+        assert all(g["per_cell"] == g["counts"] / row["cells"] for g in row["per_gene"])
+
+
+@pytest.mark.parametrize("fmt", MATRIX_FORMATS)
+def test_a_gametolog_carried_call_is_visible_in_the_evidence(tmp_path, fmt):
+    # The female donor holds 1 count in each discriminating gene against 500 across the four
+    # gametolog-prone ones, so the ratio clears the male cut and contradicts her annotation —
+    # the false positive #707 was filed for. The per-gene fields are what say so.
+    #
+    # Across every format because each accumulates per gene by its own path, and a column
+    # mis-mapping inside one panel is invisible to any assertion on panel totals.
+    row = _rows(check_donor_sex(_write(tmp_path / "a.h5ad", _gametolog_donors(), fmt)))["f"]
+    assert row["verdict"] == "contradiction" and row["inferred"] == "male"
+    assert row["male_dominant_gene"] == "ZFY"
+    assert row["male_dominant_share"] == pytest.approx(800 / 2012)
+    clean = {g["symbol"]: g["per_cell"] for g in row["per_gene"] if g["symbol"] in ("DDX3Y", "KDM5D", "EIF1AY")}
+    assert clean == {"DDX3Y": 1.0, "KDM5D": 1.0, "EIF1AY": 1.0}
+
+
+def test_panel_summary_separates_the_discriminating_genes_from_the_rest(tmp_path):
+    result = check_donor_sex(_write(tmp_path / "a.h5ad", _gametolog_donors()))
+    summary = _summary(result)
+    # Both donors infer male, so an inferred split would put them in one column and show nothing —
+    # which is what happened on the file that prompted #707. Only the annotation separates them.
+    assert {r["inferred"] for r in _rows(result).values()} == {"male"}
+    assert [g["symbol"] for g in result["panel_summary"]] == list(MALE_GENES.values()) + list(FEMALE_GENES.values())
+    # One ratio, male over female, for every gene. A working gene sits far from 1 —
+    # above it on the male panel, below it on the female panel; a dead one sits at it.
+    assert summary["DDX3Y"]["male_over_female"] == pytest.approx(100.0)  # 100 per cell against 1
+    assert summary["ZFY"]["male_over_female"] == pytest.approx(0.5)  # 100 against 200 — near 1, useless here
+    assert summary["XIST"]["male_over_female"] == pytest.approx(0.01)  # 1 against 100, the other way
+    assert summary["DDX3Y"]["panel"] == "male" and summary["DDX3Y"]["gene_id"] == SYMBOL_TO_ID["DDX3Y"]
+    assert summary["XIST"]["mean_per_cell_annotated_female"] == pytest.approx(100.0)
+
+
+@pytest.mark.parametrize(
+    ("label", "extra"),
+    [
+        ("unknown", _donor(9999, 1, donor="u", sex="unknown")),
+        ("non_human", _donor(9999, 1, donor="nh", sex=MALE, organism="NCBITaxon:10090")),
+    ],
+)
+def test_panel_summary_excludes_donors_it_cannot_place(tmp_path, label, extra):
+    """A donor with no annotated sex, or one the panel does not apply to, is in neither column."""
+    baseline = _summary(check_donor_sex(_write(tmp_path / "base.h5ad", _gametolog_donors())))
+    widened = _summary(check_donor_sex(_write(tmp_path / f"{label}.h5ad", [*_gametolog_donors(), extra])))
+    assert widened["DDX3Y"] == baseline["DDX3Y"], label
+
+
+def test_xist_is_surfaced_on_its_own(tmp_path):
+    # An agreeing row is not listed (#700), so the male donor is annotated unknown to keep it in view.
+    donors = [_donor(100, 1, donor="m", sex="unknown"), _donor(1, 100, donor="f", sex=FEMALE, genes=DIRTY)]
+    rows = _rows(check_donor_sex(_write(tmp_path / "a.h5ad", donors)))
+    assert (rows["f"]["xist_counts"], rows["f"]["xist_per_cell"]) == (400.0, 100.0)
+    assert (rows["m"]["xist_counts"], rows["m"]["xist_per_cell"]) == (4.0, 1.0)
+
+
+def test_xist_absent_from_var_reads_as_null_not_zero(tmp_path):
+    var = ["ENSG00000000938" if v == SYMBOL_TO_ID["XIST"] else v for v in VAR]
+    result = check_donor_sex(_write(tmp_path / "a.h5ad", _gametolog_donors(), var=var))
+    assert "XIST" not in result["genes_found"]["female"] and "XIST" not in _summary(result)
+    row = _rows(result)["f"]
+    assert row["xist_counts"] is None and row["xist_per_cell"] is None
+
+
+def test_a_single_annotated_sex_cohort_has_no_separation_to_report(tmp_path):
+    """Breast, prostate and ovary are annotated one sex throughout, so there is nothing to divide."""
+    donors = [_donor(1, 100, donor="f1", sex=FEMALE), _donor(1, 100, donor="f2", sex=FEMALE, genes=DIRTY)]
+    result = check_donor_sex(_write(tmp_path / "a.h5ad", donors))
+    summary = _summary(result)
+    assert result["verdict_counts"]["contradiction"] == 1  # f2's gametolog load carries it over the cut
+    assert all(g["male_over_female"] is None for g in result["panel_summary"])
+    assert summary["XIST"]["mean_per_cell_annotated_female"] == pytest.approx(100.0)
+    assert summary["XIST"]["mean_per_cell_annotated_male"] is None
+
+
+def test_per_gene_rides_only_on_contradiction_rows(tmp_path):
+    # 17 entries a row roughly quintuples the donors table, and #700 capped that table
+    # precisely so it would fit. Contradictions are the rows adjudicated gene by gene.
+    donors = [
+        _donor(1, 100, donor="c", sex=FEMALE, genes=DIRTY),  # contradiction
+        _donor(100, 1, donor="u", sex="unknown"),  # fill_in
+        _donor(1, 1, donor="low", n=2),  # below_floor
+    ]
+    rows = _rows(check_donor_sex(_write(tmp_path / "a.h5ad", donors)))
+    assert {d: r["verdict"] for d, r in rows.items()} == {
+        "c": "contradiction",
+        "u": "fill_in",
+        "low": "below_floor",
+    }
+    assert "per_gene" in rows["c"]
+    assert "per_gene" not in rows["u"] and "per_gene" not in rows["low"]
+    for donor in ("u", "low"):  # the summary fields every row keeps
+        assert {"male_counts", "female_counts", "male_dominant_gene", "xist_per_cell"} <= rows[donor].keys()
+
+
+def test_panel_reference_reports_what_each_side_of_the_comparison_rests_on(tmp_path):
+    # The means are cell-weighted, so a side resting on one large donor is a side that
+    # donor defines — and when it is the contradicted one, the summary would appear to
+    # excuse it. These counts are what let a reader divide and see that for themselves.
+    donors = [
+        _donor(100, 1, donor="m", sex=MALE, n=4),
+        _donor(1, 100, donor="f_small", sex=FEMALE, n=2),
+        _donor(1, 100, donor="f_big", sex=FEMALE, n=30, genes=DIRTY),
+    ]
+    result = check_donor_sex(_write(tmp_path / "a.h5ad", donors))
+    assert result["panel_reference"] == {
+        "male": {"donors": 1, "cells": 4, "smart_seq_cells": 0},
+        "female": {"donors": 2, "cells": 32, "smart_seq_cells": 0},
+    }
+    # f_big is contradicted and is 30 of its side's 32 cells, so the female column is
+    # very nearly its own signal — exactly the case the counts are emitted to expose.
+    contradicted = _rows(result)["f_big"]
+    assert contradicted["verdict"] == "contradiction"
+    assert contradicted["cells"] / result["panel_reference"]["female"]["cells"] > 0.9
+
+
+def test_panel_reference_counts_only_the_donors_the_summary_used(tmp_path):
+    """Annotated unknown and non-human donors are in no column, so they are in no count."""
+    donors = [
+        *_gametolog_donors(),
+        _donor(9999, 1, donor="u", sex="unknown"),
+        _donor(9999, 1, donor="nh", sex=MALE, organism="NCBITaxon:10090"),
+    ]
+    reference = check_donor_sex(_write(tmp_path / "a.h5ad", donors))["panel_reference"]
+    assert reference == {
+        "male": {"donors": 1, "cells": 4, "smart_seq_cells": 0},
+        "female": {"donors": 1, "cells": 4, "smart_seq_cells": 0},
+    }
+
+
+def test_panel_reference_counts_a_split_donor_once(tmp_path):
+    """Two chemistries are two rows but one donor; only the cells add up twice.
+
+    The droplet row is given male expression against a female annotation so it is
+    contradicted and therefore listed, while its Smart-seq sibling agrees and is
+    dropped (#700). That is the shape `donor_cells` exists for: the listed row is 4
+    cells, but the donor puts all 10 into the reference side it would be judged
+    against, so its own `cells` is the wrong numerator for that share.
+    """
+    donors = [
+        _donor(100, 1, donor="f", sex=FEMALE, n=4),  # droplet, male signal -> contradiction
+        _donor(1, 100, donor="f", sex=FEMALE, n=6, assay=SMART),  # plate-based, agrees
+        _donor(100, 1, donor="m", sex=MALE, n=4),
+    ]
+    result = check_donor_sex(_write(tmp_path / "a.h5ad", donors))
+    assert result["panel_reference"] == {
+        "male": {"donors": 1, "cells": 4, "smart_seq_cells": 0},
+        "female": {"donors": 1, "cells": 10, "smart_seq_cells": 6},
+    }
+    (listed,) = [r for r in result["donors"] if r["donor_id"].startswith("f")]
+    assert listed["verdict"] == "contradiction" and listed["smart_seq"] is False
+    assert listed["cells"] == 4 and listed["donor_cells"] == 10
+
+
+def test_a_bad_sex_term_is_refused_before_the_matrix_is_read(tmp_path, monkeypatch):
+    # The refusal existed already; what is pinned here is that it fires from the obs-only
+    # grouping, so a 20 GB object is not streamed only for the result to be thrown away.
+    from hca_anndata_tools import donor_sex
+
+    def _no(*args, **kwargs):
+        raise AssertionError("the matrix was read despite an unusable sex_ontology_term_id")
+
+    monkeypatch.setattr(donor_sex, "_sum_panel_genes", _no)
+    result = check_donor_sex(_write(tmp_path / "a.h5ad", [_male(sex="PATO:0000999"), _female()]))
+    assert "error" in result and "PATO:0000999" in result["error"]
+
+
+def test_a_null_ratio_covers_two_different_shapes(tmp_path):
+    """`male_over_female` is null for infinite separation and for a silent gene alike.
+
+    Both encode as null, so the skill has to read the two means to tell them apart —
+    a positive male mean over a zero female mean is maximal separation, while zero
+    over zero is a gene that says nothing. Pinned here because `evaluate-h5ad` renders
+    them differently (`∞` against `—`) and a skill's claim about a tool needs a test.
+    """
+    donors = [
+        _donor(100, 1, donor="m", sex=MALE, genes={"ZFY": 0}),
+        _donor(0, 100, donor="f", sex=FEMALE, genes={"ZFY": 0}),
+    ]
+    summary = _summary(check_donor_sex(_write(tmp_path / "a.h5ad", donors)))
+
+    infinite = summary["DDX3Y"]  # present in males, wholly absent from females
+    assert infinite["male_over_female"] is None
+    assert infinite["mean_per_cell_annotated_male"] == pytest.approx(100.0)
+    assert infinite["mean_per_cell_annotated_female"] == 0.0
+
+    silent = summary["ZFY"]  # zeroed in both, so the ratio is 0/0
+    assert silent["male_over_female"] is None
+    assert silent["mean_per_cell_annotated_male"] == 0.0
+    assert silent["mean_per_cell_annotated_female"] == 0.0
+
+    # And the third null shape, a side with no donors at all, is already covered by
+    # test_a_single_annotated_sex_cohort_has_no_separation_to_report.
+    assert summary["XIST"]["male_over_female"] == pytest.approx(0.01)
