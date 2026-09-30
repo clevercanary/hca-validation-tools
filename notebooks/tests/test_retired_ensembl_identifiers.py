@@ -41,15 +41,17 @@ def load_function(code_cells, name):
     """
     for src in code_cells:
         tree = ast.parse(src)
-        target = next((n for n in ast.walk(tree)
-                       if isinstance(n, ast.FunctionDef) and n.name == name), None)
+        target = next((n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == name), None)
         if target is None:
             continue
         preamble = [
-            n for n in tree.body
+            n
+            for n in tree.body
             if isinstance(n, ast.Import | ast.ImportFrom)
-            or (isinstance(n, ast.Assign)
-                and isinstance(n.value, ast.Constant | ast.Set | ast.List | ast.Dict | ast.Tuple))
+            or (
+                isinstance(n, ast.Assign)
+                and isinstance(n.value, ast.Constant | ast.Set | ast.List | ast.Dict | ast.Tuple)
+            )
         ]
         namespace: dict = {"pd": pd}
         module = ast.Module(body=[*preamble, target], type_ignores=[])
@@ -59,6 +61,7 @@ def load_function(code_cells, name):
 
 
 # --- the committed file is shareable -------------------------------------
+
 
 def test_notebook_is_valid_json(nb):
     assert nb["nbformat"] == 4
@@ -85,6 +88,7 @@ def test_no_absolute_local_paths(nb):
 
 # --- pure logic ----------------------------------------------------------
 
+
 def test_strip_version_removes_only_ensembl_suffixes(code_cells):
     strip_version = load_function(code_cells, "strip_version")
     assert strip_version("ENSG00000123456.5") == "ENSG00000123456"
@@ -108,8 +112,9 @@ def test_declared_releases_parses_and_refuses(code_cells):
 def test_coerce_gives_numeric_columns_numeric_dtypes(code_cells):
     """A cached run must compare coordinates numerically, not lexicographically."""
     coerce = load_function(code_cells, "_coerce")
-    df = coerce(pd.DataFrame({"stable_id": ["ENSG1"], "chrom": ["5"],
-                              "start": ["10000"], "end": ["9999"], "score": ["0.99"]}))
+    df = coerce(
+        pd.DataFrame({"stable_id": ["ENSG1"], "chrom": ["5"], "start": ["10000"], "end": ["9999"], "score": ["0.99"]})
+    )
     assert df["start"].iloc[0] > df["end"].iloc[0], "numeric comparison expected"
     assert df["chrom"].iloc[0] == "5", "chromosome must stay a string"
 
@@ -118,7 +123,7 @@ def test_resolve_follows_a_chain_beyond_the_atlas(code_cells):
     """A -> B -> C where B was never a column here must still reach C."""
     resolve = load_function(code_cells, "resolve")
     resolve.__globals__.update(
-        edges={"A": "B", "B": "C"},      # B is an intermediate, not in gencode
+        edges={"A": "B", "B": "C"},  # B is an intermediate, not in gencode
         gencode={"C": {"symbol": "GENE_C"}},
     )
     assert resolve("A") == ("C", 2)
