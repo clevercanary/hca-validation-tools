@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.2](https://github.com/clevercanary/hca-validation-tools/compare/hca-anndata-mcp-v0.8.1...hca-anndata-mcp-v0.8.2) (2026-09-30)
+
+
+### Build System
+
+* **hca-anndata-mcp:** raise the tools floor to the release that exports what it imports ([#716](https://github.com/clevercanary/hca-validation-tools/issues/716)) ([5c197bb](https://github.com/clevercanary/hca-validation-tools/commit/5c197bbb04cc72c7901532b43757cb62a5ff7e08))
+
 ## [0.8.1](https://github.com/clevercanary/hca-validation-tools/compare/hca-anndata-mcp-v0.8.0...hca-anndata-mcp-v0.8.1) (2026-09-30)
 
 
