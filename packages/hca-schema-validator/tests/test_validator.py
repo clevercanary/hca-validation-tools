@@ -1971,6 +1971,20 @@ def test_annotation_version_pre_grch37_accession_claims_no_assembly():
     assert not any("name different assemblies" in w for w in warnings), warnings
 
 
+def test_annotation_version_reports_each_declared_value_separately():
+    # An integrated object legitimately spans several annotations, carried as
+    # different cells holding different values -- the issue's "check each, report
+    # per value". A joined value such as 'v75,v87,v98' is not the shape that takes:
+    # the column holds one value per cell and the pattern rejects the joined form.
+    adata = _version_adata([_TP53, _POST_R98], version="v87", n=2)
+    adata.obs["gene_annotation_version"] = ["v87", "v93"]
+    warnings, _ = check_gene_annotation_version(adata)
+    dated = [w for w in warnings if "did not exist in Ensembl" in w]
+    assert len(dated) == 2, warnings
+    assert any("'v87'" in w and "r87" in w for w in dated), dated
+    assert any("'v93'" in w and "r93" in w for w in dated), dated
+
+
 def test_annotation_version_unknown_identifiers_reported_once_per_file():
     # The unknown-gene finding is about the gene list, not about any declared
     # value, so a file carrying two values must not get it twice.
