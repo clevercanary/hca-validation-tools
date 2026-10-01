@@ -14,9 +14,12 @@ from hca_schema_validator import (
     HCAValidator,
     check_donor_consistency,
     check_gene_annotation_version,
+)
+from hca_schema_validator.validator import (
+    DESOUPED_COUNTS_LAYER,
+    DONOR_GRAIN_COLUMNS,
     parse_annotation_version,
 )
-from hca_schema_validator.validator import DESOUPED_COUNTS_LAYER, DONOR_GRAIN_COLUMNS
 
 # Test fixtures directory
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "h5ads"
@@ -1958,6 +1961,24 @@ def test_annotation_version_below_the_table_is_grch37_not_nonexistent():
     assert "GRCh37 annotation" in warnings[0] and "no such" not in warnings[0]
 
 
+def test_annotation_version_pre_grch37_accession_claims_no_assembly():
+    # .13-.25 are GRCh37 patches; .12 is NCBI36. Calling .12 GRCh37 would make a
+    # genuinely wrong declaration compare clean against reference_genome GRCh37.
+    assert parse_annotation_version("GCF_000001405.13").assembly == "GRCh37"
+    assert parse_annotation_version("GCF_000001405.12").assembly is None
+    warnings, _ = check_gene_annotation_version(_version_adata([_TP53], version="GCF_000001405.12", genome="GRCh37"))
+    assert not any("name different assemblies" in w for w in warnings), warnings
+
+
+def test_annotation_version_unknown_identifiers_reported_once_per_file():
+    # The unknown-gene finding is about the gene list, not about any declared
+    # value, so a file carrying two values must not get it twice.
+    adata = _version_adata([_TP53, "ENSG99999999999"], version="v98")
+    adata.obs["gene_annotation_version"] = ["v98", "v110"]
+    warnings, _ = check_gene_annotation_version(adata)
+    assert sum("appear in no release" in w for w in warnings) == 1, warnings
+
+
 def test_annotation_version_gencode_number_is_not_called_grch37():
     # GENCODE names its releases the way Ensembl does, and GENCODE v32 is the
     # Cell Ranger 2020-A reference (= Ensembl r98, GRCh38). Reading it as Ensembl
@@ -2016,6 +2037,9 @@ def test_annotation_version_examples_are_drawn_from_the_counted_genes():
     counted = int(dated.split(" of this file's")[0].rsplit(" ", 1)[-1].replace(",", ""))
     assert counted == len(dated.split("for example ")[1].split(". The earliest")[0].split(", "))
     assert "ENSG99999999999" not in dated
+    # Some identifiers are unknown to the table, so "every gene here" would
+    # contradict the unknown-identifiers warning alongside it.
+    assert "every known gene here" in dated
 
 
 def test_annotation_version_leaves_format_to_the_schema_pattern():

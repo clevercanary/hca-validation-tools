@@ -14,7 +14,6 @@ from .validator import (
     check_cosmetic_labels,
     check_donor_consistency,
     check_gene_annotation_version,
-    parse_annotation_version,
 )
 
 __all__ = [
@@ -25,6 +24,5 @@ __all__ = [
     "check_cosmetic_labels",
     "check_donor_consistency",
     "check_gene_annotation_version",
-    "parse_annotation_version",
     "populate_in_memory",
 ]
