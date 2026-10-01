@@ -1509,6 +1509,10 @@ _HUMAN_ENSG_RE = re.compile(r"^ENSG\d+$")
 _VERSION_NOT_A_CLAIM = frozenset({"", "nan", "none", "na", "unknown", "not available", "not applicable"})
 _INTERVALS_PATH = Path(__file__).parent / "gene_release_intervals.csv.gz"
 _HUMAN_ORGANISM = "NCBITaxon:9606"
+# The assembly names obs['reference_genome'] may hold. Anything else -- a
+# placeholder like "not applicable", or a malformed value the column's own enum
+# already errors on -- names no assembly, so there is nothing to compare against.
+_KNOWN_ASSEMBLIES = frozenset({"GRCh38", "GRCh37", "GRCm39", "GRCm38", "GRCm37"})
 
 # Parsed forms of obs['gene_annotation_version'].
 #   release     - an Ensembl release number, datable against the gene list
@@ -1659,13 +1663,12 @@ def check_gene_annotation_version(adata):
     if not declared:
         return [], []
 
-    genome = None
-    if "reference_genome" in obs.columns:
-        genomes = {str(v) for v in obs["reference_genome"].dropna().unique()} - {"nan"}
-        # "not applicable" is one of the column's own enum values; it declines to
-        # name an assembly rather than naming a different one.
-        genomes = {g for g in genomes if g.strip().lower() not in _VERSION_NOT_A_CLAIM}
-        genome = genomes.pop() if len(genomes) == 1 else None
+    # Which assemblies each declared version is paired with, and on how many
+    # cells. Pairwise rather than column-wide: an integrated object legitimately
+    # carries cells from several assemblies, so the question is not whether the
+    # column is unanimous but whether any pair contradicts itself.
+    pairs = _assembly_pairs(obs)
+    n_cells = len(obs)
 
     var = getattr_anndata(adata, "var")
     gene_ids = {str(i).split(".")[0] for i in var.index} if var is not None else set()
@@ -1686,13 +1689,34 @@ def check_gene_annotation_version(adata):
 
     for value in sorted(declared):
         warnings.extend(
-            _annotation_version_messages(parse_annotation_version(value), genome, ensg, len(gene_ids), dated)
+            _annotation_version_messages(
+                parse_annotation_version(value), pairs.get(value, {}), n_cells, ensg, len(gene_ids), dated
+            )
         )
     return warnings, []
 
 
-def _annotation_version_messages(parsed, genome, ensg: set[str], n_features: int, dated) -> list[str]:
-    """Everything sayable about one declared value."""
+def _assembly_pairs(obs) -> dict[str, dict[str, int]]:
+    """Map each declared version to the assemblies it appears with, and their cell counts.
+
+    Only assemblies the column is allowed to name are kept; a placeholder or a
+    malformed value names none, and its own enum already reports it.
+    """
+    if "reference_genome" not in obs.columns:
+        return {}
+    paired = obs[["gene_annotation_version", "reference_genome"]].dropna().astype(str)
+    out: dict[str, dict[str, int]] = {}
+    for (version, genome), count in paired.value_counts().items():
+        if genome in _KNOWN_ASSEMBLIES:
+            out.setdefault(version, {})[genome] = int(count)
+    return out
+
+
+def _annotation_version_messages(parsed, genomes, n_cells, ensg: set[str], n_features: int, dated) -> list[str]:
+    """Everything sayable about one declared value.
+
+    ``genomes`` maps each assembly this value is paired with to its cell count.
+    """
     said = []
     if parsed.kind == "missing":
         return []
@@ -1710,10 +1734,21 @@ def _annotation_version_messages(parsed, genome, ensg: set[str], n_features: int
         # GRCh38, which is the contradiction this check exists to report.
         parsed = parsed._replace(kind="release", assembly="GRCh37")
 
-    if genome and parsed.assembly and parsed.assembly != genome:
+    for genome, cells in sorted(genomes.items()):
+        if not parsed.assembly or parsed.assembly == genome:
+            continue
+        # Name the cells only when the disagreement is confined to some of them.
+        # On a file where every cell disagrees the count says nothing extra; on an
+        # integrated object it is the difference between "this file" and "these
+        # 88,232 cells", which is the whole finding.
+        where = (
+            f"obs['reference_genome'] is {genome!r}"
+            if cells == n_cells
+            else f"{cells:,} of this file's {n_cells:,} cells have obs['reference_genome'] = {genome!r}"
+        )
         said.append(
-            f"obs['gene_annotation_version'] is {parsed.raw!r} ({parsed.assembly}), but "
-            f"obs['reference_genome'] is {genome!r}. These name different assemblies."
+            f"obs['gene_annotation_version'] is {parsed.raw!r} ({parsed.assembly}), but {where}. "
+            f"These name different assemblies."
         )
 
     if parsed.kind == "assembly":
