@@ -18,7 +18,7 @@ from anndata.compat import DaskArray
 from dask.array import map_blocks  # pyright: ignore[reportPrivateImportUsage]
 from scipy import sparse
 
-from hca_schema_validator._vendored.cellxgene_schema import gencode
+from hca_schema_validator._vendored.cellxgene_schema import env, gencode
 from hca_schema_validator._vendored.cellxgene_schema.gencode import get_gene_checker
 from hca_schema_validator._vendored.cellxgene_schema.ontology_parser import ONTOLOGY_PARSER
 from hca_schema_validator._vendored.cellxgene_schema.utils import getattr_anndata
@@ -1500,10 +1500,6 @@ _FIRST_GRCH38_RELEASE = 76
 # name an assembly this check has no business labelling.
 _FIRST_GRCH38_ACCESSION = 26
 _FIRST_GRCH37_ACCESSION = 13
-# GENCODE numbers its human releases 66 behind Ensembl's: GENCODE 32 is Ensembl
-# 98, GENCODE 48 is Ensembl 114. Both are written the same way ("v32"), so a
-# number in GENCODE's released range does not say which scheme it is in.
-_GENCODE_ENSEMBL_OFFSET = 66
 _ACCESSION_RE = re.compile(r"^GCF_0*1405\.(\d+)$", re.IGNORECASE)
 _RELEASE_RE = re.compile(r"^v?(\d{2,3})$", re.IGNORECASE)
 # Human genes are ENSG + digits. Anchored, because other species share the
@@ -1518,8 +1514,8 @@ _HUMAN_ORGANISM = "NCBITaxon:9606"
 #   release     - an Ensembl release number, datable against the gene list
 #   assembly    - an assembly accession; names a genome, not an annotation (#719)
 #   ambiguous   - a number below 76, which Ensembl and GENCODE both write the
-#                 same way: 'v32' is Ensembl r32 (GRCh37) or GENCODE 32 (= Ensembl
-#                 r98, GRCh38). Carries the number but claims no assembly.
+#                 same way: 'v32' is Ensembl r32 or GENCODE 32, and those are
+#                 different annotations. Carries the number but claims no assembly.
 #   missing     - nothing recorded
 #   uninterpretable - none of the above
 ParsedVersion = namedtuple("ParsedVersion", "kind release assembly raw")
@@ -1728,27 +1724,42 @@ def _annotation_version_messages(parsed, genome, ensg: set[str], n_features: int
     return said
 
 
+@functools.lru_cache(maxsize=1)
+def _highest_gencode_release() -> int:
+    """The newest GENCODE human release the vendored reference data is built from.
+
+    Read from the vendored ``gene_info.yml`` rather than hard-coded, so bumping
+    cellxgene-schema moves it. It is the ceiling of the ambiguity below: a number
+    above it cannot be a GENCODE release, because GENCODE has not issued one.
+    """
+    with Path(env.GENE_INFO_YAML).open() as fh:
+        return int(yaml.safe_load(fh)["human"]["version"])
+
+
 def _ambiguous_release_number(parsed) -> list[str]:
     """Report a number below r76, which Ensembl and GENCODE both write the same way.
 
     Only ambiguous while GENCODE has actually reached that number: above it the
     GENCODE reading does not exist, so the value can only be an Ensembl release
-    and the GRCh37 claim is safe. The boundary is derived from the shipped table
-    rather than hard-coded, so regenerating the table moves it too.
+    and the GRCh37 claim is safe to make.
+
+    No Ensembl equivalent is quoted for the GENCODE reading. The two schemes run
+    a fixed distance apart only recently -- GENCODE 32 is Ensembl 98 and GENCODE
+    48 is Ensembl 114 -- and not across the older range, where GENCODE 19 is the
+    GRCh37 freeze rather than anything near r85. Naming a release we would have
+    to extrapolate is the one part of this message that could be wrong, and the
+    producer is being asked which scheme they meant, not for a conversion.
     """
-    _, _, last_covered = _gene_release_intervals()
-    highest_gencode = last_covered - _GENCODE_ENSEMBL_OFFSET
-    if parsed.release > highest_gencode:
+    if parsed.release > _highest_gencode_release():
         return [
             f"obs['gene_annotation_version'] is {parsed.raw!r}. Ensembl r{_FIRST_GRCH38_RELEASE} is the "
             f"first GRCh38 release, so r{parsed.release} is a GRCh37 annotation and the genes in this "
             f"file cannot be dated against it."
         ]
     return [
-        f"obs['gene_annotation_version'] is {parsed.raw!r}, which could be Ensembl r{parsed.release} "
-        f"(GRCh37) or GENCODE {parsed.release} (= Ensembl r{parsed.release + _GENCODE_ENSEMBL_OFFSET}, "
-        f"GRCh38). Those readings disagree about the assembly, so the genes in this file cannot be "
-        f"dated until the value says which scheme it is in."
+        f"obs['gene_annotation_version'] is {parsed.raw!r}, which could be Ensembl r{parsed.release} or "
+        f"GENCODE {parsed.release}. Those are different annotations, on possibly different assemblies, "
+        f"so the genes in this file cannot be dated until the value says which scheme it is in."
     ]
 
 

@@ -18,6 +18,7 @@ from hca_schema_validator import (
 from hca_schema_validator.validator import (
     DESOUPED_COUNTS_LAYER,
     DONOR_GRAIN_COLUMNS,
+    _highest_gencode_release,
     parse_annotation_version,
 )
 
@@ -1985,15 +1986,19 @@ def test_annotation_version_gencode_number_is_not_called_grch37():
     # r32 would report correct GRCh38 metadata as a GRCh37/GRCh38 mismatch.
     warnings, _ = check_gene_annotation_version(_version_adata([_TP53], version="v32", genome="GRCh38"))
     assert len(warnings) == 1, warnings
-    assert "could be Ensembl r32 (GRCh37) or GENCODE 32 (= Ensembl r98, GRCh38)" in warnings[0]
+    assert "could be Ensembl r32 or GENCODE 32" in warnings[0]
+    # No Ensembl equivalent is quoted: the two schemes only run a fixed distance
+    # apart recently, so converting an old GENCODE number would be a false claim.
+    assert "= Ensembl" not in warnings[0]
     assert "obs['reference_genome']" not in warnings[0]
 
 
 def test_annotation_version_ambiguity_stops_where_gencode_has_not_reached():
-    # The boundary is derived from the shipped table (r116 - 66 = GENCODE 50), so
-    # 51-75 can only be an Ensembl release and the GRCh37 claim is safe to make.
-    ambiguous, _ = check_gene_annotation_version(_version_adata([_TP53], version="v50", genome=None))
-    settled, _ = check_gene_annotation_version(_version_adata([_TP53], version="v51", genome=None))
+    # The ceiling is GENCODE's newest human release, read from the vendored
+    # gene_info.yml, so above it the value can only be an Ensembl release.
+    highest = _highest_gencode_release()
+    ambiguous, _ = check_gene_annotation_version(_version_adata([_TP53], version=f"v{highest}", genome=None))
+    settled, _ = check_gene_annotation_version(_version_adata([_TP53], version=f"v{highest + 1}", genome=None))
     assert "could be Ensembl" in ambiguous[0]
     assert "GRCh37 annotation" in settled[0] and "could be Ensembl" not in settled[0]
 
