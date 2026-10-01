@@ -53,6 +53,7 @@ Runs the full vendored schema validator against the unmodified CELLxGENE schema 
 - **Expression matrix contract** — see §4.1. Not inherited from CELLxGENE, which checks that `raw.X` is raw but never looks at `X`.
 - **Producer label columns** (`check_cosmetic_labels`) — a populated `obs['sex']`, `obs['tissue']`, etc. must have its `*_ontology_term_id` source column (else warning) and every label must equal the canonical ontology label for the row's term (else error). #377, #443.
 - **Donor-level consistency** — see §4.2.
+- **Declared gene annotation vs. the file's genes** — see §4.3.
 
 All other rules come from the vendored base class (§5).
 
@@ -108,6 +109,31 @@ Every obs row is otherwise validated on its own, so one `donor_id` carrying two 
 | `development_stage_ontology_term_id`, `disease_ontology_term_id` (Sample grain; longitudinal or tumor-plus-adjacent donors legitimately vary) | warning | warning: can be filled in |
 
 Unknown values are `unknown`, `na`, and the empty string, on every column; `not applicable` is a claim. Null is never a claim. Rows whose `donor_id` is `pooled`, `unknown`, `na`, or empty are skipped, since none of those names one individual. One message per column and bucket, naming at most 10 donors with at most 5 values each. Silent when `donor_id` is absent. Reads obs only.
+
+---
+
+### 4.3 Declared gene annotation vs. the file's genes (`check_gene_annotation_version`)
+
+`obs['gene_annotation_version']` records the annotation a dataset was built against and nothing verified it. Six of seven breast source datasets declare a release their own gene list rules out. Two independent comparisons, **warning-only** — the field is the producer's to correct, and the schema documents it with assembly accessions (#719), so some non-datable values are conforming rather than mistaken. #710.
+
+**1. Declared assembly vs. `reference_genome`.** Needs no reference data. Compared per distinct (version, assembly) pair rather than per column: an integrated object legitimately carries cells from several assemblies, so the question is not whether `reference_genome` is unanimous but whether any pair contradicts itself. The message names the cells when the disagreement is confined to some of them. Values that name no assembly — a placeholder, or a malformed value the column's own enum already errors on — are skipped rather than compared.
+
+**2. Declared release vs. the genes.** For each release, count the genes it cannot explain; the releases explaining all of them are the window that could have produced the file. Reported as both ends, not just the earliest: genes are **retired** as well as born (`ENSG00000130723` exists r76–r102 and then stops), so a declared release can be wrong by being too late. Nine declarations in the prod corpus are. Stated as min–max rather than as a list, because a resurrected gene can in principle punch a hole in the middle.
+
+| declared value | what happens |
+|---|---|
+| Ensembl release r76+ (`v98`) | dated against the gene list |
+| number below r76 (`v32`) | **ambiguous** — Ensembl r32 or GENCODE 32; claims no assembly, converts neither. The ceiling is GENCODE's newest human release, read from the vendored `gencode_files/gene_info.yml` |
+| number r49–r75 | above GENCODE's range, so Ensembl only; reported as a GRCh37 annotation |
+| release newer than the table | not checked; says so, and that message is the trigger to regenerate the table |
+| assembly accession (`GCF_000001405.40`) | names a genome, not an annotation — reported as such, not as the producer's error |
+| unparseable | silent; the schema pattern owns format errors |
+
+Dates on human `ENSG` identifiers only, matched as an anchored `ENSG\d+` — gorilla identifiers are `ENSGGOG...` and a prefix test would date them as human. Spike-ins, other species and custom transgenes are counted and reported, not dated. Silent on non-human files, both comparisons included: Ensembl numbers releases across all species, so r110 means GRCh38 only for a human file.
+
+Reads `var.index`, `obs['gene_annotation_version']`, `obs['reference_genome']` and `obs['organism_ontology_term_id']`. The reference data is `gene_release_intervals.csv.gz`; its regeneration procedure is in the package README.
+
+**Limitation.** This dates a *gene list*. Every file in the prod corpus is filtered to detected genes (29–53% of the reference at its release), and filtering can only remove evidence — so the computed window is a superset of the true one. A declared release falling outside it is therefore sound; what is weakened is pinning the exact release, not the finding.
 
 ---
 
