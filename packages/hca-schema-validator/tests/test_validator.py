@@ -1991,7 +1991,7 @@ def test_annotation_version_unknown_identifiers_reported_once_per_file():
     adata = _version_adata([_TP53, "ENSG99999999999"], version="v98")
     adata.obs["gene_annotation_version"] = ["v98", "v110"]
     warnings, _ = check_gene_annotation_version(adata)
-    assert sum("appear in no release" in w for w in warnings) == 1, warnings
+    assert sum("none of the releases" in w for w in warnings) == 1, warnings
 
 
 def test_annotation_version_settled_sub_76_still_compares_assemblies():
@@ -2061,7 +2061,7 @@ def test_annotation_version_all_unknown_genes_says_it_once():
     # message would read "0 of 0 remain unexplained".
     adata = _version_adata(["ENSG99999999999", "ENSG99999999998"], version="v98")
     warnings, _ = check_gene_annotation_version(adata)
-    assert len(warnings) == 1 and "appear in no release" in warnings[0], warnings
+    assert len(warnings) == 1 and "none of the releases" in warnings[0], warnings
 
 
 def test_annotation_version_examples_are_drawn_from_the_counted_genes():
@@ -2109,7 +2109,13 @@ def test_annotation_version_ignores_non_ensembl_features():
 def test_annotation_version_reports_genes_no_release_knows():
     adata = _version_adata([_TP53, "ENSG99999999999"], version="v98")
     warnings, _ = check_gene_annotation_version(adata)
-    assert len(warnings) == 1 and "does not know" in warnings[0], warnings
+    assert len(warnings) == 1, warnings
+    # Both ends of the covered range, and both readings. Naming only the upper
+    # bound points the reader at a newer annotation, when a gene retired before
+    # the lower bound is equally unknown to the table -- the likelier cause for a
+    # low-numbered identifier.
+    assert "r76 to r116" in warnings[0], warnings[0]
+    assert "newer than r116" in warnings[0] and "older than r76" in warnings[0], warnings[0]
 
 
 def test_resurrected_gene_is_absent_between_its_runs():

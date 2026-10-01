@@ -1800,13 +1800,21 @@ def _ambiguous_release_number(parsed) -> list[str]:
 
 
 def _unknown_identifiers_message(unknown: set[str], ensg: set[str]) -> str:
-    """Report identifiers no release in the shipped table contains."""
-    _, _, last_covered = _gene_release_intervals()
+    """Report identifiers no release in the shipped table contains.
+
+    Names both ends of the covered range. Saying only "through r116" reads as
+    *from the beginning* through r116, which points the reader at a newer
+    annotation -- but the table starts at r76, and a gene retired before then is
+    just as unknown to it. That is the likelier reading for a low-numbered
+    identifier, and the message should not rule it out.
+    """
+    _, first_covered, last_covered = _gene_release_intervals()
     return (
-        f"{len(unknown):,} of this file's {len(ensg):,} Ensembl identifiers appear in no release "
-        f"through r{last_covered}, which this reference data does not know -- for example "
-        f"{', '.join(sorted(unknown)[:3])}. The file may use an annotation newer than r{last_covered}, "
-        f"or a reference built outside Ensembl."
+        f"{len(unknown):,} of this file's {len(ensg):,} Ensembl identifiers are in none of the releases "
+        f"this reference data covers, r{first_covered} to r{last_covered} -- for example "
+        f"{', '.join(sorted(unknown)[:3])}. They may come from an annotation newer than r{last_covered}, "
+        f"from one older than r{first_covered} (where genes retired before r{first_covered} would not appear "
+        f"either), or from a reference built outside Ensembl."
     )
 
 
