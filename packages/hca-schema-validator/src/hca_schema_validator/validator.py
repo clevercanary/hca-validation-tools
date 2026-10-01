@@ -1850,6 +1850,16 @@ def _release_against_genes(parsed, ensg: set[str], n_features: int, dated) -> li
     scope = "every known gene here" if unknown else "every gene here"
     missing_here = shortfall.get(parsed.release)
     if missing_here:
+        # Both ends, not just the earliest. Genes are retired as well as born --
+        # ENSG00000130723 exists r76-r102 and then stops -- so the releases that
+        # explain a file form a window, and naming only its start reads as "use
+        # this release or later" when every later release fails too. Stated as
+        # min to max rather than as a list: a resurrected gene can in principle
+        # punch a hole in the middle, and claiming contiguity would be a stronger
+        # statement than the table supports.
+        explaining = [r for r, missing in shortfall.items() if not missing]
+        low, high = min(explaining), max(explaining)
+        window = f"Only r{low} contains {scope}" if low == high else f"Releases r{low} to r{high} contain {scope}"
         # Drawn from the known genes only, so the examples are a sample of the
         # very genes the count is of; an unknown gene is absent at every release
         # and has its own message above.
@@ -1864,7 +1874,6 @@ def _release_against_genes(parsed, ensg: set[str], n_features: int, dated) -> li
         said.append(
             f"obs['gene_annotation_version'] is {parsed.raw!r}, but {missing_here:,} of this file's "
             f"{len(ensg):,} genes did not exist in Ensembl r{parsed.release} -- for example "
-            f"{', '.join(examples)}. The earliest release containing {scope} is r{earliest}, so the "
-            f"declared value cannot be correct{context}."
+            f"{', '.join(examples)}. {window}, so the declared value cannot be correct{context}."
         )
     return said

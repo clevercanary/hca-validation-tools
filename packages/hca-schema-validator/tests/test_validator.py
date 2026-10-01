@@ -2056,8 +2056,13 @@ def test_annotation_version_examples_are_drawn_from_the_counted_genes():
     adata = _version_adata([_TP53, _POST_R98, "ENSG99999999999"], version="v87")
     warnings, _ = check_gene_annotation_version(adata)
     dated = next(w for w in warnings if "did not exist in Ensembl r87" in w)
-    counted = int(dated.split(" of this file's")[0].rsplit(" ", 1)[-1].replace(",", ""))
-    assert counted == len(dated.split("for example ")[1].split(". The earliest")[0].split(", "))
+    # Only _POST_R98 is both known to the table and absent at r87, so it is the
+    # whole of the count and the whole of the examples. Asserting the identifier
+    # rather than the arithmetic: examples are capped at three, so comparing the
+    # count against how many are shown holds only while the count is below the
+    # cap, which is not the case on any real file.
+    assert "1 of this file's 3 genes" in dated, dated
+    assert _POST_R98 in dated
     assert "ENSG99999999999" not in dated
     # Some identifiers are unknown to the table, so "every gene here" would
     # contradict the unknown-identifiers warning alongside it.
