@@ -1795,7 +1795,7 @@ def _ambiguous_release_number(parsed) -> list[str]:
     return [
         f"obs['gene_annotation_version'] is {parsed.raw!r}, which could be Ensembl r{parsed.release} or "
         f"GENCODE {parsed.release}. Those are different annotations, on possibly different assemblies, "
-        f"so the genes in this file cannot be dated until the value says which scheme it is in."
+        f"so this file's genes cannot be checked against it until the value says which scheme is meant."
     ]
 
 
@@ -1823,7 +1823,7 @@ def _release_against_genes(parsed, ensg: set[str], n_features: int, dated) -> li
         return [
             f"obs['gene_annotation_version'] is {parsed.raw!r}. Ensembl r{first_covered} is the first "
             f"GRCh38 release, so r{parsed.release} is a GRCh37 annotation and the genes in this file "
-            f"cannot be dated against it."
+            f"cannot be checked against it."
         ]
     if parsed.release > last_covered:
         return [
@@ -1836,14 +1836,19 @@ def _release_against_genes(parsed, ensg: set[str], n_features: int, dated) -> li
     said = []
 
     skipped = n_features - len(ensg)
-    context = f" ({_plural(skipped, 'non-Ensembl feature')} not used for dating)" if skipped else ""
+    context = (
+        f" ({_plural(skipped, 'non-Ensembl feature')} excluded -- they have no Ensembl release)" if skipped else ""
+    )
 
     if earliest is None and len(ensg) > len(unknown):
-        best = min(shortfall.values()) if shortfall else 0
+        # Name the release that comes closest rather than referring to it: a
+        # curator cannot act on "the closest release" without knowing which.
+        # Ties resolve to the earliest, since shortfall is keyed in release order.
+        closest = min(shortfall, key=lambda r: shortfall[r])
         said.append(
             f"obs['gene_annotation_version'] is {parsed.raw!r}, but no Ensembl release through r{last_covered} "
-            f"contains every one of this file's known genes -- {best:,} of {len(ensg) - len(unknown):,} remain "
-            f"unexplained at the closest release{context}."
+            f"contains every one of this file's known genes -- r{closest} comes closest, with "
+            f"{shortfall[closest]:,} of {len(ensg) - len(unknown):,} still unexplained{context}."
         )
         return said
 
