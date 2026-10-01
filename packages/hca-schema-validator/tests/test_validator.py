@@ -1903,7 +1903,8 @@ def _version_adata(genes, version="v98", genome="GRCh38", organism="NCBITaxon:96
         ("v110", "release", 110),
         ("GCF_000001405.39", "assembly", None),
         ("GCF_000001405.25", "assembly", None),
-        ("v75", "release", 75),
+        ("v75", "ambiguous", 75),
+        ("v32", "ambiguous", 32),
         ("nan", "missing", None),
         ("Not available", "missing", None),
         ("", "missing", None),
@@ -1949,11 +1950,72 @@ def test_annotation_version_accession_is_not_an_annotation():
     assert len(warnings) == 1 and "names a genome assembly rather than a gene annotation" in warnings[0]
 
 
-def test_annotation_version_release_that_does_not_exist():
-    # The schema pattern now checks only well-formedness, so whether a release is
-    # real is decided here, against the table regenerated from Ensembl.
-    warnings, _ = check_gene_annotation_version(_version_adata([_TP53], version="v32", genome=None))
-    assert len(warnings) == 1 and "no such GRCh38 Ensembl release is known" in warnings[0], warnings
+def test_annotation_version_below_the_table_is_grch37_not_nonexistent():
+    # v75 is a real release -- the last GRCh37 one. Saying "no such release" would
+    # be false, and would hide the finding that actually applies.
+    warnings, _ = check_gene_annotation_version(_version_adata([_TP53], version="v75", genome=None))
+    assert len(warnings) == 1, warnings
+    assert "GRCh37 annotation" in warnings[0] and "no such" not in warnings[0]
+
+
+def test_annotation_version_gencode_number_is_not_called_grch37():
+    # GENCODE names its releases the way Ensembl does, and GENCODE v32 is the
+    # Cell Ranger 2020-A reference (= Ensembl r98, GRCh38). Reading it as Ensembl
+    # r32 would report correct GRCh38 metadata as a GRCh37/GRCh38 mismatch.
+    warnings, _ = check_gene_annotation_version(_version_adata([_TP53], version="v32", genome="GRCh38"))
+    assert len(warnings) == 1, warnings
+    assert "could be Ensembl r32 (GRCh37) or GENCODE 32 (= Ensembl r98, GRCh38)" in warnings[0]
+    assert "obs['reference_genome']" not in warnings[0]
+
+
+def test_annotation_version_ambiguity_stops_where_gencode_has_not_reached():
+    # The boundary is derived from the shipped table (r116 - 66 = GENCODE 50), so
+    # 51-75 can only be an Ensembl release and the GRCh37 claim is safe to make.
+    ambiguous, _ = check_gene_annotation_version(_version_adata([_TP53], version="v50", genome=None))
+    settled, _ = check_gene_annotation_version(_version_adata([_TP53], version="v51", genome=None))
+    assert "could be Ensembl" in ambiguous[0]
+    assert "GRCh37 annotation" in settled[0] and "could be Ensembl" not in settled[0]
+
+
+def test_annotation_version_above_the_table_blames_the_reference_data():
+    # A release newer than the shipped table is a gap in our reference data, not a
+    # producer error: Ensembl keeps shipping releases after we regenerate.
+    warnings, _ = check_gene_annotation_version(_version_adata([_TP53], version="v999", genome=None))
+    assert len(warnings) == 1, warnings
+    assert "newer than this reference data covers" in warnings[0]
+
+
+def test_annotation_version_ignores_non_human_ensg_lookalikes():
+    # Gorilla identifiers are ENSGGOG..., so a prefix test would date them as human
+    # and report every one of them as unknown to Ensembl.
+    adata = _version_adata([_TP53, "ENSGGOG00000010861"], version="v98")
+    assert check_gene_annotation_version(adata) == ([], [])
+
+
+def test_annotation_version_not_applicable_genome_is_not_a_different_assembly():
+    # "not applicable" is one of reference_genome's own enum values; it declines to
+    # name an assembly rather than naming one that disagrees.
+    adata = _version_adata([_TP53], version="v98", genome="not applicable")
+    assert check_gene_annotation_version(adata) == ([], [])
+
+
+def test_annotation_version_all_unknown_genes_says_it_once():
+    # With nothing the table knows, there is nothing left to date: the second
+    # message would read "0 of 0 remain unexplained".
+    adata = _version_adata(["ENSG99999999999", "ENSG99999999998"], version="v98")
+    warnings, _ = check_gene_annotation_version(adata)
+    assert len(warnings) == 1 and "appear in no release" in warnings[0], warnings
+
+
+def test_annotation_version_examples_are_drawn_from_the_counted_genes():
+    # The count is of genes the table knows and the release predates; an identifier
+    # no release contains has its own message, and must not pad these examples.
+    adata = _version_adata([_TP53, _POST_R98, "ENSG99999999999"], version="v87")
+    warnings, _ = check_gene_annotation_version(adata)
+    dated = next(w for w in warnings if "did not exist in Ensembl r87" in w)
+    counted = int(dated.split(" of this file's")[0].rsplit(" ", 1)[-1].replace(",", ""))
+    assert counted == len(dated.split("for example ")[1].split(". The earliest")[0].split(", "))
+    assert "ENSG99999999999" not in dated
 
 
 def test_annotation_version_leaves_format_to_the_schema_pattern():
