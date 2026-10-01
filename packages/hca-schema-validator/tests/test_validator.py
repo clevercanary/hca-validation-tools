@@ -1980,6 +1980,23 @@ def test_annotation_version_unknown_identifiers_reported_once_per_file():
     assert sum("appear in no release" in w for w in warnings) == 1, warnings
 
 
+def test_annotation_version_settled_sub_76_still_compares_assemblies():
+    # twigger2022 declares v75 against reference_genome GRCh38. GENCODE never
+    # issued a 75, so the value can only be Ensembl r75 (GRCh37) -- and that
+    # contradiction is one the issue names, so it must survive the ambiguity
+    # handling rather than being silenced by it.
+    warnings, _ = check_gene_annotation_version(_version_adata([_TP53], version="v75", genome="GRCh38"))
+    assert any("name different assemblies" in w for w in warnings), warnings
+    assert any("GRCh37 annotation" in w for w in warnings), warnings
+
+
+def test_annotation_version_truly_ambiguous_makes_no_assembly_claim():
+    # v32 is inside GENCODE's range, so no assembly can be asserted and no
+    # mismatch may be reported against reference_genome.
+    warnings, _ = check_gene_annotation_version(_version_adata([_TP53], version="v32", genome="GRCh38"))
+    assert len(warnings) == 1 and "could be Ensembl r32 or GENCODE 32" in warnings[0], warnings
+
+
 def test_annotation_version_gencode_number_is_not_called_grch37():
     # GENCODE names its releases the way Ensembl does, and GENCODE v32 is the
     # Cell Ranger 2020-A reference (= Ensembl r98, GRCh38). Reading it as Ensembl

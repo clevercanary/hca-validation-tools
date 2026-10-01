@@ -1702,6 +1702,14 @@ def _annotation_version_messages(parsed, genome, ensg: set[str], n_features: int
         # here as a warning would say the same thing more quietly.
         return []
 
+    if parsed.kind == "ambiguous" and parsed.release > _highest_gencode_release():
+        # GENCODE has not issued this number, so it can only be an Ensembl
+        # release -- and every release below r76 is GRCh37. Settling it here
+        # rather than in its own branch is what lets it reach the assembly
+        # comparison below: twigger2022 declares v75 against reference_genome
+        # GRCh38, which is the contradiction this check exists to report.
+        parsed = parsed._replace(kind="release", assembly="GRCh37")
+
     if genome and parsed.assembly and parsed.assembly != genome:
         said.append(
             f"obs['gene_annotation_version'] is {parsed.raw!r} ({parsed.assembly}), but "
@@ -1739,23 +1747,16 @@ def _highest_gencode_release() -> int:
 def _ambiguous_release_number(parsed) -> list[str]:
     """Report a number below r76, which Ensembl and GENCODE both write the same way.
 
-    Only ambiguous while GENCODE has actually reached that number: above it the
-    GENCODE reading does not exist, so the value can only be an Ensembl release
-    and the GRCh37 claim is safe to make.
-
     No Ensembl equivalent is quoted for the GENCODE reading. The two schemes run
     a fixed distance apart only recently -- GENCODE 32 is Ensembl 98 and GENCODE
     48 is Ensembl 114 -- and not across the older range, where GENCODE 19 is the
     GRCh37 freeze rather than anything near r85. Naming a release we would have
     to extrapolate is the one part of this message that could be wrong, and the
     producer is being asked which scheme they meant, not for a conversion.
+
+    Only reached for numbers GENCODE has actually issued; above that the caller
+    has already settled the value as an Ensembl release.
     """
-    if parsed.release > _highest_gencode_release():
-        return [
-            f"obs['gene_annotation_version'] is {parsed.raw!r}. Ensembl r{_FIRST_GRCH38_RELEASE} is the "
-            f"first GRCh38 release, so r{parsed.release} is a GRCh37 annotation and the genes in this "
-            f"file cannot be dated against it."
-        ]
     return [
         f"obs['gene_annotation_version'] is {parsed.raw!r}, which could be Ensembl r{parsed.release} or "
         f"GENCODE {parsed.release}. Those are different annotations, on possibly different assemblies, "
