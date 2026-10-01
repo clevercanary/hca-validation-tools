@@ -31,7 +31,7 @@ Start with the evaluator, then gate the HCA validator on the schema it reports:
 Separately, stop if `index_masked` is a number **greater than 0**: the index contains nulls, which corrupt joins silently, and that is a problem with the data rather than with our tools. `index_masked` is `null` — not `0` — when the index carries no mask of its own, which is the ordinary case; on its own `null` is not a finding. A *categorical* index is the exception, and it cuts the other way: its nulls are codes of -1 over plain categories, which `_mask_count` cannot see and `unsupported` does not list — the report comes back clean on a file whose cell IDs contain nulls. On a categorical index `null` means *not checked*; only a tool that reads the index through `read_index` will refuse it (#659).
 
 - Run `/evaluate-h5ad $ARGUMENTS` — produces the structured overview report (schema type, X verdict, matrix & embedding gate, metadata, storage, embeddings, CAP, edit history, summary). This already calls `check_schema_type` and `check_x_normalization`, so their verdicts are available for Step 2 gating without a separate tool call.
-- If the evaluator reports `schema: "hca"`, run `validate_schema $ARGUMENTS` — the HCA schema validator (`is_valid`, full `errors` and `warnings` lists). These are the authoritative blocking/advisory signals for Bucket B decisions. Feature-ID warnings are ordered last; summarize repeated shapes in the punch list rather than pasting thousands of lines verbatim.
+- If the evaluator reports `schema: "hca"`, run `validate_schema $ARGUMENTS` — the HCA schema validator (`is_valid`, full `errors` and `warnings` lists). These are the authoritative blocking/advisory signals for Bucket B decisions. Feature-ID warnings are ordered last; summarize repeated shapes in the punch list rather than pasting thousands of lines verbatim. **That rule does not extend to `gene_annotation_version` warnings.** They are gene-shaped and sit among the feature-ID wall, but there are only one to three per file and each carries the numbers that *are* the finding — the declared value, how many genes contradict it, named examples, and the releases that do explain the file. Quote them verbatim; summarizing one away destroys it.
 - If the evaluator reports `schema: "cellxgene"`, **do not** run `validate_schema` yet — the HCA validator would report a large, mostly irrelevant error list. `convert_cellxgene_to_hca` moves into Bucket A; after it runs, re-enter Step 1 on the converted file to get the accurate HCA findings.
 
 ### Privacy scan — ethnicity and race columns only
@@ -119,6 +119,11 @@ Report these but don't attempt to fix:
 - Sparse or missing `ambient_count_correction` / `doublet_detection` obs columns — per-cell values must come from the upstream source (each source dataset's processing record). Do not broadcast a single value. Report fill rate and move on.
 - Delimited-list values in single-identifier columns (e.g. `library_preparation_batch` containing `"lib1; lib2; lib3"`) — needs per-cell resolution, not placeholder replacement.
 - Gene IDs missing from the current GENCODE — needs annotation-version decision.
+- **`obs['gene_annotation_version']` contradicted by the file's own genes** (`check_gene_annotation_version`, #710) — a different finding from the row above, and it must not be folded into it. The declared release either predates genes the file contains or postdates genes it still carries, or it disagrees with `obs['reference_genome']`. Relay to the producer. `set_uns` cannot reach it — this is an obs column, not a uns field. `backfill_obs_from_source` *can* write it, joining a source dataset's cells to the target's on the obs index, and on an integrated object that is a legitimate mechanism: the value then comes from the source dataset's own record rather than from anyone's inference. That is a different act from filling in a number the validator suggested, and only the second is forbidden.
+
+  **Do not write the validator's suggested releases back into the file.** The message names the releases that explain the file — "Releases r105 to r110 contain every gene here" — and that number looks like the answer. It is not. It is a *window*, not a release; and because every real file is filtered to detected genes, the window is a **superset** of the truth, so the real annotation may be narrower than the one quoted. Treat it as evidence for the producer to confirm against their own pipeline record, never as a value to fill in. Rule 1 applies with force here precisely because the validator hands you a specific-looking number.
+
+  On an integrated object, several distinct values is its own finding, and the grain is unsettled (#719): the object has one `var` index, so one annotation describes its feature space, but the column is per-cell and may be recording each source dataset's annotation instead. Report what you see and leave the interpretation to #719 rather than asserting which it should be.
 - Inconsistent `author_cell_type` variants — needs a curator mapping.
 - (CAP annotations are handled in Bucket B above — the wrangler provides a CAP source file and `copy_cap_annotations` runs mechanically.)
 - Cells whose labels don't match the atlas focus (e.g. non-myeloid labels in a myeloid atlas) — needs a curator decision on keep/drop.
@@ -215,6 +220,8 @@ Only include the rows for tools that actually ran this session.
 | `hcaCellAnnotation` warnings | N | M |
 | Named issues resolved | — | e.g. "raw.X absent", "`unknown` placeholder in `library_preparation_batch`" |
 
+`gene_annotation_version` warnings land in the non-feature-ID row and are expected to be **identical before and after** — nothing in Bucket A touches that column, and nothing should. A persistent count there is the check working, not a fix that failed, the same way the CAP zero-observation row persists by design.
+
 Counts mirror the two validators the dataset-validator service runs at upload time: `hcaSchema` (Tier 1 + cosmetic checks, from `validate_schema`) and `hcaCellAnnotation` (CAP structural checks, from `validate_cell_annotation`). Each validator's rows (all of its `hcaSchema:*` rows, or all of its `hcaCellAnnotation:*` rows) omit cleanly together when that validator wasn't run this session — e.g. the cell-annotation rows are skipped wholesale on files without CAP.
 
 Count **CAP "zero observations" warnings** (text: `contains a category '...' with zero observations`) separately from other `hcaSchema` warnings. These are *expected* after `copy_cap_annotations`: CAP declares a closed vocabulary per annotation set that spans all lineages, and a per-lineage file only realizes a subset — unused vocabulary terms are intentional schema information, not a defect. Report the count and move on; don't prune them. The validator's `--add-labels` remediation note comes from vendored CellxGENE code and does not apply to HCA.
@@ -280,6 +287,7 @@ Report each missing marker by **symbol and classification only**. Do not specula
 | Issue | Detail |
 |---|---|
 | `library_id` NaN (validator error) | Needs real values from source |
+| `gene_annotation_version` contradicted by the genes | Declared `v87`; 80 of 20,032 genes postdate it. Releases r105–r110 explain the file — a window, and a superset for a filtered gene list, so the producer confirms against their pipeline record rather than us filling it in |
 
 Only surface items that are still open — don't re-list anything resolved this session. Omit any of the three sub-tables that have no entries.
 
