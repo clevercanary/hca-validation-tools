@@ -9,7 +9,13 @@ import pandas as pd
 import pytest
 import yaml
 
-from hca_schema_validator import HCA_DERIVED_OBS_LABELS, HCAValidator, check_donor_consistency
+from hca_schema_validator import (
+    HCA_DERIVED_OBS_LABELS,
+    HCAValidator,
+    check_donor_consistency,
+    check_gene_annotation_version,
+    parse_annotation_version,
+)
 from hca_schema_validator.validator import DESOUPED_COUNTS_LAYER, DONOR_GRAIN_COLUMNS
 
 # Test fixtures directory
@@ -608,7 +614,13 @@ def test_pattern_invalid_cell_enrichment():
 
 
 def test_pattern_invalid_gene_annotation_version():
-    """Test that gene_annotation_version 'v50' does not match the version pattern."""
+    """A malformed gene_annotation_version is a pattern error.
+
+    The pattern checks well-formedness only. It used to hard-code v75-v111, a
+    range no schema specified and which had gone stale, so an out-of-range but
+    well-formed value like 'v50' is now reported by check_gene_annotation_version
+    against the Ensembl-derived table instead (#710, #719).
+    """
     import anndata
     import numpy
     from scipy import sparse
@@ -616,8 +628,8 @@ def test_pattern_invalid_gene_annotation_version():
     from .fixtures.hca_fixtures import good_obs, good_obsm, good_uns, good_var
 
     obs = good_obs.copy()
-    obs["gene_annotation_version"] = obs["gene_annotation_version"].cat.add_categories(["v50"])
-    obs["gene_annotation_version"] = "v50"
+    obs["gene_annotation_version"] = obs["gene_annotation_version"].cat.add_categories(["v50xyz"])
+    obs["gene_annotation_version"] = "v50xyz"
     X = sparse.csr_matrix((obs.shape[0], good_var.shape[0]), dtype=numpy.float32)
     test_adata = anndata.AnnData(X=X, obs=obs, uns=good_uns.copy(), obsm=good_obsm.copy(), var=good_var.copy())
     test_adata.raw = test_adata.copy()
@@ -628,7 +640,7 @@ def test_pattern_invalid_gene_annotation_version():
     error_messages = " ".join(validator.errors)
     assert "gene_annotation_version" in error_messages
     assert "not valid" in error_messages.lower()
-    assert "gencode" in error_messages.lower()
+    assert "ensembl release" in error_messages.lower()
 
 
 def test_pattern_valid_na_cell_enrichment():
@@ -1856,3 +1868,129 @@ def test_donor_grain_columns_match_linkml_donor_slots():
     assert error_tier == donor_slots - set(_DONOR_SLOTS_NOT_CHECKED)
     # The warning tier is deliberately sample-grain; a slot moving onto Donor must be promoted.
     assert not warning_tier & donor_slots
+
+
+# --- gene_annotation_version (#710) ------------------------------------------
+# Gene identifiers below are real and their release histories were measured
+# against Ensembl's archive databases, so these fixtures assert facts rather
+# than invented ones. ENSG00000141510 is TP53, present throughout.
+_TP53 = "ENSG00000141510"
+# First appears after r98; found in gray2022, which declares v87.
+_POST_R98 = "ENSG00000288825"
+# Retired at r105 and present again at r109 -- the reason the table stores
+# intervals rather than one (first, last) pair.
+_RESURRECTED = "ENSG00000288593"
+
+
+def _version_adata(genes, version="v98", genome="GRCh38", organism="NCBITaxon:9606", n=2):
+    obs = {"gene_annotation_version": [version] * n}
+    if genome is not None:
+        obs["reference_genome"] = [genome] * n
+    if organism is not None:
+        obs["organism_ontology_term_id"] = [organism] * n
+    return anndata.AnnData(
+        X=np.zeros((n, len(genes)), dtype=np.float32),
+        obs=pd.DataFrame(obs, index=[f"cell_{i}" for i in range(n)]),
+        var=pd.DataFrame(index=list(genes)),
+    )
+
+
+@pytest.mark.parametrize(
+    ("value", "kind", "release"),
+    [
+        ("v98", "release", 98),
+        ("98", "release", 98),
+        ("v110", "release", 110),
+        ("GCF_000001405.39", "assembly", None),
+        ("GCF_000001405.25", "assembly", None),
+        ("v75", "release", 75),
+        ("nan", "missing", None),
+        ("Not available", "missing", None),
+        ("", "missing", None),
+        ("Ensembl 98-GENCODE 32", "uninterpretable", None),
+    ],
+)
+def test_annotation_version_parses_exactly_or_declines(value, kind, release):
+    parsed = parse_annotation_version(value)
+    assert (parsed.kind, parsed.release) == (kind, release), parsed
+
+
+def test_annotation_version_accession_assemblies():
+    # .26 is the first GRCh38 accession; .25 and below are GRCh37 patches.
+    assert parse_annotation_version("GCF_000001405.26").assembly == "GRCh38"
+    assert parse_annotation_version("GCF_000001405.25").assembly == "GRCh37"
+
+
+def test_annotation_version_silent_when_consistent():
+    # TP53 exists in every release, so no release is ruled out by it.
+    assert check_gene_annotation_version(_version_adata([_TP53], version="v98")) == ([], [])
+
+
+def test_annotation_version_too_early_names_the_genes():
+    warnings, errors = check_gene_annotation_version(_version_adata([_TP53, _POST_R98], version="v87"))
+    assert errors == []
+    assert len(warnings) == 1, warnings
+    assert _POST_R98 in warnings[0] and "did not exist in Ensembl r87" in warnings[0]
+
+
+def test_annotation_version_later_declaration_is_allowed():
+    # The gene content gives a lower bound; declaring something newer is legitimate.
+    assert check_gene_annotation_version(_version_adata([_TP53, _POST_R98], version="v114")) == ([], [])
+
+
+def test_annotation_version_assembly_mismatch():
+    warnings, _ = check_gene_annotation_version(_version_adata([_TP53], version="v98", genome="GRCh37"))
+    assert any("name different assemblies" in w for w in warnings), warnings
+
+
+def test_annotation_version_accession_is_not_an_annotation():
+    # The schema's own example is an accession (#719), so this is not the producer's error.
+    warnings, _ = check_gene_annotation_version(_version_adata([_TP53], version="GCF_000001405.39"))
+    assert len(warnings) == 1 and "names a genome assembly rather than a gene annotation" in warnings[0]
+
+
+def test_annotation_version_release_that_does_not_exist():
+    # The schema pattern now checks only well-formedness, so whether a release is
+    # real is decided here, against the table regenerated from Ensembl.
+    warnings, _ = check_gene_annotation_version(_version_adata([_TP53], version="v32", genome=None))
+    assert len(warnings) == 1 and "no such GRCh38 Ensembl release is known" in warnings[0], warnings
+
+
+def test_annotation_version_leaves_format_to_the_schema_pattern():
+    # 'Ensembl 98-GENCODE 32' is a format error from the pattern; repeating it as a
+    # warning here would say the same thing more quietly.
+    adata = _version_adata([_TP53], version="Ensembl 98-GENCODE 32")
+    assert check_gene_annotation_version(adata) == ([], [])
+
+
+def test_annotation_version_silent_on_non_human():
+    adata = _version_adata([_TP53], version="v87", organism="NCBITaxon:10090")
+    assert check_gene_annotation_version(adata) == ([], [])
+
+
+def test_annotation_version_silent_without_the_column():
+    adata = anndata.AnnData(obs=pd.DataFrame({"donor_id": ["d1"]}, index=["cell_0"]))
+    assert check_gene_annotation_version(adata) == ([], [])
+
+
+def test_annotation_version_ignores_non_ensembl_features():
+    # Spike-ins have no Ensembl release; left in, every release would fail to explain them.
+    adata = _version_adata([_TP53, "ERCC-00096", "ERCC-00171"], version="v98")
+    assert check_gene_annotation_version(adata) == ([], [])
+
+
+def test_annotation_version_reports_genes_no_release_knows():
+    adata = _version_adata([_TP53, "ENSG99999999999"], version="v98")
+    warnings, _ = check_gene_annotation_version(adata)
+    assert len(warnings) == 1 and "does not know" in warnings[0], warnings
+
+
+def test_resurrected_gene_is_absent_between_its_runs():
+    # ENSG00000288593 is retired at r105 and returns at r109. A flat (first, last)
+    # pair would claim it existed throughout, and r106 would wrongly look valid.
+    from hca_schema_validator.validator import _gene_release_intervals
+
+    table, _, _ = _gene_release_intervals()
+    runs = table.get(_RESURRECTED)
+    assert runs is not None and len(runs) > 1, f"expected more than one run, got {runs}"
+    assert not any(first <= 107 <= last for first, last in runs), runs

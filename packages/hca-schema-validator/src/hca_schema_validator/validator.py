@@ -1,7 +1,10 @@
 """HCA Validator - extends cellxgene Validator with HCA-specific rules."""
 
+import csv
 import functools
+import gzip
 import re
+from collections import namedtuple
 from pathlib import Path
 
 import numpy as np
@@ -95,6 +98,11 @@ class HCAValidator(Validator):
         self.warnings.extend(warnings)
         self.errors.extend(errors)
 
+    def _check_gene_annotation_version(self):
+        warnings, errors = check_gene_annotation_version(self.adata)
+        self.warnings.extend(warnings)
+        self.errors.extend(errors)
+
     def _deep_check(self):
         """
         The base class skips raw validation when *any* errors exist, but raw
@@ -113,6 +121,7 @@ class HCAValidator(Validator):
         self._check_cosmetic_label_columns()
         self._check_x_normalization()
         self._check_donor_consistency()
+        self._check_gene_annotation_version()
 
     def _validate_list(self, list_name, current_list, element_type):
         """
@@ -1480,3 +1489,243 @@ def _donor_fill_in_message(col, fillable):
         f"obs['{col}']: {subject} an unknown value with a real value and can be "
         f"filled in: {_format_donor_values(fillable)}."
     )
+
+
+# --- gene_annotation_version (#710) ------------------------------------------
+# Release 76 is the first GRCh38 core database; r75 and earlier are GRCh37.
+_FIRST_GRCH38_RELEASE = 76
+# RefSeq accessions for the human assembly: GCF_000001405.26 is GRCh38, and
+# .13-.25 are GRCh37 patches.
+_FIRST_GRCH38_ACCESSION = 26
+_ACCESSION_RE = re.compile(r"^GCF_0*1405\.(\d+)$", re.IGNORECASE)
+_RELEASE_RE = re.compile(r"^v?(\d{2,3})$", re.IGNORECASE)
+# Values that say "nothing recorded" rather than making a claim.
+_VERSION_NOT_A_CLAIM = frozenset({"", "nan", "none", "na", "unknown", "not available", "not applicable"})
+_INTERVALS_PATH = Path(__file__).parent / "gene_release_intervals.csv.gz"
+_HUMAN_ORGANISM = "NCBITaxon:9606"
+
+# Parsed forms of obs['gene_annotation_version'].
+#   release     - an Ensembl release number, datable against the gene list
+#   assembly    - an assembly accession; names a genome, not an annotation (#719)
+#   ambiguous   - a bare number below 76: Ensembl 32 or GENCODE 32 are both readings
+#   missing     - nothing recorded
+#   uninterpretable - none of the above
+ParsedVersion = namedtuple("ParsedVersion", "kind release assembly raw")
+
+
+def parse_annotation_version(value) -> ParsedVersion:
+    """Read one ``gene_annotation_version`` value, or decline to.
+
+    Strict by design. Every form it accepts is matched exactly, and anything
+    else is reported rather than guessed at, because a value interpreted wrongly
+    is worse than one left alone in a check about wrong metadata.
+
+    The schema documents this field with assembly accessions (its example is
+    ``GCF_000001405.40``, which is GRCh38.p14), so an accession is a conforming
+    value that happens to name a genome rather than an annotation. It is parsed,
+    and reported as not-an-annotation rather than as the producer's mistake.
+    """
+    raw = "" if value is None else str(value).strip()
+    if raw.lower() in _VERSION_NOT_A_CLAIM:
+        return ParsedVersion("missing", None, None, raw)
+
+    if match := _ACCESSION_RE.match(raw):
+        patch = int(match.group(1))
+        return ParsedVersion("assembly", None, "GRCh38" if patch >= _FIRST_GRCH38_ACCESSION else "GRCh37", raw)
+
+    if match := _RELEASE_RE.match(raw):
+        release = int(match.group(1))
+        assembly = "GRCh38" if release >= _FIRST_GRCH38_RELEASE else "GRCh37"
+        return ParsedVersion("release", release, assembly, raw)
+
+    # The schema pattern rejects anything else as a format error, so there is
+    # nothing useful to add here beyond declining to judge the content.
+    return ParsedVersion("uninterpretable", None, None, raw)
+
+
+@functools.lru_cache(maxsize=1)
+def _gene_release_intervals() -> tuple[dict[str, list[tuple[int, int]]], int, int]:
+    """Read the shipped table: gene -> runs of releases it exists in, and the covered range.
+
+    Intervals rather than one (first, last) pair because genes are occasionally
+    resurrected -- ENSG00000288593 is retired at r105 and returns at r109 -- and
+    a flat pair would claim it existed in between.
+    """
+    table: dict[str, list[tuple[int, int]]] = {}
+    with gzip.open(_INTERVALS_PATH, "rt", newline="") as fh:
+        rows = csv.reader(line for line in fh if not line.startswith("#"))
+        next(rows, None)  # header
+        for gene, first, last in rows:
+            table.setdefault(gene, []).append((int(first), int(last)))
+    covered = [r for runs in table.values() for pair in runs for r in pair]
+    return table, min(covered), max(covered)
+
+
+def _earliest_release_explaining(genes: set[str]) -> tuple[int | None, dict[int, int], set[str]]:
+    """The earliest release containing every known gene, the per-release shortfall, and the unknown genes.
+
+    A gene cannot be present before Ensembl defined it, so the earliest release
+    that contains all of a file's genes is a hard lower bound on what produced
+    it. Genes the table has never heard of cannot be explained by any release
+    and are returned separately rather than making every release look wrong.
+    """
+    table, first_covered, last_covered = _gene_release_intervals()
+    releases = range(first_covered, last_covered + 1)
+    covered_count = dict.fromkeys(releases, 0)
+    unknown = set()
+    for gene in genes:
+        runs = table.get(gene)
+        if runs is None:
+            unknown.add(gene)
+            continue
+        for first, last in runs:
+            for r in range(first, last + 1):
+                covered_count[r] += 1
+    known = len(genes) - len(unknown)
+    shortfall = {r: known - covered_count[r] for r in releases}
+    earliest = next((r for r in releases if shortfall[r] == 0), None) if known else None
+    return earliest, shortfall, unknown
+
+
+def check_gene_annotation_version(adata):
+    """Report a declared gene annotation the file's own genes rule out. #710.
+
+    Two independent comparisons, one needing no reference data:
+
+    1. The declared value and ``reference_genome`` must name the same assembly.
+       Ensembl r76 and later, and RefSeq accessions .26 and later, are GRCh38.
+    2. The declared release cannot predate the genes. For each release, count
+       the genes it cannot explain; the earliest release explaining all of them
+       is a lower bound on what produced the file. Declaring a *later* release
+       is legitimate, so only the too-early direction is reported.
+
+    Dates on human ``ENSG`` identifiers only. Spike-ins, other species and
+    custom features have no Ensembl release, and left in they would make every
+    release fail to explain the file.
+
+    Silent on non-human data: the shipped table is human, and the validator
+    accepts several organisms, so a note on every one of them would be noise.
+
+    Returns:
+        ``(warnings, errors)`` -- two lists of strings. Everything here is a
+        warning: the field is the producer's to correct, and the schema itself
+        documents it with assembly accessions (#719), so some non-datable
+        values are conforming rather than mistaken.
+    """
+    obs = getattr_anndata(adata, "obs")
+    if obs is None or "gene_annotation_version" not in obs.columns:
+        return [], []
+
+    if "organism_ontology_term_id" in obs.columns:
+        organisms = {str(v) for v in obs["organism_ontology_term_id"].dropna().unique()}
+        if organisms and organisms != {_HUMAN_ORGANISM}:
+            return [], []
+
+    declared = {str(v) for v in obs["gene_annotation_version"].dropna().unique()}
+    declared.discard("nan")
+    if not declared:
+        return [], []
+
+    genome = None
+    if "reference_genome" in obs.columns:
+        genomes = {str(v) for v in obs["reference_genome"].dropna().unique()} - {"nan"}
+        genome = genomes.pop() if len(genomes) == 1 else None
+
+    var = getattr_anndata(adata, "var")
+    gene_ids = {str(i).split(".")[0] for i in var.index} if var is not None else set()
+    ensg = {g for g in gene_ids if g.startswith("ENSG")}
+
+    warnings = []
+    for value in sorted(declared):
+        warnings.extend(_annotation_version_messages(parse_annotation_version(value), genome, ensg, len(gene_ids)))
+    return warnings, []
+
+
+def _annotation_version_messages(parsed, genome, ensg: set[str], n_features: int) -> list[str]:
+    """Everything sayable about one declared value."""
+    said = []
+    if parsed.kind == "missing":
+        return []
+
+    if parsed.kind == "uninterpretable":
+        # The schema pattern already reports this as a format error; repeating it
+        # here as a warning would say the same thing more quietly.
+        return []
+
+    if genome and parsed.assembly and parsed.assembly != genome:
+        said.append(
+            f"obs['gene_annotation_version'] is {parsed.raw!r} ({parsed.assembly}), but "
+            f"obs['reference_genome'] is {genome!r}. These name different assemblies."
+        )
+
+    if parsed.kind == "assembly":
+        said.append(
+            f"obs['gene_annotation_version'] is {parsed.raw!r}, which names a genome assembly rather "
+            f"than a gene annotation, so the genes in this file cannot be checked against it. Two "
+            f"datasets on the same assembly can use annotations differing by thousands of genes."
+        )
+        return said
+
+    said.extend(_release_against_genes(parsed, ensg, n_features))
+    return said
+
+
+def _release_against_genes(parsed, ensg: set[str], n_features: int) -> list[str]:
+    """Compare a declared Ensembl release with what the gene list can support.
+
+    Also reports a declared release that does not exist. The schema pattern
+    checks only that the value is well formed -- it used to hard-code a range,
+    which no schema specified and which had gone stale -- so whether a release
+    is real is decided here, against the table regenerated from Ensembl (#719).
+    """
+    _, first_covered, last_covered_range = _gene_release_intervals()
+    if not (first_covered <= parsed.release <= last_covered_range):
+        return [
+            f"obs['gene_annotation_version'] is {parsed.raw!r}, but no such GRCh38 Ensembl release "
+            f"is known -- this reference covers r{first_covered} to r{last_covered_range}."
+        ]
+    if not ensg:
+        return []
+    earliest, shortfall, unknown = _earliest_release_explaining(ensg)
+    _, _, last_covered = _gene_release_intervals()
+    said = []
+
+    skipped = n_features - len(ensg)
+    context = f" ({skipped:,} non-Ensembl feature(s) were not used for dating)" if skipped else ""
+
+    if unknown:
+        # Reported whether or not the known genes date cleanly: an identifier no
+        # release contains means a newer annotation than this table covers, or a
+        # reference we do not have. Folding it into the release comparison would
+        # hide it.
+        said.append(
+            f"{len(unknown):,} of this file's {len(ensg):,} Ensembl identifiers appear in no release "
+            f"through r{last_covered}, which this reference data does not know -- for example "
+            f"{', '.join(sorted(unknown)[:3])}. The file may use an annotation newer than r{last_covered}, "
+            f"or a reference built outside Ensembl."
+        )
+
+    if earliest is None:
+        best = min(shortfall.values()) if shortfall else 0
+        said.append(
+            f"obs['gene_annotation_version'] is {parsed.raw!r}, but no Ensembl release through r{last_covered} "
+            f"contains every one of this file's known genes -- {best:,} of {len(ensg) - len(unknown):,} remain "
+            f"unexplained at the closest release{context}."
+        )
+        return said
+
+    missing_here = shortfall.get(parsed.release)
+    if missing_here:
+        examples = sorted(g for g in ensg if not _present_at(g, parsed.release))[:3]
+        said.append(
+            f"obs['gene_annotation_version'] is {parsed.raw!r}, but {missing_here:,} of this file's "
+            f"{len(ensg):,} genes did not exist in Ensembl r{parsed.release} -- for example "
+            f"{', '.join(examples)}. The earliest release containing every gene here is r{earliest}, so the "
+            f"declared value cannot be correct{context}."
+        )
+    return said
+
+
+def _present_at(gene: str, release: int) -> bool:
+    table, _, _ = _gene_release_intervals()
+    return any(first <= release <= last for first, last in table.get(gene, ()))
