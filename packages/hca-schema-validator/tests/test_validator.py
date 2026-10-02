@@ -2078,7 +2078,27 @@ def test_annotation_version_ambiguity_stops_where_gencode_has_not_reached():
     ambiguous, _ = check_gene_annotation_version(_version_adata([_TP53], version=f"v{highest}", genome=None))
     settled, _ = check_gene_annotation_version(_version_adata([_TP53], version=f"v{highest + 1}", genome=None))
     assert "could be Ensembl" in ambiguous[0]
-    assert "GRCh37 annotation" in settled[0] and "could be Ensembl" not in settled[0]
+    assert "could be Ensembl" not in settled[0]
+
+
+def test_annotation_version_pre_grch37_releases_claim_no_assembly():
+    # Verified against the archive's own database names -- homo_sapiens_core
+    # _{55..75}_37 and _{76..116}_38, with nothing older served -- so r55 is the
+    # first GRCh37 release and r54 and earlier used NCBI36. An earlier revision
+    # called everything below r76 GRCh37, which this pinned at v51.
+    from hca_schema_validator.validator import _FIRST_GRCH37_RELEASE
+
+    older, _ = check_gene_annotation_version(
+        _version_adata([_TP53], version=f"v{_FIRST_GRCH37_RELEASE - 1}", genome=None)
+    )
+    grch37, _ = check_gene_annotation_version(_version_adata([_TP53], version=f"v{_FIRST_GRCH37_RELEASE}", genome=None))
+    assert "predates both" in older[0] and "is a GRCh37 annotation" not in older[0], older[0]
+    assert "is a GRCh37 annotation" in grch37[0], grch37[0]
+    # And claiming no assembly means no mismatch is reported against GRCh38.
+    against_38, _ = check_gene_annotation_version(
+        _version_adata([_TP53], version=f"v{_FIRST_GRCH37_RELEASE - 1}", genome="GRCh38")
+    )
+    assert not any("name different assemblies" in w for w in against_38), against_38
 
 
 def test_annotation_version_above_the_table_blames_the_reference_data():

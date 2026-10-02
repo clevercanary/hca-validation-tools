@@ -1493,8 +1493,13 @@ def _donor_fill_in_message(col, fillable):
 
 
 # --- gene_annotation_version (#710) ------------------------------------------
-# Release 76 is the first GRCh38 core database; r75 and earlier are GRCh37.
+# Release 76 is the first GRCh38 core database and r55 the first GRCh37 one.
+# Verified against the archive itself, whose database names carry the assembly:
+# homo_sapiens_core_{55..75}_37 and homo_sapiens_core_{76..116}_38, with nothing
+# older served. So r54 and earlier predate GRCh37 (NCBI36) and name an assembly
+# this check does not speak for -- the same treatment accessions below .13 get.
 _FIRST_GRCH38_RELEASE = 76
+_FIRST_GRCH37_RELEASE = 55
 # RefSeq accessions for the human assembly: GCF_000001405.26 is GRCh38, and
 # .13-.25 are GRCh37 patches. Below .13 is older still (.12 is NCBI36), so those
 # name an assembly this check has no business labelling.
@@ -1801,8 +1806,10 @@ def _annotation_version_messages(
         # release -- and every release below r76 is GRCh37. Settling it here
         # rather than in its own branch is what lets it reach the assembly
         # comparison below: twigger2022 declares v75 against reference_genome
-        # GRCh38, which is the contradiction this check exists to report.
-        parsed = parsed._replace(kind="release", assembly="GRCh37")
+        # GRCh38, which is the contradiction this check exists to report. Only
+        # r55 and later are GRCh37; older releases used NCBI36 and claim nothing.
+        assembly = "GRCh37" if parsed.release >= _FIRST_GRCH37_RELEASE else None
+        parsed = parsed._replace(kind="release", assembly=assembly)
 
     for genome, cells in sorted(genomes.items()):
         if not parsed.assembly or parsed.assembly == genome:
@@ -1984,6 +1991,12 @@ def _release_against_genes(parsed, ensg: set[str], n_features: int, dated) -> li
     # Against the constant, not the table's floor: which release first carried
     # GRCh38 is a fact about Ensembl, and reading it off the shipped data would
     # let a narrower table rewrite it.
+    if parsed.release < _FIRST_GRCH37_RELEASE:
+        return [
+            f"obs['gene_annotation_version'] is {parsed.raw!r}. Ensembl r{_FIRST_GRCH37_RELEASE} is the first "
+            f"GRCh37 release and r{_FIRST_GRCH38_RELEASE} the first GRCh38 one, so r{parsed.release} predates "
+            f"both and the genes in this file cannot be checked against it."
+        ]
     if parsed.release < _FIRST_GRCH38_RELEASE:
         return [
             f"obs['gene_annotation_version'] is {parsed.raw!r}. Ensembl r{_FIRST_GRCH38_RELEASE} is the first "
