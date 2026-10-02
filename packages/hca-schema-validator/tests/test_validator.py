@@ -2158,6 +2158,25 @@ def test_annotation_version_leaves_format_to_the_schema_pattern():
     assert check_gene_annotation_version(adata) == ([], [])
 
 
+def test_annotation_version_dates_genes_without_an_organism_statement():
+    # Dating rests on ENSG identifiers, which are human by construction, so it
+    # needs no organism column. A blanket gate silenced 20 prod files that have
+    # none -- 17 of them eye -- losing findings that were true of them.
+    adata = _version_adata([_TP53, _POST_R98], version="v87", genome="GRCh38", organism=None)
+    warnings, _ = check_gene_annotation_version(adata)
+    assert len(warnings) == 1, warnings
+    assert "did not exist in Ensembl r87" in warnings[0], warnings[0]
+    # ...but nothing assembly-shaped, since r87 means GRCh37 only for a human file.
+    assert "assemblies" not in warnings[0] and "GRCh37" not in warnings[0], warnings[0]
+
+
+def test_annotation_version_mouse_file_is_silent():
+    # A real non-human file carries non-human features, so the ENSG filter
+    # leaves nothing to date and the organism gate never has to catch it.
+    adata = _version_adata(["ENSMUSG00000102693", "ENSMUSG00000051951"], version="v98", genome="GRCm39", organism=None)
+    assert check_gene_annotation_version(adata) == ([], [])
+
+
 def test_annotation_version_needs_organism_stated_not_merely_not_contradicted():
     # _deep_check runs after schema errors are collected, so a mouse file whose
     # required organism column is missing or null still reaches this check. The

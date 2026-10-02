@@ -1702,20 +1702,26 @@ def check_gene_annotation_version(adata):
         if duplicated & {"gene_annotation_version", "reference_genome", "organism_ontology_term_id"}:
             return [], []
 
-    # Silent unless every row says human, explicitly. The shipped table is human
-    # and so is the release-to-assembly mapping -- Ensembl numbers releases
-    # across all species, so r110 says GRCh38 only for a human file. Requiring
-    # the positive statement rather than rejecting a non-human one matters
-    # because _deep_check runs after schema errors are collected: a mouse file
-    # whose required organism column is missing or null would otherwise be
-    # treated as human and told its GRCm39 reference contradicts r98. A file
-    # carrying any other organism is out of scope for this check rather than a
-    # case to pick apart -- HCA curates human data, and a non-human organism is
-    # a defect for the schema to report (see #723).
-    if "organism_ontology_term_id" not in obs.columns:
-        return [], []
-    if not (obs["organism_ontology_term_id"].astype(str) == _HUMAN_ORGANISM).all():
-        return [], []
+    # The two comparisons rest on different evidence, so they are gated
+    # separately.
+    #
+    # Dating needs no organism statement: it runs on ENSG identifiers, which are
+    # human by construction, against a human table. A file whose required
+    # organism column is missing still has a gene list, and "80 of these genes
+    # postdate the release you declared" is true of it either way -- 20 prod
+    # files, 17 of them eye, have no organism column and were losing real
+    # findings to a blanket gate.
+    #
+    # Everything assembly-shaped does need it, because the release-to-assembly
+    # mapping is human-only: Ensembl numbers releases across all species, so
+    # r110 means GRCh38 for a human file and GRCm39 for a mouse one. Requiring
+    # the positive statement rather than rejecting an explicitly non-human one
+    # matters because _deep_check runs after schema errors are collected -- a
+    # mouse file with no organism column would otherwise be told its GRCm39
+    # reference contradicts r98. A non-human organism is a defect for the schema
+    # to report (see #723), not for this check to interpret.
+    organism = obs["organism_ontology_term_id"] if "organism_ontology_term_id" in obs.columns else None
+    human = organism is not None and bool((organism.astype(str) == _HUMAN_ORGANISM).all())
 
     declared = {str(v) for v in obs["gene_annotation_version"].dropna().unique()}
     declared.discard("nan")
@@ -1761,6 +1767,7 @@ def check_gene_annotation_version(adata):
                 pairs.get(value, {}),
                 n_cells,
                 n_genomes,
+                human,
                 ensg,
                 len(gene_ids),
                 dated,
@@ -1786,11 +1793,14 @@ def _assembly_pairs(obs) -> dict[str, dict[str, int]]:
 
 
 def _annotation_version_messages(
-    parsed, genomes, n_cells, n_genomes, ensg: set[str], n_features: int, dated
+    parsed, genomes, n_cells, n_genomes, human, ensg: set[str], n_features: int, dated
 ) -> list[str]:
     """Everything sayable about one declared value.
 
     ``genomes`` maps each assembly this value is paired with to its cell count.
+    ``human`` is whether every row states the human organism; without it only
+    the gene comparison runs, since that is the half ENSG identifiers support on
+    their own.
     """
     said = []
     if parsed.kind == "missing":
@@ -1800,6 +1810,10 @@ def _annotation_version_messages(
         # The schema pattern already reports this as a format error; repeating it
         # here as a warning would say the same thing more quietly.
         return []
+
+    if not human:
+        # Only the half the gene list supports by itself.
+        return _release_against_genes(parsed, ensg, n_features, dated) if parsed.kind == "release" else []
 
     if parsed.kind == "ambiguous" and parsed.release > _highest_gencode_release():
         # GENCODE has not issued this number, so it can only be an Ensembl
