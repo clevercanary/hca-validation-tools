@@ -2149,6 +2149,23 @@ def test_annotation_version_resurrection_gap_is_explained_and_excluded():
     assert "0 retired before it" not in warnings[0], warnings[0]
 
 
+def test_first_grch38_release_is_not_read_off_the_table():
+    # The shipped table happens to start at r76, but which release first carried
+    # GRCh38 is a fact about Ensembl, not about our data. If the archive ever
+    # stops serving r76 the table narrows, and reading the floor off it would
+    # make the check announce r77 as the first GRCh38 release and call r76 a
+    # GRCh37 annotation. The generator refuses to build such a table; this pins
+    # the claim to the constant so both ends have to fail before that is said.
+    from hca_schema_validator.validator import _FIRST_GRCH38_RELEASE, _gene_release_intervals
+
+    _, first_covered, _ = _gene_release_intervals()
+    assert first_covered == _FIRST_GRCH38_RELEASE
+    warnings, _ = check_gene_annotation_version(
+        _version_adata([_TP53], version=f"v{_FIRST_GRCH38_RELEASE - 1}", genome=None)
+    )
+    assert f"Ensembl r{_FIRST_GRCH38_RELEASE} is the first GRCh38 release" in warnings[0], warnings[0]
+
+
 def test_resurrected_gene_is_absent_between_its_runs():
     # ENSG00000288593 is retired at r105 and returns at r109. A flat (first, last)
     # pair would claim it existed throughout, and r106 would wrongly look valid.

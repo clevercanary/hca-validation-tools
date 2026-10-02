@@ -1924,10 +1924,13 @@ def _release_against_genes(parsed, ensg: set[str], n_features: int, dated) -> li
     is a permanent fact about Ensembl (r75 and earlier are GRCh37), while above
     it is a fact about this reference data and clears when it is regenerated.
     """
-    table, first_covered, last_covered = _gene_release_intervals()
-    if parsed.release < first_covered:
+    table, _, last_covered = _gene_release_intervals()
+    # Against the constant, not the table's floor: which release first carried
+    # GRCh38 is a fact about Ensembl, and reading it off the shipped data would
+    # let a narrower table rewrite it.
+    if parsed.release < _FIRST_GRCH38_RELEASE:
         return [
-            f"obs['gene_annotation_version'] is {parsed.raw!r}. Ensembl r{first_covered} is the first "
+            f"obs['gene_annotation_version'] is {parsed.raw!r}. Ensembl r{_FIRST_GRCH38_RELEASE} is the first "
             f"GRCh38 release, so r{parsed.release} is a GRCh37 annotation and the genes in this file "
             f"cannot be checked against it."
         ]

@@ -69,11 +69,17 @@ def available_releases() -> list[int]:
     # and the table would claim presence at a release never queried. Refuse
     # rather than invent: the output is committed and nothing downstream could
     # tell the difference.
-    gaps = [r for r in range(found[0], found[-1] + 1) if r not in set(found)] if found else []
+    # Counted from FIRST_GRCH38 rather than from the earliest release found, so
+    # losing the oldest database is rejected too: a table starting at r77 is
+    # silently narrower, and the check reads its floor as the first GRCh38
+    # release and would call r76 a GRCh37 annotation.
+    if not found:
+        raise SystemExit(f"archive served no GRCh38 release at or after r{FIRST_GRCH38}")
+    gaps = [r for r in range(FIRST_GRCH38, found[-1] + 1) if r not in set(found)]
     if gaps:
         raise SystemExit(
             f"archive is missing release(s) {', '.join(f'r{r}' for r in gaps)} between "
-            f"r{found[0]} and r{found[-1]}; refusing to build a table that would claim "
+            f"r{FIRST_GRCH38} and r{found[-1]}; refusing to build a table that would claim "
             f"presence at a release it never queried"
         )
     return found
