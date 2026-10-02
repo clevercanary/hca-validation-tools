@@ -150,9 +150,7 @@ def main() -> int:
     # this generator a diff against the committed artifact even when nothing
     # about Ensembl had changed -- and there would be no way to tell that from
     # a run that did pick something up.
-    with args.out.open("wb") as raw, gzip.GzipFile(
-        fileobj=raw, mode="wb", compresslevel=9, mtime=0, filename=""
-    ) as gz:
+    with args.out.open("wb") as raw, gzip.GzipFile(fileobj=raw, mode="wb", compresslevel=9, mtime=0, filename="") as gz:
         fh = io.TextIOWrapper(gz, encoding="utf-8", newline="")
         fh.write(f"# ensembl GRCh38 gene presence, releases {releases[0]}-{releases[-1]}\n")
         w = csv.writer(fh)
