@@ -40,7 +40,7 @@ Extend the HCA schema validator to enforce HCA-specific required fields, enum co
 | Field | Pattern | Examples |
 |-------|---------|----------|
 | `cell_enrichment` | `^(CL:\d{7}(\+\|-)|(na))$` | `CL:0000540+`, `CL:0000236-`, `na` |
-| `gene_annotation_version` | `^(v\d{2,3}\|GCF_000001405\.\d+)$` | `v98`, `v114`, `GCF_000001405.40` |
+| `gene_annotation_version` | `^(v[1-9]\d{1,2}\|GCF_000001405\.[1-9]\d*)$` | `v98`, `v114`, `GCF_000001405.40` |
 
 ## Implementation Gap Analysis
 

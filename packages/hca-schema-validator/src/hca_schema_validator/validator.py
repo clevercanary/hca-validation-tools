@@ -1684,6 +1684,13 @@ def check_gene_annotation_version(adata):
         return [], []
 
     if "organism_ontology_term_id" in obs.columns:
+        # Silent unless the file is wholly human. The shipped table is human and
+        # so is the release-to-assembly mapping -- Ensembl numbers releases
+        # across all species, so r110 says GRCh38 only for a human file. A file
+        # carrying any other organism is out of scope for this check rather than
+        # a case to pick apart: HCA curates human data, and an organism that is
+        # not human is a defect for the schema to report, not for this check to
+        # work around (see #723).
         organisms = {str(v) for v in obs["organism_ontology_term_id"].dropna().unique()}
         if organisms and organisms != {_HUMAN_ORGANISM}:
             return [], []
@@ -1850,7 +1857,7 @@ def _no_release_explains_message(dated, ensg: set[str], n_features: int) -> str:
     it: a curator cannot act on "the closest release" without knowing which.
     Ties resolve to the earliest, since shortfall is keyed in release order.
     """
-    _, _, last_covered = _gene_release_intervals()
+    _, first_covered, last_covered = _gene_release_intervals()
     _, shortfall, unknown = dated
     closest = min(shortfall, key=lambda r: shortfall[r])
     skipped = n_features - len(ensg)
@@ -1868,7 +1875,8 @@ def _no_release_explains_message(dated, ensg: set[str], n_features: int) -> str:
         (g for g in ensg if g not in unknown and not any(a <= closest <= b for a, b in table[g])),
     )
     return (
-        f"No Ensembl release through r{last_covered} contains every one of this file's known genes -- "
+        f"No Ensembl release this reference data covers, r{first_covered} to r{last_covered}, contains "
+        f"every one of this file's known genes -- "
         f"r{closest} comes closest, with {shortfall[closest]:,} of {len(ensg) - len(unknown):,} still "
         f"unexplained -- for example {', '.join(examples)}{context}.{_SCOPE_NO_RELEASE}"
     )
