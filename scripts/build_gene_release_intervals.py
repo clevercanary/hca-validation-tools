@@ -28,6 +28,7 @@ from __future__ import annotations
 import argparse
 import csv
 import gzip
+import io
 import sys
 import time
 from pathlib import Path
@@ -143,11 +144,22 @@ def main() -> int:
         rows.extend((gene, first, last) for first, last in runs)
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    with gzip.open(args.out, "wt", newline="", compresslevel=9) as fh:
+    # Written through GzipFile with mtime=0 and no stored filename, so the same
+    # release data produces the same bytes. gzip.open embeds the current time
+    # and the output basename in the header, which would make every rerun of
+    # this generator a diff against the committed artifact even when nothing
+    # about Ensembl had changed -- and there would be no way to tell that from
+    # a run that did pick something up.
+    with args.out.open("wb") as raw, gzip.GzipFile(
+        fileobj=raw, mode="wb", compresslevel=9, mtime=0, filename=""
+    ) as gz:
+        fh = io.TextIOWrapper(gz, encoding="utf-8", newline="")
         fh.write(f"# ensembl GRCh38 gene presence, releases {releases[0]}-{releases[-1]}\n")
         w = csv.writer(fh)
         w.writerow(["gene_id", "first_release", "last_release"])
         w.writerows(rows)
+        fh.flush()
+        fh.detach()
 
     size = args.out.stat().st_size
     print(f"\n{len(presence):,} genes, {len(rows):,} intervals -> {args.out} ({size / 2**10:.0f} KB)", file=sys.stderr)

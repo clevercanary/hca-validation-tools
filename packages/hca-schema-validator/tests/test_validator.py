@@ -2070,8 +2070,10 @@ def test_annotation_version_duplicate_columns_do_not_raise():
 
 
 def test_annotation_version_ambiguity_stops_where_gencode_has_not_reached():
-    # The ceiling is GENCODE's newest human release, read from the vendored
-    # gene_info.yml, so above it the value can only be an Ensembl release.
+    # The ceiling is GENCODE's newest human release, derived from the shipped
+    # Ensembl table (its last release minus 66) -- not from the vendored
+    # gene_info.yml, which lags. Above the ceiling only Ensembl has issued the
+    # number, so the value can only be an Ensembl release.
     highest = _highest_gencode_release()
     ambiguous, _ = check_gene_annotation_version(_version_adata([_TP53], version=f"v{highest}", genome=None))
     settled, _ = check_gene_annotation_version(_version_adata([_TP53], version=f"v{highest + 1}", genome=None))
