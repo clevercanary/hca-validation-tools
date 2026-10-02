@@ -1884,6 +1884,8 @@ _POST_R98 = "ENSG00000288825"
 # Retired at r105 and present again at r109 -- the reason the table stores
 # intervals rather than one (first, last) pair.
 _RESURRECTED = "ENSG00000288593"
+# Present from r76 and retired at r102 -- the gene that makes a *late* declaration wrong.
+_RETIRED_AT_102 = "ENSG00000130723"
 
 
 def _version_adata(genes, version="v98", genome="GRCh38", organism="NCBITaxon:9606", n=2):
@@ -1936,6 +1938,17 @@ def test_annotation_version_too_early_names_the_genes():
     assert errors == []
     assert len(warnings) == 1, warnings
     assert _POST_R98 in warnings[0] and "did not exist in Ensembl r87" in warnings[0]
+
+
+def test_annotation_version_too_late_is_reported_too():
+    # Genes are retired as well as born, so the explaining releases are a window
+    # and a declared release can fall after it. ENSG00000130723 exists r76-r102,
+    # so r110 cannot have produced a file containing it. Nine prod declarations
+    # are wrong in this direction; without a retired gene in the fixture the
+    # too-late path is never exercised.
+    warnings, _ = check_gene_annotation_version(_version_adata([_TP53, _RETIRED_AT_102], version="v110"))
+    assert len(warnings) == 1, warnings
+    assert _RETIRED_AT_102 in warnings[0] and "r110" in warnings[0], warnings[0]
 
 
 def test_annotation_version_later_declaration_is_allowed():

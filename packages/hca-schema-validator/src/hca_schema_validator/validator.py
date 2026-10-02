@@ -1651,10 +1651,11 @@ def check_gene_annotation_version(adata):
 
     1. The declared value and ``reference_genome`` must name the same assembly.
        Ensembl r76 and later, and RefSeq accessions .26 and later, are GRCh38.
-    2. The declared release cannot predate the genes. For each release, count
-       the genes it cannot explain; the earliest release explaining all of them
-       is a lower bound on what produced the file. Declaring a *later* release
-       is legitimate, so only the too-early direction is reported.
+    2. The declared release must be one the genes allow. For each release, count
+       the genes it cannot explain; the releases explaining all of them are the
+       window that could have produced the file. Both directions are reported:
+       genes are retired as well as born, so a declared release can fall after
+       the window as well as before it -- nine prod declarations do.
 
     Dates on human ``ENSG`` identifiers only. Spike-ins, other species and
     custom features have no Ensembl release, and left in they would make every

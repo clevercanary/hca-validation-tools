@@ -71,11 +71,9 @@ hca_schema_validator/
 ├── src/
 │   └── hca_schema_validator/
 │       ├── __init__.py       # Package exports
-│       └── validator.py      # HCAValidator class
-├── src/hca_schema_validator/
-│   ├── validator.py      # HCAValidator and the HCA-specific checks
-│   ├── ontology_data/    # Ontology overlay files (see below)
-│   └── gene_release_intervals.csv.gz  # Gene presence per Ensembl release (see below)
+│       ├── validator.py      # HCAValidator and the HCA-specific checks
+│       ├── ontology_data/    # Ontology overlay files (see below)
+│       └── gene_release_intervals.csv.gz  # Gene presence per Ensembl release (see below)
 ├── tests/
 │   └── test_validator.py # Unit tests
 ├── pyproject.toml        # uv/PEP 621 configuration & dependencies
