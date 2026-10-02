@@ -1528,9 +1528,9 @@ _SCOPE_TOO_EARLY = (
     "of its sources' annotations and need not match any single release."
 )
 _SCOPE_NO_RELEASE = (
-    " If this is a source dataset, that points to a reference built outside Ensembl. For an "
-    "integrated object it is expected: a union of sources annotated against different releases "
-    "matches no single release."
+    " If this is a source dataset, its gene list spans releases -- a reference that mixes them, or "
+    "one built outside Ensembl. For an integrated object it is expected: a union of sources "
+    "annotated against different releases matches no single release."
 )
 # The assembly names obs['reference_genome'] may hold. Anything else -- a
 # placeholder like "not applicable", or a malformed value the column's own enum
@@ -1693,6 +1693,7 @@ def check_gene_annotation_version(adata):
     # column is unanimous but whether any pair contradicts itself.
     pairs = _assembly_pairs(obs)
     n_cells = len(obs)
+    n_genomes = len({g for by_genome in pairs.values() for g in by_genome})
 
     var = getattr_anndata(adata, "var")
     gene_ids = {str(i).split(".")[0] for i in var.index} if var is not None else set()
@@ -1717,7 +1718,13 @@ def check_gene_annotation_version(adata):
     for value in sorted(declared):
         warnings.extend(
             _annotation_version_messages(
-                parse_annotation_version(value), pairs.get(value, {}), n_cells, ensg, len(gene_ids), dated
+                parse_annotation_version(value),
+                pairs.get(value, {}),
+                n_cells,
+                n_genomes,
+                ensg,
+                len(gene_ids),
+                dated,
             )
         )
     return warnings, []
@@ -1739,7 +1746,9 @@ def _assembly_pairs(obs) -> dict[str, dict[str, int]]:
     return out
 
 
-def _annotation_version_messages(parsed, genomes, n_cells, ensg: set[str], n_features: int, dated) -> list[str]:
+def _annotation_version_messages(
+    parsed, genomes, n_cells, n_genomes, ensg: set[str], n_features: int, dated
+) -> list[str]:
     """Everything sayable about one declared value.
 
     ``genomes`` maps each assembly this value is paired with to its cell count.
@@ -1764,14 +1773,15 @@ def _annotation_version_messages(parsed, genomes, n_cells, ensg: set[str], n_fea
     for genome, cells in sorted(genomes.items()):
         if not parsed.assembly or parsed.assembly == genome:
             continue
-        # Name the cells only when the disagreement is confined to some of them.
-        # On a file where every cell disagrees the count says nothing extra; on an
-        # integrated object it is the difference between "this file" and "these
-        # 88,232 cells", which is the whole finding.
+        # Name the cells only when reference_genome itself varies. The count is of
+        # the (version, assembly) pair, so on a file whose genome column holds one
+        # value it is really a count of the *version* partition -- saying "110,744
+        # of 2,128,505 cells have GRCh38" where every cell does reads as a 5%
+        # minority and attributes the split to the wrong column.
         where = (
-            f"obs['reference_genome'] is {genome!r}"
-            if cells == n_cells
-            else f"{cells:,} of this file's {n_cells:,} cells have obs['reference_genome'] = {genome!r}"
+            f"{cells:,} of this file's {n_cells:,} cells have obs['reference_genome'] = {genome!r}"
+            if n_genomes > 1
+            else f"obs['reference_genome'] is {genome!r}"
         )
         said.append(
             f"obs['gene_annotation_version'] is {parsed.raw!r} ({parsed.assembly}), but {where}. "
@@ -1867,6 +1877,28 @@ def _unknown_identifiers_message(unknown: set[str], ensg: set[str]) -> str:
     )
 
 
+def _why_absent(ensg: set[str], unknown: set[str], table, release: int) -> tuple[int, int]:
+    """Split the genes absent at ``release`` into defined-after and retired-before.
+
+    A gene can be missing from a release for opposite reasons, and the two mean
+    opposite things about the declaration: one says it is too early, the other
+    too late. Anything else -- a gene straddling a resurrection hole -- counts in
+    neither, so the mixed wording stays accurate rather than exhaustive.
+    """
+    born_later = retired_earlier = 0
+    for gene in ensg:
+        if gene in unknown:
+            continue
+        runs = table[gene]
+        if any(first <= release <= last for first, last in runs):
+            continue
+        if all(first > release for first, _ in runs):
+            born_later += 1
+        elif all(last < release for _, last in runs):
+            retired_earlier += 1
+    return born_later, retired_earlier
+
+
 def _release_against_genes(parsed, ensg: set[str], n_features: int, dated) -> list[str]:
     """Compare a declared Ensembl release with what the gene list can support.
 
@@ -1897,9 +1929,18 @@ def _release_against_genes(parsed, ensg: set[str], n_features: int, dated) -> li
         f" ({_plural(skipped, 'non-Ensembl feature')} excluded -- they have no Ensembl release)" if skipped else ""
     )
     if earliest is None:
-        # No release explains the gene list, which is a fact about the list and
-        # not about any declared value -- said once per file, from the check
-        # itself, rather than repeated identically for each version declared.
+        # No release explains the whole gene list -- said once per file, from the
+        # check itself. The declared value is still worth comparing against the
+        # best available fit, which is a different fact: Cohen_26 declares v106,
+        # leaving 615 genes unexplained where r110 leaves 99.
+        missing_here = shortfall.get(parsed.release)
+        best = min(shortfall.values())
+        if missing_here and missing_here > best:
+            return [
+                f"obs['gene_annotation_version'] is {parsed.raw!r}, but {missing_here:,} of this file's "
+                f"{len(ensg):,} genes are not in Ensembl r{parsed.release} -- {missing_here - best:,} more "
+                f"than the closest release leaves unexplained{context}.{_SCOPE_NO_RELEASE}"
+            ]
         return []
 
     # The window is computed over the genes the table knows, so say so when some
@@ -1907,6 +1948,20 @@ def _release_against_genes(parsed, ensg: set[str], n_features: int, dated) -> li
     scope = "This file's known genes are" if unknown else "This file's gene set is"
     missing_here = shortfall.get(parsed.release)
     if missing_here:
+        born_later, retired_earlier = _why_absent(ensg, unknown, table, parsed.release)
+        # "Did not exist" is only true of genes defined after the declared release.
+        # A retired gene did exist -- ENSG00000130723 spans r76-r102 -- so saying it
+        # did not asserts the opposite of the table, and hides that the declaration
+        # is too late rather than too early.
+        if retired_earlier and not born_later:
+            absence = f"are not in Ensembl r{parsed.release}: they were retired before it"
+        elif born_later and not retired_earlier:
+            absence = f"did not exist in Ensembl r{parsed.release}: they were defined after it"
+        else:
+            absence = (
+                f"are not in Ensembl r{parsed.release}: {born_later:,} were defined after it and "
+                f"{retired_earlier:,} retired before it"
+            )
         # Both ends, not just the earliest. Genes are retired as well as born --
         # ENSG00000130723 exists r76-r102 and then stops -- so the releases that
         # explain a file form a window, and naming only its start reads as "use
@@ -1936,7 +1991,7 @@ def _release_against_genes(parsed, ensg: set[str], n_features: int, dated) -> li
         )
         said.append(
             f"obs['gene_annotation_version'] is {parsed.raw!r}, but {missing_here:,} of this file's "
-            f"{len(ensg):,} genes did not exist in Ensembl r{parsed.release} -- for example "
-            f"{', '.join(examples)}. {window}{context}.{_SCOPE_TOO_EARLY}"
+            f"{len(ensg):,} genes {absence} -- for example {', '.join(examples)}. "
+            f"{window}{context}.{_SCOPE_TOO_EARLY}"
         )
     return said
