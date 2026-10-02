@@ -1720,7 +1720,16 @@ def check_gene_annotation_version(adata):
     # mouse file with no organism column would otherwise be told its GRCm39
     # reference contradicts r98. A non-human organism is a defect for the schema
     # to report (see #723), not for this check to interpret.
+    # Three states, not two. An absent or null organism is "we do not know",
+    # and dating is still sound there because ENSG identifiers are human
+    # whatever obs says -- that is what recovered the 20 prod files. A *stated*
+    # non-human organism is different: the file has told us it is out of scope,
+    # and reporting on its ENSG features anyway would be arguing with it. HCA
+    # curates human data, so the organism is the defect to report (see #723).
     organism = obs["organism_ontology_term_id"] if "organism_ontology_term_id" in obs.columns else None
+    stated = set() if organism is None else {str(v) for v in organism.dropna().unique()}
+    if stated - {_HUMAN_ORGANISM}:
+        return [], []
     human = organism is not None and bool((organism.astype(str) == _HUMAN_ORGANISM).all())
 
     declared = {str(v) for v in obs["gene_annotation_version"].dropna().unique()}

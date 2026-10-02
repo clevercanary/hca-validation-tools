@@ -2170,6 +2170,17 @@ def test_annotation_version_dates_genes_without_an_organism_statement():
     assert "assemblies" not in warnings[0] and "GRCh37" not in warnings[0], warnings[0]
 
 
+def test_annotation_version_stated_non_human_is_silent_even_with_ensg_features():
+    # An absent organism is "we do not know", and dating is sound there because
+    # ENSG identifiers are human whatever obs says. A *stated* non-human
+    # organism is different: the file has said it is out of scope, and dating
+    # its ENSG features anyway would be arguing with it.
+    for organism in (["NCBITaxon:10090"] * 2, ["NCBITaxon:9606", "NCBITaxon:10090"]):
+        adata = _version_adata([_TP53, _POST_R98], version="v87", genome="GRCh38", organism=None)
+        adata.obs["organism_ontology_term_id"] = organism
+        assert check_gene_annotation_version(adata) == ([], []), organism
+
+
 def test_annotation_version_mouse_file_is_silent():
     # A real non-human file carries non-human features, so the ENSG filter
     # leaves nothing to date and the organism gate never has to catch it.
