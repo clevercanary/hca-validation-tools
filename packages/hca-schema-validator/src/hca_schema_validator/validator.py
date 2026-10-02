@@ -1821,8 +1821,23 @@ def _annotation_version_messages(
         return []
 
     if not human:
-        # Only the half the gene list supports by itself.
-        return _release_against_genes(parsed, ensg, n_features, dated) if parsed.kind == "release" else []
+        # Everything that does not rest on the release-to-assembly mapping, which
+        # is the only human-specific part. Dating runs on ENSG identifiers; the
+        # ambiguity between Ensembl and GENCODE is about which scheme the number
+        # belongs to, not which genome; and an accession names a genome rather
+        # than an annotation whoever produced it. What stays gated is the GRCh37
+        # and GRCh38 classification of a release, which holds only for human.
+        if parsed.kind == "release" and parsed.release >= _FIRST_GRCH38_RELEASE:
+            return _release_against_genes(parsed, ensg, n_features, dated)
+        if parsed.kind == "ambiguous" and parsed.release <= _highest_gencode_release():
+            # Only while the number really is ambiguous. Above the ceiling it can
+            # only be an Ensembl release, but saying which assembly that implies
+            # is the human-specific part, and below r76 there is nothing to date
+            # against -- so there is nothing left to say without the organism.
+            return _ambiguous_release_number(parsed)
+        if parsed.kind == "assembly":
+            return [_accession_is_not_an_annotation(parsed)]
+        return []
 
     if parsed.kind == "ambiguous" and parsed.release > _highest_gencode_release():
         # GENCODE has not issued this number, so it can only be an Ensembl
@@ -1853,11 +1868,7 @@ def _annotation_version_messages(
         )
 
     if parsed.kind == "assembly":
-        said.append(
-            f"obs['gene_annotation_version'] is {parsed.raw!r}, which names a genome assembly rather "
-            f"than a gene annotation, so the genes in this file cannot be checked against it. Two "
-            f"datasets on the same assembly can use annotations differing by thousands of genes."
-        )
+        said.append(_accession_is_not_an_annotation(parsed))
         return said
 
     if parsed.kind == "ambiguous":
@@ -1889,6 +1900,19 @@ def _highest_gencode_release() -> int:
     """
     _, _, last_covered = _gene_release_intervals()
     return last_covered - _GENCODE_ENSEMBL_OFFSET
+
+
+def _accession_is_not_an_annotation(parsed) -> str:
+    """Report an accession in a field that asks for an annotation.
+
+    Says nothing about which genome the file is, only that the value names one
+    rather than a gene set, so it holds without an organism statement.
+    """
+    return (
+        f"obs['gene_annotation_version'] is {parsed.raw!r}, which names a genome assembly rather "
+        f"than a gene annotation, so the genes in this file cannot be checked against it. Two "
+        f"datasets on the same assembly can use annotations differing by thousands of genes."
+    )
 
 
 def _ambiguous_release_number(parsed) -> list[str]:

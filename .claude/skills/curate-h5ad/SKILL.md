@@ -126,6 +126,7 @@ Report these but don't attempt to fix:
   | genes "did not exist in" / "are not in" the declared release | producer | relay: the declared value and the gene list disagree |
   | "name different assemblies" | producer | relay: `gene_annotation_version` and `reference_genome` contradict each other |
   | "is a GRCh37 annotation" | producer | relay: the file's genes cannot be checked against a GRCh37 release |
+  | "predates both" | producer | relay: the declared release is older than GRCh37 (r54 and earlier used NCBI36), so no assembly is claimed and the genes cannot be checked against it |
   | "names a genome assembly rather than a gene annotation" | **nobody — do not relay as an error** | the schema's own documented example is an accession (#719). The producer followed the documentation. Note it and move on |
   | "could be Ensembl rN or GENCODE N" | producer, as a question | ask which scheme they meant; do not guess |
   | "are in none of the releases this reference data covers" | producer | relay: the gene list points at a reference we do not have |
@@ -136,7 +137,7 @@ Report these but don't attempt to fix:
 
   **Do not write the validator's suggested releases back into the file.** The message names the releases consistent with the gene list — "This file's gene set is consistent with r105 to r110 inclusive" — and that looks like the answer. It is not. It is a *range*, not a release; and because every real file is filtered to detected genes, the range is a **superset** of the truth, so the real annotation may be narrower. Treat it as evidence for the producer to confirm against their own pipeline record, never as a value to fill in. Rule 1 applies with force here precisely because the validator hands you a specific-looking number.
 
-  On an integrated object, several distinct values is its own finding, and the grain is unsettled (#719): the object has one `var` index, so one annotation describes its feature space, but the column is per-cell and may be recording each source dataset's annotation instead. Report what you see and leave the interpretation to #719 rather than asserting which it should be.
+  **Several distinct values on an integrated object is not by itself a defect.** The check reports one finding per declared value, and an integrated object legitimately spans its sources' annotations — its `var` is a union, which need not match any single release. Do not present the multiplicity to a producer as something to fix. What the grain *should* be is unsettled (#719): the object has one `var` index, so one annotation describes its feature space, but the column is per-cell and may be recording each source dataset's annotation. Report the findings you see and leave that question to #719.
 - Inconsistent `author_cell_type` variants — needs a curator mapping.
 - (CAP annotations are handled in Bucket B above — the wrangler provides a CAP source file and `copy_cap_annotations` runs mechanically.)
 - Cells whose labels don't match the atlas focus (e.g. non-myeloid labels in a myeloid atlas) — needs a curator decision on keep/drop.
