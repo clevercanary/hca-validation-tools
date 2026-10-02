@@ -1727,9 +1727,7 @@ def check_gene_annotation_version(adata):
     # column holding GRCh37 beside "not applicable" varies, even though only one
     # of those names an assembly -- counting the kept subset made it look uniform
     # and the message then said the whole file is GRCh37 when some cells are not.
-    n_genomes = (
-        obs["reference_genome"].astype(str).nunique(dropna=True) if "reference_genome" in obs.columns else 0
-    )
+    n_genomes = obs["reference_genome"].astype(str).nunique(dropna=True) if "reference_genome" in obs.columns else 0
 
     var = getattr_anndata(adata, "var")
     gene_ids = {str(i).split(".")[0] for i in var.index} if var is not None else set()
