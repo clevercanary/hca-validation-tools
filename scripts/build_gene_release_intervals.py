@@ -1,7 +1,9 @@
 """Build the gene -> release-interval table that check_gene_annotation_version reads.
 
-Run by hand; the output is committed. Refresh when a new Ensembl release lands
-or the GENCODE pin moves.
+Run by hand; the output is committed. Refresh when a new Ensembl release lands.
+The vendored GENCODE pin does not affect this table -- it is derived only from
+Ensembl -- and the ambiguity ceiling the check reads from it is looked up at
+runtime, so bumping cellxgene-schema needs no rebuild.
 
     uv run --no-project --with pymysql python scripts/build_gene_release_intervals.py
 
@@ -61,7 +63,20 @@ def available_releases() -> list[int]:
         parts = name.split("_")
         if len(parts) == 5 and parts[3].isdigit():
             releases.append(int(parts[3]))
-    return sorted(r for r in releases if r >= FIRST_GRCH38)
+    found = sorted(r for r in releases if r >= FIRST_GRCH38)
+    # Runs are split on adjacency in this list, not on numeric adjacency, so a
+    # release missing from the server would be absorbed into the surrounding run
+    # and the table would claim presence at a release never queried. Refuse
+    # rather than invent: the output is committed and nothing downstream could
+    # tell the difference.
+    gaps = [r for r in range(found[0], found[-1] + 1) if r not in set(found)] if found else []
+    if gaps:
+        raise SystemExit(
+            f"archive is missing release(s) {', '.join(f'r{r}' for r in gaps)} between "
+            f"r{found[0]} and r{found[-1]}; refusing to build a table that would claim "
+            f"presence at a release it never queried"
+        )
+    return found
 
 
 def genes_in(release: int) -> set[str]:

@@ -252,15 +252,18 @@ Ensembl keeps a core database per release on its public MySQL server, so the
 whole history is one query per release rather than a download. Needs outbound
 MySQL to `ensembldb.ensembl.org:3306` (user `anonymous`, no password).
 
-1. Run the generator. About two seconds per release, so roughly 90 seconds for
-   the full GRCh38 range:
+1. Run the generator **from the repository root** -- the script lives there, not
+   in this package. About two seconds per release, so roughly 90 seconds for the
+   full GRCh38 range:
 
    ```bash
+   cd ../..   # repository root, if you are in packages/hca-schema-validator
    uv run --no-project --with pymysql python scripts/build_gene_release_intervals.py
    ```
 
-   It writes `src/hca_schema_validator/gene_release_intervals.csv.gz` by default;
-   `--out` writes elsewhere.
+   It writes `packages/hca-schema-validator/src/hca_schema_validator/gene_release_intervals.csv.gz`
+   by default; `--out` writes elsewhere. The verification commands below are
+   relative to this package, so return here first.
 
 2. Check the header records the range you expect, and that the gene and interval
    counts moved in the direction you expect:

@@ -2131,6 +2131,24 @@ def test_annotation_version_reports_genes_no_release_knows():
     assert "newer than r116" in warnings[0] and "older than r76" in warnings[0], warnings[0]
 
 
+def test_annotation_version_resurrection_gap_is_explained_and_excluded():
+    # ENSG00000288593 exists r100-r104 and again r109-r116. Declaring r106 is
+    # wrong, and the reason is neither "defined after" nor "retired before" --
+    # counting only those two rendered "0 were defined after it and 0 retired
+    # before it". The window must also exclude the hole: a min-max span would
+    # say the file is consistent with r100 to r116, which contains the very
+    # release being reported as wrong.
+    adata = _version_adata([_TP53, _RESURRECTED], version="v106")
+    warnings, _ = check_gene_annotation_version(adata)
+    assert len(warnings) == 1, warnings
+    assert "retired before it and defined again later" in warnings[0], warnings[0]
+    assert "consistent with r100 to r104 and r109 to r116" in warnings[0], warnings[0]
+    # The pair-only wording rendered this as "0 were defined after it and 0
+    # retired before it"; neither clause may survive.
+    assert "0 were defined after it" not in warnings[0], warnings[0]
+    assert "0 retired before it" not in warnings[0], warnings[0]
+
+
 def test_resurrected_gene_is_absent_between_its_runs():
     # ENSG00000288593 is retired at r105 and returns at r109. A flat (first, last)
     # pair would claim it existed throughout, and r106 would wrongly look valid.

@@ -1877,15 +1877,30 @@ def _unknown_identifiers_message(unknown: set[str], ensg: set[str]) -> str:
     )
 
 
-def _why_absent(ensg: set[str], unknown: set[str], table, release: int) -> tuple[int, int]:
-    """Split the genes absent at ``release`` into defined-after and retired-before.
+def _format_runs(releases) -> str:
+    """Render release numbers as contiguous runs: "r98", "r105 to r110", "r100 to r104 and r109 to r116"."""
+    runs: list[list[int]] = []
+    for r in sorted(releases):
+        if runs and r == runs[-1][1] + 1:
+            runs[-1][1] = r
+        else:
+            runs.append([r, r])
+    parts = [f"r{a}" if a == b else f"r{a} to r{b}" for a, b in runs]
+    if len(parts) == 1:
+        return parts[0]
+    return ", ".join(parts[:-1]) + f" and {parts[-1]}"
 
-    A gene can be missing from a release for opposite reasons, and the two mean
-    opposite things about the declaration: one says it is too early, the other
-    too late. Anything else -- a gene straddling a resurrection hole -- counts in
-    neither, so the mixed wording stays accurate rather than exhaustive.
+
+def _why_absent(ensg: set[str], unknown: set[str], table, release: int) -> tuple[int, int, int]:
+    """Split the genes absent at ``release`` by why they are absent.
+
+    Three reasons, and they mean different things about the declaration: defined
+    after it (too early), retired before it (too late), or retired before it and
+    defined again later -- a resurrection gap, which says only that this
+    particular release is wrong. Every absent gene falls in exactly one, so the
+    counts sum to the shortfall and no case renders as zeroes.
     """
-    born_later = retired_earlier = 0
+    born_later = retired_earlier = in_gap = 0
     for gene in ensg:
         if gene in unknown:
             continue
@@ -1896,7 +1911,9 @@ def _why_absent(ensg: set[str], unknown: set[str], table, release: int) -> tuple
             born_later += 1
         elif all(last < release for _, last in runs):
             retired_earlier += 1
-    return born_later, retired_earlier
+        else:
+            in_gap += 1
+    return born_later, retired_earlier, in_gap
 
 
 def _release_against_genes(parsed, ensg: set[str], n_features: int, dated) -> list[str]:
@@ -1948,20 +1965,24 @@ def _release_against_genes(parsed, ensg: set[str], n_features: int, dated) -> li
     scope = "This file's known genes are" if unknown else "This file's gene set is"
     missing_here = shortfall.get(parsed.release)
     if missing_here:
-        born_later, retired_earlier = _why_absent(ensg, unknown, table, parsed.release)
         # "Did not exist" is only true of genes defined after the declared release.
         # A retired gene did exist -- ENSG00000130723 spans r76-r102 -- so saying it
         # did not asserts the opposite of the table, and hides that the declaration
         # is too late rather than too early.
-        if retired_earlier and not born_later:
-            absence = f"are not in Ensembl r{parsed.release}: they were retired before it"
-        elif born_later and not retired_earlier:
-            absence = f"did not exist in Ensembl r{parsed.release}: they were defined after it"
-        else:
-            absence = (
-                f"are not in Ensembl r{parsed.release}: {born_later:,} were defined after it and "
-                f"{retired_earlier:,} retired before it"
+        reasons = [
+            (n, text)
+            for n, text in zip(
+                _why_absent(ensg, unknown, table, parsed.release),
+                ("defined after it", "retired before it", "retired before it and defined again later"),
+                strict=True,
             )
+            if n
+        ]
+        if len(reasons) == 1:
+            verb = "did not exist in" if reasons[0][1] == "defined after it" else "are not in"
+            absence = f"{verb} Ensembl r{parsed.release}: they were {reasons[0][1]}"
+        else:
+            absence = f"are not in Ensembl r{parsed.release}: " + ", ".join(f"{n:,} {text}" for n, text in reasons)
         # Both ends, not just the earliest. Genes are retired as well as born --
         # ENSG00000130723 exists r76-r102 and then stops -- so the releases that
         # explain a file form a window, and naming only its start reads as "use
@@ -1969,15 +1990,14 @@ def _release_against_genes(parsed, ensg: set[str], n_features: int, dated) -> li
         # min to max rather than as a list: a resurrected gene can in principle
         # punch a hole in the middle, and claiming contiguity would be a stronger
         # statement than the table supports.
-        explaining = [r for r, missing in shortfall.items() if not missing]
-        low, high = min(explaining), max(explaining)
         # "Consistent with" rather than "contains every gene here": the range is
         # pinned at both ends by genes -- one born late rules out everything
         # earlier, one retired early rules out everything later -- so no release
         # in it is more the answer than any other, and we are not identifying one.
-        window = (
-            f"{scope} consistent with r{low}" if low == high else f"{scope} consistent with r{low} to r{high} inclusive"
-        )
+        # Reported as runs rather than min to max: a resurrected gene punches a
+        # hole, and min-max would name releases that do not explain the file --
+        # the same release the message is reporting as wrong.
+        window = f"{scope} consistent with {_format_runs(r for r, missing in shortfall.items() if not missing)}"
         # Drawn from the known genes only, so the examples are a sample of the
         # very genes the count is of; an unknown gene is absent at every release
         # and has its own message above.
