@@ -1518,11 +1518,19 @@ _HUMAN_ORGANISM = "NCBITaxon:9606"
 # meaning). A merged gene list is a union of its sources: the breast atlas is
 # exactly the union of its seven, 36,788 genes against an intersection of 11,711,
 # so its apparent release is set by whichever source used the newest annotation
-# and need not match any single one. Remove this sentence once #719's
+# and need not match any single one. So each finding names both readings rather
+# than hedging one of them -- on a merged object the result is not a weaker
+# verdict but a different and expected one. Remove these once #719's
 # source_dataset_id makes merged-ness a fact the check can read, and gate on it.
-_MERGED_CAVEAT = (
-    " If this file merges several source datasets, its gene list may be a union of their "
-    "annotations and need not match any single release."
+_SCOPE_TOO_EARLY = (
+    " If this is a source dataset -- one study, one annotation -- the declared value cannot be "
+    "correct. For an integrated object this finding does not apply: a merged gene list is a union "
+    "of its sources' annotations and need not match any single release."
+)
+_SCOPE_NO_RELEASE = (
+    " If this is a source dataset, that points to a reference built outside Ensembl. For an "
+    "integrated object it is expected: a union of sources annotated against different releases "
+    "matches no single release."
 )
 # The assembly names obs['reference_genome'] may hold. Anything else -- a
 # placeholder like "not applicable", or a malformed value the column's own enum
@@ -1835,7 +1843,7 @@ def _no_release_explains_message(dated, ensg: set[str], n_features: int) -> str:
     return (
         f"No Ensembl release through r{last_covered} contains every one of this file's known genes -- "
         f"r{closest} comes closest, with {shortfall[closest]:,} of {len(ensg) - len(unknown):,} still "
-        f"unexplained{context}.{_MERGED_CAVEAT}"
+        f"unexplained{context}.{_SCOPE_NO_RELEASE}"
     )
 
 
@@ -1928,6 +1936,6 @@ def _release_against_genes(parsed, ensg: set[str], n_features: int, dated) -> li
         said.append(
             f"obs['gene_annotation_version'] is {parsed.raw!r}, but {missing_here:,} of this file's "
             f"{len(ensg):,} genes did not exist in Ensembl r{parsed.release} -- for example "
-            f"{', '.join(examples)}. {window}, so the declared value cannot be correct{context}.{_MERGED_CAVEAT}"
+            f"{', '.join(examples)}. {window}{context}.{_SCOPE_TOO_EARLY}"
         )
     return said
