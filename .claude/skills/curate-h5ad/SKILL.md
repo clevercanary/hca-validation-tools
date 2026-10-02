@@ -128,7 +128,7 @@ Report these but don't attempt to fix:
   | "is a GRCh37 annotation" | producer | relay: the file's genes cannot be checked against a GRCh37 release |
   | "names a genome assembly rather than a gene annotation" | **nobody — do not relay as an error** | the schema's own documented example is an accession (#719). The producer followed the documentation. Note it and move on |
   | "could be Ensembl rN or GENCODE N" | producer, as a question | ask which scheme they meant; do not guess |
-  | "appear in none of the releases this reference data covers" | producer | relay: the gene list points at a reference we do not have |
+  | "are in none of the releases this reference data covers" | producer | relay: the gene list points at a reference we do not have |
   | "No Ensembl release … contains every one of this file's known genes" | depends | on an integrated object this is expected — a union of sources matches no single release. On a source dataset, relay |
   | "newer than this reference data covers" | **ours** | nothing to relay. Our gene table needs regenerating — see the package README |
 

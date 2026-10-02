@@ -18,6 +18,7 @@ from hca_schema_validator import (
 from hca_schema_validator.validator import (
     DESOUPED_COUNTS_LAYER,
     DONOR_GRAIN_COLUMNS,
+    _gene_release_intervals,
     _highest_gencode_release,
     parse_annotation_version,
 )
@@ -2193,8 +2194,13 @@ def test_annotation_version_reports_genes_no_release_knows():
     # bound points the reader at a newer annotation, when a gene retired before
     # the lower bound is equally unknown to the table -- the likelier cause for a
     # low-numbered identifier.
-    assert "r76 to r116" in warnings[0], warnings[0]
-    assert "newer than r116" in warnings[0] and "older than r76" in warnings[0], warnings[0]
+    # Bounds read from the table, not pinned: the README documents regenerating
+    # it when Ensembl ships a release, and a test that fails on a valid refresh
+    # would make the documented workflow look broken.
+    _, first_covered, last_covered = _gene_release_intervals()
+    assert f"r{first_covered} to r{last_covered}" in warnings[0], warnings[0]
+    assert f"newer than r{last_covered}" in warnings[0], warnings[0]
+    assert f"older than r{first_covered}" in warnings[0], warnings[0]
 
 
 def test_annotation_version_resurrection_gap_is_explained_and_excluded():
@@ -2208,7 +2214,9 @@ def test_annotation_version_resurrection_gap_is_explained_and_excluded():
     warnings, _ = check_gene_annotation_version(adata)
     assert len(warnings) == 1, warnings
     assert "retired before it and defined again later" in warnings[0], warnings[0]
-    assert "consistent with r100 to r104 and r109 to r116" in warnings[0], warnings[0]
+    # Only the gap is asserted. The run after it ends at whatever release the
+    # table covers, so pinning r116 would break on a regeneration that is valid.
+    assert "consistent with r100 to r104 and r109 to r" in warnings[0], warnings[0]
     # The pair-only wording rendered this as "0 were defined after it and 0
     # retired before it"; neither clause may survive.
     assert "0 were defined after it" not in warnings[0], warnings[0]
