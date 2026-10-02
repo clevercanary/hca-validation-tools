@@ -2143,7 +2143,9 @@ def test_annotation_version_examples_are_drawn_from_the_counted_genes():
     # rather than the arithmetic: examples are capped at three, so comparing the
     # count against how many are shown holds only while the count is below the
     # cap, which is not the case on any real file.
-    assert "1 of this file's 3 genes" in dated, dated
+    # Two of the three ENSG ids are in the table; the third is unknown and is
+    # excluded from the count, so it must be excluded from the total as well.
+    assert "1 of this file's 2 known genes" in dated, dated
     assert _POST_R98 in dated
     assert "ENSG99999999999" not in dated
     # Some identifiers are unknown to the table, so a claim about the whole gene

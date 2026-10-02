@@ -2077,16 +2077,25 @@ def _release_against_genes(parsed, ensg: set[str], n_features: int, dated) -> li
         missing_here = shortfall.get(parsed.release)
         best = min(shortfall.values())
         if missing_here and missing_here > best:
+            # Same denominator rule as below: the shortfall counts genes the
+            # table knows, so the total must too.
             return [
                 f"obs['gene_annotation_version'] is {parsed.raw!r}, but {missing_here:,} of this file's "
-                f"{len(ensg):,} genes are not in Ensembl r{parsed.release} -- {missing_here - best:,} more "
-                f"than the closest release leaves unexplained{context}.{_SCOPE_NO_RELEASE}"
+                f"{len(ensg) - len(unknown):,} {'known genes' if unknown else 'genes'} are not in Ensembl "
+                f"r{parsed.release} -- {missing_here - best:,} more than the closest release leaves "
+                f"unexplained{context}.{_SCOPE_NO_RELEASE}"
             ]
         return []
 
     # The window is computed over the genes the table knows, so say so when some
     # are not -- otherwise this contradicts the unknown-identifiers warning above.
     scope = "This file's known genes are" if unknown else "This file's gene set is"
+    # The shortfall counts only genes the table knows, so the denominator counts
+    # those too -- dividing by every ENSG-shaped id mixed two populations and
+    # read as "1 of 3" where one of the three was deliberately excluded from the
+    # numerator. _no_release_explains_message already divided correctly.
+    datable = len(ensg) - len(unknown)
+    noun = "known genes" if unknown else "genes"
     missing_here = shortfall.get(parsed.release)
     if missing_here:
         # "Did not exist" is only true of genes defined after the declared release.
@@ -2135,7 +2144,7 @@ def _release_against_genes(parsed, ensg: set[str], n_features: int, dated) -> li
         )
         said.append(
             f"obs['gene_annotation_version'] is {parsed.raw!r}, but {missing_here:,} of this file's "
-            f"{len(ensg):,} genes {absence} -- for example {', '.join(examples)}. "
+            f"{datable:,} {noun} {absence} -- for example {', '.join(examples)}. "
             f"{window}{context}.{_SCOPE_TOO_EARLY}"
         )
     return said
