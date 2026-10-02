@@ -2135,6 +2135,18 @@ def test_annotation_version_leaves_format_to_the_schema_pattern():
     assert check_gene_annotation_version(adata) == ([], [])
 
 
+def test_annotation_version_needs_organism_stated_not_merely_not_contradicted():
+    # _deep_check runs after schema errors are collected, so a mouse file whose
+    # required organism column is missing or null still reaches this check. The
+    # gate must require the positive statement: rejecting only an explicit
+    # non-human value told such a file its GRCm39 reference contradicted r98.
+    for organism in (None, [None, None], ["NCBITaxon:10090", None]):
+        adata = _version_adata([_TP53], version="v98", genome="GRCm39", organism=None)
+        if organism is not None:
+            adata.obs["organism_ontology_term_id"] = organism
+        assert check_gene_annotation_version(adata) == ([], []), organism
+
+
 def test_annotation_version_silent_on_non_human():
     adata = _version_adata([_TP53], version="v87", organism="NCBITaxon:10090")
     assert check_gene_annotation_version(adata) == ([], [])

@@ -241,10 +241,12 @@ covers, the check says so rather than failing the file:
 That warning is the trigger. Regenerate when you see it, or when Ensembl ships a
 release you want to date against.
 
-The table also sets the ceiling on the Ensembl/GENCODE ambiguity: a bare number
-below r76 could be either scheme, and the boundary is read from the vendored
-`gencode_files/gene_info.yml`, so bumping `cellxgene-schema` moves it
-independently of this table.
+The table also sets the ceiling on the Ensembl/GENCODE ambiguity: a number below
+r76 could be either scheme, and the boundary is this table's last release minus
+GENCODE's offset of 66 — so regenerating the table moves it. It is **not** read
+from the vendored `gencode_files/gene_info.yml`, which records the GENCODE
+version `cellxgene-schema` pinned rather than what GENCODE has issued, and so
+lags: it says 48 while this table reaches r116, which is GENCODE 50.
 
 ### How to regenerate
 

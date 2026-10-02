@@ -1697,17 +1697,20 @@ def check_gene_annotation_version(adata):
         if duplicated & {"gene_annotation_version", "reference_genome", "organism_ontology_term_id"}:
             return [], []
 
-    if "organism_ontology_term_id" in obs.columns:
-        # Silent unless the file is wholly human. The shipped table is human and
-        # so is the release-to-assembly mapping -- Ensembl numbers releases
-        # across all species, so r110 says GRCh38 only for a human file. A file
-        # carrying any other organism is out of scope for this check rather than
-        # a case to pick apart: HCA curates human data, and an organism that is
-        # not human is a defect for the schema to report, not for this check to
-        # work around (see #723).
-        organisms = {str(v) for v in obs["organism_ontology_term_id"].dropna().unique()}
-        if organisms and organisms != {_HUMAN_ORGANISM}:
-            return [], []
+    # Silent unless every row says human, explicitly. The shipped table is human
+    # and so is the release-to-assembly mapping -- Ensembl numbers releases
+    # across all species, so r110 says GRCh38 only for a human file. Requiring
+    # the positive statement rather than rejecting a non-human one matters
+    # because _deep_check runs after schema errors are collected: a mouse file
+    # whose required organism column is missing or null would otherwise be
+    # treated as human and told its GRCm39 reference contradicts r98. A file
+    # carrying any other organism is out of scope for this check rather than a
+    # case to pick apart -- HCA curates human data, and a non-human organism is
+    # a defect for the schema to report (see #723).
+    if "organism_ontology_term_id" not in obs.columns:
+        return [], []
+    if not (obs["organism_ontology_term_id"].astype(str) == _HUMAN_ORGANISM).all():
+        return [], []
 
     declared = {str(v) for v in obs["gene_annotation_version"].dropna().unique()}
     declared.discard("nan")
