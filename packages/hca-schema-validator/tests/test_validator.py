@@ -2205,6 +2205,17 @@ def test_annotation_version_silent_on_non_human():
     assert check_gene_annotation_version(adata) == ([], [])
 
 
+@pytest.mark.parametrize("sentinel", ["nan", "unknown", "Not available", "NA", "", "none", "not applicable"])
+def test_annotation_version_every_missing_sentinel_is_silent(sentinel):
+    # A column of sentinels is not a declaration, so there is nothing to check --
+    # including the file-level findings, which fired on everything but the
+    # literal "nan" when the filter was one hardcoded string. The gene list here
+    # carries an identifier the table has never heard of, which is what those
+    # file-level findings key on.
+    adata = _version_adata([_TP53, "ENSG99999999999"], version=sentinel)
+    assert check_gene_annotation_version(adata) == ([], []), sentinel
+
+
 def test_annotation_version_silent_without_the_column():
     adata = anndata.AnnData(obs=pd.DataFrame({"donor_id": ["d1"]}, index=["cell_0"]))
     assert check_gene_annotation_version(adata) == ([], [])

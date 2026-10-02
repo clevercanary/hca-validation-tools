@@ -1732,8 +1732,13 @@ def check_gene_annotation_version(adata):
         return [], []
     human = organism is not None and bool((organism.astype(str) == _HUMAN_ORGANISM).all())
 
+    # Filtered by what the parser calls a missing value, not by one hardcoded
+    # string. Discarding only "nan" left a column of "unknown" or "Not
+    # available" looking like a declaration, so the file-level findings fired on
+    # a file that had declared nothing -- while the same file saying "nan" was
+    # silent. One rule for what counts as a declaration, and the parser owns it.
     declared = {str(v) for v in obs["gene_annotation_version"].dropna().unique()}
-    declared.discard("nan")
+    declared = {v for v in declared if parse_annotation_version(v).kind != "missing"}
     if not declared:
         return [], []
 
