@@ -129,7 +129,7 @@ Unknown values are `unknown`, `na`, and the empty string, on every column; `not 
 | assembly accession (`GCF_000001405.40`) | names a genome, not an annotation — reported as such, not as the producer's error |
 | unparseable | silent; the schema pattern owns format errors |
 
-Dates on human `ENSG` identifiers only, matched as an anchored `ENSG\d+` — gorilla identifiers are `ENSGGOG...` and a prefix test would date them as human. Spike-ins, other species and custom transgenes are counted and reported, not dated. Silent on non-human files, both comparisons included: Ensembl numbers releases across all species, so r110 means GRCh38 only for a human file.
+Dates on human `ENSG` identifiers only, matched as an anchored `ENSG\d+` — gorilla identifiers are `ENSGGOG...` and a prefix test would date them as human. Spike-ins, other species and custom transgenes are excluded from dating and their count is named alongside whatever finding the file produces. They are not a finding in themselves: a file whose annotation is consistent says nothing about them, because carrying spike-ins is not a defect. One prod file in 208 has any. Silent on non-human files, both comparisons included: Ensembl numbers releases across all species, so r110 means GRCh38 only for a human file.
 
 Reads `var.index`, `obs['gene_annotation_version']`, `obs['reference_genome']` and `obs['organism_ontology_term_id']`. The reference data is `gene_release_intervals.csv.gz`; its regeneration procedure is in the package README.
 

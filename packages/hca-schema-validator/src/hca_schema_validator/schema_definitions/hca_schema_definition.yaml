@@ -905,5 +905,5 @@ components:
         # Whether a release actually exists is decided by the gene-release table
         # that check_gene_annotation_version reads, which is regenerated from
         # Ensembl rather than hand-edited here (#710, #719).
-        pattern: "^(v\\d{2,3}|GCF_000001405\\.\\d+)$"
+        pattern: "^(v[1-9]\\d{1,2}|GCF_000001405\\.[1-9]\\d*)$"
         pattern_description: "an Ensembl release like 'v114', or a RefSeq assembly accession like 'GCF_000001405.40'"

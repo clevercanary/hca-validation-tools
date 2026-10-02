@@ -2149,6 +2149,26 @@ def test_annotation_version_resurrection_gap_is_explained_and_excluded():
     assert "0 retired before it" not in warnings[0], warnings[0]
 
 
+def test_annotation_version_zero_is_not_a_release():
+    # The relaxed pattern must still reject zero: neither scheme has a release 0,
+    # so there is nothing for the check to be ambiguous between.
+    assert parse_annotation_version("v00").kind == "uninterpretable"
+    assert parse_annotation_version("GCF_000001405.0").kind == "uninterpretable"
+    assert parse_annotation_version("v98").kind == "release"
+    assert parse_annotation_version("GCF_000001405.40").kind == "assembly"
+
+
+def test_annotation_version_no_release_names_the_unexplained_genes():
+    # #710 asks for the minimum *and* the genes. _POST_R98 appears at r105 and
+    # _RETIRED_AT_102 is gone by r103, so no release holds both -- and nothing
+    # else in the output would name an identifier to investigate.
+    adata = _version_adata([_POST_R98, _RETIRED_AT_102], version="v110")
+    warnings, _ = check_gene_annotation_version(adata)
+    no_release = next(w for w in warnings if "comes closest" in w)
+    assert "for example" in no_release, no_release
+    assert _POST_R98 in no_release or _RETIRED_AT_102 in no_release, no_release
+
+
 def test_first_grch38_release_is_not_read_off_the_table():
     # The shipped table happens to start at r76, but which release first carried
     # GRCh38 is a fact about Ensembl, not about our data. If the archive ever

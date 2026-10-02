@@ -1566,6 +1566,8 @@ def parse_annotation_version(value) -> ParsedVersion:
 
     if match := _ACCESSION_RE.match(raw):
         patch = int(match.group(1))
+        if patch == 0:
+            return ParsedVersion("uninterpretable", None, None, raw)
         if patch >= _FIRST_GRCH38_ACCESSION:
             assembly = "GRCh38"
         elif patch >= _FIRST_GRCH37_ACCESSION:
@@ -1578,6 +1580,10 @@ def parse_annotation_version(value) -> ParsedVersion:
 
     if match := _RELEASE_RE.match(raw):
         release = int(match.group(1))
+        if release == 0:
+            # Neither scheme has a release 0, so there is nothing to be ambiguous
+            # between; the schema pattern reports it as the format error it is.
+            return ParsedVersion("uninterpretable", None, None, raw)
         if release < _FIRST_GRCH38_RELEASE:
             # Could be an Ensembl release or a GENCODE one, and they disagree
             # about the assembly. Which readings are open depends on how far
@@ -1851,10 +1857,20 @@ def _no_release_explains_message(dated, ensg: set[str], n_features: int) -> str:
     context = (
         f" ({_plural(skipped, 'non-Ensembl feature')} excluded -- they have no Ensembl release)" if skipped else ""
     )
+    # Named, not just counted: #710 asks for the minimum *and* the unexplained
+    # genes. On a file whose intervals are individually known but jointly
+    # impossible, nothing else supplies an identifier to investigate -- the
+    # unknown-identifier finding does not fire, and the per-declaration branch
+    # reports only counts.
+    table, _, _ = _gene_release_intervals()
+    examples = heapq.nsmallest(
+        3,
+        (g for g in ensg if g not in unknown and not any(a <= closest <= b for a, b in table[g])),
+    )
     return (
         f"No Ensembl release through r{last_covered} contains every one of this file's known genes -- "
         f"r{closest} comes closest, with {shortfall[closest]:,} of {len(ensg) - len(unknown):,} still "
-        f"unexplained{context}.{_SCOPE_NO_RELEASE}"
+        f"unexplained -- for example {', '.join(examples)}{context}.{_SCOPE_NO_RELEASE}"
     )
 
 
