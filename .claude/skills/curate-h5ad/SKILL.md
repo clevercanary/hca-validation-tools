@@ -119,9 +119,22 @@ Report these but don't attempt to fix:
 - Sparse or missing `ambient_count_correction` / `doublet_detection` obs columns — per-cell values must come from the upstream source (each source dataset's processing record). Do not broadcast a single value. Report fill rate and move on.
 - Delimited-list values in single-identifier columns (e.g. `library_preparation_batch` containing `"lib1; lib2; lib3"`) — needs per-cell resolution, not placeholder replacement.
 - Gene IDs missing from the current GENCODE — needs annotation-version decision.
-- **`obs['gene_annotation_version']` contradicted by the file's own genes** (a `validate_schema` warning, not a tool you can call; #710) — a different finding from the row above, and it must not be folded into it. The declared release either predates genes the file contains or postdates genes it still carries, or it disagrees with `obs['reference_genome']`. Relay to the producer. **No tool here can fix it**, and two that look like they might cannot: `set_uns` cannot reach an obs column at all, and `backfill_obs_from_source` fills only *gaps* — it never overwrites a value that is already set, reporting a disagreement as a conflict and writing nothing. This finding is by definition a value that is present and wrong, which is exactly the case backfill declines.
+- **`gene_annotation_version` findings** (a `validate_schema` warning, not a tool you can call; #710) — these are **not one finding**, and they do not all belong to the producer. Route each by its wording before writing anything:
 
-  **Do not write the validator's suggested releases back into the file.** The message names the releases that explain the file — "This file's gene set is consistent with r105 to r110 inclusive" — and that number looks like the answer. It is not. It is a *window*, not a release; and because every real file is filtered to detected genes, the window is a **superset** of the truth, so the real annotation may be narrower than the one quoted. Treat it as evidence for the producer to confirm against their own pipeline record, never as a value to fill in. Rule 1 applies with force here precisely because the validator hands you a specific-looking number.
+  | the warning says | whose it is | what to do |
+  |---|---|---|
+  | genes "did not exist in" / "are not in" the declared release | producer | relay: the declared value and the gene list disagree |
+  | "name different assemblies" | producer | relay: `gene_annotation_version` and `reference_genome` contradict each other |
+  | "is a GRCh37 annotation" | producer | relay: the file's genes cannot be checked against a GRCh37 release |
+  | "names a genome assembly rather than a gene annotation" | **nobody — do not relay as an error** | the schema's own documented example is an accession (#719). The producer followed the documentation. Note it and move on |
+  | "could be Ensembl rN or GENCODE N" | producer, as a question | ask which scheme they meant; do not guess |
+  | "appear in none of the releases this reference data covers" | producer | relay: the gene list points at a reference we do not have |
+  | "No Ensembl release … contains every one of this file's known genes" | depends | on an integrated object this is expected — a union of sources matches no single release. On a source dataset, relay |
+  | "newer than this reference data covers" | **ours** | nothing to relay. Our gene table needs regenerating — see the package README |
+
+  Nothing here is fixed by a tool. `set_uns` cannot reach an obs column, and `backfill_obs_from_source` fills only *gaps* — it never overwrites a value that is already set, reporting a disagreement as a conflict and writing nothing. These findings are by definition values that are present and wrong, which is exactly the case backfill declines.
+
+  **Do not write the validator's suggested releases back into the file.** The message names the releases consistent with the gene list — "This file's gene set is consistent with r105 to r110 inclusive" — and that looks like the answer. It is not. It is a *range*, not a release; and because every real file is filtered to detected genes, the range is a **superset** of the truth, so the real annotation may be narrower. Treat it as evidence for the producer to confirm against their own pipeline record, never as a value to fill in. Rule 1 applies with force here precisely because the validator hands you a specific-looking number.
 
   On an integrated object, several distinct values is its own finding, and the grain is unsettled (#719): the object has one `var` index, so one annotation describes its feature space, but the column is per-cell and may be recording each source dataset's annotation instead. Report what you see and leave the interpretation to #719 rather than asserting which it should be.
 - Inconsistent `author_cell_type` variants — needs a curator mapping.
