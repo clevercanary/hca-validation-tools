@@ -1509,6 +1509,21 @@ _HUMAN_ENSG_RE = re.compile(r"^ENSG\d+$")
 _VERSION_NOT_A_CLAIM = frozenset({"", "nan", "none", "na", "unknown", "not available", "not applicable"})
 _INTERVALS_PATH = Path(__file__).parent / "gene_release_intervals.csv.gz"
 _HUMAN_ORGANISM = "NCBITaxon:9606"
+# Stated rather than detected, because nothing in the file reliably says whether
+# it is merged. Three candidate signals were measured across the corpus and all
+# fail: 7 of 111 source datasets carry a uns copy of the field, 90 of 103
+# integrated objects declare only one version, and a dataset/study obs column is
+# absent from 23 integrated objects while 6 source datasets have one holding
+# several values (site, chemistry, cohort, subject -- the name does not pin the
+# meaning). A merged gene list is a union of its sources: the breast atlas is
+# exactly the union of its seven, 36,788 genes against an intersection of 11,711,
+# so its apparent release is set by whichever source used the newest annotation
+# and need not match any single one. Remove this sentence once #719's
+# source_dataset_id makes merged-ness a fact the check can read, and gate on it.
+_MERGED_CAVEAT = (
+    " If this file merges several source datasets, its gene list may be a union of their "
+    "annotations and need not match any single release."
+)
 # The assembly names obs['reference_genome'] may hold. Anything else -- a
 # placeholder like "not applicable", or a malformed value the column's own enum
 # already errors on -- names no assembly, so there is nothing to compare against.
@@ -1680,6 +1695,9 @@ def check_gene_annotation_version(adata):
     dated = _earliest_release_explaining(ensg) if ensg else None
 
     warnings = []
+    if dated and dated[0] is None and len(ensg) > len(dated[2]):
+        warnings.append(_no_release_explains_message(dated, ensg, len(gene_ids)))
+
     if dated and dated[2]:
         # A gene no release contains means a newer annotation than this table
         # covers, or a reference built outside Ensembl. It is a fact about the
@@ -1799,6 +1817,28 @@ def _ambiguous_release_number(parsed) -> list[str]:
     ]
 
 
+def _no_release_explains_message(dated, ensg: set[str], n_features: int) -> str:
+    """Report that no covered release contains every gene the table knows.
+
+    A property of the gene list, so it is said once however many versions the
+    file declares. Names the release that comes closest rather than referring to
+    it: a curator cannot act on "the closest release" without knowing which.
+    Ties resolve to the earliest, since shortfall is keyed in release order.
+    """
+    _, _, last_covered = _gene_release_intervals()
+    _, shortfall, unknown = dated
+    closest = min(shortfall, key=lambda r: shortfall[r])
+    skipped = n_features - len(ensg)
+    context = (
+        f" ({_plural(skipped, 'non-Ensembl feature')} excluded -- they have no Ensembl release)" if skipped else ""
+    )
+    return (
+        f"No Ensembl release through r{last_covered} contains every one of this file's known genes -- "
+        f"r{closest} comes closest, with {shortfall[closest]:,} of {len(ensg) - len(unknown):,} still "
+        f"unexplained{context}.{_MERGED_CAVEAT}"
+    )
+
+
 def _unknown_identifiers_message(unknown: set[str], ensg: set[str]) -> str:
     """Report identifiers no release in the shipped table contains.
 
@@ -1847,20 +1887,15 @@ def _release_against_genes(parsed, ensg: set[str], n_features: int, dated) -> li
     context = (
         f" ({_plural(skipped, 'non-Ensembl feature')} excluded -- they have no Ensembl release)" if skipped else ""
     )
+    if earliest is None:
+        # No release explains the gene list, which is a fact about the list and
+        # not about any declared value -- said once per file, from the check
+        # itself, rather than repeated identically for each version declared.
+        return []
 
-    if earliest is None and len(ensg) > len(unknown):
-        # Name the release that comes closest rather than referring to it: a
-        # curator cannot act on "the closest release" without knowing which.
-        # Ties resolve to the earliest, since shortfall is keyed in release order.
-        closest = min(shortfall, key=lambda r: shortfall[r])
-        said.append(
-            f"obs['gene_annotation_version'] is {parsed.raw!r}, but no Ensembl release through r{last_covered} "
-            f"contains every one of this file's known genes -- r{closest} comes closest, with "
-            f"{shortfall[closest]:,} of {len(ensg) - len(unknown):,} still unexplained{context}."
-        )
-        return said
-
-    scope = "every known gene here" if unknown else "every gene here"
+    # The window is computed over the genes the table knows, so say so when some
+    # are not -- otherwise this contradicts the unknown-identifiers warning above.
+    scope = "This file's known genes are" if unknown else "This file's gene set is"
     missing_here = shortfall.get(parsed.release)
     if missing_here:
         # Both ends, not just the earliest. Genes are retired as well as born --
@@ -1872,7 +1907,13 @@ def _release_against_genes(parsed, ensg: set[str], n_features: int, dated) -> li
         # statement than the table supports.
         explaining = [r for r, missing in shortfall.items() if not missing]
         low, high = min(explaining), max(explaining)
-        window = f"Only r{low} contains {scope}" if low == high else f"Releases r{low} to r{high} contain {scope}"
+        # "Consistent with" rather than "contains every gene here": the range is
+        # pinned at both ends by genes -- one born late rules out everything
+        # earlier, one retired early rules out everything later -- so no release
+        # in it is more the answer than any other, and we are not identifying one.
+        window = (
+            f"{scope} consistent with r{low}" if low == high else f"{scope} consistent with r{low} to r{high} inclusive"
+        )
         # Drawn from the known genes only, so the examples are a sample of the
         # very genes the count is of; an unknown gene is absent at every release
         # and has its own message above.
@@ -1887,6 +1928,6 @@ def _release_against_genes(parsed, ensg: set[str], n_features: int, dated) -> li
         said.append(
             f"obs['gene_annotation_version'] is {parsed.raw!r}, but {missing_here:,} of this file's "
             f"{len(ensg):,} genes did not exist in Ensembl r{parsed.release} -- for example "
-            f"{', '.join(examples)}. {window}, so the declared value cannot be correct{context}."
+            f"{', '.join(examples)}. {window}, so the declared value cannot be correct{context}.{_MERGED_CAVEAT}"
         )
     return said

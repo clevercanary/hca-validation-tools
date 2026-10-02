@@ -2078,9 +2078,9 @@ def test_annotation_version_examples_are_drawn_from_the_counted_genes():
     assert "1 of this file's 3 genes" in dated, dated
     assert _POST_R98 in dated
     assert "ENSG99999999999" not in dated
-    # Some identifiers are unknown to the table, so "every gene here" would
-    # contradict the unknown-identifiers warning alongside it.
-    assert "every known gene here" in dated
+    # Some identifiers are unknown to the table, so a claim about the whole gene
+    # set would contradict the unknown-identifiers warning alongside it.
+    assert "This file's known genes are consistent with" in dated, dated
 
 
 def test_annotation_version_leaves_format_to_the_schema_pattern():
