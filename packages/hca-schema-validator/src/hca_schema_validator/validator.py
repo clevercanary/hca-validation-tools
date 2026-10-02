@@ -18,7 +18,7 @@ from anndata.compat import DaskArray
 from dask.array import map_blocks  # pyright: ignore[reportPrivateImportUsage]
 from scipy import sparse
 
-from hca_schema_validator._vendored.cellxgene_schema import env, gencode
+from hca_schema_validator._vendored.cellxgene_schema import gencode
 from hca_schema_validator._vendored.cellxgene_schema.gencode import get_gene_checker
 from hca_schema_validator._vendored.cellxgene_schema.ontology_parser import ONTOLOGY_PARSER
 from hca_schema_validator._vendored.cellxgene_schema.utils import getattr_anndata
@@ -1500,6 +1500,11 @@ _FIRST_GRCH38_RELEASE = 76
 # name an assembly this check has no business labelling.
 _FIRST_GRCH38_ACCESSION = 26
 _FIRST_GRCH37_ACCESSION = 13
+# GENCODE numbers its human releases 66 behind Ensembl's across the modern range:
+# GENCODE 32 is Ensembl 98, GENCODE 48 is Ensembl 114. Used only to place the
+# ceiling of the Ensembl/GENCODE ambiguity, never to convert a declared value --
+# see _highest_gencode_release.
+_GENCODE_ENSEMBL_OFFSET = 66
 _ACCESSION_RE = re.compile(r"^GCF_0*1405\.(\d+)$", re.IGNORECASE)
 _RELEASE_RE = re.compile(r"^v?(\d{2,3})$", re.IGNORECASE)
 # Human genes are ENSG + digits. Anchored, because other species share the
@@ -1683,6 +1688,15 @@ def check_gene_annotation_version(adata):
     if obs is None or "gene_annotation_version" not in obs.columns:
         return [], []
 
+    # A duplicated column name makes obs[name] a DataFrame rather than a Series,
+    # so .unique() raises and the run reports "Unexpected validation error"
+    # instead of the real defect. The base validator already reports duplicate
+    # column names; this check has nothing to add and should not mask it.
+    if obs.columns.duplicated().any():
+        duplicated = set(obs.columns[obs.columns.duplicated()])
+        if duplicated & {"gene_annotation_version", "reference_genome", "organism_ontology_term_id"}:
+            return [], []
+
     if "organism_ontology_term_id" in obs.columns:
         # Silent unless the file is wholly human. The shipped table is human and
         # so is the release-to-assembly mapping -- Ensembl numbers releases
@@ -1792,7 +1806,7 @@ def _annotation_version_messages(
         # of 2,128,505 cells have GRCh38" where every cell does reads as a 5%
         # minority and attributes the split to the wrong column.
         where = (
-            f"{cells:,} of this file's {n_cells:,} cells have obs['reference_genome'] = {genome!r}"
+            f"{cells:,} of this file's {n_cells:,} cells pair it with obs['reference_genome'] = {genome!r}"
             if n_genomes > 1
             else f"obs['reference_genome'] is {genome!r}"
         )
@@ -1817,16 +1831,27 @@ def _annotation_version_messages(
     return said
 
 
-@functools.lru_cache(maxsize=1)
 def _highest_gencode_release() -> int:
-    """The newest GENCODE human release the vendored reference data is built from.
+    """The newest GENCODE human release that exists, as the ceiling of the ambiguity below.
 
-    Read from the vendored ``gene_info.yml`` rather than hard-coded, so bumping
-    cellxgene-schema moves it. It is the ceiling of the ambiguity below: a number
-    above it cannot be a GENCODE release, because GENCODE has not issued one.
+    Derived from the shipped Ensembl table, not from the vendored
+    ``gene_info.yml``. That file records the GENCODE version cellxgene-schema
+    pinned, which lags the releases GENCODE has actually issued -- it says 48
+    while our own table reaches Ensembl r116, and r115 and r116 are GENCODE 49
+    and 50. Reading the ceiling from the pin classified those two as Ensembl-only
+    and so as GRCh37, which put a false assembly mismatch on a valid GENCODE
+    declaration.
+
+    The offset is trusted here and nowhere else. GENCODE and Ensembl have run a
+    fixed distance apart across the modern range -- GENCODE 32 is Ensembl 98,
+    GENCODE 48 is Ensembl 114, the latter confirmed by gene_info.yml pinning
+    every non-GENCODE species to release-114 -- and the ceiling sits at the top
+    of that range. It is not trusted at the bottom, where GENCODE 19 is the
+    GRCh37 freeze rather than anything near r85, which is why no message
+    converts one scheme to the other.
     """
-    with Path(env.GENE_INFO_YAML).open() as fh:
-        return int(yaml.safe_load(fh)["human"]["version"])
+    _, _, last_covered = _gene_release_intervals()
+    return last_covered - _GENCODE_ENSEMBL_OFFSET
 
 
 def _ambiguous_release_number(parsed) -> list[str]:

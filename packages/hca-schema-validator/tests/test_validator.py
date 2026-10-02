@@ -2037,6 +2037,38 @@ def test_annotation_version_gencode_number_is_not_called_grch37():
     assert "obs['reference_genome']" not in warnings[0]
 
 
+def test_gencode_ceiling_tracks_the_ensembl_table_not_the_vendored_pin():
+    # The vendored gene_info.yml records the GENCODE version cellxgene-schema
+    # pinned, which lags what GENCODE has issued: it says 48 while the shipped
+    # table reaches Ensembl r116, and r115/r116 are GENCODE 49/50. Reading the
+    # ceiling from the pin made v49 and v50 Ensembl-only, hence GRCh37, hence a
+    # false assembly mismatch on a valid GENCODE declaration.
+    import yaml
+
+    from hca_schema_validator._vendored.cellxgene_schema import env
+    from hca_schema_validator.validator import _gene_release_intervals, _highest_gencode_release
+
+    _, _, last_covered = _gene_release_intervals()
+    with Path(env.GENE_INFO_YAML).open() as fh:
+        pinned = int(yaml.safe_load(fh)["human"]["version"])
+    ceiling = _highest_gencode_release()
+    assert ceiling == last_covered - 66
+    assert ceiling >= pinned, "the ceiling must not fall behind the vendored pin"
+    # The releases the pin would have excluded stay ambiguous.
+    for release in range(pinned + 1, ceiling + 1):
+        warnings, _ = check_gene_annotation_version(_version_adata([_TP53], version=f"v{release}", genome="GRCh38"))
+        assert len(warnings) == 1 and "could be Ensembl" in warnings[0], (release, warnings)
+
+
+def test_annotation_version_duplicate_columns_do_not_raise():
+    # A duplicated column name makes obs[name] a DataFrame, so .unique() raises
+    # and the run reports "Unexpected validation error" over the real defect,
+    # which the base validator already reports.
+    adata = _version_adata([_TP53], version="v87")
+    adata.obs = pd.concat([adata.obs, adata.obs[["gene_annotation_version"]]], axis=1)
+    assert check_gene_annotation_version(adata) == ([], [])
+
+
 def test_annotation_version_ambiguity_stops_where_gencode_has_not_reached():
     # The ceiling is GENCODE's newest human release, read from the vendored
     # gene_info.yml, so above it the value can only be an Ensembl release.

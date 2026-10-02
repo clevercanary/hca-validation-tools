@@ -906,4 +906,4 @@ components:
         # that check_gene_annotation_version reads, which is regenerated from
         # Ensembl rather than hand-edited here (#710, #719).
         pattern: "^(v[1-9]\\d{1,2}|GCF_000001405\\.[1-9]\\d*)$"
-        pattern_description: "an Ensembl release like 'v114', or a RefSeq assembly accession like 'GCF_000001405.40'"
+        pattern_description: "a gene annotation version like 'v114' (an Ensembl release, or a GENCODE release where the number is one GENCODE has issued), or a RefSeq assembly accession like 'GCF_000001405.40'"
