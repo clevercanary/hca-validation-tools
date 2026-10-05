@@ -1514,6 +1514,14 @@ _FIRST_GRCH37_ACCESSION = 13
 # ceiling of the Ensembl/GENCODE ambiguity, never to convert a declared value --
 # see _highest_gencode_release.
 _GENCODE_ENSEMBL_OFFSET = 66
+# Deliberately wider than the schema pattern, which demands a lowercase "v" and
+# the accession's full zero padding. "98", "V98" and "gcf_000001405.40" are
+# format errors the pattern already reports, and the parser reads them anyway --
+# so such a file gets the format error *and* whatever the genes say about the
+# release. That doubles the report on one value, which is the cost; the gain is
+# that the producer fixes the case and the wrong release in one round instead of
+# discovering the second only after correcting the first. Narrowing these to the
+# pattern would buy a single accepted surface at the price of that round trip.
 _ACCESSION_RE = re.compile(r"^GCF_0*1405\.(\d+)$", re.IGNORECASE)
 _RELEASE_RE = re.compile(r"^v?(\d{2,3})$", re.IGNORECASE)
 # Human genes are ENSG + digits, optionally carrying Ensembl's numeric version
@@ -1578,9 +1586,11 @@ ParsedVersion = namedtuple("ParsedVersion", "kind release assembly raw")
 def parse_annotation_version(value) -> ParsedVersion:
     """Read one ``gene_annotation_version`` value, or decline to.
 
-    Strict by design. Every form it accepts is matched exactly, and anything
-    else is reported rather than guessed at, because a value interpreted wrongly
-    is worse than one left alone in a check about wrong metadata.
+    Strict about meaning, not about spelling. Every form it accepts is matched
+    exactly and anything else is reported rather than guessed at, because a value
+    interpreted wrongly is worse than one left alone in a check about wrong
+    metadata -- but the shapes it matches are a little wider than the schema
+    pattern's, deliberately, for the reason given where they are defined.
 
     The schema documents this field with assembly accessions (its example is
     ``GCF_000001405.40``, which is GRCh38.p14), so an accession is a conforming
