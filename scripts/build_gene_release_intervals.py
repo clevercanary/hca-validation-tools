@@ -120,7 +120,7 @@ def available_releases() -> list[int]:
         # names for _37 of which 27 are not core databases; escaped returns 14,
         # all of them real. Ensembl publishes no such database for _38 today,
         # which is the only reason the unescaped pattern was harmless here.
-        cur.execute(r"SHOW DATABASES LIKE 'homo\_sapiens\_core\_%%\_38'")
+        cur.execute(rf"SHOW DATABASES LIKE 'homo\_sapiens\_core\_%%\_{ASSEMBLY}'")
         names = [row[0] for row in cur.fetchall()]
     finally:
         con.close()
