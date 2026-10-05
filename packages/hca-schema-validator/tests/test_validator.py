@@ -2121,10 +2121,12 @@ def test_annotation_version_ambiguity_stops_where_gencode_has_not_reached():
 
 
 def test_annotation_version_pre_grch37_releases_claim_no_assembly():
-    # Verified against the archive's own database names -- homo_sapiens_core
-    # _{55..75}_37 and _{76..116}_38, with nothing older served -- so r55 is the
-    # first GRCh37 release and r54 and earlier used NCBI36. An earlier revision
-    # called everything below r76 GRCh37, which this pinned at v51.
+    # Verified against the archive's own database names, grouped by assembly
+    # family: r48-r54 NCBI36, r55-r75 GRCh37, r76-r116 GRCh38, none with gaps.
+    # So r55 is the first GRCh37 release and r54 and earlier used NCBI36 -- and
+    # those older releases are served, under _36j through _36p, rather than
+    # absent. An earlier revision called everything below r76 GRCh37, which this
+    # pinned at v51.
     from hca_schema_validator.validator import _FIRST_GRCH37_RELEASE
 
     older, _ = check_gene_annotation_version(

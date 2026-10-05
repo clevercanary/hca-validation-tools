@@ -1494,10 +1494,14 @@ def _donor_fill_in_message(col, fillable):
 
 # --- gene_annotation_version (#710) ------------------------------------------
 # Release 76 is the first GRCh38 core database and r55 the first GRCh37 one.
-# Verified against the archive itself, whose database names carry the assembly:
-# homo_sapiens_core_{55..75}_37 and homo_sapiens_core_{76..116}_38, with nothing
-# older served. So r54 and earlier predate GRCh37 (NCBI36) and name an assembly
-# this check does not speak for -- the same treatment accessions below .13 get.
+# Verified against the archive itself, whose database names carry the assembly --
+# though the suffix is not uniform, so a query for plain "_37" or "_38" sees only
+# part of it. Grouped by assembly family the archive is r48-r54 NCBI36, r55-r75
+# GRCh37, r76-r116 GRCh38, none of them with gaps. Early GRCh37 releases carry a
+# patch letter (homo_sapiens_core_56_37a through _62_37g) and NCBI36 appears as
+# _36j through _36p, so r54 and earlier are served, not absent. They predate
+# GRCh37 and name an assembly this check does not speak for -- the same treatment
+# accessions below .13 get.
 _FIRST_GRCH38_RELEASE = 76
 _FIRST_GRCH37_RELEASE = 55
 # RefSeq accessions for the human assembly: GCF_000001405.26 is GRCh38, and

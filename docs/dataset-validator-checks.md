@@ -126,7 +126,7 @@ The window is bounded by the table's coverage as well as by the genes. Where a r
 |---|---|
 | Ensembl release r76+ (`v98`) | dated against the gene list |
 | number below r76 (`v32`) | **ambiguous** — Ensembl r32 or GENCODE 32; claims no assembly, converts neither |
-| number above GENCODE's newest release, below r76 | only Ensembl has issued it. The boundary is the shipped table's top release minus GENCODE's offset of 66, so it moves when the table is regenerated — currently 50, making r51–r75 Ensembl-only. Of those, **r55–r75 are GRCh37** and **r51–r54 predate it** (NCBI36) and claim no assembly. Verified from the archive's own database names: `homo_sapiens_core_{55..75}_37`, `homo_sapiens_core_{76..116}_38` |
+| number above GENCODE's newest release, below r76 | only Ensembl has issued it. The boundary is the shipped table's top release minus GENCODE's offset of 66, so it moves when the table is regenerated — currently 50, making r51–r75 Ensembl-only. Of those, **r55–r75 are GRCh37** and **r51–r54 predate it** (NCBI36) and claim no assembly. Verified from the archive's own database names, grouped by assembly family — r48–r54 NCBI36, r55–r75 GRCh37, r76–r116 GRCh38, none with gaps. The suffix is not uniform: early GRCh37 releases carry a patch letter (`_56_37a` … `_62_37g`) and NCBI36 appears as `_36j` … `_36p`, so a query for plain `_37` sees only part of the range |
 | release newer than the table | not checked; says so, and that message is the trigger to regenerate the table |
 | assembly accession (`GCF_000001405.40`) | names a genome, not an annotation — reported as such, not as the producer's error |
 | unparseable | silent; the schema pattern owns format errors |
