@@ -1999,6 +1999,54 @@ def test_annotation_version_assembly_mismatch():
     assert any("name different assemblies" in w for w in warnings), warnings
 
 
+@pytest.mark.parametrize("genome", ["GRCh37", " GRCh37 ", "\tGRCh37\n"])
+def test_annotation_version_assembly_mismatch_survives_padded_genome(genome):
+    """Whitespace in reference_genome must not drop the pair either.
+
+    A padded name fails the _KNOWN_ASSEMBLIES membership test, so the pair was
+    discarded and the version compared against nothing -- the same silent loss
+    as a padded version, from the other column.
+    """
+    warnings, _ = check_gene_annotation_version(_version_adata([_TP53], version="v98", genome=genome))
+    assert any("name different assemblies" in w for w in warnings), warnings
+
+
+def test_annotation_version_padded_genome_is_not_a_second_assembly():
+    """Two spellings of one assembly are one assembly, in the count as well as the key.
+
+    n_genomes decides whether the message names a cell count or just the column.
+    Counting " GRCh37 " as distinct from "GRCh37" would make a file whose column
+    does not vary look split, and the message would then attribute a partition
+    to reference_genome that belongs to nothing -- the precise misreading that
+    counter was added to prevent.
+    """
+    obs = pd.DataFrame(
+        {
+            "gene_annotation_version": ["v98"] * 4,
+            "reference_genome": ["GRCh37", " GRCh37 ", "GRCh37", "GRCh37\n"],
+            "organism_ontology_term_id": ["NCBITaxon:9606"] * 4,
+        },
+        index=[f"cell_{i}" for i in range(4)],
+    )
+    adata = anndata.AnnData(X=np.zeros((4, 1), dtype=np.float32), obs=obs, var=pd.DataFrame(index=[_TP53]))
+    mismatch = [w for w in check_gene_annotation_version(adata)[0] if "name different assemblies" in w]
+    assert len(mismatch) == 1, mismatch
+    assert "obs['reference_genome'] is 'GRCh37'" in mismatch[0], mismatch[0]
+    assert "cells pair it with" not in mismatch[0], mismatch[0]
+
+
+def test_annotation_version_assembly_name_is_not_case_folded():
+    """Stripping is not the same as normalising, and only stripping was intended.
+
+    'grch37' is not a name the enum allows, and quietly accepting it here would
+    let this check validate a value the column itself rejects -- so the pair is
+    dropped and the enum keeps the error. Pinned because the padding fix sits one
+    expression away from making this true by accident.
+    """
+    warnings, _ = check_gene_annotation_version(_version_adata([_TP53], version="v98", genome="grch37"))
+    assert not any("name different assemblies" in w for w in warnings), warnings
+
+
 @pytest.mark.parametrize("version", ["v98", " v98 ", "\tv98\n"])
 def test_annotation_version_assembly_mismatch_survives_padding(version):
     """Whitespace around the declared value must not lose the assembly comparison.

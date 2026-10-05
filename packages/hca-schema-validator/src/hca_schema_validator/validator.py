@@ -1791,7 +1791,14 @@ def check_gene_annotation_version(adata):
     # nunique then counts as an assembly. A column of GRCh38 beside NaN looked
     # like it varied, so the message framed every cell naming an assembly as a
     # minority -- the reading this count exists to prevent.
-    n_genomes = obs["reference_genome"].dropna().astype(str).nunique() if "reference_genome" in obs.columns else 0
+    # Stripped before counting, for the same reason the pairs are: "GRCh38" and
+    # " GRCh38 " are one assembly, and counting them as two makes n_genomes > 1
+    # on a file whose column does not vary -- the message then names a cell
+    # split that is not there, which is the exact reading this count exists to
+    # prevent.
+    n_genomes = (
+        obs["reference_genome"].dropna().astype(str).str.strip().nunique() if "reference_genome" in obs.columns else 0
+    )
 
     var = getattr_anndata(adata, "var")
     # fullmatch, not match: Python's "$" also matches immediately before a final
@@ -1849,13 +1856,20 @@ def _assembly_pairs(obs) -> dict[str, dict[str, int]]:
 
     Only assemblies the column is allowed to name are kept; a placeholder or a
     malformed value names none, and its own enum already reports it.
+
+    Both columns are stripped first, and only stripped: surrounding whitespace
+    is not part of either name, and dropping a pair over it loses the one
+    comparison that needs no reference data. Case is left alone -- "grch38" is
+    still not an assembly this keeps -- because that is a different and larger
+    question than padding, and the enum is the place to settle it.
     """
     if "reference_genome" not in obs.columns:
         return {}
     paired = obs[["gene_annotation_version", "reference_genome"]].dropna().astype(str)
     out: dict[str, dict[str, int]] = {}
     for (version, genome), count in paired.value_counts().items():
-        if genome in _KNOWN_ASSEMBLIES:
+        assembly = genome.strip()
+        if assembly in _KNOWN_ASSEMBLIES:
             # Keyed on the stripped version, because the caller looks these up by
             # the stripped value -- parse_annotation_version strips, so "v98" and
             # " v98 " are one declaration. Keying on the raw string meant a padded
@@ -1864,7 +1878,7 @@ def _assembly_pairs(obs) -> dict[str, dict[str, int]]:
             # summed rather than assigned, since two spellings now collapse onto
             # one key and the second would otherwise overwrite the first.
             bucket = out.setdefault(version.strip(), {})
-            bucket[genome] = bucket.get(genome, 0) + int(count)
+            bucket[assembly] = bucket.get(assembly, 0) + int(count)
     return out
 
 
