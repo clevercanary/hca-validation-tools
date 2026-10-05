@@ -1534,13 +1534,15 @@ _HUMAN_ORGANISM = "NCBITaxon:9606"
 # source_dataset_id makes merged-ness a fact the check can read, and gate on it.
 _SCOPE_TOO_EARLY = (
     " If this is a source dataset -- one study, one annotation -- the declared value cannot be "
-    "correct. For an integrated object this finding does not apply: a merged gene list is a union "
-    "of its sources' annotations and need not match any single release."
+    "correct. On an integrated object the test is a different one: its gene list is a union of its "
+    "sources', so no single release fits it, and each declared value must instead match the source "
+    "dataset its cells came from."
 )
 _SCOPE_NO_RELEASE = (
     " If this is a source dataset, its gene list spans releases -- a reference that mixes them, or "
-    "one built outside Ensembl. For an integrated object it is expected: a union of sources "
-    "annotated against different releases matches no single release."
+    "one built outside Ensembl. On an integrated object this is expected: a union of sources "
+    "annotated against different releases matches none of them, and each declared value must match "
+    "the source dataset its cells came from."
 )
 # The assembly names obs['reference_genome'] may hold. Anything else -- a
 # placeholder like "not applicable", or a malformed value the column's own enum
