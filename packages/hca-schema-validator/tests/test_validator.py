@@ -618,6 +618,40 @@ def test_pattern_invalid_cell_enrichment():
     assert "cell ontology" in error_messages.lower()
 
 
+@pytest.mark.parametrize("declared", ["v114", "v116", "GCF_000001405.40", "GCF_000001405.13"])
+def test_pattern_admits_values_the_old_ceiling_rejected(declared):
+    """The relaxed pattern accepts a release newer than the ceiling it replaced.
+
+    Driven through HCAValidator rather than through check_gene_annotation_version,
+    because the thing at risk is the schema pattern, not the check: the direct
+    unit tests below would all still pass with the old hard-coded v75-v111 regex
+    restored, so nothing would catch a revert. Ensembl had reached r116 while
+    the pattern still refused anything above r111, which is the regression this
+    pins (#710, #719). The accession arm is included for the same reason -- the
+    old pattern enumerated a closed set of GRCh38 patch numbers.
+
+    Asserts on errors only. Dating the fixture's genes may well warn about the
+    declared release, which is the check doing its job and not a format error.
+    """
+    import anndata
+    import numpy
+    from scipy import sparse
+
+    from .fixtures.hca_fixtures import good_obs, good_obsm, good_uns, good_var
+
+    obs = good_obs.copy()
+    obs["gene_annotation_version"] = obs["gene_annotation_version"].cat.add_categories([declared])
+    obs["gene_annotation_version"] = declared
+    X = sparse.csr_matrix((obs.shape[0], good_var.shape[0]), dtype=numpy.float32)
+    test_adata = anndata.AnnData(X=X, obs=obs, uns=good_uns.copy(), obsm=good_obsm.copy(), var=good_var.copy())
+    test_adata.raw = test_adata.copy()
+    test_adata.raw.var.drop("feature_is_filtered", axis=1, inplace=True)
+
+    _, validator = _validate_from_fixture(test_adata)
+    offending = [e for e in validator.errors if "gene_annotation_version" in e]
+    assert offending == [], f"{declared} was rejected as malformed: {offending}"
+
+
 def test_pattern_invalid_gene_annotation_version():
     """A malformed gene_annotation_version is a pattern error.
 
