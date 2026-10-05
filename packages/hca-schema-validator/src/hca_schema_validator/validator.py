@@ -2086,6 +2086,13 @@ def _refuted_by_later_genes(parsed, ensg: set[str], dated) -> str | None:
     the floor without the GRCh37 data being shipped (#724). Only a gene first
     seen *at* the floor is genuinely unknown before it.
 
+    That inference is empirical, not structural: a gene present before the floor,
+    retired, and later resurrected would break it. Measured against Ensembl's
+    GRCh37 archive -- r65 to r75, 68,375 distinct ENSG ids -- none of the 30,786
+    table genes first appearing above the floor occurs in any of them. If
+    Ensembl ever resurrects a pre-r76 id into a later release this becomes wrong
+    silently, which is one more reason to ship the GRCh37 range (#724).
+
     Rests on ENSG identifiers and the human table alone, so it is available
     whether or not obs states an organism -- the organism-neutral path calls it
     too, and without that the refutation vanished on a file with no organism
