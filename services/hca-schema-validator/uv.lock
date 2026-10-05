@@ -359,7 +359,7 @@ wheels = [
 
 [[package]]
 name = "hca-schema-validator"
-version = "0.15.1"
+version = "0.15.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anndata" },
@@ -380,9 +380,9 @@ dependencies = [
     { name = "xxhash" },
     { name = "zstandard" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/93/e4/7d1cb6dfda95b952ad25f48917f48467a6ec7a8a7dff2dfaad949997bb84/hca_schema_validator-0.15.1.tar.gz", hash = "sha256:6000c36db4f95aba569b588939a8904f042c8dbd0148d1ba7c644a46897f7795", size = 6416641, upload-time = "2026-09-30T04:04:18.586Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/21/21/46c4c6b44f2810cf0ef0ebc4cfc241ba38d5e32b1e0954af535f229999d9/hca_schema_validator-0.15.2.tar.gz", hash = "sha256:9a71de2612ae1fc2d1c31083cc5043ed6ab53ee84badab002a98292883f16d99", size = 6637000, upload-time = "2026-10-05T22:03:47.095Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c2/b0/2dbf555a9fbcfd036fc057c2fc5e7fb78e5fa635f2d1fbca64fcaed4b4c3/hca_schema_validator-0.15.1-py3-none-any.whl", hash = "sha256:6419b2b1d381fedd66ffc288bb01fa7761ff041ea69850c63b1d55be3551d862", size = 6239812, upload-time = "2026-09-30T04:04:16.49Z" },
+    { url = "https://files.pythonhosted.org/packages/55/6b/56bf7ca2b82a3f1d6b81426dcba2c18b282539f7e45f89939a05801024dd/hca_schema_validator-0.15.2-py3-none-any.whl", hash = "sha256:6b54c33e685eda16894a4e4bbf203dd7382077c89786f840beaabd01f694f161", size = 6445957, upload-time = "2026-10-05T22:03:44.753Z" },
 ]
 
 [[package]]
