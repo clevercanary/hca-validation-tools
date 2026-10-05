@@ -135,7 +135,7 @@ Dates on human `ENSG` identifiers only, matched as an anchored `ENSG\d+` — gor
 
 Reads `var.index`, `obs['gene_annotation_version']`, `obs['reference_genome']` and `obs['organism_ontology_term_id']`. The reference data is `gene_release_intervals.csv.gz`; its regeneration procedure is in the package README.
 
-**Limitation.** This dates a *gene list*. Every file in the prod corpus is filtered to detected genes (29–53% of the reference at its release), and filtering can only remove evidence — so the computed window is a superset of the true one. A declared release falling outside it is therefore sound; what is weakened is pinning the exact release, not the finding.
+**Limitation.** This dates a *gene list*. Prod files carry between 19.7% and 98.1% of the genes Ensembl defines at the earliest release that explains them, so most are filtered to detected genes and a few are close to a full reference. Filtering can only remove evidence — so the computed window is a superset of the true one. A declared release falling outside it is therefore sound; what is weakened is pinning the exact release, not the finding.
 
 ---
 

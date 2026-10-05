@@ -1762,7 +1762,9 @@ def check_gene_annotation_version(adata):
     # available" looking like a declaration, so the file-level findings fired on
     # a file that had declared nothing -- while the same file saying "nan" was
     # silent. One rule for what counts as a declaration, and the parser owns it.
-    declared = {str(v) for v in obs["gene_annotation_version"].dropna().unique()}
+    # Stripped before de-duplication: parse_annotation_version strips, so "v98"
+    # and " v98 " parse identically and produced two byte-identical warnings.
+    declared = {str(v).strip() for v in obs["gene_annotation_version"].dropna().unique()}
     declared = {v for v in declared if parse_annotation_version(v).kind != "missing"}
     if not declared:
         return [], []
@@ -1777,7 +1779,11 @@ def check_gene_annotation_version(adata):
     # column holding GRCh37 beside "not applicable" varies, even though only one
     # of those names an assembly -- counting the kept subset made it look uniform
     # and the message then said the whole file is GRCh37 when some cells are not.
-    n_genomes = obs["reference_genome"].astype(str).nunique(dropna=True) if "reference_genome" in obs.columns else 0
+    # dropna before astype(str): astype turns NaN into the string "nan", which
+    # nunique then counts as an assembly. A column of GRCh38 beside NaN looked
+    # like it varied, so the message framed every cell naming an assembly as a
+    # minority -- the reading this count exists to prevent.
+    n_genomes = obs["reference_genome"].dropna().astype(str).nunique() if "reference_genome" in obs.columns else 0
 
     var = getattr_anndata(adata, "var")
     # fullmatch, not match: Python's "$" also matches immediately before a final
@@ -2191,7 +2197,7 @@ def _release_against_genes(parsed, ensg: set[str], n_non_ensembl: int, dated) ->
     # read as "1 of 3" where one of the three was deliberately excluded from the
     # numerator. _no_release_explains_message already divided correctly.
     datable = len(ensg) - len(unknown)
-    noun = "known genes" if unknown else "genes"
+    noun = ("known gene" if unknown else "gene") + ("" if datable == 1 else "s")
     missing_here = shortfall.get(parsed.release)
     if missing_here:
         # "Did not exist" is only true of genes defined after the declared release.

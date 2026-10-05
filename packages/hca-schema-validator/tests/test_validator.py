@@ -1949,7 +1949,10 @@ def test_annotation_version_too_late_is_reported_too():
     # too-late path is never exercised.
     warnings, _ = check_gene_annotation_version(_version_adata([_TP53, _RETIRED_AT_102], version="v110"))
     assert len(warnings) == 1, warnings
-    assert _RETIRED_AT_102 in warnings[0] and "r110" in warnings[0], warnings[0]
+    assert _RETIRED_AT_102 in warnings[0], warnings[0]
+    # The direction, not just the release number -- "r110" alone appears in any
+    # message naming the declared value, including the too-early wording.
+    assert "are not in Ensembl r110: they were retired before it" in warnings[0], warnings[0]
 
 
 def test_annotation_version_later_declaration_is_allowed():
@@ -2091,8 +2094,12 @@ def test_gencode_ceiling_tracks_the_ensembl_table_not_the_vendored_pin():
     with Path(env.GENE_INFO_YAML).open() as fh:
         pinned = int(yaml.safe_load(fh)["human"]["version"])
     ceiling = _highest_gencode_release()
-    assert ceiling == last_covered - 66
+    # Not "ceiling == last_covered - 66" -- that restates the function body and
+    # can only fail if someone edits the constant. What matters is the relation
+    # to the two sources: the ceiling tracks the Ensembl table, and never falls
+    # behind the vendored pin the way reading the pin directly did.
     assert ceiling >= pinned, "the ceiling must not fall behind the vendored pin"
+    assert last_covered - 70 < ceiling < last_covered, (ceiling, last_covered)
     # The releases the pin would have excluded stay ambiguous.
     for release in range(pinned + 1, ceiling + 1):
         warnings, _ = check_gene_annotation_version(_version_adata([_TP53], version=f"v{release}", genome="GRCh38"))
@@ -2308,7 +2315,7 @@ def test_annotation_version_version_suffix_is_matched_not_split_off():
     warnings, _ = check_gene_annotation_version(adata)
     assert len(warnings) == 1, warnings
     assert "3 features excluded from dating" in warnings[0], warnings[0]
-    assert "1 of this file's 1 gene" in warnings[0], warnings[0]
+    assert "1 of this file's 1 gene did not exist" in warnings[0], warnings[0]
 
 
 def test_annotation_version_excluded_count_is_of_rejected_features():
@@ -2338,7 +2345,7 @@ def test_annotation_version_trailing_newline_is_not_an_ensembl_id():
     assert _HUMAN_ENSG_RE.match(f"{_TP53}\n") is not None
     assert _HUMAN_ENSG_RE.fullmatch(f"{_TP53}\n") is None
     warnings, _ = check_gene_annotation_version(_version_adata([f"{_TP53}\n", _POST_R98], version="v87"))
-    assert "1 of this file's 1 genes" in warnings[0], warnings[0]
+    assert "1 of this file's 1 gene did not exist" in warnings[0], warnings[0]
 
 
 def test_annotation_version_ignores_non_ensembl_features():
@@ -2401,7 +2408,11 @@ def test_annotation_version_no_release_names_the_unexplained_genes():
     warnings, _ = check_gene_annotation_version(adata)
     no_release = next(w for w in warnings if "comes closest" in w)
     assert "for example" in no_release, no_release
-    assert _POST_R98 in no_release or _RETIRED_AT_102 in no_release, no_release
+    # Not a disjunction: the closest release here is the table's floor (ties
+    # resolve to the earliest), where the gene missing is the one not yet born
+    # rather than the one already retired. Naming which is the point.
+    assert _POST_R98 in no_release, no_release
+    assert _RETIRED_AT_102 not in no_release, no_release
 
 
 def test_first_grch38_release_is_not_read_off_the_table():
