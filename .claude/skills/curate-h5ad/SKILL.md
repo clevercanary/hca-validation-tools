@@ -125,7 +125,7 @@ Report these but don't attempt to fix:
   |---|---|---|
   | genes "did not exist in" / "are not in" the declared release | producer | relay: the declared value and the gene list disagree |
   | "name different assemblies" | producer | relay: `gene_annotation_version` and `reference_genome` contradict each other |
-  | "is a GRCh37 annotation" | producer | relay: the file's genes cannot be checked against a GRCh37 release |
+  | "is a GRCh37 annotation ... this reference data does not cover" | **ours** | nothing to relay. Nothing says the declaration is wrong — only that our table starts at r76, so a genuinely GRCh37-aligned file cannot be checked. Extending it is #724 |
   | "did not exist until after Ensembl r76 ... cannot have been in r*N*" | producer | relay: the declared release is below the reference data's range, but the file's own genes rule it out anyway |
   | "older than this reference data covers" | **ours** | nothing to relay. The declared release predates the gene table; extending it is #724 |
   | "predates both" | producer | relay: the declared release is older than GRCh37 (r54 and earlier used NCBI36), so no assembly is claimed and the genes cannot be checked against it |

@@ -1999,6 +1999,21 @@ def test_annotation_version_assembly_mismatch():
     assert any("name different assemblies" in w for w in warnings), warnings
 
 
+@pytest.mark.parametrize("version", ["v98", " v98 ", "\tv98\n"])
+def test_annotation_version_assembly_mismatch_survives_padding(version):
+    """Whitespace around the declared value must not lose the assembly comparison.
+
+    The declared set is stripped before use, because parse_annotation_version
+    strips and "v98" and " v98 " are one declaration -- but _assembly_pairs keyed
+    on the raw column value, so the stripped lookup found nothing and the
+    GRCh37/GRCh38 contradiction was skipped without a word. Silently dropping the
+    one comparison that needs no reference data is the worst shape this failure
+    could take, so every spelling is pinned rather than just the bare one.
+    """
+    warnings, _ = check_gene_annotation_version(_version_adata([_TP53], version=version, genome="GRCh37"))
+    assert any("name different assemblies" in w for w in warnings), warnings
+
+
 def test_annotation_version_accession_is_not_an_annotation():
     # The schema's own example is an accession (#719), so this is not the producer's error.
     warnings, _ = check_gene_annotation_version(_version_adata([_TP53], version="GCF_000001405.39"))

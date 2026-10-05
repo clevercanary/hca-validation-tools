@@ -1709,9 +1709,13 @@ def check_gene_annotation_version(adata):
     test: gorilla identifiers are ``ENSGGOG...`` and would otherwise be dated
     as human.
 
-    Silent on non-human data, both comparisons included. The shipped table is
-    human, and so is the release-to-assembly mapping -- Ensembl numbers releases
-    across all species, so r110 says GRCh38 only for a human file.
+    The declared organism gates comparison 1 and nothing else. The
+    release-to-assembly mapping is human-only -- Ensembl numbers releases across
+    all species, so r110 says GRCh38 only for a human file -- and that half is
+    withheld unless every row states the human organism. Comparison 2 is not
+    withheld: an ``ENSG`` identifier is a human gene whatever ``obs`` declares,
+    so a file claiming another organism while carrying human genes is still
+    dated against them.
 
     Returns:
         ``(warnings, errors)`` -- two lists of strings. Everything here is a
@@ -1852,7 +1856,15 @@ def _assembly_pairs(obs) -> dict[str, dict[str, int]]:
     out: dict[str, dict[str, int]] = {}
     for (version, genome), count in paired.value_counts().items():
         if genome in _KNOWN_ASSEMBLIES:
-            out.setdefault(version, {})[genome] = int(count)
+            # Keyed on the stripped version, because the caller looks these up by
+            # the stripped value -- parse_annotation_version strips, so "v98" and
+            # " v98 " are one declaration. Keying on the raw string meant a padded
+            # value found nothing here and its assembly comparison was skipped in
+            # silence, which is the one finding this check exists for. Counts are
+            # summed rather than assigned, since two spellings now collapse onto
+            # one key and the second would otherwise overwrite the first.
+            bucket = out.setdefault(version.strip(), {})
+            bucket[genome] = bucket.get(genome, 0) + int(count)
     return out
 
 
