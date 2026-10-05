@@ -120,6 +120,8 @@ Unknown values are `unknown`, `na`, and the empty string, on every column; `not 
 
 **2. Declared release vs. the genes.** For each release, count the genes it cannot explain; the releases explaining all of them are the window that could have produced the file. Reported as both ends, not just the earliest: genes are **retired** as well as born (`ENSG00000130723` exists r76–r102 and then stops), so a declared release can be wrong by being too late. Nine declarations in the prod corpus are. Reported as contiguous runs (`r105 to r110`, or `r100 to r104 and r109 to r116`) rather than as a min–max span: a resurrected gene punches a hole, and a span would name releases that do not explain the file — including, where the hole contains it, the very release being reported as wrong. The absent genes are split by reason, since defined-after and retired-before say opposite things about the declaration.
 
+The window is bounded by the table's coverage as well as by the genes. Where a run reaches r76 or r116, that end is the table's limit rather than something the genes establish — a gene retired at r102 pins the upper end, but the lower end is only "as far back as this reference data goes", and the gene may well exist in GRCh37 (`ENSG00000130723` does, in r75). Every file in the prod corpus has both ends pinned by genes, so this is a limit to know about rather than one that currently bites; it resolves when the table covers r55–r75 (#724).
+
 | declared value | what happens |
 |---|---|
 | Ensembl release r76+ (`v98`) | dated against the gene list |

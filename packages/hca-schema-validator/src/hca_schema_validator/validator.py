@@ -2211,9 +2211,15 @@ def _release_against_genes(parsed, ensg: set[str], n_non_ensembl: int, dated) ->
         # explain a file form a window, and naming only its start reads as "use
         # this release or later" when every later release fails too.
         # "Consistent with" rather than "contains every gene here": the range is
-        # pinned at both ends by genes -- one born late rules out everything
-        # earlier, one retired early rules out everything later -- so no release
-        # in it is more the answer than any other, and we are not identifying one.
+        # pinned by genes -- one born late rules out everything earlier, one
+        # retired early rules out everything later -- so no release in it is more
+        # the answer than any other, and we are not identifying one.
+        #
+        # An end that reaches the table's floor or ceiling is ours, not the
+        # genes': a gene retired at r102 pins the upper end, but "from r76" only
+        # means "as far back as this reference data goes", and that gene is in
+        # GRCh37 r75. Every prod file has both ends gene-pinned, so the range is
+        # not currently overstating anything; it resolves with #724.
         # Reported as runs rather than min to max: a resurrected gene punches a
         # hole, and min-max would name releases that do not explain the file --
         # the same release the message is reporting as wrong.
