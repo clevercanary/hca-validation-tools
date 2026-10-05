@@ -31,6 +31,7 @@ import gzip
 import io
 import sys
 import time
+from collections import Counter
 from pathlib import Path
 
 try:
@@ -93,13 +94,14 @@ def check_releases(found: list[int]) -> list[int]:
     """
     if not found:
         raise SystemExit(f"archive served no GRCh38 release at or after r{FIRST_GRCH38}")
-    duplicates = sorted({r for r in found if found.count(r) > 1})
+    seen = Counter(found)
+    duplicates = sorted(r for r, n in seen.items() if n > 1)
     if duplicates:
         raise SystemExit(
             f"archive listed release(s) {', '.join(f'r{r}' for r in duplicates)} more than once; "
             f"refusing to build a table that would split every gene at the repeat"
         )
-    gaps = [r for r in range(FIRST_GRCH38, found[-1] + 1) if r not in set(found)]
+    gaps = [r for r in range(FIRST_GRCH38, found[-1] + 1) if r not in seen]
     if gaps:
         raise SystemExit(
             f"archive is missing release(s) {', '.join(f'r{r}' for r in gaps)} between "

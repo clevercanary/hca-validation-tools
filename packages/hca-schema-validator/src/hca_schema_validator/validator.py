@@ -1633,7 +1633,10 @@ def _gene_release_intervals() -> tuple[dict[str, list[tuple[int, int]]], int, in
     a flat pair would claim it existed in between.
     """
     table: dict[str, list[tuple[int, int]]] = {}
-    with gzip.open(_INTERVALS_PATH, "rt", newline="") as fh:
+    # encoding named rather than left to the locale: the artifact is committed
+    # UTF-8 and the generator writes it as such, so reading it must not depend
+    # on where the validator happens to run.
+    with gzip.open(_INTERVALS_PATH, "rt", newline="", encoding="utf-8") as fh:
         rows = csv.reader(line for line in fh if not line.startswith("#"))
         next(rows, None)  # header
         for gene, first, last in rows:
@@ -1719,41 +1722,32 @@ def check_gene_annotation_version(adata):
         if duplicated & {"gene_annotation_version", "reference_genome", "organism_ontology_term_id"}:
             return [], []
 
-    # The two comparisons rest on different evidence, so they are gated
-    # separately.
+    # The organism gates assembly claims and nothing else, because the two
+    # comparisons rest on different evidence.
     #
     # Dating needs no organism statement: it runs on ENSG identifiers, which are
-    # human by construction, against a human table. A file whose required
-    # organism column is missing still has a gene list, and "80 of these genes
-    # postdate the release you declared" is true of it either way -- 20 prod
-    # files, 17 of them eye, have no organism column and were losing real
-    # findings to a blanket gate.
-    #
-    # Everything assembly-shaped does need it, because the release-to-assembly
-    # mapping is human-only: Ensembl numbers releases across all species, so
-    # r110 means GRCh38 for a human file and GRCm39 for a mouse one. Requiring
-    # the positive statement rather than rejecting an explicitly non-human one
-    # matters because _deep_check runs after schema errors are collected -- a
-    # mouse file with no organism column would otherwise be told its GRCm39
-    # reference contradicts r98. A non-human organism is a defect for the schema
-    # to report (see #723), not for this check to interpret.
-    # The organism gates assembly claims and nothing else.
-    #
-    # Dating needs no organism statement: it runs on ENSG identifiers, which are
-    # human by construction, so what the column says cannot make a human gene
-    # stop being one. Earlier revisions returned early on a stated non-human
-    # organism, which silenced findings rather than adding any -- a file whose
+    # human by construction, against a human table, so what the column says
+    # cannot make a human gene stop being one. A file whose required organism
+    # column is missing still has a gene list, and "80 of these genes postdate
+    # the release you declared" is true of it either way -- 20 prod files, 17 of
+    # them eye, have no organism column and were losing real findings to a
+    # blanket gate. Earlier revisions also returned early on a stated non-human
+    # organism, which silenced findings rather than adding any: three mouse
+    # cells in two million discarded the other two million, and a file whose
     # taxon and features disagree is already reported by the feature-id organism
-    # check, and three mouse cells in two million discarded the other two
-    # million. Non-human features are excluded by the ENSG match and counted,
-    # and whether a non-human organism belongs in an HCA file at all is the
-    # schema's to say (#723).
+    # check. Non-human features are excluded by the ENSG match and counted, and
+    # whether a non-human organism belongs in an HCA file at all is the schema's
+    # to say (#723).
     #
     # Assembly claims do need it, because the release-to-assembly mapping is
     # human-only: Ensembl numbers releases across all species, so r110 means
-    # GRCh38 for a human file and GRCm39 for a mouse one. Only a well-formed
-    # curie is a claim -- a column of "unknown" states no more than an absent
-    # one -- and every row must carry the human one.
+    # GRCh38 for a human file and GRCm39 for a mouse one. Requiring the positive
+    # statement rather than rejecting an explicitly non-human one matters
+    # because _deep_check runs after schema errors are collected -- a mouse file
+    # with no organism column would otherwise be told its GRCm39 reference
+    # contradicts r98. Only a well-formed curie is a claim -- a column of
+    # "unknown" states no more than an absent one -- and every row must carry
+    # the human one.
     organism = obs["organism_ontology_term_id"] if "organism_ontology_term_id" in obs.columns else None
     human = organism is not None and bool((organism.astype(str) == _HUMAN_ORGANISM).all())
 
