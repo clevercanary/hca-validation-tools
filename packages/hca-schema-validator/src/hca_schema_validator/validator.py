@@ -1543,7 +1543,7 @@ _HUMAN_ORGANISM = "NCBITaxon:9606"
 _SCOPE_TOO_EARLY = (
     " If this is a source dataset -- one study, one annotation -- the declared value cannot be "
     "correct. On an integrated object each declared value must instead match the source dataset its "
-    "cells came from, which this check cannot confirm without that linkage (#719)."
+    "cells came from, which this check cannot verify: nothing in the file links a cell to its source."
 )
 _SCOPE_NO_RELEASE = (
     " If this is a source dataset, its gene list spans releases -- a reference that mixes them, or "
