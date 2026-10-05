@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.2](https://github.com/clevercanary/hca-validation-tools/compare/hca-schema-validator-v0.15.1...hca-schema-validator-v0.15.2) (2026-10-05)
+
+
+### Features
+
+* **hca-schema-validator:** check the declared gene annotation against the file's genes ([#710](https://github.com/clevercanary/hca-validation-tools/issues/710)) ([#720](https://github.com/clevercanary/hca-validation-tools/issues/720)) ([367bb18](https://github.com/clevercanary/hca-validation-tools/commit/367bb18eb44eaf996299851f3e5c1e0268c3e417))
+
 ## [0.15.1](https://github.com/clevercanary/hca-validation-tools/compare/hca-schema-validator-v0.15.0...hca-schema-validator-v0.15.1) (2026-09-30)
 
 
