@@ -36,7 +36,9 @@ from pathlib import Path
 try:
     import pymysql
 except ImportError:  # pragma: no cover - the script is run by hand
-    sys.exit("pymysql is required:  uv run --no-project --with pymysql python scripts/...")
+    # Deferred rather than fatal at import, so the pure functions below stay
+    # testable without the driver. main() reports it before touching the server.
+    pymysql = None
 
 HOST = "ensembldb.ensembl.org"
 USER = "anonymous"
@@ -50,32 +52,48 @@ DEFAULT_OUT = (
 )
 
 
-def available_releases() -> list[int]:
-    """GRCh38 human core databases the server currently serves, oldest first."""
-    con = pymysql.connect(host=HOST, user=USER, port=PORT, connect_timeout=60)
-    try:
-        cur = con.cursor()
-        cur.execute("SHOW DATABASES LIKE 'homo_sapiens_core_%%_38'")
-        names = [row[0] for row in cur.fetchall()]
-    finally:
-        con.close()
-    releases = []
-    for name in names:
-        parts = name.split("_")
-        if len(parts) == 5 and parts[3].isdigit():
-            releases.append(int(parts[3]))
-    found = sorted(r for r in releases if r >= FIRST_GRCH38)
-    # Runs are split on adjacency in this list, not on numeric adjacency, so a
-    # release missing from the server would be absorbed into the surrounding run
-    # and the table would claim presence at a release never queried. Refuse
-    # rather than invent: the output is committed and nothing downstream could
-    # tell the difference.
-    # Counted from FIRST_GRCH38 rather than from the earliest release found, so
-    # losing the oldest database is rejected too: a table starting at r77 is
-    # silently narrower, and the check reads its floor as the first GRCh38
-    # release and would call r76 a GRCh37 annotation.
+def release_from_name(name: str) -> int | None:
+    """The release a core database name carries, or None if it is not one.
+
+    Every part is checked, not just that the fourth is a number. The LIKE above
+    is escaped so the server should return only core databases, but a name is
+    cheap to verify and this is the last point at which a wrong one could be
+    read as a release.
+    """
+    parts = name.split("_")
+    if len(parts) != 5:
+        return None
+    organism_genus, organism_species, kind, release, _assembly = parts
+    if (organism_genus, organism_species, kind) != ("homo", "sapiens", "core"):
+        return None
+    return int(release) if release.isdigit() else None
+
+
+def check_releases(found: list[int]) -> list[int]:
+    """Refuse a release list that would produce a table saying something untrue.
+
+    Both failure modes matter and neither is visible in the committed artifact,
+    which is a binary whose diff reads only as "249 KB changed".
+
+    A missing release would be absorbed into the surrounding run, because runs
+    are split on adjacency in this list rather than numerically -- the table
+    would then claim presence at a release never queried. Counted from
+    FIRST_GRCH38 rather than from the earliest release found, so losing the
+    oldest database is rejected too: a narrower table is not obviously broken,
+    and the check reads its floor as a fact about Ensembl.
+
+    A repeated release breaks every gene's run at the repeat and manufactures a
+    resurrection for each -- the artefact the interval format exists to record
+    honestly. The gap check cannot see it, since a duplicate leaves no hole.
+    """
     if not found:
         raise SystemExit(f"archive served no GRCh38 release at or after r{FIRST_GRCH38}")
+    duplicates = sorted({r for r in found if found.count(r) > 1})
+    if duplicates:
+        raise SystemExit(
+            f"archive listed release(s) {', '.join(f'r{r}' for r in duplicates)} more than once; "
+            f"refusing to build a table that would split every gene at the repeat"
+        )
     gaps = [r for r in range(FIRST_GRCH38, found[-1] + 1) if r not in set(found)]
     if gaps:
         raise SystemExit(
@@ -84,6 +102,25 @@ def available_releases() -> list[int]:
             f"presence at a release it never queried"
         )
     return found
+
+
+def available_releases() -> list[int]:
+    """GRCh38 human core databases the server currently serves, oldest first."""
+    con = pymysql.connect(host=HOST, user=USER, port=PORT, connect_timeout=60)
+    try:
+        cur = con.cursor()
+        # Underscores escaped: in MySQL LIKE, "_" matches any single character,
+        # so the unescaped form also matched homo_sapiens_coreexpressionatlas_63_37
+        # and friends. Measured against the live server: unescaped returns 41
+        # names for _37 of which 27 are not core databases; escaped returns 14,
+        # all of them real. Ensembl publishes no such database for _38 today,
+        # which is the only reason the unescaped pattern was harmless here.
+        cur.execute(r"SHOW DATABASES LIKE 'homo\_sapiens\_core\_%%\_38'")
+        names = [row[0] for row in cur.fetchall()]
+    finally:
+        con.close()
+    releases = [r for r in (release_from_name(n) for n in names) if r is not None]
+    return check_releases(sorted(r for r in releases if r >= FIRST_GRCH38))
 
 
 def genes_in(release: int) -> set[str]:
@@ -120,6 +157,8 @@ def intervals(present: list[int], releases: list[int]) -> list[tuple[int, int]]:
 
 
 def main() -> int:
+    if pymysql is None:
+        sys.exit("pymysql is required:  uv run --no-project --with pymysql python scripts/...")
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--out", type=Path, default=DEFAULT_OUT)
     args = ap.parse_args()
