@@ -2208,6 +2208,20 @@ def test_annotation_version_dates_genes_without_an_organism_statement():
     assert "assemblies" not in warnings[0] and "GRCh37" not in warnings[0], warnings[0]
 
 
+@pytest.mark.parametrize("organism", [None, [None, None], ["unknown"] * 2, ["NA"] * 2, [""] * 2, ["Homo sapiens"] * 2])
+def test_annotation_version_only_a_curie_is_a_claim_about_organism(organism):
+    # A placeholder states nothing, so it is the same "we do not know" as an
+    # absent column: dating runs on the ENSG ids, the assembly claim stays
+    # gated. Treating any non-null value as a stated organism silenced the whole
+    # check on a column of "unknown" while an absent one dated the genes.
+    adata = _version_adata([_TP53, _POST_R98], version="v87", genome="GRCh37", organism=None)
+    if organism is not None:
+        adata.obs["organism_ontology_term_id"] = organism
+    warnings, _ = check_gene_annotation_version(adata)
+    assert any("did not exist in Ensembl r87" in w for w in warnings), (organism, warnings)
+    assert not any("name different assemblies" in w for w in warnings), (organism, warnings)
+
+
 def test_annotation_version_stated_non_human_is_silent_even_with_ensg_features():
     # An absent organism is "we do not know", and dating is sound there because
     # ENSG identifiers are human whatever obs says. A *stated* non-human

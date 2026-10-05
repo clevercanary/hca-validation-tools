@@ -1523,6 +1523,10 @@ _HUMAN_ENSG_RE = re.compile(r"^(ENSG\d+)(?:\.\d+)?$")
 _VERSION_NOT_A_CLAIM = frozenset({"", "nan", "none", "na", "unknown", "not available", "not applicable"})
 _INTERVALS_PATH = Path(__file__).parent / "gene_release_intervals.csv.gz"
 _HUMAN_ORGANISM = "NCBITaxon:9606"
+# A claim about organism is an NCBITaxon curie. Anything else -- a placeholder
+# like "unknown", free text like "Homo sapiens", a typo -- states nothing, and
+# is the same epistemic position as an absent column.
+_ORGANISM_CURIE_RE = re.compile(r"^NCBITaxon:\d+$")
 # Stated rather than detected, because nothing in the file reliably says whether
 # it is merged. Three candidate signals were measured across the corpus and all
 # fail: 7 of 111 source datasets carry a uns copy of the field, 90 of 103
@@ -1736,7 +1740,13 @@ def check_gene_annotation_version(adata):
     # and reporting on its ENSG features anyway would be arguing with it. HCA
     # curates human data, so the organism is the defect to report (see #723).
     organism = obs["organism_ontology_term_id"] if "organism_ontology_term_id" in obs.columns else None
-    stated = set() if organism is None else {str(v) for v in organism.dropna().unique()}
+    present = set() if organism is None else {str(v) for v in organism.dropna().unique()}
+    # Only a well-formed curie is a claim. A column of "unknown" is the same
+    # "we do not know" as a missing one, and was getting the opposite treatment:
+    # silence, where an absent column dates the genes. The schema's own error on
+    # the malformed value does not help, since this check runs in the same deep
+    # pass and would already have returned.
+    stated = {v for v in present if _ORGANISM_CURIE_RE.fullmatch(v)}
     if stated - {_HUMAN_ORGANISM}:
         return [], []
     human = organism is not None and bool((organism.astype(str) == _HUMAN_ORGANISM).all())
