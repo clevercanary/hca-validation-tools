@@ -1536,11 +1536,14 @@ _HUMAN_ORGANISM = "NCBITaxon:9606"
 # than hedging one of them -- on a merged object the result is not a weaker
 # verdict but a different and expected one. Remove these once #719's
 # source_dataset_id makes merged-ness a fact the check can read, and gate on it.
+# Appended to a finding where a release *was* found to fit, so it must not
+# repeat _SCOPE_NO_RELEASE's union argument: saying "no single release fits it"
+# beside a sentence naming the releases that do contradicts the finding, and an
+# integrated-object reader takes the second clause as the operative one.
 _SCOPE_TOO_EARLY = (
     " If this is a source dataset -- one study, one annotation -- the declared value cannot be "
-    "correct. On an integrated object the test is a different one: its gene list is a union of its "
-    "sources', so no single release fits it, and each declared value must instead match the source "
-    "dataset its cells came from."
+    "correct. On an integrated object each declared value must instead match the source dataset its "
+    "cells came from, which this check cannot confirm without that linkage (#719)."
 )
 _SCOPE_NO_RELEASE = (
     " If this is a source dataset, its gene list spans releases -- a reference that mixes them, or "
