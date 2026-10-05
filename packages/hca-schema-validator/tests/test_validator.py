@@ -1980,7 +1980,9 @@ def test_annotation_version_sub_76_refutation_needs_no_organism():
     mouse.obs["organism_ontology_term_id"] = ["NCBITaxon:10090"] * len(mouse.obs)
     assert "cannot have been in r75" in human[0], human
     assert check_gene_annotation_version(unknown)[0] == human
-    assert check_gene_annotation_version(mouse) == ([], [])
+    # The organism gates assembly claims, not dating, so a stated mouse organism
+    # does not suppress a refutation resting on ENSG identifiers.
+    assert check_gene_annotation_version(mouse)[0] == human
 
 
 def test_annotation_version_below_the_table_is_refuted_by_later_genes():
@@ -2222,15 +2224,27 @@ def test_annotation_version_only_a_curie_is_a_claim_about_organism(organism):
     assert not any("name different assemblies" in w for w in warnings), (organism, warnings)
 
 
-def test_annotation_version_stated_non_human_is_silent_even_with_ensg_features():
-    # An absent organism is "we do not know", and dating is sound there because
-    # ENSG identifiers are human whatever obs says. A *stated* non-human
-    # organism is different: the file has said it is out of scope, and dating
-    # its ENSG features anyway would be arguing with it.
+def test_annotation_version_stated_non_human_does_not_silence_dating():
+    # A stated non-human organism used to return early, which silenced findings
+    # rather than adding any: ENSG identifiers are human by construction, so the
+    # column cannot make a human gene stop being one, and a file whose taxon and
+    # features disagree is already reported by the feature-id organism check.
+    # Three mouse cells in two million were discarding the other two million.
     for organism in (["NCBITaxon:10090"] * 2, ["NCBITaxon:9606", "NCBITaxon:10090"]):
         adata = _version_adata([_TP53, _POST_R98], version="v87", genome="GRCh38", organism=None)
         adata.obs["organism_ontology_term_id"] = organism
-        assert check_gene_annotation_version(adata) == ([], []), organism
+        warnings, _ = check_gene_annotation_version(adata)
+        assert any("did not exist in Ensembl r87" in w for w in warnings), (organism, warnings)
+        # ...but the assembly claim stays gated: r87 means GRCh37 only for human.
+        assert not any("name different assemblies" in w for w in warnings), (organism, warnings)
+
+
+def test_annotation_version_a_real_non_human_file_is_silent_anyway():
+    # Nothing has to suppress it: a mouse file carries ENSMUSG features, the
+    # ENSG match leaves nothing to date, and the check falls silent on its own.
+    adata = _version_adata(["ENSMUSG00000102693", "ENSMUSG00000051951"], version="v98", genome="GRCm39", organism=None)
+    adata.obs["organism_ontology_term_id"] = ["NCBITaxon:10090"] * len(adata.obs)
+    assert check_gene_annotation_version(adata) == ([], [])
 
 
 def test_annotation_version_mouse_file_is_silent():

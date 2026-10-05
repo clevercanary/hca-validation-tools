@@ -1733,22 +1733,24 @@ def check_gene_annotation_version(adata):
     # mouse file with no organism column would otherwise be told its GRCm39
     # reference contradicts r98. A non-human organism is a defect for the schema
     # to report (see #723), not for this check to interpret.
-    # Three states, not two. An absent or null organism is "we do not know",
-    # and dating is still sound there because ENSG identifiers are human
-    # whatever obs says -- that is what recovered the 20 prod files. A *stated*
-    # non-human organism is different: the file has told us it is out of scope,
-    # and reporting on its ENSG features anyway would be arguing with it. HCA
-    # curates human data, so the organism is the defect to report (see #723).
+    # The organism gates assembly claims and nothing else.
+    #
+    # Dating needs no organism statement: it runs on ENSG identifiers, which are
+    # human by construction, so what the column says cannot make a human gene
+    # stop being one. Earlier revisions returned early on a stated non-human
+    # organism, which silenced findings rather than adding any -- a file whose
+    # taxon and features disagree is already reported by the feature-id organism
+    # check, and three mouse cells in two million discarded the other two
+    # million. Non-human features are excluded by the ENSG match and counted,
+    # and whether a non-human organism belongs in an HCA file at all is the
+    # schema's to say (#723).
+    #
+    # Assembly claims do need it, because the release-to-assembly mapping is
+    # human-only: Ensembl numbers releases across all species, so r110 means
+    # GRCh38 for a human file and GRCm39 for a mouse one. Only a well-formed
+    # curie is a claim -- a column of "unknown" states no more than an absent
+    # one -- and every row must carry the human one.
     organism = obs["organism_ontology_term_id"] if "organism_ontology_term_id" in obs.columns else None
-    present = set() if organism is None else {str(v) for v in organism.dropna().unique()}
-    # Only a well-formed curie is a claim. A column of "unknown" is the same
-    # "we do not know" as a missing one, and was getting the opposite treatment:
-    # silence, where an absent column dates the genes. The schema's own error on
-    # the malformed value does not help, since this check runs in the same deep
-    # pass and would already have returned.
-    stated = {v for v in present if _ORGANISM_CURIE_RE.fullmatch(v)}
-    if stated - {_HUMAN_ORGANISM}:
-        return [], []
     human = organism is not None and bool((organism.astype(str) == _HUMAN_ORGANISM).all())
 
     # Filtered by what the parser calls a missing value, not by one hardcoded
