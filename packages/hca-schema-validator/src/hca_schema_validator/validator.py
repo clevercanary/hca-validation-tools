@@ -1841,11 +1841,16 @@ def _annotation_version_messages(
         if parsed.kind == "release" and parsed.release >= _FIRST_GRCH38_RELEASE:
             return _release_against_genes(parsed, ensg, n_features, dated)
         if parsed.kind == "ambiguous" and parsed.release <= _highest_gencode_release():
-            # Only while the number really is ambiguous. Above the ceiling it can
-            # only be an Ensembl release, but saying which assembly that implies
-            # is the human-specific part, and below r76 there is nothing to date
-            # against -- so there is nothing left to say without the organism.
+            # Only while the number really is ambiguous -- above the ceiling it
+            # can only be an Ensembl release, and saying which assembly that
+            # implies is the human-specific part.
             return _ambiguous_release_number(parsed)
+        if parsed.kind == "ambiguous":
+            # Settled as an Ensembl release below r76. The assembly it implies is
+            # human-specific and stays gated, but the gene list can still refute
+            # it: that rests on ENSG identifiers alone.
+            refuted = _refuted_by_later_genes(parsed, ensg, dated)
+            return [refuted] if refuted else []
         if parsed.kind == "assembly":
             return [_accession_is_not_an_annotation(parsed)]
         return []
@@ -2037,6 +2042,34 @@ def _why_absent(ensg: set[str], unknown: set[str], table, release: int) -> tuple
     return born_later, retired_earlier, in_gap
 
 
+def _refuted_by_later_genes(parsed, ensg: set[str], dated) -> str | None:
+    """Rule out a release below the table's floor using genes born after it.
+
+    A gene whose first appearance is later than the floor did not exist at any
+    earlier release either, covered or not, so it refutes every release below
+    the floor without the GRCh37 data being shipped (#724). Only a gene first
+    seen *at* the floor is genuinely unknown before it.
+
+    Rests on ENSG identifiers and the human table alone, so it is available
+    whether or not obs states an organism -- the organism-neutral path calls it
+    too, and without that the refutation vanished on a file with no organism
+    column while firing on the same file with one.
+    """
+    if dated is None:
+        return None
+    table, first_covered, _ = _gene_release_intervals()
+    _, _, unknown = dated
+    born_later = sorted(g for g in ensg if g not in unknown and min(first for first, _ in table[g]) > first_covered)
+    if not born_later:
+        return None
+    return (
+        f"obs['gene_annotation_version'] is {parsed.raw!r}, but {len(born_later):,} of this file's "
+        f"{len(ensg) - len(unknown):,} known genes did not exist until after Ensembl r{first_covered} -- "
+        f"for example {', '.join(born_later[:3])}, so they cannot have been in r{parsed.release}."
+        f"{_SCOPE_TOO_EARLY}"
+    )
+
+
 def _release_against_genes(parsed, ensg: set[str], n_features: int, dated) -> list[str]:
     """Compare a declared Ensembl release with what the gene list can support.
 
@@ -2061,18 +2094,9 @@ def _release_against_genes(parsed, ensg: set[str], n_features: int, dated) -> li
         # either, covered or not -- so it rules out every release below the
         # floor without the GRCh37 data being shipped (#724). Only a gene first
         # seen *at* the floor is genuinely unknown before it.
-        if dated is not None:
-            _, _, unknown = dated
-            born_later = sorted(
-                g for g in ensg if g not in unknown and min(first for first, _ in table[g]) > first_covered
-            )
-            if born_later:
-                return [
-                    f"obs['gene_annotation_version'] is {parsed.raw!r}, but {len(born_later):,} of this "
-                    f"file's {len(ensg) - len(unknown):,} known genes did not exist until after Ensembl "
-                    f"r{first_covered} -- for example {', '.join(born_later[:3])}, so they cannot have "
-                    f"been in r{parsed.release}.{_SCOPE_TOO_EARLY}"
-                ]
+        refuted = _refuted_by_later_genes(parsed, ensg, dated)
+        if refuted:
+            return [refuted]
         # Nothing in the gene list rules it out, and the table cannot date it:
         # the limit here is our reference data, not the declaration.
         return [

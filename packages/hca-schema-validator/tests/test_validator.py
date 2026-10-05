@@ -1968,6 +1968,21 @@ def test_annotation_version_accession_is_not_an_annotation():
     assert len(warnings) == 1 and "names a genome assembly rather than a gene annotation" in warnings[0]
 
 
+def test_annotation_version_sub_76_refutation_needs_no_organism():
+    # The refutation rests on ENSG identifiers and the human table alone, so it
+    # must survive an absent organism column -- it was reachable only on the
+    # human-confirmed path, and vanished on the 20 prod files that have none.
+    # A stated non-human organism still silences it.
+    genes = [_TP53, _POST_R98]
+    human, _ = check_gene_annotation_version(_version_adata(genes, version="v75", genome=None))
+    unknown = _version_adata(genes, version="v75", genome=None, organism=None)
+    mouse = _version_adata(genes, version="v75", genome=None, organism=None)
+    mouse.obs["organism_ontology_term_id"] = ["NCBITaxon:10090"] * len(mouse.obs)
+    assert "cannot have been in r75" in human[0], human
+    assert check_gene_annotation_version(unknown)[0] == human
+    assert check_gene_annotation_version(mouse) == ([], [])
+
+
 def test_annotation_version_below_the_table_is_refuted_by_later_genes():
     # A gene first appearing above the table's floor did not exist at any earlier
     # release, covered or not -- so it rules out a sub-r76 declaration without
