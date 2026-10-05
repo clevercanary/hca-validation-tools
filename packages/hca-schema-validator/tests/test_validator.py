@@ -1968,6 +1968,27 @@ def test_annotation_version_accession_is_not_an_annotation():
     assert len(warnings) == 1 and "names a genome assembly rather than a gene annotation" in warnings[0]
 
 
+def test_annotation_version_below_the_table_is_refuted_by_later_genes():
+    # A gene first appearing above the table's floor did not exist at any earlier
+    # release, covered or not -- so it rules out a sub-r76 declaration without
+    # the GRCh37 data being shipped (#724). twigger2022 declares v75 and carries
+    # 11 such genes.
+    adata = _version_adata([_TP53, _POST_R98], version="v75", genome=None)
+    warnings, _ = check_gene_annotation_version(adata)
+    assert len(warnings) == 1, warnings
+    assert "did not exist until after Ensembl r76" in warnings[0], warnings[0]
+    assert "cannot have been in r75" in warnings[0], warnings[0]
+
+
+def test_annotation_version_below_the_table_without_later_genes_says_so():
+    # With nothing to refute it, the limit is our coverage rather than the
+    # declaration, and the message must say which.
+    adata = _version_adata([_TP53], version="v75", genome=None)
+    warnings, _ = check_gene_annotation_version(adata)
+    assert len(warnings) == 1, warnings
+    assert "does not cover" in warnings[0], warnings[0]
+
+
 def test_annotation_version_below_the_table_is_grch37_not_nonexistent():
     # v75 is a real release -- the last GRCh37 one. Saying "no such release" would
     # be false, and would hide the finding that actually applies.

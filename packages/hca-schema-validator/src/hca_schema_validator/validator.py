@@ -2045,7 +2045,7 @@ def _release_against_genes(parsed, ensg: set[str], n_features: int, dated) -> li
     is a permanent fact about Ensembl (r75 and earlier are GRCh37), while above
     it is a fact about this reference data and clears when it is regenerated.
     """
-    table, _, last_covered = _gene_release_intervals()
+    table, first_covered, last_covered = _gene_release_intervals()
     # Against the constant, not the table's floor: which release first carried
     # GRCh38 is a fact about Ensembl, and reading it off the shipped data would
     # let a narrower table rewrite it.
@@ -2056,10 +2056,29 @@ def _release_against_genes(parsed, ensg: set[str], n_features: int, dated) -> li
             f"both and the genes in this file cannot be checked against it."
         ]
     if parsed.release < _FIRST_GRCH38_RELEASE:
+        # Below the table, but not beyond refuting. A gene whose first appearance
+        # is later than the table's floor did not exist at any earlier release
+        # either, covered or not -- so it rules out every release below the
+        # floor without the GRCh37 data being shipped (#724). Only a gene first
+        # seen *at* the floor is genuinely unknown before it.
+        if dated is not None:
+            _, _, unknown = dated
+            born_later = sorted(
+                g for g in ensg if g not in unknown and min(first for first, _ in table[g]) > first_covered
+            )
+            if born_later:
+                return [
+                    f"obs['gene_annotation_version'] is {parsed.raw!r}, but {len(born_later):,} of this "
+                    f"file's {len(ensg) - len(unknown):,} known genes did not exist until after Ensembl "
+                    f"r{first_covered} -- for example {', '.join(born_later[:3])}, so they cannot have "
+                    f"been in r{parsed.release}.{_SCOPE_TOO_EARLY}"
+                ]
+        # Nothing in the gene list rules it out, and the table cannot date it:
+        # the limit here is our reference data, not the declaration.
         return [
             f"obs['gene_annotation_version'] is {parsed.raw!r}. Ensembl r{_FIRST_GRCH38_RELEASE} is the first "
-            f"GRCh38 release, so r{parsed.release} is a GRCh37 annotation and the genes in this file "
-            f"cannot be checked against it."
+            f"GRCh38 release, so r{parsed.release} is a GRCh37 annotation, which this reference data does "
+            f"not cover -- the genes in this file were not checked against it."
         ]
     if parsed.release > last_covered:
         return [
