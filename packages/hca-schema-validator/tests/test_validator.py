@@ -2223,6 +2223,28 @@ def test_annotation_version_silent_without_the_column():
     assert check_gene_annotation_version(adata) == ([], [])
 
 
+def test_annotation_version_version_suffix_is_matched_not_split_off():
+    # Splitting every id at its first dot turned a custom feature into a real
+    # gene -- ENSG00000141510.beta became TP53 and was dated -- and collapsed
+    # distinct ids such as mycustom.1 and mycustom.2 into one, understating the
+    # excluded-feature count. Only Ensembl's numeric version suffix is stripped.
+    from hca_schema_validator.validator import _HUMAN_ENSG_RE
+
+    assert _HUMAN_ENSG_RE.match("ENSG00000141510.18").group(1) == _TP53
+    assert _HUMAN_ENSG_RE.match(_TP53).group(1) == _TP53
+    assert _HUMAN_ENSG_RE.match("ENSG00000141510.beta") is None
+    assert _HUMAN_ENSG_RE.match("mycustom.1") is None
+    assert _HUMAN_ENSG_RE.match("ENSGGOG00000010861") is None
+
+    # The dotted custom id is not dated, and both custom ids still count as
+    # separate excluded features.
+    adata = _version_adata(["ENSG00000141510.beta", _POST_R98, "mycustom.1", "mycustom.2"], version="v87")
+    warnings, _ = check_gene_annotation_version(adata)
+    assert len(warnings) == 1, warnings
+    assert "3 non-Ensembl features excluded" in warnings[0], warnings[0]
+    assert "1 of this file's 1 gene" in warnings[0], warnings[0]
+
+
 def test_annotation_version_ignores_non_ensembl_features():
     # Spike-ins have no Ensembl release; left in, every release would fail to explain them.
     adata = _version_adata([_TP53, "ERCC-00096", "ERCC-00171"], version="v98")

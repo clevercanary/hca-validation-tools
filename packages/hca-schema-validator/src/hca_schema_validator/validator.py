@@ -1512,9 +1512,13 @@ _FIRST_GRCH37_ACCESSION = 13
 _GENCODE_ENSEMBL_OFFSET = 66
 _ACCESSION_RE = re.compile(r"^GCF_0*1405\.(\d+)$", re.IGNORECASE)
 _RELEASE_RE = re.compile(r"^v?(\d{2,3})$", re.IGNORECASE)
-# Human genes are ENSG + digits. Anchored, because other species share the
-# prefix -- gorilla is ENSGGOG... -- and a prefix test would date them as human.
-_HUMAN_ENSG_RE = re.compile(r"^ENSG\d+$")
+# Human genes are ENSG + digits, optionally carrying Ensembl's numeric version
+# suffix. Anchored, because other species share the prefix -- gorilla is
+# ENSGGOG... -- and a prefix test would date them as human. The suffix is matched
+# rather than split off: splitting every id at its first dot turned a custom
+# feature such as ENSG00000141510.beta into TP53 and dated it as a known gene,
+# and collapsed distinct ids like mycustom.1 and mycustom.2 into one.
+_HUMAN_ENSG_RE = re.compile(r"^(ENSG\d+)(?:\.\d+)?$")
 # Values that say "nothing recorded" rather than making a claim.
 _VERSION_NOT_A_CLAIM = frozenset({"", "nan", "none", "na", "unknown", "not available", "not applicable"})
 _INTERVALS_PATH = Path(__file__).parent / "gene_release_intervals.csv.gz"
@@ -1757,8 +1761,8 @@ def check_gene_annotation_version(adata):
     n_genomes = obs["reference_genome"].astype(str).nunique(dropna=True) if "reference_genome" in obs.columns else 0
 
     var = getattr_anndata(adata, "var")
-    gene_ids = {str(i).split(".")[0] for i in var.index} if var is not None else set()
-    ensg = {g for g in gene_ids if _HUMAN_ENSG_RE.fullmatch(g)}
+    features = [str(i) for i in var.index] if var is not None else []
+    ensg = {m.group(1) for m in (_HUMAN_ENSG_RE.match(f) for f in features) if m}
 
     # Dating depends only on the gene list, so it is done once rather than per
     # declared value; a file carrying several values is exactly the muddled case
@@ -1767,7 +1771,7 @@ def check_gene_annotation_version(adata):
 
     warnings = []
     if dated and dated[0] is None and len(ensg) > len(dated[2]):
-        warnings.append(_no_release_explains_message(dated, ensg, len(gene_ids)))
+        warnings.append(_no_release_explains_message(dated, ensg, len(features)))
 
     if dated and dated[2]:
         # A gene no release contains means a newer annotation than this table
@@ -1785,7 +1789,7 @@ def check_gene_annotation_version(adata):
                 n_genomes,
                 human,
                 ensg,
-                len(gene_ids),
+                len(features),
                 dated,
             )
         )
@@ -2121,10 +2125,7 @@ def _release_against_genes(parsed, ensg: set[str], n_features: int, dated) -> li
         # Both ends, not just the earliest. Genes are retired as well as born --
         # ENSG00000130723 exists r76-r102 and then stops -- so the releases that
         # explain a file form a window, and naming only its start reads as "use
-        # this release or later" when every later release fails too. Stated as
-        # min to max rather than as a list: a resurrected gene can in principle
-        # punch a hole in the middle, and claiming contiguity would be a stronger
-        # statement than the table supports.
+        # this release or later" when every later release fails too.
         # "Consistent with" rather than "contains every gene here": the range is
         # pinned at both ends by genes -- one born late rules out everything
         # earlier, one retired early rules out everything later -- so no release
