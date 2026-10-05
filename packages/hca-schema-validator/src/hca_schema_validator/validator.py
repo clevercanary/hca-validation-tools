@@ -1764,8 +1764,23 @@ def check_gene_annotation_version(adata):
     n_genomes = obs["reference_genome"].astype(str).nunique(dropna=True) if "reference_genome" in obs.columns else 0
 
     var = getattr_anndata(adata, "var")
-    features = [str(i) for i in var.index] if var is not None else []
-    ensg = {m.group(1) for m in (_HUMAN_ENSG_RE.match(f) for f in features) if m}
+    # fullmatch, not match: Python's "$" also matches immediately before a final
+    # newline, so "ENSG00000141510\n" would normalise to TP53 and be dated --
+    # the exact misclassification the anchored pattern exists to prevent.
+    #
+    # The non-Ensembl features are counted as they are rejected, not derived as
+    # len(features) - len(ensg). That subtraction compares a list against a set,
+    # so anything collapsing under de-duplication was reported as a feature with
+    # no Ensembl release: two copies of one gene, ENSG...18 beside ENSG...19, or
+    # a pair of _PAR_Y ids, all of which are Ensembl genes.
+    ensg: set[str] = set()
+    n_non_ensembl = 0
+    for feature in (str(i) for i in var.index) if var is not None else ():
+        matched = _HUMAN_ENSG_RE.fullmatch(feature)
+        if matched:
+            ensg.add(matched.group(1))
+        else:
+            n_non_ensembl += 1
 
     # Dating depends only on the gene list, so it is done once rather than per
     # declared value; a file carrying several values is exactly the muddled case
@@ -1774,7 +1789,7 @@ def check_gene_annotation_version(adata):
 
     warnings = []
     if dated and dated[0] is None and len(ensg) > len(dated[2]):
-        warnings.append(_no_release_explains_message(dated, ensg, len(features)))
+        warnings.append(_no_release_explains_message(dated, ensg, n_non_ensembl))
 
     if dated and dated[2]:
         # A gene no release contains means a newer annotation than this table
@@ -1792,7 +1807,7 @@ def check_gene_annotation_version(adata):
                 n_genomes,
                 human,
                 ensg,
-                len(features),
+                n_non_ensembl,
                 dated,
             )
         )
@@ -1816,7 +1831,7 @@ def _assembly_pairs(obs) -> dict[str, dict[str, int]]:
 
 
 def _annotation_version_messages(
-    parsed, genomes, n_cells, n_genomes, human, ensg: set[str], n_features: int, dated
+    parsed, genomes, n_cells, n_genomes, human, ensg: set[str], n_non_ensembl: int, dated
 ) -> list[str]:
     """Everything sayable about one declared value.
 
@@ -1842,7 +1857,7 @@ def _annotation_version_messages(
         # than an annotation whoever produced it. What stays gated is the GRCh37
         # and GRCh38 classification of a release, which holds only for human.
         if parsed.kind == "release" and parsed.release >= _FIRST_GRCH38_RELEASE:
-            return _release_against_genes(parsed, ensg, n_features, dated)
+            return _release_against_genes(parsed, ensg, n_non_ensembl, dated)
         if parsed.kind == "ambiguous" and parsed.release <= _highest_gencode_release():
             # Only while the number really is ambiguous -- above the ceiling it
             # can only be an Ensembl release, and saying which assembly that
@@ -1851,9 +1866,19 @@ def _annotation_version_messages(
         if parsed.kind == "ambiguous":
             # Settled as an Ensembl release below r76. The assembly it implies is
             # human-specific and stays gated, but the gene list can still refute
-            # it: that rests on ENSG identifiers alone.
+            # it -- that rests on ENSG identifiers alone -- and where nothing
+            # refutes it the coverage limit is still worth saying. Returning
+            # nothing here made the value silent on a file with no organism
+            # column while the same file with one got a finding.
             refuted = _refuted_by_later_genes(parsed, ensg, dated)
-            return [refuted] if refuted else []
+            if refuted:
+                return [refuted]
+            _, first_covered, _ = _gene_release_intervals()
+            return [
+                f"obs['gene_annotation_version'] is {parsed.raw!r}, which is older than this reference "
+                f"data covers (from r{first_covered}), so the genes in this file were not checked "
+                f"against it."
+            ]
         if parsed.kind == "assembly":
             return [_accession_is_not_an_annotation(parsed)]
         return []
@@ -1894,7 +1919,7 @@ def _annotation_version_messages(
         said.extend(_ambiguous_release_number(parsed))
         return said
 
-    said.extend(_release_against_genes(parsed, ensg, n_features, dated))
+    said.extend(_release_against_genes(parsed, ensg, n_non_ensembl, dated))
     return said
 
 
@@ -1954,7 +1979,7 @@ def _ambiguous_release_number(parsed) -> list[str]:
     ]
 
 
-def _no_release_explains_message(dated, ensg: set[str], n_features: int) -> str:
+def _no_release_explains_message(dated, ensg: set[str], n_non_ensembl: int) -> str:
     """Report that no covered release contains every gene the table knows.
 
     A property of the gene list, so it is said once however many versions the
@@ -1965,10 +1990,8 @@ def _no_release_explains_message(dated, ensg: set[str], n_features: int) -> str:
     _, first_covered, last_covered = _gene_release_intervals()
     _, shortfall, unknown = dated
     closest = min(shortfall, key=lambda r: shortfall[r])
-    skipped = n_features - len(ensg)
-    context = (
-        f" ({_plural(skipped, 'non-Ensembl feature')} excluded -- they have no Ensembl release)" if skipped else ""
-    )
+    skipped = n_non_ensembl
+    context = f" ({_plural(skipped, 'feature')} excluded from dating -- not plain Ensembl gene ids)" if skipped else ""
     # Named, not just counted: #710 asks for the minimum *and* the unexplained
     # genes. On a file whose intervals are individually known but jointly
     # impossible, nothing else supplies an identifier to investigate -- the
@@ -2073,7 +2096,7 @@ def _refuted_by_later_genes(parsed, ensg: set[str], dated) -> str | None:
     )
 
 
-def _release_against_genes(parsed, ensg: set[str], n_features: int, dated) -> list[str]:
+def _release_against_genes(parsed, ensg: set[str], n_non_ensembl: int, dated) -> list[str]:
     """Compare a declared Ensembl release with what the gene list can support.
 
     A release outside the shipped table is reported as such rather than as
@@ -2117,10 +2140,8 @@ def _release_against_genes(parsed, ensg: set[str], n_features: int, dated) -> li
     earliest, shortfall, unknown = dated
     said = []
 
-    skipped = n_features - len(ensg)
-    context = (
-        f" ({_plural(skipped, 'non-Ensembl feature')} excluded -- they have no Ensembl release)" if skipped else ""
-    )
+    skipped = n_non_ensembl
+    context = f" ({_plural(skipped, 'feature')} excluded from dating -- not plain Ensembl gene ids)" if skipped else ""
     if earliest is None:
         # No release explains the whole gene list -- said once per file, from the
         # check itself. The declared value is still worth comparing against the

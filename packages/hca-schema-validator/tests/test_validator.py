@@ -2277,8 +2277,38 @@ def test_annotation_version_version_suffix_is_matched_not_split_off():
     adata = _version_adata(["ENSG00000141510.beta", _POST_R98, "mycustom.1", "mycustom.2"], version="v87")
     warnings, _ = check_gene_annotation_version(adata)
     assert len(warnings) == 1, warnings
-    assert "3 non-Ensembl features excluded" in warnings[0], warnings[0]
+    assert "3 features excluded from dating" in warnings[0], warnings[0]
     assert "1 of this file's 1 gene" in warnings[0], warnings[0]
+
+
+def test_annotation_version_excluded_count_is_of_rejected_features():
+    # Derived as len(features) - len(ensg), the count compared a list against a
+    # set, so anything collapsing under de-duplication was reported as a feature
+    # with no Ensembl release: duplicates, version variants, and _PAR_Y pairs are
+    # all Ensembl genes. Counted as they are rejected now.
+    def excluded(ids):
+        warnings, _ = check_gene_annotation_version(_version_adata(ids, version="v87"))
+        return warnings[0] if warnings else ""
+
+    assert "excluded from dating" not in excluded([_TP53, _TP53, _TP53, _POST_R98])
+    assert "excluded from dating" not in excluded([f"{_TP53}.18", f"{_TP53}.19", _POST_R98])
+    # Real non-Ensembl features are still counted, and the reason no longer
+    # claims they have no Ensembl release -- _PAR_Y ids do.
+    assert "2 features excluded from dating" in excluded([_TP53, _POST_R98, "ERCC-00002", "ERCC-00003"])
+    assert "2 features excluded from dating" in excluded(
+        [_TP53, "ENSG00000182378_PAR_Y", "ENSG00000185960_PAR_Y", _POST_R98]
+    )
+
+
+def test_annotation_version_trailing_newline_is_not_an_ensembl_id():
+    # Python's "$" matches before a final newline, so match() normalised
+    # "ENSG...\n" to TP53 and dated it. fullmatch is the contract.
+    from hca_schema_validator.validator import _HUMAN_ENSG_RE
+
+    assert _HUMAN_ENSG_RE.match(f"{_TP53}\n") is not None
+    assert _HUMAN_ENSG_RE.fullmatch(f"{_TP53}\n") is None
+    warnings, _ = check_gene_annotation_version(_version_adata([f"{_TP53}\n", _POST_R98], version="v87"))
+    assert "1 of this file's 1 genes" in warnings[0], warnings[0]
 
 
 def test_annotation_version_ignores_non_ensembl_features():
