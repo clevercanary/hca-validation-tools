@@ -46,6 +46,11 @@ PORT = 3306
 # Release 76 is the first GRCh38 core database; below that is GRCh37, a
 # different assembly whose gene sets are not comparable.
 FIRST_GRCH38 = 76
+# The assembly suffix this table is built from. Checked by release_from_name as
+# well as filtered by the query: the function is the last point at which a wrong
+# database could be read as a release, so it has to check every part of the name
+# rather than trusting the SQL pattern it sits behind.
+ASSEMBLY = "38"
 DEFAULT_OUT = (
     Path(__file__).resolve().parent.parent
     / "packages/hca-schema-validator/src/hca_schema_validator/gene_release_intervals.csv.gz"
@@ -63,8 +68,8 @@ def release_from_name(name: str) -> int | None:
     parts = name.split("_")
     if len(parts) != 5:
         return None
-    organism_genus, organism_species, kind, release, _assembly = parts
-    if (organism_genus, organism_species, kind) != ("homo", "sapiens", "core"):
+    organism_genus, organism_species, kind, release, assembly = parts
+    if (organism_genus, organism_species, kind, assembly) != ("homo", "sapiens", "core", ASSEMBLY):
         return None
     return int(release) if release.isdigit() else None
 

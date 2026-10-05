@@ -47,6 +47,12 @@ gen = _load()
         ("homo_sapiens_funcgen_116_38", None),
         ("mus_musculus_core_116_39", None),
         ("homo_sapiens_core_abc_38", None),
+        # The assembly is checked too. The query filters to _38, but this
+        # function is the last guard and must not rely on the pattern it sits
+        # behind -- a broadened discovery query would otherwise feed GRCh37
+        # releases into a GRCh38 table.
+        ("homo_sapiens_core_116_37", None),
+        ("homo_sapiens_core_75_37", None),
         ("homo_sapiens_core_116", None),
         ("", None),
     ],
