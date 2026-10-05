@@ -2137,6 +2137,15 @@ def _release_against_genes(parsed, ensg: set[str], n_non_ensembl: int, dated) ->
     # Against the constant, not the table's floor: which release first carried
     # GRCh38 is a fact about Ensembl, and reading it off the shipped data would
     # let a narrower table rewrite it.
+    #
+    # Deliberately ahead of the refutation below, so r54 and earlier is only
+    # ever reported as undatable while r55-r75 can still be refuted by a gene
+    # born after the table's floor. The same gene evidence therefore refutes
+    # v55 and merely fails to date v54, which is an asymmetry on purpose: below
+    # r55 no assembly is claimed at all and the declaration is two assembly
+    # changes away from anything the table measures, so the one sentence that
+    # can be said about it is that it cannot be checked. #724 would date the
+    # whole band properly and this branch goes with it.
     if parsed.release < _FIRST_GRCH37_RELEASE:
         return [
             f"obs['gene_annotation_version'] is {parsed.raw!r}. Ensembl r{_FIRST_GRCH37_RELEASE} is the first "
