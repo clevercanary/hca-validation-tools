@@ -899,5 +899,11 @@ components:
       gene_annotation_version:
         type: categorical
         subtype: str
-        pattern: "^(v(7[5-9]|[8-9][0-9]|10[0-9]|11[01])|GCF_000001405\\.(2[5-9]|3[0-9]|40))$"
-        pattern_description: "a GENCODE version between v75 and v111 (e.g. 'v101'), or a RefSeq assembly like 'GCF_000001405.40'"
+        # Well-formedness only. The previous pattern hard-coded v75-v111 and
+        # GCF_000001405.25-.40, which no schema specifies and which had already
+        # gone stale -- it rejected v112 onward while Ensembl was at r116.
+        # Whether a release actually exists is decided by the gene-release table
+        # that check_gene_annotation_version reads, which is regenerated from
+        # Ensembl rather than hand-edited here (#710, #719).
+        pattern: "^(v[1-9]\\d{1,2}|GCF_000001405\\.[1-9]\\d*)$"
+        pattern_description: "a gene annotation version like 'v114' (an Ensembl release, or a GENCODE release where the number is one GENCODE has issued), or a RefSeq assembly accession like 'GCF_000001405.40'"

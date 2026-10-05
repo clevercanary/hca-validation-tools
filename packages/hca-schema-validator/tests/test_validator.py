@@ -9,8 +9,19 @@ import pandas as pd
 import pytest
 import yaml
 
-from hca_schema_validator import HCA_DERIVED_OBS_LABELS, HCAValidator, check_donor_consistency
-from hca_schema_validator.validator import DESOUPED_COUNTS_LAYER, DONOR_GRAIN_COLUMNS
+from hca_schema_validator import (
+    HCA_DERIVED_OBS_LABELS,
+    HCAValidator,
+    check_donor_consistency,
+    check_gene_annotation_version,
+)
+from hca_schema_validator.validator import (
+    DESOUPED_COUNTS_LAYER,
+    DONOR_GRAIN_COLUMNS,
+    _gene_release_intervals,
+    _highest_gencode_release,
+    parse_annotation_version,
+)
 
 # Test fixtures directory
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "h5ads"
@@ -607,8 +618,21 @@ def test_pattern_invalid_cell_enrichment():
     assert "cell ontology" in error_messages.lower()
 
 
-def test_pattern_invalid_gene_annotation_version():
-    """Test that gene_annotation_version 'v50' does not match the version pattern."""
+@pytest.mark.parametrize("declared", ["v114", "v116", "GCF_000001405.40", "GCF_000001405.13"])
+def test_pattern_admits_values_the_old_ceiling_rejected(declared):
+    """The relaxed pattern accepts a release newer than the ceiling it replaced.
+
+    Driven through HCAValidator rather than through check_gene_annotation_version,
+    because the thing at risk is the schema pattern, not the check: the direct
+    unit tests below would all still pass with the old hard-coded v75-v111 regex
+    restored, so nothing would catch a revert. Ensembl had reached r116 while
+    the pattern still refused anything above r111, which is the regression this
+    pins (#710, #719). The accession arm is included for the same reason -- the
+    old pattern enumerated a closed set of GRCh38 patch numbers.
+
+    Asserts on errors only. Dating the fixture's genes may well warn about the
+    declared release, which is the check doing its job and not a format error.
+    """
     import anndata
     import numpy
     from scipy import sparse
@@ -616,8 +640,35 @@ def test_pattern_invalid_gene_annotation_version():
     from .fixtures.hca_fixtures import good_obs, good_obsm, good_uns, good_var
 
     obs = good_obs.copy()
-    obs["gene_annotation_version"] = obs["gene_annotation_version"].cat.add_categories(["v50"])
-    obs["gene_annotation_version"] = "v50"
+    obs["gene_annotation_version"] = obs["gene_annotation_version"].cat.add_categories([declared])
+    obs["gene_annotation_version"] = declared
+    X = sparse.csr_matrix((obs.shape[0], good_var.shape[0]), dtype=numpy.float32)
+    test_adata = anndata.AnnData(X=X, obs=obs, uns=good_uns.copy(), obsm=good_obsm.copy(), var=good_var.copy())
+    test_adata.raw = test_adata.copy()
+    test_adata.raw.var.drop("feature_is_filtered", axis=1, inplace=True)
+
+    _, validator = _validate_from_fixture(test_adata)
+    offending = [e for e in validator.errors if "gene_annotation_version" in e]
+    assert offending == [], f"{declared} was rejected as malformed: {offending}"
+
+
+def test_pattern_invalid_gene_annotation_version():
+    """A malformed gene_annotation_version is a pattern error.
+
+    The pattern checks well-formedness only. It used to hard-code v75-v111, a
+    range no schema specified and which had gone stale, so an out-of-range but
+    well-formed value like 'v50' is now reported by check_gene_annotation_version
+    against the Ensembl-derived table instead (#710, #719).
+    """
+    import anndata
+    import numpy
+    from scipy import sparse
+
+    from .fixtures.hca_fixtures import good_obs, good_obsm, good_uns, good_var
+
+    obs = good_obs.copy()
+    obs["gene_annotation_version"] = obs["gene_annotation_version"].cat.add_categories(["v50xyz"])
+    obs["gene_annotation_version"] = "v50xyz"
     X = sparse.csr_matrix((obs.shape[0], good_var.shape[0]), dtype=numpy.float32)
     test_adata = anndata.AnnData(X=X, obs=obs, uns=good_uns.copy(), obsm=good_obsm.copy(), var=good_var.copy())
     test_adata.raw = test_adata.copy()
@@ -628,7 +679,7 @@ def test_pattern_invalid_gene_annotation_version():
     error_messages = " ".join(validator.errors)
     assert "gene_annotation_version" in error_messages
     assert "not valid" in error_messages.lower()
-    assert "gencode" in error_messages.lower()
+    assert "ensembl release" in error_messages.lower()
 
 
 def test_pattern_valid_na_cell_enrichment():
@@ -1856,3 +1907,634 @@ def test_donor_grain_columns_match_linkml_donor_slots():
     assert error_tier == donor_slots - set(_DONOR_SLOTS_NOT_CHECKED)
     # The warning tier is deliberately sample-grain; a slot moving onto Donor must be promoted.
     assert not warning_tier & donor_slots
+
+
+# --- gene_annotation_version (#710) ------------------------------------------
+# Gene identifiers below are real and their release histories were measured
+# against Ensembl's archive databases, so these fixtures assert facts rather
+# than invented ones. ENSG00000141510 is TP53, present throughout.
+_TP53 = "ENSG00000141510"
+# First appears after r98; found in gray2022, which declares v87.
+_POST_R98 = "ENSG00000288825"
+# Retired at r105 and present again at r109 -- the reason the table stores
+# intervals rather than one (first, last) pair.
+_RESURRECTED = "ENSG00000288593"
+# Present from r76 and retired at r102 -- the gene that makes a *late* declaration wrong.
+_RETIRED_AT_102 = "ENSG00000130723"
+
+
+def _version_adata(genes, version="v98", genome="GRCh38", organism="NCBITaxon:9606", n=2):
+    obs = {"gene_annotation_version": [version] * n}
+    if genome is not None:
+        obs["reference_genome"] = [genome] * n
+    if organism is not None:
+        obs["organism_ontology_term_id"] = [organism] * n
+    return anndata.AnnData(
+        X=np.zeros((n, len(genes)), dtype=np.float32),
+        obs=pd.DataFrame(obs, index=[f"cell_{i}" for i in range(n)]),
+        var=pd.DataFrame(index=list(genes)),
+    )
+
+
+@pytest.mark.parametrize(
+    ("value", "kind", "release"),
+    [
+        ("v98", "release", 98),
+        ("98", "release", 98),
+        ("v110", "release", 110),
+        ("GCF_000001405.39", "assembly", None),
+        ("GCF_000001405.25", "assembly", None),
+        ("v75", "ambiguous", 75),
+        ("v32", "ambiguous", 32),
+        ("nan", "missing", None),
+        ("Not available", "missing", None),
+        ("", "missing", None),
+        ("Ensembl 98-GENCODE 32", "uninterpretable", None),
+    ],
+)
+def test_annotation_version_parses_exactly_or_declines(value, kind, release):
+    parsed = parse_annotation_version(value)
+    assert (parsed.kind, parsed.release) == (kind, release), parsed
+
+
+def test_annotation_version_accession_assemblies():
+    # .26 is the first GRCh38 accession; .25 and below are GRCh37 patches.
+    assert parse_annotation_version("GCF_000001405.26").assembly == "GRCh38"
+    assert parse_annotation_version("GCF_000001405.25").assembly == "GRCh37"
+
+
+def test_annotation_version_silent_when_consistent():
+    # TP53 exists in every release, so no release is ruled out by it.
+    assert check_gene_annotation_version(_version_adata([_TP53], version="v98")) == ([], [])
+
+
+def test_annotation_version_too_early_names_the_genes():
+    warnings, errors = check_gene_annotation_version(_version_adata([_TP53, _POST_R98], version="v87"))
+    assert errors == []
+    assert len(warnings) == 1, warnings
+    assert _POST_R98 in warnings[0] and "did not exist in Ensembl r87" in warnings[0]
+
+
+def test_annotation_version_too_late_is_reported_too():
+    # Genes are retired as well as born, so the explaining releases are a window
+    # and a declared release can fall after it. ENSG00000130723 exists r76-r102,
+    # so r110 cannot have produced a file containing it. Nine prod declarations
+    # are wrong in this direction; without a retired gene in the fixture the
+    # too-late path is never exercised.
+    warnings, _ = check_gene_annotation_version(_version_adata([_TP53, _RETIRED_AT_102], version="v110"))
+    assert len(warnings) == 1, warnings
+    assert _RETIRED_AT_102 in warnings[0], warnings[0]
+    # The direction, not just the release number -- "r110" alone appears in any
+    # message naming the declared value, including the too-early wording.
+    assert "are not in Ensembl r110: they were retired before it" in warnings[0], warnings[0]
+
+
+def test_annotation_version_later_declaration_is_allowed():
+    # The gene content gives a lower bound; declaring something newer is legitimate.
+    assert check_gene_annotation_version(_version_adata([_TP53, _POST_R98], version="v114")) == ([], [])
+
+
+def test_annotation_version_assembly_mismatch():
+    warnings, _ = check_gene_annotation_version(_version_adata([_TP53], version="v98", genome="GRCh37"))
+    assert any("name different assemblies" in w for w in warnings), warnings
+
+
+@pytest.mark.parametrize("genome", ["GRCh37", " GRCh37 ", "\tGRCh37\n"])
+def test_annotation_version_assembly_mismatch_survives_padded_genome(genome):
+    """Whitespace in reference_genome must not drop the pair either.
+
+    A padded name fails the _KNOWN_ASSEMBLIES membership test, so the pair was
+    discarded and the version compared against nothing -- the same silent loss
+    as a padded version, from the other column.
+    """
+    warnings, _ = check_gene_annotation_version(_version_adata([_TP53], version="v98", genome=genome))
+    assert any("name different assemblies" in w for w in warnings), warnings
+
+
+def test_annotation_version_padded_genome_is_not_a_second_assembly():
+    """Two spellings of one assembly are one assembly, in the count as well as the key.
+
+    n_genomes decides whether the message names a cell count or just the column.
+    Counting " GRCh37 " as distinct from "GRCh37" would make a file whose column
+    does not vary look split, and the message would then attribute a partition
+    to reference_genome that belongs to nothing -- the precise misreading that
+    counter was added to prevent.
+    """
+    obs = pd.DataFrame(
+        {
+            "gene_annotation_version": ["v98"] * 4,
+            "reference_genome": ["GRCh37", " GRCh37 ", "GRCh37", "GRCh37\n"],
+            "organism_ontology_term_id": ["NCBITaxon:9606"] * 4,
+        },
+        index=[f"cell_{i}" for i in range(4)],
+    )
+    adata = anndata.AnnData(X=np.zeros((4, 1), dtype=np.float32), obs=obs, var=pd.DataFrame(index=[_TP53]))
+    mismatch = [w for w in check_gene_annotation_version(adata)[0] if "name different assemblies" in w]
+    assert len(mismatch) == 1, mismatch
+    assert "obs['reference_genome'] is 'GRCh37'" in mismatch[0], mismatch[0]
+    assert "cells pair it with" not in mismatch[0], mismatch[0]
+
+
+def test_annotation_version_assembly_name_is_not_case_folded():
+    """Stripping is not the same as normalising, and only stripping was intended.
+
+    'grch37' is not a name the enum allows, and quietly accepting it here would
+    let this check validate a value the column itself rejects -- so the pair is
+    dropped and the enum keeps the error. Pinned because the padding fix sits one
+    expression away from making this true by accident.
+    """
+    warnings, _ = check_gene_annotation_version(_version_adata([_TP53], version="v98", genome="grch37"))
+    assert not any("name different assemblies" in w for w in warnings), warnings
+
+
+@pytest.mark.parametrize("version", ["v98", " v98 ", "\tv98\n"])
+def test_annotation_version_assembly_mismatch_survives_padding(version):
+    """Whitespace around the declared value must not lose the assembly comparison.
+
+    The declared set is stripped before use, because parse_annotation_version
+    strips and "v98" and " v98 " are one declaration -- but _assembly_pairs keyed
+    on the raw column value, so the stripped lookup found nothing and the
+    GRCh37/GRCh38 contradiction was skipped without a word. Silently dropping the
+    one comparison that needs no reference data is the worst shape this failure
+    could take, so every spelling is pinned rather than just the bare one.
+    """
+    warnings, _ = check_gene_annotation_version(_version_adata([_TP53], version=version, genome="GRCh37"))
+    assert any("name different assemblies" in w for w in warnings), warnings
+
+
+def test_annotation_version_accession_is_not_an_annotation():
+    # The schema's own example is an accession (#719), so this is not the producer's error.
+    warnings, _ = check_gene_annotation_version(_version_adata([_TP53], version="GCF_000001405.39"))
+    assert len(warnings) == 1 and "names a genome assembly rather than a gene annotation" in warnings[0]
+
+
+def test_annotation_version_sub_76_refutation_needs_no_organism():
+    # The refutation rests on ENSG identifiers and the human table alone, so it
+    # must survive an absent organism column -- it was reachable only on the
+    # human-confirmed path, and vanished on the 20 prod files that have none.
+    # A stated non-human organism still silences it.
+    genes = [_TP53, _POST_R98]
+    human, _ = check_gene_annotation_version(_version_adata(genes, version="v75", genome=None))
+    unknown = _version_adata(genes, version="v75", genome=None, organism=None)
+    mouse = _version_adata(genes, version="v75", genome=None, organism=None)
+    mouse.obs["organism_ontology_term_id"] = ["NCBITaxon:10090"] * len(mouse.obs)
+    assert "cannot have been in r75" in human[0], human
+    assert check_gene_annotation_version(unknown)[0] == human
+    # The organism gates assembly claims, not dating, so a stated mouse organism
+    # does not suppress a refutation resting on ENSG identifiers.
+    assert check_gene_annotation_version(mouse)[0] == human
+
+
+def test_annotation_version_below_the_table_is_refuted_by_later_genes():
+    # A gene first appearing above the table's floor did not exist at any earlier
+    # release, covered or not -- so it rules out a sub-r76 declaration without
+    # the GRCh37 data being shipped (#724). twigger2022 declares v75 and carries
+    # 11 such genes.
+    adata = _version_adata([_TP53, _POST_R98], version="v75", genome=None)
+    warnings, _ = check_gene_annotation_version(adata)
+    assert len(warnings) == 1, warnings
+    assert "did not exist until after Ensembl r76" in warnings[0], warnings[0]
+    assert "cannot have been in r75" in warnings[0], warnings[0]
+
+
+def test_annotation_version_below_the_table_without_later_genes_says_so():
+    # With nothing to refute it, the limit is our coverage rather than the
+    # declaration, and the message must say which.
+    adata = _version_adata([_TP53], version="v75", genome=None)
+    warnings, _ = check_gene_annotation_version(adata)
+    assert len(warnings) == 1, warnings
+    assert "does not cover" in warnings[0], warnings[0]
+
+
+def test_annotation_version_below_the_table_is_grch37_not_nonexistent():
+    # v75 is a real release -- the last GRCh37 one. Saying "no such release" would
+    # be false, and would hide the finding that actually applies.
+    warnings, _ = check_gene_annotation_version(_version_adata([_TP53], version="v75", genome=None))
+    assert len(warnings) == 1, warnings
+    assert "GRCh37 annotation" in warnings[0] and "no such" not in warnings[0]
+
+
+def test_annotation_version_pre_grch37_accession_claims_no_assembly():
+    # .13-.25 are GRCh37 patches; .12 is NCBI36. Calling .12 GRCh37 would make a
+    # genuinely wrong declaration compare clean against reference_genome GRCh37.
+    assert parse_annotation_version("GCF_000001405.13").assembly == "GRCh37"
+    assert parse_annotation_version("GCF_000001405.12").assembly is None
+    warnings, _ = check_gene_annotation_version(_version_adata([_TP53], version="GCF_000001405.12", genome="GRCh37"))
+    assert not any("name different assemblies" in w for w in warnings), warnings
+
+
+def test_annotation_version_reports_each_declared_value_separately():
+    # An integrated object legitimately spans several annotations, carried as
+    # different cells holding different values -- the issue's "check each, report
+    # per value". A joined value such as 'v75,v87,v98' is not the shape that takes:
+    # the column holds one value per cell and the pattern rejects the joined form.
+    adata = _version_adata([_TP53, _POST_R98], version="v87", n=2)
+    adata.obs["gene_annotation_version"] = ["v87", "v93"]
+    warnings, _ = check_gene_annotation_version(adata)
+    dated = [w for w in warnings if "did not exist in Ensembl" in w]
+    assert len(dated) == 2, warnings
+    assert any("'v87'" in w and "r87" in w for w in dated), dated
+    assert any("'v93'" in w and "r93" in w for w in dated), dated
+
+
+def test_annotation_version_unknown_identifiers_reported_once_per_file():
+    # The unknown-gene finding is about the gene list, not about any declared
+    # value, so a file carrying two values must not get it twice.
+    adata = _version_adata([_TP53, "ENSG99999999999"], version="v98")
+    adata.obs["gene_annotation_version"] = ["v98", "v110"]
+    warnings, _ = check_gene_annotation_version(adata)
+    assert sum("none of the releases" in w for w in warnings) == 1, warnings
+
+
+def test_annotation_version_settled_sub_76_still_compares_assemblies():
+    # twigger2022 declares v75 against reference_genome GRCh38. GENCODE never
+    # issued a 75, so the value can only be Ensembl r75 (GRCh37) -- and that
+    # contradiction is one the issue names, so it must survive the ambiguity
+    # handling rather than being silenced by it.
+    warnings, _ = check_gene_annotation_version(_version_adata([_TP53], version="v75", genome="GRCh38"))
+    assert any("name different assemblies" in w for w in warnings), warnings
+    assert any("GRCh37 annotation" in w for w in warnings), warnings
+
+
+def test_annotation_version_truly_ambiguous_makes_no_assembly_claim():
+    # v32 is inside GENCODE's range, so no assembly can be asserted and no
+    # mismatch may be reported against reference_genome.
+    warnings, _ = check_gene_annotation_version(_version_adata([_TP53], version="v32", genome="GRCh38"))
+    assert len(warnings) == 1 and "could be Ensembl r32 or GENCODE 32" in warnings[0], warnings
+
+
+def test_annotation_version_gencode_number_is_not_called_grch37():
+    # GENCODE names its releases the way Ensembl does, and GENCODE v32 is the
+    # Cell Ranger 2020-A reference (= Ensembl r98, GRCh38). Reading it as Ensembl
+    # r32 would report correct GRCh38 metadata as a GRCh37/GRCh38 mismatch.
+    warnings, _ = check_gene_annotation_version(_version_adata([_TP53], version="v32", genome="GRCh38"))
+    assert len(warnings) == 1, warnings
+    assert "could be Ensembl r32 or GENCODE 32" in warnings[0]
+    # No Ensembl equivalent is quoted: the two schemes only run a fixed distance
+    # apart recently, so converting an old GENCODE number would be a false claim.
+    assert "= Ensembl" not in warnings[0]
+    assert "obs['reference_genome']" not in warnings[0]
+
+
+def test_gencode_ceiling_tracks_the_ensembl_table_not_the_vendored_pin():
+    # The vendored gene_info.yml records the GENCODE version cellxgene-schema
+    # pinned, which lags what GENCODE has issued: it says 48 while the shipped
+    # table reaches Ensembl r116, and r115/r116 are GENCODE 49/50. Reading the
+    # ceiling from the pin made v49 and v50 Ensembl-only, hence GRCh37, hence a
+    # false assembly mismatch on a valid GENCODE declaration.
+    import yaml
+
+    from hca_schema_validator._vendored.cellxgene_schema import env
+    from hca_schema_validator.validator import _gene_release_intervals, _highest_gencode_release
+
+    _, _, last_covered = _gene_release_intervals()
+    with Path(env.GENE_INFO_YAML).open() as fh:
+        pinned = int(yaml.safe_load(fh)["human"]["version"])
+    ceiling = _highest_gencode_release()
+    # Not "ceiling == last_covered - 66" -- that restates the function body and
+    # can only fail if someone edits the constant. What matters is the relation
+    # to the two sources: the ceiling tracks the Ensembl table, and never falls
+    # behind the vendored pin the way reading the pin directly did.
+    assert ceiling >= pinned, "the ceiling must not fall behind the vendored pin"
+    assert last_covered - 70 < ceiling < last_covered, (ceiling, last_covered)
+    # The releases the pin would have excluded stay ambiguous.
+    for release in range(pinned + 1, ceiling + 1):
+        warnings, _ = check_gene_annotation_version(_version_adata([_TP53], version=f"v{release}", genome="GRCh38"))
+        assert len(warnings) == 1 and "could be Ensembl" in warnings[0], (release, warnings)
+
+
+def test_annotation_version_duplicate_columns_do_not_raise():
+    # A duplicated column name makes obs[name] a DataFrame, so .unique() raises
+    # and the run reports "Unexpected validation error" over the real defect,
+    # which the base validator already reports.
+    adata = _version_adata([_TP53], version="v87")
+    adata.obs = pd.concat([adata.obs, adata.obs[["gene_annotation_version"]]], axis=1)
+    assert check_gene_annotation_version(adata) == ([], [])
+
+
+def test_annotation_version_ambiguity_stops_where_gencode_has_not_reached():
+    # The ceiling is GENCODE's newest human release, derived from the shipped
+    # Ensembl table (its last release minus 66) -- not from the vendored
+    # gene_info.yml, which lags. Above the ceiling only Ensembl has issued the
+    # number, so the value can only be an Ensembl release.
+    highest = _highest_gencode_release()
+    ambiguous, _ = check_gene_annotation_version(_version_adata([_TP53], version=f"v{highest}", genome=None))
+    settled, _ = check_gene_annotation_version(_version_adata([_TP53], version=f"v{highest + 1}", genome=None))
+    assert "could be Ensembl" in ambiguous[0]
+    assert "could be Ensembl" not in settled[0]
+
+
+def test_annotation_version_pre_grch37_releases_claim_no_assembly():
+    # Verified against the archive's own database names, grouped by assembly
+    # family: r48-r54 NCBI36, r55-r75 GRCh37, r76-r116 GRCh38, none with gaps.
+    # So r55 is the first GRCh37 release and r54 and earlier used NCBI36 -- and
+    # those older releases are served, under _36j through _36p, rather than
+    # absent. An earlier revision called everything below r76 GRCh37, which this
+    # pinned at v51.
+    from hca_schema_validator.validator import _FIRST_GRCH37_RELEASE
+
+    older, _ = check_gene_annotation_version(
+        _version_adata([_TP53], version=f"v{_FIRST_GRCH37_RELEASE - 1}", genome=None)
+    )
+    grch37, _ = check_gene_annotation_version(_version_adata([_TP53], version=f"v{_FIRST_GRCH37_RELEASE}", genome=None))
+    assert "predates both" in older[0] and "is a GRCh37 annotation" not in older[0], older[0]
+    assert "is a GRCh37 annotation" in grch37[0], grch37[0]
+    # And claiming no assembly means no mismatch is reported against GRCh38.
+    against_38, _ = check_gene_annotation_version(
+        _version_adata([_TP53], version=f"v{_FIRST_GRCH37_RELEASE - 1}", genome="GRCh38")
+    )
+    assert not any("name different assemblies" in w for w in against_38), against_38
+
+
+def test_annotation_version_above_the_table_blames_the_reference_data():
+    # A release newer than the shipped table is a gap in our reference data, not a
+    # producer error: Ensembl keeps shipping releases after we regenerate.
+    warnings, _ = check_gene_annotation_version(_version_adata([_TP53], version="v999", genome=None))
+    assert len(warnings) == 1, warnings
+    assert "newer than this reference data covers" in warnings[0]
+
+
+def test_annotation_version_ignores_non_human_ensg_lookalikes():
+    # Gorilla identifiers are ENSGGOG..., so a prefix test would date them as human
+    # and report every one of them as unknown to Ensembl.
+    adata = _version_adata([_TP53, "ENSGGOG00000010861"], version="v98")
+    assert check_gene_annotation_version(adata) == ([], [])
+
+
+def test_annotation_version_not_applicable_genome_is_not_a_different_assembly():
+    # "not applicable" is one of reference_genome's own enum values; it declines to
+    # name an assembly rather than naming one that disagrees.
+    adata = _version_adata([_TP53], version="v98", genome="not applicable")
+    assert check_gene_annotation_version(adata) == ([], [])
+
+
+def test_annotation_version_all_unknown_genes_says_it_once():
+    # With nothing the table knows, there is nothing left to date: the second
+    # message would read "0 of 0 remain unexplained".
+    adata = _version_adata(["ENSG99999999999", "ENSG99999999998"], version="v98")
+    warnings, _ = check_gene_annotation_version(adata)
+    assert len(warnings) == 1 and "none of the releases" in warnings[0], warnings
+
+
+def test_annotation_version_examples_are_drawn_from_the_counted_genes():
+    # The count is of genes the table knows and the release predates; an identifier
+    # no release contains has its own message, and must not pad these examples.
+    adata = _version_adata([_TP53, _POST_R98, "ENSG99999999999"], version="v87")
+    warnings, _ = check_gene_annotation_version(adata)
+    dated = next(w for w in warnings if "did not exist in Ensembl r87" in w)
+    # Only _POST_R98 is both known to the table and absent at r87, so it is the
+    # whole of the count and the whole of the examples. Asserting the identifier
+    # rather than the arithmetic: examples are capped at three, so comparing the
+    # count against how many are shown holds only while the count is below the
+    # cap, which is not the case on any real file.
+    # Two of the three ENSG ids are in the table; the third is unknown and is
+    # excluded from the count, so it must be excluded from the total as well.
+    assert "1 of this file's 2 known genes" in dated, dated
+    assert _POST_R98 in dated
+    assert "ENSG99999999999" not in dated
+    # Some identifiers are unknown to the table, so a claim about the whole gene
+    # set would contradict the unknown-identifiers warning alongside it.
+    assert "This file's known genes are consistent with" in dated, dated
+
+
+def test_annotation_version_leaves_format_to_the_schema_pattern():
+    # 'Ensembl 98-GENCODE 32' is a format error from the pattern; repeating it as a
+    # warning here would say the same thing more quietly.
+    adata = _version_adata([_TP53], version="Ensembl 98-GENCODE 32")
+    assert check_gene_annotation_version(adata) == ([], [])
+
+
+def test_annotation_version_dates_genes_without_an_organism_statement():
+    # Dating rests on ENSG identifiers, which are human by construction, so it
+    # needs no organism column. A blanket gate silenced 20 prod files that have
+    # none -- 17 of them eye -- losing findings that were true of them.
+    adata = _version_adata([_TP53, _POST_R98], version="v87", genome="GRCh38", organism=None)
+    warnings, _ = check_gene_annotation_version(adata)
+    assert len(warnings) == 1, warnings
+    assert "did not exist in Ensembl r87" in warnings[0], warnings[0]
+    # ...but nothing assembly-shaped, since r87 means GRCh37 only for a human file.
+    assert "assemblies" not in warnings[0] and "GRCh37" not in warnings[0], warnings[0]
+
+
+@pytest.mark.parametrize("organism", [None, [None, None], ["unknown"] * 2, ["NA"] * 2, [""] * 2, ["Homo sapiens"] * 2])
+def test_annotation_version_only_a_curie_is_a_claim_about_organism(organism):
+    # A placeholder states nothing, so it is the same "we do not know" as an
+    # absent column: dating runs on the ENSG ids, the assembly claim stays
+    # gated. Treating any non-null value as a stated organism silenced the whole
+    # check on a column of "unknown" while an absent one dated the genes.
+    adata = _version_adata([_TP53, _POST_R98], version="v87", genome="GRCh37", organism=None)
+    if organism is not None:
+        adata.obs["organism_ontology_term_id"] = organism
+    warnings, _ = check_gene_annotation_version(adata)
+    assert any("did not exist in Ensembl r87" in w for w in warnings), (organism, warnings)
+    assert not any("name different assemblies" in w for w in warnings), (organism, warnings)
+
+
+def test_annotation_version_stated_non_human_does_not_silence_dating():
+    # A stated non-human organism used to return early, which silenced findings
+    # rather than adding any: ENSG identifiers are human by construction, so the
+    # column cannot make a human gene stop being one, and a file whose taxon and
+    # features disagree is already reported by the feature-id organism check.
+    # Three mouse cells in two million were discarding the other two million.
+    for organism in (["NCBITaxon:10090"] * 2, ["NCBITaxon:9606", "NCBITaxon:10090"]):
+        adata = _version_adata([_TP53, _POST_R98], version="v87", genome="GRCh38", organism=None)
+        adata.obs["organism_ontology_term_id"] = organism
+        warnings, _ = check_gene_annotation_version(adata)
+        assert any("did not exist in Ensembl r87" in w for w in warnings), (organism, warnings)
+        # ...but the assembly claim stays gated: r87 means GRCh37 only for human.
+        assert not any("name different assemblies" in w for w in warnings), (organism, warnings)
+
+
+def test_annotation_version_a_real_non_human_file_is_silent_anyway():
+    # Nothing has to suppress it: a mouse file carries ENSMUSG features, the
+    # ENSG match leaves nothing to date, and the check falls silent on its own.
+    adata = _version_adata(["ENSMUSG00000102693", "ENSMUSG00000051951"], version="v98", genome="GRCm39", organism=None)
+    adata.obs["organism_ontology_term_id"] = ["NCBITaxon:10090"] * len(adata.obs)
+    assert check_gene_annotation_version(adata) == ([], [])
+
+
+def test_annotation_version_mouse_file_is_silent():
+    # A real non-human file carries non-human features, so the ENSG filter
+    # leaves nothing to date and the organism gate never has to catch it.
+    adata = _version_adata(["ENSMUSG00000102693", "ENSMUSG00000051951"], version="v98", genome="GRCm39", organism=None)
+    assert check_gene_annotation_version(adata) == ([], [])
+
+
+def test_annotation_version_needs_organism_stated_not_merely_not_contradicted():
+    # _deep_check runs after schema errors are collected, so a mouse file whose
+    # required organism column is missing or null still reaches this check. The
+    # gate must require the positive statement: rejecting only an explicit
+    # non-human value told such a file its GRCm39 reference contradicted r98.
+    for organism in (None, [None, None], ["NCBITaxon:10090", None]):
+        adata = _version_adata([_TP53], version="v98", genome="GRCm39", organism=None)
+        if organism is not None:
+            adata.obs["organism_ontology_term_id"] = organism
+        assert check_gene_annotation_version(adata) == ([], []), organism
+
+
+def test_annotation_version_silent_on_non_human():
+    adata = _version_adata([_TP53], version="v87", organism="NCBITaxon:10090")
+    assert check_gene_annotation_version(adata) == ([], [])
+
+
+@pytest.mark.parametrize("sentinel", ["nan", "unknown", "Not available", "NA", "", "none", "not applicable"])
+def test_annotation_version_every_missing_sentinel_is_silent(sentinel):
+    # A column of sentinels is not a declaration, so there is nothing to check --
+    # including the file-level findings, which fired on everything but the
+    # literal "nan" when the filter was one hardcoded string. The gene list here
+    # carries an identifier the table has never heard of, which is what those
+    # file-level findings key on.
+    adata = _version_adata([_TP53, "ENSG99999999999"], version=sentinel)
+    assert check_gene_annotation_version(adata) == ([], []), sentinel
+
+
+def test_annotation_version_silent_without_the_column():
+    adata = anndata.AnnData(obs=pd.DataFrame({"donor_id": ["d1"]}, index=["cell_0"]))
+    assert check_gene_annotation_version(adata) == ([], [])
+
+
+def test_annotation_version_version_suffix_is_matched_not_split_off():
+    # Splitting every id at its first dot turned a custom feature into a real
+    # gene -- ENSG00000141510.beta became TP53 and was dated -- and collapsed
+    # distinct ids such as mycustom.1 and mycustom.2 into one, understating the
+    # excluded-feature count. Only Ensembl's numeric version suffix is stripped.
+    from hca_schema_validator.validator import _HUMAN_ENSG_RE
+
+    assert _HUMAN_ENSG_RE.match("ENSG00000141510.18").group(1) == _TP53
+    assert _HUMAN_ENSG_RE.match(_TP53).group(1) == _TP53
+    assert _HUMAN_ENSG_RE.match("ENSG00000141510.beta") is None
+    assert _HUMAN_ENSG_RE.match("mycustom.1") is None
+    assert _HUMAN_ENSG_RE.match("ENSGGOG00000010861") is None
+
+    # The dotted custom id is not dated, and both custom ids still count as
+    # separate excluded features.
+    adata = _version_adata(["ENSG00000141510.beta", _POST_R98, "mycustom.1", "mycustom.2"], version="v87")
+    warnings, _ = check_gene_annotation_version(adata)
+    assert len(warnings) == 1, warnings
+    assert "3 features excluded from dating" in warnings[0], warnings[0]
+    assert "1 of this file's 1 gene did not exist" in warnings[0], warnings[0]
+
+
+def test_annotation_version_excluded_count_is_of_rejected_features():
+    # Derived as len(features) - len(ensg), the count compared a list against a
+    # set, so anything collapsing under de-duplication was reported as a feature
+    # with no Ensembl release: duplicates, version variants, and _PAR_Y pairs are
+    # all Ensembl genes. Counted as they are rejected now.
+    def excluded(ids):
+        warnings, _ = check_gene_annotation_version(_version_adata(ids, version="v87"))
+        return warnings[0] if warnings else ""
+
+    assert "excluded from dating" not in excluded([_TP53, _TP53, _TP53, _POST_R98])
+    assert "excluded from dating" not in excluded([f"{_TP53}.18", f"{_TP53}.19", _POST_R98])
+    # Real non-Ensembl features are still counted, and the reason no longer
+    # claims they have no Ensembl release -- _PAR_Y ids do.
+    assert "2 features excluded from dating" in excluded([_TP53, _POST_R98, "ERCC-00002", "ERCC-00003"])
+    assert "2 features excluded from dating" in excluded(
+        [_TP53, "ENSG00000182378_PAR_Y", "ENSG00000185960_PAR_Y", _POST_R98]
+    )
+
+
+def test_annotation_version_trailing_newline_is_not_an_ensembl_id():
+    # Python's "$" matches before a final newline, so match() normalised
+    # "ENSG...\n" to TP53 and dated it. fullmatch is the contract.
+    from hca_schema_validator.validator import _HUMAN_ENSG_RE
+
+    assert _HUMAN_ENSG_RE.match(f"{_TP53}\n") is not None
+    assert _HUMAN_ENSG_RE.fullmatch(f"{_TP53}\n") is None
+    warnings, _ = check_gene_annotation_version(_version_adata([f"{_TP53}\n", _POST_R98], version="v87"))
+    assert "1 of this file's 1 gene did not exist" in warnings[0], warnings[0]
+
+
+def test_annotation_version_ignores_non_ensembl_features():
+    # Spike-ins have no Ensembl release; left in, every release would fail to explain them.
+    adata = _version_adata([_TP53, "ERCC-00096", "ERCC-00171"], version="v98")
+    assert check_gene_annotation_version(adata) == ([], [])
+
+
+def test_annotation_version_reports_genes_no_release_knows():
+    adata = _version_adata([_TP53, "ENSG99999999999"], version="v98")
+    warnings, _ = check_gene_annotation_version(adata)
+    assert len(warnings) == 1, warnings
+    # Both ends of the covered range, and both readings. Naming only the upper
+    # bound points the reader at a newer annotation, when a gene retired before
+    # the lower bound is equally unknown to the table -- the likelier cause for a
+    # low-numbered identifier.
+    # Bounds read from the table, not pinned: the README documents regenerating
+    # it when Ensembl ships a release, and a test that fails on a valid refresh
+    # would make the documented workflow look broken.
+    _, first_covered, last_covered = _gene_release_intervals()
+    assert f"r{first_covered} to r{last_covered}" in warnings[0], warnings[0]
+    assert f"newer than r{last_covered}" in warnings[0], warnings[0]
+    assert f"older than r{first_covered}" in warnings[0], warnings[0]
+
+
+def test_annotation_version_resurrection_gap_is_explained_and_excluded():
+    # ENSG00000288593 exists r100-r104 and again r109-r116. Declaring r106 is
+    # wrong, and the reason is neither "defined after" nor "retired before" --
+    # counting only those two rendered "0 were defined after it and 0 retired
+    # before it". The window must also exclude the hole: a min-max span would
+    # say the file is consistent with r100 to r116, which contains the very
+    # release being reported as wrong.
+    adata = _version_adata([_TP53, _RESURRECTED], version="v106")
+    warnings, _ = check_gene_annotation_version(adata)
+    assert len(warnings) == 1, warnings
+    assert "retired before it and defined again later" in warnings[0], warnings[0]
+    # Only the gap is asserted. The run after it ends at whatever release the
+    # table covers, so pinning r116 would break on a regeneration that is valid.
+    assert "consistent with r100 to r104 and r109 to r" in warnings[0], warnings[0]
+    # The pair-only wording rendered this as "0 were defined after it and 0
+    # retired before it"; neither clause may survive.
+    assert "0 were defined after it" not in warnings[0], warnings[0]
+    assert "0 retired before it" not in warnings[0], warnings[0]
+
+
+def test_annotation_version_zero_is_not_a_release():
+    # The relaxed pattern must still reject zero: neither scheme has a release 0,
+    # so there is nothing for the check to be ambiguous between.
+    assert parse_annotation_version("v00").kind == "uninterpretable"
+    assert parse_annotation_version("GCF_000001405.0").kind == "uninterpretable"
+    assert parse_annotation_version("v98").kind == "release"
+    assert parse_annotation_version("GCF_000001405.40").kind == "assembly"
+
+
+def test_annotation_version_no_release_names_the_unexplained_genes():
+    # #710 asks for the minimum *and* the genes. _POST_R98 appears at r105 and
+    # _RETIRED_AT_102 is gone by r103, so no release holds both -- and nothing
+    # else in the output would name an identifier to investigate.
+    adata = _version_adata([_POST_R98, _RETIRED_AT_102], version="v110")
+    warnings, _ = check_gene_annotation_version(adata)
+    no_release = next(w for w in warnings if "comes closest" in w)
+    assert "for example" in no_release, no_release
+    # Not a disjunction: the closest release here is the table's floor (ties
+    # resolve to the earliest), where the gene missing is the one not yet born
+    # rather than the one already retired. Naming which is the point.
+    assert _POST_R98 in no_release, no_release
+    assert _RETIRED_AT_102 not in no_release, no_release
+
+
+def test_first_grch38_release_is_not_read_off_the_table():
+    # The shipped table happens to start at r76, but which release first carried
+    # GRCh38 is a fact about Ensembl, not about our data. If the archive ever
+    # stops serving r76 the table narrows, and reading the floor off it would
+    # make the check announce r77 as the first GRCh38 release and call r76 a
+    # GRCh37 annotation. The generator refuses to build such a table; this pins
+    # the claim to the constant so both ends have to fail before that is said.
+    from hca_schema_validator.validator import _FIRST_GRCH38_RELEASE, _gene_release_intervals
+
+    _, first_covered, _ = _gene_release_intervals()
+    assert first_covered == _FIRST_GRCH38_RELEASE
+    warnings, _ = check_gene_annotation_version(
+        _version_adata([_TP53], version=f"v{_FIRST_GRCH38_RELEASE - 1}", genome=None)
+    )
+    assert f"Ensembl r{_FIRST_GRCH38_RELEASE} is the first GRCh38 release" in warnings[0], warnings[0]
+
+
+def test_resurrected_gene_is_absent_between_its_runs():
+    # ENSG00000288593 is retired at r105 and returns at r109. A flat (first, last)
+    # pair would claim it existed throughout, and r106 would wrongly look valid.
+    from hca_schema_validator.validator import _gene_release_intervals
+
+    table, _, _ = _gene_release_intervals()
+    runs = table.get(_RESURRECTED)
+    assert runs is not None and len(runs) > 1, f"expected more than one run, got {runs}"
+    assert not any(first <= 107 <= last for first, last in runs), runs

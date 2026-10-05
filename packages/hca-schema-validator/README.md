@@ -71,7 +71,9 @@ hca_schema_validator/
 ├── src/
 │   └── hca_schema_validator/
 │       ├── __init__.py       # Package exports
-│       └── validator.py      # HCAValidator class
+│       ├── validator.py      # HCAValidator and the HCA-specific checks
+│       ├── ontology_data/    # Ontology overlay files (see below)
+│       └── gene_release_intervals.csv.gz  # Gene presence per Ensembl release (see below)
 ├── tests/
 │   └── test_validator.py # Unit tests
 ├── pyproject.toml        # uv/PEP 621 configuration & dependencies
@@ -192,6 +194,104 @@ Once `cellxgene-ontology-guide` publishes a version that includes all the terms 
    ONTOLOGY_PARSER = OntologyParser(schema_version="v7.0.0")
    ```
 3. Bump `cellxgene-ontology-guide` version in `pyproject.toml`
+
+## Gene Release Interval Table
+
+`check_gene_annotation_version` compares the annotation a file declares in
+`obs['gene_annotation_version']` against the genes the file actually contains. To
+do that it needs to know which Ensembl releases each gene existed in, which is
+what `src/hca_schema_validator/gene_release_intervals.csv.gz` records.
+
+### How it works
+
+One row per gene per contiguous run of releases it was present in:
+
+```
+# ensembl GRCh38 gene presence, releases 76-116
+gene_id,first_release,last_release
+ENSG00000000003,76,116
+```
+
+Intervals rather than a single `(first, last)` pair because genes are
+occasionally **resurrected** — `ENSG00000288593` is retired at r105 and returns
+at r109, and a flat pair would claim it existed at r106–r108. Two genes in the
+shipped range have more than one interval.
+
+The table is sized by genes, not releases, so covering the whole GRCh38 history
+costs no more than covering a handful of releases.
+
+### Current table
+
+| | |
+|---|---|
+| Ensembl releases covered | **r76 – r116** (r76 is the first GRCh38 core database) |
+| Genes | 93,543 |
+| Intervals | 93,545 |
+| File size | 249 KB gzipped |
+
+### When to regenerate
+
+**The validator tells you.** When a file declares a release newer than the table
+covers, the check says so rather than failing the file:
+
+> `obs['gene_annotation_version']` is `'v117'`, which is newer than this
+> reference data covers (through r116), so the genes in this file were not
+> checked against it.
+
+That warning is the trigger. Regenerate when you see it, or when Ensembl ships a
+release you want to date against.
+
+The table also sets the ceiling on the Ensembl/GENCODE ambiguity: a number below
+r76 could be either scheme, and the boundary is this table's last release minus
+GENCODE's offset of 66 — so regenerating the table moves it. It is **not** read
+from the vendored `gencode_files/gene_info.yml`, which records the GENCODE
+version `cellxgene-schema` pinned rather than what GENCODE has issued, and so
+lags: it says 48 while this table reaches r116, which is GENCODE 50.
+
+### How to regenerate
+
+Ensembl keeps a core database per release on its public MySQL server, so the
+whole history is one query per release rather than a download. Needs outbound
+MySQL to `ensembldb.ensembl.org:3306` (user `anonymous`, no password).
+
+1. Run the generator **from the repository root** -- the script lives there, not
+   in this package. About two seconds per release, so roughly 90 seconds for the
+   full GRCh38 range:
+
+   ```bash
+   cd ../..   # repository root, if you are in packages/hca-schema-validator
+   uv run --no-project --with pymysql python scripts/build_gene_release_intervals.py
+   ```
+
+   It writes `packages/hca-schema-validator/src/hca_schema_validator/gene_release_intervals.csv.gz`
+   by default; `--out` writes elsewhere. The verification commands below are
+   relative to this package, so return here first.
+
+2. Check the header records the range you expect, and that the gene and interval
+   counts moved in the direction you expect:
+
+   ```bash
+   gzip -dc src/hca_schema_validator/gene_release_intervals.csv.gz | head -3
+   gzip -dc src/hca_schema_validator/gene_release_intervals.csv.gz | tail -n +3 | wc -l
+   ```
+
+3. Run the tests. `test_resurrected_gene_is_absent_between_its_runs` pins the
+   resurrection behaviour against a known gene, so a regeneration that flattened
+   intervals would fail there:
+
+   ```bash
+   uv run pytest tests/ -q
+   ```
+
+4. Commit the regenerated file and update the **Current table** above.
+
+### Why not `stable_id_event`
+
+Ensembl's `stable_id_event` table is the right source for *retirement history*
+but cannot answer presence at a given release. Measured against release 114:
+`mapping_session` only covers releases 10–99, and self-mappings are not recorded
+exhaustively — TP53 has 22 rows across 72 sessions. Presence has to come from
+each release's own `gene` table, which is what the generator queries.
 
 ## License
 
