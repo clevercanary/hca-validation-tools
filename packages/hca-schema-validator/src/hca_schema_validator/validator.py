@@ -2698,13 +2698,9 @@ def _retired_findings(adata):
                 splits[feature] = sorted(ends) or sorted(split_into)
                 plain["split" if ends else "off_reference"].add(feature)
                 continue
-            # A split is only worth reporting as one if at least one piece is in
-            # the reference. 46 of the table's 94 splits divide into genes none of
-            # which are, and offering their spans would send a curator after
-            # coordinates they cannot map a column onto.
-            group = "split" if any(checker.is_valid_id(s) for s in split_into) else "off_reference"
-            plain[group].add(feature)
-        elif terminal is None:
+        # Reached by a plain replacement, and by a split whose branches converged
+        # on one gene -- which is why this is not an elif of the branch above.
+        if terminal is None:
             # Ensembl recorded no successor, or the chain ends where it began.
             plain["dead"].add(feature)
         elif not checker.is_valid_id(terminal):
