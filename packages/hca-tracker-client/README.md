@@ -41,7 +41,6 @@ directory (only `HCA_TRACKER_*` keys are read from it):
 | `HCA_TRACKER_URL` | — | Tracker base URL, e.g. the dev tracker |
 | `HCA_TRACKER_API_TOKEN` | — | Read-only API token, created at `<tracker>/api-token` |
 | `HCA_TRACKER_CACHE_DIR` | `~/.cache/hca-tracker` | Where files and job state live |
-| `HCA_TRACKER_CONFIRM_GB` | `5` | Files larger than this need `confirm=True` |
 | `HCA_TRACKER_MAX_CONCURRENT` | `2` | Downloads running at once; the rest queue |
 
 The token and presigned download URLs are never logged, returned, or put in an
@@ -59,7 +58,7 @@ list_atlases(tracker)                                   # find the network/atlas
 list_files(tracker, "lung", "adipose", "integrated")    # or "source"
 
 downloads = Downloads(config)
-job = downloads.start("lung", "adipose", "lung-adipose-r2.h5ad", confirm=True)
+job = downloads.start("lung", "adipose", "lung-adipose-r2.h5ad")
 downloads.status(job["job_id"])   # queued, downloading, verifying, done, failed, ...
 downloads.cancel(job["job_id"])   # keeps the partial file; start() resumes it
 downloads.list_files()
@@ -80,8 +79,9 @@ downloads.delete(job["path"])
 6. There is enough free space for the file, for the rest of the downloads
    already running or queued on that disk, and for a margin of 10% of the file
    or 5 GB, whichever is larger.
-7. Above `HCA_TRACKER_CONFIRM_GB`, without `confirm=True`, it returns the size,
-   the free space and an estimated time instead of starting.
+
+The tracker's file name is used as is; one containing control characters or a
+backslash is refused, never renamed.
 
 Files go to `<cache>/<network>/<atlas>_<version>/<filename>`, where the file
 name is the tracker's versioned name (`dest_dir` overrides the folder). While
@@ -112,12 +112,13 @@ One daemon runs per cache folder, started on first use. Its state is in
 - `on-complete.sh`, `on-error.sh` — hooks aria2 runs when a download ends.
   They record the outcome in `<cache>/jobs/<job_id>.json`.
 
-The daemon stays running when idle. To stop it:
+The daemon is trusted only while the `aria2c` recorded in `<cache>/aria2/pid` is
+alive; a stale port is never reused. It stays running when idle. To stop it:
 
 ```python
 from hca_tracker_client.daemon import shutdown
 shutdown(config.cache_dir)
 ```
 
-Any later call that needs it starts it again, restoring its unfinished
-downloads.
+`start()`, `status()` and `cancel()` start it again when jobs are unfinished,
+restoring them; `list_files()` and `delete()` never start it.

@@ -23,7 +23,6 @@ tools.
 | `HCA_TRACKER_URL` | — | Tracker base URL |
 | `HCA_TRACKER_API_TOKEN` | — | Read-only API token |
 | `HCA_TRACKER_CACHE_DIR` | `~/.cache/hca-tracker` | Where files and job state live |
-| `HCA_TRACKER_CONFIRM_GB` | `5` | Files larger than this need `confirm=true` |
 | `HCA_TRACKER_MAX_CONCURRENT` | `2` | Downloads running at once; the rest queue |
 
 Set them in the server's environment, or in a `.env` file in the directory the
@@ -75,16 +74,16 @@ All read-only, matching the token's scope.
   generation?, published?)` — an atlas version's files: `name`, `size`,
   `file_id`, `integrity_status`.
 - **start_download** `(network, atlas, file, generation?, published?, dest_dir?,
-  confirm?, restart?)` — runs the checks, starts the download in the
-  background, and returns `job_id`, `path` and `size` at once. Large files need
-  `confirm=true`.
+  restart?)` — runs the checks, starts the download in the background, and
+  returns `job_id`, `path` and `size` at once.
 - **download_status** `(job_id?)` — state (`queued`, `downloading`,
   `verifying`, `done`, `failed`, `cancelled`, `interrupted`), bytes done and
   total, rate, time left. Without `job_id`, every job.
 - **cancel_download** `(job_id)` — keeps the partial file for resuming.
 - **list_downloads** — downloaded and partial files.
 - **delete_download** `(path)` — deletes a file, its partial download and
-  its job records.
+  its job records. Only files in the cache, or exactly a job's own file when
+  it was saved elsewhere.
 - **check_environment** — `aria2c` path and version, the daemon, the cache
   folder and free space, whether the tracker is reachable and the token valid.
 

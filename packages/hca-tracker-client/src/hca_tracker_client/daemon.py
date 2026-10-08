@@ -13,7 +13,6 @@ local user could read it with ``ps``.
 """
 
 import contextlib
-import fcntl
 import http.client
 import os
 import secrets
@@ -23,11 +22,13 @@ import socket
 import subprocess
 import sys
 import time
+import xml.parsers.expat
 import xmlrpc.client
-from collections.abc import Generator
 from pathlib import Path
 
+from .config import PREFIX
 from .errors import TrackerError, redact
+from .store import file_lock
 
 CONF = "aria2.conf"
 SESSION = "session"
@@ -46,7 +47,7 @@ STATUS_KEYS = [
 
 
 class Aria2Error(TrackerError):
-    """aria2 rejected an RPC call."""
+    """An RPC call to aria2 failed: aria2 rejected it, or the daemon could not be reached."""
 
     @property
     def not_found(self) -> bool:
@@ -72,17 +73,25 @@ class Aria2:
     """
 
     def __init__(self, port: int, secret: str, timeout: float = 10):
-        self.port = port
         self._token = f"token:{secret}"
         self._proxy = xmlrpc.client.ServerProxy(
             f"http://127.0.0.1:{port}/rpc", transport=_TimeoutTransport(timeout), allow_none=False
         )
 
     def call(self, method: str, *params):
+        """Call an aria2 method; every failure, including an unreachable daemon, raises Aria2Error."""
         try:
             return getattr(self._proxy.aria2, method)(self._token, *params)
         except xmlrpc.client.Fault as fault:
             raise Aria2Error(redact(f"aria2 {method}: {fault.faultString}", self._token)) from None
+        except (
+            OSError,
+            http.client.HTTPException,
+            xmlrpc.client.ProtocolError,
+            xmlrpc.client.ResponseError,
+            xml.parsers.expat.ExpatError,
+        ) as error:
+            raise Aria2Error(redact(f"aria2 {method}: {type(error).__name__}: {error}", self._token)) from None
 
     def tell_status(self, gid: str) -> dict:
         return self.call("tellStatus", gid, STATUS_KEYS)
@@ -95,17 +104,6 @@ def daemon_dir(cache_dir: Path) -> Path:
     return cache_dir / "aria2"
 
 
-@contextlib.contextmanager
-def _locked(path: Path) -> Generator[None, None, None]:
-    """Hold an exclusive lock, so two MCP servers never start two daemons."""
-    with path.open("a") as handle:
-        fcntl.flock(handle, fcntl.LOCK_EX)
-        try:
-            yield
-        finally:
-            fcntl.flock(handle, fcntl.LOCK_UN)
-
-
 def _read_conf(path: Path) -> dict[str, str]:
     values = {}
     for line in path.read_text().splitlines():
@@ -113,20 +111,6 @@ def _read_conf(path: Path) -> dict[str, str]:
             key, value = line.split("=", 1)
             values[key.strip()] = value.strip()
     return values
-
-
-def connect(cache_dir: Path) -> Aria2 | None:
-    """Return a client for the cache's daemon if it is running, else None."""
-    conf = daemon_dir(cache_dir) / CONF
-    if not conf.is_file():
-        return None
-    values = _read_conf(conf)
-    try:
-        client = Aria2(int(values["rpc-listen-port"]), values["rpc-secret"], timeout=5)
-        client.version()
-    except (KeyError, ValueError, OSError, http.client.HTTPException, xmlrpc.client.ProtocolError, Aria2Error):
-        return None
-    return client
 
 
 def _free_port() -> int:
@@ -142,18 +126,15 @@ def _write_private(path: Path, text: str, mode: int = 0o600) -> None:
     path.chmod(mode)
 
 
-def _write_hooks(directory: Path, cache_dir: Path) -> tuple[Path, Path]:
-    """Write the shell wrappers aria2 runs; aria2 passes (gid, file count, path)."""
-    hooks = []
-    for event in ("complete", "error"):
-        script = directory / f"on-{event}.sh"
-        command = shlex.join([sys.executable, "-m", "hca_tracker_client.hook", event, str(cache_dir)])
-        _write_private(script, f'#!/bin/sh\nexec {command} "$@"\n', mode=0o700)
-        hooks.append(script)
-    return hooks[0], hooks[1]
+def _write_hook(directory: Path, cache_dir: Path, event: str) -> Path:
+    """Write the shell wrapper aria2 runs for an event; aria2 passes (gid, file count, path)."""
+    script = directory / f"on-{event}.sh"
+    command = shlex.join([sys.executable, "-m", "hca_tracker_client.hook", event, str(cache_dir)])
+    _write_private(script, f'#!/bin/sh\nexec {command} "$@"\n', mode=0o700)
+    return script
 
 
-def _conf_text(directory: Path, port: int, secret: str, max_concurrent: int, hooks: tuple[Path, Path]) -> str:
+def _conf_text(directory: Path, port: int, secret: str, max_concurrent: int, on_complete: Path, on_error: Path) -> str:
     session = directory / SESSION
     options = {
         "enable-rpc": "true",
@@ -174,8 +155,8 @@ def _conf_text(directory: Path, port: int, secret: str, max_concurrent: int, hoo
         "save-session": str(session),
         "save-session-interval": "10",
         "input-file": str(session),
-        "on-download-complete": str(hooks[0]),
-        "on-download-error": str(hooks[1]),
+        "on-download-complete": str(on_complete),
+        "on-download-error": str(on_error),
         "quiet": "true",
     }
     return "".join(f"{key}={value}\n" for key, value in options.items())
@@ -198,6 +179,27 @@ def _is_aria2(pid: int) -> bool:
         pass
     result = subprocess.run(["ps", "-p", str(pid), "-o", "comm="], capture_output=True, text=True)
     return "aria2c" in result.stdout
+
+
+def connect(cache_dir: Path) -> Aria2 | None:
+    """Return a client for the cache's daemon if it is running, else None.
+
+    The port is trusted only while the aria2c recorded in the pidfile is alive
+    and holds it. Once that process is gone, another local user could listen on
+    the old port and would be sent the next presigned URL.
+    """
+    directory = daemon_dir(cache_dir)
+    conf = directory / CONF
+    pid = _pid(directory)
+    if not conf.is_file() or pid is None or not _is_aria2(pid):
+        return None
+    values = _read_conf(conf)
+    try:
+        client = Aria2(int(values["rpc-listen-port"]), values["rpc-secret"], timeout=5)
+        client.version()
+    except (KeyError, ValueError, Aria2Error):
+        return None
+    return client
 
 
 def _wait_exit(pid: int, timeout: float) -> bool:
@@ -237,7 +239,7 @@ def ensure_daemon(cache_dir: Path, aria2c: str, max_concurrent: int, timeout: fl
     directory = daemon_dir(cache_dir)
     directory.mkdir(parents=True, exist_ok=True)
     directory.chmod(0o700)
-    with _locked(directory / "lock"):
+    with file_lock(directory / "lock"):
         client = connect(cache_dir)
         if client is not None:
             client.call("changeGlobalOption", {"max-concurrent-downloads": str(max_concurrent)})
@@ -245,15 +247,17 @@ def ensure_daemon(cache_dir: Path, aria2c: str, max_concurrent: int, timeout: fl
 
         _stop_process(directory)
         port, secret = _free_port(), secrets.token_hex(16)
-        hooks = _write_hooks(directory, cache_dir)
-        _write_private(directory / CONF, _conf_text(directory, port, secret, max_concurrent, hooks))
+        on_complete = _write_hook(directory, cache_dir, "complete")
+        on_error = _write_hook(directory, cache_dir, "error")
+        conf = _conf_text(directory, port, secret, max_concurrent, on_complete, on_error)
+        _write_private(directory / CONF, conf)
         session = directory / SESSION
         if not session.exists():
             _write_private(session, "")
 
         # The daemon and its hooks don't need the tracker token; keep it out of
         # their environment.
-        env = {key: value for key, value in os.environ.items() if not key.startswith("HCA_TRACKER_")}
+        env = {key: value for key, value in os.environ.items() if not key.startswith(PREFIX)}
         errors = directory / "daemon.err"
         try:
             with errors.open("w") as stderr:
@@ -265,6 +269,7 @@ def ensure_daemon(cache_dir: Path, aria2c: str, max_concurrent: int, timeout: fl
                     stderr=stderr,
                     start_new_session=True,
                     close_fds=True,
+                    cwd=directory,
                 )
         except OSError as error:
             raise TrackerError(f"Could not start the aria2 daemon: {error}") from None
@@ -276,7 +281,7 @@ def ensure_daemon(cache_dir: Path, aria2c: str, max_concurrent: int, timeout: fl
             try:
                 client.version()
                 return client
-            except (OSError, http.client.HTTPException, xmlrpc.client.ProtocolError, Aria2Error):
+            except Aria2Error:
                 code = process.poll()
                 if code is not None:
                     output = redact(errors.read_text().strip(), secret)
@@ -296,7 +301,7 @@ def shutdown(cache_dir: Path) -> bool:
     directory = daemon_dir(cache_dir)
     client = connect(cache_dir)
     if client is not None:
-        with contextlib.suppress(Aria2Error, OSError, http.client.HTTPException, xmlrpc.client.ProtocolError):
+        with contextlib.suppress(Aria2Error):
             client.call("saveSession")
             client.call("forceShutdown")
     pid = _pid(directory)

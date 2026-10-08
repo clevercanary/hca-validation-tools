@@ -230,3 +230,32 @@ def test_status_restarts_a_dead_daemon(downloads, tracker, gut_file):
     os.kill(pid, signal.SIGKILL)
     tracker.rate_bps = 0
     assert wait_for(downloads, started["job_id"], ("done", "failed"))["state"] == "done"
+
+
+def test_list_and_delete_do_not_restart_the_daemon(downloads, tracker, gut_file):
+    tracker.rate_bps = 200_000
+    started = downloads.start("gut", "gut", "gut-r1.h5ad")
+    wait_for(downloads, started["job_id"], ("downloading",))
+    shutdown(downloads.cache_dir)
+    downloads.list_files()
+    with pytest.raises(Exception, match="still downloading"):
+        downloads.delete(started["path"])
+    assert connect(downloads.cache_dir) is None
+    tracker.rate_bps = 0
+    assert wait_for(downloads, started["job_id"], ("done", "failed"))["state"] == "done"
+
+
+def test_delete_scope_is_the_job_file_not_its_folder(downloads, tracker, gut_file, tmp_path):
+    elsewhere = tmp_path / "Downloads"
+    neighbour = make_file(elsewhere / "tax-return.pdf", 10)
+    started = downloads.start("gut", "gut", "gut-r1.h5ad", dest_dir=str(elsewhere))
+    wait_for(downloads, started["job_id"], ("done",))
+    with pytest.raises(Exception, match="not in the download cache or a file a download job saved"):
+        downloads.delete(str(neighbour))
+    assert neighbour.exists()
+    assert downloads.delete(started["path"])["deleted"] == [started["path"]]
+
+    untracked = make_file(downloads.cache_dir / "gut" / "stray.h5ad", 10)
+    assert downloads.delete(str(untracked))["deleted"] == [str(untracked)]
+    with pytest.raises(Exception, match="not in the download cache"):
+        downloads.delete(str(downloads.cache_dir / "aria2" / "aria2.conf"))

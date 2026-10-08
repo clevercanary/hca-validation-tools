@@ -7,10 +7,9 @@ API token.
 """
 
 import contextlib
-import http.client
+import re
 import secrets
 import time
-import xmlrpc.client
 from pathlib import Path
 
 from .api import TrackerClient, probe
@@ -24,18 +23,35 @@ from .checks import (
     human_size,
 )
 from .config import Config
-from .daemon import Aria2, Aria2Error, connect, ensure_daemon
+from .daemon import Aria2, Aria2Error, connect, daemon_dir, ensure_daemon
 from .errors import AuthError, CheckError, ConfigError, JobError, TrackerError
 from .outcome import finalize, record_error
 from .selection import atlas_version, find_file, select_atlas
-from .store import ACTIVE, CANCELLED, DONE, DOWNLOADING, INTERRUPTED, QUEUED, VERIFYING, Job, JobStore
+from .store import (
+    ACTIVE,
+    CANCELLED,
+    DONE,
+    DOWNLOADING,
+    INTERRUPTED,
+    QUEUED,
+    VERIFYING,
+    Job,
+    JobStore,
+    control_path,
+    final_path,
+    part_path,
+)
 
-_RPC_ERRORS = (Aria2Error, OSError, http.client.HTTPException, xmlrpc.client.ProtocolError)
+_CONTROL = re.compile(r"[\x00-\x1f\x7f\\]")
 
 
 def _safe_name(filename: str) -> str:
-    """Reject a tracker file name that would escape its folder."""
-    if not filename or Path(filename).name != filename or filename in (".", ".."):
+    """Reject a tracker file name that would escape its folder, or inject options into aria2's session file.
+
+    aria2 saves each download's options as ``key=value`` lines, so a newline
+    in the name would become extra options when the session is reloaded.
+    """
+    if not filename or Path(filename).name != filename or filename in (".", "..") or _CONTROL.search(filename):
         raise TrackerError(f"The tracker returned an unusable file name: {filename!r}")
     return filename
 
@@ -46,6 +62,14 @@ def _allocated(path: Path) -> int:
         return path.stat().st_blocks * 512
     except (FileNotFoundError, AttributeError):
         return 0
+
+
+def _cancel_message(job: Job) -> str:
+    if job.part.exists():
+        return (
+            f"Cancelled. The partial file is kept at {job.part}: start_download resumes it, delete_download removes it"
+        )
+    return "Cancelled before any data arrived. start_download starts it again"
 
 
 def _progress(job: Job, live: dict) -> dict:
@@ -83,15 +107,20 @@ class Downloads:
     @property
     def tracker(self) -> TrackerClient:
         if self._tracker is None:
-            self._tracker = TrackerClient(*self.config.require_tracker())
+            self._tracker = self.config.tracker_client()
         return self._tracker
 
-    def _daemon(self) -> Aria2:
-        aria2c, _ = find_aria2c()
+    def _daemon(self, aria2c: str | None = None) -> Aria2:
+        """The running daemon, started if needed."""
+        aria2c = aria2c or find_aria2c()[0]
         return ensure_daemon(self.cache_dir, aria2c, self.config.max_concurrent)
 
-    def _daemon_if_needed(self) -> Aria2 | None:
-        """The running daemon; restarted (from its session) if jobs are active but it is not running."""
+    def _running_daemon(self) -> Aria2 | None:
+        """The running daemon, restarted (from its session) if jobs are active but it is not running.
+
+        Every operation reads aria2 through this, so after a crash or reboot
+        whichever call comes first resumes the unfinished downloads.
+        """
         aria2 = connect(self.cache_dir)
         if aria2 is not None or not any(job.state in ACTIVE for job in self.store.all()):
             return aria2
@@ -99,6 +128,10 @@ class Downloads:
             return self._daemon()
         except TrackerError:
             return None
+
+    def _internal_dirs(self) -> set[Path]:
+        """Folders under the cache that hold this package's own state, not downloads."""
+        return {daemon_dir(self.cache_dir), self.store.directory}
 
     # -- state ---------------------------------------------------------------
 
@@ -109,11 +142,7 @@ class Downloads:
         try:
             live = aria2.tell_status(job.job_id)
         except Aria2Error as error:
-            if not error.not_found:
-                return job, {}
-            return self._lost(job), {}
-        except _RPC_ERRORS:
-            return job, {}
+            return (self._lost(job) if error.not_found else job), {}
 
         status = live.get("status")
         if status == "complete":
@@ -121,8 +150,8 @@ class Downloads:
         if status == "error":
             return record_error(job, self.store, live, aria2), {}
         if status == "removed":
-            new_state = CANCELLED
-        elif status == "active":
+            return self.store.end(job, CANCELLED, _cancel_message(job)), {}
+        if status == "active":
             verifying = "verifiedLength" in live or live.get("verifyIntegrityPending") == "true"
             new_state = VERIFYING if verifying else DOWNLOADING
         else:  # waiting, paused
@@ -142,13 +171,11 @@ class Downloads:
         # finished download whose hook did not run before aria2 forgot it.
         if fresh.part.exists() and not fresh.control.exists() and fresh.part.stat().st_size == fresh.size:
             return finalize(fresh, self.store)
-        fresh.state = INTERRUPTED
-        fresh.message = "aria2 lost track of this download (e.g. a crash before its session was saved). " + (
+        message = (
+            "aria2 lost track of this download (e.g. a crash before its session was saved). "
             "Run start_download again to resume it"
         )
-        fresh.finished_at = time.time()
-        self.store.save(fresh)
-        return fresh
+        return self.store.end(fresh, INTERRUPTED, message)
 
     def _describe(self, job: Job, live: dict | None = None) -> dict:
         result: dict = {
@@ -189,16 +216,6 @@ class Downloads:
                 reserved += max(job.size - int(live.get("completedLength") or 0), 0)
         return reserved
 
-    def _estimate(self, remaining: int) -> str | None:
-        """Time for ``remaining`` bytes at the average rate of recent downloads in this cache."""
-        recent = [j for j in self.store.all() if j.state == DONE and j.finished_at and j.finished_at > j.created_at]
-        recent = recent[-5:]
-        seconds = sum(j.finished_at - j.created_at for j in recent if j.finished_at)
-        if not recent or seconds <= 0:
-            return None
-        rate = sum(j.size for j in recent) / seconds
-        return human_duration(remaining / rate)
-
     # -- operations ----------------------------------------------------------
 
     def start(
@@ -209,7 +226,6 @@ class Downloads:
         generation: int | None = None,
         published: bool = False,
         dest_dir: str | None = None,
-        confirm: bool = False,
         restart: bool = False,
     ) -> dict:
         """Check, then start downloading one file in the background.
@@ -248,90 +264,77 @@ class Downloads:
         summary = {"network": network, "atlas": atlas, "version": version, "file": filename, "path": str(final)}
         summary |= {"size_bytes": size, "size": human_size(size), "warnings": warnings}
 
-        aria2 = connect(self.cache_dir)
-        previous = [self._refresh(job, aria2)[0] for job in self.store.for_path(final)]
-        active = [job for job in previous if job.state in ACTIVE]
-        if active:
-            return {**self._describe(active[-1]), "message": "Already downloading", "warnings": warnings}
+        # Two calls for the same file (or two large files competing for space)
+        # must not both pass these checks before either job is recorded.
+        with self.store.locked():
+            aria2 = self._running_daemon()
+            previous = [self._refresh(job, aria2)[0] for job in self.store.for_path(final)]
+            active = [job for job in previous if job.state in ACTIVE]
+            if active:
+                return {**self._describe(active[-1]), "message": "Already downloading", "warnings": warnings}
 
-        if final.exists():
-            done = [job for job in previous if job.state == DONE]
-            if done and final.stat().st_size == size and done[-1].sha256 == probed.sha256:
-                return {**summary, "state": DONE, "cached": True, "verified": done[-1].verified}
-            raise CheckError(
-                f"{final} already exists but is not a verified download of this file revision; "
-                "delete it with delete_download (or move it) first"
+            if final.exists():
+                done = [job for job in previous if job.state == DONE]
+                if done and final.stat().st_size == size and done[-1].sha256 == probed.sha256:
+                    return {**summary, "state": DONE, "cached": True, "verified": done[-1].verified}
+                raise CheckError(
+                    f"{final} already exists but is not a verified download of this file revision; "
+                    "delete it with delete_download (or move it) first"
+                )
+
+            part, control = part_path(final), control_path(final)
+            last = previous[-1] if previous else None
+            if restart:
+                for stale in (part, control):
+                    with contextlib.suppress(FileNotFoundError):
+                        stale.unlink()
+            elif last is not None and last.checksum_failed:
+                raise CheckError(
+                    f"The last download of {filename} failed its checksum and is kept at {part}; "
+                    "run delete_download, or pass restart=true to download it again from scratch"
+                )
+            elif part.exists() and not control.exists():
+                raise CheckError(
+                    f"A partial file {part} exists without aria2's control file, so it cannot be resumed safely; "
+                    "pass restart=true to download from scratch"
+                )
+
+            aria2c, _ = find_aria2c()
+            check_writable(directory)
+            already = min(_allocated(part), size)
+            remaining = size - already
+            reserved = self._reserved(directory, aria2, exclude=final)
+            check_space(directory, remaining, size, reserved)
+            aria2 = self._daemon(aria2c)
+            job = Job(
+                job_id=secrets.token_hex(8),
+                network=network,
+                atlas=atlas,
+                version=version,
+                file_name=filename,
+                file_id=entry["fileId"],
+                path=str(final),
+                size=size,
+                sha256=probed.sha256,
             )
+            self.store.save(job)
+            options = {"gid": job.job_id, "dir": str(directory), "out": part.name}
+            if probed.sha256:
+                options["checksum"] = f"sha-256={probed.sha256}"
+            try:
+                aria2.call("addUri", [presigned.url], options)
+            except Aria2Error as error:
+                self.store.delete(job.job_id)
+                raise TrackerError(f"aria2 did not accept the download: {error}") from None
 
-        part = Path(f"{final}.part")
-        control = Path(f"{final}.part.aria2")
-        last = previous[-1] if previous else None
-        if restart:
-            for stale in (part, control):
-                with contextlib.suppress(FileNotFoundError):
-                    stale.unlink()
-        elif last is not None and last.checksum_failed:
-            raise CheckError(
-                f"The last download of {filename} failed its checksum and is kept at {part}; "
-                "run delete_download, or pass restart=true to download it again from scratch"
-            )
-        elif part.exists() and not control.exists():
-            raise CheckError(
-                f"A partial file {part} exists without aria2's control file, so it cannot be resumed safely; "
-                "pass restart=true to download from scratch"
-            )
-
-        find_aria2c()
-        check_writable(directory)
-        already = min(_allocated(part), size)
-        remaining = size - already
-        reserved = self._reserved(directory, aria2, exclude=final)
-        free = check_space(directory, remaining, size, reserved)
-        if size > self.config.confirm_bytes and not confirm:
-            estimate = self._estimate(remaining)
-            return {
-                **summary,
-                "needs_confirmation": True,
-                "free_bytes": free,
-                "free": human_size(free),
-                "estimated_time": estimate,
-                "message": (
-                    f"{filename} is {human_size(size)} ({human_size(free)} free"
-                    + (f", about {estimate} at recent speeds" if estimate else "")
-                    + "). Call start_download again with confirm=true to download it"
-                ),
-            }
-
-        aria2 = self._daemon()
-        job = Job(
-            job_id=secrets.token_hex(8),
-            network=network,
-            atlas=atlas,
-            version=version,
-            file_name=filename,
-            file_id=entry["fileId"],
-            path=str(final),
-            size=size,
-            sha256=probed.sha256,
-        )
-        self.store.save(job)
-        options = {"gid": job.job_id, "dir": str(directory), "out": part.name}
-        if probed.sha256:
-            options["checksum"] = f"sha-256={probed.sha256}"
-        try:
-            aria2.call("addUri", [presigned.url], options)
-        except _RPC_ERRORS as error:
-            self.store.delete(job.job_id)
-            raise TrackerError(f"aria2 did not accept the download: {error}") from None
-
-        result = {**self._describe(job), "warnings": warnings}
-        if already:
-            result["message"] = f"Resuming from {human_size(already)} already downloaded"
-        return result
+            result = {**self._describe(job), "warnings": warnings}
+            if already:
+                result["message"] = f"Resuming from {human_size(already)} already downloaded"
+            return result
 
     def status(self, job_id: str | None = None) -> dict:
         """One job's state and progress, or every job's when no id is given."""
-        aria2 = self._daemon_if_needed()
+        aria2 = self._running_daemon()
         if job_id:
             job = self.store.load(job_id)
             if job is None:
@@ -345,30 +348,24 @@ class Downloads:
         job = self.store.load(job_id)
         if job is None:
             raise JobError(f"No download job {job_id!r}")
-        aria2 = connect(self.cache_dir)
+        aria2 = self._running_daemon()
         job, _ = self._refresh(job, aria2)
         if job.state not in ACTIVE:
             raise JobError(f"Job {job_id} is {job.state}; there is nothing to cancel")
         if aria2 is not None:
-            with contextlib.suppress(*_RPC_ERRORS):
+            with contextlib.suppress(Aria2Error):
                 aria2.call("forceRemove", job_id)
             deadline = time.monotonic() + 10
             while time.monotonic() < deadline:
                 try:
                     if aria2.tell_status(job_id).get("status") == "removed":
                         break
-                except _RPC_ERRORS:
+                except Aria2Error:
                     break
                 time.sleep(0.1)
-            with contextlib.suppress(*_RPC_ERRORS):
+            with contextlib.suppress(Aria2Error):
                 aria2.call("removeDownloadResult", job_id)
-        job.state = CANCELLED
-        job.finished_at = time.time()
-        job.message = (
-            f"Cancelled. The partial file is kept at {job.part}: start_download resumes it, delete_download removes it"
-        )
-        self.store.save(job)
-        return self._describe(job)
+        return self._describe(self.store.end(job, CANCELLED, _cancel_message(job)))
 
     def list_files(self) -> dict:
         """Downloaded and partial files: those this cache has jobs for, and any others under the cache folder."""
@@ -379,7 +376,7 @@ class Downloads:
 
         entries = []
         for path, job in latest.items():
-            final, part = Path(path), Path(path + ".part")
+            final, part = Path(path), part_path(Path(path))
             if not final.exists() and not part.exists():
                 continue
             on_disk = final.stat().st_size if final.exists() else _allocated(part)
@@ -399,14 +396,13 @@ class Downloads:
             entries.append(entry)
 
         if self.cache_dir.is_dir():
-            internal = {self.cache_dir / "aria2", self.cache_dir / "jobs"}
+            internal = self._internal_dirs()
             for path in sorted(self.cache_dir.rglob("*")):
                 if not path.is_file() or path.name.startswith(".") or path.name.endswith(".aria2"):
                     continue
                 if any(path.is_relative_to(folder) for folder in internal):
                     continue
-                final = str(path)[: -len(".part")] if path.name.endswith(".part") else str(path)
-                if final in latest:
+                if str(final_path(path)) in latest:
                     continue
                 entries.append({"path": str(path), "state": "untracked", "on_disk_bytes": path.stat().st_size})
         return {"cache_dir": str(self.cache_dir), "files": entries}
@@ -414,31 +410,23 @@ class Downloads:
     def delete(self, path: str) -> dict:
         """Delete a downloaded or partial file (with aria2's control file) and its job records.
 
-        Only files inside the cache folder, or in a folder a job downloaded
-        to, can be deleted.
+        Allowed for files under the cache folder, and for exactly the files a
+        recorded job downloaded elsewhere (``dest_dir``) — not their neighbours.
         """
-        given = Path(path).expanduser().absolute()
-        text = str(given)
-        for suffix in (".part.aria2", ".part"):
-            if text.endswith(suffix):
-                text = text[: -len(suffix)]
-                break
-        final = Path(text)
-
-        jobs = self.store.for_path(final)
-        roots = {self.cache_dir.resolve()} | {Path(job.path).parent.resolve() for job in self.store.all()}
-        internal = {(self.cache_dir / "aria2").resolve(), (self.cache_dir / "jobs").resolve()}
+        final = final_path(Path(path).expanduser().absolute())
         resolved = final.resolve()
-        if not any(resolved.is_relative_to(root) for root in roots) or any(
-            resolved.is_relative_to(folder) for folder in internal
-        ):
-            raise JobError(f"{path} is not in the download cache or a folder a download was saved to")
+        jobs = [job for job in self.store.all() if job.final.resolve() == resolved]
+        in_cache = resolved.is_relative_to(self.cache_dir.resolve()) and not any(
+            resolved.is_relative_to(folder.resolve()) for folder in self._internal_dirs()
+        )
+        if not in_cache and not jobs:
+            raise JobError(f"{path} is not in the download cache or a file a download job saved")
 
         aria2 = connect(self.cache_dir)
         if any(self._refresh(job, aria2)[0].state in ACTIVE for job in jobs):
             raise JobError(f"{final.name} is still downloading; cancel it with cancel_download first")
 
-        targets = [p for p in (final, Path(f"{final}.part"), Path(f"{final}.part.aria2")) if p.is_file()]
+        targets = [p for p in (final, part_path(final), control_path(final)) if p.is_file()]
         if not targets:
             raise JobError(f"Nothing to delete at {final}")
         freed = sum(_allocated(p) for p in targets)
@@ -461,7 +449,7 @@ def environment_report(config: Config) -> dict:
     daemon = connect(config.cache_dir)
     daemon_report: dict = {"running": daemon is not None}
     if daemon is not None:
-        with contextlib.suppress(*_RPC_ERRORS):
+        with contextlib.suppress(Aria2Error):
             daemon_report["version"] = daemon.version()
     report["aria2_daemon"] = daemon_report
 
@@ -477,12 +465,10 @@ def environment_report(config: Config) -> dict:
         cache |= {"free_bytes": free, "free": human_size(free)}
     report["cache_dir"] = cache
     report["max_concurrent_downloads"] = config.max_concurrent
-    report["confirm_above"] = human_size(config.confirm_bytes)
 
     tracker: dict = {"url": config.tracker_url}
     try:
-        client = TrackerClient(*config.require_tracker())
-        client.list_atlases()
+        config.tracker_client().list_atlases()
         tracker |= {"reachable": True, "token_valid": True}
     except AuthError as error:
         tracker |= {"reachable": True, "token_valid": False, "error": str(error)}

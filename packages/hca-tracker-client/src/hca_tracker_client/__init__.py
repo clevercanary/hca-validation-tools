@@ -1,4 +1,9 @@
-"""HCA Tracker Client — find and download atlas files from the HCA Atlas Tracker."""
+"""HCA Tracker Client — find and download atlas files from the HCA Atlas Tracker.
+
+This library exists to back hca-tracker-mcp, so its error messages name the
+MCP tools to call next (``start_download``, ``delete_download``, ...). Each
+maps to a ``Downloads`` method of the same purpose.
+"""
 
 from .api import TrackerClient
 from .catalog import INTEGRATED, SOURCE, list_atlases, list_files

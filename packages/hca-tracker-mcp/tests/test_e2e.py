@@ -67,7 +67,12 @@ async def _call(client, tool, args=None) -> dict:
 
 @pytest.mark.asyncio
 async def test_registered_tools(client):
-    assert {tool.name for tool in await client.list_tools()} == TOOLS
+    tools = {tool.name: tool for tool in await client.list_tools()}
+    assert set(tools) == TOOLS
+    params = tools["list_integrated_objects"].inputSchema["properties"]
+    assert "1 = v1.x" in params["generation"]["description"]
+    assert "list_atlases" in params["network"]["description"]
+    assert "confirm" not in tools["start_download"].inputSchema["properties"]
 
 
 @pytest.mark.asyncio

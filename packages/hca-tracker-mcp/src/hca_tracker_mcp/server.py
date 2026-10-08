@@ -24,7 +24,6 @@ mcp = FastMCP(
         "(default: newest revision of the highest generation; pass generation or published to choose). "
         "start_download checks, then starts a background download and returns a job_id at once; "
         "poll download_status for progress — downloads can take hours and continue after this session. "
-        "Files above the size threshold need confirm=true: show the user the size and free space first. "
         "Downloaded files are local paths that hca-anndata-mcp tools can open. "
         "check_environment diagnoses setup problems (aria2c, cache folder, token)."
     ),

@@ -5,11 +5,11 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .api import TrackerClient
 from .errors import ConfigError
 
 PREFIX = "HCA_TRACKER_"
 DEFAULT_CACHE_DIR = Path("~/.cache/hca-tracker")
-DEFAULT_CONFIRM_GB = 5.0
 DEFAULT_MAX_CONCURRENT = 2
 
 
@@ -24,7 +24,6 @@ class Config:
     tracker_url: str | None
     api_token: str | None = field(repr=False)
     cache_dir: Path
-    confirm_bytes: int
     max_concurrent: int
 
     def require_tracker(self) -> tuple[str, str]:
@@ -41,6 +40,10 @@ class Config:
             )
         assert self.tracker_url and self.api_token
         return self.tracker_url.rstrip("/"), self.api_token
+
+    def tracker_client(self) -> TrackerClient:
+        """A tracker API client for this config; raises if the URL or token is unset."""
+        return TrackerClient(*self.require_tracker())
 
 
 def read_env_file(path: Path) -> dict[str, str]:
@@ -88,12 +91,10 @@ def load_config(env: Mapping[str, str] | None = None, env_file: Path | None = No
     values = {**file_values, **{k: v for k, v in environ.items() if k.startswith(PREFIX) and v}}
 
     cache_dir = Path(values.get("HCA_TRACKER_CACHE_DIR") or DEFAULT_CACHE_DIR).expanduser()
-    confirm_gb = _number(values, "HCA_TRACKER_CONFIRM_GB", DEFAULT_CONFIRM_GB, float)
     max_concurrent = int(_number(values, "HCA_TRACKER_MAX_CONCURRENT", DEFAULT_MAX_CONCURRENT, int))
     return Config(
         tracker_url=values.get("HCA_TRACKER_URL"),
         api_token=values.get("HCA_TRACKER_API_TOKEN"),
         cache_dir=cache_dir,
-        confirm_bytes=int(confirm_gb * 1e9),
         max_concurrent=max_concurrent,
     )

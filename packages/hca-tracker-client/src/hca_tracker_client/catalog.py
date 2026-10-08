@@ -37,17 +37,20 @@ def list_files(
     """The integrated objects (``kind="integrated"``) or source datasets of one atlas version."""
     version = select_atlas(tracker.list_atlases(), network, atlas, generation, published)
     entries = tracker.component_atlases(version["id"]) if kind == INTEGRATED else tracker.source_datasets(version["id"])
-    files = [
-        {
-            "name": f.get("fileName"),
-            "size_bytes": int(f.get("sizeBytes") or 0),
-            "size": human_size(int(f.get("sizeBytes") or 0)),
-            "file_id": f["fileId"],
-            "integrity_status": f.get("integrityStatus"),
-        }
-        for f in entries
-        if f.get("fileId")
-    ]
+    files = []
+    for f in entries:
+        if not f.get("fileId"):
+            continue
+        size = int(f.get("sizeBytes") or 0)
+        files.append(
+            {
+                "name": f.get("fileName"),
+                "size_bytes": size,
+                "size": human_size(size),
+                "file_id": f["fileId"],
+                "integrity_status": f.get("integrityStatus"),
+            }
+        )
     return {
         "network": network,
         "atlas": atlas,

@@ -52,7 +52,6 @@ def make_config(cache_dir: Path, tracker: FakeTracker, **overrides) -> Config:
         "tracker_url": tracker.url,
         "api_token": tracker.token,
         "cache_dir": cache_dir,
-        "confirm_bytes": 5_000_000_000,
         "max_concurrent": 2,
     }
     values.update(overrides)

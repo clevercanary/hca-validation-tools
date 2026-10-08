@@ -7,10 +7,12 @@ presigned URL.
 """
 
 import contextlib
+import fcntl
 import json
 import os
 import tempfile
 import time
+from collections.abc import Generator
 from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 
@@ -25,6 +27,37 @@ ACTIVE = (QUEUED, DOWNLOADING, VERIFYING)
 
 # aria2 error codes (see "EXIT STATUS" in the aria2c manual).
 CHECKSUM_MISMATCH = 32
+
+
+@contextlib.contextmanager
+def file_lock(path: Path) -> Generator[None, None, None]:
+    """Hold an exclusive lock on path, across threads and processes."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a") as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(handle, fcntl.LOCK_UN)
+
+
+def part_path(final: Path) -> Path:
+    """Where aria2 writes a download until it is verified."""
+    return Path(f"{final}.part")
+
+
+def control_path(final: Path) -> Path:
+    """aria2's control file, which records which pieces of the .part file are done."""
+    return Path(f"{final}.part.aria2")
+
+
+def final_path(path: Path) -> Path:
+    """The final file path for a final, .part or control-file path."""
+    text = str(path)
+    for suffix in (".part.aria2", ".part"):
+        if text.endswith(suffix):
+            return Path(text[: -len(suffix)])
+    return path
 
 
 @dataclass
@@ -57,12 +90,11 @@ class Job:
 
     @property
     def part(self) -> Path:
-        return Path(self.path + ".part")
+        return part_path(self.final)
 
     @property
     def control(self) -> Path:
-        """aria2's control file, which records which pieces are done."""
-        return Path(self.path + ".part.aria2")
+        return control_path(self.final)
 
     @property
     def checksum_failed(self) -> bool:
@@ -75,6 +107,19 @@ class JobStore:
 
     def _file(self, job_id: str) -> Path:
         return self.directory / f"{job_id}.json"
+
+    def locked(self):
+        """Serialise starting jobs across threads and MCP server processes."""
+        return file_lock(self.directory / ".lock")
+
+    def end(self, job: Job, state: str, message: str, error_code: int | None = None) -> Job:
+        """Record how a job ended and save it."""
+        job.state = state
+        job.message = message
+        job.error_code = error_code
+        job.finished_at = time.time()
+        self.save(job)
+        return job
 
     def save(self, job: Job) -> None:
         """Write the record atomically: the hook and the server may both write."""

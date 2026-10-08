@@ -1,14 +1,12 @@
-"""MCP wrappers over hca_tracker_client.
-
-Each tool loads the config per call, so a changed .env or token takes effect
-without restarting the server, and returns ``{"error": ...}`` instead of
-raising. No tool returns the API token or a presigned URL.
-"""
+"""MCP wrappers over hca_tracker_client. Config is loaded per call, so a changed token applies at once."""
 
 import contextlib
-from collections.abc import Callable
-from functools import wraps
-from typing import Any
+import functools
+from collections.abc import Awaitable, Callable
+from typing import Annotated, Any
+
+import anyio
+from pydantic import Field
 
 from hca_tracker_client import (
     INTEGRATED,
@@ -24,175 +22,116 @@ from hca_tracker_client import list_atlases as _list_atlases
 from hca_tracker_client import list_files as _list_files
 
 
-def _safe(func: Callable[..., dict]) -> Callable[..., dict]:
-    @wraps(func)
-    def wrapper(*args: Any, **kwargs: Any) -> dict:
-        try:
-            return func(*args, **kwargs)
-        except TrackerError as error:
-            return {"error": str(error)}
-        except Exception as error:  # an unexpected failure must not leak a URL or the token
-            token = None
-            with contextlib.suppress(TrackerError):
-                token = load_config().api_token
-            return {"error": redact(f"{type(error).__name__}: {error}", token)}
+def _call(func: Callable[..., dict], *args: Any, **kwargs: Any) -> dict:
+    try:
+        return func(*args, **kwargs)
+    except TrackerError as error:
+        return {"error": str(error)}
+    except Exception as error:  # an unexpected failure must not leak a URL or the token
+        token = None
+        with contextlib.suppress(TrackerError):
+            token = load_config().api_token
+        return {"error": redact(f"{type(error).__name__}: {error}", token)}
+
+
+def _tool(func: Callable[..., dict]) -> Callable[..., Awaitable[dict]]:
+    """Run a tool body in a worker thread (FastMCP runs a plain ``def`` on its event loop), errors as dicts."""
+
+    @functools.wraps(func)
+    async def wrapper(*args: Any, **kwargs: Any) -> dict:
+        return await anyio.to_thread.run_sync(functools.partial(_call, func, *args, **kwargs))
 
     return wrapper
 
 
 def _tracker() -> TrackerClient:
-    return TrackerClient(*load_config().require_tracker())
+    return load_config().tracker_client()
 
 
-@_safe
+# Parameter descriptions are published in each tool's input schema.
+Network = Annotated[str, Field(description="Bionetwork, e.g. 'lung'. Take it from list_atlases; never guess.")]
+Atlas = Annotated[
+    str, Field(description="Atlas slug (shortNameSlug), e.g. 'adipose'. The same slug can exist in several networks.")
+]
+Generation = Annotated[
+    int | None,
+    Field(description="Atlas generation (1 = v1.x). Its newest revision is used. Default: the highest generation."),
+]
+Published = Annotated[bool, Field(description="Only consider published atlas versions.")]
+JobId = Annotated[str, Field(description="job_id returned by start_download.")]
+
+
+@_tool
 def list_atlases() -> dict:
-    """List every atlas version in the HCA Atlas Tracker.
-
-    Use this to find the ``network`` and ``atlas`` pair every other tool
-    needs. The same atlas slug can exist in more than one network.
-
-    Returns:
-        Dict with ``atlases``: one entry per version, with ``network``,
-        ``atlas`` (the slug), ``version`` (e.g. ``v2.1``), ``generation``,
-        ``revision``, ``is_latest`` (newest revision of its generation) and
-        ``published``.
-    """
+    """List every atlas version (network, atlas slug, version, is_latest, published) to find a network/atlas pair."""
     return {"atlases": _list_atlases(_tracker())}
 
 
-@_safe
-def list_integrated_objects(network: str, atlas: str, generation: int | None = None, published: bool = False) -> dict:
-    """List the integrated objects of an atlas version.
-
-    Args:
-        network: Bionetwork, e.g. ``lung`` (from list_atlases).
-        atlas: Atlas slug, e.g. ``adipose`` (from list_atlases).
-        generation: Atlas generation (1 for v1.x). Default: the highest.
-            The newest revision of the generation is used.
-        published: Only consider published versions.
-
-    Returns:
-        Dict with ``network``, ``atlas``, ``version``, ``published`` and
-        ``files``: each with ``name``, ``size_bytes``, ``size``, ``file_id``
-        and ``integrity_status``.
-    """
+@_tool
+def list_integrated_objects(
+    network: Network, atlas: Atlas, generation: Generation = None, published: Published = False
+) -> dict:
+    """List an atlas version's integrated objects: name, size, file_id, integrity_status."""
     return _list_files(_tracker(), network, atlas, INTEGRATED, generation, published)
 
 
-@_safe
-def list_source_datasets(network: str, atlas: str, generation: int | None = None, published: bool = False) -> dict:
-    """List the source datasets of an atlas version.
-
-    Args:
-        network: Bionetwork, e.g. ``lung`` (from list_atlases).
-        atlas: Atlas slug, e.g. ``adipose`` (from list_atlases).
-        generation: Atlas generation (1 for v1.x). Default: the highest.
-            The newest revision of the generation is used.
-        published: Only consider published versions.
-
-    Returns:
-        Dict with ``network``, ``atlas``, ``version``, ``published`` and
-        ``files``: each with ``name``, ``size_bytes``, ``size``, ``file_id``
-        and ``integrity_status``.
-    """
+@_tool
+def list_source_datasets(
+    network: Network, atlas: Atlas, generation: Generation = None, published: Published = False
+) -> dict:
+    """List an atlas version's source datasets: name, size, file_id, integrity_status."""
     return _list_files(_tracker(), network, atlas, SOURCE, generation, published)
 
 
-@_safe
+@_tool
 def start_download(
-    network: str,
-    atlas: str,
-    file: str,
-    generation: int | None = None,
-    published: bool = False,
-    dest_dir: str | None = None,
-    confirm: bool = False,
-    restart: bool = False,
+    network: Network,
+    atlas: Atlas,
+    file: Annotated[str, Field(description="File name or file_id, from list_integrated_objects/list_source_datasets.")],
+    generation: Generation = None,
+    published: Published = False,
+    dest_dir: Annotated[str | None, Field(description="Folder to save to instead of the cache.")] = None,
+    restart: Annotated[
+        bool, Field(description="Discard a partial or checksum-failed download of this file and start over.")
+    ] = False,
 ) -> dict:
-    """Start downloading one file of an atlas version in the background.
+    """Check, then download one file in the background; returns job_id, path and size at once.
 
-    Runs every check first (aria2c installed, folder writable, enough free
-    space, not already downloaded, download link works), then returns at once
-    with ``job_id``, ``path`` and ``size``; follow it with download_status. The
-    download continues if this server or the session ends. Files are verified
-    against their SHA-256 when one is available, and only get their final
-    name once verified. If the file is already downloaded and verified, returns
-    ``cached: true`` and its path without downloading. Calling this again for a
-    stopped, cancelled or expired-link download resumes it.
-
-    Args:
-        network: Bionetwork (from list_atlases).
-        atlas: Atlas slug (from list_atlases).
-        file: The file's name or file_id (from list_integrated_objects or
-            list_source_datasets).
-        generation: Atlas generation. Default: the highest.
-        published: Only consider published versions.
-        dest_dir: Folder to save to instead of the cache.
-        confirm: Required for files above the size threshold (default 5 GB).
-            Without it, a large file returns ``needs_confirmation`` with its
-            size, the free space and an estimated time instead of starting.
-        restart: Delete a partial or failed download of this file and start
-            from scratch (needed after a checksum mismatch).
-
-    Returns:
-        Dict with ``job_id``, ``state``, ``path``, ``size``, ``verification``
-        and ``warnings`` (e.g. the tracker's integrity status is not valid).
+    Checks run first (aria2c, writable folder, free space, working link). The
+    file is SHA-256 verified when a checksum exists, and the download continues
+    after this session ends. A verified copy returns ``cached: true``; calling
+    again resumes a stopped download.
     """
-    return Downloads(load_config()).start(network, atlas, file, generation, published, dest_dir, confirm, restart)
+    return Downloads(load_config()).start(network, atlas, file, generation, published, dest_dir, restart)
 
 
-@_safe
-def download_status(job_id: str | None = None) -> dict:
-    """Report a download's state and progress, or every download's.
-
-    States: queued, downloading, verifying, done, failed, cancelled,
-    interrupted. Works across sessions: a new server reports downloads an
-    earlier one started.
-
-    Args:
-        job_id: The job to report. Omit to list all jobs, newest first.
-
-    Returns:
-        Dict with ``job_id``, ``state``, ``path``, ``size`` and, while
-        running, ``progress`` (bytes done and total, percent, rate and time
-        left; while verifying, bytes verified). Failed jobs carry a
-        ``message`` saying what to do next. Without ``job_id``, ``jobs``.
-    """
+@_tool
+def download_status(job_id: Annotated[str | None, Field(description="Omit to list every job.")] = None) -> dict:
+    """State (queued, downloading, verifying, done, failed, cancelled, interrupted) and progress of one job, or all."""
     return Downloads(load_config()).status(job_id)
 
 
-@_safe
-def cancel_download(job_id: str) -> dict:
-    """Cancel a queued or running download.
-
-    The partial file is kept: start_download resumes it, delete_download
-    removes it.
-    """
+@_tool
+def cancel_download(job_id: JobId) -> dict:
+    """Cancel a queued or running download, keeping the partial file for start_download to resume."""
     return Downloads(load_config()).cancel(job_id)
 
 
-@_safe
+@_tool
 def list_downloads() -> dict:
     """List downloaded and partial files, with their state and size on disk."""
     return Downloads(load_config()).list_files()
 
 
-@_safe
-def delete_download(path: str) -> dict:
-    """Delete a downloaded or partial file, with aria2's control file and its job records.
-
-    Only files in the download cache, or in a folder a download was saved to,
-    can be deleted; a running download must be cancelled first.
-
-    Args:
-        path: The file's path (its final name or its ``.part`` name).
-    """
+@_tool
+def delete_download(
+    path: Annotated[str, Field(description="The file's final path or its .part path, as shown by list_downloads.")],
+) -> dict:
+    """Delete a downloaded or partial file and its job records: files in the cache, or exactly a job's own file."""
     return Downloads(load_config()).delete(path)
 
 
-@_safe
+@_tool
 def check_environment() -> dict:
-    """Check what downloads need: aria2c (path and version), the aria2 daemon,
-    the cache folder (writable, free space), and whether the tracker is
-    reachable and the API token valid."""
+    """Check aria2c, the aria2 daemon, the cache folder and free space, the tracker, and the token."""
     return environment_report(load_config())

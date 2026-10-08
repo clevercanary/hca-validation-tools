@@ -97,13 +97,13 @@ def margin(size: int) -> int:
     return max(int(size * MARGIN_FRACTION), MIN_MARGIN)
 
 
-def check_space(directory: Path, remaining: int, size: int, reserved: int, free: int | None = None) -> int:
+def check_space(directory: Path, remaining: int, size: int, reserved: int) -> int:
     """Fail unless free space covers this download, other downloads' reservations, and the margin.
 
     ``remaining`` is what this download still has to fetch; ``size`` is the
     whole file, which sets the margin. Returns the free byte count.
     """
-    free = free_bytes(directory) if free is None else free
+    free = free_bytes(directory)
     needed = remaining + reserved + margin(size)
     if needed > free:
         detail = f" (including {human_size(reserved)} reserved for other downloads)" if reserved else ""

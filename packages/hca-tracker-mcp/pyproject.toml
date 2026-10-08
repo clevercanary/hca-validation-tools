@@ -11,7 +11,9 @@ requires-python = ">=3.10,<4.0"
 # because at 0.x a minor bump signals a breaking change (see the release policy
 # in CLAUDE.md).
 dependencies = [
+    "anyio>=4,<5",
     "fastmcp>=2,<3",
+    "pydantic>=2,<3",
     "hca-tracker-client>=0.1,<0.2",
 ]
 

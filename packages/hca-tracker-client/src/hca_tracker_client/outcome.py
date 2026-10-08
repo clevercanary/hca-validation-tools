@@ -8,7 +8,6 @@ can get there first and both are idempotent.
 """
 
 import contextlib
-import time
 
 from .daemon import Aria2, Aria2Error
 from .errors import redact
@@ -28,30 +27,20 @@ def finalize(job: Job, store: JobStore) -> Job:
     if job.state == DONE:
         return job
     part, final = job.part, job.final
-    if not part.exists() and final.exists() and final.stat().st_size == job.size:
-        pass  # renamed by a concurrent call
-    elif not part.exists():
-        return _fail(job, store, None, f"The downloaded file is missing: {part}")
-    elif part.stat().st_size != job.size:
-        return _fail(
-            job,
-            store,
-            None,
-            f"Size mismatch: expected {job.size} bytes, got {part.stat().st_size}; the .part file is kept at {part}",
-        )
-    else:
+    try:
+        size = part.stat().st_size
+        if size != job.size:
+            message = f"Size mismatch: expected {job.size} bytes, got {size}; the .part file is kept at {part}"
+            return store.end(job, FAILED, message)
         part.replace(final)
-    job.state = DONE
-    job.error_code = None
-    job.finished_at = time.time()
+    except FileNotFoundError:  # the hook and download_status can both get here; one renames first
+        if not (final.exists() and final.stat().st_size == job.size):
+            return store.end(job, FAILED, f"The downloaded file is missing: {part}")
     if job.sha256:
         job.verified = "sha256"
-        job.message = "Size and SHA-256 verified"
-    else:
-        job.verified = "size"
-        job.message = "Size verified, no checksum available (file not uploaded with hca-smart-sync)"
-    store.save(job)
-    return job
+        return store.end(job, DONE, "Size and SHA-256 verified")
+    job.verified = "size"
+    return store.end(job, DONE, "Size verified, no checksum available (file not uploaded with hca-smart-sync)")
 
 
 def record_error(job: Job, store: JobStore, status: dict, aria2: Aria2 | None) -> Job:
@@ -76,17 +65,8 @@ def record_error(job: Job, store: JobStore, status: dict, aria2: Aria2 | None) -
         )
     else:
         message = f"aria2 error {code}: {detail or 'no detail'}. Run start_download again to resume"
-    job = _fail(job, store, code, message)
+    job = store.end(job, FAILED, message, code)
     if aria2 is not None:
-        with contextlib.suppress(Aria2Error, OSError):
+        with contextlib.suppress(Aria2Error):
             aria2.call("removeDownloadResult", job.job_id)
-    return job
-
-
-def _fail(job: Job, store: JobStore, code: int | None, message: str) -> Job:
-    job.state = FAILED
-    job.error_code = code
-    job.message = message
-    job.finished_at = time.time()
-    store.save(job)
     return job

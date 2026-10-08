@@ -38,7 +38,6 @@ class FakeTracker:
     links: set[str] = field(default_factory=set)
     rate_bps: int = 0
     served_bytes: int = 0
-    presign_count: int = 0
 
     def add_atlas(self, network: str, slug: str, generation: int, revision: int, published: bool = False) -> str:
         atlas_id = f"atlas-{len(self.atlases) + 1}"
@@ -128,7 +127,6 @@ class FakeTracker:
                         return self._json(404, {})
                     signature = secrets.token_hex(8)
                     tracker.links.add(signature)
-                    tracker.presign_count += 1
                     url = f"{tracker.url}/s3/{blob.file_id}?X-Amz-Signature={signature}"
                     return self._json(200, {"url": url, "filename": blob.name})
                 return self._json(404, {})

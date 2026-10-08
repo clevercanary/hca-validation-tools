@@ -6,9 +6,7 @@ It runs in its own process, so it works with no MCP server running.
 """
 
 import contextlib
-import http.client
 import sys
-import xmlrpc.client
 from pathlib import Path
 
 from .daemon import Aria2Error, connect
@@ -30,7 +28,7 @@ def main(argv: list[str]) -> int:
         aria2 = connect(cache_dir)
         status: dict = {}
         if aria2 is not None:
-            with contextlib.suppress(Aria2Error, OSError, http.client.HTTPException, xmlrpc.client.ProtocolError):
+            with contextlib.suppress(Aria2Error):
                 status = aria2.tell_status(gid)
         record_error(job, store, status, aria2)
     return 0

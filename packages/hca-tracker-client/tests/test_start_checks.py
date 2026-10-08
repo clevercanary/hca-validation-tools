@@ -1,10 +1,10 @@
-"""start_download's checks: each fails (or asks for confirmation) before any file data is fetched."""
+"""start_download's checks: each fails before any file data is fetched."""
 
 import pytest
 
 from hca_tracker_client import CheckError, SelectionError, checks
 
-from .conftest import make_config, make_file, requires_aria2
+from .conftest import make_file, requires_aria2
 
 
 @pytest.fixture
@@ -47,21 +47,6 @@ def test_folder_not_writable(downloads, tracker, small_file, tmp_path, plenty_of
         locked.chmod(0o700)
 
 
-@requires_aria2
-def test_over_threshold_needs_confirm(cache_dir, tracker, small_file, plenty_of_space):
-    from hca_tracker_client import Downloads
-
-    downloads = Downloads(make_config(cache_dir, tracker, confirm_bytes=1_000_000))
-    result = downloads.start("gut", "gut", "gut-r1.h5ad")
-    assert result["needs_confirmation"] is True
-    assert result["size"] == "2.0 MB"
-    assert result["free"] == "1.0 TB"
-    assert result["estimated_time"] is None
-    assert result["message"].endswith("Call start_download again with confirm=true to download it")
-    assert tracker.served_bytes == 1
-    assert not downloads.store.all()
-
-
 def test_existing_unverified_file_is_not_overwritten(downloads, tracker, small_file):
     target = downloads.cache_dir / "gut" / "gut_v1.0" / "gut-r1.h5ad"
     target.parent.mkdir(parents=True)
@@ -82,5 +67,15 @@ def test_unsafe_file_name_rejected(downloads, tracker):
     from hca_tracker_client import TrackerError
 
     tracker.add_file(tracker.ids["gut"], "../escape.h5ad", make_file(tracker.data_dir / "f", 10))
+    with pytest.raises(TrackerError, match="unusable file name"):
+        downloads.start("gut", "gut", "file-1")
+
+
+@pytest.mark.parametrize("name", ["x-r1.h5ad\n allow-overwrite=true", "x\\r1.h5ad", "x\x00.h5ad"])
+def test_control_characters_in_file_name_rejected(downloads, tracker, name):
+    """A newline would become extra options in aria2's session file."""
+    from hca_tracker_client import TrackerError
+
+    tracker.add_file(tracker.ids["gut"], name, make_file(tracker.data_dir / "f", 10))
     with pytest.raises(TrackerError, match="unusable file name"):
         downloads.start("gut", "gut", "file-1")

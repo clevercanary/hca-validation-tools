@@ -58,10 +58,11 @@ def test_folder_created(tmp_path):
     assert list(target.iterdir()) == []
 
 
-def test_not_enough_space(tmp_path):
+def test_not_enough_space(tmp_path, monkeypatch):
     gb = checks.GB
+    monkeypatch.setattr(checks, "free_bytes", lambda path: 41 * gb)
     with pytest.raises(CheckError) as error:
-        checks.check_space(tmp_path, remaining=50 * gb, size=50 * gb, reserved=8 * gb, free=41 * gb)
+        checks.check_space(tmp_path, remaining=50 * gb, size=50 * gb, reserved=8 * gb)
     assert str(error.value) == (
         f"Not enough space: needs 63.0 GB (including 8.0 GB reserved for other downloads), 41.0 GB free on {tmp_path}"
     )

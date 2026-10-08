@@ -8,7 +8,6 @@ from hca_tracker_client import ConfigError, load_config
 def test_defaults(tmp_path):
     config = load_config(env={}, env_file=tmp_path / ".env")
     assert config.cache_dir == Path("~/.cache/hca-tracker").expanduser()
-    assert config.confirm_bytes == 5_000_000_000
     assert config.max_concurrent == 2
     with pytest.raises(ConfigError, match="HCA_TRACKER_URL and HCA_TRACKER_API_TOKEN must be set"):
         config.require_tracker()
@@ -21,11 +20,11 @@ def test_env_file_supplies_only_tracker_keys(tmp_path):
         "# comment\n"
         "HCA_TRACKER_URL=https://tracker.example/\n"
         "export HCA_TRACKER_API_TOKEN='from-file'\n"
-        "HCA_TRACKER_CONFIRM_GB=0.5\n"
+        "HCA_TRACKER_MAX_CONCURRENT=3\n"
     )
     config = load_config(env={"HCA_TRACKER_API_TOKEN": "from-env"}, env_file=env_file)
     assert config.require_tracker() == ("https://tracker.example", "from-env")
-    assert config.confirm_bytes == 500_000_000
+    assert config.max_concurrent == 3
 
 
 def test_token_not_in_repr(tmp_path):
