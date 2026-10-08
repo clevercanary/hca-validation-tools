@@ -84,11 +84,12 @@ def check_sessions(sessions: list[tuple[int, int]], covered: tuple[int, int]) ->
     A gap is not refused here, because the chain is legitimately not contiguous:
     Ensembl creates a mapping session when the gene set is rebuilt, and in the
     early GRCh38 range releases came out faster than gene builds did. Ten of the
-    thirty sessions between r76 and r116 are missing for that reason -- r78 ships
-    r77's gene set unchanged, down to every stable id, version and span -- and
-    r78's own database records no 77->78 session either, so there is nothing the
-    current archive could have pruned. What matters is not that a gap exists but
-    whether a gene build happened inside it, which check_gap_builds decides.
+    forty release boundaries between r76 and r116 have no session for that
+    reason (thirty do) -- r78 ships r77's gene set unchanged, down to every
+    stable id, version and span -- and r78's own database records no 77->78
+    session either, so there is nothing the current archive could have pruned.
+    What matters is not that a gap exists but whether a gene build happened
+    inside it, which check_gap_builds decides.
     """
     if not sessions:
         raise SystemExit(f"archive served no {ASSEMBLY_NAME}-to-{ASSEMBLY_NAME} mapping session")

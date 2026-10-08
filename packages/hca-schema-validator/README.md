@@ -408,7 +408,8 @@ password). About four minutes, mostly the per-release coordinate queries.
 
 Ensembl creates a mapping session when the **gene set is rebuilt**, not when a
 release is issued. In the early GRCh38 range releases came out faster than gene
-builds did, so ten of the thirty sessions between r76 and r116 do not exist:
+builds did, so ten of the forty release boundaries between r76 and r116 have
+no session (thirty do):
 r78 ships r77's gene set unchanged, down to every stable id, version and span,
 and r78's own database records no 77→78 session either.
 

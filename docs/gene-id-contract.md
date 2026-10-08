@@ -71,8 +71,9 @@ Ensembl says what changed. The reference says what is nameable. We only report; 
     gap it cannot account for.
 
 2.6 **The mapping-session chain is legitimately not contiguous.** Ensembl creates a session when the gene set
-    is rebuilt, not when a release is issued; ten of the thirty GRCh38 sessions do not exist. r78 ships r77's
-    gene set unchanged, down to every stable id, version and span.
+    is rebuilt, not when a release is issued; of the forty release boundaries from r76 to r116, ten have no
+    session, so thirty sessions exist. r78 ships r77's gene set unchanged, down to every stable id, version
+    and span.
 
 2.7 A gap is accounted for by `genebuild.last_geneset_update` on both bounding releases. Same value, no
     rebuild, nothing to map. Different values mean a session is genuinely missing and the build refuses.

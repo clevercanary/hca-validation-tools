@@ -2699,7 +2699,7 @@ def _retired_findings(adata):
             # Every branch followed to every current gene it reaches, through
             # renames and further splits alike. Ensembl split ENSG00000157828 into
             # two genes at r76 and later brought both back together as one;
-            # ENSG00000207555's pieces split again before reaching five current
+            # ENSG00000207553's pieces split again before reaching six current
             # genes. Stopping at the first split, or one level below it, reported
             # dead ends for both and told the curator to drop columns that have
             # current genes to point at. Six identifiers in the table move.

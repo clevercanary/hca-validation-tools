@@ -54,7 +54,7 @@ Runs the full vendored schema validator against the unmodified CELLxGENE schema 
 - **Producer label columns** (`check_cosmetic_labels`) — a populated `obs['sex']`, `obs['tissue']`, etc. must have its `*_ontology_term_id` source column (else warning) and every label must equal the canonical ontology label for the row's term (else error). #377, #443.
 - **Donor-level consistency** — see §4.2.
 - **Declared gene annotation vs. the file's genes** — see §4.3.
-- **Retired feature identifiers** — see §4.4. Summarises and classifies the per-identifier feature-ID warnings rather than replacing them.
+- **Retired feature identifiers** — see §4.4. Classifies the per-identifier feature-ID warnings into one `Details:` row each and drops the warnings it classified; warnings for features it cannot classify stay.
 
 All other rules come from the vendored base class (§5).
 
@@ -177,7 +177,7 @@ Details:
   ENSG00000236938 -> ENSG00000285090  merged; successor already in file  [review]
   ENSG00000224247                     retired; no successor              [drop]
   ENSG00000282823                     not on primary assembly            [drop]
-  ENSG00000207553                     split into ENSG00000275835, ENSG00000283053, ...  [drop or re-align]
+  ENSG00000207553                     split into ENSG00000283289, ENSG00000283330, ENSG00000283455, ENSG00000283490, ENSG00000283540, ENSG00000283685  [drop or re-align]
 ```
 
 The row says what the per-identifier warning said — not in the allowed gene set — and what became of the gene, so the warning would be the same fact a second time in a weaker form; it is removed. On the gut source datasets that is 2,138 lines replaced by 1,069 rows. Warnings naming a feature this check does not classify — a transgene, a custom feature — are left exactly as the base validator wrote them, so a file that still prints `Feature ID '…' not found` lines after this block is telling you about features Ensembl never issued.
@@ -222,7 +222,7 @@ Reads `var.index` and `raw.var.index`, nothing else — no `obs`, no network. Co
 - Each feature ID must map to a supported organism: human, mouse, SARS-CoV-2, ERCC, drosophila, zebrafish, C. elegans, macaque, rabbit, marmoset, gorilla, rhesus, chimp, pig, mouse lemur, rat.
 - Each feature ID must be valid within its organism's GENCODE table.
 - Dataset organism vs. feature-ID organism mismatch → warning (HCA adds GENCODE version label).
-- These warnings are one per feature ID per dataframe, so a retired identifier in `var` and `raw.var` produces two. HCA classifies the human ones into actionable groups in §4.4; the individual warnings are left in place beneath that summary.
+- These warnings are one per feature ID per dataframe, so a retired identifier in `var` and `raw.var` produces two. HCA classifies the human ones in §4.4, which replaces each classified warning with one `Details:` row; only the warnings for features it cannot classify remain.
 
 ### Ontology-term columns in `obs` (all errors)
 
