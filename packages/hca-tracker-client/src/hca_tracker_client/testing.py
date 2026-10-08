@@ -38,6 +38,9 @@ class FakeTracker:
     links: set[str] = field(default_factory=set)
     rate_bps: int = 0
     served_bytes: int = 0
+    # [Range header, bytes] per object GET. Both are counted before each write,
+    # so a client that has read the bytes always sees them counted.
+    requests: list[list] = field(default_factory=list)
 
     def add_atlas(self, network: str, slug: str, generation: int, revision: int, published: bool = False) -> str:
         atlas_id = f"atlas-{len(self.atlases) + 1}"
@@ -170,6 +173,8 @@ class FakeTracker:
                 if blob.sha256:
                     self.send_header(SHA256_HEADER, blob.sha256)
                 self.end_headers()
+                record: list = [requested, 0]
+                tracker.requests.append(record)
                 with blob.path.open("rb") as handle:
                     handle.seek(start)
                     left = end - start + 1
@@ -177,11 +182,12 @@ class FakeTracker:
                         chunk = handle.read(min(65536, left))
                         if not chunk:
                             break
+                        record[1] += len(chunk)
+                        tracker.served_bytes += len(chunk)
                         try:
                             self.wfile.write(chunk)
                         except (BrokenPipeError, ConnectionResetError):
-                            return
-                        tracker.served_bytes += len(chunk)
+                            break
                         left -= len(chunk)
                         if tracker.rate_bps:
                             time.sleep(len(chunk) / tracker.rate_bps)

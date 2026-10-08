@@ -143,7 +143,7 @@ def test_resume_after_link_expires_and_daemon_restarts(downloads, tracker, gut_f
     shutdown(downloads.cache_dir)
     tracker.expire_links()
     tracker.rate_bps = 0
-    served_before = tracker.served_bytes
+    requests_before = len(tracker.requests)
 
     failed = wait_for(downloads, started["job_id"], ("failed", "done", "interrupted"))
     assert failed["state"] == "failed", failed
@@ -155,7 +155,15 @@ def test_resume_after_link_expires_and_daemon_restarts(downloads, tracker, gut_f
     done = wait_for(downloads, resumed["job_id"], ("done", "failed"))
     assert done["state"] == "done"
     assert done["verified"] == "sha256"
-    assert tracker.served_bytes - served_before < SIZE, "resume should not fetch the whole file again"
+    # aria2's first request carries no Range and is dropped once it sees its
+    # control file already holds those pieces; how much the server pushed into
+    # that socket depends on the OS's buffers, so count ranges, not bytes.
+    ranged = [r for r, _ in tracker.requests[requests_before:] if r and r != "bytes=0-0"]
+    assert ranged, "resume should fetch the missing range"
+    assert not any(r.startswith("bytes=0-") for r in ranged), ranged
+    spans = [r.removeprefix("bytes=").split("-") for r in ranged]
+    covered = sum((int(end) if end else SIZE - 1) - int(start) + 1 for start, end in spans)
+    assert covered < SIZE, ranged
 
 
 def test_cancel_then_resume(downloads, tracker, gut_file):
@@ -215,7 +223,7 @@ def test_daemon_files_are_private(downloads, tracker, gut_file):
     assert directory.stat().st_mode & 0o777 == 0o700
     assert (directory / "aria2.conf").stat().st_mode & 0o777 == 0o600
     # The secret is not on aria2c's command line.
-    ps = subprocess.run(["ps", "-ax", "-o", "command="], capture_output=True, text=True).stdout
+    ps = subprocess.run(["ps", "-axww", "-o", "command="], capture_output=True, text=True).stdout
     aria2_lines = [line for line in ps.splitlines() if "aria2c" in line and str(downloads.cache_dir) in line]
     assert aria2_lines
     assert all("rpc-secret" not in line for line in aria2_lines)
