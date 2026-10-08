@@ -2638,7 +2638,8 @@ def _retired_findings(adata):
     # var index for a string that is not in it -- while saying nothing about the
     # suffix, which the rename also has to drop. The bare form stays available
     # through `candidates` for anything that needs to read the shipped table.
-    replacements: dict[str, dict[str, str]] = {"same_gene": {}, "remappable": {}}
+    replacements: dict[str, dict[str, str]] = {"same_gene": {}, "remappable": {}, "suffix_pair": {}}
+    suffixed: set[str] = set()
     # Why a replacement cannot simply be renamed, per feature. Without it the
     # annotated line reads "renamed to X [combine]", which states an action that
     # contradicts the fact beside it and never says what makes the difference.
@@ -2661,12 +2662,22 @@ def _retired_findings(adata):
     }
     for feature in warned:
         gene = candidates[feature]
+        if feature != gene:
+            # Written with a version suffix. Noted whatever else is true of the
+            # gene, because the suffix is a defect on its own: a newer gene with a
+            # suffix would otherwise be told nothing needs changing.
+            suffixed.add(feature)
         if gene not in by_old:
-            # The bare identifier being valid means the gene is current and only
-            # the written form is wrong, which is a different fix from any below.
-            # Keyed by the feature as written, since that is what must change.
-            group = "versioned" if checker.is_valid_id(gene) else _never_retired_class(gene)
-            plain[group].add(feature)
+            if checker.is_valid_id(gene):
+                if feature != gene and gene in features:
+                    # Both spellings are columns. Stripping the suffix would leave
+                    # two columns under one name -- the collision finding 1
+                    # established for replacements, by another route.
+                    replacements["suffix_pair"][feature] = gene
+                else:
+                    plain["versioned"].add(feature)
+            else:
+                plain[_never_retired_class(gene)].add(feature)
             continue
         terminal, split_into = _resolve(gene, by_old)
         if split_into:
@@ -2730,9 +2741,9 @@ def _retired_findings(adata):
     occurrences = sum(feature in warned for index in indexes for feature in index)
     spans = _span_verdicts(found, candidates, by_old, new_spans)
     warnings = [_retired_summary_message(n_distinct, occurrences)]
-    warnings.extend(_retired_summary_table(found))
-    warnings.append(_retired_detail_block(found, collides, spans, candidates, by_old, splits))
-    return warnings, [], _feature_verdicts(found, candidates, by_old, collides, spans, splits)
+    warnings.extend(_retired_summary_table(found, suffixed))
+    warnings.append(_retired_detail_block(found, collides, spans, candidates, by_old, splits, suffixed))
+    return warnings, [], _feature_verdicts(found, candidates, by_old, collides, spans, splits, suffixed)
 
 
 def check_retired_feature_ids(adata):
@@ -2760,6 +2771,7 @@ _ACTIONS = {
     "excluded": "drop",
     "newer": "none",
     "versioned": "strip suffix",
+    "suffix_pair": "review",
     "unclassified": "ask",
 }
 # What Ensembl did, for the classes where the table records an event. The rest
@@ -2773,30 +2785,41 @@ _EVENT_PHRASES = {
 }
 
 
-def _what_happened(feature: str, name: str, successor: str | None, candidates: dict, by_old: dict, splits: dict) -> str:
+def _action(name: str, feature: str, suffixed: set[str]) -> str:
+    """The action tag, with a suffix overriding [none]: there is always that to do."""
+    action = _ACTIONS[name]
+    return "strip suffix" if action == "none" and feature in suffixed else action
+
+
+def _what_happened(
+    feature: str, name: str, successor: str | None, candidates: dict, by_old: dict, splits: dict, suffixed: set[str]
+) -> str:
     """What Ensembl did to this identifier, in as few words as carry it.
 
     Compact because it repeats on every line of a pile that runs to thousands.
     An arrow where there is a successor to name, a phrase where there is not.
     """
+    suffix = "; version suffix" if feature in suffixed and name not in ("versioned", "suffix_pair") else ""
+    if name == "suffix_pair":
+        return "version suffix; bare ID also in file"
     if name == "excluded":
-        return "patch or alt sequence"
+        return f"patch or alt sequence{suffix}"
     if name == "newer":
-        return f"issued after {_REFERENCE_LABEL}"
+        return f"issued after {_REFERENCE_LABEL}{suffix}"
     if name == "versioned":
         return "version suffix"
     if name == "unclassified":
-        return "no event recorded"
+        return f"no event recorded{suffix}"
 
     if pieces := splits.get(feature):
         # The chain's own ending, not the first hop's: A -> B where B later splits
         # is a split, whatever Ensembl called the first step.
-        return f"split into {', '.join(sorted(pieces))}"
+        return f"split into {', '.join(sorted(pieces))}{suffix}"
     if name == "off_reference":
-        return "successor not in the allowed set"
+        return f"successor not in the allowed set{suffix}"
     if successor is None:
-        return "retired, no successor"
-    return f"now {successor}"
+        return f"retired, no successor{suffix}"
+    return f"now {successor}{suffix}"
 
 
 # A claimed replacement the genome does not simply confirm, said on the row of
@@ -2810,17 +2833,17 @@ _SPAN_FLAGS = {
 
 
 def _feature_verdicts(
-    found: dict, candidates: dict, by_old: dict, collides: dict, spans: dict, splits: dict
+    found: dict, candidates: dict, by_old: dict, collides: dict, spans: dict, splits: dict, suffixed: set[str]
 ) -> dict[str, str]:
     """One ``what happened [action]`` clause per feature, as written."""
     verdicts = {}
     for name, group in found.items():
         for feature in group:
             successor = group[feature] if isinstance(group, dict) else None
-            happened = _what_happened(feature, name, successor, candidates, by_old, splits)
+            happened = _what_happened(feature, name, successor, candidates, by_old, splits, suffixed)
             flags = [f for f in (collides.get(feature), _SPAN_FLAGS.get(spans.get(feature, ""))) if f]
             marked = f"{happened} ({', '.join(flags)})" if flags else happened
-            verdicts[feature] = f"{marked} [{_ACTIONS[name]}]"
+            verdicts[feature] = f"{marked} [{_action(name, feature, suffixed)}]"
     return verdicts
 
 
@@ -2865,6 +2888,7 @@ _CLASS_ROWS = (
     ("split", "split into several genes"),
     ("excluded", "not on primary assembly"),
     ("versioned", "version suffix only"),
+    ("suffix_pair", "version suffix; bare ID also in file"),
     ("newer", "issued after the allowed set"),
     ("unclassified", "no event recorded"),
 )
@@ -2906,7 +2930,7 @@ def _retired_summary_message(n_distinct: int, occurrences: int) -> str:
     )
 
 
-def _retired_summary_table(found: dict) -> list[str]:
+def _retired_summary_table(found: dict, suffixed: set[str]) -> list[str]:
     """How many identifiers fall in each class, and what each class needs.
 
     A table rather than a paragraph per class: the counts are what a reader scans
@@ -2921,18 +2945,19 @@ def _retired_summary_table(found: dict) -> list[str]:
         return []
     count_width = max(len(f"{len(found[name]):,}") for name, _ in rows)
     text_width = max(len(text) for _, text in rows)
-    lines = [f"  {len(found[name]):>{count_width},}  {text:<{text_width}}  [{_ACTIONS[name]}]" for name, text in rows]
+    tags = {name: " / ".join(sorted({_action(name, f, suffixed) for f in found[name]})) for name, _ in rows}
+    lines = [f"  {len(found[name]):>{count_width},}  {text:<{text_width}}  [{tags[name]}]" for name, text in rows]
 
     # Only the actions this file actually produces, so a report does not carry a
     # definition for a case it has none of.
-    actions = dict.fromkeys(_ACTIONS[name] for name, _ in rows)
+    actions = dict.fromkeys(a for name, _ in rows for a in tags[name].split(" / "))
     tag_width = max(len(f"[{a}]") for a in actions)
     guide = [f"  {f'[{a}]':<{tag_width}}  {_ACTION_GUIDE[a]}" for a in actions]
     return ["Summary:\n" + "\n".join(lines), "Actions:\n" + "\n".join(guide)]
 
 
 def _retired_detail_block(
-    found: dict, collides: dict, spans: dict, candidates: dict, by_old: dict, splits: dict
+    found: dict, collides: dict, spans: dict, candidates: dict, by_old: dict, splits: dict, suffixed: set[str]
 ) -> str:
     """Every identifier, once, in three aligned columns, grouped by action.
 
@@ -2961,7 +2986,9 @@ def _retired_detail_block(
                     status += "; successor not in the allowed set"
             if flag := _SPAN_FLAGS.get(spans.get(feature, "")):
                 status = f"{status}; {flag}"
-            rows.append((feature, successor or "", status, f"[{_ACTIONS[name]}]"))
+            if feature in suffixed and name not in ("versioned", "suffix_pair"):
+                status = f"{status}; version suffix"
+            rows.append((feature, successor or "", status, f"[{_action(name, feature, suffixed)}]"))
 
     old_w = max(len(r[0]) for r in rows)
     new_w = max(len(r[1]) for r in rows)

@@ -125,7 +125,12 @@ Ensembl says what changed. The reference says what is nameable. We only report; 
 3.8 GENCODE's `_PAR_Y` suffix falls through deliberately. Ensembl issues no such identifier, Cell Ranger
     masks the region and drops those genes from its GTF, and 0 of 217 prod h5ads carry one.
 
-3.9 Human identifiers only, matched exactly. Gorilla is `ENSGGOG...`; a prefix test would date it as human.
+3.9 **A version suffix is a defect on its own**, noted on the row whatever else is true of the gene, and
+    nothing carrying one is ever told `[none]`. Where both spellings are columns, stripping would leave
+    two under one name, so the pair is `[review]` -- the same collision rule as 3.5, by another route.
+    No prod file carries a versioned identifier today; Cell Ranger strips them.
+
+3.10 Human identifiers only, matched exactly. Gorilla is `ENSGGOG...`; a prefix test would date it as human.
     Non-human features are left to the base validator, which checks each against its own organism's table.
 
 ## 4. Coordinates

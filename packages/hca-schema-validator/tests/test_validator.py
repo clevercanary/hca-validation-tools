@@ -2757,6 +2757,21 @@ def test_a_version_suffix_is_its_own_class():
     assert "version suffix" in row and "[strip suffix]" in row, row
 
 
+def test_both_spellings_present_is_a_collision_not_a_strip():
+    """Stripping the suffix would leave two columns under one name."""
+    written = f"{_CURRENT}.17"
+    row = _rows([_CURRENT, written], written)
+    assert "bare ID also in file" in row and "[review]" in row, row
+
+
+def test_a_suffixed_newer_gene_is_never_told_nothing_to_do():
+    """The gene is newer than the allowed set; the suffix is still a defect."""
+    written = f"{_NEWER_THAN_REFERENCE}.2"
+    row = _rows([written], written)
+    assert "version suffix" in row and "[strip suffix]" in row, row
+    assert "[none]" not in _summary([written]), _summary([written])
+
+
 def test_an_identifier_outside_the_event_history_is_asked_about():
     row = _rows(["ENSG99999999999"], "ENSG99999999999")
     assert "no event recorded" in row and "[ask]" in row, row
