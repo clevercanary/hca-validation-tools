@@ -140,7 +140,7 @@ Reads `var.index`, `obs['gene_annotation_version']`, `obs['reference_genome']` a
 
 ### 4.4 Retired feature identifiers (`check_retired_feature_ids`)
 
-A summary of the per-identifier feature ID warnings (§5), not a replacement for them: those stay, and this says what they add up to. **#728.**
+A classification of the per-identifier feature ID warnings (§5). Every identifier it classifies gets one row in a `Details:` block and loses its own warning; warnings for features it cannot classify stay as they were. **#728.**
 
 A retired Ensembl identifier is a warning here and an **error** at CELLxGENE, so every atlas heading for CZI has to clear them — but each warning says only that an identifier is not in the current GENCODE table, which is the same sentence for every cause. The breast v1 integrated object emits **1,482** of them for **741** distinct identifiers, counted once in `var` and once in `raw.var`.
 
@@ -169,20 +169,22 @@ Three populations used to share the unclassified bucket, and the shipped interva
 
 **Why `successor already present` is not a mechanical fix.** Renaming would produce two columns with one name. Where a source study was aligned against an annotation that treated the two as separate loci, its cells legitimately carry counts in both and summing them double-counts. Which pairs are safe to sum is a cross-file question (#530) and the merge itself is the producer's call.
 
-**Every warning in the pile carries its own verdict.** The summary can name only a handful of examples per class, so on a file with 625 identifiers in one class it describes the problem and withholds the data needed to act on it. Each per-identifier warning is therefore annotated with the fate of the gene it names, which makes the pile the per-gene answer and the summary its index — `grep "\[rename\]"` returns the list of renames:
+**One row per identifier, and the identifier's own warning is dropped.** The output is four blocks — a one-line headline, `Summary:` (count per class, with its action), `Actions:` (what each action present means), and `Details:` — rather than a summary above a pile. A `Details:` row is `old -> new  what happened  [action]`, grouped by class and aligned within the class:
 
 ```
-Feature ID 'ENSG00000148362' in 'var' not found in GENCODE v48 (Ensembl 114): now ENSG00000310560 [rename]
-Feature ID 'ENSG00000236938' in 'var' not found in GENCODE v48 (Ensembl 114): now ENSG00000285090 (in file) [review]
-Feature ID 'ENSG00000224247' in 'var' not found in GENCODE v48 (Ensembl 114): retired, no successor [drop]
-Feature ID 'ENSG00000282823' in 'var' not found in GENCODE v48 (Ensembl 114): patch or alt sequence [drop]
+Details:
+  ENSG00000148362 -> ENSG00000310560  renamed                            [rename]
+  ENSG00000236938 -> ENSG00000285090  merged; successor already in file  [review]
+  ENSG00000224247                     retired; no successor              [drop]
+  ENSG00000282823                     not on primary assembly            [drop]
+  ENSG00000207553                     split into ENSG00000275835, ENSG00000283053, ...  [drop or re-align]
 ```
 
-**What happened and what to do are separate fields**, because they do not map one to one: the same Ensembl merge is a plain rename when its target is absent from the file and a judgement call when it is already there. The action is a bracketed tag so it is greppable, and the reasoning behind each is stated once in the finding that counts the class rather than repeated on every line.
+The row says what the per-identifier warning said — not in the allowed gene set — and what became of the gene, so the warning would be the same fact a second time in a weaker form; it is removed. On the gut source datasets that is 2,138 lines replaced by 1,069 rows. Warnings naming a feature this check does not classify — a transgene, a custom feature — are left exactly as the base validator wrote them, so a file that still prints `Feature ID '…' not found` lines after this block is telling you about features Ensembl never issued.
 
-Warnings naming an identifier this check does not classify — a spike-in, another species — are left untouched, and the `Feature ID '` prefix both warning sorters match on is preserved.
+**What happened and what to do are separate fields**, because they do not map one to one: the same Ensembl merge is a plain rename when its target is absent from the file and a judgement call when it is already there. The action is a bracketed tag so it is greppable, and what each means is stated once in `Actions:` rather than on every row.
 
-Reads `var.index` and `raw.var.index`, nothing else — no `obs`, no network. Counts are over distinct identifiers; the warning count is reported beside them, which is where 1,482 becomes 741.
+Reads `var.index` and `raw.var.index`, nothing else — no `obs`, no network. Counts are over distinct identifiers, which is where 1,482 becomes 741.
 
 ---
 

@@ -105,7 +105,7 @@ Ensembl says what changed. The reference says what is nameable. We only report; 
     the CSV.
 
 3.3 Only identifiers the base validator **warned about** are classified, by the same predicate it used, so
-    the summary can never describe a different population from the pile beneath it.
+    the summary can never describe a different population from the warnings it stands in for.
 
 3.4 Groups are keyed by the **feature as written**, never the bare gene. A file writing `ENSG00000112096.3`
     has no column called `ENSG00000112096`, and naming the bare form sends a curator searching for a string
@@ -171,27 +171,34 @@ Ensembl says what changed. The reference says what is nameable. We only report; 
 
 ## 5. What the findings say
 
-5.1 **Counts are over distinct identifiers**; the warning count is reported beside them. An identifier in
-    `var` and `raw.var` is one identifier with one history — this is where 1,482 becomes 741.
+5.1 **Counts are over distinct identifiers.** An identifier in `var` and `raw.var` is one identifier with
+    one history -- this is where 1,482 becomes 741.
 
-5.2 **The per-identifier warnings are never suppressed.** The summary explains them; it does not replace them.
+5.2 **An identifier with a `Details:` row loses its own per-identifier warning.** The row says what the
+    warning said -- not in the allowed gene set -- and what became of the gene; the warning beside it would
+    be the same fact a second time in a weaker form. On the gut source datasets that is 2,138 lines
+    restating 1,069 rows.
 
-5.2.1 Each one is **annotated with what happened to that gene and a suggested action**. A summary that
-      names five examples of 625 describes the problem and withholds the data needed to fix it; the pile is
-      the per-gene answer and the summary is its index.
+5.2.1 **Only classified identifiers are suppressed.** A warning naming an identifier this check has no row
+      for -- a transgene, a custom feature -- is left exactly as the base validator wrote it. Suppression
+      keys on the `Feature ID '` prefix (5.6) and the identifier as written (3.4), nothing looser.
 
-5.2.2 **What happened and what to do are separate fields.** They do not map one to one: the same merge is a
-      rename when its target is absent from the file and a judgement call when it is already there. A line
-      that gives only the action contradicts the fact beside it and never says what made the difference.
+5.2.2 **What happened and what to do are separate fields** on the row. They do not map one to one: the
+      same merge is a rename when its target is absent from the file and a judgement call when it is
+      already there. A row that gave only the action would contradict the fact beside it and never say what
+      made the difference.
 
-5.2.3 The action is a **bracketed tag**, so it is greppable and so the reasoning behind it is stated once —
-      in the finding that counts the class — rather than on each of its lines.
+5.2.3 The action is a **bracketed tag**, so it is greppable and so the reasoning behind it is stated once --
+      in the `Actions:` guide -- rather than on each row.
 
 5.2.4 Say **"this file"**. "Dataset" in HCA names a source dataset as against an integrated object, and this
       check runs on both; "column" is the matrix's word and belongs in the legend with the mechanics.
 
-5.2.5 Annotation preserves the `Feature ID '` prefix (5.6) and leaves warnings for identifiers this check
-      does not classify untouched.
+5.2.5 A split's row names **every gene its pieces became** (3.6); that is the only place they are listed.
+
+5.2.6 Details columns are **aligned within a class, not across the block.** A split row is as wide as its
+      pieces, and padding a thousand rename rows out to it would move their tags off the right edge for
+      nothing.
 
 5.3 Each class names **whose problem it is**. Three say "do not relay as a defect": a boundary revision, a
     gene newer than the reference, and an overlap flag.

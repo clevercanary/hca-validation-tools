@@ -12,7 +12,6 @@ import yaml
 from hca_schema_validator import (
     HCA_DERIVED_OBS_LABELS,
     HCAValidator,
-    annotate_feature_id_warnings,
     check_donor_consistency,
     check_gene_annotation_version,
     check_retired_feature_ids,
@@ -965,7 +964,11 @@ def test_feature_id_warnings_come_last():
 
     var = good_var.copy()
     index = list(var.index)
+    # One retired identifier, whose own warning is dropped in favour of its
+    # Details row, and one transgene, whose warning nothing classifies and so
+    # stays as the pile this test is about.
     index[0] = _RENAMED
+    index[1] = "GFP"
     var.index = pd.Index(index, name=var.index.name)
     test_adata = anndata.AnnData(
         X=np.zeros((len(good_obs), len(var)), dtype=np.float32),
@@ -980,6 +983,9 @@ def test_feature_id_warnings_come_last():
     other = [i for i, w in enumerate(validator.warnings) if "Feature ID '" not in w]
     assert pile, validator.warnings
     assert other, validator.warnings
+    # the retired identifier's own line is gone -- its Details row replaces it
+    assert not any(_RENAMED in validator.warnings[i] for i in pile), validator.warnings
+    assert any("'GFP'" in validator.warnings[i] for i in pile), validator.warnings
     # every per-identifier warning sits after every other warning ...
     assert min(pile) > max(other), validator.warnings
     # ... and the summary that introduces them sits above the pile, not in it
@@ -2704,9 +2710,17 @@ def test_no_successor_is_droppable():
 
 
 def test_a_split_is_not_offered_a_single_successor():
+    """The pieces are named in the status, never one of them as the successor."""
     row = _rows([_SPLIT], _SPLIT)
-    assert "split" in row and "[drop or re-align]" in row, row
+    assert "split into ENSG" in row and "[drop or re-align]" in row, row
     assert "->" not in row, row
+
+
+def test_details_columns_align_within_a_class_not_across_the_block():
+    """A split's row names every piece; the rename rows above it are not padded to match."""
+    warnings, _ = check_retired_feature_ids(_retired_adata([_RENAMED, _SPLIT_NESTED]))
+    rename, split = (line for line in _finding(warnings, "Details:").splitlines()[1:])
+    assert rename.index("[rename]") < split.index("[drop or re-align]"), (rename, split)
 
 
 def test_a_chain_is_followed_to_its_end():
@@ -2763,11 +2777,8 @@ def test_a_nested_split_reaches_every_terminal():
     Stopping at the first split reported six dead ends; one level down, a single
     survivor. Only walking every branch finds the six current genes.
     """
-    _, _, verdicts = _retired_findings(_retired_adata([_SPLIT_NESTED]))
-    verdict = verdicts[_SPLIT_NESTED]
-    assert verdict.startswith("split into") and "[drop or re-align]" in verdict, verdict
-    named = verdict[len("split into ") : verdict.index(" [")].split(", ")
-    assert tuple(named) == _SPLIT_NESTED_ENDS, verdict
+    row = _rows([_SPLIT_NESTED], _SPLIT_NESTED)
+    assert f"split into {', '.join(_SPLIT_NESTED_ENDS)}  [drop or re-align]" in row, row
 
 
 def test_a_split_with_no_usable_pieces_is_dropped():
@@ -2870,7 +2881,7 @@ def test_counts_are_over_identifiers_and_warnings_separately():
     """1,482 becomes 741 because var and raw.var hold the same identifiers."""
     warnings, _ = check_retired_feature_ids(_retired_adata([_RENAMED, _NO_SUCCESSOR], raw=True))
     assert "2 gene IDs are not in" in warnings[0], warnings[0]
-    assert "4 warnings across var and raw.var" in warnings[0], warnings[0]
+    assert warnings[0].count("\n") == 0, warnings[0]
 
 
 def test_only_the_actions_a_file_produces_are_defined():
@@ -2885,26 +2896,26 @@ def test_the_report_is_a_few_blocks_however_many_identifiers():
     assert len(warnings) <= 4, [w[:60] for w in warnings]
 
 
-def test_each_warning_carries_its_own_verdict():
-    """The pile is annotated too, so a line in it says what happened to that gene."""
-    _, _, verdicts = _retired_findings(_retired_adata([_RENAMED, _NO_SUCCESSOR]))
-    pile = [f"Feature ID '{g}' in 'var' not found in GENCODE v48 (Ensembl 114)." for g in (_RENAMED, _NO_SUCCESSOR)]
-    annotated = annotate_feature_id_warnings(pile, verdicts)
-    assert f"now {_RENAMED_SUCCESSOR} [rename]" in annotated[0], annotated[0]
-    assert "retired, no successor [drop]" in annotated[1], annotated[1]
+def test_classified_identifiers_are_the_ones_with_a_details_row():
+    """Every identifier in the Details block, and nothing else, is reported back."""
+    warnings, _, classified = _retired_findings(_retired_adata([_RENAMED, _NO_SUCCESSOR], raw=True))
+    assert classified == {_RENAMED, _NO_SUCCESSOR}
+    details = _finding(warnings, "Details:")
+    assert all(g in details for g in classified), details
 
 
-def test_an_unclassified_warning_is_left_alone():
-    """A spike-in warns for its own reasons and this check has nothing to add."""
-    pile = ["Feature ID 'ERCC-00002' in 'var' not found in GENCODE v48 (Ensembl 114)."]
-    assert annotate_feature_id_warnings(pile, {_RENAMED: "now X [rename]"}) == pile
+def test_a_classified_warning_is_dropped_and_an_unclassified_one_kept():
+    """A transgene warns for its own reasons and this check has no row for it."""
+    pile = [
+        f"Feature ID '{_RENAMED}' in 'var' not found in GENCODE v48 (Ensembl 114).",
+        "Feature ID 'GFP' in 'var' not found in GENCODE v48 (Ensembl 114).",
+        f"Feature ID '{_RENAMED}' in 'raw.var' not found in GENCODE v48 (Ensembl 114).",
+        "Some other warning.",
+    ]
+    from hca_schema_validator import validator as v
 
-
-def test_annotation_keeps_the_prefix_both_sorters_match_on():
-    """Both warning sorters find the pile by the literal "Feature ID '"."""
-    _, _, verdicts = _retired_findings(_retired_adata([_RENAMED]))
-    pile = [f"Feature ID '{_RENAMED}' in 'var' not found in GENCODE v48 (Ensembl 114)."]
-    assert "Feature ID '" in annotate_feature_id_warnings(pile, verdicts)[0]
+    kept = v._drop_classified_warnings(pile, {_RENAMED})
+    assert kept == [pile[1], pile[3]], kept
 
 
 def test_the_findings_do_not_collide_with_the_annotation_version_routing():

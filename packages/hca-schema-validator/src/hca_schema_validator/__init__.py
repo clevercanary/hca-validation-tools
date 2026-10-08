@@ -11,7 +11,6 @@ from .labeler import HCA_DERIVED_OBS_LABELS, HCALabeler
 from .populator import populate_in_memory
 from .validator import (
     HCAValidator,
-    annotate_feature_id_warnings,
     check_cosmetic_labels,
     check_donor_consistency,
     check_gene_annotation_version,
@@ -23,7 +22,6 @@ __all__ = [
     "HCACellAnnotationValidator",
     "HCALabeler",
     "HCAValidator",
-    "annotate_feature_id_warnings",
     "check_cosmetic_labels",
     "check_donor_consistency",
     "check_gene_annotation_version",

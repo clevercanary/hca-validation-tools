@@ -106,13 +106,16 @@ class HCAValidator(Validator):
         self.errors.extend(errors)
 
     def _check_retired_feature_ids(self):
-        warnings, errors, verdicts = _retired_findings(self.adata)
+        warnings, errors, classified = _retired_findings(self.adata)
         # The per-identifier warnings are already in self.warnings by now --
-        # _validate_feature_ids writes them while the dataframes are validated --
-        # so each is annotated in place with the verdict for the gene it names.
-        # They are logged after _deep_check returns, so this reaches the Batch
-        # payload as well as the in-memory list.
-        self.warnings = annotate_feature_id_warnings(self.warnings, verdicts)
+        # _validate_feature_ids writes them while the dataframes are validated.
+        # Every identifier the Details block names has its line dropped here:
+        # the row says what the line said and what became of the gene, so the
+        # line would be the same fact a second time in a weaker form. Warnings
+        # for identifiers this check does not classify stay. They are logged
+        # after _deep_check returns, so this reaches the Batch payload as well
+        # as the in-memory list.
+        self.warnings = _drop_classified_warnings(self.warnings, classified)
         self.warnings.extend(warnings)
         self.errors.extend(errors)
 
@@ -2331,8 +2334,8 @@ def _release_against_genes(parsed, ensg: set[str], n_non_ensembl: int, dated) ->
 # ---------------------------------------------------------------------------
 
 _EVENTS_PATH = Path(__file__).parent / "gene_id_events.csv.gz"
-# Reads the identifier back out of a per-identifier warning, so each one can be
-# annotated with its own verdict. The wording is ours -- _validate_feature_ids
+# Reads the identifier back out of a per-identifier warning, so the ones the
+# Details block covers can be dropped. The wording is ours -- _validate_feature_ids
 # writes it -- and the same prefix is what both warning sorters key on.
 _FEATURE_ID_IN_WARNING = re.compile(r"Feature ID '([^']+)' in ")
 # How many identifiers each finding names. Enough to recognise the group and go
@@ -2587,33 +2590,28 @@ def _retired_findings(adata):
       history, so nothing here can say what it was.
 
     The counts are over distinct identifiers, not warnings, which is where 1,482
-    becomes 741. The per-identifier warnings are left alone: this is the summary
-    that explains them, not a replacement for them.
+    becomes 741. The per-identifier warnings for these identifiers are dropped by
+    the caller: each has a Details row that says what the warning said and more.
 
     Claimed replacements are checked against the genome offline, using spans the
     table carries rather than anything fetched at validation time.
 
     Returns:
-        ``(warnings, errors, verdicts)``. Everything is a warning, matching the
-        severity of the per-identifier warnings it summarises; ``verdicts`` maps
-        each feature as written to the clause that annotates its own warning.
+        ``(warnings, errors, classified)``. Everything is a warning, matching the
+        severity of the per-identifier warnings it summarises; ``classified`` is
+        the set of features, as written, that have a Details row.
     """
     # The same population the per-identifier warnings are raised over, derived
     # the same way, so the summary can never describe a different set from the
-    # pile beneath it. Both dataframes, de-duplicated into one set: an identifier
-    # in var and raw.var is one identifier with one history, and counting it
-    # twice is what makes the current output read as 1,482 problems.
-    # Held per dataframe rather than only as a set, because both counts come out
-    # of this one pass: the identifiers, and how many warnings they produced.
-    # Counting the second from a set would under-report a duplicated label, and
-    # walking the indexes again to recount is a second pass over 37,000 features
-    # to recover what this one already had.
-    indexes = [
-        [str(i) for i in df.index]
+    # warnings it stands in for. Both dataframes, de-duplicated into one set: an
+    # identifier in var and raw.var is one identifier with one history, and
+    # counting it twice is what made the old output read as 1,482 problems.
+    features = {
+        str(feature)
         for df_name in ("var", "raw.var")
         if (df := getattr_anndata(adata, df_name)) is not None
-    ]
-    features = {feature for index in indexes for feature in index}
+        for feature in df.index
+    }
     if not features:
         return [], [], {}
 
@@ -2766,12 +2764,11 @@ def _retired_findings(adata):
     # finding below can assume it has something to report.
     found = {name: group for name, group in (replacements | plain).items() if group}
     n_distinct = sum(len(group) for group in found.values())
-    occurrences = sum(feature in warned for index in indexes for feature in index)
     spans = _span_verdicts(found, candidates, by_old, new_spans)
-    warnings = [_retired_summary_message(n_distinct, occurrences)]
+    warnings = [_retired_summary_message(n_distinct)]
     warnings.extend(_retired_summary_table(found, suffixed))
     warnings.append(_retired_detail_block(found, collides, spans, candidates, by_old, splits, suffixed))
-    return warnings, [], _feature_verdicts(found, candidates, by_old, collides, spans, splits, suffixed)
+    return warnings, [], {feature for group in found.values() for feature in group}
 
 
 def check_retired_feature_ids(adata):
@@ -2802,63 +2799,12 @@ _ACTIONS = {
     "suffix_pair": "review",
     "unclassified": "ask",
 }
-# What Ensembl did, for the classes where the table records an event. The rest
-# are not events at all -- a gene the reference never carried, one issued after
-# it, a suffix -- and say what they are instead.
-_EVENT_PHRASES = {
-    "retired": "retired, no successor",
-    "renamed": "renamed to {successor}",
-    "merged": "merged into {successor}",
-    "split": "split into {successors}",
-}
 
 
 def _action(name: str, feature: str, suffixed: set[str]) -> str:
     """The action tag, with a suffix overriding [none]: there is always that to do."""
     action = _ACTIONS[name]
     return "strip suffix" if action == "none" and feature in suffixed else action
-
-
-def _what_happened(
-    feature: str,
-    name: str,
-    successor: str | None,
-    candidates: dict,
-    by_old: dict,
-    splits: dict,
-    suffixed: set[str],
-    collides: dict,
-) -> str:
-    """What Ensembl did to this identifier, in as few words as carry it.
-
-    Compact because it repeats on every line of a pile that runs to thousands.
-    An arrow where there is a successor to name, a phrase where there is not.
-    """
-    suffix = "; version suffix" if feature in suffixed and name not in ("versioned", "suffix_pair") else ""
-    if name == "suffix_pair":
-        return (
-            "version suffix; bare ID also in file"
-            if collides.get(feature) == "in file"
-            else "version suffix; other spellings in file"
-        )
-    if name == "excluded":
-        return f"patch or alt sequence{suffix}"
-    if name == "newer":
-        return f"issued after {_REFERENCE_LABEL}{suffix}"
-    if name == "versioned":
-        return "version suffix"
-    if name == "unclassified":
-        return f"no event recorded{suffix}"
-
-    if pieces := splits.get(feature):
-        # The chain's own ending, not the first hop's: A -> B where B later splits
-        # is a split, whatever Ensembl called the first step.
-        return f"split into {', '.join(sorted(pieces))}{suffix}"
-    if name == "off_reference":
-        return f"successor not in the allowed set{suffix}"
-    if successor is None:
-        return f"retired, no successor{suffix}"
-    return f"now {successor}{suffix}"
 
 
 # A claimed replacement the genome does not simply confirm, said on the row of
@@ -2871,22 +2817,6 @@ _SPAN_FLAGS = {
 }
 
 
-def _feature_verdicts(
-    found: dict, candidates: dict, by_old: dict, collides: dict, spans: dict, splits: dict, suffixed: set[str]
-) -> dict[str, str]:
-    """One ``what happened [action]`` clause per feature, as written."""
-    verdicts = {}
-    for name, group in found.items():
-        for feature in group:
-            successor = group[feature] if isinstance(group, dict) else None
-            happened = _what_happened(feature, name, successor, candidates, by_old, splits, suffixed, collides)
-            collision = collides.get(feature) if name != "suffix_pair" else None
-            flags = [f for f in (collision, _SPAN_FLAGS.get(spans.get(feature, ""))) if f]
-            marked = f"{happened} ({', '.join(flags)})" if flags else happened
-            verdicts[feature] = f"{marked} [{_action(name, feature, suffixed)}]"
-    return verdicts
-
-
 def _span_verdicts(found: dict, candidates: dict, by_old: dict, new_spans: dict) -> dict[str, str]:
     """How the genome answers each claimed replacement, per feature."""
     claims = {**found.get("same_gene", {}), **found.get("remappable", {})}
@@ -2897,24 +2827,16 @@ def _span_verdicts(found: dict, candidates: dict, by_old: dict, new_spans: dict)
     }
 
 
-def annotate_feature_id_warnings(warnings: list[str], verdicts: dict[str, str]) -> list[str]:
-    """Append each identifier's verdict to the warning that names it.
+def _drop_classified_warnings(warnings: list[str], classified: set[str]) -> list[str]:
+    """Remove the per-identifier warnings whose identifier has a Details row.
 
-    The summary above the pile can only afford a handful of examples per class,
-    so on a file with 625 identifiers in one class it describes the shape of the
-    problem and withholds the data needed to fix it. Annotated, the pile is the
-    per-gene answer and the summary is its index: a curator greps "rename in
-    place" and has their list.
-
-    Warnings naming an identifier this check did not classify -- a spike-in,
-    another species -- are returned unchanged.
+    Each of those lines says only that an identifier is not in the allowed gene
+    set; its row says that and what became of the gene. On the gut source
+    datasets that is 2,138 lines restating 1,069 rows. Warnings naming an
+    identifier this check did not classify -- a transgene, a custom feature --
+    have no row and are kept.
     """
-    annotated = []
-    for warning in warnings:
-        matched = _FEATURE_ID_IN_WARNING.search(warning)
-        verdict = verdicts.get(matched.group(1)) if matched else None
-        annotated.append(f"{warning.rstrip('.')}: {verdict}" if verdict else warning)
-    return annotated
+    return [w for w in warnings if not ((m := _FEATURE_ID_IN_WARNING.search(w)) and m.group(1) in classified)]
 
 
 # One row per class: the short description for the summary table, and the action
@@ -2957,17 +2879,10 @@ _ACTION_GUIDE = {
 }
 
 
-def _retired_summary_message(n_distinct: int, occurrences: int) -> str:
-    """The headline: how many identifiers, and how many warnings they produced.
-
-    Two short lines rather than a paragraph. Both numbers appear in the report,
-    and a reader who meets them without explanation assumes one is wrong.
-    """
-    counted = f"\n{occurrences:,} warnings across var and raw.var." if occurrences > n_distinct else ""
-    return (
-        f"{n_distinct:,} gene {'ID is' if n_distinct == 1 else 'IDs are'} not in "
-        f"{_REFERENCE_LABEL[:-1]}, primary assembly only).{counted}"
-    )
+def _retired_summary_message(n_distinct: int) -> str:
+    """The headline: how many identifiers. One line; the table below has the rest."""
+    noun = "ID is" if n_distinct == 1 else "IDs are"
+    return f"{n_distinct:,} gene {noun} not in {_REFERENCE_LABEL[:-1]}, primary assembly only)."
 
 
 def _retired_summary_table(found: dict, suffixed: set[str]) -> list[str]:
@@ -2999,21 +2914,26 @@ def _retired_summary_table(found: dict, suffixed: set[str]) -> list[str]:
 def _retired_detail_block(
     found: dict, collides: dict, spans: dict, candidates: dict, by_old: dict, splits: dict, suffixed: set[str]
 ) -> str:
-    """Every identifier, once, in three aligned columns, grouped by action.
+    """Every identifier, once, in three aligned columns, grouped by class.
 
     One row per identifier rather than one per warning: an identifier in var and
-    raw.var is one gene with one history, so the pile's 6,122 lines are 3,061
-    facts. Grouped by action because that is what a reader acts on -- every
-    [rename] together, so the list for a class is a block rather than a grep.
+    raw.var is one gene with one history, so 6,122 warnings are 3,061 facts.
+    Grouped by class, in the order of the summary table, so the list for a class
+    is a block rather than a grep.
 
-    The pile below carries the same identifiers under the base validator's own
-    wording; this is the answer, that is the record.
+    Columns are aligned within a class, not across the block: a split names
+    every gene its pieces became, and padding every other row out to that would
+    push the tag off the right edge of a thousand lines that do not need it.
+
+    The base validator's own warning for each of these identifiers is dropped
+    once this block exists: the row says what the line said, and more.
     """
-    rows = []
+    lines = []
     for name, _ in _CLASS_ROWS:
         group = found.get(name)
         if not group:
             continue
+        rows = []
         for feature in sorted(group):
             successor = group[feature] if isinstance(group, dict) else ""
             status = _CLASS_TEXT[name]
@@ -3023,6 +2943,8 @@ def _retired_detail_block(
                     if collides.get(feature) == "in file"
                     else "version suffix; other spellings in file"
                 )
+            if name == "split":
+                status = f"split into {', '.join(splits[feature])}"
             if name in ("remappable", "same_gene", "off_reference"):
                 event = "split" if feature in splits else by_old[candidates[feature]].event
                 status = event if event in ("renamed", "merged", "split") else "replaced"
@@ -3035,13 +2957,17 @@ def _retired_detail_block(
             if feature in suffixed and name not in ("versioned", "suffix_pair"):
                 status = f"{status}; version suffix"
             rows.append((feature, successor or "", status, f"[{_action(name, feature, suffixed)}]"))
+        lines.extend(_aligned(rows))
+    return "Details:\n" + "\n".join(lines)
 
+
+def _aligned(rows: list[tuple[str, str, str, str]]) -> list[str]:
+    """One block of ``old -> new  status  [tag]`` rows, each column padded to its widest."""
     old_w = max(len(r[0]) for r in rows)
     new_w = max(len(r[1]) for r in rows)
     status_w = max(len(r[2]) for r in rows)
     arrow = " -> " if new_w else "  "
-    lines = [
+    return [
         f"  {old:<{old_w}}{arrow if new else ' ' * len(arrow)}{new:<{new_w}}  {status:<{status_w}}  {tag}".rstrip()
         for old, new, status, tag in rows
     ]
-    return "Details:\n" + "\n".join(lines)
