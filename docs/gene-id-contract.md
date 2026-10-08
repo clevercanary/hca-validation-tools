@@ -115,11 +115,17 @@ Ensembl says what changed. The reference says what is nameable. We only report; 
     Checking only against existing columns misses the case where several renames collide with each other —
     nine such groups in breast, covering 21 identifiers, one of them four deep.
 
-3.6 A split is reported as a split only if **at least one piece is in the reference**. 46 of the table's 94
-    splits divide into genes none of which are, and offering their spans sends a curator after coordinates
-    no column can be mapped onto.
+3.6 **Every branch of a split is walked to every allowed gene it reaches**, through renames and further
+    splits, before the split is classified. Stopping at the first split reported dead ends for pieces that
+    had histories of their own. 38 of the table's 94 splits reach no allowed gene at any depth and are
+    dropped; the rest are reported with the genes their pieces finally became.
 
-3.7 An identifier whose successor is alive but off the reference is **not** reported as having no successor.
+3.6.1 A split collapses to a replacement **only when every branch reaches the same single allowed gene** --
+      out as several pieces, back as one. One allowed terminal beside a dead branch is still a split: a
+      rename would hand the dead branch's counts to the survivor. Two identifiers in the table converge
+      this way; none has the mixed shape, which is pinned by a synthetic test.
+
+3.7 An identifier whose successor is alive but off the allowed gene set is **not** reported as having no successor.
     Ensembl did record a replacement; it is simply not nameable (1.7).
 
 3.8 GENCODE's `_PAR_Y` suffix falls through deliberately. Ensembl issues no such identifier, Cell Ranger

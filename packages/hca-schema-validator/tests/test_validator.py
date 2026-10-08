@@ -2728,6 +2728,28 @@ def test_a_split_whose_branches_converge_is_a_rename():
     assert f"-> {_SPLIT_CONVERGENT_END}" in row and "[rename]" in row, row
 
 
+def test_a_split_with_one_surviving_and_one_dead_branch_stays_a_split(monkeypatch):
+    """One allowed terminal does not prove convergence.
+
+    No identifier in the shipped table has this shape, so it is built: A split
+    into B and C, B renamed to the allowed gene D, C retired. A rename to D
+    would hand C's counts to D; this stays a split.
+    """
+    from hca_schema_validator import validator as v
+
+    table = {
+        "ENSG00000000001": v.GeneEvent("split", ("ENSG00000000002", "ENSG00000000003"), None),
+        "ENSG00000000002": v.GeneEvent("renamed", (_CURRENT,), None),
+        "ENSG00000000003": v.GeneEvent("retired", (), None),
+    }
+    monkeypatch.setattr(v, "_gene_id_events", lambda: (table, {}))
+    warnings, _ = v.check_retired_feature_ids(_retired_adata(["ENSG00000000001"]))
+    details = _finding(warnings, "Details:")
+    row = next(line for line in details.splitlines() if "ENSG00000000001" in line)
+    assert "split" in row and "[drop or re-align]" in row, row
+    assert "[rename]" not in row, row
+
+
 def test_a_nested_split_reaches_every_terminal():
     """Pieces that split again are followed to the genes they finally become.
 

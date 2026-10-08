@@ -2702,10 +2702,12 @@ def _retired_findings(adata):
             # dead ends for both and told the curator to drop columns that have
             # current genes to point at. Six identifiers in the table move.
             ends = _terminals(gene, by_old, checker)
-            if len(ends) == 1:
-                # Out as several pieces, back as one gene: a replacement, not a
-                # split, so it takes the ordinary rename-or-decide rules below
-                # including the collision check.
+            if len(ends) == 1 and all(_terminals(piece, by_old, checker) == ends for piece in split_into):
+                # Out as several pieces, back as one gene -- every piece, not
+                # just one: a replacement, not a split, so it takes the ordinary
+                # rename-or-decide rules below including the collision check.
+                # One surviving branch beside a dead one is still a split; a
+                # rename would hand the dead branch's counts to the survivor.
                 terminal, split_into = ends.pop(), []
             else:
                 splits[feature] = sorted(ends) or sorted(split_into)
