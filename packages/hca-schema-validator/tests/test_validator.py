@@ -2862,7 +2862,7 @@ def test_a_redrawn_boundary_is_not_a_contradiction():
 
 def test_the_summary_counts_each_class():
     summary = _summary([_RENAMED, _NO_SUCCESSOR, _SPLIT])
-    assert "1  renamed" in summary and "[rename]" in summary, summary
+    assert "1  replaced; successor not in file" in summary and "[rename]" in summary, summary
     assert "retired; no successor" in summary and "[drop]" in summary, summary
 
 

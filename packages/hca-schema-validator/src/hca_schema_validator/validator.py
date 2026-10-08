@@ -2921,7 +2921,7 @@ def annotate_feature_id_warnings(warnings: list[str], verdicts: dict[str, str]) 
 # tag. The description says what Ensembl did and what it means for this file; the
 # action says what to do. Order is the order they are reported in.
 _CLASS_ROWS = (
-    ("remappable", "renamed"),
+    ("remappable", "replaced; successor not in file"),
     ("same_gene", "replaced; successor already in file or shared"),
     ("dead", "retired; no successor"),
     ("off_reference", "successor not in the allowed set"),
