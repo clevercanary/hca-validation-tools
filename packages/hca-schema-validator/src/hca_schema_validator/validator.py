@@ -2613,7 +2613,7 @@ def _retired_findings(adata):
         for feature in df.index
     }
     if not features:
-        return [], [], {}
+        return [], [], set()
 
     checker = get_gene_checker(gencode.SupportedOrganisms.HOMO_SAPIENS)
     # Only human genes, matched exactly: gorilla identifiers are ENSGGOG... and a
@@ -2638,7 +2638,7 @@ def _retired_findings(adata):
     # retired or because the version suffix makes the lookup miss.
     warned = {f for f in candidates if not checker.is_valid_id(f)}
     if not warned:
-        return [], [], {}
+        return [], [], set()
 
     by_old, new_spans = _gene_id_events()
 
