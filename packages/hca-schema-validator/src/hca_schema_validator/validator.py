@@ -2698,8 +2698,6 @@ def _retired_findings(adata):
                 splits[feature] = sorted(ends) or sorted(split_into)
                 plain["split" if ends else "off_reference"].add(feature)
                 continue
-        if split_into:
-            splits[feature] = split_into
             # A split is only worth reporting as one if at least one piece is in
             # the reference. 46 of the table's 94 splits divide into genes none of
             # which are, and offering their spans would send a curator after

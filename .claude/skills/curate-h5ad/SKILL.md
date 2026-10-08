@@ -128,7 +128,7 @@ Report these but don't attempt to fix:
   | `[drop or re-align]` | producer | relay: a split locus cannot have its reads divided after the fact, but they are recoverable by re-quantifying from source |
   | `[drop]` | producer | relay: nothing in the allowed gene set to point at. Patch/alt genes land here too, and **in quantity they are a finding of their own** — the file was aligned against a reference including patch sequences, which makes its counts hard to compare |
   | `[strip suffix]` | producer | relay: the genes are current, only the written form is wrong |
-  | `[none]` | **nobody — do not relay as a defect** | the gene is real and current; our allowed gene set is older than the file's annotation. Note it, and flag that the vendored cellxgene-schema is behind |
+  | `[none]` | **nobody — do not relay as a defect** | the gene is still listed in Ensembl, issued after the allowed gene set; the file's annotation is newer than ours. Note it, and flag that the vendored cellxgene-schema is behind |
   | `[ask]` | producer, as a question | ask what reference built the file; these identifiers come from outside Ensembl's GRCh38 history |
   | `(disjoint)` on a detail row | **ours, then producer** | the coordinates contradict Ensembl's own record — different chromosome, opposite strand, or no overlap. Check one by hand before relaying; if it holds, it is worth telling the producer their remap target is wrong |
   | `(old contains new)` or `(overlap)` on a detail row | **nobody — do not relay as a defect** | Ensembl redrew the gene's extent as well as renaming it. The replacement stands. Worth a sentence only if the producer is combining those columns |
