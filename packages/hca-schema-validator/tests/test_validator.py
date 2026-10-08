@@ -2679,7 +2679,7 @@ def test_shared_successors_need_a_decision_too():
     Breast v1 has nine such groups covering 21 identifiers; this is the smallest
     shape of one.
     """
-    pair = sorted(g for g, e in _gene_id_events()[0].items() if e.successors == [_MERGED_SUCCESSOR])
+    pair = sorted(g for g, e in _gene_id_events()[0].items() if tuple(e.successors) == (_MERGED_SUCCESSOR,))
     assert len(pair) > 1, pair
     for gene in pair:
         row = _rows(pair, gene)
