@@ -113,21 +113,30 @@ class JobStore:
         return file_lock(self.directory / ".lock")
 
     def end(self, job: Job, state: str, message: str, error_code: int | None = None) -> Job:
-        """Record how a job ended and save it."""
+        """Record how a job ended and save it; returns the stored record."""
         job.state = state
         job.message = message
         job.error_code = error_code
         job.finished_at = time.time()
-        self.save(job)
-        return job
+        return self.save(job)
 
-    def save(self, job: Job) -> None:
-        """Write the record atomically: the hook and the server may both write."""
+    def save(self, job: Job) -> Job:
+        """Write the record atomically, unless it is already finished; returns the stored record.
+
+        The hook and the server both load, change and save records. A finished
+        record is never rewritten, so a copy loaded before the hook recorded
+        the outcome cannot undo it.
+        """
         self.directory.mkdir(parents=True, exist_ok=True)
-        fd, tmp = tempfile.mkstemp(dir=self.directory, suffix=".tmp")
-        with os.fdopen(fd, "w") as handle:
-            json.dump(asdict(job), handle, indent=2)
-        Path(tmp).replace(self._file(job.job_id))
+        with file_lock(self.directory / ".save.lock"):
+            current = self.load(job.job_id)
+            if current is not None and current.state not in ACTIVE:
+                return current
+            fd, tmp = tempfile.mkstemp(dir=self.directory, suffix=".tmp")
+            with os.fdopen(fd, "w") as handle:
+                json.dump(asdict(job), handle, indent=2)
+            Path(tmp).replace(self._file(job.job_id))
+        return job
 
     def load(self, job_id: str) -> Job | None:
         if not job_id.isalnum():

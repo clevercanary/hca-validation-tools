@@ -79,3 +79,17 @@ def test_control_characters_in_file_name_rejected(downloads, tracker, name):
     tracker.add_file(tracker.ids["gut"], name, make_file(tracker.data_dir / "f", 10))
     with pytest.raises(TrackerError, match="unusable file name"):
         downloads.start("gut", "gut", "file-1")
+
+
+def test_control_characters_in_dest_dir_rejected(downloads, small_file, tmp_path):
+    """dest_dir is saved as aria2's dir option, so a newline would inject options too."""
+    with pytest.raises(CheckError, match="contains a control character"):
+        downloads.start("gut", "gut", "gut-r1.h5ad", dest_dir=str(tmp_path / "a\n dir=b"))
+
+
+def test_file_without_checksum_refused(downloads, tracker):
+    tracker.add_file(tracker.ids["gut"], "plain-r1.h5ad", make_file(tracker.data_dir / "plain", 1000), sha256=None)
+    with pytest.raises(CheckError, match="has no source checksum"):
+        downloads.start("gut", "gut", "plain-r1.h5ad")
+    assert tracker.served_bytes == 1
+    assert not downloads.store.all()

@@ -18,11 +18,10 @@ HTTP_ERROR = 22
 
 
 def finalize(job: Job, store: JobStore) -> Job:
-    """Rename a completed ``.part`` file to its final name and mark the job done.
+    """Rename a completed ``.part`` file and mark the job done.
 
-    aria2 only reports a download complete once the size matches and, when
-    the job carries a SHA-256, once the whole file has been hashed and matches
-    it. The size is checked again here before the rename.
+    aria2 reports complete only after the whole file matched its SHA-256; the
+    size is checked again here before the rename.
     """
     if job.state == DONE:
         return job
@@ -36,11 +35,8 @@ def finalize(job: Job, store: JobStore) -> Job:
     except FileNotFoundError:  # the hook and download_status can both get here; one renames first
         if not (final.exists() and final.stat().st_size == job.size):
             return store.end(job, FAILED, f"The downloaded file is missing: {part}")
-    if job.sha256:
-        job.verified = "sha256"
-        return store.end(job, DONE, "Size and SHA-256 verified")
-    job.verified = "size"
-    return store.end(job, DONE, "Size verified, no checksum available (file not uploaded with hca-smart-sync)")
+    job.verified = "sha256"
+    return store.end(job, DONE, "Size and SHA-256 verified")
 
 
 def record_error(job: Job, store: JobStore, status: dict, aria2: Aria2 | None) -> Job:

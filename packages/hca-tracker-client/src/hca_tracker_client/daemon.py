@@ -169,16 +169,16 @@ def _pid(directory: Path) -> int | None:
         return None
 
 
-def _is_aria2(pid: int) -> bool:
-    """True if pid is a running aria2c (and not a reused pid of something else)."""
+def _is_daemon(directory: Path, pid: int) -> bool:
+    """True if pid is the aria2c started with this folder's config, not a reused pid of something else."""
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
         return False
     except PermissionError:
         pass
-    result = subprocess.run(["ps", "-p", str(pid), "-o", "comm="], capture_output=True, text=True)
-    return "aria2c" in result.stdout
+    result = subprocess.run(["ps", "-ww", "-p", str(pid), "-o", "args="], capture_output=True, text=True)
+    return f"--conf-path={directory / CONF}" in result.stdout
 
 
 def connect(cache_dir: Path) -> Aria2 | None:
@@ -191,7 +191,7 @@ def connect(cache_dir: Path) -> Aria2 | None:
     directory = daemon_dir(cache_dir)
     conf = directory / CONF
     pid = _pid(directory)
-    if not conf.is_file() or pid is None or not _is_aria2(pid):
+    if not conf.is_file() or pid is None or not _is_daemon(directory, pid):
         return None
     values = _read_conf(conf)
     try:
@@ -202,9 +202,9 @@ def connect(cache_dir: Path) -> Aria2 | None:
     return client
 
 
-def _wait_exit(pid: int, timeout: float) -> bool:
+def _wait_exit(directory: Path, pid: int, timeout: float) -> bool:
     deadline = time.monotonic() + timeout
-    while _is_aria2(pid):
+    while _is_daemon(directory, pid):
         if time.monotonic() > deadline:
             return False
         time.sleep(0.1)
@@ -220,12 +220,12 @@ def _stop_process(directory: Path, grace: float = 10) -> None:
     process itself, and end it if it does not exit.
     """
     pid = _pid(directory)
-    if pid is None or _wait_exit(pid, grace):
+    if pid is None or _wait_exit(directory, pid, grace):
         return
     for sig in (signal.SIGTERM, signal.SIGKILL):
         with contextlib.suppress(ProcessLookupError):
             os.kill(pid, sig)
-        if _wait_exit(pid, 5):
+        if _wait_exit(directory, pid, 5):
             return
 
 
@@ -305,7 +305,7 @@ def shutdown(cache_dir: Path) -> bool:
             client.call("saveSession")
             client.call("forceShutdown")
     pid = _pid(directory)
-    running = client is not None or (pid is not None and _is_aria2(pid))
+    running = client is not None or (pid is not None and _is_daemon(directory, pid))
     if directory.is_dir():
         _stop_process(directory)
     return running

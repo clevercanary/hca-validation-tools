@@ -1,6 +1,8 @@
 """Tracker API calls, the URL probe, and the listing functions."""
 
 import json
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 
@@ -80,3 +82,42 @@ def test_list_files_fields_and_no_secrets(tracker, tmp_path):
     text = json.dumps([result, sources, list_atlases(client(tracker))])
     assert "http" not in text
     assert tracker.token not in text
+
+
+def test_token_not_forwarded_on_redirect():
+    """A tracker redirect to another host must not carry the bearer token."""
+    seen = {}
+
+    class Target(BaseHTTPRequestHandler):
+        def do_GET(self):
+            seen["authorization"] = self.headers.get("Authorization")
+            body = b"[]"
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args):
+            pass
+
+    with ThreadingHTTPServer(("127.0.0.1", 0), Target) as target:
+        threading.Thread(target=target.serve_forever, daemon=True).start()
+
+        class Redirect(Target):
+            def do_GET(self):
+                self.send_response(302)
+                self.send_header("Location", f"http://127.0.0.1:{target.server_address[1]}/elsewhere")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+
+        with ThreadingHTTPServer(("127.0.0.1", 0), Redirect) as origin:
+            threading.Thread(target=origin.serve_forever, daemon=True).start()
+            assert TrackerClient(f"http://127.0.0.1:{origin.server_address[1]}", "s3cret").list_atlases() == []
+            origin.shutdown()
+        target.shutdown()
+    assert seen == {"authorization": None}
+
+
+def test_unknown_kind_rejected(tracker):
+    with pytest.raises(ValueError, match="kind must be"):
+        list_files(client(tracker), "gut", "gut", "integrate")

@@ -44,10 +44,10 @@ class TrackerClient:
 
     def _request(self, path: str, method: str = "GET") -> Any:
         request = urllib.request.Request(
-            f"{self.base_url}{path}",
-            method=method,
-            headers={"Authorization": f"Bearer {self._token}", "Accept": "application/json"},
+            f"{self.base_url}{path}", method=method, headers={"Accept": "application/json"}
         )
+        # Unredirected, so urllib never forwards the token if the tracker redirects to another host.
+        request.add_unredirected_header("Authorization", f"Bearer {self._token}")
         try:
             with urllib.request.urlopen(request, timeout=self.timeout) as response:
                 return json.load(response)

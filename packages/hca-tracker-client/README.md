@@ -93,8 +93,7 @@ downloading, the file is `<filename>.part`, with aria2's control file
 renamed to the final name. On a mismatch the job fails with error code 32 and
 the `.part` file is kept, so the cause can be investigated. `start()` refuses to
 reuse it: delete it first, or pass `restart=True`. A file uploaded without
-`hca-smart-sync` has no checksum, and completes with "size verified, no
-checksum available".
+`hca-smart-sync` has no checksum and is refused before anything is downloaded.
 
 **Resume.** A download stopped by a cancel, a crash or an expired link (they
 last 48 hours) resumes when `start()` is called again: it fetches a fresh link

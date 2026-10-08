@@ -158,7 +158,7 @@ class Downloads:
             new_state = QUEUED
         if new_state != job.state:
             job.state = new_state
-            self.store.save(job)
+            job = self.store.save(job)
         return job, live
 
     def _lost(self, job: Job) -> Job:
@@ -188,7 +188,6 @@ class Downloads:
             "path": job.path,
             "size_bytes": job.size,
             "size": human_size(job.size),
-            "verification": "sha256" if job.sha256 else "size only (no checksum available)",
         }
         if job.state in (DOWNLOADING, VERIFYING) and live:
             result["progress"] = _progress(job, live)
@@ -249,6 +248,8 @@ class Downloads:
         filename = _safe_name(presigned.filename)
         default_dir = self.cache_dir / network / f"{atlas}_{version}"
         directory = (Path(dest_dir).expanduser() if dest_dir else default_dir).absolute()
+        if _CONTROL.search(str(directory)):
+            raise CheckError(f"The download folder {str(directory)!r} contains a control character or backslash")
         final = directory / filename
 
         probed = probe(presigned)
@@ -258,6 +259,11 @@ class Downloads:
                 f"The tracker lists {filename} as {listed} bytes, but the stored file is {probed.size} bytes"
             )
         size = probed.size or listed
+        if not probed.sha256:
+            raise CheckError(
+                f"{filename} has no source checksum (x-amz-meta-source-sha256), so it could not be verified "
+                "after download; nothing was downloaded. It was probably not uploaded with hca-smart-sync"
+            )
         if not size:
             raise CheckError(f"The size of {filename} is unknown, so it cannot be checked after download")
 
@@ -318,9 +324,12 @@ class Downloads:
                 sha256=probed.sha256,
             )
             self.store.save(job)
-            options = {"gid": job.job_id, "dir": str(directory), "out": part.name}
-            if probed.sha256:
-                options["checksum"] = f"sha-256={probed.sha256}"
+            options = {
+                "gid": job.job_id,
+                "dir": str(directory),
+                "out": part.name,
+                "checksum": f"sha-256={probed.sha256}",
+            }
             try:
                 aria2.call("addUri", [presigned.url], options)
             except Aria2Error as error:
@@ -355,16 +364,25 @@ class Downloads:
         if aria2 is not None:
             with contextlib.suppress(Aria2Error):
                 aria2.call("forceRemove", job_id)
+            # The download can finish between the refresh above and forceRemove;
+            # record what actually happened rather than calling it cancelled.
+            live: dict = {}
             deadline = time.monotonic() + 10
             while time.monotonic() < deadline:
                 try:
-                    if aria2.tell_status(job_id).get("status") == "removed":
-                        break
+                    live = aria2.tell_status(job_id)
                 except Aria2Error:
                     break
+                if live.get("status") in ("removed", "complete", "error"):
+                    break
                 time.sleep(0.1)
+            if live.get("status") == "complete":
+                return self._describe(finalize(job, self.store))
+            if live.get("status") == "error":
+                return self._describe(record_error(job, self.store, live, aria2))
             with contextlib.suppress(Aria2Error):
                 aria2.call("removeDownloadResult", job_id)
+        # If the hook recorded an outcome meanwhile, the store keeps it.
         return self._describe(self.store.end(job, CANCELLED, _cancel_message(job)))
 
     def list_files(self) -> dict:

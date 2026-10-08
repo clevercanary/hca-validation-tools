@@ -24,6 +24,18 @@ def test_finalize_twice_from_stale_copies(tmp_path):
     assert final.read_bytes() == b"abcd"
 
 
+def test_finished_record_is_never_rewritten(tmp_path):
+    """A copy loaded before the hook recorded the outcome cannot undo it."""
+    store = JobStore(tmp_path)
+    job = Job("c3d4", "gut", "gut", "v1.0", "x", "f1", str(tmp_path / "x"), 4, "ab", state="downloading")
+    store.save(job)
+    stale = copy.deepcopy(job)
+    store.end(job, DONE, "Size and SHA-256 verified")
+    stale.state = "verifying"
+    assert store.save(stale).state == DONE
+    assert store.load("c3d4").state == DONE
+
+
 def test_connect_ignores_a_listener_once_the_recorded_aria2c_is_gone(tmp_path):
     """Another user listening on a dead daemon's port must not be sent anything."""
     server = SimpleXMLRPCServer(("127.0.0.1", 0), logRequests=False)

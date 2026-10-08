@@ -35,6 +35,8 @@ def list_files(
     published: bool = False,
 ) -> dict:
     """The integrated objects (``kind="integrated"``) or source datasets of one atlas version."""
+    if kind not in (INTEGRATED, SOURCE):
+        raise ValueError(f"kind must be {INTEGRATED!r} or {SOURCE!r}, got {kind!r}")
     version = select_atlas(tracker.list_atlases(), network, atlas, generation, published)
     entries = tracker.component_atlases(version["id"]) if kind == INTEGRATED else tracker.source_datasets(version["id"])
     files = []

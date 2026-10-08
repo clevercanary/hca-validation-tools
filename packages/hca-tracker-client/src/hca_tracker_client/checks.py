@@ -1,9 +1,9 @@
 """Checks run before a download starts. Each fails with a message that says what to do."""
 
-import os
 import re
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 
 from .errors import CheckError
@@ -72,9 +72,9 @@ def check_writable(directory: Path) -> None:
     """Create the directory if needed and prove it is writable with a test file."""
     try:
         directory.mkdir(parents=True, exist_ok=True)
-        probe = directory / f".hca-tracker-write-test-{os.getpid()}"
-        probe.write_bytes(b"")
-        probe.unlink()
+        # An unpredictable name created exclusively, so a planted symlink is never followed.
+        with tempfile.NamedTemporaryFile(dir=directory, prefix=".hca-tracker-write-test-"):
+            pass
     except OSError as error:
         raise CheckError(f"Folder {directory} is not writable: {error.strerror or error}") from None
 

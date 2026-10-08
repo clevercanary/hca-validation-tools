@@ -1,5 +1,6 @@
 """Download lifecycle against a real aria2 daemon and the fake tracker."""
 
+import hashlib
 import json
 import os
 import signal
@@ -31,7 +32,6 @@ def test_download_end_to_end(downloads, tracker, gut_file):
     started = downloads.start("gut", "gut", "gut-r1.h5ad")
     assert started["state"] == "queued"
     assert started["path"].endswith("cache/gut/gut_v1.0/gut-r1.h5ad")
-    assert started["verification"] == "sha256"
 
     done = wait_for(downloads, started["job_id"], ("done", "failed"))
     assert done["state"] == "done", done
@@ -47,17 +47,6 @@ def test_download_end_to_end(downloads, tracker, gut_file):
 
     listed = downloads.list_files()["files"]
     assert [(f["path"], f["state"], f["verified"]) for f in listed] == [(str(final), "done", "sha256")]
-
-
-def test_no_checksum_completes_size_only(downloads, tracker):
-    path = make_file(tracker.data_dir / "plain", 1000)
-    tracker.add_file(tracker.ids["gut"], "plain-r1.h5ad", path, sha256=None)
-    started = downloads.start("gut", "gut", "plain-r1.h5ad")
-    assert started["verification"] == "size only (no checksum available)"
-    done = wait_for(downloads, started["job_id"], ("done", "failed"))
-    assert done["state"] == "done"
-    assert done["verified"] == "size"
-    assert done["message"].startswith("Size verified, no checksum available")
 
 
 def test_checksum_mismatch_keeps_part_and_blocks_resume(downloads, tracker):
@@ -81,7 +70,7 @@ def test_checksum_mismatch_keeps_part_and_blocks_resume(downloads, tracker):
     with pytest.raises(CheckError, match="failed its checksum and is kept at"):
         downloads.start("gut", "gut", "bad-r1.h5ad")
 
-    tracker.blobs[file_id].sha256 = None
+    tracker.blobs[file_id].sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
     restarted = downloads.start("gut", "gut", "bad-r1.h5ad", restart=True)
     assert wait_for(downloads, restarted["job_id"], ("done", "failed"))["state"] == "done"
 
@@ -267,3 +256,18 @@ def test_delete_scope_is_the_job_file_not_its_folder(downloads, tracker, gut_fil
     assert downloads.delete(str(untracked))["deleted"] == [str(untracked)]
     with pytest.raises(Exception, match="not in the download cache"):
         downloads.delete(str(downloads.cache_dir / "aria2" / "aria2.conf"))
+
+
+def test_cancel_racing_completion_records_done(downloads, tracker, gut_file, monkeypatch):
+    """If the download finished just before forceRemove, cancel reports done, not cancelled."""
+    started = downloads.start("gut", "gut", "gut-r1.h5ad")
+    wait_for(downloads, started["job_id"], ("done",))
+    # Replay cancel as if its refresh ran just before completion: a stale active copy.
+    stale = downloads.store.load(started["job_id"])
+    stale.state = "downloading"
+    monkeypatch.setattr(downloads.store, "load", lambda job_id: stale)
+    monkeypatch.setattr(Downloads, "_refresh", lambda self, job, aria2: (job, {}))
+    result = downloads.cancel(started["job_id"])
+    assert result["state"] == "done", result
+    monkeypatch.undo()
+    assert downloads.store.load(started["job_id"]).state == "done"
