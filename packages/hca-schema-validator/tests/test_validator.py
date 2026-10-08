@@ -2588,7 +2588,14 @@ _SPLIT_CONVERGENT_END = "ENSG00000280969"
 # Stopping at the first split reported six dead ends; one level down reported a
 # single survivor; only walking every branch finds all six.
 _SPLIT_NESTED = "ENSG00000207553"
-_SPLIT_NESTED_ENDS = ("ENSG00000283289", "ENSG00000283685")
+_SPLIT_NESTED_ENDS = (
+    "ENSG00000283289",
+    "ENSG00000283330",
+    "ENSG00000283455",
+    "ENSG00000283490",
+    "ENSG00000283540",
+    "ENSG00000283685",
+)
 # Replaced by a gene that is alive in Ensembl but annotated on a patch sequence,
 # so it is absent from the allowed gene set. 13 identifiers have this shape.
 _OFF_REFERENCE = "ENSG00000237093"
@@ -2759,7 +2766,8 @@ def test_a_nested_split_reaches_every_terminal():
     _, _, verdicts = _retired_findings(_retired_adata([_SPLIT_NESTED]))
     verdict = verdicts[_SPLIT_NESTED]
     assert verdict.startswith("split into") and "[drop or re-align]" in verdict, verdict
-    assert all(end in verdict for end in _SPLIT_NESTED_ENDS), verdict
+    named = verdict[len("split into ") : verdict.index(" [")].split(", ")
+    assert tuple(named) == _SPLIT_NESTED_ENDS, verdict
 
 
 def test_a_split_with_no_usable_pieces_is_dropped():

@@ -380,7 +380,8 @@ password). About four minutes, mostly the per-release coordinate queries.
    ```
 
    It writes `packages/hca-schema-validator/src/hca_schema_validator/gene_id_events.csv.gz`
-   by default; `--out` writes elsewhere.
+   by default; `--out` writes elsewhere. The commands below are relative to this
+   package, so return here first: `cd packages/hca-schema-validator`.
 
 2. Read what it printed. It names the sessions it used, every gap in the session
    chain and the gene build it held that gap against, and the class counts. A
