@@ -64,13 +64,17 @@ FIELDS = [
 ]
 
 
-def check_sessions(sessions: list[tuple[int, int]]) -> list[tuple[int, int]]:
+def check_sessions(sessions: list[tuple[int, int]], covered: tuple[int, int]) -> list[tuple[int, int]]:
     """Refuse a duplicated session, and report where the chain jumps.
 
-    ``sessions`` is (old_release, new_release) pairs, sorted. Returns the gaps as
-    (last_release_before, first_release_after) pairs, for check_gap_builds to
-    account for. Both are invisible in the committed artifact, which is a binary
-    whose diff reads only as "a few hundred KB changed".
+    ``sessions`` is (old_release, new_release) pairs, sorted; ``covered`` is the
+    (first, last) release the server serves a core database for. Returns the gaps
+    as (last_release_before, first_release_after) pairs, for check_gap_builds to
+    account for -- including the two at the ends, where a missing session is
+    invisible in the chain itself. A release published before its mapping session
+    would otherwise have every event in it silently omitted. Both failures are
+    invisible in the committed artifact, which is a binary whose diff reads only
+    as "a few hundred KB changed".
 
     A repeated session double-counts its events. Cardinality is what ``event``
     is derived from, so a duplicated row turns a rename into a merge: two
@@ -96,7 +100,16 @@ def check_sessions(sessions: list[tuple[int, int]]) -> list[tuple[int, int]]:
                 f"table whose event classes would be derived from double-counted rows"
             )
         seen.add(pair)
-    return [(new, nxt_old) for (_, new), (nxt_old, _) in itertools.pairwise(sessions) if new != nxt_old]
+    gaps = [(new, nxt_old) for (_, new), (nxt_old, _) in itertools.pairwise(sessions) if new != nxt_old]
+    # The two the chain cannot show: a release served before its mapping session
+    # exists, at either end, leaves the chain looking continuous while every event
+    # in that release is missing.
+    first, last = covered
+    if sessions[0][0] > first:
+        gaps.insert(0, (first, sessions[0][0]))
+    if sessions[-1][1] < last:
+        gaps.append((sessions[-1][1], last))
+    return gaps
 
 
 def check_gap_builds(gaps: list[tuple[int, int]], builds: dict[int, str | None]) -> None:
@@ -246,7 +259,7 @@ def geneset_build(con, release: int) -> str | None:
 
 
 def sessions_and_events(
-    con, release: int
+    con, release: int, covered: tuple[int, int]
 ) -> tuple[list[tuple[int, int]], list[tuple[int, int]], list[tuple[str, str | None, int, int]]]:
     """Every within-assembly gene change event, with the sessions they came from.
 
@@ -334,11 +347,14 @@ def main() -> int:
     # 54 the run used to make -- and 54 chances for a four-minute run against a
     # public server to fail partway through.
     con = connect()
-    current = newest_release(con)
+    releases = list_releases(con)
+    if not releases:
+        raise SystemExit(f"no {ASSEMBLY_NAME} core database found on {HOST}")
+    current = max(releases)
     print(f"newest {ASSEMBLY_NAME} core database: r{current}", file=sys.stderr)
 
     t = time.time()
-    sessions, gaps, events = sessions_and_events(con, current)
+    sessions, gaps, events = sessions_and_events(con, current, (min(releases), current))
     print(
         f"{len(sessions)} {ASSEMBLY_NAME} sessions r{sessions[0][0]}-r{sessions[-1][1]}, "
         f"{len(events):,} gene event rows ({time.time() - t:.1f}s)",

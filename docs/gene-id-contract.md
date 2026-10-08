@@ -130,20 +130,32 @@ Ensembl says what changed. The reference says what is nameable. We only report; 
 
 ## 4. Coordinates
 
-4.1 Claimed replacements are held against the genome **offline**, from spans the table carries.
+4.1 Claimed replacements are held against the genome **offline**, from spans the table carries: the old
+    gene's span in the last release that carried it, and the successor's span in the current one.
 
-4.2 **Three outcomes, not two.** Contained confirms the record. Overlapping-but-not-nested means Ensembl
-    redrew the gene's extent as well as renaming it. Contradicted means a different chromosome, the opposite
-    strand, or no overlap at all.
+4.2 **Three outcomes, stated as geometry.** The check knows where two spans sit and nothing else, so the
+    outcome is named by that and not by a verdict on it.
 
-4.3 **A failure to nest is not a failure to agree.** Ensembl trims genes as readily as it extends them. Two
-    of breast's three non-nesting pairs differ by 4 and 5 bases; reported as contradictions they cost a
-    curator a trip to the genome browser and teach them to skim the finding.
+    - **within** — the old span lies entirely inside the successor's.
+    - **overlap** — they share positions, but neither contains the other.
+    - **disjoint** — no shared positions, or a different chromosome or strand.
 
-4.4 Chromosome and strand must agree before any comparison. A successor on the other strand is not the same
+4.3 **Only overlap and disjoint are flagged**, on the row of the gene they concern. A replacement row with
+    no flag is one whose old span lies within its successor's. On breast v1 that is 670 of 673, so flagging
+    it would put a word on nearly every line that carries no information and bury the three that do.
+
+4.4 **Overlap is not a contradiction.** Ensembl trims genes as readily as it extends them. Two of breast's
+    three overlapping pairs differ by 4 and 5 bases; reported as contradictions they cost a curator a trip
+    to the genome browser and taught them to skim the flag.
+
+4.5 The comparison is old-within-new, not the reverse. A merge absorbs the old gene into a larger
+    successor, so the old span should fit inside the new one; a successor smaller than the old gene is an
+    overlap.
+
+4.6 Chromosome and strand must agree before any comparison. A successor on the other strand is not the same
     locus however the coordinates fall.
 
-4.5 Only replacements are checkable. A deletion makes no claim about a locus; a split makes several.
+4.7 Only replacements are checkable. A deletion makes no claim about a locus; a split makes several.
 
 ## 5. What the findings say
 
@@ -170,7 +182,7 @@ Ensembl says what changed. The reference says what is nameable. We only report; 
       does not classify untouched.
 
 5.3 Each class names **whose problem it is**. Three say "do not relay as a defect": a boundary revision, a
-    gene newer than the reference, and the confirmation line.
+    gene newer than the reference, and an overlap flag.
 
 5.4 **The merge decision stays with the producer.** Where a source study was aligned against an annotation
     that treated two identifiers as separate loci, its cells hold real counts in each and summing them

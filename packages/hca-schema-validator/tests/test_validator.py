@@ -2576,8 +2576,19 @@ _NO_SUCCESSOR = "ENSG00000002079"
 # Split at r100 into three genes, two of them in the reference. Breast v1's only
 # split identifier has this shape.
 _SPLIT = "ENSG00000183791"
-# Split into genes none of which are in the allowed gene set.
-_SPLIT_OFF_REFERENCE = "ENSG00000157828"
+# Split into genes none of which resolve to anything in the allowed gene set:
+# 43 of the table's 94 splits have this shape once each branch is followed.
+_SPLIT_OFF_REFERENCE = "ENSG00000207555"
+# Split at r76 into two genes that Ensembl later brought back together as one.
+# Following the branches makes this a rename, not a dead end; 3 splits converge
+# on a single current gene this way.
+_SPLIT_CONVERGENT = "ENSG00000157828"
+_SPLIT_CONVERGENT_END = "ENSG00000280969"
+# Split into six genes, five of which are now dead ends and one of which reaches
+# a current gene. The single survivor is the only thing a column can be pointed
+# at, and stopping at the split reported all six as unusable.
+_SPLIT_ONE_SURVIVOR = "ENSG00000207553"
+_SPLIT_ONE_SURVIVOR_END = "ENSG00000283490"
 # Replaced by a gene that is alive in Ensembl but annotated on a patch sequence,
 # so it is absent from the allowed gene set. 13 identifiers have this shape.
 _OFF_REFERENCE = "ENSG00000237093"
@@ -2704,8 +2715,28 @@ def test_a_successor_off_the_allowed_set_is_dropped_not_renamed():
     assert "successor not in the allowed set" in row and "[drop]" in row, row
 
 
+def test_a_split_whose_branches_converge_is_a_rename():
+    """Ensembl split it into two and later brought both back as one gene.
+
+    Stopping at the split reported two dead ends and told the curator to drop a
+    column that has a current gene to point at.
+    """
+    row = _rows([_SPLIT_CONVERGENT], _SPLIT_CONVERGENT)
+    assert f"-> {_SPLIT_CONVERGENT_END}" in row and "[rename]" in row, row
+
+
+def test_a_split_with_one_surviving_branch_names_it():
+    """Six pieces, five dead, one reaching a current gene.
+
+    The survivor is the only thing the column can point at; before the branches
+    were followed, all six read as unusable and the column was dropped.
+    """
+    row = _rows([_SPLIT_ONE_SURVIVOR], _SPLIT_ONE_SURVIVOR)
+    assert f"-> {_SPLIT_ONE_SURVIVOR_END}" in row and "[rename]" in row, row
+
+
 def test_a_split_with_no_usable_pieces_is_dropped():
-    """46 of the table's 94 splits divide into genes none of which are current."""
+    """43 of the table's 94 splits resolve to nothing in the allowed gene set."""
     row = _rows([_SPLIT_OFF_REFERENCE], _SPLIT_OFF_REFERENCE)
     assert "split; successor not in the allowed set" in row and "[drop]" in row, row
 
@@ -2746,14 +2777,14 @@ def test_non_human_features_are_left_to_the_base_validator():
 
 def test_coordinates_refute_a_claimed_replacement():
     """chr8:107.25Mb becoming chr8:123.35Mb is not the same locus."""
-    assert "genome disagrees" in _rows([_REFUTED], _REFUTED)
+    assert "disjoint" in _rows([_REFUTED], _REFUTED)
 
 
 def test_a_redrawn_boundary_is_not_a_contradiction():
     """ENSG00000231255 starts 4 bases before its successor and is otherwise inside it."""
     row = _rows([_REDRAWN], _REDRAWN)
-    assert "boundaries redrawn" in row, row
-    assert "genome disagrees" not in row, row
+    assert "overlap" in row, row
+    assert "disjoint" not in row, row
 
 
 def test_the_summary_counts_each_class():

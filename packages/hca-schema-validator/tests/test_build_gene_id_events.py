@@ -22,7 +22,7 @@ gen = load_script("build_gene_id_events")
 
 
 def test_contiguous_chain_has_no_gaps():
-    assert gen.check_sessions([(76, 77), (77, 78), (78, 79)]) == []
+    assert gen.check_sessions([(76, 77), (77, 78), (78, 79)], (76, 79)) == []
 
 
 def test_gap_is_reported_not_refused():
@@ -31,23 +31,33 @@ def test_gap_is_reported_not_refused():
     Ten of the thirty GRCh38 sessions are missing for this reason, so refusing
     here would make the table unbuildable rather than wrong.
     """
-    assert gen.check_sessions([(76, 77), (78, 79)]) == [(77, 78)]
+    assert gen.check_sessions([(76, 77), (78, 79)], (76, 79)) == [(77, 78)]
 
 
 def test_several_missing_sessions_are_one_gap():
     """r85->r87 skips two sessions and is still a single stretch to account for."""
-    assert gen.check_sessions([(84, 85), (87, 88)]) == [(85, 87)]
+    assert gen.check_sessions([(84, 85), (87, 88)], (84, 88)) == [(85, 87)]
+
+
+def test_a_missing_trailing_session_is_a_gap():
+    """A release published before its mapping session would otherwise lose every
+    event in it, invisibly: the chain itself looks continuous."""
+    assert gen.check_sessions([(76, 77), (77, 78)], (76, 80)) == [(78, 80)]
+
+
+def test_a_missing_leading_session_is_a_gap():
+    assert gen.check_sessions([(80, 81)], (76, 81)) == [(76, 80)]
 
 
 def test_duplicate_session_is_refused():
     """A repeated session double-counts its rows, which turns a rename into a merge."""
     with pytest.raises(SystemExit, match="more than once"):
-        gen.check_sessions([(76, 77), (76, 77), (77, 78)])
+        gen.check_sessions([(76, 77), (76, 77), (77, 78)], (76, 78))
 
 
 def test_no_sessions_is_refused():
     with pytest.raises(SystemExit, match="no GRCh38-to-GRCh38 mapping session"):
-        gen.check_sessions([])
+        gen.check_sessions([], (76, 116))
 
 
 # --- check_gap_builds ------------------------------------------------------

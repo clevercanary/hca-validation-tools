@@ -2470,11 +2470,13 @@ def _resolve(gene: str, by_old: dict[str, GeneEvent]) -> tuple[str | None, list[
         current = entry.successors[0]
 
 
-# What the genome says about one claimed replacement.
-#   contained    - the old gene sits inside its successor. Ensembl's record holds.
-#   revised      - they overlap but do not nest. The same locus, re-drawn.
-#   contradicted - different strand, different chromosome, or no overlap at all.
-_CONTAINED, _REVISED, _CONTRADICTED = "contained", "revised", "contradicted"
+# How the old gene's span sits against its successor's. Stated as geometry and
+# nothing more, because geometry is all the check knows: a label like "the
+# genome disagrees" attached a verdict to a fact.
+#   within    - the old span lies entirely inside the successor's. Not flagged.
+#   overlap   - they share positions, but neither contains the other.
+#   disjoint  - no shared positions, or a different chromosome or strand.
+_CONTAINED, _REVISED, _CONTRADICTED = "within", "overlap", "disjoint"
 
 
 def _compare_spans(old_span: tuple | None, new_span: tuple | None) -> str | None:
@@ -2660,6 +2662,23 @@ def _retired_findings(adata):
             continue
         terminal, split_into = _resolve(gene, by_old)
         if split_into:
+            # Each branch is followed as far as a rename chain is, because the
+            # pieces have their own histories: Ensembl split ENSG00000157828 into
+            # two genes at r76 and later brought both back together as
+            # ENSG00000280969. Stopping at the split reported two dead ends and
+            # told the curator to drop a column that has a current gene to point
+            # at. Three identifiers in the shipped table have that shape.
+            ends = {end for piece in split_into if (end := _resolve(piece, by_old)[0]) and checker.is_valid_id(end)}
+            if len(ends) == 1:
+                # Out as several pieces, back as one gene: a replacement, not a
+                # split, so it takes the ordinary rename-or-decide rules below
+                # including the collision check.
+                terminal, split_into = ends.pop(), []
+            else:
+                splits[feature] = sorted(ends) or sorted(split_into)
+                plain["split" if ends else "off_reference"].add(feature)
+                continue
+        if split_into:
             splits[feature] = split_into
             # A split is only worth reporting as one if at least one piece is in
             # the reference. 46 of the table's 94 splits divide into genes none of
@@ -2775,8 +2794,8 @@ def _what_happened(feature: str, name: str, successor: str | None, candidates: d
 # the gene it concerns and nowhere else. A roll-up line counting them restated
 # what those rows already show, one scroll away from the genes it was about.
 _SPAN_FLAGS = {
-    _REVISED: "boundaries redrawn",
-    _CONTRADICTED: "genome disagrees",
+    _REVISED: "overlap",
+    _CONTRADICTED: "disjoint",
 }
 
 

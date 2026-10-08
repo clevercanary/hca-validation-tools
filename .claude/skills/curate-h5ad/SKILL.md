@@ -130,9 +130,9 @@ Report these but don't attempt to fix:
   | `[strip suffix]` | producer | relay: the genes are current, only the written form is wrong |
   | `[none]` | **nobody — do not relay as a defect** | the gene is real and current; our allowed gene set is older than the file's annotation. Note it, and flag that the vendored cellxgene-schema is behind |
   | `[ask]` | producer, as a question | ask what reference built the file; these identifiers come from outside Ensembl's GRCh38 history |
-  | "not supported by the genome" | **ours, then producer** | the coordinates contradict Ensembl's own record — different chromosome, opposite strand, or no overlap. Check one by hand before relaying; if it holds, it is worth telling the producer their remap target is wrong |
-  | "overlap their successor without fitting inside it" | **nobody — do not relay as a defect** | Ensembl redrew the gene's extent as well as renaming it. The replacement stands. Worth a sentence only if the producer is combining those columns |
-  | "are absent from GENCODE v… the allowed gene set this validator checks against" | — | the header for the rows below; quote its counts, do not relay it on its own |
+  | `(disjoint)` on a detail row | **ours, then producer** | the coordinates contradict Ensembl's own record — different chromosome, opposite strand, or no overlap. Check one by hand before relaying; if it holds, it is worth telling the producer their remap target is wrong |
+  | `(overlap)` on a detail row | **nobody — do not relay as a defect** | Ensembl redrew the gene's extent as well as renaming it. The replacement stands. Worth a sentence only if the producer is combining those columns |
+  | "gene IDs are not in GENCODE v…" | — | the headline; quote its counts, do not relay it on its own |
 - **`gene_annotation_version` findings** (a `validate_schema` warning, not a tool you can call; #710) — these are **not one finding**, and they do not all belong to the producer. Route each by its wording before writing anything:
 
   | the warning says | whose it is | what to do |
