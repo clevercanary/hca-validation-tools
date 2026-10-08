@@ -315,16 +315,20 @@ class HCAValidator(Validator):
         return None
 
     def _get_gencode_version_label(self) -> str:
-        """Get a human-readable GENCODE version string for the dataset's organism."""
-        organism = self._get_organism_from_obs()
+        """A human-readable GENCODE version string for the dataset's organism.
 
+        The Ensembl release is derived, not written out: GENCODE's human and
+        mouse releases track the same Ensembl release, so the human version plus
+        the offset names it for both. Writing "114" here left the per-identifier
+        warnings disagreeing with the derived summary after a schema bump.
+        """
+        organism = self._get_organism_from_obs()
+        ensembl = int(_gene_info["human"]["version"]) + _GENCODE_ENSEMBL_OFFSET
         if organism == "NCBITaxon:9606":
-            v = _gene_info["human"]["version"]
-            return f"GENCODE v{v} (Ensembl 114)"
+            return _REFERENCE_LABEL
         if organism == "NCBITaxon:10090":
-            v = _gene_info["mouse"]["version"]
-            return f"GENCODE {v} (Ensembl 114)"
-        return "GENCODE reference (Ensembl 114)"
+            return f"GENCODE {_gene_info['mouse']['version']} (Ensembl {ensembl})"
+        return f"GENCODE reference (Ensembl {ensembl})"
 
     def _validate_feature_ids(self, column: pd.Series, df_name: str):
         """
@@ -2744,12 +2748,18 @@ def _retired_findings(adata):
     # The same test for suffixes: ENSG...17 and ENSG...18 with no bare form both
     # strip to one name, and would collide with each other rather than with an
     # existing column.
-    bare = Counter(candidates[f] for f in plain["versioned"])
-    for feature in sorted(plain["versioned"]):
-        if bare[candidates[feature]] > 1:
-            collides[feature] = "shared"
-            plain["versioned"].discard(feature)
-            replacements["suffix_pair"][feature] = candidates[feature]
+    # Not only the versioned class: a suffixed spelling of a gene newer than the
+    # allowed set lands in "newer", and strips to the same name all the same.
+    suffix_classes = ("versioned", "newer", "excluded", "unclassified")
+    bare = Counter(candidates[f] for name in suffix_classes for f in plain[name] if f in suffixed)
+    for name in suffix_classes:
+        for feature in sorted(plain[name]):
+            if feature not in suffixed:
+                continue
+            if bare[candidates[feature]] > 1 or candidates[feature] in features:
+                collides[feature] = "in file" if candidates[feature] in features else "shared"
+                plain[name].discard(feature)
+                replacements["suffix_pair"][feature] = candidates[feature]
 
     # Every warned identifier lands in exactly one group, so this is non-empty
     # whenever `warned` is; it drops the groups with nothing in them so each
@@ -2941,7 +2951,7 @@ _ACTION_GUIDE = {
     "drop or re-align": (
         "Remove the feature, or re-quantify from source: the reads are recoverable under the successors' names."
     ),
-    "strip suffix": "Remove the version suffix; the gene itself is in the allowed gene set.",
+    "strip suffix": "Remove the version suffix; the written form is what fails here.",
     "none": "Nothing to change. The gene is newer than the allowed gene set, not wrong.",
     "ask": "Ask which reference built the file.",
 }

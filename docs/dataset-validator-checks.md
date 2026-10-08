@@ -154,7 +154,7 @@ Ensembl's `stable_id_event` records what became of each one, shipped as `gene_id
 | `[drop]` | successor not in the allowed set | the successor is on a patch or alt sequence, or postdates the set |
 | `[drop]` | patch or alt sequence | not on the primary assembly, so no reference gene set carries it |
 | `[drop or re-align]` | split into X, Y | the reads cannot be divided after the fact, but are recoverable under the successors' names |
-| `[strip suffix]` | version suffix | the gene is in the allowed gene set; the written form is not. A suffix is noted on any row, and overrides `[none]` |
+| `[strip suffix]` | version suffix | the written form is what fails. Noted on any row whatever else is true of the gene, and overrides `[none]`; it does not by itself mean the bare gene is in the allowed set |
 | `[review]` | version suffix; bare ID also in file | stripping would leave two columns under one name |
 | `[none]` | issued after GENCODE v48 | still listed in Ensembl, issued after the allowed set; the gene is newer than the set, not wrong |
 | `[ask]` | no event recorded | in neither the allowed gene set nor Ensembl's GRCh38 event history |

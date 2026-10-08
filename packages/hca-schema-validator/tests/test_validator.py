@@ -2802,6 +2802,14 @@ def test_two_suffixed_spellings_collide_with_each_other():
         assert "other spellings in file" in row and "[review]" in row, row
 
 
+def test_two_suffixed_spellings_of_a_newer_gene_collide_too():
+    """The collision pass covers every class a suffixed feature can land in."""
+    a, b = f"{_NEWER_THAN_REFERENCE}.1", f"{_NEWER_THAN_REFERENCE}.2"
+    for written in (a, b):
+        row = _rows([a, b], written)
+        assert "other spellings in file" in row and "[review]" in row, row
+
+
 def test_a_suffixed_newer_gene_is_never_told_nothing_to_do():
     """The gene is newer than the allowed set; the suffix is still a defect."""
     written = f"{_NEWER_THAN_REFERENCE}.2"
