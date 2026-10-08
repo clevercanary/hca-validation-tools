@@ -97,9 +97,9 @@ def start_download(
 ) -> dict:
     """Check, then download one file in the background; returns job_id, path and size at once.
 
-    Checks run first (aria2c, writable folder, free space, working link). The
-    file is SHA-256 verified when a checksum exists, and the download continues
-    after this session ends. A verified copy returns ``cached: true``; calling
+    Checks run first (aria2c, writable folder, free space, working link, source
+    checksum: a file without one is refused). Every file is SHA-256 verified,
+    and the download continues after this session ends. A verified copy returns ``cached: true``; calling
     again resumes a stopped download.
     """
     return Downloads(load_config()).start(network, atlas, file, generation, published, dest_dir, restart)

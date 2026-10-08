@@ -43,3 +43,9 @@ def test_empty_environment_value_overrides_env_file(tmp_path):
     config = load_config(env={"HCA_TRACKER_API_TOKEN": ""}, env_file=env_file)
     with pytest.raises(ConfigError, match="HCA_TRACKER_API_TOKEN must be set"):
         config.require_tracker()
+
+
+def test_relative_cache_dir_made_absolute(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    config = load_config(env={"HCA_TRACKER_CACHE_DIR": "rel/cache"}, env_file=tmp_path / ".env")
+    assert config.cache_dir == tmp_path / "rel" / "cache"

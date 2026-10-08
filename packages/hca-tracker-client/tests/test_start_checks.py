@@ -95,3 +95,18 @@ def test_file_without_checksum_refused(downloads, tracker):
         downloads.start("gut", "gut", "plain-r1.h5ad")
     assert tracker.served_bytes == 1
     assert not downloads.store.all()
+
+
+@pytest.mark.parametrize(("network", "slug"), [("..", "gut"), ("gut", "../../etc"), ("/abs", "gut")])
+def test_unsafe_network_or_atlas_rejected(cache_dir, tmp_path, network, slug):
+    """network and atlas become path components of the default destination."""
+    from hca_tracker_client import Downloads, TrackerError
+    from hca_tracker_client.testing import FakeTracker
+
+    from .conftest import make_config
+
+    with FakeTracker() as fake:
+        atlas_id = fake.add_atlas(network, slug, 1, 0)
+        fake.add_file(atlas_id, "x-r1.h5ad", make_file(tmp_path / "x", 10))
+        with pytest.raises(TrackerError, match="unusable"):
+            Downloads(make_config(cache_dir, fake)).start(network, slug, "x-r1.h5ad")

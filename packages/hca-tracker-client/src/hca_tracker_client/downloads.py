@@ -45,21 +45,21 @@ from .store import (
 _CONTROL = re.compile(r"[\x00-\x1f\x7f\\]")
 
 
-def _safe_name(filename: str) -> str:
-    """Reject a tracker file name that would escape its folder, or inject options into aria2's session file.
+def _safe_component(value: str, what: str) -> str:
+    """Reject a tracker value used as one path component that would escape its folder or inject aria2 options.
 
     aria2 saves each download's options as ``key=value`` lines, so a newline
-    in the name would become extra options when the session is reloaded.
+    would become extra options when the session is reloaded.
     """
-    if (
-        not filename
-        or Path(filename).name != filename
-        or filename in (".", "..")
-        or _CONTROL.search(filename)
-        or filename.endswith((".part", ".aria2"))  # aria2's working-file names
-    ):
+    if not value or Path(value).name != value or value in (".", "..") or _CONTROL.search(value):
+        raise TrackerError(f"The tracker returned an unusable {what}: {value!r}")
+    return value
+
+
+def _safe_name(filename: str) -> str:
+    if filename.endswith((".part", ".aria2")):  # aria2's working-file names
         raise TrackerError(f"The tracker returned an unusable file name: {filename!r}")
-    return filename
+    return _safe_component(filename, "file name")
 
 
 def _allocated(path: Path) -> int:
@@ -252,7 +252,8 @@ class Downloads:
 
         presigned = tracker.presigned_url(atlas_id, entry["fileId"])
         filename = _safe_name(presigned.filename)
-        default_dir = self.cache_dir / network / f"{atlas}_{version}"
+        safe_network, safe_atlas = _safe_component(network, "network"), _safe_component(atlas, "atlas slug")
+        default_dir = self.cache_dir / safe_network / f"{safe_atlas}_{version}"
         directory = (Path(dest_dir).expanduser() if dest_dir else default_dir).absolute()
         if _CONTROL.search(str(directory)):
             raise CheckError(f"The download folder {str(directory)!r} contains a control character or backslash")
@@ -344,7 +345,14 @@ class Downloads:
             # refreshed, found missing from aria2, and marked interrupted for good.
             # If the download finishes first, the hook skips it and download_status
             # finalizes it from aria2's result.
-            self.store.create(job)
+            try:
+                self.store.create(job)
+            except OSError as error:  # don't leave a transfer running that no tool can see
+                with contextlib.suppress(Aria2Error):
+                    aria2.call("forceRemove", job.job_id)
+                    aria2.call("removeDownloadResult", job.job_id)
+                    aria2.call("saveSession")
+                raise TrackerError(f"Could not record the download job, so it was not started: {error}") from None
 
             result = {**self._describe(job), "warnings": warnings}
             if already:
