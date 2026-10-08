@@ -51,7 +51,13 @@ def _safe_name(filename: str) -> str:
     aria2 saves each download's options as ``key=value`` lines, so a newline
     in the name would become extra options when the session is reloaded.
     """
-    if not filename or Path(filename).name != filename or filename in (".", "..") or _CONTROL.search(filename):
+    if (
+        not filename
+        or Path(filename).name != filename
+        or filename in (".", "..")
+        or _CONTROL.search(filename)
+        or filename.endswith((".part", ".aria2"))  # aria2's working-file names
+    ):
         raise TrackerError(f"The tracker returned an unusable file name: {filename!r}")
     return filename
 
@@ -323,7 +329,6 @@ class Downloads:
                 size=size,
                 sha256=probed.sha256,
             )
-            self.store.save(job)
             options = {
                 "gid": job.job_id,
                 "dir": str(directory),
@@ -333,8 +338,12 @@ class Downloads:
             try:
                 aria2.call("addUri", [presigned.url], options)
             except Aria2Error as error:
-                self.store.delete(job.job_id)
                 raise TrackerError(f"aria2 did not accept the download: {error}") from None
+            # Saved only once aria2 knows the GID: a record visible earlier could be
+            # refreshed, found missing from aria2, and marked interrupted for good.
+            # If the download finishes first, the hook skips it and download_status
+            # finalizes it from aria2's result.
+            self.store.save(job)
 
             result = {**self._describe(job), "warnings": warnings}
             if already:

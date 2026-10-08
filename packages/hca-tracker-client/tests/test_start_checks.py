@@ -71,7 +71,9 @@ def test_unsafe_file_name_rejected(downloads, tracker):
         downloads.start("gut", "gut", "file-1")
 
 
-@pytest.mark.parametrize("name", ["x-r1.h5ad\n allow-overwrite=true", "x\\r1.h5ad", "x\x00.h5ad"])
+@pytest.mark.parametrize(
+    "name", ["x-r1.h5ad\n allow-overwrite=true", "x\\r1.h5ad", "x\x00.h5ad", "x.h5ad.part", "x.h5ad.part.aria2"]
+)
 def test_control_characters_in_file_name_rejected(downloads, tracker, name):
     """A newline would become extra options in aria2's session file."""
     from hca_tracker_client import TrackerError
