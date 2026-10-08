@@ -2495,30 +2495,30 @@ def _resolve(gene: str, by_old: dict[str, GeneEvent]) -> tuple[str | None, list[
 
 # How the old gene's span sits against its successor's. Stated as geometry and
 # nothing more, because geometry is all the check knows: a label like "the
-# genome disagrees" attached a verdict to a fact.
-#   within    - the old span lies entirely inside the successor's. Not flagged.
-#   overlap   - they share positions, but neither contains the other.
-#   disjoint  - no shared positions, or a different chromosome or strand.
-_CONTAINED, _REVISED, _CONTRADICTED = "within", "overlap", "disjoint"
+# genome disagrees" attached a verdict to a fact, and "trimmed" a story.
+#   new contains old - the ordinary merge shape, 1,186 of 1,239. Not flagged.
+#   old contains new - the successor is the smaller span. 4 of 1,239.
+#   overlap          - they share positions, but neither contains the other.
+#   disjoint         - no shared positions, or a different chromosome or strand.
+_NEW_CONTAINS_OLD, _OLD_CONTAINS_NEW, _OVERLAP, _DISJOINT = (
+    "new contains old",
+    "old contains new",
+    "overlap",
+    "disjoint",
+)
+# Backwards names used by the tests and the flag table; the outcome strings
+# above are what a reader sees.
+_CONTAINED, _REVISED, _CONTRADICTED = _NEW_CONTAINS_OLD, _OVERLAP, _DISJOINT
 
 
 def _compare_spans(old_span: tuple | None, new_span: tuple | None) -> str | None:
     """How the old gene's position relates to its successor's. None when unknowable.
 
     The claim being tested is Ensembl's, not ours: a replacement says these
-    identifiers describe the same piece of DNA.
+    identifiers describe the same piece of DNA. The outcome is named by where the
+    two spans sit and by nothing else.
 
-    Three outcomes rather than two, because a failure to nest is not by itself a
-    failure to agree. Ensembl revises where a gene starts and ends as well as
-    what it is called, and trims it as readily as it extends it, so a successor
-    can be the same locus drawn slightly differently. Breast v1's three
-    non-nesting pairs are all of that kind and two are rounding -- one old gene
-    starts 4 bases early, another ends 5 bases late. Reported as contradictions
-    they cost a curator a trip to the genome browser and teach them to skim the
-    warning; separated out, the 20 non-overlapping and 19 strand-flipped pairs in
-    the shipped table keep the attention they deserve.
-
-    Strand and chromosome must agree before any of this: a successor on the other
+    Chromosome and strand must agree before any of this: a successor on the other
     strand is not the same locus however the coordinates fall.
     """
     if old_span is None or new_span is None:
@@ -2526,27 +2526,12 @@ def _compare_spans(old_span: tuple | None, new_span: tuple | None) -> str | None
     old_chrom, old_start, old_end, old_strand = old_span
     new_chrom, new_start, new_end, new_strand = new_span
     if old_chrom != new_chrom or old_strand != new_strand:
-        return _CONTRADICTED
+        return _DISJOINT
     if new_start <= old_start and old_end <= new_end:
-        return _CONTAINED
-    return _REVISED if old_start <= new_end and new_start <= old_end else _CONTRADICTED
-
-
-def _is(group) -> str:
-    return "is" if len(group) == 1 else "are"
-
-
-def _has(group) -> str:
-    return "has" if len(group) == 1 else "have"
-
-
-def _was(group) -> str:
-    return "was" if len(group) == 1 else "were"
-
-
-def _noun(group, singular: str, plural: str) -> str:
-    """Pick the predicate noun to match the subject, since _plural only sizes it."""
-    return singular if len(group) == 1 else plural
+        return _NEW_CONTAINS_OLD
+    if old_start <= new_start and new_end <= old_end:
+        return _OLD_CONTAINS_NEW
+    return _OVERLAP if old_start <= new_end and new_start <= old_end else _DISJOINT
 
 
 def _examples(items) -> str:
@@ -2818,8 +2803,9 @@ def _what_happened(feature: str, name: str, successor: str | None, candidates: d
 # the gene it concerns and nowhere else. A roll-up line counting them restated
 # what those rows already show, one scroll away from the genes it was about.
 _SPAN_FLAGS = {
-    _REVISED: "overlap",
-    _CONTRADICTED: "disjoint",
+    _OLD_CONTAINS_NEW: "old contains new",
+    _OVERLAP: "overlap",
+    _DISJOINT: "disjoint",
 }
 
 

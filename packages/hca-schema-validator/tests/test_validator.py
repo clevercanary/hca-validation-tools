@@ -2606,6 +2606,9 @@ _REFUTED_SUCCESSOR = "ENSG00000283172"
 # otherwise contained in it. One of breast v1's three non-nesting pairs.
 _REDRAWN = "ENSG00000231255"
 _REDRAWN_SUCCESSOR = "ENSG00000233073"
+# The successor's span lies inside the old gene's -- the reverse of the ordinary
+# merge shape. 4 of the table's 1,239 resolvable replacements sit this way.
+_OLD_CONTAINS_NEW = "ENSG00000185928"
 # A current gene, for files that must contain something valid.
 _CURRENT = "ENSG00000141510"
 # Alive in Ensembl r83-r116 and absent from the allowed gene set: a patch-region
@@ -2780,6 +2783,13 @@ def test_non_human_features_are_left_to_the_base_validator():
 def test_coordinates_refute_a_claimed_replacement():
     """chr8:107.25Mb becoming chr8:123.35Mb is not the same locus."""
     assert "disjoint" in _rows([_REFUTED], _REFUTED)
+
+
+def test_containment_is_named_by_direction():
+    """The successor is the smaller span: said as geometry, not as a verdict."""
+    row = _rows([_OLD_CONTAINS_NEW], _OLD_CONTAINS_NEW)
+    assert "old contains new" in row, row
+    assert "overlap" not in row and "disjoint" not in row, row
 
 
 def test_a_redrawn_boundary_is_not_a_contradiction():

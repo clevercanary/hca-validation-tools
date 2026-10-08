@@ -133,24 +133,25 @@ Ensembl says what changed. The reference says what is nameable. We only report; 
 4.1 Claimed replacements are held against the genome **offline**, from spans the table carries: the old
     gene's span in the last release that carried it, and the successor's span in the current one.
 
-4.2 **Three outcomes, stated as geometry.** The check knows where two spans sit and nothing else, so the
+4.2 **Four outcomes, stated as geometry.** The check knows where two spans sit and nothing else, so each
     outcome is named by that and not by a verdict on it.
 
-    - **within** — the old span lies entirely inside the successor's.
+    - **new contains old** — the old span lies entirely inside the successor's. The ordinary merge shape.
+    - **old contains new** — the successor's span lies entirely inside the old one.
     - **overlap** — they share positions, but neither contains the other.
     - **disjoint** — no shared positions, or a different chromosome or strand.
 
-4.3 **Only overlap and disjoint are flagged**, on the row of the gene they concern. A replacement row with
-    no flag is one whose old span lies within its successor's. On breast v1 that is 670 of 673, so flagging
-    it would put a word on nearly every line that carries no information and bury the three that do.
+4.3 **Only the last three are flagged**, on the row of the gene they concern, in those words. A replacement
+    row with no flag is one whose successor contains it. On breast v1 that is 670 of 673, so flagging it
+    would put a word on nearly every line that carries no information and bury the three that do.
 
-4.4 **Overlap is not a contradiction.** Ensembl trims genes as readily as it extends them. Two of breast's
-    three overlapping pairs differ by 4 and 5 bases; reported as contradictions they cost a curator a trip
-    to the genome browser and taught them to skim the flag.
+4.4 **A flag is not a verdict.** Overlap is not a contradiction: Ensembl trims genes as readily as it
+    extends them, and two of breast's three overlapping pairs differ by 4 and 5 bases. "Old contains new"
+    is not a warning that the column overcounts, though a reader may draw that; the row says only where the
+    spans sit. What any of these means for a curator belongs in the guide, not in the log.
 
-4.5 The comparison is old-within-new, not the reverse. A merge absorbs the old gene into a larger
-    successor, so the old span should fit inside the new one; a successor smaller than the old gene is an
-    overlap.
+4.5 Measured over the 1,239 resolvable claimed replacements: 1,186 new-contains-old, 4 old-contains-new,
+    10 overlap, 39 disjoint (20 on the same chromosome and strand, 19 on a different one).
 
 4.6 Chromosome and strand must agree before any comparison. A successor on the other strand is not the same
     locus however the coordinates fall.
