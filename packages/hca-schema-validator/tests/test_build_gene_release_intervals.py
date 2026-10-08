@@ -11,25 +11,17 @@ network and the driver, and are exercised by actually regenerating the table.
 
 from __future__ import annotations
 
-import importlib.util
-from pathlib import Path
-
 import pytest
 
-_SCRIPT = Path(__file__).resolve().parents[3] / "scripts" / "build_gene_release_intervals.py"
+from ._generators import load_script
+
+gen = load_script("build_gene_release_intervals")
+# release_from_name moved into the module both generators share, so it is tested
+# there: one suite covers both callers.
+ens = load_script("_ensembl")
 
 
-def _load():
-    spec = importlib.util.spec_from_file_location("build_gene_release_intervals", _SCRIPT)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-gen = _load()
-
-
-# --- release_from_name -----------------------------------------------------
+# --- release_from_name (shared, scripts/_ensembl.py) ------------------------
 
 
 @pytest.mark.parametrize(
@@ -58,7 +50,7 @@ gen = _load()
     ],
 )
 def test_release_from_name(name, expected):
-    assert gen.release_from_name(name) == expected
+    assert ens.release_from_name(name) == expected
 
 
 # --- check_releases --------------------------------------------------------

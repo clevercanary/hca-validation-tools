@@ -73,7 +73,8 @@ hca_schema_validator/
 │       ├── __init__.py       # Package exports
 │       ├── validator.py      # HCAValidator and the HCA-specific checks
 │       ├── ontology_data/    # Ontology overlay files (see below)
-│       └── gene_release_intervals.csv.gz  # Gene presence per Ensembl release (see below)
+│       ├── gene_release_intervals.csv.gz  # Gene presence per Ensembl release (see below)
+│       └── gene_id_events.csv.gz          # What became of each retired gene ID (see below)
 ├── tests/
 │   └── test_validator.py # Unit tests
 ├── pyproject.toml        # uv/PEP 621 configuration & dependencies
@@ -287,11 +288,133 @@ MySQL to `ensembldb.ensembl.org:3306` (user `anonymous`, no password).
 
 ### Why not `stable_id_event`
 
-Ensembl's `stable_id_event` table is the right source for *retirement history*
-but cannot answer presence at a given release. Measured against release 114:
-`mapping_session` only covers releases 10–99, and self-mappings are not recorded
-exhaustively — TP53 has 22 rows across 72 sessions. Presence has to come from
-each release's own `gene` table, which is what the generator queries.
+Ensembl's `stable_id_event` table is the right source for *retirement history* —
+it is what the [gene ID event table](#gene-id-event-table) below is built from —
+but it cannot answer presence at a given release. Self-mappings are not recorded
+exhaustively: TP53 has 22 rows across 72 sessions, so an identifier's absence
+from a session says nothing about whether it existed then. Presence has to come
+from each release's own `gene` table, which is what this generator queries.
+
+This section used to give a second reason, that `mapping_session` stops at r99.
+That was wrong. `old_release` and `new_release` are `varchar`, so `MAX()`
+compares them lexically and `'99'` beats `'116'`; cast numerically and the
+sessions run continuously to r116.
+
+## Gene ID Event Table
+
+`check_retired_feature_ids` explains the feature ID warnings a file produces. A
+retired Ensembl identifier is a warning here and an **error** at CELLxGENE, so
+every atlas heading for CZI has to clear them — but each warning on its own says
+only that an identifier is not in the current GENCODE table. The breast v1
+integrated object emits 1,482 of them for 741 distinct identifiers, counted once
+in `var` and once in `raw.var`.
+
+`src/hca_schema_validator/gene_id_events.csv.gz` records what Ensembl says became
+of each one, which is what turns that pile into a handful of decisions.
+
+### How it works
+
+One row per retired identifier per successor:
+
+```
+# ensembl GRCh38 retired gene ids, sessions r76-r116, successor coordinates from r116
+old_id,new_id,event,old_chrom,old_start,old_end,old_strand,old_release,new_chrom,new_start,new_end,new_strand
+ENSG00000002079,,retired,7,99238829,99306809,1,113,,,,
+```
+
+`event` is derived from cardinality in `stable_id_event` and nothing else, so
+every class is a statement about Ensembl's own bookkeeping that a curator can go
+and check:
+
+| `event` | Meaning |
+|---|---|
+| `retired` | no successor |
+| `renamed` | one successor, which no other identifier names |
+| `merged` | one successor, which other identifiers also name |
+| `split` | several successors, one row each |
+
+`old_release` is the last release that still carried the identifier, and the old
+coordinates are that release's. Per-gene rather than one release for the whole
+table: breast's sources declare `v75`, `v87` **and** `v98`, and comparing
+everything against a single old release leaves genes that existed in neither end
+of the comparison unexplainable.
+
+**Chains are not resolved here.** Ensembl may replace A with B and later B with
+C; every hop is a row, and the validator walks them. Keeping the table a
+transcription means any row can be checked against the server it came from.
+
+**`score` is deliberately absent.** Of the gene events carrying a successor since
+r98, 1,202 fall in 0.9–0.999 and 2 sit at exactly 1.0, so a threshold in that
+band separates nothing — and the column is `float NOT NULL DEFAULT '0'`, so an
+exact zero cannot be told apart from "never scored", which is precisely the rows
+one would want to treat as suspicious.
+
+### Current table
+
+| | |
+|---|---|
+| Ensembl sessions covered | **r76 → r116** (30 sessions, GRCh38 on both sides) |
+| Retired identifiers | 7,132 — 5,768 retired, 797 renamed, 473 merged, 94 split |
+| Rows | 7,500 |
+| Successor coordinates | from r116; 42 successors have been retired themselves and have none |
+| File size | 122 KB gzipped |
+
+### When to regenerate
+
+When Ensembl ships a release. Nothing in the validator detects staleness here —
+unlike the interval table, which says when a file declares a release it does not
+cover — because a missing recent event looks exactly like an identifier that was
+never retired. Regenerating alongside the interval table keeps the two in step.
+
+### How to regenerate
+
+Needs outbound MySQL to `ensembldb.ensembl.org:3306` (user `anonymous`, no
+password). About four minutes, mostly the per-release coordinate queries.
+
+1. Run the generator **from the repository root** — the script lives there, not
+   in this package:
+
+   ```bash
+   cd ../..   # repository root, if you are in packages/hca-schema-validator
+   uv run --no-project --with pymysql python scripts/build_gene_id_events.py
+   ```
+
+   It writes `packages/hca-schema-validator/src/hca_schema_validator/gene_id_events.csv.gz`
+   by default; `--out` writes elsewhere.
+
+2. Read what it printed. It names the sessions it used, every gap in the session
+   chain and the gene build it held that gap against, and the class counts. A
+   gap with a gene build inside it is refused rather than reported — see below.
+
+3. Check the event classes are present and plausible:
+
+   ```bash
+   gzip -dc src/hca_schema_validator/gene_id_events.csv.gz | head -3
+   uv run python -c "import pandas as pd; d = pd.read_csv('src/hca_schema_validator/gene_id_events.csv.gz', comment='#'); print(d.event.value_counts())"
+   ```
+
+4. Run the tests. They pin real identifiers from this table — a rename, a merge,
+   a split, a chain, and a replacement the coordinates refute — so a regeneration
+   that lost any of those shapes fails here:
+
+   ```bash
+   uv run pytest tests/ -q
+   ```
+
+5. Commit the regenerated file and update the **Current table** above.
+
+### The session chain is not contiguous, and that is correct
+
+Ensembl creates a mapping session when the **gene set is rebuilt**, not when a
+release is issued. In the early GRCh38 range releases came out faster than gene
+builds did, so ten of the thirty sessions between r76 and r116 do not exist:
+r78 ships r77's gene set unchanged, down to every stable id, version and span,
+and r78's own database records no 77→78 session either.
+
+The generator therefore does not refuse a gap. It holds each one against
+`genebuild.last_geneset_update` from the two bounding releases, and refuses only
+when they differ — which would mean a session is genuinely missing from the
+archive, and with it every identifier changed across it.
 
 ## License
 

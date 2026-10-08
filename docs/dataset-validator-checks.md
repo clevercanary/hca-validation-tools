@@ -54,6 +54,7 @@ Runs the full vendored schema validator against the unmodified CELLxGENE schema 
 - **Producer label columns** (`check_cosmetic_labels`) — a populated `obs['sex']`, `obs['tissue']`, etc. must have its `*_ontology_term_id` source column (else warning) and every label must equal the canonical ontology label for the row's term (else error). #377, #443.
 - **Donor-level consistency** — see §4.2.
 - **Declared gene annotation vs. the file's genes** — see §4.3.
+- **Retired feature identifiers** — see §4.4. Summarises and classifies the per-identifier feature-ID warnings rather than replacing them.
 
 All other rules come from the vendored base class (§5).
 
@@ -137,6 +138,51 @@ Reads `var.index`, `obs['gene_annotation_version']`, `obs['reference_genome']` a
 
 **Limitation.** This dates a *gene list*. Prod files carry between 19.7% and 98.1% of the genes Ensembl defines at the earliest release that explains them, so most are filtered to detected genes and a few are close to a full reference. Filtering can only remove evidence — so the computed window is a superset of the true one. A declared release falling outside it is therefore sound; what is weakened is pinning the exact release, not the finding.
 
+### 4.4 Retired feature identifiers (`check_retired_feature_ids`)
+
+A summary of the per-identifier feature ID warnings (§5), not a replacement for them: those stay, and this says what they add up to. **#728.**
+
+A retired Ensembl identifier is a warning here and an **error** at CELLxGENE, so every atlas heading for CZI has to clear them — but each warning says only that an identifier is not in the current GENCODE table, which is the same sentence for every cause. The breast v1 integrated object emits **1,482** of them for **741** distinct identifiers, counted once in `var` and once in `raw.var`.
+
+Ensembl's `stable_id_event` records what became of each one, shipped as `gene_id_events.csv.gz` (format, event classes and regeneration in the package README). The identifiers are sorted into classes that need different fixes:
+
+| tag | what happened | what it means |
+|---|---|---|
+| `[rename]` | renamed to X / merged into X | the successor is in the allowed gene set and not already in this file |
+| `[combine]` | renamed to X / merged into X, which is already in this file | or several of these now point at one gene — renaming would leave columns sharing a name |
+| `[drop or re-align]` | split into X, Y | a column's reads cannot be divided between them after the fact |
+| `[drop]` | retired, no successor | nothing in the allowed gene set to point at |
+| `[drop]` | replaced by a gene the allowed gene set does not carry | the successor is on a patch or alt sequence, or postdates the set |
+| `[drop or re-align]` | on a patch or alt sequence, so not in the allowed gene set | the file was aligned against a reference including patch sequences |
+| `[none]` | issued after GENCODE v48 | a real current gene; the file's annotation is newer than the allowed set, not wrong |
+| `[strip suffix]` | in the allowed gene set, version suffix only | the gene is fine; the written form is not |
+| `[ask]` | no event recorded | in neither the allowed gene set nor Ensembl's GRCh38 event history |
+
+**What "current" means here.** The gene set a file is validated against is not all of Ensembl. It is GENCODE's reference annotation — **Ensembl 114 restricted to the primary assembly** — the chromosomes plus the unplaced and unlocalized scaffolds, excluding alt loci and patches. Measured against r114: Ensembl lists 86,364 human genes, this set holds 78,894 — 78,686 on chromosomes and 208 on scaffolds — and every one of the 7,470 absent sits on a patch or alt sequence. Aligners count against the primary assembly for the same reason it is drawn that way — include a region and its alternate copy and reads map to both — so a successor annotated only on a patch is alive in Ensembl and still unusable as a column name. That is the **off the reference** class, 13 identifiers table-wide; CELLxGENE rejects such a column too. The sentence the check prints is derived from the vendored `gene_info.yml`, so bumping `cellxgene-schema` moves it.
+
+Three populations used to share the unclassified bucket, and the shipped interval table separates them offline. Of the genes it holds that the reference does not, **7,470** were already present at the reference's release and every one sits on a patch or alt contig; **87** were first issued afterwards and every one is on a primary chromosome. No crossover. The first group matters in practice — **3,231 of them appear across eight prod files** (six MSK, one heart, one pancreas), and one MSK file alone carries 1,964. Carrying many of these means the file was aligned against a reference that includes patch sequences, which almost nothing does and which makes its counts hard to compare. The second group is dormant: no prod file carries one yet.
+
+**Chains are followed.** Ensembl may replace A with B and later B with C, and renaming A to B leaves an identifier CELLxGENE still rejects. Every hop is a row in the shipped table, so the walk needs no network; the notebook this came from had to go back to the server for it, because it only knew about the identifiers in one atlas.
+
+**Claimed replacements are held against the genome**, offline, from spans the table carries: if two identifiers describe the same DNA, the old gene's position in the last release that carried it falls inside its successor's span, on the same chromosome and strand. Three outcomes, not two. **Contained** confirms the record. **Overlapping but not nested** means Ensembl redrew where the gene starts or ends as well as renaming it — the replacement stands, and the two annotations simply disagree about its extent. **Contradicted** — a different chromosome, the opposite strand, or no overlap at all — is the one Ensembl's record cannot be right about. The separation matters because the failures are not alike: across the shipped table 14 pairs overlap, 20 do not overlap, and 19 sit on the opposite strand. On breast v1, 670 of 673 are contained, **3 overlap** (two of them by 4 and 5 bases) and **none are contradicted** — reporting those three as contradictions sent a curator to the genome browser over rounding. The old coordinates are per-gene, from each identifier's own last release, which is why none are unexplainable; comparing everything against one old release left 8 of breast's genes absent from both ends.
+
+**Why `successor already present` is not a mechanical fix.** Renaming would produce two columns with one name. Where a source study was aligned against an annotation that treated the two as separate loci, its cells legitimately carry counts in both and summing them double-counts. Which pairs are safe to sum is a cross-file question (#530) and the merge itself is the producer's call.
+
+**Every warning in the pile carries its own verdict.** The summary can name only a handful of examples per class, so on a file with 625 identifiers in one class it describes the problem and withholds the data needed to act on it. Each per-identifier warning is therefore annotated with the fate of the gene it names, which makes the pile the per-gene answer and the summary its index — `grep "\[rename\]"` returns the list of renames:
+
+```
+Feature ID 'ENSG00000254138' … -- renamed to ENSG00000289601 [rename].
+Feature ID 'ENSG00000236938' … -- renamed to ENSG00000285090, which is already in this file [combine].
+Feature ID 'ENSG00000002079' … -- retired, no successor [drop].
+Feature ID 'ENSG00000282823' … -- on a patch or alt sequence, so not in the allowed gene set [drop or re-align].
+```
+
+**What happened and what to do are separate fields**, because they do not map one to one: the same Ensembl merge is a plain rename when its target is absent from the file and a judgement call when it is already there. The action is a bracketed tag so it is greppable, and the reasoning behind each is stated once in the finding that counts the class rather than repeated on every line.
+
+Warnings naming an identifier this check does not classify — a spike-in, another species — are left untouched, and the `Feature ID '` prefix both warning sorters match on is preserved.
+
+Reads `var.index` and `raw.var.index`, nothing else — no `obs`, no network. Counts are over distinct identifiers; the warning count is reported beside them, which is where 1,482 becomes 741.
+
 ---
 
 ## 5. Vendored `cellxgene_schema` checks (shared by CXG and HCA validators)
@@ -173,6 +219,7 @@ Reads `var.index`, `obs['gene_annotation_version']`, `obs['reference_genome']` a
 - Each feature ID must map to a supported organism: human, mouse, SARS-CoV-2, ERCC, drosophila, zebrafish, C. elegans, macaque, rabbit, marmoset, gorilla, rhesus, chimp, pig, mouse lemur, rat.
 - Each feature ID must be valid within its organism's GENCODE table.
 - Dataset organism vs. feature-ID organism mismatch → warning (HCA adds GENCODE version label).
+- These warnings are one per feature ID per dataframe, so a retired identifier in `var` and `raw.var` produces two. HCA classifies the human ones into actionable groups in §4.4; the individual warnings are left in place beneath that summary.
 
 ### Ontology-term columns in `obs` (all errors)
 

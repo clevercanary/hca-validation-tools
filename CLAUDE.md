@@ -6,6 +6,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 HCA Validation Tools is a multi-service validation system for Human Cell Atlas (HCA) ingest data. It uses LinkML schemas for data definition and deploys as AWS Lambda (lightweight sheet validation) and AWS Batch (heavy H5AD file validation) services.
 
+## Contracts
+
+Two documents state rules that code review checks changes against, rather than
+leaving each caller to improvise. Read the relevant one before changing the code
+it governs; neither repeats what the code already says.
+
+- **`docs/gene-id-contract.md`** — gene identifiers: what the allowed gene set
+  is and what it is not, how the shipped Ensembl tables are generated and why
+  they must be byte-reproducible, how retired identifiers are classified, and
+  what a finding may say about them. Governs `check_retired_feature_ids`,
+  `check_gene_annotation_version`, `scripts/build_gene_*.py` and the committed
+  `.csv.gz` artifacts.
+- **`docs/anndata-tools-contract.md`** — read wide, write narrow: the encoding
+  profile `hca-anndata-tools` emits, the files it operates on, and what it
+  refuses. Governs the tools package, the MCP server and the h5ad skills.
+
 ## Build Commands
 
 ```bash

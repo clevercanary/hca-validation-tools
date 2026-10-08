@@ -12,10 +12,16 @@ whole history is a query per release rather than a download. Measured at about
 two seconds each, so roughly ninety seconds for the full GRCh38 range.
 
 ``stable_id_event`` is not usable for this, though it is the right source for
-retirement history. Two reasons, both measured against release 114:
-``mapping_session`` only covers releases 10-99, and self-mappings are not
-recorded exhaustively -- TP53 has 22 rows across 72 sessions -- so presence at a
-given release cannot be derived from it.
+retirement history, which build_gene_id_events.py takes from it. Self-mappings
+are not recorded exhaustively -- TP53 has 22 rows across 72 sessions -- so an
+identifier's absence from a session says nothing about whether it existed then,
+and presence at a given release cannot be derived from the table. That is a
+limit on deriving *presence*, not on reading *events*.
+
+This file used to give a second reason, that ``mapping_session`` stops at r99.
+That was wrong. ``old_release`` and ``new_release`` are varchar, so ``MAX()``
+compares them lexically and '99' beats '116'; cast numerically and the sessions
+run continuously to r116, the newest being 115->116, created 2025-08-07.
 
 Genes are occasionally resurrected, so presence is stored as intervals rather
 than one (first, last) pair. ENSG00000288593 is retired at r105 and returns at
@@ -26,53 +32,20 @@ rather than assuming it, and reports what it finds.
 from __future__ import annotations
 
 import argparse
-import csv
-import gzip
-import io
 import sys
 import time
 from collections import Counter
 from pathlib import Path
 
-try:
-    import pymysql
-except ImportError:  # pragma: no cover - the script is run by hand
-    # Deferred rather than fatal at import, so the pure functions below stay
-    # testable without the driver. main() reports it before touching the server.
-    pymysql = None
+from _ensembl import HOST, connect, core_db, list_releases, require_driver, write_csv_gz
 
-HOST = "ensembldb.ensembl.org"
-USER = "anonymous"
-PORT = 3306
 # Release 76 is the first GRCh38 core database; below that is GRCh37, a
 # different assembly whose gene sets are not comparable.
 FIRST_GRCH38 = 76
-# The assembly suffix this table is built from. Checked by release_from_name as
-# well as filtered by the query: the function is the last point at which a wrong
-# database could be read as a release, so it has to check every part of the name
-# rather than trusting the SQL pattern it sits behind.
-ASSEMBLY = "38"
 DEFAULT_OUT = (
     Path(__file__).resolve().parent.parent
     / "packages/hca-schema-validator/src/hca_schema_validator/gene_release_intervals.csv.gz"
 )
-
-
-def release_from_name(name: str) -> int | None:
-    """The release a core database name carries, or None if it is not one.
-
-    Every part is checked, not just that the fourth is a number. The LIKE above
-    is escaped so the server should return only core databases, but a name is
-    cheap to verify and this is the last point at which a wrong one could be
-    read as a release.
-    """
-    parts = name.split("_")
-    if len(parts) != 5:
-        return None
-    organism_genus, organism_species, kind, release, assembly = parts
-    if (organism_genus, organism_species, kind, assembly) != ("homo", "sapiens", "core", ASSEMBLY):
-        return None
-    return int(release) if release.isdigit() else None
 
 
 def check_releases(found: list[int]) -> list[int]:
@@ -113,28 +86,17 @@ def check_releases(found: list[int]) -> list[int]:
 
 def available_releases() -> list[int]:
     """GRCh38 human core databases the server currently serves, oldest first."""
-    con = pymysql.connect(host=HOST, user=USER, port=PORT, connect_timeout=60)
+    con = connect()
     try:
-        cur = con.cursor()
-        # Underscores escaped: in MySQL LIKE, "_" matches any single character,
-        # so the unescaped form also matched homo_sapiens_coreexpressionatlas_63_37
-        # and friends. Measured against the live server: unescaped returns 41
-        # names for _37 of which 27 are not core databases; escaped returns 14,
-        # all of them real. Ensembl publishes no such database for _38 today,
-        # which is the only reason the unescaped pattern was harmless here.
-        cur.execute(rf"SHOW DATABASES LIKE 'homo\_sapiens\_core\_%%\_{ASSEMBLY}'")
-        names = [row[0] for row in cur.fetchall()]
+        releases = list_releases(con)
     finally:
         con.close()
-    releases = [r for r in (release_from_name(n) for n in names) if r is not None]
-    return check_releases(sorted(r for r in releases if r >= FIRST_GRCH38))
+    return check_releases([r for r in releases if r >= FIRST_GRCH38])
 
 
 def genes_in(release: int) -> set[str]:
     """Every human gene stable id present in one release."""
-    con = pymysql.connect(
-        host=HOST, user=USER, port=PORT, database=f"homo_sapiens_core_{release}_38", connect_timeout=60
-    )
+    con = connect(core_db(release))
     try:
         cur = con.cursor()
         cur.execute("SELECT stable_id FROM gene WHERE stable_id LIKE 'ENSG%%'")
@@ -164,8 +126,7 @@ def intervals(present: list[int], releases: list[int]) -> list[tuple[int, int]]:
 
 
 def main() -> int:
-    if pymysql is None:
-        sys.exit("pymysql is required:  uv run --no-project --with pymysql python scripts/...")
+    require_driver()
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--out", type=Path, default=DEFAULT_OUT)
     args = ap.parse_args()
@@ -189,23 +150,12 @@ def main() -> int:
             resurrected.append((gene, runs))
         rows.extend((gene, first, last) for first, last in runs)
 
-    args.out.parent.mkdir(parents=True, exist_ok=True)
-    # Written through GzipFile with mtime=0 and no stored filename, so the same
-    # release data produces the same bytes. gzip.open embeds the current time
-    # and the output basename in the header, which would make every rerun of
-    # this generator a diff against the committed artifact even when nothing
-    # about Ensembl had changed -- and there would be no way to tell that from
-    # a run that did pick something up.
-    with args.out.open("wb") as raw, gzip.GzipFile(fileobj=raw, mode="wb", compresslevel=9, mtime=0, filename="") as gz:
-        fh = io.TextIOWrapper(gz, encoding="utf-8", newline="")
-        fh.write(f"# ensembl GRCh38 gene presence, releases {releases[0]}-{releases[-1]}\n")
-        w = csv.writer(fh)
-        w.writerow(["gene_id", "first_release", "last_release"])
-        w.writerows(rows)
-        fh.flush()
-        fh.detach()
-
-    size = args.out.stat().st_size
+    size = write_csv_gz(
+        args.out,
+        f"ensembl GRCh38 gene presence, releases {releases[0]}-{releases[-1]}",
+        ["gene_id", "first_release", "last_release"],
+        rows,
+    )
     print(f"\n{len(presence):,} genes, {len(rows):,} intervals -> {args.out} ({size / 2**10:.0f} KB)", file=sys.stderr)
     print(f"{len(resurrected)} gene(s) present in more than one run:", file=sys.stderr)
     for gene, runs in resurrected[:10]:
