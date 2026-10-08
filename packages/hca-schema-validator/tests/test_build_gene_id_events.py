@@ -198,3 +198,49 @@ def test_coordinates_are_keyed_by_release_as_well_as_gene():
         {},
     )
     assert rows[0][3:7] == ["", "", "", ""]
+
+
+# --- sessions_and_events, through a stand-in connection ----------------------
+
+
+class _FakeCursor:
+    """Answers the two queries sessions_and_events makes, in order."""
+
+    def __init__(self, sessions, events):
+        self._answers = [sessions, events]
+        self._rows = []
+
+    def execute(self, sql, params=None):
+        self._rows = self._answers.pop(0)
+
+    def fetchall(self):
+        return self._rows
+
+
+class _FakeConnection:
+    def __init__(self, sessions, events):
+        self._cursor = _FakeCursor(sessions, events)
+
+    def select_db(self, name):
+        pass
+
+    def cursor(self):
+        return self._cursor
+
+
+def test_sessions_and_events_runs_end_to_end():
+    """The network path, driven without the network.
+
+    A round of review changed check_sessions's signature and updated every call
+    but the one inside this function; the pure-function tests passed and every
+    real run raised TypeError after its first query. This is the call they did
+    not reach.
+    """
+    con = _FakeConnection(
+        sessions=[("76", "77"), ("77", "78")],
+        events=[("ENSG1", "ENSG2", "76", "77"), ("ENSG3", None, "77", "78")],
+    )
+    sessions, gaps, events = gen.sessions_and_events(con, 78, (76, 78))
+    assert sessions == [(76, 77), (77, 78)]
+    assert gaps == []
+    assert events == [("ENSG1", "ENSG2", 76, 77), ("ENSG3", None, 77, 78)]

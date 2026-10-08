@@ -2849,7 +2849,7 @@ def annotate_feature_id_warnings(warnings: list[str], verdicts: dict[str, str]) 
 # action says what to do. Order is the order they are reported in.
 _CLASS_ROWS = (
     ("remappable", "renamed"),
-    ("same_gene", "merged; successor already in file"),
+    ("same_gene", "replaced; successor already in file or shared"),
     ("dead", "retired; no successor"),
     ("off_reference", "successor not in the allowed set"),
     ("split", "split into several genes"),

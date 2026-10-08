@@ -284,7 +284,7 @@ def sessions_and_events(
         (ASSEMBLY_NAME, ASSEMBLY_NAME),
     )
     sessions = [(int(old), int(new)) for old, new in cur.fetchall()]
-    gaps = check_sessions(sessions)
+    gaps = check_sessions(sessions, covered)
 
     cur.execute(
         """
