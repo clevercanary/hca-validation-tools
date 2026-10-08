@@ -4,6 +4,8 @@
     { "name": "hca-anndata-tools", "path": "packages/hca-anndata-tools" },
     { "name": "hca-anndata-mcp", "path": "packages/hca-anndata-mcp" },
     { "name": "hca-schema-validator (package)", "path": "packages/hca-schema-validator" },
+    { "name": "hca-tracker-client", "path": "packages/hca-tracker-client" },
+    { "name": "hca-tracker-mcp", "path": "packages/hca-tracker-mcp" },
     { "name": "dataset-validator", "path": "services/dataset-validator" },
     { "name": "hca-schema-validator (service)", "path": "services/hca-schema-validator" }
   ],

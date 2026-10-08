@@ -1,0 +1,37 @@
+[project]
+name = "hca-tracker-mcp"
+version = "0.1.0"
+description = "MCP server to list and download atlas files from the HCA Atlas Tracker"
+authors = [{ name = "Clever Canary", email = "dave@clevercanary.com" }]
+license = "MIT"
+readme = "README.md"
+requires-python = ">=3.10,<4.0"
+# The sibling bound below is what ships to PyPI, and must stay bounded: uv
+# strips [tool.uv.sources] at build time. Its upper bound is the next minor,
+# because at 0.x a minor bump signals a breaking change (see the release policy
+# in CLAUDE.md).
+dependencies = [
+    "fastmcp>=2,<3",
+    "hca-tracker-client>=0.1,<0.2",
+]
+
+[project.urls]
+Homepage = "https://github.com/clevercanary/hca-validation-tools"
+
+[project.scripts]
+hca-tracker-mcp = "hca_tracker_mcp.main:run"
+
+# Development only: resolves the sibling from the local checkout. uv strips
+# this at build time and publishes the version constraint declared above.
+[tool.uv.sources]
+hca-tracker-client = { path = "../hca-tracker-client", editable = true }
+
+[dependency-groups]
+dev = ["pytest>=8.0,<9", "pytest-asyncio>=0.23", "pyright>=1.1.408,<2"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/hca_tracker_mcp"]

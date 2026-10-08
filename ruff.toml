@@ -23,6 +23,8 @@ known-first-party = [
     "hca_validation",
     "hca_anndata_tools",
     "hca_anndata_mcp",
+    "hca_tracker_client",
+    "hca_tracker_mcp",
     "hca_schema_validator",
     "hca_schema_validator_service",
     "dataset_validator",

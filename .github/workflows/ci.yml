@@ -72,8 +72,8 @@ jobs:
           - project: shared
             sync-args: ''
             pytest-args: '-m "not integration"'
-          # The three published packages — untested by `make test-all`, so this
-          # is net-new coverage of our PyPI artifacts.
+          # The published packages — untested by `make test-all`, so this is
+          # net-new coverage of our PyPI artifacts.
           - project: packages/hca-anndata-tools
             sync-args: ''
             pytest-args: ''
@@ -83,6 +83,16 @@ jobs:
           - project: packages/hca-schema-validator
             sync-args: ''
             pytest-args: ''
+          # The tracker packages need aria2c for their download tests, which
+          # skip without it.
+          - project: packages/hca-tracker-client
+            sync-args: ''
+            pytest-args: ''
+            apt: aria2
+          - project: packages/hca-tracker-mcp
+            sync-args: ''
+            pytest-args: ''
+            apt: aria2
           - project: services/dataset-validator
             sync-args: '--frozen'
             pytest-args: ''
@@ -99,6 +109,9 @@ jobs:
           version: "0.10.9"
           python-version: "3.11"
           enable-cache: true
+      - name: Install system packages
+        if: matrix.apt
+        run: sudo apt-get update && sudo apt-get install -y ${{ matrix.apt }}
       - name: Sync dependencies
         run: uv sync ${{ matrix.sync-args }}
         working-directory: ${{ matrix.project }}

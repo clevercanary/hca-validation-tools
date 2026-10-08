@@ -25,6 +25,22 @@
       "extra-files": [
         "packages/hca-anndata-mcp/src/hca_anndata_mcp/__init__.py"
       ]
+    },
+    "packages/hca-tracker-client": {
+      "release-type": "python",
+      "package-name": "hca-tracker-client",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        "packages/hca-tracker-client/src/hca_tracker_client/__init__.py"
+      ]
+    },
+    "packages/hca-tracker-mcp": {
+      "release-type": "python",
+      "package-name": "hca-tracker-mcp",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        "packages/hca-tracker-mcp/src/hca_tracker_mcp/__init__.py"
+      ]
     }
   },
   "changelog-sections": [

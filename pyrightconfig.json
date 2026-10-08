@@ -5,6 +5,8 @@
     "packages/hca-anndata-tools/src",
     "packages/hca-anndata-mcp/src",
     "packages/hca-schema-validator/src",
+    "packages/hca-tracker-client/src",
+    "packages/hca-tracker-mcp/src",
     "services/dataset-validator/src",
     "services/hca-schema-validator/src"
   ],

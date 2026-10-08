@@ -12,4 +12,4 @@ repos:
         entry: make typecheck
         language: system
         pass_filenames: false
-        files: ^(packages/(hca-anndata-tools|hca-anndata-mcp|hca-schema-validator)|services/(dataset-validator|hca-schema-validator))/src/.*\.py$|^(pyrightconfig\.json|Makefile)$
+        files: ^(packages/(hca-anndata-tools|hca-anndata-mcp|hca-schema-validator|hca-tracker-client|hca-tracker-mcp)|services/(dataset-validator|hca-schema-validator))/src/.*\.py$|^(pyrightconfig\.json|Makefile)$

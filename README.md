@@ -16,7 +16,7 @@ Top-level directories and their roles (each package/service has its own
 `pyproject.toml`, uv environment, and `tests/`):
 
 - **`shared/`** — core validation library (LinkML schemas, generated Pydantic models, entry-sheet logic) that the services depend on via a uv path dependency
-- **`packages/`** — publishable PyPI packages: `hca-schema-validator`, `hca-anndata-tools`, `hca-anndata-mcp`
+- **`packages/`** — publishable PyPI packages: `hca-schema-validator`, `hca-anndata-tools`, `hca-anndata-mcp`, `hca-tracker-client`, `hca-tracker-mcp`
 - **`services/`** — deployable services: `entry-sheet-validator` (Lambda), `dataset-validator` (Batch), and the `cellxgene-validator` / `hca-schema-validator` wrappers
 - **`deployment/`** — Dockerfiles and per-service deployment configs
 - **`data_dictionaries/`** — generated data dictionaries
@@ -77,12 +77,14 @@ repo root):
 (cd packages/hca-anndata-tools    && uv run pytest tests/)
 (cd packages/hca-anndata-mcp      && uv run pytest tests/)
 (cd packages/hca-schema-validator && uv run pytest tests/)
+(cd packages/hca-tracker-client   && uv run pytest tests/)  # download tests need aria2c
+(cd packages/hca-tracker-mcp      && uv run pytest tests/)
 (cd services/dataset-validator    && uv run pytest tests/)
 (cd services/cellxgene-validator  && uv run pytest tests/)
 (cd services/hca-schema-validator && uv run pytest tests/)
 ```
 
-These seven suites are exactly what CI runs on every pull request. Type
+These nine suites are exactly what CI runs on every pull request. Type
 checking runs separately:
 
 ```bash

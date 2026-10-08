@@ -56,9 +56,9 @@ cd services/hca-schema-validator && uv run pytest tests/ -v
 
 ## Type Checking
 
-Pyright covers `packages/hca-anndata-tools`, `packages/hca-anndata-mcp`, `packages/hca-schema-validator`, `services/dataset-validator`, and `services/hca-schema-validator`. Config is `pyrightconfig.json` at repo root. Runs one pass per venv since each has a disjoint dep set.
+Pyright covers `packages/hca-anndata-tools`, `packages/hca-anndata-mcp`, `packages/hca-schema-validator`, `packages/hca-tracker-client`, `packages/hca-tracker-mcp`, `services/dataset-validator`, and `services/hca-schema-validator`. Config is `pyrightconfig.json` at repo root. Runs one pass per venv since each has a disjoint dep set.
 
-Note: `hca-anndata-tools` doesn't declare pyright as a dev dep — its files are checked from the `hca-anndata-mcp` venv (which depends on tools, so it's a superset). This asymmetry persists under uv: the uv migration (#248) deliberately does **not** use a workspace, so each project keeps its own venv rather than sharing one.
+Note: `hca-anndata-tools` doesn't declare pyright as a dev dep — its files are checked from the `hca-anndata-mcp` venv (which depends on tools, so it's a superset). `hca-tracker-client` is checked the same way, from the `hca-tracker-mcp` venv. This asymmetry persists under uv: the uv migration (#248) deliberately does **not** use a workspace, so each project keeps its own venv rather than sharing one.
 
 ```bash
 make typecheck
@@ -86,7 +86,7 @@ make batch-submit-job ENV=dev
 
 ## Release Policy
 
-All three publishable packages (`hca-schema-validator`, `hca-anndata-tools`, `hca-anndata-mcp`) are pre-1.0 and treated as still iterating. Two flags in `release-please-config.json` shape the bump behavior:
+All five publishable packages (`hca-schema-validator`, `hca-anndata-tools`, `hca-anndata-mcp`, `hca-tracker-client`, `hca-tracker-mcp`) are pre-1.0 and treated as still iterating. Two flags in `release-please-config.json` shape the bump behavior:
 
 - **`bump-minor-pre-major: true`** — on a 0.x package, `feat!` (BREAKING CHANGE) produces a minor bump (`0.12.1` → `0.13.0`), not release-please's default `0.x` → `1.0.0` promotion.
 - **`bump-patch-for-minor-pre-major: true`** — non-breaking `feat:` commits produce a patch bump (`0.12.1` → `0.12.2`), not the default minor. This keeps the minor bump as the explicit "breaking change" signal at 0.x.
@@ -153,6 +153,8 @@ make batch-publish-container ENV=dev     # then ENV=prod, from main
 - `services/hca-schema-validator/` - Service wrapper for the published PyPI package
 - `services/cellxgene-validator/` - Wrapper for cellxgene-schema validator
 - `packages/hca-schema-validator/` - Publishable PyPI package (automated releases via release-please)
+- `packages/hca-anndata-tools/`, `packages/hca-anndata-mcp/` - h5ad inspection/editing library and its MCP server
+- `packages/hca-tracker-client/`, `packages/hca-tracker-mcp/` - HCA Atlas Tracker listing/download library (downloads run in an aria2 daemon) and its MCP server
 - `deployment/` - Dockerfiles and deployment configs per service
 
 **Schema-Driven Validation:**
@@ -167,8 +169,10 @@ make batch-publish-container ENV=dev     # then ENV=prod, from main
 
 ## Environment Configuration
 
-- `.env` - Google Service Account JSON credentials for Sheets API access
+- `.env` - Google Service Account JSON credentials for Sheets API access, and the HCA Atlas Tracker API token (`HCA_TRACKER_URL`, `HCA_TRACKER_API_TOKEN`) read by `hca-tracker-mcp`
 - `.env.make` - AWS deployment settings (account IDs, regions, role ARNs for dev/prod)
+
+**Never read `.env`** (no `cat`, `Read`, `grep`, or sourcing it into a command whose output you see). It holds live credentials, and anything read lands in the transcript. Code that needs a value loads it itself (as `hca_tracker_client.load_config` does); to check one is set, test for the key's presence without printing its value, or ask the user.
 
 ## Key Technologies
 
