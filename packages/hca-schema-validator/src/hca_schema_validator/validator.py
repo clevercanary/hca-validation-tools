@@ -2673,6 +2673,7 @@ def _retired_findings(adata):
                     # Both spellings are columns. Stripping the suffix would leave
                     # two columns under one name -- the collision finding 1
                     # established for replacements, by another route.
+                    collides[feature] = "in file"
                     replacements["suffix_pair"][feature] = gene
                 else:
                     plain["versioned"].add(feature)
@@ -2726,6 +2727,15 @@ def _retired_findings(adata):
         if claimed[terminal] > 1:
             collides[feature] = "shared"
             replacements["same_gene"][feature] = replacements["remappable"].pop(feature)
+    # The same test for suffixes: ENSG...17 and ENSG...18 with no bare form both
+    # strip to one name, and would collide with each other rather than with an
+    # existing column.
+    bare = Counter(candidates[f] for f in plain["versioned"])
+    for feature in sorted(plain["versioned"]):
+        if bare[candidates[feature]] > 1:
+            collides[feature] = "shared"
+            plain["versioned"].discard(feature)
+            replacements["suffix_pair"][feature] = candidates[feature]
 
     # Every warned identifier lands in exactly one group, so this is non-empty
     # whenever `warned` is; it drops the groups with nothing in them so each
@@ -2786,7 +2796,14 @@ def _action(name: str, feature: str, suffixed: set[str]) -> str:
 
 
 def _what_happened(
-    feature: str, name: str, successor: str | None, candidates: dict, by_old: dict, splits: dict, suffixed: set[str]
+    feature: str,
+    name: str,
+    successor: str | None,
+    candidates: dict,
+    by_old: dict,
+    splits: dict,
+    suffixed: set[str],
+    collides: dict,
 ) -> str:
     """What Ensembl did to this identifier, in as few words as carry it.
 
@@ -2795,7 +2812,11 @@ def _what_happened(
     """
     suffix = "; version suffix" if feature in suffixed and name not in ("versioned", "suffix_pair") else ""
     if name == "suffix_pair":
-        return "version suffix; bare ID also in file"
+        return (
+            "version suffix; bare ID also in file"
+            if collides.get(feature) == "in file"
+            else "version suffix; other spellings in file"
+        )
     if name == "excluded":
         return f"patch or alt sequence{suffix}"
     if name == "newer":
@@ -2834,8 +2855,9 @@ def _feature_verdicts(
     for name, group in found.items():
         for feature in group:
             successor = group[feature] if isinstance(group, dict) else None
-            happened = _what_happened(feature, name, successor, candidates, by_old, splits, suffixed)
-            flags = [f for f in (collides.get(feature), _SPAN_FLAGS.get(spans.get(feature, ""))) if f]
+            happened = _what_happened(feature, name, successor, candidates, by_old, splits, suffixed, collides)
+            collision = collides.get(feature) if name != "suffix_pair" else None
+            flags = [f for f in (collision, _SPAN_FLAGS.get(spans.get(feature, ""))) if f]
             marked = f"{happened} ({', '.join(flags)})" if flags else happened
             verdicts[feature] = f"{marked} [{_action(name, feature, suffixed)}]"
     return verdicts
@@ -2882,7 +2904,7 @@ _CLASS_ROWS = (
     ("split", "split into several genes"),
     ("excluded", "not on primary assembly"),
     ("versioned", "version suffix only"),
-    ("suffix_pair", "version suffix; bare ID also in file"),
+    ("suffix_pair", "version suffix; collides with another spelling"),
     ("newer", "issued after the allowed set"),
     ("unclassified", "no event recorded"),
 )
@@ -2971,6 +2993,12 @@ def _retired_detail_block(
         for feature in sorted(group):
             successor = group[feature] if isinstance(group, dict) else ""
             status = _CLASS_TEXT[name]
+            if name == "suffix_pair":
+                status = (
+                    "version suffix; bare ID also in file"
+                    if collides.get(feature) == "in file"
+                    else "version suffix; other spellings in file"
+                )
             if name in ("remappable", "same_gene", "off_reference"):
                 event = "split" if feature in splits else by_old[candidates[feature]].event
                 status = event if event in ("renamed", "merged", "split") else "replaced"

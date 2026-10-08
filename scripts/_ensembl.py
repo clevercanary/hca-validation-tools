@@ -5,9 +5,9 @@ which are run as files rather than as a package -- Python puts the script's own
 directory first on the path, so a plain ``import _ensembl`` resolves from any
 working directory.
 
-Only the two duplications with teeth live here. The connection details are still
-written out in each generator: losing track of those produces an immediate
-connection error, which is a kind of mistake that reports itself.
+Everything the two generators must agree on lives here: where the server is
+and how a release's database is named, which releases it serves, how a name is
+read as a release, and how a committed table is written.
 
     write_csv_gz       the reproducible-bytes guarantee, which is the only check
                        there is that a regenerated artifact is right

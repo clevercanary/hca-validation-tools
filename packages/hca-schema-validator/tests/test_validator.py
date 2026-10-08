@@ -2764,6 +2764,14 @@ def test_both_spellings_present_is_a_collision_not_a_strip():
     assert "bare ID also in file" in row and "[review]" in row, row
 
 
+def test_two_suffixed_spellings_collide_with_each_other():
+    """ENSG...17 and ENSG...18 with no bare form both strip to one name."""
+    a, b = f"{_CURRENT}.17", f"{_CURRENT}.18"
+    for written in (a, b):
+        row = _rows([a, b], written)
+        assert "other spellings in file" in row and "[review]" in row, row
+
+
 def test_a_suffixed_newer_gene_is_never_told_nothing_to_do():
     """The gene is newer than the allowed set; the suffix is still a defect."""
     written = f"{_NEWER_THAN_REFERENCE}.2"
