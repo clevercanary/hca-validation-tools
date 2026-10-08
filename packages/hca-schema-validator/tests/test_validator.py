@@ -2786,14 +2786,14 @@ def test_each_warning_carries_its_own_verdict():
     _, _, verdicts = _retired_findings(_retired_adata([_RENAMED, _NO_SUCCESSOR]))
     pile = [f"Feature ID '{g}' in 'var' not found in GENCODE v48 (Ensembl 114)." for g in (_RENAMED, _NO_SUCCESSOR)]
     annotated = annotate_feature_id_warnings(pile, verdicts)
-    assert f"-> {_RENAMED_SUCCESSOR} [rename]" in annotated[0], annotated[0]
+    assert f"now {_RENAMED_SUCCESSOR} [rename]" in annotated[0], annotated[0]
     assert "retired, no successor [drop]" in annotated[1], annotated[1]
 
 
 def test_an_unclassified_warning_is_left_alone():
     """A spike-in warns for its own reasons and this check has nothing to add."""
     pile = ["Feature ID 'ERCC-00002' in 'var' not found in GENCODE v48 (Ensembl 114)."]
-    assert annotate_feature_id_warnings(pile, {_RENAMED: "-> X [rename]"}) == pile
+    assert annotate_feature_id_warnings(pile, {_RENAMED: "now X [rename]"}) == pile
 
 
 def test_annotation_keeps_the_prefix_both_sorters_match_on():

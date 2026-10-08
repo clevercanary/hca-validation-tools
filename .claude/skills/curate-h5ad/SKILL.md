@@ -123,9 +123,10 @@ Report these but don't attempt to fix:
   | tag | whose it is | what to do |
   |---|---|---|
   | `[rename]` | producer | relay: plain renames, safe to apply in place. The line names the successor |
-  | `[combine]` | **producer** | relay as a decision, never as a fix. Ensembl has made several of this file's columns one gene; combining them is a judgement about whether their counts are independent. Do not remap these |
+  | `[review]` | **producer** | relay as a decision, never as a fix. Ensembl has made several of this file's columns one gene; whether their counts can be added is a judgement about the data. Do not remap these |
   | `[drop]` | producer | relay: nothing in the allowed gene set to point at, so the column can only go |
-  | `[drop or re-align]` | producer | relay, and say which kind. A split locus cannot have its reads divided after the fact. A patch/alt gene in quantity means the file was aligned against a reference including patch sequences — worth raising on its own, since it makes the counts hard to compare |
+  | `[drop or re-align]` | producer | relay: a split locus cannot have its reads divided after the fact, but they are recoverable by re-quantifying from source |
+  | `[drop]` | producer | relay: nothing in the allowed gene set to point at. Patch/alt genes land here too, and **in quantity they are a finding of their own** — the file was aligned against a reference including patch sequences, which makes its counts hard to compare |
   | `[strip suffix]` | producer | relay: the genes are current, only the written form is wrong |
   | `[none]` | **nobody — do not relay as a defect** | the gene is real and current; our allowed gene set is older than the file's annotation. Note it, and flag that the vendored cellxgene-schema is behind |
   | `[ask]` | producer, as a question | ask what reference built the file; these identifiers come from outside Ensembl's GRCh38 history |

@@ -183,8 +183,10 @@ Ensembl says what changed. The reference says what is nameable. We only report; 
     per-identifier pile by matching that phrase, so a summary containing it would be sorted to the bottom of
     what it introduces.
 
-5.7 No finding contains `are not in`. `/curate-h5ad` routes `gene_annotation_version` findings by that
-    phrase, and these print directly beside those.
+5.7 No finding contains `are not in the declared release` or `did not exist in`. `/curate-h5ad` routes
+    `gene_annotation_version` findings by those phrases, and these print directly beside those. The bare
+    words "are not in" are not reserved -- the summary says "gene IDs are not in GENCODE v48" -- so the
+    invariant names the phrases that actually route, not a substring of them.
 
 5.8 5.6 and 5.7 are invariants of **prose**, held by tests, because the ordering rule is a substring match on
     output the validator itself wrote. Replacing that mechanism is #729.

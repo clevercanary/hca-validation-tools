@@ -149,13 +149,13 @@ Ensembl's `stable_id_event` records what became of each one, shipped as `gene_id
 | tag | what happened | what it means |
 |---|---|---|
 | `[rename]` | renamed to X / merged into X | the successor is in the allowed gene set and not already in this file |
-| `[combine]` | renamed to X / merged into X, which is already in this file | or several of these now point at one gene — renaming would leave columns sharing a name |
-| `[drop or re-align]` | split into X, Y | a column's reads cannot be divided between them after the fact |
+| `[review]` | renamed to X / merged into X, which is already in this file, or shared with other IDs here | renaming would leave columns sharing a name, so whether to add the counts is a decision |
 | `[drop]` | retired, no successor | nothing in the allowed gene set to point at |
-| `[drop]` | replaced by a gene the allowed gene set does not carry | the successor is on a patch or alt sequence, or postdates the set |
-| `[drop or re-align]` | on a patch or alt sequence, so not in the allowed gene set | the file was aligned against a reference including patch sequences |
+| `[drop]` | successor not in the allowed set | the successor is on a patch or alt sequence, or postdates the set |
+| `[drop]` | patch or alt sequence | not on the primary assembly, so no reference gene set carries it |
+| `[drop or re-align]` | split into X, Y | the reads cannot be divided after the fact, but are recoverable under the successors' names |
+| `[strip suffix]` | version suffix | the gene is in the allowed gene set; the written form is not |
 | `[none]` | issued after GENCODE v48 | a real current gene; the file's annotation is newer than the allowed set, not wrong |
-| `[strip suffix]` | in the allowed gene set, version suffix only | the gene is fine; the written form is not |
 | `[ask]` | no event recorded | in neither the allowed gene set nor Ensembl's GRCh38 event history |
 
 **What "current" means here.** The gene set a file is validated against is not all of Ensembl. It is GENCODE's reference annotation — **Ensembl 114 restricted to the primary assembly** — the chromosomes plus the unplaced and unlocalized scaffolds, excluding alt loci and patches. Measured against r114: Ensembl lists 86,364 human genes, this set holds 78,894 — 78,686 on chromosomes and 208 on scaffolds — and every one of the 7,470 absent sits on a patch or alt sequence. Aligners count against the primary assembly for the same reason it is drawn that way — include a region and its alternate copy and reads map to both — so a successor annotated only on a patch is alive in Ensembl and still unusable as a column name. That is the **off the reference** class, 13 identifiers table-wide; CELLxGENE rejects such a column too. The sentence the check prints is derived from the vendored `gene_info.yml`, so bumping `cellxgene-schema` moves it.
@@ -171,10 +171,10 @@ Three populations used to share the unclassified bucket, and the shipped interva
 **Every warning in the pile carries its own verdict.** The summary can name only a handful of examples per class, so on a file with 625 identifiers in one class it describes the problem and withholds the data needed to act on it. Each per-identifier warning is therefore annotated with the fate of the gene it names, which makes the pile the per-gene answer and the summary its index — `grep "\[rename\]"` returns the list of renames:
 
 ```
-Feature ID 'ENSG00000254138' … -- renamed to ENSG00000289601 [rename].
-Feature ID 'ENSG00000236938' … -- renamed to ENSG00000285090, which is already in this file [combine].
-Feature ID 'ENSG00000002079' … -- retired, no successor [drop].
-Feature ID 'ENSG00000282823' … -- on a patch or alt sequence, so not in the allowed gene set [drop or re-align].
+Feature ID 'ENSG00000148362' in 'var' not found in GENCODE v48 (Ensembl 114): now ENSG00000310560 [rename]
+Feature ID 'ENSG00000236938' in 'var' not found in GENCODE v48 (Ensembl 114): now ENSG00000285090 (in file) [review]
+Feature ID 'ENSG00000224247' in 'var' not found in GENCODE v48 (Ensembl 114): retired, no successor [drop]
+Feature ID 'ENSG00000282823' in 'var' not found in GENCODE v48 (Ensembl 114): patch or alt sequence [drop]
 ```
 
 **What happened and what to do are separate fields**, because they do not map one to one: the same Ensembl merge is a plain rename when its target is absent from the file and a judgement call when it is already there. The action is a bracketed tag so it is greppable, and the reasoning behind each is stated once in the finding that counts the class rather than repeated on every line.

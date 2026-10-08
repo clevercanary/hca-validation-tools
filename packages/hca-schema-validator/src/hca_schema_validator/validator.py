@@ -2636,6 +2636,10 @@ def _retired_findings(adata):
     # source dataset as against an integrated object, or "column", which is the
     # matrix's word for it and belongs in the legend where the mechanics are.
     collides: dict[str, str] = {}
+    # Where a chain ends in a division, keyed by feature. A -> B where B later
+    # splits is a split, and reading the first hop's event called it a merge --
+    # or, in the pile, "retired, no successor".
+    splits: dict[str, list[str]] = {}
     plain: dict[str, set[str]] = {
         "dead": set(),
         "split": set(),
@@ -2656,6 +2660,7 @@ def _retired_findings(adata):
             continue
         terminal, split_into = _resolve(gene, by_old)
         if split_into:
+            splits[feature] = split_into
             # A split is only worth reporting as one if at least one piece is in
             # the reference. 46 of the table's 94 splits divide into genes none of
             # which are, and offering their spans would send a curator after
@@ -2698,8 +2703,8 @@ def _retired_findings(adata):
     spans = _span_verdicts(found, candidates, by_old, new_spans)
     warnings = [_retired_summary_message(n_distinct, occurrences)]
     warnings.extend(_retired_summary_table(found))
-    warnings.append(_retired_detail_block(found, collides, spans, candidates, by_old))
-    return warnings, [], _feature_verdicts(found, candidates, by_old, collides, spans)
+    warnings.append(_retired_detail_block(found, collides, spans, candidates, by_old, splits))
+    return warnings, [], _feature_verdicts(found, candidates, by_old, collides, spans, splits)
 
 
 def check_retired_feature_ids(adata):
@@ -2740,7 +2745,7 @@ _EVENT_PHRASES = {
 }
 
 
-def _what_happened(feature: str, name: str, successor: str | None, candidates: dict, by_old: dict) -> str:
+def _what_happened(feature: str, name: str, successor: str | None, candidates: dict, by_old: dict, splits: dict) -> str:
     """What Ensembl did to this identifier, in as few words as carry it.
 
     Compact because it repeats on every line of a pile that runs to thousands.
@@ -2755,14 +2760,15 @@ def _what_happened(feature: str, name: str, successor: str | None, candidates: d
     if name == "unclassified":
         return "no event recorded"
 
-    entry = by_old[candidates[feature]]
+    if pieces := splits.get(feature):
+        # The chain's own ending, not the first hop's: A -> B where B later splits
+        # is a split, whatever Ensembl called the first step.
+        return f"split into {', '.join(sorted(pieces))}"
     if name == "off_reference":
         return "successor not in the allowed set"
-    if entry.event == "split":
-        return f"split -> {', '.join(sorted(entry.successors))}"
     if successor is None:
         return "retired, no successor"
-    return f"-> {successor}"
+    return f"now {successor}"
 
 
 # A claimed replacement the genome does not simply confirm, said on the row of
@@ -2774,13 +2780,15 @@ _SPAN_FLAGS = {
 }
 
 
-def _feature_verdicts(found: dict, candidates: dict, by_old: dict, collides: dict, spans: dict) -> dict[str, str]:
+def _feature_verdicts(
+    found: dict, candidates: dict, by_old: dict, collides: dict, spans: dict, splits: dict
+) -> dict[str, str]:
     """One ``what happened [action]`` clause per feature, as written."""
     verdicts = {}
     for name, group in found.items():
         for feature in group:
             successor = group[feature] if isinstance(group, dict) else None
-            happened = _what_happened(feature, name, successor, candidates, by_old)
+            happened = _what_happened(feature, name, successor, candidates, by_old, splits)
             flags = [f for f in (collides.get(feature), _SPAN_FLAGS.get(spans.get(feature, ""))) if f]
             marked = f"{happened} ({', '.join(flags)})" if flags else happened
             verdicts[feature] = f"{marked} [{_ACTIONS[name]}]"
@@ -2813,7 +2821,7 @@ def annotate_feature_id_warnings(warnings: list[str], verdicts: dict[str, str]) 
     for warning in warnings:
         matched = _FEATURE_ID_IN_WARNING.search(warning)
         verdict = verdicts.get(matched.group(1)) if matched else None
-        annotated.append(f"{warning.rstrip('.')} -- {verdict}." if verdict else warning)
+        annotated.append(f"{warning.rstrip('.')}: {verdict}" if verdict else warning)
     return annotated
 
 
@@ -2894,7 +2902,9 @@ def _retired_summary_table(found: dict) -> list[str]:
     return ["Summary:\n" + "\n".join(lines), "Actions:\n" + "\n".join(guide)]
 
 
-def _retired_detail_block(found: dict, collides: dict, spans: dict, candidates: dict, by_old: dict) -> str:
+def _retired_detail_block(
+    found: dict, collides: dict, spans: dict, candidates: dict, by_old: dict, splits: dict
+) -> str:
     """Every identifier, once, in three aligned columns, grouped by action.
 
     One row per identifier rather than one per warning: an identifier in var and
@@ -2914,7 +2924,7 @@ def _retired_detail_block(found: dict, collides: dict, spans: dict, candidates: 
             successor = group[feature] if isinstance(group, dict) else ""
             status = _CLASS_TEXT[name]
             if name in ("remappable", "same_gene", "off_reference"):
-                event = by_old[candidates[feature]].event
+                event = "split" if feature in splits else by_old[candidates[feature]].event
                 status = event if event in ("renamed", "merged", "split") else "replaced"
                 if reason := collides.get(feature):
                     status += f"; successor {'already in file' if reason == 'in file' else 'shared'}"
