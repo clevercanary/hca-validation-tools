@@ -2436,6 +2436,29 @@ def _never_retired_class(gene: str) -> str:
     return "newer" if min(first for first, _ in runs) > _REFERENCE_RELEASE else "excluded"
 
 
+def _terminals(gene: str, by_old: dict[str, GeneEvent], checker, seen: set[str] | None = None) -> set[str]:
+    """Every current gene reachable from an identifier, however the path bends.
+
+    _resolve follows a single chain and stops at a division, which is the right
+    shape for a rename and the wrong one for a split whose pieces have histories
+    of their own. This walks every branch, through renames and further splits,
+    and returns the genes at the ends that the allowed gene set carries. The
+    shared seen-set is the cycle guard; a gene reached twice by different
+    branches is counted once.
+    """
+    seen = set() if seen is None else seen
+    if gene in seen:
+        return set()
+    seen.add(gene)
+    entry = by_old.get(gene)
+    if entry is None:
+        return {gene} if checker.is_valid_id(gene) else set()
+    ends: set[str] = set()
+    for successor in entry.successors:
+        ends |= _terminals(successor, by_old, checker, seen)
+    return ends
+
+
 def _resolve(gene: str, by_old: dict[str, GeneEvent]) -> tuple[str | None, list[str]]:
     """Follow an identifier's successors to the end of its chain.
 
@@ -2662,13 +2685,14 @@ def _retired_findings(adata):
             continue
         terminal, split_into = _resolve(gene, by_old)
         if split_into:
-            # Each branch is followed as far as a rename chain is, because the
-            # pieces have their own histories: Ensembl split ENSG00000157828 into
-            # two genes at r76 and later brought both back together as
-            # ENSG00000280969. Stopping at the split reported two dead ends and
-            # told the curator to drop a column that has a current gene to point
-            # at. Three identifiers in the shipped table have that shape.
-            ends = {end for piece in split_into if (end := _resolve(piece, by_old)[0]) and checker.is_valid_id(end)}
+            # Every branch followed to every current gene it reaches, through
+            # renames and further splits alike. Ensembl split ENSG00000157828 into
+            # two genes at r76 and later brought both back together as one;
+            # ENSG00000207555's pieces split again before reaching five current
+            # genes. Stopping at the first split, or one level below it, reported
+            # dead ends for both and told the curator to drop columns that have
+            # current genes to point at. Six identifiers in the table move.
+            ends = _terminals(gene, by_old, checker)
             if len(ends) == 1:
                 # Out as several pieces, back as one gene: a replacement, not a
                 # split, so it takes the ordinary rename-or-decide rules below

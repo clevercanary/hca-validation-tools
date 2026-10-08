@@ -2576,19 +2576,19 @@ _NO_SUCCESSOR = "ENSG00000002079"
 # Split at r100 into three genes, two of them in the reference. Breast v1's only
 # split identifier has this shape.
 _SPLIT = "ENSG00000183791"
-# Split into genes none of which resolve to anything in the allowed gene set:
-# 43 of the table's 94 splits have this shape once each branch is followed.
-_SPLIT_OFF_REFERENCE = "ENSG00000207555"
+# Split into genes none of which reach anything in the allowed gene set at any
+# depth: 38 of the table's 94 splits have this shape once every branch is walked.
+_SPLIT_OFF_REFERENCE = "ENSG00000221145"
 # Split at r76 into two genes that Ensembl later brought back together as one.
 # Following the branches makes this a rename, not a dead end; 3 splits converge
 # on a single current gene this way.
 _SPLIT_CONVERGENT = "ENSG00000157828"
 _SPLIT_CONVERGENT_END = "ENSG00000280969"
-# Split into six genes, five of which are now dead ends and one of which reaches
-# a current gene. The single survivor is the only thing a column can be pointed
-# at, and stopping at the split reported all six as unusable.
-_SPLIT_ONE_SURVIVOR = "ENSG00000207553"
-_SPLIT_ONE_SURVIVOR_END = "ENSG00000283490"
+# Split into six, whose pieces split again before reaching six current genes.
+# Stopping at the first split reported six dead ends; one level down reported a
+# single survivor; only walking every branch finds all six.
+_SPLIT_NESTED = "ENSG00000207553"
+_SPLIT_NESTED_ENDS = ("ENSG00000283289", "ENSG00000283685")
 # Replaced by a gene that is alive in Ensembl but annotated on a patch sequence,
 # so it is absent from the allowed gene set. 13 identifiers have this shape.
 _OFF_REFERENCE = "ENSG00000237093"
@@ -2725,18 +2725,20 @@ def test_a_split_whose_branches_converge_is_a_rename():
     assert f"-> {_SPLIT_CONVERGENT_END}" in row and "[rename]" in row, row
 
 
-def test_a_split_with_one_surviving_branch_names_it():
-    """Six pieces, five dead, one reaching a current gene.
+def test_a_nested_split_reaches_every_terminal():
+    """Pieces that split again are followed to the genes they finally become.
 
-    The survivor is the only thing the column can point at; before the branches
-    were followed, all six read as unusable and the column was dropped.
+    Stopping at the first split reported six dead ends; one level down, a single
+    survivor. Only walking every branch finds the six current genes.
     """
-    row = _rows([_SPLIT_ONE_SURVIVOR], _SPLIT_ONE_SURVIVOR)
-    assert f"-> {_SPLIT_ONE_SURVIVOR_END}" in row and "[rename]" in row, row
+    _, _, verdicts = _retired_findings(_retired_adata([_SPLIT_NESTED]))
+    verdict = verdicts[_SPLIT_NESTED]
+    assert verdict.startswith("split into") and "[drop or re-align]" in verdict, verdict
+    assert all(end in verdict for end in _SPLIT_NESTED_ENDS), verdict
 
 
 def test_a_split_with_no_usable_pieces_is_dropped():
-    """43 of the table's 94 splits resolve to nothing in the allowed gene set."""
+    """38 of the table's 94 splits reach nothing in the allowed gene set at any depth."""
     row = _rows([_SPLIT_OFF_REFERENCE], _SPLIT_OFF_REFERENCE)
     assert "split; successor not in the allowed set" in row and "[drop]" in row, row
 
