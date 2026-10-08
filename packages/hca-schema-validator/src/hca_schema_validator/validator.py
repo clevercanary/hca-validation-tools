@@ -2377,20 +2377,32 @@ def _gene_id_events() -> tuple[dict[str, GeneEvent], dict[str, tuple]]:
     several rows and the span wanted at the end belongs to whichever identifier
     the chain stopped on.
     """
-    by_old: dict[str, GeneEvent] = {}
+    # Rows are grouped per retired identifier first and the records built after,
+    # so a GeneEvent is never mutated once it exists -- its successors are a tuple.
+    # The generator writes one event and one old span per identifier; a row that
+    # disagrees with an earlier one means the artifact is not the generator's
+    # output, and that is refused rather than read.
+    events: dict[str, str] = {}
+    old_spans: dict[str, tuple | None] = {}
+    successors: dict[str, list[str]] = {}
     new_spans: dict[str, tuple] = {}
     with _shipped_table(_EVENTS_PATH) as lines:
         for row in csv.DictReader(lines):
             old, new = row["old_id"], row["new_id"]
-            entry = by_old.get(old)
-            if entry is None:
-                entry = GeneEvent(row["event"], [], _span(row, "old"))
-                by_old[old] = entry
+            event, old_span = row["event"], _span(row, "old")
+            if old in events and (events[old], old_spans[old]) != (event, old_span):
+                raise ValueError(
+                    f"{_EVENTS_PATH.name}: rows for {old} disagree on event or span "
+                    f"({events[old]!r}/{old_spans[old]} vs {event!r}/{old_span}); not a generator output"
+                )
+            events[old], old_spans[old] = event, old_span
+            successors.setdefault(old, [])
             if new:
-                entry.successors.append(new)
+                successors[old].append(new)
                 span = _span(row, "new")
                 if span is not None:
                     new_spans[new] = span
+    by_old = {old: GeneEvent(events[old], tuple(successors[old]), old_spans[old]) for old in events}
     return by_old, new_spans
 
 

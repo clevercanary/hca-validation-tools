@@ -93,7 +93,12 @@ def write_csv_gz(path: Path, comment: str, header: Sequence[str], rows: Iterable
 
 
 def connect(database: str | None = None):
-    """Open a connection to Ensembl's public server, optionally on one database."""
+    """Open a connection to Ensembl's public server, optionally on one database.
+
+    Checks for the driver itself, so a direct call without it fails with the
+    same message main() would have given rather than an AttributeError on None.
+    """
+    require_driver()
     return pymysql.connect(host=HOST, user=USER, port=PORT, database=database, connect_timeout=60)
 
 
