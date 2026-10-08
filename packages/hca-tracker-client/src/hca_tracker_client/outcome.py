@@ -61,8 +61,8 @@ def record_error(job: Job, store: JobStore, status: dict, aria2: Aria2 | None) -
         )
     else:
         message = f"aria2 error {code}: {detail or 'no detail'}. Run start_download again to resume"
-    job = store.end(job, FAILED, message, code)
-    if aria2 is not None:
+    if aria2 is not None:  # forget it, and persist that, before the outcome is final
         with contextlib.suppress(Aria2Error):
             aria2.call("removeDownloadResult", job.job_id)
-    return job
+            aria2.call("saveSession")
+    return store.end(job, FAILED, message, code)

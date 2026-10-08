@@ -288,7 +288,8 @@ class Downloads:
             if final.exists():
                 done = [job for job in previous if job.state == DONE]
                 if done and final.stat().st_size == size and done[-1].sha256 == probed.sha256:
-                    return {**summary, "state": DONE, "cached": True, "verified": done[-1].verified}
+                    cached = {"job_id": done[-1].job_id, "state": DONE, "cached": True, "verified": done[-1].verified}
+                    return {**summary, **cached}
                 raise CheckError(
                     f"{final} already exists but is not a verified download of this file revision; "
                     "delete it with delete_download (or move it) first"
@@ -343,7 +344,7 @@ class Downloads:
             # refreshed, found missing from aria2, and marked interrupted for good.
             # If the download finishes first, the hook skips it and download_status
             # finalizes it from aria2's result.
-            self.store.save(job)
+            self.store.create(job)
 
             result = {**self._describe(job), "warnings": warnings}
             if already:
@@ -391,6 +392,7 @@ class Downloads:
                 return self._describe(record_error(job, self.store, live, aria2))
             with contextlib.suppress(Aria2Error):
                 aria2.call("removeDownloadResult", job_id)
+                aria2.call("saveSession")  # else a crash before the next checkpoint revives it
         # If the hook recorded an outcome meanwhile, the store keeps it.
         return self._describe(self.store.end(job, CANCELLED, _cancel_message(job)))
 
@@ -442,25 +444,27 @@ class Downloads:
         """
         final = final_path(Path(path).expanduser().absolute())
         resolved = final.resolve()
-        jobs = [job for job in self.store.all() if job.final.resolve() == resolved]
-        in_cache = resolved.is_relative_to(self.cache_dir.resolve()) and not any(
-            resolved.is_relative_to(folder.resolve()) for folder in self._internal_dirs()
-        )
-        if not in_cache and not jobs:
-            raise JobError(f"{path} is not in the download cache or a file a download job saved")
+        # Under start's lock, so a download being registered can't lose its files.
+        with self.store.locked():
+            jobs = [job for job in self.store.all() if job.final.resolve() == resolved]
+            in_cache = resolved.is_relative_to(self.cache_dir.resolve()) and not any(
+                resolved.is_relative_to(folder.resolve()) for folder in self._internal_dirs()
+            )
+            if not in_cache and not jobs:
+                raise JobError(f"{path} is not in the download cache or a file a download job saved")
 
-        aria2 = connect(self.cache_dir)
-        if any(self._refresh(job, aria2)[0].state in ACTIVE for job in jobs):
-            raise JobError(f"{final.name} is still downloading; cancel it with cancel_download first")
+            aria2 = connect(self.cache_dir)
+            if any(self._refresh(job, aria2)[0].state in ACTIVE for job in jobs):
+                raise JobError(f"{final.name} is still downloading; cancel it with cancel_download first")
 
-        targets = [p for p in (final, part_path(final), control_path(final)) if p.is_file()]
-        if not targets:
-            raise JobError(f"Nothing to delete at {final}")
-        freed = sum(_allocated(p) for p in targets)
-        for target in targets:
-            target.unlink()
-        for job in jobs:
-            self.store.delete(job.job_id)
+            targets = [p for p in (final, part_path(final), control_path(final)) if p.is_file()]
+            if not targets:
+                raise JobError(f"Nothing to delete at {final}")
+            freed = sum(_allocated(p) for p in targets)
+            for target in targets:
+                target.unlink()
+            for job in jobs:
+                self.store.delete(job.job_id)
         return {"deleted": [str(p) for p in targets], "freed_bytes": freed, "freed": human_size(freed)}
 
 

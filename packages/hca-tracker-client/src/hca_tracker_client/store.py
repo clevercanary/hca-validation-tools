@@ -120,23 +120,36 @@ class JobStore:
         job.finished_at = time.time()
         return self.save(job)
 
+    def create(self, job: Job) -> None:
+        """Write a new record; the only way a record comes into existence."""
+        with file_lock(self._save_lock):
+            self._write(job)
+
     def save(self, job: Job) -> Job:
-        """Write the record atomically, unless it is already finished; returns the stored record.
+        """Update an existing, unfinished record; returns the stored record.
 
         The hook and the server both load, change and save records. A finished
         record is never rewritten, so a copy loaded before the hook recorded
-        the outcome cannot undo it.
+        the outcome cannot undo it; a deleted one is not recreated by a late hook.
         """
-        self.directory.mkdir(parents=True, exist_ok=True)
-        with file_lock(self.directory / ".save.lock"):
+        with file_lock(self._save_lock):
             current = self.load(job.job_id)
-            if current is not None and current.state not in ACTIVE:
+            if current is None:
+                return job
+            if current.state not in ACTIVE:
                 return current
-            fd, tmp = tempfile.mkstemp(dir=self.directory, suffix=".tmp")
-            with os.fdopen(fd, "w") as handle:
-                json.dump(asdict(job), handle, indent=2)
-            Path(tmp).replace(self._file(job.job_id))
+            self._write(job)
         return job
+
+    @property
+    def _save_lock(self) -> Path:
+        return self.directory / ".save.lock"
+
+    def _write(self, job: Job) -> None:
+        fd, tmp = tempfile.mkstemp(dir=self.directory, suffix=".tmp")
+        with os.fdopen(fd, "w") as handle:
+            json.dump(asdict(job), handle, indent=2)
+        Path(tmp).replace(self._file(job.job_id))
 
     def load(self, job_id: str) -> Job | None:
         if not job_id.isalnum():

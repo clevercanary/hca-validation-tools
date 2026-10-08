@@ -43,6 +43,7 @@ def test_download_end_to_end(downloads, tracker, gut_file):
 
     again = downloads.start("gut", "gut", "gut-r1.h5ad")
     assert again["cached"] is True
+    assert again["job_id"] == started["job_id"]
     assert again["state"] == "done"
 
     listed = downloads.list_files()["files"]

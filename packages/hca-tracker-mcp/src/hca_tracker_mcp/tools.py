@@ -29,7 +29,7 @@ def _call(func: Callable[..., dict], *args: Any, **kwargs: Any) -> dict:
         return {"error": str(error)}
     except Exception as error:  # an unexpected failure must not leak a URL or the token
         token = None
-        with contextlib.suppress(TrackerError):
+        with contextlib.suppress(Exception):
             token = load_config().api_token
         return {"error": redact(f"{type(error).__name__}: {error}", token)}
 

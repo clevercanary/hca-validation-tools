@@ -88,7 +88,7 @@ def load_config(env: Mapping[str, str] | None = None, env_file: Path | None = No
     """
     environ = os.environ if env is None else env
     file_values = read_env_file(env_file if env_file is not None else Path.cwd() / ".env")
-    values = {**file_values, **{k: v for k, v in environ.items() if k.startswith(PREFIX) and v}}
+    values = {**file_values, **{k: v for k, v in environ.items() if k.startswith(PREFIX)}}
 
     cache_dir = Path(values.get("HCA_TRACKER_CACHE_DIR") or DEFAULT_CACHE_DIR).expanduser()
     max_concurrent = int(_number(values, "HCA_TRACKER_MAX_CONCURRENT", DEFAULT_MAX_CONCURRENT, int))

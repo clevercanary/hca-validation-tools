@@ -35,3 +35,11 @@ def test_token_not_in_repr(tmp_path):
 def test_bad_number(tmp_path):
     with pytest.raises(ConfigError, match="HCA_TRACKER_MAX_CONCURRENT must be a number"):
         load_config(env={"HCA_TRACKER_MAX_CONCURRENT": "two"}, env_file=tmp_path / ".env")
+
+
+def test_empty_environment_value_overrides_env_file(tmp_path):
+    env_file = tmp_path / ".env"
+    env_file.write_text("HCA_TRACKER_URL=https://tracker.example\nHCA_TRACKER_API_TOKEN=from-file\n")
+    config = load_config(env={"HCA_TRACKER_API_TOKEN": ""}, env_file=env_file)
+    with pytest.raises(ConfigError, match="HCA_TRACKER_API_TOKEN must be set"):
+        config.require_tracker()
