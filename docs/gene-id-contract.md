@@ -158,8 +158,10 @@ Ensembl says what changed. The allowed gene set says what is nameable. We only r
 
 ## 4. Coordinates
 
-4.1 Claimed replacements are held against the genome **offline**, from spans the table carries: the old
-    gene's span in the last release that carried it, and the successor's span in the current one.
+4.1 Claimed replacements **whose successor is in the allowed gene set** are held against the genome
+    **offline**, from spans the table carries: the old gene's span in the last release that carried it, and
+    the successor's span in the current one. A successor outside the set is not compared: on its own contig
+    the comparison could only say "disjoint", and the row is `[drop]` whichever way the spans fall.
 
 4.2 **Four outcomes, stated as geometry.** The check knows where two spans sit and nothing else, so each
     outcome is named by that and not by a verdict on it.
