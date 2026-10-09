@@ -2773,6 +2773,17 @@ def test_a_convergent_split_row_says_the_pieces_rejoined():
     assert "split; pieces rejoined as one gene" in row and "[rename]" in row, row
 
 
+def test_a_suffixed_spelling_of_an_allowed_gene_is_versioned_whatever_the_table_says(monkeypatch):
+    """40 table identifiers were retired after the allowed set's release and are
+    still allowed. Written with a suffix, one is a suffix problem, not a retirement."""
+    from hca_schema_validator import validator as v
+
+    monkeypatch.setattr(v, "_gene_id_events", lambda: ({_CURRENT: v.GeneEvent("retired", (), None)}, {}))
+    row = _rows([f"{_CURRENT}.2"], f"{_CURRENT}.2")
+    assert "version suffix" in row and "[strip suffix]" in row, row
+    assert "[drop]" not in row and "retired" not in row, row
+
+
 def test_a_feature_that_only_starts_like_an_ensembl_id_is_not_classified():
     """Matched whole, not by prefix: ENSG00000141510.beta is a custom feature, not TP53."""
     warnings, _ = check_retired_feature_ids(_retired_adata(["ENSG00000141510.beta", _RENAMED]))

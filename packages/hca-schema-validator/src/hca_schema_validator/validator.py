@@ -2717,10 +2717,17 @@ def _retired_findings(adata):
             # gene, because the suffix is a defect on its own: a newer gene with a
             # suffix would otherwise be told nothing needs changing.
             suffixed.add(feature)
+        if checker.is_valid_id(gene):
+            # Allowed when written bare, so the suffix is the whole problem --
+            # whatever the event table says: 40 of its identifiers were retired
+            # at r115 or r116, after the allowed set, and a suffixed spelling of
+            # one must not be sent down that later history. A suffixed spelling
+            # whose bare form is also here is moved to suffix_pair by the
+            # collision pass below, with the other classes.
+            plain["versioned"].add(feature)
+            continue
         if gene not in by_old:
-            # A suffixed spelling whose bare form is also here is moved to
-            # suffix_pair by the collision pass below, with the other classes.
-            plain["versioned" if checker.is_valid_id(gene) else _never_retired_class(gene)].add(feature)
+            plain[_never_retired_class(gene)].add(feature)
             continue
         terminal, split_into = _resolve(gene, by_old)
         if split_into:
