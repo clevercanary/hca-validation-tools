@@ -1,7 +1,7 @@
 # Contract: gene identifiers, the allowed gene set, and what we say about them
 
-**Status:** Draft — assertions under discussion
-**Date:** 2026-10-06
+**Status:** Accepted with #733 — every clause checked against the code and tables at merge
+**Date:** 2026-10-09
 **Prompted by:** #728 (classify retired feature IDs) and its review. Follow-ons tracked in #729. Supersedes framing in #710.
 
 Ensembl says what changed. The allowed gene set says what is nameable. We only report; the producer decides.
