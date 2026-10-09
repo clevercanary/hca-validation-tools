@@ -151,16 +151,30 @@ def check_gap_builds(gaps: list[tuple[int, int]], builds: dict[int, str | None])
             )
 
 
-def classify(successors_by_old: dict[str, set[str]]) -> dict[str, str]:
-    """Name each retired identifier's event from cardinality alone.
+def classify(
+    successors_by_old: dict[str, set[str]],
+    release_by_old: dict[str, int] | None = None,
+    present_before: set[tuple[str, int]] = frozenset(),
+) -> dict[str, str]:
+    """Name each retired identifier's event from Ensembl's bookkeeping alone.
 
-    Nothing is inferred beyond counting, so every class is a statement about
-    Ensembl's own bookkeeping that a curator can go and check:
+    Nothing is inferred beyond counting and presence, so every class is a
+    statement a curator can go and check:
 
     - retired  -- no successor
-    - renamed  -- one successor, which no other identifier names
-    - merged   -- one successor, which other identifiers also name
+    - renamed  -- one successor, which did not exist before this session and
+                  which no other retired identifier names: a new name for the
+                  same gene
+    - merged   -- one successor, which either already existed in the release
+                  the old identifier was last in -- the surviving gene absorbed
+                  it -- or which other retired identifiers also name
     - split    -- several successors
+
+    ``present_before`` holds ``(gene, release)`` pairs known to exist at that
+    release; ``release_by_old`` says which release each old identifier was
+    last in. Counting claimants alone called 776 of 797 "renamed" identifiers
+    a rename whose successor had been there all along, because Ensembl's own
+    ``X -> X`` row for the survivor is not among the events this table keeps.
 
     A split identifier contributes one row per successor, and each of those rows
     carries ``split`` rather than being re-examined for merge-ness. The old gene
@@ -169,6 +183,7 @@ def classify(successors_by_old: dict[str, set[str]]) -> dict[str, str]:
     parts of a locus.
     """
     incoming = Counter(new for news in successors_by_old.values() for new in news)
+    release_by_old = release_by_old or {}
 
     events = {}
     for old, news in successors_by_old.items():
@@ -177,7 +192,9 @@ def classify(successors_by_old: dict[str, set[str]]) -> dict[str, str]:
         elif len(news) > 1:
             events[old] = "split"
         else:
-            events[old] = "merged" if incoming[next(iter(news))] > 1 else "renamed"
+            new = next(iter(news))
+            survived = (new, release_by_old.get(old)) in present_before
+            events[old] = "merged" if survived or incoming[new] > 1 else "renamed"
     return events
 
 
@@ -396,11 +413,14 @@ def main() -> int:
         file=sys.stderr,
     )
 
-    events_by_old = classify(successors_by_old)
-
+    # Each release is asked for the identifiers last seen in it and for their
+    # successors: an old identifier's span is what the coordinate check needs,
+    # and whether its successor was already there is what tells a rename from a
+    # merge into a surviving gene (classify).
     wanted_old: defaultdict[int, set[str]] = defaultdict(set)
     for old, release in release_by_old.items():
         wanted_old[release].add(old)
+        wanted_old[release] |= successors_by_old[old]
     old_coords: dict[tuple[str, int], tuple[str, int, int, int]] = {}
     for release in sorted(wanted_old):
         t = time.time()
@@ -410,6 +430,8 @@ def main() -> int:
             f"  r{release}: {len(found):,}/{len(wanted_old[release]):,} coordinates ({time.time() - t:.1f}s)",
             file=sys.stderr,
         )
+
+    events_by_old = classify(successors_by_old, release_by_old, set(old_coords))
 
     successors = {new for news in successors_by_old.values() for new in news}
     new_coords = {gene: span for gene, span in current_coords.items() if gene in successors}

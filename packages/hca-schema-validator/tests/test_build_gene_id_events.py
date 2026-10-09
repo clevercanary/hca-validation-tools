@@ -95,13 +95,25 @@ def test_no_successor_is_retired():
     assert gen.classify({"A": set()}) == {"A": "retired"}
 
 
-def test_sole_claimant_is_renamed():
-    assert gen.classify({"A": {"X"}}) == {"A": "renamed"}
+def test_sole_claimant_of_a_new_successor_is_renamed():
+    assert gen.classify({"A": {"X"}}, {"A": 100}, set()) == {"A": "renamed"}
 
 
 def test_shared_successor_is_merged():
     """Merge-ness is a property of the successor, so both olds are named by it."""
     assert gen.classify({"A": {"X"}, "B": {"X"}}) == {"A": "merged", "B": "merged"}
+
+
+def test_sole_claimant_of_a_surviving_successor_is_merged():
+    """A -> X where X was already in A's last release: X absorbed A.
+
+    Ensembl records that as A -> X beside X -> X, and the self-mapping is not
+    among the events the table keeps, so presence stands in for it. 776 of the
+    797 identifiers once called renamed had this shape.
+    """
+    assert gen.classify({"A": {"X"}}, {"A": 100}, {("X", 100)}) == {"A": "merged"}
+    # presence in some other release says nothing about this session
+    assert gen.classify({"A": {"X"}}, {"A": 100}, {("X", 90)}) == {"A": "renamed"}
 
 
 def test_several_successors_is_split():

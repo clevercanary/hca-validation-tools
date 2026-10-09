@@ -98,8 +98,15 @@ Ensembl says what changed. The reference says what is nameable. We only report; 
 
 ## 3. Classification
 
-3.1 The event class — `retired`, `renamed`, `merged`, `split` — is derived from **cardinality in
-    `stable_id_event` and nothing else**. Each is a statement about Ensembl's bookkeeping a curator can check.
+3.1 The event class — `retired`, `renamed`, `merged`, `split` — is derived from **Ensembl's bookkeeping and
+    nothing else**: how many successors `stable_id_event` records, how many retired identifiers name each
+    one, and whether the successor already existed in the release the old identifier was last in. Each is a
+    statement a curator can check.
+
+3.1.1 **`renamed` means a new name.** The successor was first issued at that session and no other retired
+      identifier names it. A successor that was already there absorbed the old gene, and that is `merged`
+      whether or not anything else merged into it. Counting claimants alone called 776 of 797 renames a
+      rename whose successor had been there all along; the table now holds 21.
 
 3.2 The validator **re-derives split-ness from the successor count** rather than reading the table's `event`
     column, so there is one definition rather than two that can disagree. The column is for humans reading

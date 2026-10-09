@@ -2668,7 +2668,7 @@ def _retired_findings(adata):
     plain: dict[str, set[str]] = {
         "dead": set(),
         "split": set(),
-        "off_reference": set(),
+        "off_reference": {},
         "versioned": set(),
         "excluded": set(),
         "newer": set(),
@@ -2713,7 +2713,12 @@ def _retired_findings(adata):
                 terminal, split_into = ends.pop(), []
             else:
                 splits[feature] = sorted(ends) or sorted(split_into)
-                plain["split" if ends else "off_reference"].add(feature)
+                if ends:
+                    plain["split"].add(feature)
+                else:
+                    # Several pieces, none reaching the allowed set: there is no
+                    # one successor to name on the row.
+                    plain["off_reference"][feature] = ""
                 continue
         # Reached by a plain replacement, and by a split whose branches converged
         # on one gene -- which is why this is not an elif of the branch above.
@@ -2721,9 +2726,11 @@ def _retired_findings(adata):
             # Ensembl recorded no successor, or the chain ends where it began.
             plain["dead"].add(feature)
         elif not checker.is_valid_id(terminal):
-            # Replaced, and the replacement is alive -- but off the reference gene
-            # set, so there is still nothing here to point a column at.
-            plain["off_reference"].add(feature)
+            # Replaced, and the replacement is alive -- but off the allowed gene
+            # set, so there is still nothing here to point a column at. Named on
+            # the row all the same: Ensembl did record it, and a row that says
+            # "successor" without saying which cannot be checked.
+            plain["off_reference"][feature] = terminal
         elif terminal in present:
             collides[feature] = "in file"
             replacements["same_gene"][feature] = terminal

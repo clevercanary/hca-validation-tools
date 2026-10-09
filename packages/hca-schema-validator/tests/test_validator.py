@@ -2737,6 +2737,11 @@ def test_a_successor_off_the_allowed_set_is_dropped_not_renamed():
     """Ensembl replaced it, and the replacement is alive -- on a patch sequence."""
     row = _rows([_OFF_REFERENCE], _OFF_REFERENCE)
     assert "successor not in the allowed set" in row and "[drop]" in row, row
+    # the successor is named, so the row can be checked against Ensembl ...
+    assert f"{_OFF_REFERENCE} -> ENSG" in row, row
+    # ... but its coordinates are not compared: it sits on a patch or alt
+    # contig, where the comparison could only ever say "disjoint"
+    assert "disjoint" not in row and "overlap" not in row, row
 
 
 def test_a_split_whose_branches_converge_is_a_rename():

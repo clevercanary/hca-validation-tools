@@ -329,8 +329,8 @@ and check:
 | `event` | Meaning |
 |---|---|
 | `retired` | no successor |
-| `renamed` | one successor, which no other identifier names |
-| `merged` | one successor, which other identifiers also name |
+| `renamed` | one successor, first issued at that session, which no other retired identifier names: a new name for the same gene |
+| `merged` | one successor that was already there (the surviving gene absorbed this one), or that other retired identifiers also name |
 | `split` | several successors, one row each |
 
 `old_release` is the last release that still carried the identifier, and the old
@@ -354,7 +354,7 @@ one would want to treat as suspicious.
 | | |
 |---|---|
 | Ensembl sessions covered | **r76 → r116** (30 sessions, GRCh38 on both sides) |
-| Retired identifiers | 7,132 — 5,768 retired, 797 renamed, 473 merged, 94 split |
+| Retired identifiers | 7,132 — 5,768 retired, 21 renamed, 1,249 merged, 94 split |
 | Rows | 7,500 |
 | Successor coordinates | from r116; 42 successors have been retired themselves and have none |
 | File size | 122 KB gzipped |
