@@ -13,7 +13,7 @@ two seconds each, so roughly ninety seconds for the full GRCh38 range.
 
 ``stable_id_event`` is not usable for this, though it is the right source for
 retirement history, which build_gene_id_events.py takes from it. Self-mappings
-are not recorded exhaustively -- TP53 has 22 rows across 72 sessions -- so an
+are not recorded exhaustively -- at r116 TP53 has 24 rows across the 74 sessions -- so an
 identifier's absence from a session says nothing about whether it existed then,
 and presence at a given release cannot be derived from the table. That is a
 limit on deriving *presence*, not on reading *events*.
