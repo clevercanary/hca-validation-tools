@@ -141,7 +141,7 @@ def test_resume_after_link_expires_and_daemon_restarts(downloads, tracker, gut_f
 
     resumed = downloads.start("gut", "gut", "gut-r1.h5ad")
     assert resumed["job_id"] != started["job_id"]
-    assert resumed["message"].startswith("Resuming from")
+    assert resumed["message"].startswith("Resuming the partial download")
     done = wait_for(downloads, resumed["job_id"], ("done", "failed"))
     assert done["state"] == "done"
     assert done["verified"] == "sha256"
@@ -273,3 +273,11 @@ def test_cancel_racing_completion_records_done(downloads, tracker, gut_file, mon
     assert result["state"] == "done", result
     monkeypatch.undo()
     assert downloads.store.load(started["job_id"]).state == "done"
+
+
+def test_deleting_an_untracked_part_spares_a_same_named_file(downloads):
+    folder = downloads.cache_dir / "gut" / "gut_v1.0"
+    whole = make_file(folder / "foo.h5ad", 10)
+    stray = make_file(folder / "foo.h5ad.part", 5)
+    assert downloads.delete(str(stray))["deleted"] == [str(stray)]
+    assert whole.exists()

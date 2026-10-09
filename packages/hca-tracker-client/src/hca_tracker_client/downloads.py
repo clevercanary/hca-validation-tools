@@ -254,7 +254,8 @@ class Downloads:
         filename = _safe_name(presigned.filename)
         safe_network, safe_atlas = _safe_component(network, "network"), _safe_component(atlas, "atlas slug")
         default_dir = self.cache_dir / safe_network / f"{safe_atlas}_{version}"
-        directory = (Path(dest_dir).expanduser() if dest_dir else default_dir).absolute()
+        # Resolved, so two spellings of one folder (symlink, "..") are one destination.
+        directory = (Path(dest_dir).expanduser() if dest_dir else default_dir).resolve()
         if _CONTROL.search(str(directory)):
             raise CheckError(f"The download folder {str(directory)!r} contains a control character or backslash")
         if any(directory.resolve().is_relative_to(folder.resolve()) for folder in self._internal_dirs()):
@@ -361,7 +362,9 @@ class Downloads:
 
             result = {**self._describe(job), "warnings": warnings}
             if already:
-                result["message"] = f"Resuming from {human_size(already)} already downloaded"
+                # Not a byte count: aria2 writes segments across the file, so the .part's
+                # disk usage overstates what has been downloaded. download_status has that.
+                result["message"] = "Resuming the partial download from aria2's control file"
             return result
 
     def status(self, job_id: str | None = None) -> dict:
@@ -465,11 +468,14 @@ class Downloads:
         Allowed for files under the cache folder, and for exactly the files a
         recorded job downloaded elsewhere (``dest_dir``) — not their neighbours.
         """
-        final = final_path(Path(path).expanduser().absolute())
-        resolved = final.resolve()
+        given = Path(path).expanduser().absolute()
+        final = final_path(given)
         # Under start's lock, so a download being registered can't lose its files.
         with self.store.locked():
-            jobs = [job for job in self.store.all() if job.final.resolve() == resolved]
+            jobs = [job for job in self.store.all() if job.final.resolve() == final.resolve()]
+            if not jobs:  # untracked: exactly the path given, never a sibling it looks related to
+                final = given
+            resolved = final.resolve()
             in_cache = resolved.is_relative_to(self.cache_dir.resolve()) and not any(
                 resolved.is_relative_to(folder.resolve()) for folder in self._internal_dirs()
             )
@@ -480,7 +486,8 @@ class Downloads:
             if any(self._refresh(job, aria2)[0].state in ACTIVE for job in jobs):
                 raise JobError(f"{final.name} is still downloading; cancel it with cancel_download first")
 
-            targets = [p for p in (final, part_path(final), control_path(final)) if p.is_file()]
+            related = (final, part_path(final), control_path(final)) if jobs else (final,)
+            targets = [p for p in related if p.is_file()]
             if not targets:
                 raise JobError(f"Nothing to delete at {final}")
             freed = sum(_allocated(p) for p in targets)
