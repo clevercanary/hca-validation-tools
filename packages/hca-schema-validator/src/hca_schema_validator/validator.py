@@ -2478,6 +2478,28 @@ def _terminals(gene: str, by_old: dict[str, GeneEvent], checker, seen: set[str] 
     return ends
 
 
+def _every_branch_reaches(gene: str, by_old: dict[str, GeneEvent], target: str, path: frozenset = frozenset()) -> bool:
+    """True only if every path out of an identifier ends at ``target``.
+
+    _terminals says which allowed genes a split reaches and nothing about the
+    branches that reach none of them: a piece that split again into one current
+    gene and one retired gene reports just the current one, and a convergence
+    test built on that alone would hand the retired branch's counts to it. So
+    convergence is asked as its own question, of every branch at every depth:
+    a dead end, a loop, or a leaf that is any other gene -- allowed or not --
+    is a no. The path is per branch, not shared, so two branches that meet at
+    the target are each allowed to reach it.
+    """
+    if gene in path:
+        return False
+    entry = by_old.get(gene)
+    if entry is None:
+        return gene == target
+    if not entry.successors:
+        return False
+    return all(_every_branch_reaches(s, by_old, target, path | {gene}) for s in entry.successors)
+
+
 def _resolve(gene: str, by_old: dict[str, GeneEvent]) -> tuple[str | None, list[str]]:
     """Follow an identifier's successors to the end of its chain.
 
@@ -2710,12 +2732,13 @@ def _retired_findings(adata):
             # dead ends for both and told the curator to drop columns that have
             # current genes to point at. Six identifiers in the table move.
             ends = _terminals(gene, by_old, checker)
-            if len(ends) == 1 and all(_terminals(piece, by_old, checker) == ends for piece in split_into):
-                # Out as several pieces, back as one gene -- every piece, not
-                # just one: a replacement, not a split, so it takes the ordinary
-                # rename-or-decide rules below including the collision check.
-                # One surviving branch beside a dead one is still a split; a
-                # rename would hand the dead branch's counts to the survivor.
+            if len(ends) == 1 and _every_branch_reaches(gene, by_old, next(iter(ends))):
+                # Out as several pieces, back as one gene -- every branch at
+                # every depth, not just one: a replacement, not a split, so it
+                # takes the ordinary rename-or-decide rules below including the
+                # collision check. One surviving branch beside a dead one, at
+                # any depth, is still a split; a rename would hand the dead
+                # branch's counts to the survivor.
                 terminal, split_into = ends.pop(), []
             else:
                 splits[feature] = sorted(ends) or sorted(split_into)

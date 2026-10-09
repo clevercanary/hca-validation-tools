@@ -38,7 +38,7 @@ import time
 from collections import Counter, defaultdict
 from pathlib import Path
 
-from _ensembl import HOST, connect, core_db, list_releases, require_driver, write_csv_gz
+from _ensembl import FIRST_GRCH38, HOST, check_releases, connect, core_db, list_releases, require_driver, write_csv_gz
 
 # The assembly both sides of a session must name. Anything else describes a
 # change between genomes rather than within one, and its coordinates cannot be
@@ -365,9 +365,10 @@ def main() -> int:
     # 54 the run used to make -- and 54 chances for a four-minute run against a
     # public server to fail partway through.
     con = connect()
-    releases = list_releases(con)
-    if not releases:
-        raise SystemExit(f"no {ASSEMBLY_NAME} core database found on {HOST}")
+    # The same refusal the interval generator makes: a hole or a narrower floor
+    # in the archive would shrink the range the session chain is checked
+    # against, and nothing in the committed table would show it.
+    releases = check_releases([r for r in list_releases(con) if r >= FIRST_GRCH38])
     current = max(releases)
     print(f"newest {ASSEMBLY_NAME} core database: r{current}", file=sys.stderr)
 

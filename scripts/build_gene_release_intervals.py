@@ -34,54 +34,16 @@ from __future__ import annotations
 import argparse
 import sys
 import time
-from collections import Counter
 from pathlib import Path
 
-from _ensembl import HOST, connect, core_db, list_releases, require_driver, write_csv_gz
+from _ensembl import FIRST_GRCH38, HOST, check_releases, connect, core_db, list_releases, require_driver, write_csv_gz
 
 # Release 76 is the first GRCh38 core database; below that is GRCh37, a
 # different assembly whose gene sets are not comparable.
-FIRST_GRCH38 = 76
 DEFAULT_OUT = (
     Path(__file__).resolve().parent.parent
     / "packages/hca-schema-validator/src/hca_schema_validator/gene_release_intervals.csv.gz"
 )
-
-
-def check_releases(found: list[int]) -> list[int]:
-    """Refuse a release list that would produce a table saying something untrue.
-
-    Both failure modes matter and neither is visible in the committed artifact,
-    which is a binary whose diff reads only as "249 KB changed".
-
-    A missing release would be absorbed into the surrounding run, because runs
-    are split on adjacency in this list rather than numerically -- the table
-    would then claim presence at a release never queried. Counted from
-    FIRST_GRCH38 rather than from the earliest release found, so losing the
-    oldest database is rejected too: a narrower table is not obviously broken,
-    and the check reads its floor as a fact about Ensembl.
-
-    A repeated release breaks every gene's run at the repeat and manufactures a
-    resurrection for each -- the artefact the interval format exists to record
-    honestly. The gap check cannot see it, since a duplicate leaves no hole.
-    """
-    if not found:
-        raise SystemExit(f"archive served no GRCh38 release at or after r{FIRST_GRCH38}")
-    seen = Counter(found)
-    duplicates = sorted(r for r, n in seen.items() if n > 1)
-    if duplicates:
-        raise SystemExit(
-            f"archive listed release(s) {', '.join(f'r{r}' for r in duplicates)} more than once; "
-            f"refusing to build a table that would split every gene at the repeat"
-        )
-    gaps = [r for r in range(FIRST_GRCH38, found[-1] + 1) if r not in seen]
-    if gaps:
-        raise SystemExit(
-            f"archive is missing release(s) {', '.join(f'r{r}' for r in gaps)} between "
-            f"r{FIRST_GRCH38} and r{found[-1]}; refusing to build a table that would claim "
-            f"presence at a release it never queried"
-        )
-    return found
 
 
 def available_releases() -> list[int]:

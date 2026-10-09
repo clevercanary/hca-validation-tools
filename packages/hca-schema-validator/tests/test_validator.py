@@ -2776,6 +2776,44 @@ def test_a_split_with_one_surviving_and_one_dead_branch_stays_a_split(monkeypatc
     assert "[rename]" not in row, row
 
 
+def test_a_dead_branch_below_a_split_piece_still_blocks_the_collapse(monkeypatch):
+    """Convergence is asked of every branch at every depth, not of the endpoints.
+
+    A split into B and C; B split again into the allowed gene D and a retired
+    gene; C renamed to D. Every allowed terminal is D, so a test on terminals
+    alone would collapse A to a rename and hand the retired branch's counts to
+    D. Built, because no identifier in the shipped table has the shape.
+    """
+    from hca_schema_validator import validator as v
+
+    table = {
+        "ENSG00000000001": v.GeneEvent("split", ("ENSG00000000002", "ENSG00000000003"), None),
+        "ENSG00000000002": v.GeneEvent("split", (_CURRENT, "ENSG00000000004"), None),
+        "ENSG00000000003": v.GeneEvent("renamed", (_CURRENT,), None),
+        "ENSG00000000004": v.GeneEvent("retired", (), None),
+    }
+    monkeypatch.setattr(v, "_gene_id_events", lambda: (table, {}))
+    warnings, _ = v.check_retired_feature_ids(_retired_adata(["ENSG00000000001"]))
+    row = next(line for line in _finding(warnings, "Details:").splitlines() if "ENSG00000000001" in line)
+    assert f"split into {_CURRENT}" in row and "[drop or re-align]" in row, row
+    assert "[rename]" not in row, row
+
+
+def test_a_branch_ending_at_a_gene_off_the_allowed_set_also_blocks_the_collapse(monkeypatch):
+    """A leaf that is alive but outside the allowed set is not the target either."""
+    from hca_schema_validator import validator as v
+
+    table = {
+        "ENSG00000000001": v.GeneEvent("split", ("ENSG00000000002", "ENSG00000000003"), None),
+        "ENSG00000000002": v.GeneEvent("renamed", (_CURRENT,), None),
+        "ENSG00000000003": v.GeneEvent("renamed", ("ENSG00000000009",), None),  # alive, not allowed
+    }
+    monkeypatch.setattr(v, "_gene_id_events", lambda: (table, {}))
+    warnings, _ = v.check_retired_feature_ids(_retired_adata(["ENSG00000000001"]))
+    row = next(line for line in _finding(warnings, "Details:").splitlines() if "ENSG00000000001" in line)
+    assert "split" in row and "[rename]" not in row, row
+
+
 def test_a_nested_split_reaches_every_terminal():
     """Pieces that split again are followed to the genes they finally become.
 
