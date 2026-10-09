@@ -6,10 +6,11 @@ authors = [{ name = "Clever Canary", email = "dave@clevercanary.com" }]
 license = "MIT"
 readme = "README.md"
 requires-python = ">=3.10,<4.0"
-# The sibling bound below is what ships to PyPI, and must stay bounded: uv
-# strips [tool.uv.sources] at build time. Its upper bound is the next minor,
-# because at 0.x a minor bump signals a breaking change (see the release policy
-# in CLAUDE.md).
+# Not published to PyPI (see "Private packages" in CLAUDE.md). The sibling
+# bound is the wheel's metadata: git and path installs take hca-tracker-client
+# from the same commit through [tool.uv.sources] below, so it only constrains a
+# client installed separately. Its upper bound is the next minor, because at
+# 0.x a minor bump signals a breaking change.
 dependencies = [
     "anyio>=4,<5",
     "fastmcp>=2,<3",
@@ -23,8 +24,9 @@ Homepage = "https://github.com/clevercanary/hca-validation-tools"
 [project.scripts]
 hca-tracker-mcp = "hca_tracker_mcp.main:run"
 
-# Development only: resolves the sibling from the local checkout. uv strips
-# this at build time and publishes the version constraint declared above.
+# Resolves the sibling from the same checkout or git commit: in development, and
+# for `uvx --from git+…#subdirectory=packages/hca-tracker-mcp` and
+# `uv tool install <path>` installs.
 [tool.uv.sources]
 hca-tracker-client = { path = "../hca-tracker-client", editable = true }
 
