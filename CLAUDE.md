@@ -56,9 +56,9 @@ cd services/hca-schema-validator && uv run pytest tests/ -v
 
 ## Type Checking
 
-Pyright covers `packages/hca-anndata-tools`, `packages/hca-anndata-mcp`, `packages/hca-schema-validator`, `services/dataset-validator`, and `services/hca-schema-validator`. Config is `pyrightconfig.json` at repo root. Runs one pass per venv since each has a disjoint dep set.
+Pyright covers `packages/hca-anndata-tools`, `packages/hca-anndata-mcp`, `packages/hca-schema-validator`, `packages/hca-tracker-client`, `packages/hca-tracker-mcp`, `services/dataset-validator`, and `services/hca-schema-validator`. Config is `pyrightconfig.json` at repo root. Runs one pass per venv since each has a disjoint dep set.
 
-Note: `hca-anndata-tools` doesn't declare pyright as a dev dep — its files are checked from the `hca-anndata-mcp` venv (which depends on tools, so it's a superset). This asymmetry persists under uv: the uv migration (#248) deliberately does **not** use a workspace, so each project keeps its own venv rather than sharing one.
+Note: `hca-anndata-tools` doesn't declare pyright as a dev dep — its files are checked from the `hca-anndata-mcp` venv (which depends on tools, so it's a superset). `hca-tracker-client` is checked the same way, from the `hca-tracker-mcp` venv. This asymmetry persists under uv: the uv migration (#248) deliberately does **not** use a workspace, so each project keeps its own venv rather than sharing one.
 
 ```bash
 make typecheck
@@ -104,6 +104,8 @@ Release-As: 1.0.0
 This is release-please's supported override mechanism — it overrides the auto-computed bump for the package whose path the commit touches. Don't hand-edit `.release-please-manifest.json`: that file is a back-reference to the last released version per path and editing it doesn't reliably cut a release; it can also desync from the git tags release-please uses for compare links.
 
 Before tagging 1.0.0, widen the sibling bounds in `packages/hca-anndata-mcp/pyproject.toml`. They are capped at the next minor (`hca-anndata-tools>=0.6,<0.7`) because at 0.x a minor bump signals a breaking change; once a sibling reaches 1.0 that cap must become `<2`, or the MCP wheel will refuse to install alongside it.
+
+**Private packages.** `hca-tracker-client` and `hca-tracker-mcp` are deliberately **not** published: they are not in `release-please-config.json` and have no publish job. They are installed from git (`uvx --from "git+https://github.com/clevercanary/hca-validation-tools@main#subdirectory=packages/hca-tracker-mcp" hca-tracker-mcp`) or a local path (`uv tool install ./packages/hca-tracker-mcp`); uv builds `hca-tracker-client` from the same commit via `[tool.uv.sources]`. Their versions are bumped by hand. Don't add them to release-please without deciding to publish.
 
 `scripts/check_sibling_deps.py` runs in the publish workflow and fails the build if a sibling is declared without a bound, as a direct `file://` reference, or with a bound that excludes the sibling's current version. None of these are visible locally: `[tool.uv.sources]` resolves siblings from the checkout, so `uv sync`, pytest, and pyright all pass regardless of what the bound says.
 
@@ -153,6 +155,8 @@ make batch-publish-container ENV=dev     # then ENV=prod, from main
 - `services/hca-schema-validator/` - Service wrapper for the published PyPI package
 - `services/cellxgene-validator/` - Wrapper for cellxgene-schema validator
 - `packages/hca-schema-validator/` - Publishable PyPI package (automated releases via release-please)
+- `packages/hca-anndata-tools/`, `packages/hca-anndata-mcp/` - h5ad inspection/editing library and its MCP server
+- `packages/hca-tracker-client/`, `packages/hca-tracker-mcp/` - HCA Atlas Tracker listing/download library (downloads run in an aria2 daemon) and its MCP server; private, not published to PyPI
 - `deployment/` - Dockerfiles and deployment configs per service
 
 **Schema-Driven Validation:**
@@ -167,8 +171,10 @@ make batch-publish-container ENV=dev     # then ENV=prod, from main
 
 ## Environment Configuration
 
-- `.env` - Google Service Account JSON credentials for Sheets API access
+- `.env` - Google Service Account JSON credentials for Sheets API access, and the HCA Atlas Tracker API token (`HCA_TRACKER_URL`, `HCA_TRACKER_API_TOKEN`) read by `hca-tracker-mcp`
 - `.env.make` - AWS deployment settings (account IDs, regions, role ARNs for dev/prod)
+
+**Never read `.env`** (no `cat`, `Read`, `grep`, or sourcing it into a command whose output you see). It holds live credentials, and anything read lands in the transcript. Code that needs a value loads it itself (as `hca_tracker_client.load_config` does); to check one is set, test for the key's presence without printing its value, or ask the user.
 
 ## Key Technologies
 

@@ -213,6 +213,8 @@ test-all:
 typecheck:
 	@echo "Running pyright (hca-anndata-tools, hca-anndata-mcp)..."
 	@cd packages/hca-anndata-mcp && uv run pyright --project ../.. ../hca-anndata-tools/src ../hca-anndata-mcp/src
+	@echo "Running pyright (hca-tracker-client, hca-tracker-mcp)..."
+	@cd packages/hca-tracker-mcp && uv run pyright --project ../.. ../hca-tracker-client/src ../hca-tracker-mcp/src
 	@echo "Running pyright (hca-schema-validator)..."
 	@cd packages/hca-schema-validator && uv run pyright --project ../.. src
 	@echo "Running pyright (dataset-validator)..."
