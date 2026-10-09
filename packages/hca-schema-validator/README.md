@@ -291,7 +291,7 @@ MySQL to `ensembldb.ensembl.org:3306` (user `anonymous`, no password).
 Ensembl's `stable_id_event` table is the right source for *retirement history* —
 it is what the [gene ID event table](#gene-id-event-table) below is built from —
 but it cannot answer presence at a given release. Self-mappings are not recorded
-exhaustively: TP53 has 22 rows across 72 sessions, so an identifier's absence
+exhaustively: at r116 TP53 has 24 rows across the 74 sessions, so an identifier's absence
 from a session says nothing about whether it existed then. Presence has to come
 from each release's own `gene` table, which is what this generator queries.
 
@@ -358,8 +358,15 @@ one would want to treat as suspicious.
 | Ensembl sessions covered | **r76 → r116** (30 sessions, GRCh38 on both sides) |
 | Retired identifiers | 7,132 — 5,768 retired, 21 renamed, 1,249 merged, 94 split |
 | Rows | 7,500 |
-| Successor coordinates | from r116; 42 successors have been retired themselves and have none |
+| Still in the allowed set | 40 of the 7,132 (retired at r115 or r116, after GENCODE v48); the validator never classifies them |
+| Successor coordinates | from r116; 42 successors have none — 39 retired since, 3 named at the 104→105 session and never shipped |
 | File size | 122 KB gzipped |
+
+Old-release spans on patch contigs are in that release's own coordinate system
+(the same gene reads `CHR_HG2290_PATCH:88,992,415` in one release and
+`HG2290_PATCH:135,997` in another), so a patch gene's old and new spans are not
+comparable. The validator never compares them: off-reference rows carry no
+geometry flag.
 
 ### When to regenerate
 

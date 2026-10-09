@@ -124,14 +124,13 @@ Report these but don't attempt to fix:
   |---|---|---|
   | `[rename]` | producer | relay: plain renames, safe to apply in place. The line names the successor |
   | `[review]` | **producer** | relay as a decision, never as a fix. Ensembl has made several of this file's columns one gene; whether their counts can be added is a judgement about the data. Do not remap these |
-  | `[drop]` | producer | relay: nothing in the allowed gene set to point at, so the column can only go |
+  | `[drop]` | producer | relay: nothing in the allowed gene set to point at, so the feature can only go. Patch/alt genes (`not on primary assembly`) land here too, and **in quantity they are a finding of their own** — the file was aligned against a reference including patch sequences, which makes its counts hard to compare |
   | `[drop or re-align]` | producer | relay: a split locus cannot have its reads divided after the fact, but they are recoverable by re-quantifying from source |
-  | `[drop]` | producer | relay: nothing in the allowed gene set to point at. Patch/alt genes land here too, and **in quantity they are a finding of their own** — the file was aligned against a reference including patch sequences, which makes its counts hard to compare |
   | `[strip suffix]` | producer | relay: the genes are current, only the written form is wrong |
   | `[none]` | **nobody — do not relay as a defect** | the gene is still listed in Ensembl, issued after the allowed gene set; the file's annotation is newer than ours. Note it, and flag that the vendored cellxgene-schema is behind |
   | `[ask]` | producer, as a question | ask what reference built the file; these identifiers come from outside Ensembl's GRCh38 history |
-  | `(disjoint)` on a detail row | **ours, then producer** | the coordinates contradict Ensembl's own record — different chromosome, opposite strand, or no overlap. Check one by hand before relaying; if it holds, it is worth telling the producer their remap target is wrong |
-  | `(old contains new)` or `(overlap)` on a detail row | **nobody — do not relay as a defect** | Ensembl redrew the gene's extent as well as renaming it. The replacement stands. Worth a sentence only if the producer is combining those columns |
+  | `; disjoint` on a Details row | **ours first** | the old and new spans share no positions, or sit on opposite strands (19 of the table's 39 are strand flips of one locus). A flag is geometry, not a verdict: look at the pair before saying anything, and relay only if the pair really names two different loci |
+  | `; old contains new` or `; overlap` on a Details row | **nobody — do not relay as a defect** | Ensembl redrew the gene's extent as well as renaming it. The replacement stands. Worth a sentence only if the producer is combining those features |
   | "gene IDs are not in GENCODE v…" | — | the headline; quote its counts, do not relay it on its own |
 - **`gene_annotation_version` findings** (a `validate_schema` warning, not a tool you can call; #710) — these are **not one finding**, and they do not all belong to the producer. Route each by its wording before writing anything:
 

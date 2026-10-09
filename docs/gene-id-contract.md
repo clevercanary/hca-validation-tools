@@ -170,7 +170,8 @@ Ensembl says what changed. The reference says what is nameable. We only report; 
     spans sit. What any of these means for a curator belongs in the guide, not in the log.
 
 4.5 Measured over the 1,239 resolvable claimed replacements: 1,186 new-contains-old, 4 old-contains-new,
-    10 overlap, 39 disjoint (20 on the same chromosome and strand, 19 on a different one).
+    10 overlap, 39 disjoint (20 on the same chromosome and strand, 19 on the opposite strand of the same
+    chromosome; none crosses chromosomes).
 
 4.6 Chromosome and strand must agree before any comparison. A successor on the other strand is not the same
     locus however the coordinates fall.

@@ -38,6 +38,9 @@ def test_write_csv_gz_is_byte_reproducible_whatever_the_output_is_called(tmp_pat
     ens.write_csv_gz(first, "comment", ["gene_id", "first_release", "last_release"], rows)
     ens.write_csv_gz(second, "comment", ["gene_id", "first_release", "last_release"], rows)
     assert first.read_bytes() == second.read_bytes()
+    # two writes in the same second would agree even with the clock embedded;
+    # the gzip header's MTIME field (bytes 4-8) must be zero on its own
+    assert first.read_bytes()[4:8] == b"\x00\x00\x00\x00"
     # and the bytes are the data, not the clock: a rewrite of the same path matches too
     before = first.read_bytes()
     ens.write_csv_gz(first, "comment", ["gene_id", "first_release", "last_release"], rows)

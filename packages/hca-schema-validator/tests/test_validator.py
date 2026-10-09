@@ -2579,8 +2579,8 @@ _MERGED = "ENSG00000132832"
 _MERGED_SUCCESSOR = "ENSG00000244558"
 # Retired at r113 with nothing recorded in its place.
 _NO_SUCCESSOR = "ENSG00000002079"
-# Split at r100 into three genes, two of them in the reference. Breast v1's only
-# split identifier has this shape.
+# Split at r100 into three genes, all three in the allowed set. (Breast v1's one
+# split identifier, ENSG00000258081, became two.)
 _SPLIT = "ENSG00000183791"
 # Split into genes none of which reach anything in the allowed gene set at any
 # depth: 38 of the table's 94 splits have this shape once every branch is walked.
@@ -2602,7 +2602,7 @@ _SPLIT_NESTED_ENDS = (
     "ENSG00000283540",
     "ENSG00000283685",
 )
-# Replaced by a gene that is alive in Ensembl but annotated on a patch sequence,
+# Replaced by a gene that is alive in Ensembl but annotated on an alt haplotype,
 # so it is absent from the allowed gene set. 13 identifiers have this shape.
 _OFF_REFERENCE = "ENSG00000237093"
 # Replaced by an identifier that was then replaced again, so one hop is not enough.
@@ -2654,7 +2654,11 @@ def _finding(warnings, fragment):
 
 def _rows(genes, gene):
     """The Details row for one identifier, which is where the per-gene facts are."""
-    warnings, errors = check_retired_feature_ids(_retired_adata(genes))
+    return _rows_of(_retired_adata(genes), gene)
+
+
+def _rows_of(adata, gene):
+    warnings, errors = check_retired_feature_ids(adata)
     assert errors == []
     details = _finding(warnings, "Details:")
     matched = [line for line in details.splitlines() if line.strip().startswith(gene)]
@@ -2728,9 +2732,12 @@ def test_a_chain_is_followed_to_its_end():
     assert f"-> {_CHAIN_END}" in _rows([_CHAINED], _CHAINED)
 
 
-def test_a_chain_ending_in_a_retired_gene_is_dropped():
+def test_a_chain_ending_in_a_retired_gene_is_dropped_and_names_it():
+    """Ensembl did record a successor; the row says so and names the gene whose
+    retirement ended the chain, rather than claiming nothing was recorded."""
     row = _rows([_CHAIN_ENDS_DEAD], _CHAIN_ENDS_DEAD)
-    assert "retired; no successor" in row and "[drop]" in row, row
+    assert f"{_CHAIN_ENDS_DEAD} -> ENSG" in row, row
+    assert "replaced; successor since retired" in row and "[drop]" in row, row
 
 
 def test_a_successor_off_the_allowed_set_is_dropped_not_renamed():
@@ -2752,6 +2759,82 @@ def test_a_split_whose_branches_converge_is_a_rename():
     """
     row = _rows([_SPLIT_CONVERGENT], _SPLIT_CONVERGENT)
     assert f"-> {_SPLIT_CONVERGENT_END}" in row and "[rename]" in row, row
+
+
+def test_a_convergent_split_whose_target_is_in_the_file_is_a_review_not_a_rename():
+    """The collapsed split takes the ordinary collision rules, including this one."""
+    row = _rows([_SPLIT_CONVERGENT, _SPLIT_CONVERGENT_END], _SPLIT_CONVERGENT)
+    assert "successor already in file" in row and "[review]" in row, row
+    assert "split; pieces rejoined as one gene" in row, row
+
+
+def test_a_convergent_split_row_says_the_pieces_rejoined():
+    row = _rows([_SPLIT_CONVERGENT], _SPLIT_CONVERGENT)
+    assert "split; pieces rejoined as one gene" in row and "[rename]" in row, row
+
+
+def test_a_feature_that_only_starts_like_an_ensembl_id_is_not_classified():
+    """Matched whole, not by prefix: ENSG00000141510.beta is a custom feature, not TP53."""
+    warnings, _ = check_retired_feature_ids(_retired_adata(["ENSG00000141510.beta", _RENAMED]))
+    details = _finding(warnings, "Details:")
+    assert _RENAMED in details and "beta" not in details, details
+    assert "1 gene ID is not in" in warnings[0], warnings[0]
+
+
+def test_an_identifier_only_in_raw_var_is_classified():
+    """The population is both dataframes, not var alone."""
+    adata = _retired_adata([_CURRENT])
+    adata.raw = _retired_adata([_CURRENT, _RENAMED])
+    row = _rows_of(adata, _RENAMED)
+    assert "[rename]" in row, row
+
+
+def test_never_retired_classes_turn_on_the_allowed_set_release(monkeypatch):
+    """First issued at r114 is excluded (it was there and the set left it out);
+    at r115 it is newer; gone before the table's end with no event is unclassified."""
+    from hca_schema_validator import validator as v
+
+    gene = "ENSG00000000005"
+    monkeypatch.setattr(v, "_gene_id_events", lambda: ({}, {}))
+    for runs, expected in (([(114, 116)], "excluded"), ([(115, 116)], "newer"), ([(80, 100)], "unclassified")):
+        monkeypatch.setattr(v, "_gene_release_intervals", lambda runs=runs: ({gene: runs}, 76, 116))
+        assert v._never_retired_class(gene) == expected, (runs, expected)
+
+
+def test_rows_that_disagree_on_an_identifier_are_refused(monkeypatch, tmp_path):
+    """Two rows for one old id with different events is not the generator's output."""
+    import gzip
+
+    from hca_schema_validator import validator as v
+
+    path = tmp_path / "events.csv.gz"
+    with gzip.open(path, "wt") as fh:
+        fh.write("# test\n")
+        fh.write(
+            "old_id,new_id,event,old_chrom,old_start,old_end,old_strand,old_release,new_chrom,new_start,new_end,new_strand\n"
+        )
+        fh.write("ENSG00000000001,ENSG00000000002,merged,1,10,20,1,100,1,10,30,1\n")
+        fh.write("ENSG00000000001,ENSG00000000003,split,1,10,20,1,100,1,40,50,1\n")
+    monkeypatch.setattr(v, "_EVENTS_PATH", path)
+    with pytest.raises(ValueError, match="disagree"):
+        v._gene_id_events.__wrapped__()
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "expected"),
+    [
+        (("1", 10, 20, 1), ("2", 10, 20, 1), "disjoint"),  # other chromosome, same coordinates
+        (("1", 10, 20, 1), ("1", 10, 20, -1), "disjoint"),  # opposite strand, same coordinates
+        (("1", 10, 20, 1), ("1", 20, 30, 1), "overlap"),  # touching at one base is shared
+        (("1", 10, 20, 1), ("1", 21, 30, 1), "disjoint"),  # adjacent is not
+        (("1", 10, 20, 1), ("1", 5, 25, 1), "new contains old"),
+        (("1", 10, 20, 1), ("1", 12, 18, 1), "old contains new"),
+    ],
+)
+def test_compare_spans_is_geometry_only(old, new, expected):
+    from hca_schema_validator import validator as v
+
+    assert v._compare_spans(old, new) == expected
 
 
 def test_a_split_with_one_surviving_and_one_dead_branch_stays_a_split(monkeypatch):

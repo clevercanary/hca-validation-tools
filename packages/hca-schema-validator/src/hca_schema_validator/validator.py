@@ -2338,16 +2338,12 @@ _EVENTS_PATH = Path(__file__).parent / "gene_id_events.csv.gz"
 # Details block covers can be dropped. The wording is ours -- _validate_feature_ids
 # writes it -- and the same prefix is what both warning sorters key on.
 _FEATURE_ID_IN_WARNING = re.compile(r"Feature ID '([^']+)' in ")
-# How many identifiers each finding names. Enough to recognise the group and go
-# and look at one; the point of this check is that the full list is the pile it
-# summarises, so a finding that reproduced it would defeat itself.
-_EXAMPLE_CAP = 5
 # What "current" means in these findings, said once. An identifier can be alive
 # in Ensembl and still be unusable here, because the gene set a file is validated
 # against is not all of Ensembl: it is GENCODE's reference annotation, which
 # covers the primary assembly only. Measured against r114, Ensembl lists 86,364
 # human genes and this set holds 78,894 of them -- every one of the 7,470 absent
-# sits on a patch, scaffold or alt contig, and none on a chromosome. Aligners
+# sits on a patch or alt contig, and none on a chromosome. Aligners
 # count against the primary assembly for the same reason it is drawn that way:
 # include a region and its alternate copy and reads map to both.
 #
@@ -2361,7 +2357,6 @@ _REFERENCE_LABEL = (
     f"GENCODE v{_gene_info['human']['version']} "
     f"(Ensembl {int(_gene_info['human']['version']) + _GENCODE_ENSEMBL_OFFSET})"
 )
-_REFERENCE_SCOPE = f"That set is {_REFERENCE_LABEL} restricted to the primary assembly: no patch or alt sequences."
 
 # One retired identifier's row group: its successors in the session that retired
 # it, and where the old gene sat in the last release that still carried it. A
@@ -2416,9 +2411,10 @@ def _gene_id_events() -> tuple[dict[str, GeneEvent], dict[str, tuple]]:
 def _span(row: dict, side: str) -> tuple | None:
     """One side's (chromosome, start, end, strand), or None where it is absent.
 
-    Absent is a real state rather than a defect: 42 successors have been retired
-    themselves since, so the current release has no span for them, and a row
-    recording no successor has nothing to give coordinates for.
+    Absent is a real state rather than a defect: 42 successors have no span in
+    the current release -- 39 retired since, 3 named in stable_id_event at the
+    104->105 session and never shipped in any release -- and a row recording no
+    successor has nothing to give coordinates for.
     """
     chrom = row[f"{side}_chrom"]
     if not chrom:
@@ -2500,6 +2496,24 @@ def _every_branch_reaches(gene: str, by_old: dict[str, GeneEvent], target: str, 
     return all(_every_branch_reaches(s, by_old, target, path | {gene}) for s in entry.successors)
 
 
+def _chain_end(gene: str, by_old: dict[str, GeneEvent]) -> str:
+    """The last identifier named along a single-successor chain, or the gene itself.
+
+    For a chain that ends in a retirement, this is the gene whose retirement
+    ended it: A -> B -> C with C retired gives C. The row then says "replaced;
+    successor since retired" and names C, which is what Ensembl recorded.
+    """
+    seen: set[str] = set()
+    current = gene
+    while current not in seen:
+        seen.add(current)
+        entry = by_old.get(current)
+        if entry is None or len(entry.successors) != 1:
+            return current
+        current = entry.successors[0]
+    return current
+
+
 def _resolve(gene: str, by_old: dict[str, GeneEvent]) -> tuple[str | None, list[str]]:
     """Follow an identifier's successors to the end of its chain.
 
@@ -2547,9 +2561,6 @@ _NEW_CONTAINS_OLD, _OLD_CONTAINS_NEW, _OVERLAP, _DISJOINT = (
     "overlap",
     "disjoint",
 )
-# Backwards names used by the tests and the flag table; the outcome strings
-# above are what a reader sees.
-_CONTAINED, _REVISED, _CONTRADICTED = _NEW_CONTAINS_OLD, _OVERLAP, _DISJOINT
 
 
 def _compare_spans(old_span: tuple | None, new_span: tuple | None) -> str | None:
@@ -2575,13 +2586,6 @@ def _compare_spans(old_span: tuple | None, new_span: tuple | None) -> str | None
     return _OVERLAP if old_start <= new_end and new_start <= old_end else _DISJOINT
 
 
-def _examples(items) -> str:
-    """Name a few of a group's identifiers, and say how many were not named."""
-    shown = sorted(items)[:_EXAMPLE_CAP]
-    rest = len(items) - len(shown)
-    return ", ".join(shown) + (f" and {rest:,} more" if rest else "")
-
-
 def _retired_findings(adata):
     """Classify the retired Ensembl identifiers behind the feature ID warnings. #728.
 
@@ -2596,20 +2600,24 @@ def _retired_findings(adata):
     ``gene_id_events.csv.gz`` and sorts the identifiers into groups that imply
     different actions:
 
-    - **same gene as another column** -- the successor is already a column here,
-      or several of these identifiers share one successor, so remapping would
-      leave columns sharing a name. The decision is the producer's.
-    - **remappable** -- the successor is current and absent, so it is a rename.
-    - **split** -- the old locus became several genes, and the coordinates say
-      which part each successor covers.
+    - **same_gene** -- the successor is already in this file, or several of these
+      identifiers share one successor, so renaming would leave two features under
+      one name. The decision is the producer's.
+    - **remappable** -- the successor is in the allowed set and absent: a rename.
+    - **split** -- the old locus became several genes; the row names them.
     - **dead** -- no successor recorded, or the chain of replacements ends in one
-      retired in turn. Only dropping is left.
-    - **off the reference** -- Ensembl recorded a successor, but it is not in the
-      allowed gene set, so no column can be named after it. Dropping again.
-    - **version suffix** -- a current gene written as ``ENSG...18``. Not retired
-      at all; the form is the whole problem.
-    - **unclassified** -- in neither the current reference nor the GRCh38 event
-      history, so nothing here can say what it was.
+      retired in turn (named on the row). Only dropping is left.
+    - **off_reference** -- Ensembl recorded a successor, but it is not in the
+      allowed gene set, so nothing can be named after it. Dropping again.
+    - **excluded** -- never retired; on a patch or alt sequence, which the allowed
+      set leaves out.
+    - **newer** -- never retired; first issued after the allowed set's release.
+    - **versioned** -- an allowed gene written as ``ENSG...18``. Not retired at
+      all; the form is the whole problem.
+    - **suffix_pair** -- versioned, and another spelling of the same gene is in
+      this file, so stripping would leave two under one name.
+    - **unclassified** -- in neither the allowed set nor the GRCh38 event history,
+      so nothing here can say what it was.
 
     The counts are over distinct identifiers, not warnings, which is where 1,482
     becomes 741. The per-identifier warnings for these identifiers are dropped by
@@ -2681,6 +2689,7 @@ def _retired_findings(adata):
         "remappable": {},
         "suffix_pair": {},
         "off_reference": {},
+        "dead": {},
     }
     suffixed: set[str] = set()
     # Why a replacement cannot simply be renamed, per feature. Without it the
@@ -2695,7 +2704,6 @@ def _retired_findings(adata):
     # or, in the pile, "retired, no successor".
     splits: dict[str, list[str]] = {}
     plain: dict[str, set[str]] = {
-        "dead": set(),
         "split": set(),
         "versioned": set(),
         "excluded": set(),
@@ -2710,17 +2718,9 @@ def _retired_findings(adata):
             # suffix would otherwise be told nothing needs changing.
             suffixed.add(feature)
         if gene not in by_old:
-            if checker.is_valid_id(gene):
-                if feature != gene and gene in features:
-                    # Both spellings are columns. Stripping the suffix would leave
-                    # two columns under one name -- the collision finding 1
-                    # established for replacements, by another route.
-                    collides[feature] = "in file"
-                    replacements["suffix_pair"][feature] = gene
-                else:
-                    plain["versioned"].add(feature)
-            else:
-                plain[_never_retired_class(gene)].add(feature)
+            # A suffixed spelling whose bare form is also here is moved to
+            # suffix_pair by the collision pass below, with the other classes.
+            plain["versioned" if checker.is_valid_id(gene) else _never_retired_class(gene)].add(feature)
             continue
         terminal, split_into = _resolve(gene, by_old)
         if split_into:
@@ -2730,7 +2730,9 @@ def _retired_findings(adata):
             # ENSG00000207553's pieces split again before reaching six current
             # genes. Stopping at the first split, or one level below it, reported
             # dead ends for both and told the curator to drop columns that have
-            # current genes to point at. Six identifiers in the table move.
+            # current genes to point at. Walking every branch changes what 8 of
+            # the table's 94 splits report: 2 collapse to a rename, 6 gain
+            # terminals a one-level walk missed.
             ends = _terminals(gene, by_old, checker)
             if len(ends) == 1 and _every_branch_reaches(gene, by_old, next(iter(ends))):
                 # Out as several pieces, back as one gene -- every branch at
@@ -2752,8 +2754,11 @@ def _retired_findings(adata):
         # Reached by a plain replacement, and by a split whose branches converged
         # on one gene -- which is why this is not an elif of the branch above.
         if terminal is None:
-            # Ensembl recorded no successor, or the chain ends where it began.
-            plain["dead"].add(feature)
+            # Ensembl recorded no successor, or the chain of replacements ends
+            # in a gene retired in turn -- named on the row, so the row says
+            # what Ensembl recorded rather than that it recorded nothing.
+            last = _chain_end(gene, by_old)
+            replacements["dead"][feature] = "" if last == gene else last
         elif not checker.is_valid_id(terminal):
             # Replaced, and the replacement is alive -- but off the allowed gene
             # set, so there is still nothing here to point a column at. Named on
@@ -2881,7 +2886,7 @@ def _drop_classified_warnings(warnings: list[str], classified: set[str]) -> list
 _CLASS_ROWS = (
     ("remappable", "replaced; successor not in file"),
     ("same_gene", "replaced; successor already in file or shared"),
-    ("dead", "retired; no successor"),
+    ("dead", "retired; no successor, or one since retired"),
     ("off_reference", "successor not in the allowed set"),
     ("split", "split into several genes"),
     ("excluded", "not on primary assembly"),
@@ -2981,9 +2986,15 @@ def _retired_detail_block(
                 )
             if name == "split":
                 status = f"split into {', '.join(splits[feature])}"
+            if name == "dead":
+                status = "replaced; successor since retired" if successor else "retired; no successor"
             if name in ("remappable", "same_gene", "off_reference"):
                 event = "split" if feature in splits else by_old[candidates[feature]].event
                 status = event if event in ("renamed", "merged", "split") else "replaced"
+                if event == "split" and feature not in splits:
+                    # Out as several pieces and back as one gene: the fact column
+                    # says so, or "split [rename]" reads as a contradiction.
+                    status = "split; pieces rejoined as one gene"
                 if reason := collides.get(feature):
                     status += f"; successor {'already in file' if reason == 'in file' else 'shared'}"
                 if name == "off_reference":

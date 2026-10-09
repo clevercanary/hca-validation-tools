@@ -119,7 +119,8 @@ def check_gap_builds(gaps: list[tuple[int, int]], builds: dict[int, str | None])
     ``builds`` maps a release to its ``genebuild.last_geneset_update``. A session
     exists because the gene set was rebuilt, so the two statements "no session
     here" and "no rebuild here" are the same one, and the key is Ensembl's own
-    record of it. Measured across r76-r116: identical on all ten gaps, different
+    record of it. Measured across r76-r116: identical on all nine gaps (ten
+    boundaries; 85->87 is one gap), different
     on every transition that does have a session.
 
     A gap whose sides were built from different gene sets means a session really
@@ -225,7 +226,8 @@ def latest_events(rows: list[tuple[str, str | None, int, int]]) -> dict[str, tup
             news.add(new)
         # The same session can only have one old_release, so this is a
         # consistency check rather than a choice between candidates.
-        assert release == old_release, f"{old}: session r{new_release} has two old releases"
+        if release != old_release:
+            raise SystemExit(f"{old}: session r{new_release} has two old releases; not a mapping_session table")
     return out
 
 
@@ -240,8 +242,8 @@ def build_rows(
 
     Coordinates are left empty rather than guessed at when the server does not
     have them: an old identifier its release no longer lists, or a successor
-    absent from the current one -- 42 of 1,101 today, every one of them a
-    successor that has since been retired itself.
+    absent from the current one -- 42 of 1,101 today: 39 retired since, and 3
+    named at the 104->105 session that never shipped in any release.
     """
     rows = []
     for old in sorted(events):
