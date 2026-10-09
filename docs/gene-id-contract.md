@@ -218,8 +218,10 @@ Ensembl says what changed. The allowed gene set says what is nameable. We only r
       pieces, and padding a thousand rename rows out to it would move their tags off the right edge for
       nothing.
 
-5.3 Each class names **whose problem it is**. Three say "do not relay as a defect": a boundary revision, a
-    gene newer than the allowed gene set, and an overlap flag.
+5.3 **A finding never says whose problem it is.** The log says what is true of this file and what to do
+    about it; whether it is passed on to the producer, and as what, is routing, and it lives in the curate
+    skill's table beside the tags. Today that table marks three things "do not relay as a defect to the
+    producer": `[none]`, `; old contains new`, and `; overlap`.
 
 5.4 **The merge decision stays with the producer.** Where a source study was aligned against an annotation
     that treated two identifiers as separate loci, its cells hold real counts in each and summing them
