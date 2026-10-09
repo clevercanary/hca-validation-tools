@@ -36,8 +36,8 @@ def tracker(tmp_path, monkeypatch):
         data = tmp_path / "bucket" / "gut"
         data.parent.mkdir()
         data.write_bytes(os.urandom(500_000))
-        fake.add_file(atlas_id, "gut-r1.h5ad", data, integrity="pending")
-        fake.add_file(atlas_id, "src-r1.h5ad", data, kind="source")
+        fake.add_file(atlas_id, "gut.h5ad", data, integrity="pending")
+        fake.add_file(atlas_id, "src.h5ad", data, kind="source")
         cache = tmp_path / "cache"
         monkeypatch.chdir(tmp_path)  # no stray .env
         monkeypatch.setenv("HCA_TRACKER_URL", fake.url)
@@ -92,7 +92,7 @@ async def test_listing(client, tracker):
     integrated = await _call(client, "list_integrated_objects", {"network": "gut", "atlas": "gut"})
     assert integrated["files"] == [
         {
-            "name": "gut-r1.h5ad",
+            "name": "gut.h5ad",
             "size_bytes": 500_000,
             "size": "500.0 KB",
             "file_id": "file-1",
@@ -100,7 +100,7 @@ async def test_listing(client, tracker):
         }
     ]
     sources = await _call(client, "list_source_datasets", {"network": "gut", "atlas": "gut", "published": True})
-    assert [f["name"] for f in sources["files"]] == ["src-r1.h5ad"]
+    assert [f["name"] for f in sources["files"]] == ["src.h5ad"]
 
 
 @pytest.mark.asyncio
@@ -121,7 +121,7 @@ async def test_bad_token(client, tracker, monkeypatch):
 @pytest.mark.asyncio
 async def test_download_flow(client, tracker):
     OUTPUTS.clear()  # earlier tests ran against other fake trackers
-    started = await _call(client, "start_download", {"network": "gut", "atlas": "gut", "file": "gut-r1.h5ad"})
+    started = await _call(client, "start_download", {"network": "gut", "atlas": "gut", "file": "gut.h5ad"})
     assert set(started) >= {"job_id", "path", "size", "state"}
     assert started["warnings"] == ["The tracker's integrity status for this file is 'pending', not 'valid'"]
 
@@ -159,3 +159,15 @@ async def test_download_flow(client, tracker):
     assert "X-Amz" not in text
     assert "/s3/" not in text
     assert "http" not in text.replace(tracker.url, "")
+
+
+def test_unexpected_errors_are_redacted(monkeypatch):
+    """The fallback for non-tracker errors strips URLs and the token from the message."""
+    from hca_tracker_mcp.tools import _call
+
+    monkeypatch.setenv("HCA_TRACKER_API_TOKEN", "tok123")
+
+    def boom():
+        raise ValueError("GET https://bucket/x?X-Amz-Signature=abc failed with tok123")
+
+    assert _call(boom) == {"error": "ValueError: GET <url> failed with <redacted>"}

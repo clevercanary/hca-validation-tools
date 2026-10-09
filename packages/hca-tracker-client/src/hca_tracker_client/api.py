@@ -94,9 +94,11 @@ def probe(presigned: Presigned, timeout: float = 60) -> Probe:
             response.read(1)
             headers = response.headers
     except urllib.error.HTTPError as error:
-        raise CheckError(
-            f"The download link for {presigned.filename} was refused (HTTP {error.code}); nothing was downloaded"
-        ) from None
+        reason = {
+            404: "is not in storage (still uploading?)",
+            416: "is empty on the server",
+        }.get(error.code, f"was refused (HTTP {error.code})")
+        raise CheckError(f"The file {presigned.filename} {reason}; nothing was downloaded") from None
     except (urllib.error.URLError, TimeoutError, OSError) as error:
         reason = redact(str(getattr(error, "reason", error)))
         raise CheckError(f"Could not reach the download link for {presigned.filename}: {reason}") from None

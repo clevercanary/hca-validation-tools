@@ -82,3 +82,16 @@ def test_find_file_by_name_or_id():
     assert find_file(files, "f1", "x")["fileName"] == "a.h5ad"
     with pytest.raises(SelectionError, match=r"No file 'c.h5ad' in gut/gut v1.0. Files: a.h5ad, b.h5ad"):
         find_file(files, "c.h5ad", "gut/gut v1.0")
+
+
+def test_ambiguous_name_lists_each_file_id_and_kind():
+    files = [
+        {"fileId": "f1", "fileName": "a.h5ad", "kind": "integrated object"},
+        {"fileId": "f2", "fileName": "a.h5ad", "kind": "source dataset"},
+    ]
+    with pytest.raises(SelectionError) as error:
+        find_file(files, "a.h5ad", "gut/gut v1.1")
+    assert str(error.value) == (
+        "Several files in gut/gut v1.1 match 'a.h5ad': f1 (integrated object), f2 (source dataset). "
+        "Pass one of these file_ids instead"
+    )

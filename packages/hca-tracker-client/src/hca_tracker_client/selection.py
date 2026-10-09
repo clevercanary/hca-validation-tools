@@ -70,6 +70,7 @@ def find_file(files: list[dict], file: str, label: str) -> dict:
     if len(matches) == 1:
         return matches[0]
     if len(matches) > 1:
-        raise SelectionError(f"Several files in {label} match {file!r}; pass the fileId instead")
+        options = ", ".join(f"{f['fileId']} ({f.get('kind', 'file')})" for f in matches)
+        raise SelectionError(f"Several files in {label} match {file!r}: {options}. Pass one of these file_ids instead")
     names = sorted(str(f.get("fileName") or f["fileId"]) for f in files if f.get("fileId"))
     raise SelectionError(f"No file {file!r} in {label}. Files: {', '.join(names) or '(none)'}")

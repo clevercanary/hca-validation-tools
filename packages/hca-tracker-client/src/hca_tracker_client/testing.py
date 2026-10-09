@@ -19,6 +19,12 @@ from urllib.parse import parse_qs, urlparse
 from .api import SHA256_HEADER
 
 
+def _versioned(name: str) -> str:
+    """The name the real tracker presigns: the listed name with ``-r1`` before its extension."""
+    dot = name.rfind(".")
+    return f"{name[:dot]}-r1{name[dot:]}" if dot > 0 else f"{name}-r1"
+
+
 @dataclass
 class _Blob:
     file_id: str
@@ -131,7 +137,7 @@ class FakeTracker:
                     signature = secrets.token_hex(8)
                     tracker.links.add(signature)
                     url = f"{tracker.url}/s3/{blob.file_id}?X-Amz-Signature={signature}"
-                    return self._json(200, {"url": url, "filename": blob.name})
+                    return self._json(200, {"url": url, "filename": _versioned(blob.name)})
                 return self._json(404, {})
 
             def do_GET(self):

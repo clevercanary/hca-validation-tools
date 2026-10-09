@@ -24,12 +24,12 @@ SIZE = 3_000_000
 @pytest.fixture
 def gut_file(tracker):
     path = make_file(tracker.data_dir / "gut", SIZE)
-    tracker.add_file(tracker.ids["gut"], "gut-r1.h5ad", path)
+    tracker.add_file(tracker.ids["gut"], "gut.h5ad", path)
     return path
 
 
 def test_download_end_to_end(downloads, tracker, gut_file):
-    started = downloads.start("gut", "gut", "gut-r1.h5ad")
+    started = downloads.start("gut", "gut", "gut.h5ad")
     assert started["state"] == "queued"
     assert started["path"].endswith("cache/gut/gut_v1.0/gut-r1.h5ad")
 
@@ -41,7 +41,7 @@ def test_download_end_to_end(downloads, tracker, gut_file):
     assert final.read_bytes() == gut_file.read_bytes()
     assert not (final.parent / "gut-r1.h5ad.part").exists()
 
-    again = downloads.start("gut", "gut", "gut-r1.h5ad")
+    again = downloads.start("gut", "gut", "gut.h5ad")
     assert again["cached"] is True
     assert again["job_id"] == started["job_id"]
     assert again["state"] == "done"
@@ -52,8 +52,8 @@ def test_download_end_to_end(downloads, tracker, gut_file):
 
 def test_checksum_mismatch_keeps_part_and_blocks_resume(downloads, tracker):
     path = make_file(tracker.data_dir / "bad", 100_000)
-    file_id = tracker.add_file(tracker.ids["gut"], "bad-r1.h5ad", path, sha256="0" * 64)
-    started = downloads.start("gut", "gut", "bad-r1.h5ad")
+    file_id = tracker.add_file(tracker.ids["gut"], "bad.h5ad", path, sha256="0" * 64)
+    started = downloads.start("gut", "gut", "bad.h5ad")
     failed = wait_for(downloads, started["job_id"], ("done", "failed"))
     assert failed["state"] == "failed"
     assert failed["error_code"] == 32
@@ -69,15 +69,15 @@ def test_checksum_mismatch_keeps_part_and_blocks_resume(downloads, tracker):
     assert aria2.call("tellStopped", 0, 10, ["gid"]) == []
 
     with pytest.raises(CheckError, match="failed its checksum and is kept at"):
-        downloads.start("gut", "gut", "bad-r1.h5ad")
+        downloads.start("gut", "gut", "bad.h5ad")
 
     tracker.blobs[file_id].sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
-    restarted = downloads.start("gut", "gut", "bad-r1.h5ad", restart=True)
+    restarted = downloads.start("gut", "gut", "bad.h5ad", restart=True)
     assert wait_for(downloads, restarted["job_id"], ("done", "failed"))["state"] == "done"
 
 
 def test_download_survives_the_starting_process(cache_dir, tracker, gut_file):
-    """Start in a subprocess that exits at once; follow the job from another process."""
+    """Start in a subprocess killed with its whole process group; follow the job from another process."""
     tracker.rate_bps = 1_000_000
     env = {
         **os.environ,
@@ -91,13 +91,19 @@ def test_download_survives_the_starting_process(cache_dir, tracker, gut_file):
         from hca_tracker_client import Downloads, load_config
         from hca_tracker_client import checks
         checks.free_bytes = lambda path: 10**12
-        print(json.dumps(Downloads(load_config()).start("gut", "gut", "gut-r1.h5ad")))
+        print(json.dumps(Downloads(load_config()).start("gut", "gut", "gut.h5ad")), flush=True)
+        import os, signal
+        os.killpg(0, signal.SIGKILL)  # as when a client kills the MCP server's process group
         """
     )
     begin = time.monotonic()
-    result = subprocess.run([sys.executable, "-c", starter], env=env, capture_output=True, text=True, check=True)
+    result = subprocess.run(
+        [sys.executable, "-c", starter], env=env, capture_output=True, text=True, start_new_session=True
+    )
+    assert result.returncode == -signal.SIGKILL, result.stderr
     assert time.monotonic() - begin < 2.5, "start_download should return before the 3 s download finishes"
     job_id = json.loads(result.stdout)["job_id"]
+    assert connect(cache_dir) is not None, "the daemon must outlive the starter's process group"
 
     reader = textwrap.dedent(
         f"""
@@ -121,7 +127,7 @@ def test_download_survives_the_starting_process(cache_dir, tracker, gut_file):
 
 def test_resume_after_link_expires_and_daemon_restarts(downloads, tracker, gut_file):
     tracker.rate_bps = 500_000
-    started = downloads.start("gut", "gut", "gut-r1.h5ad")
+    started = downloads.start("gut", "gut", "gut.h5ad")
     status = wait_for(downloads, started["job_id"], ("downloading",))
     deadline = time.monotonic() + 30
     while status.get("progress", {}).get("bytes_done", 0) < SIZE // 3 and time.monotonic() < deadline:
@@ -139,7 +145,7 @@ def test_resume_after_link_expires_and_daemon_restarts(downloads, tracker, gut_f
     assert failed["state"] == "failed", failed
     assert failed["message"].startswith("The download link was refused")
 
-    resumed = downloads.start("gut", "gut", "gut-r1.h5ad")
+    resumed = downloads.start("gut", "gut", "gut.h5ad")
     assert resumed["job_id"] != started["job_id"]
     assert resumed["message"].startswith("Resuming the partial download")
     done = wait_for(downloads, resumed["job_id"], ("done", "failed"))
@@ -158,7 +164,7 @@ def test_resume_after_link_expires_and_daemon_restarts(downloads, tracker, gut_f
 
 def test_cancel_then_resume(downloads, tracker, gut_file):
     tracker.rate_bps = 300_000
-    started = downloads.start("gut", "gut", "gut-r1.h5ad")
+    started = downloads.start("gut", "gut", "gut.h5ad")
     wait_for(downloads, started["job_id"], ("downloading",))
     time.sleep(1)
     cancelled = downloads.cancel(started["job_id"])
@@ -166,17 +172,17 @@ def test_cancel_then_resume(downloads, tracker, gut_file):
     assert cancelled["partial_path"].endswith("gut-r1.h5ad.part")
 
     tracker.rate_bps = 0
-    resumed = downloads.start("gut", "gut", "gut-r1.h5ad")
+    resumed = downloads.start("gut", "gut", "gut.h5ad")
     assert wait_for(downloads, resumed["job_id"], ("done", "failed"))["state"] == "done"
 
 
 def test_queue_limit(cache_dir, tracker, gut_file):
     downloads = Downloads(make_config(cache_dir, tracker, max_concurrent=1))
     other = make_file(tracker.data_dir / "other", SIZE)
-    tracker.add_file(tracker.ids["gut"], "other-r1.h5ad", other)
+    tracker.add_file(tracker.ids["gut"], "other.h5ad", other)
     tracker.rate_bps = 1_000_000
-    first = downloads.start("gut", "gut", "gut-r1.h5ad")
-    second = downloads.start("gut", "gut", "other-r1.h5ad")
+    first = downloads.start("gut", "gut", "gut.h5ad")
+    second = downloads.start("gut", "gut", "other.h5ad")
     wait_for(downloads, first["job_id"], ("downloading",))
     assert downloads.status(second["job_id"])["state"] == "queued"
     jobs = downloads.status()["jobs"]
@@ -187,8 +193,8 @@ def test_queue_limit(cache_dir, tracker, gut_file):
 
 def test_start_while_downloading_returns_the_running_job(downloads, tracker, gut_file):
     tracker.rate_bps = 500_000
-    first = downloads.start("gut", "gut", "gut-r1.h5ad")
-    second = downloads.start("gut", "gut", "gut-r1.h5ad")
+    first = downloads.start("gut", "gut", "gut.h5ad")
+    second = downloads.start("gut", "gut", "gut.h5ad")
     assert second["job_id"] == first["job_id"]
     assert second["message"] == "Already downloading"
     tracker.rate_bps = 0
@@ -196,7 +202,7 @@ def test_start_while_downloading_returns_the_running_job(downloads, tracker, gut
 
 
 def test_delete_download(downloads, tracker, gut_file, tmp_path):
-    started = downloads.start("gut", "gut", "gut-r1.h5ad")
+    started = downloads.start("gut", "gut", "gut.h5ad")
     wait_for(downloads, started["job_id"], ("done",))
     with pytest.raises(Exception, match="is not in the download cache"):
         downloads.delete(str(tmp_path / "bucket" / "gut"))
@@ -207,7 +213,7 @@ def test_delete_download(downloads, tracker, gut_file, tmp_path):
 
 
 def test_daemon_files_are_private(downloads, tracker, gut_file):
-    started = downloads.start("gut", "gut", "gut-r1.h5ad")
+    started = downloads.start("gut", "gut", "gut.h5ad")
     wait_for(downloads, started["job_id"], ("done",))
     directory = daemon_dir(downloads.cache_dir)
     assert directory.stat().st_mode & 0o777 == 0o700
@@ -221,7 +227,7 @@ def test_daemon_files_are_private(downloads, tracker, gut_file):
 
 def test_status_restarts_a_dead_daemon(downloads, tracker, gut_file):
     tracker.rate_bps = 100_000  # about 30 s for the file, so it is still running at the kill
-    started = downloads.start("gut", "gut", "gut-r1.h5ad")
+    started = downloads.start("gut", "gut", "gut.h5ad")
     wait_for(downloads, started["job_id"], ("downloading",))
     pid = int((daemon_dir(downloads.cache_dir) / "pid").read_text())
     time.sleep(11)  # past save-session-interval, so the session holds the job
@@ -233,7 +239,7 @@ def test_status_restarts_a_dead_daemon(downloads, tracker, gut_file):
 
 def test_list_and_delete_do_not_restart_the_daemon(downloads, tracker, gut_file):
     tracker.rate_bps = 200_000
-    started = downloads.start("gut", "gut", "gut-r1.h5ad")
+    started = downloads.start("gut", "gut", "gut.h5ad")
     wait_for(downloads, started["job_id"], ("downloading",))
     shutdown(downloads.cache_dir)
     downloads.list_files()
@@ -247,7 +253,7 @@ def test_list_and_delete_do_not_restart_the_daemon(downloads, tracker, gut_file)
 def test_delete_scope_is_the_job_file_not_its_folder(downloads, tracker, gut_file, tmp_path):
     elsewhere = tmp_path / "Downloads"
     neighbour = make_file(elsewhere / "tax-return.pdf", 10)
-    started = downloads.start("gut", "gut", "gut-r1.h5ad", dest_dir=str(elsewhere))
+    started = downloads.start("gut", "gut", "gut.h5ad", dest_dir=str(elsewhere))
     wait_for(downloads, started["job_id"], ("done",))
     with pytest.raises(Exception, match="not in the download cache or a file a download job saved"):
         downloads.delete(str(neighbour))
@@ -262,7 +268,7 @@ def test_delete_scope_is_the_job_file_not_its_folder(downloads, tracker, gut_fil
 
 def test_cancel_racing_completion_records_done(downloads, tracker, gut_file, monkeypatch):
     """If the download finished just before forceRemove, cancel reports done, not cancelled."""
-    started = downloads.start("gut", "gut", "gut-r1.h5ad")
+    started = downloads.start("gut", "gut", "gut.h5ad")
     wait_for(downloads, started["job_id"], ("done",))
     # Replay cancel as if its refresh ran just before completion: a stale active copy.
     stale = downloads.store.load(started["job_id"])
@@ -281,3 +287,31 @@ def test_deleting_an_untracked_part_spares_a_same_named_file(downloads):
     stray = make_file(folder / "foo.h5ad.part", 5)
     assert downloads.delete(str(stray))["deleted"] == [str(stray)]
     assert whole.exists()
+
+
+def test_hook_records_the_outcome_without_status_calls(downloads, gut_file):
+    """aria2's hook finalizes the job on its own; nothing here calls download_status."""
+    started = downloads.start("gut", "gut", "gut.h5ad")
+    deadline = time.monotonic() + 60
+    while (job := downloads.store.load(started["job_id"])).state != "done":
+        assert time.monotonic() < deadline, job
+        time.sleep(0.1)
+    assert job.verified == "sha256"
+    assert job.final.exists()
+    assert not job.part.exists()
+
+
+def test_symlinked_cache_lists_each_file_once(tmp_path, tracker, gut_file):
+    real = tmp_path / "real-cache"
+    real.mkdir()
+    link = tmp_path / "linked-cache"
+    link.symlink_to(real)
+    downloads = Downloads(make_config(link, tracker))
+    try:
+        started = downloads.start("gut", "gut", "gut.h5ad")
+        wait_for(downloads, started["job_id"], ("done",))
+        files = downloads.list_files()["files"]
+        assert [(f["state"], f["path"]) for f in files] == [("done", started["path"])]
+    finally:
+        shutdown(real)
+        shutdown(link)

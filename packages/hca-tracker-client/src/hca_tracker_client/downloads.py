@@ -106,8 +106,10 @@ class Downloads:
 
     def __init__(self, config: Config, tracker: TrackerClient | None = None):
         self.config = config
-        self.cache_dir = config.cache_dir
-        self.store = JobStore(config.cache_dir)
+        # Resolved, so job paths (built from resolved folders) and the cache scan agree
+        # even when the cache is reached through a symlink.
+        self.cache_dir = config.cache_dir.resolve()
+        self.store = JobStore(self.cache_dir)
         self._tracker = tracker
 
     @property
@@ -243,7 +245,9 @@ class Downloads:
         version = atlas_version(version_record)
         label = f"{network}/{atlas} {version}"
         atlas_id = version_record["id"]
-        entry = find_file(tracker.component_atlases(atlas_id) + tracker.source_datasets(atlas_id), file, label)
+        files = [{**f, "kind": "integrated object"} for f in tracker.component_atlases(atlas_id)]
+        files += [{**f, "kind": "source dataset"} for f in tracker.source_datasets(atlas_id)]
+        entry = find_file(files, file, label)
 
         warnings = []
         integrity = entry.get("integrityStatus")
@@ -252,8 +256,9 @@ class Downloads:
 
         presigned = tracker.presigned_url(atlas_id, entry["fileId"])
         filename = _safe_name(presigned.filename)
-        safe_network, safe_atlas = _safe_component(network, "network"), _safe_component(atlas, "atlas slug")
-        default_dir = self.cache_dir / safe_network / f"{safe_atlas}_{version}"
+        safe_network = _safe_component(network, "network")
+        safe_version_dir = _safe_component(f"{_safe_component(atlas, 'atlas slug')}_{version}", "atlas version")
+        default_dir = self.cache_dir / safe_network / safe_version_dir
         # Resolved, so two spellings of one folder (symlink, "..") are one destination.
         directory = (Path(dest_dir).expanduser() if dest_dir else default_dir).resolve()
         if _CONTROL.search(str(directory)):

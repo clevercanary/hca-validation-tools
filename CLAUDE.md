@@ -103,7 +103,7 @@ Release-As: 1.0.0
 
 This is release-please's supported override mechanism — it overrides the auto-computed bump for the package whose path the commit touches. Don't hand-edit `.release-please-manifest.json`: that file is a back-reference to the last released version per path and editing it doesn't reliably cut a release; it can also desync from the git tags release-please uses for compare links.
 
-Before tagging 1.0.0, widen the sibling bounds in `packages/hca-anndata-mcp/pyproject.toml`. They are capped at the next minor (`hca-anndata-tools>=0.6,<0.7`) because at 0.x a minor bump signals a breaking change; once a sibling reaches 1.0 that cap must become `<2`, or the MCP wheel will refuse to install alongside it.
+Before tagging 1.0.0, widen the sibling bounds in `packages/hca-anndata-mcp/pyproject.toml` and `packages/hca-tracker-mcp/pyproject.toml` (`hca-tracker-client>=0.1,<0.2`). They are capped at the next minor (`hca-anndata-tools>=0.6,<0.7`) because at 0.x a minor bump signals a breaking change; once a sibling reaches 1.0 that cap must become `<2`, or the MCP wheel will refuse to install alongside it.
 
 `scripts/check_sibling_deps.py` runs in the publish workflow and fails the build if a sibling is declared without a bound, as a direct `file://` reference, or with a bound that excludes the sibling's current version. None of these are visible locally: `[tool.uv.sources]` resolves siblings from the checkout, so `uv sync`, pytest, and pyright all pass regardless of what the bound says.
 

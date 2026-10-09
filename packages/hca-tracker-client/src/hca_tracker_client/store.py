@@ -173,5 +173,6 @@ class JobStore:
         return [job for job in self.all() if job.path == str(path)]
 
     def delete(self, job_id: str) -> None:
-        with contextlib.suppress(FileNotFoundError):
+        # Under the save lock, so a save that has already loaded the record can't recreate it.
+        with file_lock(self._save_lock), contextlib.suppress(FileNotFoundError):
             self._file(job_id).unlink()
