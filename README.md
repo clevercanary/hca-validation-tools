@@ -16,7 +16,7 @@ Top-level directories and their roles (each package/service has its own
 `pyproject.toml`, uv environment, and `tests/`):
 
 - **`shared/`** — core validation library (LinkML schemas, generated Pydantic models, entry-sheet logic) that the services depend on via a uv path dependency
-- **`packages/`** — publishable PyPI packages: `hca-schema-validator`, `hca-anndata-tools`, `hca-anndata-mcp`, `hca-tracker-client`, `hca-tracker-mcp`
+- **`packages/`** — publishable PyPI packages: `hca-schema-validator`, `hca-anndata-tools`, `hca-anndata-mcp`; and the private (unpublished) `hca-tracker-client` / `hca-tracker-mcp`, installed from git or a local path
 - **`services/`** — deployable services: `entry-sheet-validator` (Lambda), `dataset-validator` (Batch), and the `cellxgene-validator` / `hca-schema-validator` wrappers
 - **`deployment/`** — Dockerfiles and per-service deployment configs
 - **`data_dictionaries/`** — generated data dictionaries

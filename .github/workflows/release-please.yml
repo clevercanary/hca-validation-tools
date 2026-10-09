@@ -17,8 +17,6 @@ jobs:
       hca_schema_validator_release: ${{ steps.release.outputs['packages/hca-schema-validator--release_created'] }}
       hca_anndata_tools_release: ${{ steps.release.outputs['packages/hca-anndata-tools--release_created'] }}
       hca_anndata_mcp_release: ${{ steps.release.outputs['packages/hca-anndata-mcp--release_created'] }}
-      hca_tracker_client_release: ${{ steps.release.outputs['packages/hca-tracker-client--release_created'] }}
-      hca_tracker_mcp_release: ${{ steps.release.outputs['packages/hca-tracker-mcp--release_created'] }}
     steps:
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         id: release
@@ -65,8 +63,8 @@ jobs:
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
         with:
           packages-dir: packages/hca-schema-validator/dist/
-          # Makes a workflow_dispatch retry safe: dispatch runs every
-          # publish job, so a retry after a partial success would otherwise
+          # Makes a workflow_dispatch retry safe: dispatch runs all three
+          # publish jobs, so a retry after a partial success would otherwise
           # fail on "File already exists" — and publish-hca-anndata-mcp gates
           # on the other two succeeding, locking it out of dispatch entirely.
           skip-existing: true
@@ -113,8 +111,8 @@ jobs:
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
         with:
           packages-dir: packages/hca-anndata-tools/dist/
-          # Makes a workflow_dispatch retry safe: dispatch runs every
-          # publish job, so a retry after a partial success would otherwise
+          # Makes a workflow_dispatch retry safe: dispatch runs all three
+          # publish jobs, so a retry after a partial success would otherwise
           # fail on "File already exists" — and publish-hca-anndata-mcp gates
           # on the other two succeeding, locking it out of dispatch entirely.
           skip-existing: true
@@ -167,109 +165,8 @@ jobs:
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
         with:
           packages-dir: packages/hca-anndata-mcp/dist/
-          # Makes a workflow_dispatch retry safe: dispatch runs every
-          # publish job, so a retry after a partial success would otherwise
+          # Makes a workflow_dispatch retry safe: dispatch runs all three
+          # publish jobs, so a retry after a partial success would otherwise
           # fail on "File already exists" — and publish-hca-anndata-mcp gates
           # on the other two succeeding, locking it out of dispatch entirely.
-          skip-existing: true
-
-  publish-hca-tracker-client:
-    needs: release-please
-    if: |
-      !failure() && !cancelled() &&
-      (needs['release-please'].outputs.hca_tracker_client_release == 'true' || github.event_name == 'workflow_dispatch')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
-        with:
-          # Pin both the build tool and the interpreter. Either one floating
-          # means a release can change or break with no change on our side:
-          # uv is pre-1.0 and `uv build` behaviour moves, and ubuntu-latest's
-          # default Python moves with the runner image. Bump these
-          # deliberately. Dev-side pinning is tracked in #480.
-          version: "0.10.9"
-          python-version: "3.11"
-
-      - name: Build package
-        run: uv build
-        working-directory: packages/hca-tracker-client
-
-      - name: Check sibling dependency bounds
-        run: uv run --no-project --with packaging python scripts/check_sibling_deps.py packages/hca-tracker-client/dist/*
-
-      # Do not pin below v1.14.2. This action bundles twine, and accepting
-      # Metadata-Version 2.5 — what hatchling >=1.32.0 emits — needs both
-      # twine 7 and packaging >=26.1. Neither alone suffices: twine 6.1.0
-      # with packaging 26.2 rejects it, and so does twine 7.0.0 with
-      # packaging 25.0. v1.14.0 shipped twine 6.1.0 / packaging 25.0 and
-      # failed the 0.15.0 release (#588); v1.14.2 ships 7.0.0 / 26.2.
-      # Nothing auto-bumps this pin — Dependabot is tracked in #465.
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
-        with:
-          packages-dir: packages/hca-tracker-client/dist/
-          # Makes a workflow_dispatch retry safe: dispatch runs every
-          # publish job, so a retry after a partial success would otherwise
-          # fail on "File already exists" — and publish-hca-tracker-mcp gates
-          # on this job succeeding, locking it out of dispatch entirely.
-          skip-existing: true
-
-  publish-hca-tracker-mcp:
-    needs: [release-please, publish-hca-tracker-client]
-    # Use always() + explicit result checks so mcp still publishes when
-    # the sibling publish job is intentionally skipped (e.g. only mcp is in
-    # this release). !failure() alone is unreliable: GitHub Actions can
-    # propagate skipped-dep state to downstream jobs.
-    if: |
-      always() && !cancelled() &&
-      (needs['release-please'].outputs.hca_tracker_mcp_release == 'true' || github.event_name == 'workflow_dispatch') &&
-      (needs['publish-hca-tracker-client'].result == 'success' || needs['publish-hca-tracker-client'].result == 'skipped')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
-        with:
-          # Pin both the build tool and the interpreter. Either one floating
-          # means a release can change or break with no change on our side:
-          # uv is pre-1.0 and `uv build` behaviour moves, and ubuntu-latest's
-          # default Python moves with the runner image. Bump these
-          # deliberately. Dev-side pinning is tracked in #480.
-          version: "0.10.9"
-          python-version: "3.11"
-
-      - name: Build package
-        run: uv build
-        working-directory: packages/hca-tracker-mcp
-
-      - name: Check sibling dependency bounds
-        run: uv run --no-project --with packaging python scripts/check_sibling_deps.py packages/hca-tracker-mcp/dist/*
-
-      # Do not pin below v1.14.2. This action bundles twine, and accepting
-      # Metadata-Version 2.5 — what hatchling >=1.32.0 emits — needs both
-      # twine 7 and packaging >=26.1. Neither alone suffices: twine 6.1.0
-      # with packaging 26.2 rejects it, and so does twine 7.0.0 with
-      # packaging 25.0. v1.14.0 shipped twine 6.1.0 / packaging 25.0 and
-      # failed the 0.15.0 release (#588); v1.14.2 ships 7.0.0 / 26.2.
-      # Nothing auto-bumps this pin — Dependabot is tracked in #465.
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
-        with:
-          packages-dir: packages/hca-tracker-mcp/dist/
-          # Makes a workflow_dispatch retry safe: dispatch runs every
-          # publish job, so a retry after a partial success would otherwise
-          # fail on "File already exists" — and publish-hca-tracker-mcp gates
-          # on publish-hca-tracker-client succeeding, locking it out of dispatch.
           skip-existing: true

@@ -29,16 +29,38 @@ Set them in the server's environment, or in a `.env` file in the directory the
 server runs in (only `HCA_TRACKER_*` keys are read from it). Claude Code starts
 a project's MCP servers in the project root, so the repo `.env` works.
 
+## Install
+
+Not published to PyPI. Run it straight from the git repo with `uvx` (uv
+builds `hca-tracker-client` from the same commit), or install it from a local
+checkout:
+
+```bash
+# from git — nothing to install; uvx builds and caches it
+uvx --from "git+https://github.com/clevercanary/hca-validation-tools@main#subdirectory=packages/hca-tracker-mcp" hca-tracker-mcp
+
+# from a checkout
+uv tool install ./packages/hca-tracker-mcp            # puts hca-tracker-mcp on PATH
+uv tool install --reinstall ./packages/hca-tracker-mcp  # after pulling changes
+```
+
+`uvx` caches the build for a ref: pass `--refresh` to pick up a newer `main`,
+or pin `@<commit>` instead of `@main` for a fixed version.
+
 ## `.mcp.json`
 
-Installed from PyPI:
+From git, with `uvx`:
 
 ```json
 {
   "mcpServers": {
     "hca-tracker": {
       "command": "uvx",
-      "args": ["hca-tracker-mcp"],
+      "args": [
+        "--from",
+        "git+https://github.com/clevercanary/hca-validation-tools@main#subdirectory=packages/hca-tracker-mcp",
+        "hca-tracker-mcp"
+      ],
       "env": {
         "HCA_TRACKER_URL": "https://<tracker-host>",
         "HCA_TRACKER_API_TOKEN": "${HCA_TRACKER_API_TOKEN}"
@@ -52,7 +74,8 @@ Installed from PyPI:
 in, so the token itself need not be in the file. Leave `env` out to use the
 `.env` file instead.
 
-From a checkout, point at the venv binary (`uv sync` in this folder first):
+After `uv tool install` from a checkout, use `"command": "hca-tracker-mcp"`.
+Or point at the checkout's venv binary (`uv sync` in this folder first):
 
 ```json
 {

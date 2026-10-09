@@ -16,6 +16,18 @@ MCP server is a thin wrapper over it.
   download keeps going after the MCP server or the Claude session ends, and a
   new session can follow it.
 
+## Install
+
+Not published to PyPI. Install from the git repo or a local checkout:
+
+```bash
+uv pip install "git+https://github.com/clevercanary/hca-validation-tools@main#subdirectory=packages/hca-tracker-client"
+uv pip install ./packages/hca-tracker-client   # from a checkout
+```
+
+Most users want the MCP server instead; see
+[`hca-tracker-mcp`](../hca-tracker-mcp#install).
+
 ## Requirements
 
 `aria2c` 1.35.0 or newer on `PATH`. There is no fallback to a slower

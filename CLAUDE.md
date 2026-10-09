@@ -86,7 +86,7 @@ make batch-submit-job ENV=dev
 
 ## Release Policy
 
-All five publishable packages (`hca-schema-validator`, `hca-anndata-tools`, `hca-anndata-mcp`, `hca-tracker-client`, `hca-tracker-mcp`) are pre-1.0 and treated as still iterating. Two flags in `release-please-config.json` shape the bump behavior:
+All three publishable packages (`hca-schema-validator`, `hca-anndata-tools`, `hca-anndata-mcp`) are pre-1.0 and treated as still iterating. Two flags in `release-please-config.json` shape the bump behavior:
 
 - **`bump-minor-pre-major: true`** — on a 0.x package, `feat!` (BREAKING CHANGE) produces a minor bump (`0.12.1` → `0.13.0`), not release-please's default `0.x` → `1.0.0` promotion.
 - **`bump-patch-for-minor-pre-major: true`** — non-breaking `feat:` commits produce a patch bump (`0.12.1` → `0.12.2`), not the default minor. This keeps the minor bump as the explicit "breaking change" signal at 0.x.
@@ -103,7 +103,9 @@ Release-As: 1.0.0
 
 This is release-please's supported override mechanism — it overrides the auto-computed bump for the package whose path the commit touches. Don't hand-edit `.release-please-manifest.json`: that file is a back-reference to the last released version per path and editing it doesn't reliably cut a release; it can also desync from the git tags release-please uses for compare links.
 
-Before tagging 1.0.0, widen the sibling bounds in `packages/hca-anndata-mcp/pyproject.toml` and `packages/hca-tracker-mcp/pyproject.toml` (`hca-tracker-client>=0.1,<0.2`). They are capped at the next minor (`hca-anndata-tools>=0.6,<0.7`) because at 0.x a minor bump signals a breaking change; once a sibling reaches 1.0 that cap must become `<2`, or the MCP wheel will refuse to install alongside it.
+Before tagging 1.0.0, widen the sibling bounds in `packages/hca-anndata-mcp/pyproject.toml`. They are capped at the next minor (`hca-anndata-tools>=0.6,<0.7`) because at 0.x a minor bump signals a breaking change; once a sibling reaches 1.0 that cap must become `<2`, or the MCP wheel will refuse to install alongside it.
+
+**Private packages.** `hca-tracker-client` and `hca-tracker-mcp` are deliberately **not** published: they are not in `release-please-config.json` and have no publish job. They are installed from git (`uvx --from "git+https://github.com/clevercanary/hca-validation-tools@main#subdirectory=packages/hca-tracker-mcp" hca-tracker-mcp`) or a local path (`uv tool install ./packages/hca-tracker-mcp`); uv builds `hca-tracker-client` from the same commit via `[tool.uv.sources]`. Their versions are bumped by hand. Don't add them to release-please without deciding to publish.
 
 `scripts/check_sibling_deps.py` runs in the publish workflow and fails the build if a sibling is declared without a bound, as a direct `file://` reference, or with a bound that excludes the sibling's current version. None of these are visible locally: `[tool.uv.sources]` resolves siblings from the checkout, so `uv sync`, pytest, and pyright all pass regardless of what the bound says.
 
@@ -154,7 +156,7 @@ make batch-publish-container ENV=dev     # then ENV=prod, from main
 - `services/cellxgene-validator/` - Wrapper for cellxgene-schema validator
 - `packages/hca-schema-validator/` - Publishable PyPI package (automated releases via release-please)
 - `packages/hca-anndata-tools/`, `packages/hca-anndata-mcp/` - h5ad inspection/editing library and its MCP server
-- `packages/hca-tracker-client/`, `packages/hca-tracker-mcp/` - HCA Atlas Tracker listing/download library (downloads run in an aria2 daemon) and its MCP server
+- `packages/hca-tracker-client/`, `packages/hca-tracker-mcp/` - HCA Atlas Tracker listing/download library (downloads run in an aria2 daemon) and its MCP server; private, not published to PyPI
 - `deployment/` - Dockerfiles and deployment configs per service
 
 **Schema-Driven Validation:**
