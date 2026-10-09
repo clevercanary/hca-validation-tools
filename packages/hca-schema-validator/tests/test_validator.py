@@ -2921,7 +2921,8 @@ def test_a_nested_split_reaches_every_terminal():
 def test_a_split_with_no_usable_pieces_is_dropped():
     """38 of the table's 94 splits reach nothing in the allowed gene set at any depth."""
     row = _rows([_SPLIT_OFF_REFERENCE], _SPLIT_OFF_REFERENCE)
-    assert "split; successor not in the allowed set" in row and "[drop]" in row, row
+    assert "split into ENSG" in row and "; none in the allowed set" in row and "[drop]" in row, row
+    assert "->" not in row, row
 
 
 def test_a_retired_id_is_named_as_the_file_writes_it():

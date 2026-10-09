@@ -3004,7 +3004,14 @@ def _retired_detail_block(
                 if reason := collides.get(feature):
                     status += f"; successor {'already in file' if reason == 'in file' else 'shared'}"
                 if name == "off_reference":
-                    status += "; successor not in the allowed set"
+                    # The pieces are named even though none is usable (3.7): a
+                    # row that says "successor" without saying which cannot be
+                    # checked against Ensembl.
+                    status = (
+                        f"split into {', '.join(splits[feature])}; none in the allowed set"
+                        if feature in splits
+                        else f"{status}; successor not in the allowed set"
+                    )
             if flag := _SPAN_FLAGS.get(spans.get(feature, "")):
                 status = f"{status}; {flag}"
             if feature in suffixed and name not in ("versioned", "suffix_pair"):
