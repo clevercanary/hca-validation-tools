@@ -2652,7 +2652,14 @@ def _retired_findings(adata):
     # var index for a string that is not in it -- while saying nothing about the
     # suffix, which the rename also has to drop. The bare form stays available
     # through `candidates` for anything that needs to read the shipped table.
-    replacements: dict[str, dict[str, str]] = {"same_gene": {}, "remappable": {}, "suffix_pair": {}}
+    # Groups that name a successor per feature; off_reference's is named but
+    # cannot be used, and a split that reaches nothing names "" (see below).
+    replacements: dict[str, dict[str, str]] = {
+        "same_gene": {},
+        "remappable": {},
+        "suffix_pair": {},
+        "off_reference": {},
+    }
     suffixed: set[str] = set()
     # Why a replacement cannot simply be renamed, per feature. Without it the
     # annotated line reads "renamed to X [combine]", which states an action that
@@ -2668,7 +2675,6 @@ def _retired_findings(adata):
     plain: dict[str, set[str]] = {
         "dead": set(),
         "split": set(),
-        "off_reference": {},
         "versioned": set(),
         "excluded": set(),
         "newer": set(),
@@ -2718,7 +2724,7 @@ def _retired_findings(adata):
                 else:
                     # Several pieces, none reaching the allowed set: there is no
                     # one successor to name on the row.
-                    plain["off_reference"][feature] = ""
+                    replacements["off_reference"][feature] = ""
                 continue
         # Reached by a plain replacement, and by a split whose branches converged
         # on one gene -- which is why this is not an elif of the branch above.
@@ -2730,7 +2736,7 @@ def _retired_findings(adata):
             # set, so there is still nothing here to point a column at. Named on
             # the row all the same: Ensembl did record it, and a row that says
             # "successor" without saying which cannot be checked.
-            plain["off_reference"][feature] = terminal
+            replacements["off_reference"][feature] = terminal
         elif terminal in present:
             collides[feature] = "in file"
             replacements["same_gene"][feature] = terminal
