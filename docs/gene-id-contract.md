@@ -149,8 +149,9 @@ Ensembl says what changed. The allowed gene set says what is nameable. We only r
     masks the region and drops those genes from its GTF, and 0 of 217 prod h5ads carry one.
 
 3.9 **A version suffix is a defect on its own**, noted on the row whatever else is true of the gene, and
-    nothing carrying one is ever told `[none]`. Where both spellings are columns, stripping would leave
-    two under one name, so the pair is `[review]` -- the same collision rule as 3.5, by another route.
+    nothing carrying one is ever told `[none]`. Where another spelling of the same gene is also in the file
+    -- the bare form, or a second suffix -- stripping would leave two under one name, so each is `[review]`:
+    the same collision rule as 3.5, by another route, and it applies whatever class the bare gene falls in.
     No prod file carries a versioned identifier today; Cell Ranger strips them.
 
 3.10 Human identifiers only, matched exactly. Gorilla is `ENSGGOG...`; a prefix test would date it as human.
