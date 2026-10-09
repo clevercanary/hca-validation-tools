@@ -95,7 +95,7 @@ def test_no_successor_is_retired():
     assert gen.classify({"A": set()}) == {"A": "retired"}
 
 
-def test_sole_claimant_of_a_new_successor_is_renamed():
+def test_the_only_old_id_naming_a_new_successor_is_renamed():
     assert gen.classify({"A": {"X"}}, {"A": 100}, set()) == {"A": "renamed"}
 
 
@@ -104,7 +104,7 @@ def test_shared_successor_is_merged():
     assert gen.classify({"A": {"X"}, "B": {"X"}}) == {"A": "merged", "B": "merged"}
 
 
-def test_sole_claimant_of_a_surviving_successor_is_merged():
+def test_the_only_old_id_naming_a_surviving_successor_is_merged():
     """A -> X where X was already in A's last release: X absorbed A.
 
     Ensembl records that as A -> X beside X -> X, and the self-mapping is not

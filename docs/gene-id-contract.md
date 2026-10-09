@@ -112,7 +112,7 @@ Ensembl says what changed. The allowed gene set says what is nameable. We only r
 
 3.1.1 **`renamed` means a new name.** The successor was first issued at that session and no other retired
       identifier names it. A successor that was already there absorbed the old gene, and that is `merged`
-      whether or not anything else merged into it. Counting claimants alone called 776 of 797 renames a
+      whether or not anything else merged into it. Counting old ids alone called 776 of 797 renames a
       rename whose successor had been there all along; the table now holds 21.
 
 3.2 The validator **re-derives split-ness from the successor count** rather than reading the table's `event`

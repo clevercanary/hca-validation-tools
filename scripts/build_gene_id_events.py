@@ -173,7 +173,7 @@ def classify(
 
     ``present_before`` holds ``(gene, release)`` pairs known to exist at that
     release; ``release_by_old`` says which release each old identifier was
-    last in. Counting claimants alone called 776 of 797 "renamed" identifiers
+    last in. Counting old ids alone called 776 of 797 "renamed" identifiers
     a rename whose successor had been there all along, because Ensembl's own
     ``X -> X`` row for the survivor is not among the events this table keeps.
 
