@@ -11,25 +11,43 @@ network and the driver, and are exercised by actually regenerating the table.
 
 from __future__ import annotations
 
-import importlib.util
-from pathlib import Path
-
 import pytest
 
-_SCRIPT = Path(__file__).resolve().parents[3] / "scripts" / "build_gene_release_intervals.py"
+from ._generators import load_script
+
+gen = load_script("build_gene_release_intervals")
+# release_from_name moved into the module both generators share, so it is tested
+# there: one suite covers both callers.
+ens = load_script("_ensembl")
 
 
-def _load():
-    spec = importlib.util.spec_from_file_location("build_gene_release_intervals", _SCRIPT)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+# --- write_csv_gz (shared, scripts/_ensembl.py) -----------------------------
 
 
-gen = _load()
+def test_write_csv_gz_is_byte_reproducible_whatever_the_output_is_called(tmp_path):
+    """The reproducible-bytes guarantee, held by a test rather than by inspection.
+
+    gzip.open embeds the current time and the output basename in the header, so
+    a writer that lost mtime=0 or filename="" would make every regeneration a
+    diff against the committed artifact -- indistinguishable from a real change
+    in the data, which is the one failure nothing downstream can detect.
+    """
+    rows = [["ENSG00000000001", "76", "116"], ["ENSG00000000002", "90", "100"]]
+    first = tmp_path / "one.csv.gz"
+    second = tmp_path / "two.csv.gz"
+    ens.write_csv_gz(first, "comment", ["gene_id", "first_release", "last_release"], rows)
+    ens.write_csv_gz(second, "comment", ["gene_id", "first_release", "last_release"], rows)
+    assert first.read_bytes() == second.read_bytes()
+    # two writes in the same second would agree even with the clock embedded;
+    # the gzip header's MTIME field (bytes 4-8) must be zero on its own
+    assert first.read_bytes()[4:8] == b"\x00\x00\x00\x00"
+    # and the bytes are the data, not the clock: a rewrite of the same path matches too
+    before = first.read_bytes()
+    ens.write_csv_gz(first, "comment", ["gene_id", "first_release", "last_release"], rows)
+    assert first.read_bytes() == before
 
 
-# --- release_from_name -----------------------------------------------------
+# --- release_from_name (shared, scripts/_ensembl.py) ------------------------
 
 
 @pytest.mark.parametrize(
@@ -58,7 +76,7 @@ gen = _load()
     ],
 )
 def test_release_from_name(name, expected):
-    assert gen.release_from_name(name) == expected
+    assert ens.release_from_name(name) == expected
 
 
 # --- check_releases --------------------------------------------------------

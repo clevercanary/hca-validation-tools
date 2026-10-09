@@ -1,11 +1,12 @@
 """HCA Validator - extends cellxgene Validator with HCA-specific rules."""
 
+import contextlib
 import csv
 import functools
 import gzip
 import heapq
 import re
-from collections import namedtuple
+from collections import Counter, namedtuple
 from pathlib import Path
 
 import numpy as np
@@ -104,6 +105,20 @@ class HCAValidator(Validator):
         self.warnings.extend(warnings)
         self.errors.extend(errors)
 
+    def _check_retired_feature_ids(self):
+        warnings, errors, classified = _retired_findings(self.adata)
+        # The per-identifier warnings are already in self.warnings by now --
+        # _validate_feature_ids writes them while the dataframes are validated.
+        # Every identifier the Details block names has its line dropped here:
+        # the row says what the line said and what became of the gene, so the
+        # line would be the same fact a second time in a weaker form. Warnings
+        # for identifiers this check does not classify stay. They are logged
+        # after _deep_check returns, so this reaches the Batch payload as well
+        # as the in-memory list.
+        self.warnings = _drop_classified_warnings(self.warnings, classified)
+        self.warnings.extend(warnings)
+        self.errors.extend(errors)
+
     def _deep_check(self):
         """
         The base class skips raw validation when *any* errors exist, but raw
@@ -123,6 +138,10 @@ class HCAValidator(Validator):
         self._check_x_normalization()
         self._check_donor_consistency()
         self._check_gene_annotation_version()
+        # Last, so that validate_adata's reordering leaves this summary directly
+        # above the per-identifier feature ID warnings it explains: those are
+        # moved to the end and everything else keeps the order it was added in.
+        self._check_retired_feature_ids()
 
     def _validate_list(self, list_name, current_list, element_type):
         """
@@ -299,16 +318,20 @@ class HCAValidator(Validator):
         return None
 
     def _get_gencode_version_label(self) -> str:
-        """Get a human-readable GENCODE version string for the dataset's organism."""
-        organism = self._get_organism_from_obs()
+        """A human-readable GENCODE version string for the dataset's organism.
 
+        The Ensembl release is derived, not written out: GENCODE's human and
+        mouse releases track the same Ensembl release, so the human version plus
+        the offset names it for both. Writing "114" here left the per-identifier
+        warnings disagreeing with the derived summary after a schema bump.
+        """
+        organism = self._get_organism_from_obs()
+        ensembl = int(_gene_info["human"]["version"]) + _GENCODE_ENSEMBL_OFFSET
         if organism == "NCBITaxon:9606":
-            v = _gene_info["human"]["version"]
-            return f"GENCODE v{v} (Ensembl 114)"
+            return _REFERENCE_LABEL
         if organism == "NCBITaxon:10090":
-            v = _gene_info["mouse"]["version"]
-            return f"GENCODE {v} (Ensembl 114)"
-        return "GENCODE reference (Ensembl 114)"
+            return f"GENCODE {_gene_info['mouse']['version']} (Ensembl {ensembl})"
+        return f"GENCODE reference (Ensembl {ensembl})"
 
     def _validate_feature_ids(self, column: pd.Series, df_name: str):
         """
@@ -1634,6 +1657,21 @@ def parse_annotation_version(value) -> ParsedVersion:
     return ParsedVersion("uninterpretable", None, None, raw)
 
 
+@contextlib.contextmanager
+def _shipped_table(path: Path):
+    """Yield a shipped reference table's data lines, with its comment header dropped.
+
+    Both committed artifacts share one container: gzip, UTF-8, one or more leading
+    ``#`` lines naming what the table covers, then a CSV header. Said once here so
+    the format is defined in one place rather than once per reader.
+
+    The encoding is named rather than left to the locale: the generators write
+    UTF-8, so reading must not depend on where the validator happens to run.
+    """
+    with gzip.open(path, "rt", newline="", encoding="utf-8") as fh:
+        yield (line for line in fh if not line.startswith("#"))
+
+
 @functools.lru_cache(maxsize=1)
 def _gene_release_intervals() -> tuple[dict[str, list[tuple[int, int]]], int, int]:
     """Read the shipped table: gene -> runs of releases it exists in, and the covered range.
@@ -1643,11 +1681,8 @@ def _gene_release_intervals() -> tuple[dict[str, list[tuple[int, int]]], int, in
     a flat pair would claim it existed in between.
     """
     table: dict[str, list[tuple[int, int]]] = {}
-    # encoding named rather than left to the locale: the artifact is committed
-    # UTF-8 and the generator writes it as such, so reading it must not depend
-    # on where the validator happens to run.
-    with gzip.open(_INTERVALS_PATH, "rt", newline="", encoding="utf-8") as fh:
-        rows = csv.reader(line for line in fh if not line.startswith("#"))
+    with _shipped_table(_INTERVALS_PATH) as lines:
+        rows = csv.reader(lines)
         next(rows, None)  # header
         for gene, first, last in rows:
             table.setdefault(gene, []).append((int(first), int(last)))
@@ -2292,3 +2327,707 @@ def _release_against_genes(parsed, ensg: set[str], n_non_ensembl: int, dated) ->
             f"{window}{context}.{_SCOPE_TOO_EARLY}"
         )
     return said
+
+
+# ---------------------------------------------------------------------------
+# Retired feature identifiers (#728)
+# ---------------------------------------------------------------------------
+
+_EVENTS_PATH = Path(__file__).parent / "gene_id_events.csv.gz"
+# Reads the identifier back out of a per-identifier warning, so the ones the
+# Details block covers can be dropped. The wording is ours -- _validate_feature_ids
+# writes it -- and the same prefix is what both warning sorters key on.
+_FEATURE_ID_IN_WARNING = re.compile(r"Feature ID '([^']+)' in ")
+# What "current" means in these findings, said once. An identifier can be alive
+# in Ensembl and still be unusable here, because the gene set a file is validated
+# against is not all of Ensembl: it is GENCODE's reference annotation, which
+# covers the primary assembly only. Measured against r114, Ensembl lists 86,364
+# human genes and this set holds 78,894 of them -- every one of the 7,470 absent
+# sits on a patch or alt contig, and none on a chromosome. Aligners
+# count against the primary assembly for the same reason it is drawn that way:
+# include a region and its alternate copy and reads map to both.
+#
+# Derived from the vendored gene_info.yml rather than written out, so bumping
+# cellxgene-schema moves this sentence with it.
+# The Ensembl release the allowed gene set corresponds to. Genes first issued
+# after it are newer than the allowed set rather than wrong, which is a different
+# finding from one the reference structurally excludes.
+_REFERENCE_RELEASE = int(_gene_info["human"]["version"]) + _GENCODE_ENSEMBL_OFFSET
+_REFERENCE_LABEL = (
+    f"GENCODE v{_gene_info['human']['version']} "
+    f"(Ensembl {int(_gene_info['human']['version']) + _GENCODE_ENSEMBL_OFFSET})"
+)
+
+# One retired identifier's row group: its successors in the session that retired
+# it, and where the old gene sat in the last release that still carried it. A
+# span is None when the server had no coordinates for it.
+#
+# The table's `event` column says what Ensembl did -- retired, renamed, merged,
+# split -- and is used for exactly that: the words a finding reports. It is not
+# used to classify: split-ness is derived from the length of `successors`, so
+# there is one definition of what the validator acts on rather than two that can
+# disagree.
+GeneEvent = namedtuple("GeneEvent", "event successors old_span")
+
+
+@functools.lru_cache(maxsize=1)
+def _gene_id_events() -> tuple[dict[str, GeneEvent], dict[str, tuple]]:
+    """Read the shipped event table: retired id -> what became of it, and successor spans.
+
+    Returns ``(by_old, new_spans)``. The second is keyed by successor rather than
+    by the identifier it replaced, because a chain is resolved by following
+    several rows and the span wanted at the end belongs to whichever identifier
+    the chain stopped on.
+    """
+    # Rows are grouped per retired identifier first and the records built after,
+    # so a GeneEvent is never mutated once it exists -- its successors are a tuple.
+    # The generator writes one event and one old span per identifier; a row that
+    # disagrees with an earlier one means the artifact is not the generator's
+    # output, and that is refused rather than read.
+    events: dict[str, str] = {}
+    old_spans: dict[str, tuple | None] = {}
+    successors: dict[str, list[str]] = {}
+    new_spans: dict[str, tuple] = {}
+    with _shipped_table(_EVENTS_PATH) as lines:
+        for row in csv.DictReader(lines):
+            old, new = row["old_id"], row["new_id"]
+            event, old_span = row["event"], _span(row, "old")
+            if old in events and (events[old], old_spans[old]) != (event, old_span):
+                raise ValueError(
+                    f"{_EVENTS_PATH.name}: rows for {old} disagree on event or span "
+                    f"({events[old]!r}/{old_spans[old]} vs {event!r}/{old_span}); not a generator output"
+                )
+            events[old], old_spans[old] = event, old_span
+            successors.setdefault(old, [])
+            if new:
+                successors[old].append(new)
+                span = _span(row, "new")
+                if span is not None:
+                    new_spans[new] = span
+    by_old = {old: GeneEvent(events[old], tuple(successors[old]), old_spans[old]) for old in events}
+    return by_old, new_spans
+
+
+def _span(row: dict, side: str) -> tuple | None:
+    """One side's (chromosome, start, end, strand), or None where it is absent.
+
+    Absent is a real state rather than a defect: 39 successors have been retired
+    themselves since, so the current release has no span for them, and a row
+    recording no successor has nothing to give coordinates for.
+    """
+    chrom = row[f"{side}_chrom"]
+    if not chrom:
+        return None
+    return (chrom, int(row[f"{side}_start"]), int(row[f"{side}_end"]), int(row[f"{side}_strand"]))
+
+
+def _never_retired_class(gene: str) -> str:
+    """Why an identifier Ensembl never retired is still absent from the reference.
+
+    Three unrelated populations used to share one bucket. The shipped interval
+    table separates them offline, and the separation is clean: of the genes it
+    holds that the reference does not, 7,470 were already there at the reference's
+    release and every one of those sits on a patch or alt contig, while 87 were
+    first issued afterwards and every one of those is on a primary chromosome.
+    No crossover, and nothing that the table knows has vanished without a
+    retirement event being recorded for it.
+
+    - excluded     -- present by the reference's release and still absent from it,
+                      so the reference excludes it structurally. Patch and alt
+                      sequences are what the reference leaves out.
+    - newer        -- first issued after the allowed set's release. The gene is real
+                      and current; the reference is simply older than the file.
+    - unclassified -- the table has never heard of it, so nothing here can say.
+    """
+    table, _, last_covered = _gene_release_intervals()
+    runs = table.get(gene)
+    if runs is None:
+        return "unclassified"
+    if max(last for _, last in runs) < last_covered:
+        # Gone from Ensembl with no retirement recorded. The table holds no such
+        # gene today; classified as unknown rather than guessed at.
+        return "unclassified"
+    return "newer" if min(first for first, _ in runs) > _REFERENCE_RELEASE else "excluded"
+
+
+def _terminals(gene: str, by_old: dict[str, GeneEvent], checker, seen: set[str] | None = None) -> set[str]:
+    """Every current gene reachable from an identifier, however the path bends.
+
+    _resolve follows a single chain and stops at a division, which is the right
+    shape for a rename and the wrong one for a split whose pieces have histories
+    of their own. This walks every branch, through renames and further splits,
+    and returns the genes at the ends that the allowed gene set carries. The
+    shared seen-set is the cycle guard; a gene reached twice by different
+    branches is counted once.
+    """
+    seen = set() if seen is None else seen
+    if gene in seen:
+        return set()
+    seen.add(gene)
+    entry = by_old.get(gene)
+    if entry is None:
+        return {gene} if checker.is_valid_id(gene) else set()
+    ends: set[str] = set()
+    for successor in entry.successors:
+        ends |= _terminals(successor, by_old, checker, seen)
+    return ends
+
+
+def _every_branch_reaches(gene: str, by_old: dict[str, GeneEvent], target: str, path: frozenset = frozenset()) -> bool:
+    """True only if every path out of an identifier ends at ``target``.
+
+    _terminals says which allowed genes a split reaches and nothing about the
+    branches that reach none of them: a piece that split again into one current
+    gene and one retired gene reports just the current one, and a convergence
+    test built on that alone would hand the retired branch's counts to it. So
+    convergence is asked as its own question, of every branch at every depth:
+    a dead end, a loop, or a leaf that is any other gene -- allowed or not --
+    is a no. The path is per branch, not shared, so two branches that meet at
+    the target are each allowed to reach it.
+    """
+    if gene in path:
+        return False
+    entry = by_old.get(gene)
+    if entry is None:
+        return gene == target
+    if not entry.successors:
+        return False
+    return all(_every_branch_reaches(s, by_old, target, path | {gene}) for s in entry.successors)
+
+
+def _chain_end(gene: str, by_old: dict[str, GeneEvent]) -> str:
+    """The last identifier named along a single-successor chain, or the gene itself.
+
+    For a chain that ends in a retirement, this is the gene whose retirement
+    ended it: A -> B -> C with C retired gives C. The row then says "replaced;
+    successor since retired" and names C, which is what Ensembl recorded.
+    """
+    seen: set[str] = set()
+    current = gene
+    while current not in seen:
+        seen.add(current)
+        entry = by_old.get(current)
+        if entry is None or len(entry.successors) != 1:
+            return current
+        current = entry.successors[0]
+    return current
+
+
+def _resolve(gene: str, by_old: dict[str, GeneEvent]) -> tuple[str | None, list[str]]:
+    """Follow an identifier's successors to the end of its chain.
+
+    Ensembl may replace A with B in one release and B with C in a later one, so
+    the first hop is not the answer: renaming A to B leaves an identifier
+    CELLxGENE still rejects. Every hop is a row in the shipped table -- the
+    notebook this came from had to go back to the server for them, because it
+    only knew about the identifiers in one atlas -- so the walk is local.
+
+    Returns ``(terminal, split_into)``. A terminal is an identifier Ensembl
+    records nothing further about, and is None when the chain instead ends in a
+    deletion, in a division, or in a loop. ``split_into`` carries the successors
+    of a division and is empty otherwise -- handed back rather than merely
+    flagged, because whether those successors are in the allowed gene set
+    decides what a curator can do about them.
+
+    The seen-set is not defensive bookkeeping: the table is Ensembl's history and
+    nothing forbids A -> B -> A across three releases, which would otherwise hang
+    the validator rather than report anything.
+    """
+    seen: set[str] = set()
+    current = gene
+    while True:
+        entry = by_old.get(current)
+        if entry is None:
+            return current, []
+        if current in seen or not entry.successors:
+            return None, []
+        seen.add(current)
+        if len(entry.successors) > 1:
+            return None, list(entry.successors)
+        current = entry.successors[0]
+
+
+# How the old gene's span sits against its successor's. Stated as geometry and
+# nothing more, because geometry is all the check knows: a label like "the
+# genome disagrees" attached a verdict to a fact, and "trimmed" a story.
+#   new contains old - the ordinary merge shape, 1,186 of 1,239. Not flagged.
+#   old contains new - the successor is the smaller span. 4 of 1,239.
+#   overlap          - they share positions, but neither contains the other.
+#   disjoint         - no shared positions, or a different chromosome or strand.
+_NEW_CONTAINS_OLD, _OLD_CONTAINS_NEW, _OVERLAP, _DISJOINT = (
+    "new contains old",
+    "old contains new",
+    "overlap",
+    "disjoint",
+)
+
+
+def _compare_spans(old_span: tuple | None, new_span: tuple | None) -> str | None:
+    """How the old gene's position relates to its successor's. None when unknowable.
+
+    The claim being tested is Ensembl's, not ours: a replacement says these
+    identifiers describe the same piece of DNA. The outcome is named by where the
+    two spans sit and by nothing else.
+
+    Chromosome and strand must agree before any of this: a successor on the other
+    strand is not the same locus however the coordinates fall.
+    """
+    if old_span is None or new_span is None:
+        return None
+    old_chrom, old_start, old_end, old_strand = old_span
+    new_chrom, new_start, new_end, new_strand = new_span
+    if old_chrom != new_chrom or old_strand != new_strand:
+        return _DISJOINT
+    if new_start <= old_start and old_end <= new_end:
+        return _NEW_CONTAINS_OLD
+    if old_start <= new_start and new_end <= old_end:
+        return _OLD_CONTAINS_NEW
+    return _OVERLAP if old_start <= new_end and new_start <= old_end else _DISJOINT
+
+
+def _retired_findings(adata):
+    """Classify the retired Ensembl identifiers behind the feature ID warnings. #728.
+
+    A retired identifier is a warning here and an error at CELLxGENE, so every
+    atlas heading for CZI has to clear them -- but on its own each warning says
+    only that an identifier is not in the current GENCODE table. The breast v1
+    integrated object emits 1,482 of them for 741 distinct identifiers, counted
+    once in ``var`` and once in ``raw.var``, which tells a curator nothing about
+    what to do next.
+
+    Ensembl records what became of each one. This reads the shipped
+    ``gene_id_events.csv.gz`` and sorts the identifiers into groups that imply
+    different actions:
+
+    - **same_gene** -- the successor is already in this file, or several of these
+      identifiers share one successor, so renaming would leave two features under
+      one name. The decision is the producer's.
+    - **remappable** -- the successor is in the allowed set and absent: a rename.
+    - **split** -- the old locus became several genes; the row names them.
+    - **dead** -- no successor recorded, or the chain of replacements ends in one
+      retired in turn (named on the row). Only dropping is left.
+    - **off_reference** -- Ensembl recorded a successor, but it is not in the
+      allowed gene set, so nothing can be named after it. Dropping again.
+    - **excluded** -- never retired; on a patch or alt sequence, which the allowed
+      set leaves out.
+    - **newer** -- never retired; first issued after the allowed set's release.
+    - **versioned** -- an allowed gene written as ``ENSG...18``. Not retired at
+      all; the form is the whole problem.
+    - **suffix_pair** -- versioned, and another spelling of the same gene is in
+      this file, so stripping would leave two under one name.
+    - **unclassified** -- in neither the allowed set nor the GRCh38 event history,
+      so nothing here can say what it was.
+
+    The counts are over distinct identifiers, not warnings, which is where 1,482
+    becomes 741. The per-identifier warnings for these identifiers are dropped by
+    the caller: each has a Details row that says what the warning said and more.
+
+    Claimed replacements are checked against the genome offline, using spans the
+    table carries rather than anything fetched at validation time.
+
+    Returns:
+        ``(warnings, errors, classified)``. Everything is a warning, matching the
+        severity of the per-identifier warnings it summarises; ``classified`` is
+        the set of features, as written, that have a Details row.
+    """
+    # The same population the per-identifier warnings are raised over, derived
+    # the same way, so the summary can never describe a different set from the
+    # warnings it stands in for. Both dataframes, de-duplicated into one set: an
+    # identifier in var and raw.var is one identifier with one history, and
+    # counting it twice is what made the old output read as 1,482 problems.
+    features = {
+        str(feature)
+        for df_name in ("var", "raw.var")
+        if (df := getattr_anndata(adata, df_name)) is not None
+        for feature in df.index
+    }
+    if not features:
+        return [], [], set()
+
+    checker = get_gene_checker(gencode.SupportedOrganisms.HOMO_SAPIENS)
+    # Only human genes, matched exactly: gorilla identifiers are ENSGGOG... and a
+    # prefix test would class them as human genes nobody can find. Everything
+    # else is left alone rather than tested against the human table, which would
+    # call a spike-in or a mouse gene missing -- the base validator checks each
+    # feature against its own organism's table, and ERCC-00002 is valid there.
+    #
+    # GENCODE's _PAR_Y suffix falls through here, deliberately. Nothing upstream
+    # of our files issues one: Ensembl r114 and r116 carry no gene id containing
+    # "PAR" at all (PLCXD1 and SHOX appear once each, on X), the shipped GENCODE
+    # table is Ensembl's primary assembly and has none either, and Cell Ranger
+    # masks the region and drops those genes from its GTF. Measured: 0 of 217
+    # readable prod h5ads carry such a feature. A reference built straight from
+    # GENCODE's GTF could still produce them, and they would then be warned about
+    # per identifier without appearing in this summary -- worth widening the match
+    # for if one ever turns up, not before.
+    candidates = {f: m.group(1) for f in features if (m := _HUMAN_ENSG_RE.fullmatch(f))}
+    present = set(candidates.values())
+    # What the base validator warns about, for these features and by its own
+    # test: an identifier absent from the human table, whether because it is
+    # retired or because the version suffix makes the lookup miss.
+    warned = {f for f in candidates if not checker.is_valid_id(f)}
+    if not warned:
+        return [], [], set()
+
+    by_old, new_spans = _gene_id_events()
+
+    # Two shapes, and the shape says what the group holds: a replacement names
+    # where the identifier went, and the rest have nowhere to point, so they are
+    # sets rather than dicts mapping every member to None.
+    #
+    # Keyed throughout by the feature as written, never by the bare gene the
+    # lookup used. A file writing ENSG00000112096.3 has no column called
+    # ENSG00000112096, and naming the bare form sends a curator searching their
+    # var index for a string that is not in it -- while saying nothing about the
+    # suffix, which the rename also has to drop. The bare form stays available
+    # through `candidates` for anything that needs to read the shipped table.
+    # Groups that name a successor per feature; off_reference's is named but
+    # cannot be used, and a split that reaches nothing names "" (see below).
+    replacements: dict[str, dict[str, str]] = {
+        "same_gene": {},
+        "remappable": {},
+        "suffix_pair": {},
+        "off_reference": {},
+        "dead": {},
+    }
+    suffixed: set[str] = set()
+    # Why a replacement cannot simply be renamed, per feature. Without it the
+    # annotated line reads "renamed to X [combine]", which states an action that
+    # contradicts the fact beside it and never says what makes the difference.
+    # Phrased against "this file" rather than "this dataset", which in HCA names a
+    # source dataset as against an integrated object, or "column", which is the
+    # matrix's word for it and belongs in the legend where the mechanics are.
+    collides: dict[str, str] = {}
+    # Where a chain ends in a division, keyed by feature. A -> B where B later
+    # splits is a split, and reading the first hop's event called it a merge --
+    # or, in the pile, "retired, no successor".
+    splits: dict[str, list[str]] = {}
+    plain: dict[str, set[str]] = {
+        "split": set(),
+        "versioned": set(),
+        "excluded": set(),
+        "newer": set(),
+        "unclassified": set(),
+    }
+    for feature in warned:
+        gene = candidates[feature]
+        if feature != gene:
+            # Written with a version suffix. Noted whatever else is true of the
+            # gene, because the suffix is a defect on its own: a newer gene with a
+            # suffix would otherwise be told nothing needs changing.
+            suffixed.add(feature)
+        if checker.is_valid_id(gene):
+            # Allowed when written bare, so the suffix is the whole problem --
+            # whatever the event table says: 40 of its identifiers were retired
+            # at r115 or r116, after the allowed set, and a suffixed spelling of
+            # one must not be sent down that later history. A suffixed spelling
+            # whose bare form is also here is moved to suffix_pair by the
+            # collision pass below, with the other classes.
+            plain["versioned"].add(feature)
+            continue
+        if gene not in by_old:
+            plain[_never_retired_class(gene)].add(feature)
+            continue
+        terminal, split_into = _resolve(gene, by_old)
+        if split_into:
+            # Every branch followed to every current gene it reaches, through
+            # renames and further splits alike. Ensembl split ENSG00000157828 into
+            # two genes at r76 and later brought both back together as one;
+            # ENSG00000207553's pieces split again before reaching six current
+            # genes. Stopping at the first split, or one level below it, reported
+            # dead ends for both and told the curator to drop columns that have
+            # current genes to point at. Walking every branch changes what 8 of
+            # the table's 94 splits report: 2 collapse to a rename, 6 gain
+            # terminals a one-level walk missed.
+            ends = _terminals(gene, by_old, checker)
+            if len(ends) == 1 and _every_branch_reaches(gene, by_old, next(iter(ends))):
+                # Out as several pieces, back as one gene -- every branch at
+                # every depth, not just one: a replacement, not a split, so it
+                # takes the ordinary rename-or-decide rules below including the
+                # collision check. One surviving branch beside a dead one, at
+                # any depth, is still a split; a rename would hand the dead
+                # branch's counts to the survivor.
+                terminal, split_into = ends.pop(), []
+            else:
+                splits[feature] = sorted(ends) or sorted(split_into)
+                if ends:
+                    plain["split"].add(feature)
+                else:
+                    # Several pieces, none reaching the allowed set: there is no
+                    # one successor to name on the row.
+                    replacements["off_reference"][feature] = ""
+                continue
+        # Reached by a plain replacement, and by a split whose branches converged
+        # on one gene -- which is why this is not an elif of the branch above.
+        if terminal is None:
+            # Ensembl recorded no successor, or the chain of replacements ends
+            # in a gene retired in turn -- named on the row, so the row says
+            # what Ensembl recorded rather than that it recorded nothing.
+            last = _chain_end(gene, by_old)
+            replacements["dead"][feature] = "" if last == gene else last
+        elif not checker.is_valid_id(terminal):
+            # Replaced, and the replacement is alive -- but off the allowed gene
+            # set, so there is still nothing here to point a column at. Named on
+            # the row all the same: Ensembl did record it, and a row that says
+            # "successor" without saying which cannot be checked.
+            replacements["off_reference"][feature] = terminal
+        elif terminal in present:
+            collides[feature] = "in file"
+            replacements["same_gene"][feature] = terminal
+        else:
+            replacements["remappable"][feature] = terminal
+
+    # A rename is only safe if the name it frees up is unclaimed afterwards, and
+    # "already a column here" is only half of that test. Where several of these
+    # identifiers share one successor, renaming each of them -- individually
+    # unobjectionable -- leaves that many columns under one name. It is the same
+    # Ensembl event as the branch above, several genes collapsing into one, and
+    # the same decision for the producer; the only difference is whether the
+    # surviving name is already in the file. Breast v1 has nine such groups
+    # covering 21 identifiers, one of them four columns deep.
+    claimed = Counter(replacements["remappable"].values())
+    for feature, terminal in list(replacements["remappable"].items()):
+        if claimed[terminal] > 1:
+            collides[feature] = "shared"
+            replacements["same_gene"][feature] = replacements["remappable"].pop(feature)
+    # The same test for suffixes: ENSG...17 and ENSG...18 with no bare form both
+    # strip to one name, and would collide with each other rather than with an
+    # existing column.
+    # Not only the versioned class: a suffixed spelling of a gene newer than the
+    # allowed set lands in "newer", and strips to the same name all the same.
+    suffix_classes = ("versioned", "newer", "excluded", "unclassified")
+    bare = Counter(candidates[f] for name in suffix_classes for f in plain[name] if f in suffixed)
+    for name in suffix_classes:
+        for feature in sorted(plain[name]):
+            if feature not in suffixed:
+                continue
+            if bare[candidates[feature]] > 1 or candidates[feature] in features:
+                collides[feature] = "in file" if candidates[feature] in features else "shared"
+                plain[name].discard(feature)
+                replacements["suffix_pair"][feature] = candidates[feature]
+
+    # Every warned identifier lands in exactly one group, so this is non-empty
+    # whenever `warned` is; it drops the groups with nothing in them so each
+    # finding below can assume it has something to report.
+    found = {name: group for name, group in (replacements | plain).items() if group}
+    n_distinct = sum(len(group) for group in found.values())
+    spans = _span_verdicts(found, candidates, by_old, new_spans)
+    warnings = [_retired_summary_message(n_distinct)]
+    warnings.extend(_retired_summary_table(found, suffixed))
+    warnings.append(_retired_detail_block(found, collides, spans, candidates, by_old, splits, suffixed))
+    return warnings, [], {feature for group in found.values() for feature in group}
+
+
+def check_retired_feature_ids(adata):
+    """The findings alone, for callers that do not hold the warning list. #728."""
+    warnings, errors, _ = _retired_findings(adata)
+    return warnings, errors
+
+
+# Each class as a reader of the report meets it: what Ensembl did, then what to
+# do about it. The two are not the same and do not map one to one -- the same
+# merge is a rename when its target is absent from the file and a judgement call
+# when it is already a column -- so they are kept apart rather than fused into a
+# single phrase.
+#
+# The action is a bracketed tag so it is greppable and so the reasoning behind it
+# is stated once, in the finding that counts the class, rather than repeated on
+# every line. On a file with 625 identifiers in one class that is the difference
+# between a report and a wall.
+_ACTIONS = {
+    "same_gene": "review",
+    "remappable": "rename",
+    "split": "drop or re-align",
+    "dead": "drop",
+    "off_reference": "drop",
+    "excluded": "drop",
+    "newer": "none",
+    "versioned": "strip suffix",
+    "suffix_pair": "review",
+    "unclassified": "ask",
+}
+
+
+def _action(name: str, feature: str, suffixed: set[str]) -> str:
+    """The action tag, with a suffix overriding [none]: there is always that to do."""
+    action = _ACTIONS[name]
+    return "strip suffix" if action == "none" and feature in suffixed else action
+
+
+# A claimed replacement the genome does not simply confirm, said on the row of
+# the gene it concerns and nowhere else. A roll-up line counting them restated
+# what those rows already show, one scroll away from the genes it was about.
+_SPAN_FLAGS = {
+    _OLD_CONTAINS_NEW: "old contains new",
+    _OVERLAP: "overlap",
+    _DISJOINT: "disjoint",
+}
+
+
+def _span_verdicts(found: dict, candidates: dict, by_old: dict, new_spans: dict) -> dict[str, str]:
+    """How the genome answers each claimed replacement, per feature."""
+    claims = {**found.get("same_gene", {}), **found.get("remappable", {})}
+    return {
+        feature: verdict
+        for feature, successor in claims.items()
+        if (verdict := _compare_spans(by_old[candidates[feature]].old_span, new_spans.get(successor)))
+    }
+
+
+def _drop_classified_warnings(warnings: list[str], classified: set[str]) -> list[str]:
+    """Remove the per-identifier warnings whose identifier has a Details row.
+
+    Each of those lines says only that an identifier is not in the allowed gene
+    set; its row says that and what became of the gene. On the gut source
+    datasets that is 2,138 lines restating 1,069 rows. Warnings naming an
+    identifier this check did not classify -- a transgene, a custom feature --
+    have no row and are kept.
+    """
+    return [w for w in warnings if not ((m := _FEATURE_ID_IN_WARNING.search(w)) and m.group(1) in classified)]
+
+
+# One row per class: the short description for the summary table, and the action
+# tag. The description says what Ensembl did and what it means for this file; the
+# action says what to do. Order is the order they are reported in.
+_CLASS_ROWS = (
+    ("remappable", "replaced; successor not in file"),
+    ("same_gene", "replaced; successor already in file or shared"),
+    ("dead", "retired; no successor, or one since retired"),
+    ("off_reference", "successor not in the allowed set"),
+    ("split", "split into several genes"),
+    ("excluded", "not on primary assembly"),
+    ("versioned", "version suffix only"),
+    ("suffix_pair", "version suffix; collides with another spelling"),
+    ("newer", "issued after the allowed set"),
+    ("unclassified", "no event recorded"),
+)
+_CLASS_TEXT = dict(_CLASS_ROWS)
+# What each action means is documented in the package README and in
+# docs/gene-id-contract.md, not printed on every run: a log says what is true of
+# this file, and the same paragraph of guidance repeated on every validation is
+# editorial rather than finding.
+#
+# A gene on a patch or alt sequence is [drop], not [drop or re-align]: re-aligning
+# against a primary-assembly reference does not recover that feature, because the
+# feature is not in such a reference at all. Re-alignment is the right answer to
+# the file -- said once in the note below -- rather than to the gene. A split gene
+# is different: its reads really are recoverable under the successors' names.
+_ACTION_GUIDE = {
+    "rename": "Replace the ID with its successor.",
+    "review": "Needs a decision rather than a fix: these IDs are now one gene, and their counts may "
+    "not be independent.",
+    "drop": "Remove the feature. Its counts are not retained.",
+    "drop or re-align": (
+        "Remove the feature, or re-quantify from source: the reads are recoverable under the successors' names."
+    ),
+    "strip suffix": "Remove the version suffix; the written form is what fails here.",
+    "none": "Nothing to change. The gene is newer than the allowed gene set, not wrong.",
+    "ask": "Ask which genome annotation the file was built against.",
+}
+
+
+def _retired_summary_message(n_distinct: int) -> str:
+    """The headline: how many identifiers. One line; the table below has the rest."""
+    noun = "ID is" if n_distinct == 1 else "IDs are"
+    return f"{n_distinct:,} gene {noun} not in {_REFERENCE_LABEL[:-1]}, primary assembly only)."
+
+
+def _retired_summary_table(found: dict, suffixed: set[str]) -> list[str]:
+    """How many identifiers fall in each class, and what each class needs.
+
+    A table rather than a paragraph per class: the counts are what a reader scans
+    for, and prose between them turns that scan into a read. What an action means
+    is not explained here -- that is the same guidance on every run, and it lives
+    in the package README and docs/gene-id-contract.md.
+
+    Identifiers are not listed either. Every one is in the detail block below.
+    """
+    rows = [(name, text) for name, text in _CLASS_ROWS if found.get(name)]
+    if not rows:
+        return []
+    count_width = max(len(f"{len(found[name]):,}") for name, _ in rows)
+    text_width = max(len(text) for _, text in rows)
+    tags = {name: " / ".join(sorted({_action(name, f, suffixed) for f in found[name]})) for name, _ in rows}
+    lines = [f"  {len(found[name]):>{count_width},}  {text:<{text_width}}  [{tags[name]}]" for name, text in rows]
+
+    # Only the actions this file actually produces, so a report does not carry a
+    # definition for a case it has none of.
+    actions = dict.fromkeys(a for name, _ in rows for a in tags[name].split(" / "))
+    tag_width = max(len(f"[{a}]") for a in actions)
+    guide = [f"  {f'[{a}]':<{tag_width}}  {_ACTION_GUIDE[a]}" for a in actions]
+    return ["Summary:\n" + "\n".join(lines), "Actions:\n" + "\n".join(guide)]
+
+
+def _retired_detail_block(
+    found: dict, collides: dict, spans: dict, candidates: dict, by_old: dict, splits: dict, suffixed: set[str]
+) -> str:
+    """Every identifier, once, in three aligned columns, grouped by class.
+
+    One row per identifier rather than one per warning: an identifier in var and
+    raw.var is one gene with one history, so 6,122 warnings are 3,061 facts.
+    Grouped by class, in the order of the summary table, so the list for a class
+    is a block rather than a grep.
+
+    Columns are aligned within a class, not across the block: a split names
+    every gene its pieces became, and padding every other row out to that would
+    push the tag off the right edge of a thousand lines that do not need it.
+
+    The base validator's own warning for each of these identifiers is dropped
+    once this block exists: the row says what the line said, and more.
+    """
+    lines = []
+    for name, _ in _CLASS_ROWS:
+        group = found.get(name)
+        if not group:
+            continue
+        rows = []
+        for feature in sorted(group):
+            successor = group[feature] if isinstance(group, dict) else ""
+            status = _CLASS_TEXT[name]
+            if name == "suffix_pair":
+                status = (
+                    "version suffix; bare ID also in file"
+                    if collides.get(feature) == "in file"
+                    else "version suffix; other spellings in file"
+                )
+            if name == "split":
+                status = f"split into {', '.join(splits[feature])}"
+            if name == "dead":
+                status = "replaced; successor since retired" if successor else "retired; no successor"
+            if name in ("remappable", "same_gene", "off_reference"):
+                event = "split" if feature in splits else by_old[candidates[feature]].event
+                status = event if event in ("renamed", "merged", "split") else "replaced"
+                if event == "split" and feature not in splits:
+                    # Out as several pieces and back as one gene: the fact column
+                    # says so, or "split [rename]" reads as a contradiction.
+                    status = "split; pieces rejoined as one gene"
+                if reason := collides.get(feature):
+                    status += f"; successor {'already in file' if reason == 'in file' else 'shared'}"
+                if name == "off_reference":
+                    # The pieces are named even though none is usable (3.7): a
+                    # row that says "successor" without saying which cannot be
+                    # checked against Ensembl.
+                    status = (
+                        f"split into {', '.join(splits[feature])}; none in the allowed set"
+                        if feature in splits
+                        else f"{status}; successor not in the allowed set"
+                    )
+            if flag := _SPAN_FLAGS.get(spans.get(feature, "")):
+                status = f"{status}; {flag}"
+            if feature in suffixed and name not in ("versioned", "suffix_pair"):
+                status = f"{status}; version suffix"
+            rows.append((feature, successor or "", status, f"[{_action(name, feature, suffixed)}]"))
+        lines.extend(_aligned(rows))
+    return "Details:\n" + "\n".join(lines)
+
+
+def _aligned(rows: list[tuple[str, str, str, str]]) -> list[str]:
+    """One block of ``old -> new  status  [tag]`` rows, each column padded to its widest."""
+    old_w = max(len(r[0]) for r in rows)
+    new_w = max(len(r[1]) for r in rows)
+    status_w = max(len(r[2]) for r in rows)
+    arrow = " -> " if new_w else "  "
+    return [
+        f"  {old:<{old_w}}{arrow if new else ' ' * len(arrow)}{new:<{new_w}}  {status:<{status_w}}  {tag}".rstrip()
+        for old, new, status, tag in rows
+    ]

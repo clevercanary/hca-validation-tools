@@ -14,12 +14,15 @@ from hca_schema_validator import (
     HCAValidator,
     check_donor_consistency,
     check_gene_annotation_version,
+    check_retired_feature_ids,
 )
 from hca_schema_validator.validator import (
     DESOUPED_COUNTS_LAYER,
     DONOR_GRAIN_COLUMNS,
+    _gene_id_events,
     _gene_release_intervals,
     _highest_gencode_release,
+    _retired_findings,
     parse_annotation_version,
 )
 
@@ -949,25 +952,45 @@ class TestValidateColumn:
 
 
 def test_feature_id_warnings_come_last():
-    """Feature ID warnings (not found in GENCODE) should be sorted after other warnings."""
-    from hca_schema_validator.validator import HCAValidator
+    """validate_adata moves the per-identifier pile below everything else.
 
-    v = HCAValidator()
-    # Simulate mixed warnings (with WARNING: prefix added by base validate_adata)
-    v.warnings = [
-        "WARNING: Feature ID 'ENSG00000241572' in 'var' not found in GENCODE v48 (Ensembl 114).",
-        "WARNING: Column 'library_id' is strongly recommended but missing.",
-        "WARNING: Feature ID 'ENSG00000229611' in 'var' not found in GENCODE v48 (Ensembl 114).",
-        "WARNING: Only raw data was found.",
-    ]
-    other = [w for w in v.warnings if "Feature ID '" not in w]
-    feature_id = [w for w in v.warnings if "Feature ID '" in w]
-    v.warnings = other + feature_id
+    Run through validate_adata rather than by partitioning a hand-written list:
+    an earlier version of this test copied the sorting into its own body and
+    asserted that its copy worked, so deleting the reorder from the validator
+    left it green. The ordering is what puts the retired-identifier summary and
+    its legend above the pile they explain, and nothing else checks it.
+    """
+    from .fixtures.hca_fixtures import good_obs, good_obsm, good_uns, good_var
 
-    assert "library_id" in v.warnings[0]
-    assert "raw data" in v.warnings[1]
-    assert "ENSG00000241572" in v.warnings[2]
-    assert "ENSG00000229611" in v.warnings[3]
+    var = good_var.copy()
+    index = list(var.index)
+    # One retired identifier, whose own warning is dropped in favour of its
+    # Details row, and one transgene, whose warning nothing classifies and so
+    # stays as the pile this test is about.
+    index[0] = _RENAMED
+    index[1] = "GFP"
+    var.index = pd.Index(index, name=var.index.name)
+    test_adata = anndata.AnnData(
+        X=np.zeros((len(good_obs), len(var)), dtype=np.float32),
+        obs=good_obs.copy(),
+        uns=good_uns.copy(),
+        obsm=good_obsm.copy(),
+        var=var,
+    )
+    _, validator = _validate_from_fixture(test_adata)
+
+    pile = [i for i, w in enumerate(validator.warnings) if "Feature ID '" in w]
+    other = [i for i, w in enumerate(validator.warnings) if "Feature ID '" not in w]
+    assert pile, validator.warnings
+    assert other, validator.warnings
+    # the retired identifier's own line is gone -- its Details row replaces it
+    assert not any(_RENAMED in validator.warnings[i] for i in pile), validator.warnings
+    assert any("'GFP'" in validator.warnings[i] for i in pile), validator.warnings
+    # every per-identifier warning sits after every other warning ...
+    assert min(pile) > max(other), validator.warnings
+    # ... and the summary that introduces them sits above the pile, not in it
+    summary = next(i for i, w in enumerate(validator.warnings) if "not in GENCODE v48" in w and "Feature ID '" not in w)
+    assert summary < min(pile), validator.warnings
 
 
 def test_missing_optional_column_is_silent():
@@ -2538,3 +2561,513 @@ def test_resurrected_gene_is_absent_between_its_runs():
     runs = table.get(_RESURRECTED)
     assert runs is not None and len(runs) > 1, f"expected more than one run, got {runs}"
     assert not any(first <= 107 <= last for first, last in runs), runs
+
+
+# ---------------------------------------------------------------------------
+# Retired feature identifiers (#728)
+# ---------------------------------------------------------------------------
+
+# Real identifiers from the shipped event table, so a test that passes says
+# something about the artifact the validator actually reads rather than about a
+# fixture invented to match the code.
+#
+# ENSG00000112096 -> ENSG00000291237 is a plain rename, SOD2's old identifier.
+_RENAMED = "ENSG00000112096"
+_RENAMED_SUCCESSOR = "ENSG00000291237"
+# ENSG00000132832 -> ENSG00000244558 is a merge: several old identifiers name it.
+_MERGED = "ENSG00000132832"
+_MERGED_SUCCESSOR = "ENSG00000244558"
+# Retired at r113 with nothing recorded in its place.
+_NO_SUCCESSOR = "ENSG00000002079"
+# Split at r100 into three genes, all three in the allowed set. (Breast v1's one
+# split identifier, ENSG00000258081, became two.)
+_SPLIT = "ENSG00000183791"
+# Split into genes none of which reach anything in the allowed gene set at any
+# depth: 38 of the table's 94 splits have this shape once every branch is walked.
+_SPLIT_OFF_REFERENCE = "ENSG00000221145"
+# Split at r76 into two genes that Ensembl later brought back together as one.
+# Following the branches makes this a rename, not a dead end; 2 of the table's
+# 94 splits converge on a single current gene this way.
+_SPLIT_CONVERGENT = "ENSG00000157828"
+_SPLIT_CONVERGENT_END = "ENSG00000280969"
+# Split into six, whose pieces split again before reaching six current genes.
+# Stopping at the first split reported six dead ends; one level down reported a
+# single survivor; only walking every branch finds all six.
+_SPLIT_NESTED = "ENSG00000207553"
+_SPLIT_NESTED_ENDS = (
+    "ENSG00000283289",
+    "ENSG00000283330",
+    "ENSG00000283455",
+    "ENSG00000283490",
+    "ENSG00000283540",
+    "ENSG00000283685",
+)
+# Replaced by a gene that is alive in Ensembl but annotated on an alt haplotype,
+# so it is absent from the allowed gene set. 13 identifiers have this shape.
+_OFF_REFERENCE = "ENSG00000237093"
+# Replaced by an identifier that was then replaced again, so one hop is not enough.
+_CHAINED = "ENSG00000229611"
+_CHAIN_END = "ENSG00000236924"
+# Replaced by an identifier that has itself since been retired, leaving nothing
+# current to point at however far the chain is followed.
+_CHAIN_ENDS_DEAD = "ENSG00000215924"
+# A claimed replacement the genome does not support: chr8:107.25Mb becoming
+# chr8:123.35Mb is not the same locus, whatever the bookkeeping says.
+_REFUTED = "ENSG00000211995"
+_REFUTED_SUCCESSOR = "ENSG00000283172"
+# Same locus, redrawn: the old gene starts 4 bases before its successor and is
+# otherwise contained in it. One of breast v1's three non-nesting pairs.
+_REDRAWN = "ENSG00000231255"
+_REDRAWN_SUCCESSOR = "ENSG00000233073"
+# The successor's span lies inside the old gene's -- the reverse of the ordinary
+# merge shape. 4 of the table's 1,239 resolvable replacements sit this way.
+_OLD_CONTAINS_NEW = "ENSG00000185928"
+# A current gene, for files that must contain something valid.
+_CURRENT = "ENSG00000141510"
+# Alive in Ensembl r83-r116 and absent from the allowed gene set: a patch-region
+# gene. 7,470 genes are in this position; 3,231 of them appear in the prod corpus.
+_PATCH_GENE = "ENSG00000282823"
+# First issued after the reference's Ensembl release, on a primary chromosome.
+# 87 genes are in this position and none appear in the prod corpus yet.
+_NEWER_THAN_REFERENCE = "ENSG00000310578"
+
+
+def _retired_adata(genes, raw=False):
+    """A file carrying the given feature IDs, and optionally the same raw.var."""
+    var = pd.DataFrame(index=pd.Index(list(genes), name="feature_id"))
+    adata = anndata.AnnData(
+        X=np.zeros((2, len(var)), dtype=np.float32),
+        obs=pd.DataFrame(index=["cell1", "cell2"]),
+        var=var,
+    )
+    if raw:
+        adata.raw = adata
+    return adata
+
+
+def _finding(warnings, fragment):
+    """The one warning containing a fragment, failing loudly when it is absent."""
+    matched = [w for w in warnings if fragment in w]
+    assert len(matched) == 1, f"expected exactly one warning containing {fragment!r}, got {warnings}"
+    return matched[0]
+
+
+def _rows(genes, gene):
+    """The Details row for one identifier, which is where the per-gene facts are."""
+    return _rows_of(_retired_adata(genes), gene)
+
+
+def _rows_of(adata, gene):
+    warnings, errors = check_retired_feature_ids(adata)
+    assert errors == []
+    details = _finding(warnings, "Details:")
+    matched = [line for line in details.splitlines() if line.strip().startswith(gene)]
+    assert len(matched) == 1, f"expected one row for {gene}, got {details}"
+    return matched[0]
+
+
+def _summary(genes):
+    return _finding(check_retired_feature_ids(_retired_adata(genes))[0], "Summary:")
+
+
+def test_retired_ids_silent_when_every_gene_is_current():
+    assert check_retired_feature_ids(_retired_adata([_CURRENT])) == ([], [])
+
+
+def test_retired_ids_silent_on_a_file_with_no_var():
+    adata = anndata.AnnData(X=np.zeros((2, 0), dtype=np.float32), obs=pd.DataFrame(index=["c1", "c2"]))
+    assert check_retired_feature_ids(adata) == ([], [])
+
+
+def test_a_rename_names_its_successor():
+    row = _rows([_CURRENT, _RENAMED], _RENAMED)
+    assert f"-> {_RENAMED_SUCCESSOR}" in row and "[rename]" in row, row
+
+
+def test_a_successor_already_in_the_file_needs_a_decision():
+    """Renaming here would leave two columns under one name."""
+    row = _rows([_MERGED, _MERGED_SUCCESSOR], _MERGED)
+    assert "successor already in file" in row and "[review]" in row, row
+
+
+def test_shared_successors_need_a_decision_too():
+    """Renaming each is individually safe and collectively a collision.
+
+    Breast v1 has nine such groups covering 21 identifiers; this is the smallest
+    shape of one.
+    """
+    pair = sorted(g for g, e in _gene_id_events()[0].items() if tuple(e.successors) == (_MERGED_SUCCESSOR,))
+    assert len(pair) > 1, pair
+    for gene in pair:
+        row = _rows(pair, gene)
+        assert "successor shared" in row and "[review]" in row, row
+
+
+def test_the_same_identifier_is_a_rename_when_its_successor_is_absent():
+    """Same identifier, different file: the action is a fact about this file."""
+    assert "[rename]" in _rows([_MERGED], _MERGED)
+
+
+def test_no_successor_is_droppable():
+    row = _rows([_NO_SUCCESSOR], _NO_SUCCESSOR)
+    assert "retired; no successor" in row and "[drop]" in row, row
+
+
+def test_a_split_is_not_offered_a_single_successor():
+    """The pieces are named in the status, never one of them as the successor."""
+    row = _rows([_SPLIT], _SPLIT)
+    assert "split into ENSG" in row and "[drop or re-align]" in row, row
+    assert "->" not in row, row
+
+
+def test_details_columns_align_within_a_class_not_across_the_block():
+    """A split's row names every piece; the rename rows above it are not padded to match."""
+    warnings, _ = check_retired_feature_ids(_retired_adata([_RENAMED, _SPLIT_NESTED]))
+    rename, split = (line for line in _finding(warnings, "Details:").splitlines()[1:])
+    assert rename.index("[rename]") < split.index("[drop or re-align]"), (rename, split)
+
+
+def test_a_chain_is_followed_to_its_end():
+    """One hop would name an identifier CELLxGENE still rejects."""
+    assert f"-> {_CHAIN_END}" in _rows([_CHAINED], _CHAINED)
+
+
+def test_a_chain_ending_in_a_retired_gene_is_dropped_and_names_it():
+    """Ensembl did record a successor; the row says so and names the gene whose
+    retirement ended the chain, rather than claiming nothing was recorded."""
+    row = _rows([_CHAIN_ENDS_DEAD], _CHAIN_ENDS_DEAD)
+    assert f"{_CHAIN_ENDS_DEAD} -> ENSG" in row, row
+    assert "replaced; successor since retired" in row and "[drop]" in row, row
+
+
+def test_a_successor_off_the_allowed_set_is_dropped_not_renamed():
+    """Ensembl replaced it, and the replacement is alive -- on a patch sequence."""
+    row = _rows([_OFF_REFERENCE], _OFF_REFERENCE)
+    assert "successor not in the allowed set" in row and "[drop]" in row, row
+    # the successor is named, so the row can be checked against Ensembl ...
+    assert f"{_OFF_REFERENCE} -> ENSG" in row, row
+    # ... but its coordinates are not compared: it sits on a patch or alt
+    # contig, where the comparison could only ever say "disjoint"
+    assert "disjoint" not in row and "overlap" not in row, row
+
+
+def test_a_split_whose_branches_converge_is_a_rename():
+    """Ensembl split it into two and later brought both back as one gene.
+
+    Stopping at the split reported two dead ends and told the curator to drop a
+    column that has a current gene to point at.
+    """
+    row = _rows([_SPLIT_CONVERGENT], _SPLIT_CONVERGENT)
+    assert f"-> {_SPLIT_CONVERGENT_END}" in row and "[rename]" in row, row
+
+
+def test_a_convergent_split_whose_target_is_in_the_file_is_a_review_not_a_rename():
+    """The collapsed split takes the ordinary collision rules, including this one."""
+    row = _rows([_SPLIT_CONVERGENT, _SPLIT_CONVERGENT_END], _SPLIT_CONVERGENT)
+    assert "successor already in file" in row and "[review]" in row, row
+    assert "split; pieces rejoined as one gene" in row, row
+
+
+def test_a_convergent_split_row_says_the_pieces_rejoined():
+    row = _rows([_SPLIT_CONVERGENT], _SPLIT_CONVERGENT)
+    assert "split; pieces rejoined as one gene" in row and "[rename]" in row, row
+
+
+def test_a_suffixed_spelling_of_an_allowed_gene_is_versioned_whatever_the_table_says(monkeypatch):
+    """40 table identifiers were retired after the allowed set's release and are
+    still allowed. Written with a suffix, one is a suffix problem, not a retirement."""
+    from hca_schema_validator import validator as v
+
+    monkeypatch.setattr(v, "_gene_id_events", lambda: ({_CURRENT: v.GeneEvent("retired", (), None)}, {}))
+    row = _rows([f"{_CURRENT}.2"], f"{_CURRENT}.2")
+    assert "version suffix" in row and "[strip suffix]" in row, row
+    assert "[drop]" not in row and "retired" not in row, row
+
+
+def test_a_feature_that_only_starts_like_an_ensembl_id_is_not_classified():
+    """Matched whole, not by prefix: ENSG00000141510.beta is a custom feature, not TP53."""
+    warnings, _ = check_retired_feature_ids(_retired_adata(["ENSG00000141510.beta", _RENAMED]))
+    details = _finding(warnings, "Details:")
+    assert _RENAMED in details and "beta" not in details, details
+    assert "1 gene ID is not in" in warnings[0], warnings[0]
+
+
+def test_an_identifier_only_in_raw_var_is_classified():
+    """The population is both dataframes, not var alone."""
+    adata = _retired_adata([_CURRENT])
+    adata.raw = _retired_adata([_CURRENT, _RENAMED])
+    row = _rows_of(adata, _RENAMED)
+    assert "[rename]" in row, row
+
+
+def test_never_retired_classes_turn_on_the_allowed_set_release(monkeypatch):
+    """First issued at r114 is excluded (it was there and the set left it out);
+    at r115 it is newer; gone before the table's end with no event is unclassified."""
+    from hca_schema_validator import validator as v
+
+    gene = "ENSG00000000005"
+    monkeypatch.setattr(v, "_gene_id_events", lambda: ({}, {}))
+    for runs, expected in (([(114, 116)], "excluded"), ([(115, 116)], "newer"), ([(80, 100)], "unclassified")):
+        monkeypatch.setattr(v, "_gene_release_intervals", lambda runs=runs: ({gene: runs}, 76, 116))
+        assert v._never_retired_class(gene) == expected, (runs, expected)
+
+
+def test_rows_that_disagree_on_an_identifier_are_refused(monkeypatch, tmp_path):
+    """Two rows for one old id with different events is not the generator's output."""
+    import gzip
+
+    from hca_schema_validator import validator as v
+
+    path = tmp_path / "events.csv.gz"
+    with gzip.open(path, "wt") as fh:
+        fh.write("# test\n")
+        fh.write(
+            "old_id,new_id,event,old_chrom,old_start,old_end,old_strand,old_release,new_chrom,new_start,new_end,new_strand\n"
+        )
+        fh.write("ENSG00000000001,ENSG00000000002,merged,1,10,20,1,100,1,10,30,1\n")
+        fh.write("ENSG00000000001,ENSG00000000003,split,1,10,20,1,100,1,40,50,1\n")
+    monkeypatch.setattr(v, "_EVENTS_PATH", path)
+    with pytest.raises(ValueError, match="disagree"):
+        v._gene_id_events.__wrapped__()
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "expected"),
+    [
+        (("1", 10, 20, 1), ("2", 10, 20, 1), "disjoint"),  # other chromosome, same coordinates
+        (("1", 10, 20, 1), ("1", 10, 20, -1), "disjoint"),  # opposite strand, same coordinates
+        (("1", 10, 20, 1), ("1", 20, 30, 1), "overlap"),  # touching at one base is shared
+        (("1", 10, 20, 1), ("1", 21, 30, 1), "disjoint"),  # adjacent is not
+        (("1", 10, 20, 1), ("1", 5, 25, 1), "new contains old"),
+        (("1", 10, 20, 1), ("1", 12, 18, 1), "old contains new"),
+    ],
+)
+def test_compare_spans_is_geometry_only(old, new, expected):
+    from hca_schema_validator import validator as v
+
+    assert v._compare_spans(old, new) == expected
+
+
+def test_a_split_with_one_surviving_and_one_dead_branch_stays_a_split(monkeypatch):
+    """One allowed terminal does not prove convergence.
+
+    No identifier in the shipped table has this shape, so it is built: A split
+    into B and C, B renamed to the allowed gene D, C retired. A rename to D
+    would hand C's counts to D; this stays a split.
+    """
+    from hca_schema_validator import validator as v
+
+    table = {
+        "ENSG00000000001": v.GeneEvent("split", ("ENSG00000000002", "ENSG00000000003"), None),
+        "ENSG00000000002": v.GeneEvent("renamed", (_CURRENT,), None),
+        "ENSG00000000003": v.GeneEvent("retired", (), None),
+    }
+    monkeypatch.setattr(v, "_gene_id_events", lambda: (table, {}))
+    warnings, _ = v.check_retired_feature_ids(_retired_adata(["ENSG00000000001"]))
+    details = _finding(warnings, "Details:")
+    row = next(line for line in details.splitlines() if "ENSG00000000001" in line)
+    assert "split" in row and "[drop or re-align]" in row, row
+    assert "[rename]" not in row, row
+
+
+def test_a_dead_branch_below_a_split_piece_still_blocks_the_collapse(monkeypatch):
+    """Convergence is asked of every branch at every depth, not of the endpoints.
+
+    A split into B and C; B split again into the allowed gene D and a retired
+    gene; C renamed to D. Every allowed terminal is D, so a test on terminals
+    alone would collapse A to a rename and hand the retired branch's counts to
+    D. Built, because no identifier in the shipped table has the shape.
+    """
+    from hca_schema_validator import validator as v
+
+    table = {
+        "ENSG00000000001": v.GeneEvent("split", ("ENSG00000000002", "ENSG00000000003"), None),
+        "ENSG00000000002": v.GeneEvent("split", (_CURRENT, "ENSG00000000004"), None),
+        "ENSG00000000003": v.GeneEvent("renamed", (_CURRENT,), None),
+        "ENSG00000000004": v.GeneEvent("retired", (), None),
+    }
+    monkeypatch.setattr(v, "_gene_id_events", lambda: (table, {}))
+    warnings, _ = v.check_retired_feature_ids(_retired_adata(["ENSG00000000001"]))
+    row = next(line for line in _finding(warnings, "Details:").splitlines() if "ENSG00000000001" in line)
+    assert f"split into {_CURRENT}" in row and "[drop or re-align]" in row, row
+    assert "[rename]" not in row, row
+
+
+def test_a_branch_ending_at_a_gene_off_the_allowed_set_also_blocks_the_collapse(monkeypatch):
+    """A leaf that is alive but outside the allowed set is not the target either."""
+    from hca_schema_validator import validator as v
+
+    table = {
+        "ENSG00000000001": v.GeneEvent("split", ("ENSG00000000002", "ENSG00000000003"), None),
+        "ENSG00000000002": v.GeneEvent("renamed", (_CURRENT,), None),
+        "ENSG00000000003": v.GeneEvent("renamed", ("ENSG00000000009",), None),  # alive, not allowed
+    }
+    monkeypatch.setattr(v, "_gene_id_events", lambda: (table, {}))
+    warnings, _ = v.check_retired_feature_ids(_retired_adata(["ENSG00000000001"]))
+    row = next(line for line in _finding(warnings, "Details:").splitlines() if "ENSG00000000001" in line)
+    assert "split" in row and "[rename]" not in row, row
+
+
+def test_a_nested_split_reaches_every_terminal():
+    """Pieces that split again are followed to the genes they finally become.
+
+    Stopping at the first split reported six dead ends; one level down, a single
+    survivor. Only walking every branch finds the six current genes.
+    """
+    row = _rows([_SPLIT_NESTED], _SPLIT_NESTED)
+    assert f"split into {', '.join(_SPLIT_NESTED_ENDS)}  [drop or re-align]" in row, row
+
+
+def test_a_split_with_no_usable_pieces_is_dropped():
+    """38 of the table's 94 splits reach nothing in the allowed gene set at any depth."""
+    row = _rows([_SPLIT_OFF_REFERENCE], _SPLIT_OFF_REFERENCE)
+    assert "split into ENSG" in row and "; none in the allowed set" in row and "[drop]" in row, row
+    assert "->" not in row, row
+
+
+def test_a_retired_id_is_named_as_the_file_writes_it():
+    """A file writing ENSG00000112096.3 has no column called ENSG00000112096."""
+    written = f"{_RENAMED}.3"
+    assert written in _rows([written], written)
+
+
+def test_a_version_suffix_is_its_own_class():
+    row = _rows([f"{_CURRENT}.17"], f"{_CURRENT}.17")
+    assert "version suffix" in row and "[strip suffix]" in row, row
+
+
+def test_both_spellings_present_is_a_collision_not_a_strip():
+    """Stripping the suffix would leave two columns under one name."""
+    written = f"{_CURRENT}.17"
+    row = _rows([_CURRENT, written], written)
+    assert "bare ID also in file" in row and "[review]" in row, row
+
+
+def test_two_suffixed_spellings_collide_with_each_other():
+    """ENSG...17 and ENSG...18 with no bare form both strip to one name."""
+    a, b = f"{_CURRENT}.17", f"{_CURRENT}.18"
+    for written in (a, b):
+        row = _rows([a, b], written)
+        assert "other spellings in file" in row and "[review]" in row, row
+
+
+def test_two_suffixed_spellings_of_a_newer_gene_collide_too():
+    """The collision pass covers every class a suffixed feature can land in."""
+    a, b = f"{_NEWER_THAN_REFERENCE}.1", f"{_NEWER_THAN_REFERENCE}.2"
+    for written in (a, b):
+        row = _rows([a, b], written)
+        assert "other spellings in file" in row and "[review]" in row, row
+
+
+def test_a_suffixed_newer_gene_is_never_told_nothing_to_do():
+    """The gene is newer than the allowed set; the suffix is still a defect."""
+    written = f"{_NEWER_THAN_REFERENCE}.2"
+    row = _rows([written], written)
+    assert "version suffix" in row and "[strip suffix]" in row, row
+    assert "[none]" not in _summary([written]), _summary([written])
+
+
+def test_an_identifier_outside_the_event_history_is_asked_about():
+    row = _rows(["ENSG99999999999"], "ENSG99999999999")
+    assert "no event recorded" in row and "[ask]" in row, row
+
+
+def test_a_gene_the_allowed_set_excludes_is_not_called_unknown():
+    """Alive in Ensembl since r83, absent from the allowed set: a patch-region gene.
+
+    3,231 of these are in the prod corpus, across eight files.
+    """
+    row = _rows([_PATCH_GENE], _PATCH_GENE)
+    assert "not on primary assembly" in row and "[drop]" in row, row
+
+
+def test_a_gene_newer_than_the_allowed_set_needs_no_change():
+    row = _rows([_NEWER_THAN_REFERENCE], _NEWER_THAN_REFERENCE)
+    assert "issued after" in row and "[none]" in row, row
+
+
+def test_non_human_features_are_left_to_the_base_validator():
+    assert check_retired_feature_ids(_retired_adata([_CURRENT, "ERCC-00002", "ENSMUSG00000051951"])) == ([], [])
+
+
+def test_coordinates_refute_a_claimed_replacement():
+    """chr8:107.25Mb becoming chr8:123.35Mb is not the same locus."""
+    assert "disjoint" in _rows([_REFUTED], _REFUTED)
+
+
+def test_containment_is_named_by_direction():
+    """The successor is the smaller span: said as geometry, not as a verdict."""
+    row = _rows([_OLD_CONTAINS_NEW], _OLD_CONTAINS_NEW)
+    assert "old contains new" in row, row
+    assert "overlap" not in row and "disjoint" not in row, row
+
+
+def test_a_redrawn_boundary_is_not_a_contradiction():
+    """ENSG00000231255 starts 4 bases before its successor and is otherwise inside it."""
+    row = _rows([_REDRAWN], _REDRAWN)
+    assert "overlap" in row, row
+    assert "disjoint" not in row, row
+
+
+def test_the_summary_counts_each_class():
+    summary = _summary([_RENAMED, _NO_SUCCESSOR, _SPLIT])
+    assert "1  replaced; successor not in file" in summary and "[rename]" in summary, summary
+    assert "retired; no successor" in summary and "[drop]" in summary, summary
+
+
+def test_counts_are_over_identifiers_and_warnings_separately():
+    """1,482 becomes 741 because var and raw.var hold the same identifiers."""
+    warnings, _ = check_retired_feature_ids(_retired_adata([_RENAMED, _NO_SUCCESSOR], raw=True))
+    assert "2 gene IDs are not in" in warnings[0], warnings[0]
+    assert warnings[0].count("\n") == 0, warnings[0]
+
+
+def test_only_the_actions_a_file_produces_are_defined():
+    actions = _finding(check_retired_feature_ids(_retired_adata([_RENAMED]))[0], "Actions:")
+    assert "[rename]" in actions, actions
+    assert "[ask]" not in actions, actions
+
+
+def test_the_report_is_a_few_blocks_however_many_identifiers():
+    many = [f"ENSG0000000{n:04d}" for n in range(200)]
+    warnings, _ = check_retired_feature_ids(_retired_adata([*many, _RENAMED, _NO_SUCCESSOR]))
+    assert len(warnings) <= 4, [w[:60] for w in warnings]
+
+
+def test_classified_identifiers_are_the_ones_with_a_details_row():
+    """Every identifier in the Details block, and nothing else, is reported back."""
+    warnings, _, classified = _retired_findings(_retired_adata([_RENAMED, _NO_SUCCESSOR], raw=True))
+    assert classified == {_RENAMED, _NO_SUCCESSOR}
+    details = _finding(warnings, "Details:")
+    assert all(g in details for g in classified), details
+
+
+def test_a_classified_warning_is_dropped_and_an_unclassified_one_kept():
+    """A transgene warns for its own reasons and this check has no row for it."""
+    pile = [
+        f"Feature ID '{_RENAMED}' in 'var' not found in GENCODE v48 (Ensembl 114).",
+        "Feature ID 'GFP' in 'var' not found in GENCODE v48 (Ensembl 114).",
+        f"Feature ID '{_RENAMED}' in 'raw.var' not found in GENCODE v48 (Ensembl 114).",
+        "Some other warning.",
+    ]
+    from hca_schema_validator import validator as v
+
+    kept = v._drop_classified_warnings(pile, {_RENAMED})
+    assert kept == [pile[1], pile[3]], kept
+
+
+def test_the_findings_do_not_collide_with_the_annotation_version_routing():
+    """/curate-h5ad routes gene_annotation_version findings by "are not in the
+    declared release", and these print directly beside those."""
+    warnings, _ = check_retired_feature_ids(_retired_adata([_RENAMED, _NO_SUCCESSOR]))
+    # the phrase that routes there is "are not in the declared release"; the intro
+    # says "are not in GENCODE v48", which is close enough to be worth pinning
+    assert not [w for w in warnings if "are not in the declared" in w], warnings
+    assert not [w for w in warnings if "did not exist in" in w], warnings
+
+
+def test_the_findings_are_not_swept_up_with_the_pile():
+    """validate_adata moves per-identifier warnings last by matching "Feature ID '"."""
+    warnings, _ = check_retired_feature_ids(_retired_adata([_RENAMED, _NO_SUCCESSOR, _SPLIT]))
+    assert warnings
+    assert not [w for w in warnings if "Feature ID '" in w], warnings
