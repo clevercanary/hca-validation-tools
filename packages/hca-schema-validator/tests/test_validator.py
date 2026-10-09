@@ -2586,8 +2586,8 @@ _SPLIT = "ENSG00000183791"
 # depth: 38 of the table's 94 splits have this shape once every branch is walked.
 _SPLIT_OFF_REFERENCE = "ENSG00000221145"
 # Split at r76 into two genes that Ensembl later brought back together as one.
-# Following the branches makes this a rename, not a dead end; 3 splits converge
-# on a single current gene this way.
+# Following the branches makes this a rename, not a dead end; 2 of the table's
+# 94 splits converge on a single current gene this way.
 _SPLIT_CONVERGENT = "ENSG00000157828"
 _SPLIT_CONVERGENT_END = "ENSG00000280969"
 # Split into six, whose pieces split again before reaching six current genes.
