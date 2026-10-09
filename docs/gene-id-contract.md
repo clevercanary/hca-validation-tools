@@ -110,10 +110,16 @@ Ensembl says what changed. The allowed gene set says what is nameable. We only r
     one, and whether the successor already existed in the release the old identifier was last in. Each is a
     statement a curator can check.
 
-3.1.1 **`renamed` means a new name.** The successor was first issued at that session and no other retired
-      identifier names it. A successor that was already there absorbed the old gene, and that is `merged`
+3.1.1 **`renamed` means a new name.** The successor was first issued at that session and no other old id, at
+      any session, names it. A successor that was already there absorbed the old gene, and that is `merged`
       whether or not anything else merged into it. Counting old ids alone called 776 of 797 renames a
       rename whose successor had been there all along; the table now holds 21.
+
+3.1.2 **The class is read from today, not from the session.** The row says what an old id's successor is
+      now: a gene that several old ids share is a merge for each of them, whatever order they arrived in.
+      So old ids are counted over the whole history, not per session — `A -> X` at r100 and `B -> X` at
+      r110 are both `merged`, because `X` today carries both. (No row in the table turns on this; it is
+      stated so a regeneration that did would be labelling by rule.)
 
 3.2 The validator **re-derives split-ness from the successor count** rather than reading the table's `event`
     column, so classification has one definition rather than two that can disagree. The column is read for
