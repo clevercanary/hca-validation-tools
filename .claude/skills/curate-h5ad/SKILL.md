@@ -118,7 +118,7 @@ Report these but don't attempt to fix:
 - High NaN rates on non-allowed columns (e.g. `library_id`) — needs real values from source.
 - Sparse or missing `ambient_count_correction` / `doublet_detection` obs columns — per-cell values must come from the upstream source (each source dataset's processing record). Do not broadcast a single value. Report fill rate and move on.
 - Delimited-list values in single-identifier columns (e.g. `library_preparation_batch` containing `"lib1; lib2; lib3"`) — needs per-cell resolution, not placeholder replacement.
-- Gene IDs missing from the reference GENCODE — needs annotation-version decision. The validator now classifies these rather than leaving them an undifferentiated wall (#728), so do not summarize the classification away: it is the `Summary:`/`Actions:`/`Details:` blocks, and the only thing that says what to do next. Route each class:
+- Gene IDs not in the allowed gene set (GENCODE v48, Ensembl 114, primary assembly) — needs annotation-version decision. The validator now classifies these rather than leaving them an undifferentiated wall (#728), so do not summarize the classification away: it is the `Summary:`/`Actions:`/`Details:` blocks, and the only thing that says what to do next. Route each class:
 
   | tag | whose it is | what to do |
   |---|---|---|
