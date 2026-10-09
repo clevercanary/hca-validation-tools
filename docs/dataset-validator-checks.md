@@ -152,7 +152,7 @@ Ensembl's `stable_id_event` records what became of each one, shipped as `gene_id
 | `[review]` | renamed to X / merged into X, which is already in this file, or shared with other IDs here | renaming would leave columns sharing a name, so whether to add the counts is a decision |
 | `[drop]` | retired; no successor / replaced; successor since retired | nothing in the allowed gene set to point at; where Ensembl did record a successor that was retired in turn, the row names it |
 | `[drop]` | successor not in the allowed set | the successor is on a patch or alt sequence, or postdates the set |
-| `[drop]` | not on primary assembly | a patch or alt sequence, so no reference gene set carries it |
+| `[drop]` | not on primary assembly | this gene is on a patch or alt sequence, which the allowed gene set excludes |
 | `[drop or re-align]` | split into X, Y | the reads cannot be divided after the fact, but are recoverable under the successors' names |
 | `[strip suffix]` | version suffix | the written form is what fails. Noted on any row whatever else is true of the gene, and overrides `[none]`; it does not by itself mean the bare gene is in the allowed set |
 | `[review]` | version suffix; bare ID also in file | stripping would leave two columns under one name |

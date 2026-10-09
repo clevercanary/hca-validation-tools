@@ -131,6 +131,26 @@ def test_a_split_piece_is_not_called_a_merge():
     assert events["B"] == "merged"
 
 
+# --- shipped_successors ----------------------------------------------------
+
+
+def test_a_successor_absent_from_its_sessions_release_is_dropped():
+    """Named in stable_id_event, never in a gene table: not a gene, so not a row."""
+    kept, dropped = gen.shipped_successors(
+        {"A": {"X", "Y", "PHANTOM"}, "B": {"Z"}},
+        {"A": 105, "B": 110},
+        {("X", 105), ("Y", 105), ("Z", 110)},
+    )
+    assert kept == {"A": {"X", "Y"}, "B": {"Z"}}
+    assert dropped == [("A", "PHANTOM")]
+
+
+def test_presence_is_tested_at_the_sessions_own_release():
+    """Existing in some other release does not count: the session produced r105."""
+    kept, dropped = gen.shipped_successors({"A": {"X"}}, {"A": 105}, {("X", 110)})
+    assert kept == {"A": set()} and dropped == [("A", "X")]
+
+
 # --- latest_events ---------------------------------------------------------
 
 

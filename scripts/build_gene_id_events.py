@@ -199,6 +199,32 @@ def classify(
     return events
 
 
+def shipped_successors(
+    successors_by_old: dict[str, set[str]],
+    new_release_by_old: dict[str, int],
+    present: set[tuple[str, int]],
+) -> tuple[dict[str, set[str]], list[tuple[str, str]]]:
+    """Keep only the successors that exist in the release their session produced.
+
+    stable_id_event can name a successor that no release ever carried: at the
+    104->105 session three identifiers were recorded as pieces of two splits and
+    are absent from r105's gene table and every one since. They exist only in
+    the id history, so nothing -- no GTF, no reference, no count matrix -- can
+    refer to them, and a row naming one describes a gene that does not exist.
+
+    ``present`` holds ``(gene, release)`` pairs found in that release's gene
+    table; ``new_release_by_old`` is the release each old identifier's last
+    session produced. Returns the filtered mapping and the dropped pairs.
+    """
+    kept: dict[str, set[str]] = {}
+    dropped: list[tuple[str, str]] = []
+    for old, news in successors_by_old.items():
+        release = new_release_by_old[old]
+        kept[old] = {new for new in news if (new, release) in present}
+        dropped.extend((old, new) for new in sorted(news - kept[old]))
+    return kept, dropped
+
+
 def latest_events(rows: list[tuple[str, str | None, int, int]]) -> dict[str, tuple[int, set[str]]]:
     """Reduce raw event rows to each identifier's last word, keyed by old id.
 
@@ -242,8 +268,9 @@ def build_rows(
 
     Coordinates are left empty rather than guessed at when the server does not
     have them: an old identifier its release no longer lists, or a successor
-    absent from the current one -- 42 of 1,101 today: 39 retired since, and 3
-    named at the 104->105 session that never shipped in any release.
+    absent from the current one -- 39 of 1,098 today, every one of them a
+    successor that has since been retired itself. (A successor the release
+    never carried is not a successor at all; shipped_successors drops those.)
     """
     rows = []
     for old in sorted(events):
@@ -343,6 +370,9 @@ def coords_in(con, release: int, wanted: set[str] | None = None) -> dict[str, tu
     cur = con.cursor()
     columns = "g.stable_id, sr.name, g.seq_region_start, g.seq_region_end, g.seq_region_strand"
     source = "gene g JOIN seq_region sr ON g.seq_region_id = sr.seq_region_id"
+    if wanted is not None and not wanted:
+        # An empty IN () is a syntax error, not an empty result.
+        return {}
     if wanted is None:
         cur.execute(f"SELECT {columns} FROM {source} WHERE g.stable_id LIKE 'ENSG%%'")
     else:
@@ -413,6 +443,24 @@ def main() -> int:
         f"r{current}: {len(current_coords):,} genes ({time.time() - t:.1f}s). "
         f"{len(successors_by_old):,} retired identifiers; dropped {len(resurrected)} present again "
         f"in r{current}: {', '.join(resurrected[:5])}",
+        file=sys.stderr,
+    )
+
+    # A successor must exist in the release its session produced; one that does
+    # not was never shipped and is dropped before anything is said about it.
+    t = time.time()
+    new_release_by_old = {old: dict(sessions)[release] for old, release in release_by_old.items()}
+    wanted_new: defaultdict[int, set[str]] = defaultdict(set)
+    for old, news in successors_by_old.items():
+        if news:
+            wanted_new[new_release_by_old[old]] |= news
+    present_new = {
+        (gene, release) for release in sorted(wanted_new) for gene in coords_in(con, release, wanted_new[release])
+    }
+    successors_by_old, unshipped = shipped_successors(successors_by_old, new_release_by_old, present_new)
+    print(
+        f"{len(unshipped)} successor(s) named by a session but absent from the release it produced, dropped: "
+        f"{', '.join(f'{old}->{new}' for old, new in unshipped[:6])} ({time.time() - t:.1f}s)",
         file=sys.stderr,
     )
 

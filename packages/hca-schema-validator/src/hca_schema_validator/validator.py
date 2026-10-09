@@ -2411,10 +2411,9 @@ def _gene_id_events() -> tuple[dict[str, GeneEvent], dict[str, tuple]]:
 def _span(row: dict, side: str) -> tuple | None:
     """One side's (chromosome, start, end, strand), or None where it is absent.
 
-    Absent is a real state rather than a defect: 42 successors have no span in
-    the current release -- 39 retired since, 3 named in stable_id_event at the
-    104->105 session and never shipped in any release -- and a row recording no
-    successor has nothing to give coordinates for.
+    Absent is a real state rather than a defect: 39 successors have been retired
+    themselves since, so the current release has no span for them, and a row
+    recording no successor has nothing to give coordinates for.
     """
     chrom = row[f"{side}_chrom"]
     if not chrom:

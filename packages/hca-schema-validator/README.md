@@ -357,9 +357,9 @@ one would want to treat as suspicious.
 |---|---|
 | Ensembl sessions covered | **r76 → r116** (30 sessions, GRCh38 on both sides) |
 | Retired identifiers | 7,132 — 5,768 retired, 21 renamed, 1,249 merged, 94 split |
-| Rows | 7,500 |
+| Rows | 7,494 |
 | Still in the allowed set | 40 of the 7,132 (retired at r115 or r116, after GENCODE v48); the validator never classifies them |
-| Successor coordinates | from r116; 42 successors have none — 39 retired since, 3 named at the 104→105 session and never shipped |
+| Successor coordinates | from r116; 39 successors have been retired themselves and have none |
 | File size | 122 KB gzipped |
 
 Old-release spans on patch contigs are in that release's own coordinate system

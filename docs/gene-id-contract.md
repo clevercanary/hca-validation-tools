@@ -82,6 +82,12 @@ Ensembl says what changed. The reference says what is nameable. We only report; 
     because GRCh37 coordinates are not comparable to GRCh38 ones. Extending it is #729; one atlas (heart)
     carries 592 identifiers that fall through the gap.
 
+2.8.1 **A successor a session names but the release it produced never carried is not a gene, and is dropped
+      before anything is said about it.** `stable_id_event` can record one: at the 104→105 session three
+      identifiers were named as pieces of two splits and appear in no release's gene table, so nothing — no
+      GTF, no reference, no count matrix — can refer to them. The generator keeps a successor only if it
+      is present at its session's new release. Nothing downstream ever names a gene that does not exist.
+
 2.9 `stable_id_event.score` **is not read.** Of gene events with a successor since r98, 1,202 fall in
     0.9-0.999 and 2 sit at exactly 1.0, so a threshold separates nothing; and the column is
     `float NOT NULL DEFAULT '0'`, so an exact zero cannot be told from "never scored".
@@ -131,7 +137,8 @@ Ensembl says what changed. The reference says what is nameable. We only report; 
 3.6.1 A split collapses to a replacement **only when every branch reaches the same single allowed gene** --
       out as several pieces, back as one. One allowed terminal beside a dead branch is still a split: a
       rename would hand the dead branch's counts to the survivor. Two identifiers in the table converge
-      this way; none has the mixed shape, which is pinned by a synthetic test.
+      this way; none has the mixed shape (two did, until 2.8.1 removed their never-shipped pieces), which is
+      pinned by a synthetic test.
 
 3.7 An identifier whose successor is alive but off the allowed gene set is **not** reported as having no successor.
     Ensembl did record a replacement; it is simply not nameable (1.7).
