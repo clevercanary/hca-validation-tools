@@ -257,6 +257,8 @@ class Downloads:
         directory = (Path(dest_dir).expanduser() if dest_dir else default_dir).absolute()
         if _CONTROL.search(str(directory)):
             raise CheckError(f"The download folder {str(directory)!r} contains a control character or backslash")
+        if any(directory.resolve().is_relative_to(folder.resolve()) for folder in self._internal_dirs()):
+            raise CheckError(f"{directory} holds the download cache's own state; choose another dest_dir")
         final = directory / filename
 
         probed = probe(presigned)
@@ -298,16 +300,13 @@ class Downloads:
 
             part, control = part_path(final), control_path(final)
             last = previous[-1] if previous else None
-            if restart:
-                for stale in (part, control):
-                    with contextlib.suppress(FileNotFoundError):
-                        stale.unlink()
-            elif last is not None and last.checksum_failed:
+            # With restart, the old files are removed only once every check below has passed.
+            if not restart and last is not None and last.checksum_failed:
                 raise CheckError(
                     f"The last download of {filename} failed its checksum and is kept at {part}; "
                     "run delete_download, or pass restart=true to download it again from scratch"
                 )
-            elif part.exists() and not control.exists():
+            if not restart and part.exists() and not control.exists():
                 raise CheckError(
                     f"A partial file {part} exists without aria2's control file, so it cannot be resumed safely; "
                     "pass restart=true to download from scratch"
@@ -315,11 +314,17 @@ class Downloads:
 
             aria2c, _ = find_aria2c()
             check_writable(directory)
+            # Resuming needs only the rest; restarting frees the old .part first. Either way
+            # the net space needed is the file less what the .part already occupies.
             already = min(_allocated(part), size)
-            remaining = size - already
             reserved = self._reserved(directory, aria2, exclude=final)
-            check_space(directory, remaining, size, reserved)
+            check_space(directory, size - already, size, reserved)
             aria2 = self._daemon(aria2c)
+            if restart:
+                for stale in (part, control):
+                    with contextlib.suppress(FileNotFoundError):
+                        stale.unlink()
+                already = 0
             job = Job(
                 job_id=secrets.token_hex(8),
                 network=network,

@@ -110,3 +110,18 @@ def test_unsafe_network_or_atlas_rejected(cache_dir, tmp_path, network, slug):
         fake.add_file(atlas_id, "x-r1.h5ad", make_file(tmp_path / "x", 10))
         with pytest.raises(TrackerError, match="unusable"):
             Downloads(make_config(cache_dir, fake)).start(network, slug, "x-r1.h5ad")
+
+
+def test_dest_dir_inside_cache_state_rejected(downloads, small_file):
+    with pytest.raises(CheckError, match="holds the download cache's own state"):
+        downloads.start("gut", "gut", "gut-r1.h5ad", dest_dir=str(downloads.cache_dir / "aria2"))
+
+
+def test_restart_keeps_old_files_when_a_check_fails(downloads, small_file, monkeypatch):
+    part = downloads.cache_dir / "gut" / "gut_v1.0" / "gut-r1.h5ad.part"
+    part.parent.mkdir(parents=True)
+    part.write_bytes(b"partial")
+    monkeypatch.setattr(checks.shutil, "which", lambda name: None)
+    with pytest.raises(CheckError, match="aria2c not found"):
+        downloads.start("gut", "gut", "gut-r1.h5ad", restart=True)
+    assert part.read_bytes() == b"partial"
