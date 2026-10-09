@@ -2922,7 +2922,7 @@ _ACTION_GUIDE = {
     ),
     "strip suffix": "Remove the version suffix; the written form is what fails here.",
     "none": "Nothing to change. The gene is newer than the allowed gene set, not wrong.",
-    "ask": "Ask which reference built the file.",
+    "ask": "Ask which genome annotation the file was built against.",
 }
 
 

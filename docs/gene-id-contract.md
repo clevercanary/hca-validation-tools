@@ -1,50 +1,51 @@
-# Contract: gene identifiers, the reference, and what we say about them
+# Contract: gene identifiers, the allowed gene set, and what we say about them
 
 **Status:** Draft — assertions under discussion
 **Date:** 2026-10-06
 **Prompted by:** #728 (classify retired feature IDs) and its review. Follow-ons tracked in #729. Supersedes framing in #710.
 
-Ensembl says what changed. The reference says what is nameable. We only report; the producer decides.
+Ensembl says what changed. The allowed gene set says what is nameable. We only report; the producer decides.
 
 ---
 
-## 1. The reference
+## 1. The allowed gene set
 
-1.1 The gene set a file is validated against is the **vendored `cellxgene-schema` table** — GENCODE v48
-    (Ensembl 114) restricted to the **primary assembly**: the chromosomes plus the unplaced and unlocalized
+1.1 The **allowed gene set** — what a file is validated against — is the **vendored `cellxgene-schema` table**:
+    GENCODE v48 (Ensembl 114) restricted to the **primary assembly**: the chromosomes plus the unplaced and unlocalized
     scaffolds, excluding alt loci and patches. It is not all of Ensembl.
 
-1.2 Measured at r114: Ensembl lists 86,364 human genes, the reference holds 78,894 — 78,686 on chromosomes
+1.2 Measured at r114: Ensembl lists 86,364 human genes, the allowed gene set holds 78,894 — 78,686 on chromosomes
     and 208 on scaffolds — and every one of the 7,470 absent sits on a patch or alt sequence.
 
 1.2.1 Do not enumerate the primary assembly as "chromosomes 1-22, X, Y and MT". That excludes the 208
-      scaffold genes the reference does hold, and names them as exceptions when they are ordinary members.
+      scaffold genes the allowed gene set does hold, and names them as exceptions when they are ordinary members.
 
-1.3 The reference is CELLxGENE's, vendored. Whatever it rejects, CELLxGENE rejects.
+1.3 The allowed gene set is CELLxGENE's, vendored. Whatever it rejects, CELLxGENE rejects.
 
 1.4 **Three vintages are in play and are never interchangeable:** identifier validity is tested against the
-    reference (Ensembl 114), the event history is built from Ensembl's newest release (r116), and the
+    allowed gene set (Ensembl 114), the event history is built from Ensembl's newest release (r116), and the
     interval table covers r76-r116.
 
-1.5 No finding says "current" of the reference. It names the release, as the per-identifier warnings do.
+1.5 No finding says "current" of the allowed gene set. It names the release, as the per-identifier warnings do.
     "Current" reads as the newest of 1.4's three, which is the one thing it never means.
 
 1.5.1 **"Current" has one meaning in a finding: in the allowed gene set.** What Ensembl still lists is
       "in Ensembl". The two sets differ by 7,470 genes, which is the distinction this whole check draws,
       so one word cannot serve both.
 
-1.5.2 **Always "the allowed gene set", never "the reference".** The reference *genome* — GRCh38.p14 —
-      includes patch sequences by definition, so a bare "reference" beside a sentence about patches points
-      the reader at the set that does contain them.
+1.5.2 **Always "the allowed gene set", never "the reference"** — in findings, in the docs, and in this document.
+      The reference *genome* — GRCh38.p14 — includes patch sequences by definition, so a bare "reference"
+      beside a sentence about patches points the reader at the set that does contain them. "Reference" is
+      used only with "genome", or for the annotation a file was aligned against, and then it is named.
 
-1.6 The reference's version and release are derived from the vendored `gene_info.yml`, never written out,
+1.6 The allowed gene set's version and release are derived from the vendored `gene_info.yml`, never written out,
     so bumping `cellxgene-schema` moves every sentence that names them.
 
-1.7 A gene alive in Ensembl and absent from the reference is either **structurally excluded** — on a patch
-    or alt sequence, 7,470 of them — or **newer than the reference** — first issued after r114, 87 of them,
+1.7 A gene alive in Ensembl and absent from the allowed gene set is either **structurally excluded** — on a patch
+    or alt sequence, 7,470 of them — or **newer than the allowed gene set** — first issued after r114, 87 of them,
     all on primary chromosomes. Measured: no crossover.
 
-1.8 A gene newer than the reference is **not the producer's error**. The file is correct and the reference is
+1.8 A gene newer than the allowed gene set is **not the producer's error**. The file is correct and the set is
     older than its annotation. Nothing in a finding tells them to change it.
 
 1.9 Nothing detects when 1.4's vintages drift apart. A bump of `cellxgene-schema` is the only thing that
@@ -52,7 +53,7 @@ Ensembl says what changed. The reference says what is nameable. We only report; 
 
 ## 2. The shipped tables
 
-2.1 Both reference tables are **generated by hand from Ensembl's public MySQL, and committed**.
+2.1 Both shipped tables are **generated by hand from Ensembl's public MySQL, and committed**.
     `gene_release_intervals.csv.gz` records gene presence per release; `gene_id_events.csv.gz` records what
     became of each retired identifier.
 
@@ -95,7 +96,7 @@ Ensembl says what changed. The reference says what is nameable. We only report; 
 2.10 **Chains are not resolved in the table.** Every hop is a row; the consumer walks them. Keeping the table
      a transcription means any row can be checked against the server it came from.
 
-2.11 2.10 is also forced: resolution depends on the reference as well as the event history (1.4), and a
+2.11 2.10 is also forced: resolution depends on the allowed gene set as well as the event history (1.4), and a
      pre-resolved answer would freeze one release's verdict into a file read under another.
 
 2.12 `old_release` is **per identifier** — the last release that still carried it — not one global old release
@@ -217,7 +218,7 @@ Ensembl says what changed. The reference says what is nameable. We only report; 
       nothing.
 
 5.3 Each class names **whose problem it is**. Three say "do not relay as a defect": a boundary revision, a
-    gene newer than the reference, and an overlap flag.
+    gene newer than the allowed gene set, and an overlap flag.
 
 5.4 **The merge decision stays with the producer.** Where a source study was aligned against an annotation
     that treated two identifiers as separate loci, its cells hold real counts in each and summing them

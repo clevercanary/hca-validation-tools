@@ -128,7 +128,7 @@ Report these but don't attempt to fix:
   | `[drop or re-align]` | producer | relay: a split locus cannot have its reads divided after the fact, but they are recoverable by re-quantifying from source |
   | `[strip suffix]` | producer | relay: remove the version suffix. The row's status says whether that is the whole problem: `version suffix` alone means the bare gene is in the allowed set; `issued after the allowed set; version suffix` means it is not, and the bare gene then reads as `[none]` above |
   | `[none]` | **nobody — do not relay as a defect** | the gene is still listed in Ensembl, issued after the allowed gene set; the file's annotation is newer than ours. Note it, and flag that the vendored cellxgene-schema is behind |
-  | `[ask]` | producer, as a question | ask what reference built the file; these identifiers come from outside Ensembl's GRCh38 history |
+  | `[ask]` | producer, as a question | ask which genome annotation the file was built against; these identifiers come from outside Ensembl's GRCh38 history |
   | `; disjoint` on a Details row | **ours first** | the old and new spans share no positions, or sit on opposite strands (19 of the table's 39 are strand flips of one locus). A flag is geometry, not a verdict: look at the pair before saying anything, and relay only if the pair really names two different loci |
   | `; old contains new` or `; overlap` on a Details row | **nobody — do not relay as a defect** | Ensembl redrew the gene's extent as well as renaming it. The replacement stands. Worth a sentence only if the producer is combining those features |
   | "gene IDs are not in GENCODE v…" | — | the headline; quote its counts, do not relay it on its own |
