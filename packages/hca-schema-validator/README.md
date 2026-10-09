@@ -322,9 +322,11 @@ old_id,new_id,event,old_chrom,old_start,old_end,old_strand,old_release,new_chrom
 ENSG00000002079,,retired,7,99238829,99306809,1,113,,,,
 ```
 
-`event` is derived from cardinality in `stable_id_event` and nothing else, so
-every class is a statement about Ensembl's own bookkeeping that a curator can go
-and check:
+`event` is derived from Ensembl's bookkeeping and nothing else -- how many
+successors `stable_id_event` records, how many retired identifiers name each
+one, and whether the successor already existed in the release the old
+identifier was last in -- so every class is a statement a curator can go and
+check:
 
 | `event` | Meaning |
 |---|---|

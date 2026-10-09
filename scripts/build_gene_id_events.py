@@ -373,7 +373,7 @@ def main() -> int:
     print(f"newest {ASSEMBLY_NAME} core database: r{current}", file=sys.stderr)
 
     t = time.time()
-    sessions, gaps, events = sessions_and_events(con, current, (min(releases), current))
+    sessions, gaps, events = sessions_and_events(con, current, (FIRST_GRCH38, current))
     print(
         f"{len(sessions)} {ASSEMBLY_NAME} sessions r{sessions[0][0]}-r{sessions[-1][1]}, "
         f"{len(events):,} gene event rows ({time.time() - t:.1f}s)",

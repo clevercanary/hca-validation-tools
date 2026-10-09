@@ -21,6 +21,29 @@ gen = load_script("build_gene_release_intervals")
 ens = load_script("_ensembl")
 
 
+# --- write_csv_gz (shared, scripts/_ensembl.py) -----------------------------
+
+
+def test_write_csv_gz_is_byte_reproducible_whatever_the_output_is_called(tmp_path):
+    """The reproducible-bytes guarantee, held by a test rather than by inspection.
+
+    gzip.open embeds the current time and the output basename in the header, so
+    a writer that lost mtime=0 or filename="" would make every regeneration a
+    diff against the committed artifact -- indistinguishable from a real change
+    in the data, which is the one failure nothing downstream can detect.
+    """
+    rows = [["ENSG00000000001", "76", "116"], ["ENSG00000000002", "90", "100"]]
+    first = tmp_path / "one.csv.gz"
+    second = tmp_path / "two.csv.gz"
+    ens.write_csv_gz(first, "comment", ["gene_id", "first_release", "last_release"], rows)
+    ens.write_csv_gz(second, "comment", ["gene_id", "first_release", "last_release"], rows)
+    assert first.read_bytes() == second.read_bytes()
+    # and the bytes are the data, not the clock: a rewrite of the same path matches too
+    before = first.read_bytes()
+    ens.write_csv_gz(first, "comment", ["gene_id", "first_release", "last_release"], rows)
+    assert first.read_bytes() == before
+
+
 # --- release_from_name (shared, scripts/_ensembl.py) ------------------------
 
 
