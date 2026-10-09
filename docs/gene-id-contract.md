@@ -116,8 +116,9 @@ Ensembl says what changed. The allowed gene set says what is nameable. We only r
       rename whose successor had been there all along; the table now holds 21.
 
 3.2 The validator **re-derives split-ness from the successor count** rather than reading the table's `event`
-    column, so there is one definition rather than two that can disagree. The column is for humans reading
-    the CSV.
+    column, so classification has one definition rather than two that can disagree. The column is read for
+    one thing only: the status word on a Details row (`renamed` / `merged`), which is Ensembl's fact about
+    the event (3.1.1), not the validator's decision about the file.
 
 3.3 Only identifiers the base validator **warned about** are classified, by the same predicate it used, so
     the summary can never describe a different population from the warnings it stands in for.
