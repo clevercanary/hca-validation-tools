@@ -72,8 +72,10 @@ downloads.delete(job["path"])
 1. The atlas version and file exist.
 2. The download link works. A 1-byte ranged GET confirms access and reads the
    `x-amz-meta-source-sha256` header that `hca-smart-sync` attaches on upload.
-3. The file is not already downloaded. A verified copy is returned as is; any
-   other file at that path is never overwritten.
+3. The file is not already downloaded. A verified copy is returned as is. If
+   any other file is at the final path when the download starts, `start()`
+   refuses. That is checked only at the start: a file that appears at the
+   final path while the download runs is replaced when it completes.
 4. `aria2c` is installed and recent enough.
 5. The destination folder is writable.
 6. There is enough free space for the file, for the rest of the downloads

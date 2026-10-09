@@ -220,11 +220,12 @@ def test_daemon_files_are_private(downloads, tracker, gut_file):
 
 
 def test_status_restarts_a_dead_daemon(downloads, tracker, gut_file):
-    tracker.rate_bps = 500_000
+    tracker.rate_bps = 100_000  # about 30 s for the file, so it is still running at the kill
     started = downloads.start("gut", "gut", "gut-r1.h5ad")
     wait_for(downloads, started["job_id"], ("downloading",))
     pid = int((daemon_dir(downloads.cache_dir) / "pid").read_text())
     time.sleep(11)  # past save-session-interval, so the session holds the job
+    assert downloads.status(started["job_id"])["state"] == "downloading"
     os.kill(pid, signal.SIGKILL)
     tracker.rate_bps = 0
     assert wait_for(downloads, started["job_id"], ("done", "failed"))["state"] == "done"

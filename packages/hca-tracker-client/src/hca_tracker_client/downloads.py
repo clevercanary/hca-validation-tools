@@ -379,28 +379,38 @@ class Downloads:
         job, _ = self._refresh(job, aria2)
         if job.state not in ACTIVE:
             raise JobError(f"Job {job_id} is {job.state}; there is nothing to cancel")
-        if aria2 is not None:
+        # Cancelled is recorded only once aria2 has dropped the job and saved its
+        # session; otherwise a later daemon start would resume it.
+        if aria2 is None:
+            raise JobError("aria2 is not running and could not be started, so the download was not cancelled")
+        with contextlib.suppress(Aria2Error):
+            aria2.call("forceRemove", job_id)
+        # The download can finish between the refresh above and forceRemove;
+        # record what actually happened rather than calling it cancelled.
+        live: dict = {}
+        forgotten = False
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            try:
+                live = aria2.tell_status(job_id)
+            except Aria2Error as error:
+                forgotten = error.not_found
+                break
+            if live.get("status") in ("removed", "complete", "error"):
+                break
+            time.sleep(0.1)
+        if live.get("status") == "complete":
+            return self._describe(finalize(job, self.store))
+        if live.get("status") == "error":
+            return self._describe(record_error(job, self.store, live, aria2))
+        if live.get("status") != "removed" and not forgotten:
+            raise JobError(f"aria2 did not confirm cancelling job {job_id}; try again")
+        try:
             with contextlib.suppress(Aria2Error):
-                aria2.call("forceRemove", job_id)
-            # The download can finish between the refresh above and forceRemove;
-            # record what actually happened rather than calling it cancelled.
-            live: dict = {}
-            deadline = time.monotonic() + 10
-            while time.monotonic() < deadline:
-                try:
-                    live = aria2.tell_status(job_id)
-                except Aria2Error:
-                    break
-                if live.get("status") in ("removed", "complete", "error"):
-                    break
-                time.sleep(0.1)
-            if live.get("status") == "complete":
-                return self._describe(finalize(job, self.store))
-            if live.get("status") == "error":
-                return self._describe(record_error(job, self.store, live, aria2))
-            with contextlib.suppress(Aria2Error):
-                aria2.call("removeDownloadResult", job_id)
-                aria2.call("saveSession")  # else a crash before the next checkpoint revives it
+                aria2.call("removeDownloadResult", job_id)  # already gone if forgotten
+            aria2.call("saveSession")
+        except Aria2Error as error:
+            raise JobError(f"aria2 stopped job {job_id} but could not save its session: {error}") from None
         # If the hook recorded an outcome meanwhile, the store keeps it.
         return self._describe(self.store.end(job, CANCELLED, _cancel_message(job)))
 
