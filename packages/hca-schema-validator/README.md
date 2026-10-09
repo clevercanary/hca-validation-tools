@@ -365,8 +365,8 @@ one would want to treat as suspicious.
 Old-release spans on patch contigs are in that release's own coordinate system
 (the same gene reads `CHR_HG2290_PATCH:88,992,415` in one release and
 `HG2290_PATCH:135,997` in another), so a patch gene's old and new spans are not
-comparable. The validator never compares them: off-reference rows carry no
-geometry flag.
+comparable. The validator never compares them: rows whose successor is off the allowed
+gene set carry no geometry flag.
 
 ### When to regenerate
 
