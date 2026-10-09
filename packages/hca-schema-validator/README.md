@@ -305,7 +305,7 @@ sessions run continuously to r116.
 `check_retired_feature_ids` explains the feature ID warnings a file produces. A
 retired Ensembl identifier is a warning here and an **error** at CELLxGENE, so
 every atlas heading for CZI has to clear them — but each warning on its own says
-only that an identifier is not in the current GENCODE table. The breast v1
+only that an identifier is not in the allowed gene set. The breast v1
 integrated object emits 1,482 of them for 741 distinct identifiers, counted once
 in `var` and once in `raw.var`.
 
