@@ -12,8 +12,11 @@ The checks fall into three groups:
 - **HCA overrides.** HCA replaces some CELLxGENE rules with its own.
 - **HCA extensions.** HCA adds checks that CELLxGENE does not have.
 
-Errors fail a file. Warnings do not fail a file, but flag something to review
-or fix.
+The validator reports two kinds of finding:
+
+- **Errors**: the file does not meet the schema.
+- **Warnings**: something to review or fix. A missing **strongly recommended**
+  field is a warning, not an error.
 
 ## Installation
 
