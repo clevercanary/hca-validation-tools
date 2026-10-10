@@ -95,11 +95,13 @@ what the portal accepts. The CELLxGENE validator checks:
 - **Matrices (`X`, `raw.X`)**: values are 32-bit floats, stored as a dense
   matrix or in CSR (compressed sparse row) format, with CSR required when most
   values are zero. Non-zero raw counts are whole positive numbers. Every cell has
-  at least one count, and `X` and `raw.X` cover the same cells and genes.
+  at least one count (Visium spots outside the tissue follow a separate rule),
+  and `X` and `raw.X` cover the same cells and genes.
   *[HCA override](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/README.md#hca-overrides).*
 - **Embeddings (`obsm`)**: at least one embedding, with the right shape and no
   infinite values.
-- **Spatial data**: image and spot rules for Visium and Slide-seqV2.
+- **Spatial data**: spatial metadata rules for Visium and Slide-seqV2, plus
+  image and spot-position rules for single-section Visium.
 - **Duplicate cells**: no two cells have identical raw counts.
 
 [All CELLxGENE checks](https://github.com/clevercanary/hca-validation-tools/blob/main/docs/dataset-validator-checks.md#5-vendored-cellxgene_schema-checks-shared-by-cxg-and-hca-validators)
