@@ -22,7 +22,7 @@ Run before any schema validator:
 - **File integrity** — SHA256 computed on the downloaded file must match the S3 metadata hash.
 - **Metadata summary readable** — opens the h5ad in backed mode and extracts `uns.title`, `obs.assay`, `obs.suspension_type`, `obs.tissue`, `obs.disease`, `n_obs`, `n_vars`.
 
-Each downstream validator runs as a subprocess (memory isolation) and its result is aggregated under `tool_reports.{cap, cellxgene, hcaSchema}`.
+Each validator that runs is a subprocess (memory isolation), and its result is aggregated under `tool_reports.{cap, hcaSchema, hcaCellAnnotation}`. `tool_reports.cellxgene` holds an empty stub (§3).
 
 ---
 
