@@ -96,10 +96,9 @@ described in [HCA overrides](https://github.com/clevercanary/hca-validation-tool
 
 *[HCA override](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/README.md#hca-overrides)*
 
-- The h5ad encoding version is `0.1.0`, as written by AnnData 0.8 or later.
 - Column names in `obs`, `var` and `raw.var` are unique.
 - No column name starts with `__`, which is reserved.
-- Reserved and deprecated columns are absent.
+- Deprecated columns are absent.
 - No array stored in `obsm`, `obsp`, `varm` or `varp` is empty.
 
 ### Cell metadata (`obs`)
@@ -154,7 +153,8 @@ some columns must sit below a given parent term. Every problem here is an error.
 - `batch_condition` lists `obs` column names.
 - `default_embedding` names an embedding in `obsm`.
 - `X_approximate_distribution` is `count` or `normal`.
-- No value is empty, and text values have no leading, trailing or double spaces.
+- No value is empty, and the text fields the schema defines have no leading,
+  trailing or double spaces.
 - Color lists (`<column>_colors`) belong to an existing category column, have
   at least one color per category, and are all hex codes or all CSS color names.
 
@@ -234,10 +234,11 @@ HCA replaces some CELLxGENE rules with its own.
       forbidden, because HCA does not collect it, to protect donor privacy.
   - Some fields must match a set format, and list fields must hold non-empty
     text.
-- **Label columns.** CELLxGENE rejects files that already carry label columns
-  such as `cell_type` and `tissue`, because the portal fills those labels in
-  itself. HCA files keep the label columns, and HCA checks each label against
-  its ontology term instead
+- **Reserved and label columns.** CELLxGENE rejects files that already carry
+  columns the portal fills in itself: reserved columns such as `citation` and
+  `observation_joinid`, and label columns such as `cell_type` and `tissue`. HCA
+  does not reject these columns, and checks each label against its ontology
+  term instead
   ([Cell metadata labels](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/README.md#cell-metadata-labels)).
 - **Gene ID warnings.** Each `Feature ID '…' not found` warning names the gene
   set version, for example "not found in GENCODE v48 (Ensembl 114)", and these
