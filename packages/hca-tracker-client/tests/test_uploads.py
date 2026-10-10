@@ -17,6 +17,7 @@ from hca_tracker_client.uploads import (
     BUCKETS,
     TRACKER_HOSTS,
     UploadStore,
+    atlas_folder,
     bucket_for,
     resolve_profile,
     resolve_target,
@@ -268,16 +269,27 @@ def test_environment_variable_validation(tmp_path, monkeypatch):
 # --- the target -----------------------------------------------------------------
 
 
+def test_atlas_folder_follows_the_tracker_parser():
+    """The tracker's parseS3AtlasName examples: 'gut-v1' is v1.0, 'retina-v1-1' is v1.1."""
+    assert atlas_folder("gut", 1, 0) == "gut-v1"
+    assert atlas_folder("retina", 1, 1) == "retina-v1-1"
+    assert atlas_folder("gut", 2, 3) == "gut-v2-3"
+    assert atlas_folder("gut", 1, 0) == smart_sync_atlas("gut", 1), "revision 0 is the name the CLI's map knows"
+
+
 def test_target_from_tracker_and_map(tracker):
     atlases = tracker.atlases
     target = resolve_target(atlases, "gut", "gut", None, "source-datasets", "dev")
     assert target.url == "s3://hca-atlas-tracker-data-dev/gut/gut-v1/source-datasets/"
-    assert (target.version, target.smart_sync_atlas) == ("v1.0", "gut-v1")
-    assert resolve_target(atlases, "adipose", "adipose", 1, "integrated-objects", "prod").url == (
-        "s3://hca-atlas-tracker-data/adipose/adipose-v1/integrated-objects/"
-    )
+    assert (target.version, target.atlas_folder) == ("v1.0", "gut-v1")
     with pytest.raises(CheckError, match="file_type must be one of source-datasets, integrated-objects, got 'cells'"):
         resolve_target(atlases, "gut", "gut", None, "cells", "dev")
+
+    # A later revision has its own folder; the newest revision of the generation is the one selected.
+    tracker.add_atlas("gut", "gut", 1, 1)
+    target = resolve_target(tracker.atlases, "gut", "gut", None, "integrated-objects", "prod")
+    assert target.url == "s3://hca-atlas-tracker-data/gut/gut-v1-1/integrated-objects/"
+    assert (target.version, target.atlas_folder) == ("v1.1", "gut-v1-1")
 
 
 def test_target_refusals(tracker):
@@ -296,8 +308,16 @@ def test_target_refusals(tracker):
         r"the atlas under 'lung'; nothing was uploaded",
     ):
         resolve_target(atlases, "lung", "adipose", 1, "source-datasets", "dev")
-    assert resolve_target(atlases, "adipose", "adipose", None, "source-datasets", "dev").prefix == (
-        "adipose/adipose-v1/source-datasets/"
+    # adipose/adipose v1.0 is published: the tracker would reject the files after the transfer.
+    with pytest.raises(
+        CheckError,
+        match=r"Atlas version adipose/adipose v1.0 is published, and the tracker refuses uploads to a published "
+        r"version. Create its next revision in the tracker",
+    ):
+        resolve_target(atlases, "adipose", "adipose", None, "source-datasets", "dev")
+    tracker.add_atlas("adipose", "adipose", 1, 1)
+    assert resolve_target(tracker.atlases, "adipose", "adipose", None, "source-datasets", "dev").prefix == (
+        "adipose/adipose-v1-1/source-datasets/"
     )
 
 
@@ -308,6 +328,7 @@ def test_plan(uploads, staged, fake_s3):
     plan = uploads.plan("gut", "gut", "source-datasets", str(staged))
     assert plan["target"] == "s3://hca-atlas-tracker-data-dev/gut/gut-v1/source-datasets/"
     assert (plan["bucket"], plan["prefix"]) == ("hca-atlas-tracker-data-dev", "gut/gut-v1/source-datasets/")
+    assert (plan["version"], plan["atlas_folder"]) == ("v1.0", "gut-v1")
     assert (plan["environment"], plan["profile"], plan["force"]) == ("dev", "team-profile", False)
     assert plan["profile_source"].endswith(".hca-smart-sync/config.yaml")
     assert plan["transfer_tool"] in ("s5cmd", "aws")

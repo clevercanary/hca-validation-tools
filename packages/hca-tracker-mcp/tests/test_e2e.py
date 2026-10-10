@@ -285,8 +285,13 @@ async def test_upload_flow(client, tracker, tmp_path):
     (outbox / "curated.h5ad").write_bytes(os.urandom(10_000))
     args = {"network": "gut", "atlas": "gut", "file_type": "source-datasets", "local_path": str(outbox)}
 
+    published = await _call(client, "plan_upload", args)
+    assert published["error"].startswith("Atlas version gut/gut v1.0 is published, and the tracker refuses uploads")
+
+    tracker.add_atlas("gut", "gut", 1, 1)  # the draft revision
     plan = await _call(client, "plan_upload", args)
-    assert plan["target"] == "s3://hca-atlas-tracker-data-dev/gut/gut-v1/source-datasets/"
+    assert plan["target"] == "s3://hca-atlas-tracker-data-dev/gut/gut-v1-1/source-datasets/"
+    assert (plan["version"], plan["atlas_folder"]) == ("v1.1", "gut-v1-1")
     assert [(f["name"], f["reason"]) for f in plan["files"]] == [("curated.h5ad", "new")]
     assert (plan["environment"], plan["profile"]) == ("dev", "team-profile")
     assert not list(outbox.glob("manifest-*.json"))
@@ -306,7 +311,7 @@ async def test_upload_flow(client, tracker, tmp_path):
     assert status["state"] == "done", status
     assert (status["files_done"], status["files_total"]) == (1, 1)
     assert status["manifest_path"].startswith(str(outbox))
-    assert (tmp_path / "s3" / "hca-atlas-tracker-data-dev" / "gut/gut-v1/source-datasets/curated.h5ad").exists()
+    assert (tmp_path / "s3" / "hca-atlas-tracker-data-dev" / "gut/gut-v1-1/source-datasets/curated.h5ad").exists()
     every = await _call(client, "upload_status")
     assert [j["job_id"] for j in every["jobs"]] == [started["job_id"]]
     assert started["job_id"] not in str(await _call(client, "download_status")), "uploads are not download jobs"

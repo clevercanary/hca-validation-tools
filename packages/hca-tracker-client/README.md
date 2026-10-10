@@ -177,17 +177,27 @@ touches the bucket:
    disagrees with `HCA_TRACKER_URL`'s host is refused. No other bucket is
    reachable.
 2. `local_path` is a folder.
-3. The atlas resolves on the tracker (as for every call), and
-   `hca-smart-sync` knows it. Its name there is `<slug>-v<generation>`
-   (`gut-v1`), looked up in the CLI's `ATLAS_BIONETWORKS` map, which decides
-   the prefix: `s3://<bucket>/<bionetwork>/<slug>-v<generation>/<file-type>/`,
-   with `file-type` `source-datasets` or `integrated-objects`. The map's
-   bionetwork must equal the tracker's network for the atlas; a mismatch, or an
-   atlas missing from the map, is refused with both values in the message, so
-   a stale map is an error rather than a file under the wrong prefix.
-4. An AWS profile is configured (see Configuration) and exists in
+3. The atlas resolves on the tracker (as for every call: the newest revision
+   of the chosen generation), and `hca-smart-sync` knows it. Its name in the
+   CLI's `ATLAS_BIONETWORKS` map is `<slug>-v<generation>` (`gut-v1`), and
+   the map decides the bionetwork. It must equal the tracker's network for
+   the atlas; a mismatch, or an atlas missing from the map, is refused with
+   both values in the message, so a stale map is an error rather than a file
+   under the wrong prefix.
+4. The selected version is a draft. The tracker refuses an upload to a
+   published version (in its own log, after the transfer), so a published one
+   is refused here, before it; create the next revision in the tracker first.
+
+The prefix is `s3://<bucket>/<bionetwork>/<folder>/<file-type>/`, with
+`file-type` `source-datasets` or `integrated-objects` and `folder` the name
+the tracker reads the version from: `<slug>-v<generation>` for revision 0
+(`gut-v1` is v1.0) and `<slug>-v<generation>-<revision>` after that (`gut-v1-1`
+is v1.1). For revision 0 that is byte for byte the CLI's path. The CLI's map
+names only the revision-0 form, so the CLI itself cannot upload to a later
+revision; this client can, because it takes the revision from the tracker.
+5. An AWS profile is configured (see Configuration) and exists in
    `~/.aws/config`.
-5. The engine's own access check: the profile can list the target.
+6. The engine's own access check: the profile can list the target.
 
 `plan()` then returns `sync(plan_only=True)`: per file `name`, `size_bytes`,
 `sha256` and `reason` (`new`, `changed`, or `forced`), the files found

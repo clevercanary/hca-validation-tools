@@ -159,8 +159,11 @@ tracker's S3 bucket with the AWS profile above; the tracker ingests from there.
   or `forced`), `up_to_date` (already in the bucket unchanged; skipped) and
   `warnings`. Refuses, before touching the bucket, an `environment` other than
   the configured tracker's, an atlas `hca-smart-sync` does not know or files
-  under a different bionetwork than the tracker does, a missing profile, and a
-  profile that cannot list the target.
+  under a different bionetwork than the tracker does, a published atlas
+  version (the tracker rejects uploads to one; create its next revision
+  first), a missing profile, and a profile that cannot list the target. The
+  folder in the prefix names the revision: `gut-v1` is v1.0, `gut-v1-1` is
+  v1.1.
 - **start_upload** `(same)` — runs the plan in a detached worker and returns
   `job_id` with the plan being executed. Nothing is started when every file is
   up to date (`job_id` is `null`); `force` uploads them anyway. One job per

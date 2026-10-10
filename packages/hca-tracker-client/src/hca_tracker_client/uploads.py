@@ -131,13 +131,24 @@ def bucket_for(environment: str) -> str:
 
 
 def smart_sync_atlas(atlas: str, generation: int) -> str:
-    """The name hca-smart-sync knows an atlas version by, e.g. ``gut-v1``."""
+    """The name hca-smart-sync's atlas map knows a generation by, e.g. ``gut-v1``."""
     return f"{atlas}-v{generation}"
 
 
-def s3_prefix(bionetwork: str, name: str, file_type: str) -> str:
-    """The key prefix under the bucket, exactly as the CLI's ``_build_s3_path`` lays it out."""
-    return f"{bionetwork}/{name}/{file_type}/"
+def atlas_folder(atlas: str, generation: int, revision: int) -> str:
+    """The folder the tracker reads an atlas version from: ``gut-v1`` for v1.0, ``gut-v1-1`` for v1.1.
+
+    The tracker's ``parseS3AtlasName`` (hca-atlas-tracker ``app/utils/files.ts``)
+    reads ``<slug>-v<generation>`` as revision 0 and ``<slug>-v<generation>-<revision>``
+    otherwise. hca-smart-sync's map names only the revision-0 form, so its CLI
+    can upload to a generation's first revision only.
+    """
+    return f"{atlas}-v{generation}" if revision == 0 else f"{atlas}-v{generation}-{revision}"
+
+
+def s3_prefix(bionetwork: str, folder: str, file_type: str) -> str:
+    """The key prefix under the bucket, laid out as the CLI's ``_build_s3_path`` does."""
+    return f"{bionetwork}/{folder}/{file_type}/"
 
 
 @dataclass(frozen=True)
@@ -150,7 +161,7 @@ class Target:
     network: str
     atlas: str
     version: str
-    smart_sync_atlas: str
+    atlas_folder: str
     file_type: str
 
     @property
@@ -166,7 +177,7 @@ class Target:
             "network": self.network,
             "atlas": self.atlas,
             "version": self.version,
-            "smart_sync_atlas": self.smart_sync_atlas,
+            "atlas_folder": self.atlas_folder,
             "file_type": self.file_type,
         }
 
@@ -177,20 +188,23 @@ def resolve_target(
     """Build the target from the tracker's atlas record and hca-smart-sync's atlas map.
 
     The map (``ATLAS_BIONETWORKS`` in ``hca_smart_sync.cli``) decides the
-    prefix, as it does for the CLI; the tracker's record cross-checks it, so a
-    stale map is an error here rather than a file under the wrong prefix.
+    bionetwork, as it does for the CLI; the tracker's record cross-checks it, so
+    a stale map is an error here rather than a file under the wrong prefix. The
+    folder names the selected revision, and a published one is refused: the
+    tracker rejects uploads to it, after the transfer, in its own log.
     """
     bucket = bucket_for(environment)
     if file_type not in FILE_TYPES:
         raise CheckError(f"file_type must be one of {', '.join(FILE_TYPES)}, got {file_type!r}")
     version = select_atlas(atlases, network, atlas, generation)
+    label = atlas_label(network, atlas, atlas_version(version))
     name = smart_sync_atlas(atlas, version["generation"])
     mapped = smart_sync().cli.ATLAS_BIONETWORKS.get(name)
     if mapped is None:
         raise CheckError(
-            f"hca-smart-sync does not know the atlas {name!r} ({atlas_label(network, atlas, atlas_version(version))}); "
-            "add it to ATLAS_BIONETWORKS in hca-ingest-tools (smart-sync/src/hca_smart_sync/cli.py) and release "
-            "hca-smart-sync before uploading for it. Nothing was uploaded"
+            f"hca-smart-sync does not know the atlas {name!r} ({label}); add it to ATLAS_BIONETWORKS in "
+            "hca-ingest-tools (smart-sync/src/hca_smart_sync/cli.py) and release hca-smart-sync before uploading "
+            "for it. Nothing was uploaded"
         )
     if mapped != network:
         raise CheckError(
@@ -198,14 +212,20 @@ def resolve_target(
             f"under {network!r}; nothing was uploaded. One of them is wrong: fix ATLAS_BIONETWORKS in "
             "hca-ingest-tools or the tracker's record before uploading"
         )
+    if version.get("publishedAt"):
+        raise CheckError(
+            f"Atlas version {label} is published, and the tracker refuses uploads to a published version. "
+            "Create its next revision in the tracker (a draft) and upload again; nothing was uploaded"
+        )
+    folder = atlas_folder(atlas, version["generation"], version["revision"])
     return Target(
         environment=environment,
         bucket=bucket,
-        prefix=s3_prefix(mapped, name, file_type),
+        prefix=s3_prefix(mapped, folder, file_type),
         network=network,
         atlas=atlas,
         version=atlas_version(version),
-        smart_sync_atlas=name,
+        atlas_folder=folder,
         file_type=file_type,
     )
 
@@ -324,7 +344,7 @@ class UploadJob:
     network: str
     atlas: str
     version: str
-    smart_sync_atlas: str
+    atlas_folder: str
     file_type: str
     environment: str
     bucket: str
@@ -523,7 +543,7 @@ class Uploads:
                 network=network,
                 atlas=atlas,
                 version=plan["version"],
-                smart_sync_atlas=plan["smart_sync_atlas"],
+                atlas_folder=plan["atlas_folder"],
                 file_type=file_type,
                 environment=environment,
                 bucket=plan["bucket"],
