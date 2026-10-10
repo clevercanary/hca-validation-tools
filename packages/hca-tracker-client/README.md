@@ -78,8 +78,9 @@ config = load_config()
 tracker = TrackerClient(*config.require_tracker())
 
 list_atlases(tracker)                                   # find the network/atlas pair
-list_files(tracker, "lung", "adipose", "integrated")    # or "source"; rows carry validation + status
+files = list_files(tracker, "lung", "adipose", "integrated")   # or "source"; rows carry validation + status
 get_atlas(tracker, "lung", "adipose")                   # status, leads with tracker account, counts, tasks
+row = files["files"][0]
 validation_report(tracker, "lung", "adipose", row["entry_id"], row["kind"], validator="hca_schema")
 
 downloads = Downloads(config)
