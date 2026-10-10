@@ -1,7 +1,7 @@
 [project]
 name = "hca-tracker-client"
-version = "0.1.0"
-description = "Find and download atlas files from the HCA Atlas Tracker"
+version = "0.2.0"
+description = "Find, download and report on atlas files from the HCA Atlas Tracker"
 authors = [{ name = "Clever Canary", email = "dave@clevercanary.com" }]
 license = "MIT"
 readme = "README.md"

@@ -59,7 +59,7 @@ class TrackerClient:
                 ) from None
             if error.code == 403:
                 raise AuthError(f"Forbidden: {method} {path} (tracker API tokens are read-only)") from None
-            raise TrackerError(f"Tracker API error {error.code} on {method} {path}") from None
+            raise TrackerError(f"Tracker API error {error.code} on {method} {path}", status=error.code) from None
         except (urllib.error.URLError, TimeoutError, OSError) as error:
             reason = getattr(error, "reason", error)
             raise TrackerError(redact(f"Tracker not reachable at {self.base_url}: {reason}", self._token)) from None
@@ -75,6 +75,18 @@ class TrackerClient:
     def source_datasets(self, atlas_id: str) -> list[dict]:
         """The source-dataset file revisions linked to one atlas version."""
         return self._request(f"/api/atlases/{atlas_id}/source-datasets")
+
+    def component_atlas(self, atlas_id: str, component_atlas_id: str) -> dict:
+        """One integrated object with its ``validationReports``; the id is the entry's ``id``, not its ``fileId``."""
+        return self._request(f"/api/atlases/{atlas_id}/component-atlases/{component_atlas_id}")
+
+    def source_dataset(self, atlas_id: str, source_dataset_id: str) -> dict:
+        """One source dataset with its ``validationReports``; the id is the entry's ``id``, not its ``fileId``."""
+        return self._request(f"/api/atlases/{atlas_id}/source-datasets/{source_dataset_id}")
+
+    def users(self) -> list[dict]:
+        """Every tracker user (readable by any READ-group role, so by an API token)."""
+        return self._request("/api/users")
 
     def presigned_url(self, atlas_id: str, file_id: str) -> Presigned:
         """A fresh presigned download URL for one file (valid for 48 hours)."""

@@ -1,7 +1,8 @@
 """A local stand-in for the tracker API and its S3 bucket, for tests.
 
-Serves ``/api/atlases`` and friends with the tracker's field names, issues
-presigned-style links that can be expired, and serves file bytes with Range
+Serves ``/api/atlases`` and friends with the tracker's field names (the
+lists, the per-file detail routes with ``validationReports``, and
+``/api/users``), issues presigned-style links that can be expired, and serves file bytes with Range
 support and the ``x-amz-meta-source-sha256`` header, as S3 does for files
 uploaded with hca-smart-sync.
 """
@@ -40,6 +41,9 @@ class FakeTracker:
     token: str = "test-token"
     atlases: list[dict] = field(default_factory=list)
     files: dict[str, dict[str, list[dict]]] = field(default_factory=dict)
+    users: list[dict] = field(default_factory=list)
+    # Per entry id, the detail route's ``validationReports`` (None when validation never completed).
+    reports: dict[str, dict | None] = field(default_factory=dict)
     blobs: dict[str, _Blob] = field(default_factory=dict)
     links: set[str] = field(default_factory=set)
     rate_bps: int = 0
@@ -48,16 +52,47 @@ class FakeTracker:
     # so a client that has read the bytes always sees them counted.
     requests: list[list] = field(default_factory=list)
 
-    def add_atlas(self, network: str, slug: str, generation: int, revision: int, published: bool = False) -> str:
+    def add_atlas(
+        self,
+        network: str,
+        slug: str,
+        generation: int,
+        revision: int,
+        published: bool = False,
+        leads: list[dict] | None = None,
+        **fields,
+    ) -> str:
+        """Add an atlas version.
+
+        ``leads`` are ``{"name", "email"}`` records as the tracker's
+        ``integrationLead``; ``fields`` override any other tracker field by
+        its tracker name (``title``, ``status``, ``wave``, ``capId``,
+        ``publications``, ``ingestionTaskCounts``, ...).
+        """
         atlas_id = f"atlas-{len(self.atlases) + 1}"
         self.atlases.append(
             {
                 "id": atlas_id,
                 "bioNetwork": network,
                 "shortNameSlug": slug,
+                "shortName": slug.capitalize(),
+                "title": f"{slug.capitalize()} atlas",
                 "generation": generation,
                 "revision": revision,
                 "publishedAt": "2026-01-01T00:00:00Z" if published else None,
+                "status": "IN_PROGRESS",
+                "wave": "1",
+                "targetCompletion": None,
+                "capId": None,
+                "integrationLead": leads or [],
+                "publications": [],
+                "sourceStudyCount": 0,
+                "sourceDatasetCount": 0,
+                "componentAtlasCount": 0,
+                "ingestionTaskCounts": {
+                    system: {"count": 0, "completedCount": 0} for system in ("CAP", "CELLXGENE", "HCA_DATA_REPOSITORY")
+                },
+                **fields,
             }
         )
         for a in self.atlases:
@@ -80,21 +115,99 @@ class FakeTracker:
         sha256: str | None | bool = True,
         integrity: str = "valid",
         listed_size: int | None = None,
+        reports: dict[str, dict] | None = None,
+        used_by: list[str] | None = None,
+        **fields,
     ) -> str:
         """Link a file to an atlas version.
 
         ``sha256=True`` serves the file's real checksum, a string serves that
         value (to force a mismatch), and None serves no checksum header.
+
+        ``reports`` are the detail route's ``validationReports`` keyed by the
+        tracker's validator names (``cap``, ``cellxgene``, ``hcaSchema``,
+        ``hcaCellAnnotation``), each ``{"valid", "errors", "warnings", ...}``;
+        the list entry's ``validationSummary`` is derived from them, as the
+        tracker does. None means validation never produced a result.
+        ``used_by`` names the integrated objects a source dataset is linked
+        to. ``fields`` override any other tracker field by its tracker name
+        (``validationStatus``, ``validationErrorMessage``, ``title``,
+        ``cellCount``, ``capUrl``, ``reprocessedStatus``, ...).
         """
         file_id = f"file-{len(self.blobs) + 1}"
         if sha256 is True:
             sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
         self.blobs[file_id] = _Blob(file_id, name, path, sha256 or None)
         size = path.stat().st_size if listed_size is None else listed_size
-        self.files[atlas_id][kind].append(
-            {"fileId": file_id, "fileName": name, "sizeBytes": size, "integrityStatus": integrity}
-        )
+        entry_id = f"00000000-0000-4000-8000-{len(self.blobs):012d}"  # the tracker's ids are UUIDs
+        summary = None
+        if reports is not None:
+            validators = {
+                validator: {
+                    "valid": report["valid"],
+                    "errorCount": len(report.get("errors") or []),
+                    "warningCount": len(report.get("warnings") or []),
+                }
+                for validator, report in reports.items()
+            }
+            summary = {"overallValid": all(v["valid"] for v in validators.values()), "validators": validators}
+            reports = {
+                validator: {
+                    "startedAt": "2026-01-02T00:00:00+00:00",
+                    "finishedAt": "2026-01-02T00:01:00+00:00",
+                    "errors": [],
+                    "warnings": [],
+                    **report,
+                }
+                for validator, report in reports.items()
+            }
+        self.reports[entry_id] = reports
+        entry = {
+            "id": entry_id,
+            "fileId": file_id,
+            "fileName": name,
+            "sizeBytes": size,
+            "integrityStatus": integrity,
+            "title": name.rsplit(".", 1)[0],
+            "cellCount": 1000,
+            "revision": 1,
+            "wipNumber": 1,
+            "fileEventTime": "2026-01-01T12:00:00.000Z",
+            "isArchived": False,
+            "capUrl": None,
+            "validationStatus": "pending",
+            "validationErrorMessage": None,
+            "validationSummary": summary,
+        }
+        if kind == "source":
+            entry.update(
+                {
+                    "reprocessedStatus": "Original",
+                    "publicationStatus": "Unspecified",
+                    "sourceStudyTitle": None,
+                    "componentAtlases": [{"id": f"linked-{i}", "name": n} for i, n in enumerate(used_by or [])],
+                }
+            )
+        entry.update(fields)
+        self.files[atlas_id][kind].append(entry)
         return file_id
+
+    def add_user(
+        self, name: str, email: str, last_login: str | None = None, role: str = "STAKEHOLDER", disabled: bool = False
+    ) -> None:
+        """Add a tracker user; ``last_login=None`` is a user who has never logged in (the tracker's epoch 0)."""
+        self.users.append(
+            {
+                "id": len(self.users) + 1,
+                "fullName": name,
+                "email": email,
+                "role": role,
+                "lastLogin": last_login or "1970-01-01T00:00:00.000Z",
+                "disabled": disabled,
+                "roleAssociatedResourceIds": [],
+                "roleAssociatedResourceNames": [],
+            }
+        )
 
     def expire_links(self) -> None:
         """Make every presigned link issued so far answer 403."""
@@ -149,10 +262,17 @@ class FakeTracker:
                     return None
                 if parts == ["api", "atlases"]:
                     return self._json(200, tracker.atlases)
-                if len(parts) == 4 and parts[:2] == ["api", "atlases"] and parts[2] in tracker.files:
+                if parts == ["api", "users"]:
+                    return self._json(200, tracker.users)
+                if len(parts) in (4, 5) and parts[:2] == ["api", "atlases"] and parts[2] in tracker.files:
                     kind = {"component-atlases": "integrated", "source-datasets": "source"}.get(parts[3])
-                    if kind:
-                        return self._json(200, tracker.files[parts[2]][kind])
+                    entries = tracker.files[parts[2]].get(kind or "", [])
+                    if len(parts) == 4 and kind:
+                        return self._json(200, entries)
+                    # api/atlases/<id>/<kind>/<entry id>: the entry with its validationReports
+                    for entry in entries:
+                        if entry["id"] == parts[4]:
+                            return self._json(200, {**entry, "validationReports": tracker.reports[entry["id"]]})
                 return self._json(404, {})
 
             def _object(self, file_id: str, signature: str) -> None:

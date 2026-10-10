@@ -1,7 +1,7 @@
 # hca-tracker-mcp
 
-MCP server to list and download atlas files from the HCA Atlas Tracker. It is a
-thin wrapper over [`hca-tracker-client`](../hca-tracker-client), which holds the
+MCP server to list, download and report on atlas files from the HCA Atlas
+Tracker. It is a thin wrapper over [`hca-tracker-client`](../hca-tracker-client), which holds the
 logic; see its README for how version selection, the checks before
 downloading, verification and resume work.
 
@@ -94,8 +94,42 @@ All read-only, matching the token's scope.
 - **list_atlases** — every atlas version: `network`, `atlas` (slug), `version`,
   `is_latest`, `published`. Use it to find the `network`/`atlas` pair.
 - **list_integrated_objects** / **list_source_datasets** `(network, atlas,
-  generation?, published?)` — an atlas version's files: `name`, `size`,
-  `file_id`, `integrity_status`.
+  generation?, published?)` — an atlas version's files: `name`, `size_bytes`,
+  `size`, `file_id`, `integrity_status`, then `entry_id` and `kind` (what
+  `get_validation_report` takes), `title`, `cell_count`, `revision`,
+  `wip_number`, `uploaded_at`, `is_archived`, `cap_url`, `validation_status`,
+  `validation_error_message`, `validation` (`overall_valid` and, per validator
+  `cap` / `cellxgene` / `hca_schema` / `hca_cell_annotation`, `valid`,
+  `error_count`, `warning_count`; `null` when validation produced no result),
+  `tier1_status` (`VALID` / `INVALID` / `UNKNOWN`) and `cap_status`
+  (`PUBLISHED` / `CAP_READY` / `CAP_VALIDATION_FAILED` / `NEEDS_VALIDATION` /
+  `INFO_REQUIRED` / `NOT_REQUIRED`). Source datasets also carry
+  `reprocessed_status`, `publication_status`, `source_study_title` and
+  `integrated_objects` (the integrated objects that use the dataset). The
+  tracker's lists omit archived files, so `is_archived` is `false` today.
+- **get_atlas** `(network, atlas, generation?, published?)` — the atlas
+  version's record: `title`, `short_name`, `status` (`IN_PROGRESS` /
+  `OC_ENDORSED`), `published_at`, `wave`, `target_completion`,
+  `cap_project_url`, `integration_leads` (`name`, `email`, `tracker_account`,
+  `last_login`), `counts` (`source_studies`, `source_datasets`,
+  `integrated_objects`), `ingestion_tasks` (`cap`, `cellxgene`,
+  `hca_data_repository`, each `count` and `completed`),
+  `publications` (`doi`, `title`). `tracker_account` is `active`, `disabled`,
+  or `unknown` when no tracker user has the lead's contact email; people log
+  in with a Google address that can differ from it, so `unknown` is not
+  evidence of a missing account. `last_login` is `null` when unknown or when
+  the user has never logged in.
+- **get_validation_report** `(network, atlas, entry_id, kind, generation?,
+  published?, validator?, max_messages?)` — one file's validator messages,
+  by the `entry_id` and `kind` of its list row. Returns `file`, `file_id`,
+  `entry_id`, `kind`, `validation_status`, `validation_error_message`,
+  `max_messages` and `reports`. `reports` holds,
+  per validator, `valid`, `started_at`, `finished_at`, `error_count`,
+  `warning_count`, `errors`, `warnings` and `truncated`: each list is cut to
+  `max_messages` (default 200; a file can carry tens of thousands of warnings)
+  while the counts stay complete. `validator` keeps one validator. `reports`
+  is `null` when validation never completed; a `job_failed` file has only
+  `validation_error_message`.
 - **start_download** `(network, atlas, file, generation?, published?, dest_dir?,
   restart?)` — runs the checks, starts the download in the background, and
   returns `job_id`, `path` and `size` at once.
@@ -109,6 +143,9 @@ All read-only, matching the token's scope.
   it was saved elsewhere.
 - **check_environment** — `aria2c` path and version, the daemon, the cache
   folder and free space, whether the tracker is reachable and the token valid.
+
+`cap_status` and `tier1_status` are not served by the tracker API; the client
+mirrors the tracker's own rules (see the client README).
 
 Downloads run in a detached aria2 daemon: they continue after the server or
 the session ends, and `download_status` in a new session reports them.

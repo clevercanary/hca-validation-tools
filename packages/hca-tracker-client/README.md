@@ -1,6 +1,6 @@
 # hca-tracker-client
 
-Find and download atlas files from the HCA Atlas Tracker. This is the library
+Find, download and report on atlas files from the HCA Atlas Tracker. This is the library
 behind [`hca-tracker-mcp`](../hca-tracker-mcp); it holds all the logic, and the
 MCP server is a thin wrapper over it.
 
@@ -9,6 +9,15 @@ MCP server is a thin wrapper over it.
   can exist in more than one network. `generation` picks that generation's
   newest revision (default: the highest generation); `published` considers
   only published versions.
+- **Validation results and status.** The file lists carry each file's
+  validation summary, and `validation_report()` the validators' messages.
+  The tracker shows a CAP ingest status and an HCA Tier 1 status in its own
+  lists but does not serve them from its API, so `status.py` mirrors the
+  tracker's rules (`getCapIngestStatusFromParameters` and
+  `getHcaTier1ValidationStatus` in hca-atlas-tracker's
+  `app/apis/catalog/hca-atlas-tracker/common/utils.ts`), with the tracker's
+  test cases ported to `tests/test_status.py`. A change to either rule in the
+  tracker has to be made here too.
 - **Downloads run in aria2.** `aria2c` fetches each file over 16 parallel
   connections, resumes partial files, queues downloads beyond a limit, and
   verifies the file's SHA-256 before it is given its final name.
@@ -61,13 +70,18 @@ error message.
 ## Usage
 
 ```python
-from hca_tracker_client import Downloads, TrackerClient, list_atlases, list_files, load_config
+from hca_tracker_client import (
+    Downloads, TrackerClient, get_atlas, list_atlases, list_files, load_config, validation_report,
+)
 
 config = load_config()
 tracker = TrackerClient(*config.require_tracker())
 
 list_atlases(tracker)                                   # find the network/atlas pair
-list_files(tracker, "lung", "adipose", "integrated")    # or "source"
+files = list_files(tracker, "lung", "adipose", "integrated")   # or "source"; rows carry validation + status
+get_atlas(tracker, "lung", "adipose")                   # status, leads with tracker account, counts, tasks
+row = files["files"][0]
+validation_report(tracker, "lung", "adipose", row["entry_id"], row["kind"], validator="hca_schema")
 
 downloads = Downloads(config)
 job = downloads.start("lung", "adipose", "lung-adipose-r2.h5ad")
