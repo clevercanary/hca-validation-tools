@@ -12,6 +12,9 @@ PREFIX = "HCA_TRACKER_"
 DEFAULT_CACHE_DIR = Path("~/.cache/hca-tracker")
 DEFAULT_MAX_CONCURRENT = 2
 DEFAULT_UPLOAD_ENGINE = "hca_tracker_client.uploads:make_engine"
+# The only engine factories HCA_TRACKER_UPLOAD_ENGINE may name: the value is imported, and it can
+# come from a checked-out .env, so an arbitrary import target would be code execution by a repo.
+UPLOAD_ENGINES = (DEFAULT_UPLOAD_ENGINE, "hca_tracker_client.testing:FakeSmartSync")
 ENVIRONMENTS = ("dev", "prod")
 
 
@@ -30,7 +33,7 @@ class Config:
     # Which environment the tracker is (dev or prod), when its host is not one of the two known
     # ones; decides the bucket uploads may go to. None: decide from the host.
     tracker_environment: str | None = None
-    # ``module:attribute`` of the upload engine factory; tests point it at a fake.
+    # ``module:attribute`` of the upload engine factory, one of UPLOAD_ENGINES; tests point it at the fake.
     upload_engine: str = DEFAULT_UPLOAD_ENGINE
 
     def require_tracker(self) -> tuple[str, str]:
@@ -102,11 +105,14 @@ def load_config(env: Mapping[str, str] | None = None, env_file: Path | None = No
     environment = values.get("HCA_TRACKER_ENVIRONMENT") or None
     if environment is not None and environment not in ENVIRONMENTS:
         raise ConfigError(f"HCA_TRACKER_ENVIRONMENT must be one of {', '.join(ENVIRONMENTS)}, got {environment!r}")
+    engine = values.get("HCA_TRACKER_UPLOAD_ENGINE") or DEFAULT_UPLOAD_ENGINE
+    if engine not in UPLOAD_ENGINES:
+        raise ConfigError(f"HCA_TRACKER_UPLOAD_ENGINE must be one of {', '.join(UPLOAD_ENGINES)}, got {engine!r}")
     return Config(
         tracker_url=values.get("HCA_TRACKER_URL"),
         api_token=values.get("HCA_TRACKER_API_TOKEN"),
         cache_dir=cache_dir,
         max_concurrent=max_concurrent,
         tracker_environment=environment,
-        upload_engine=values.get("HCA_TRACKER_UPLOAD_ENGINE") or DEFAULT_UPLOAD_ENGINE,
+        upload_engine=engine,
     )

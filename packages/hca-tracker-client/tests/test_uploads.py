@@ -266,6 +266,13 @@ def test_environment_variable_validation(tmp_path, monkeypatch):
     monkeypatch.setenv("HCA_TRACKER_UPLOAD_ENGINE", FAKE_ENGINE)
     config = load_config()
     assert (config.tracker_environment, config.upload_engine) == (None, FAKE_ENGINE)
+    # The value is imported, and .env is repo-controlled: only the two known factories are accepted.
+    (tmp_path / ".env").write_text("HCA_TRACKER_UPLOAD_ENGINE=os:system\n")
+    monkeypatch.delenv("HCA_TRACKER_UPLOAD_ENGINE")
+    with pytest.raises(
+        ConfigError, match=r"HCA_TRACKER_UPLOAD_ENGINE must be one of .*make_engine, .*FakeSmartSync, got 'os:system'"
+    ):
+        load_config()
 
 
 # --- the target -----------------------------------------------------------------
