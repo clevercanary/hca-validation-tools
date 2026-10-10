@@ -102,6 +102,8 @@ def resolve_profile(environ: dict[str, str] | None = None) -> tuple[str, str]:
         saved = manager.load_config(path) or {}
     except Exception as error:  # yaml.YAMLError, in the engine's own words
         raise ConfigError(f"Could not read hca-smart-sync's settings: {error}") from None
+    if not isinstance(saved, dict):  # yaml.safe_load also accepts a bare scalar or list
+        raise ConfigError(f"Could not read hca-smart-sync's settings: {path} does not hold a mapping")
     if saved.get("profile"):
         return str(saved["profile"]), str(path)
     if env.get("AWS_PROFILE"):
@@ -626,6 +628,7 @@ class Uploads:
         force: bool = False,
     ) -> dict:
         """Plan, then run the upload in a detached worker; returns the job and its plan at once."""
+        smart_sync()  # a base install hears about the missing extra before anything else
         if transfer_tool() is None:  # before hashing a folder for nothing
             raise CheckError(transfer_tool_note(None) or "")
         running = self._active_job_for(_local_directory(local_path))
@@ -781,14 +784,14 @@ def upload_report(config: Config) -> dict:
     tools: dict = {}
     for tool in TRANSFER_TOOLS:
         path = shutil.which(tool)
-        tools[tool] = {"ok": path is not None}
-        if path:
-            tools[tool] |= {
-                "path": path,
-                "version": version_output(path, "version" if tool == "s5cmd" else "--version"),
-            }
+        if path:  # ok only when it runs: the engine would still pick a broken binary, and every transfer would fail
+            version = version_output(path, "version" if tool == "s5cmd" else "--version")
+            tools[tool] = {"ok": version is not None, "path": path, "version": version}
+        else:
+            tools[tool] = {"ok": False}
     selected = transfer_tool()
     tools["selected"] = selected[0] if selected else None
+    selected_ok = bool(selected and tools[selected[0]]["ok"])
 
     profile: str | None = None
     profile_report: dict = {}
@@ -821,6 +824,6 @@ def upload_report(config: Config) -> dict:
         "transfer_tools": tools,
         "profile": profile_report,
         "bucket": bucket,
-        "can_upload": bool(smart_sync_report["ok"] and selected and bucket["ok"]),
+        "can_upload": bool(smart_sync_report["ok"] and selected_ok and bucket["ok"]),
         "notes": [note] if note else [],
     }

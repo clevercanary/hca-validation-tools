@@ -200,10 +200,13 @@ def test_base_package_does_not_import_smart_sync():
     subprocess.run([sys.executable, "-c", code], check=True)
 
 
-def test_missing_extra_is_a_clean_error(monkeypatch):
+def test_missing_extra_is_a_clean_error(monkeypatch, uploads, staged):
     monkeypatch.setitem(sys.modules, "hca_smart_sync", None)  # makes `import hca_smart_sync` raise ImportError
     with pytest.raises(ConfigError, match=r"hca-smart-sync is not installed; install the upload extra"):
         module.smart_sync()
+    monkeypatch.setattr(module, "transfer_tool", lambda: None)  # even with no transfer tool, the extra comes first
+    with pytest.raises(ConfigError, match=r"hca-smart-sync is not installed"):
+        uploads.start("gut", "gut", "source-datasets", str(staged))
 
 
 # --- the profile and the tracker environment --------------------------------------
@@ -224,6 +227,9 @@ def test_profile_resolution(profile, monkeypatch, tmp_path):
         resolve_profile()
     (Path.home() / ".hca-smart-sync" / "config.yaml").write_text("profile: [\n")
     with pytest.raises(ConfigError, match="Could not read hca-smart-sync's settings"):
+        resolve_profile()
+    (Path.home() / ".hca-smart-sync" / "config.yaml").write_text("- just a list\n")
+    with pytest.raises(ConfigError, match="does not hold a mapping"):
         resolve_profile()
 
 
@@ -690,6 +696,39 @@ def test_job_stays_active_while_the_transfer_outlives_the_worker(uploads):
     while group_commands(leader) and time.monotonic() < deadline:
         time.sleep(0.05)
     assert worker_alive(job) is False
+
+
+def test_access_lost_before_the_worker_runs(uploads, staged, fake_s3):
+    from hca_tracker_client import upload_worker
+
+    started = uploads.start("gut", "gut", "source-datasets", str(staged))
+    wait_for(uploads, started["job_id"], UPLOAD_ENDED, timeout=30)
+    job = uploads.store.load(started["job_id"])
+    assert job is not None
+    job.state, job.files_done, job.bytes_done, job.finished_at = "queued", [], 0, None
+    uploads.store._write(job)
+    (fake_s3 / "hca-atlas-tracker-data-dev" / "DENIED").touch()
+    assert upload_worker.run(job.job_id, uploads.config.cache_dir) == 1
+    failed = uploads.status(job.job_id)
+    assert failed["state"] == "failed"
+    assert failed["message"] == (
+        "The AWS profile 'team-profile' can no longer list s3://hca-atlas-tracker-data-dev/gut/gut-v1/source-datasets/ "
+        "(hca-smart-sync's access check failed: access denied, no such bucket, or no valid credentials for the "
+        "profile). Not uploaded: a.h5ad, b.h5ad. Run start_upload again once access is restored"
+    )
+
+
+def test_environment_report_marks_a_broken_tool_not_ok(uploads, fake_s3, profile, monkeypatch, tmp_path):
+    broken = tmp_path / "bin" / "s5cmd"
+    broken.parent.mkdir()
+    broken.write_text("#!/bin/sh\nexit 7\n")
+    broken.chmod(0o755)
+    monkeypatch.setattr(module, "transfer_tool", REAL_TRANSFER_TOOL)
+    monkeypatch.setenv("PATH", str(broken.parent))
+    report = environment_report(uploads.config)["upload"]
+    assert report["transfer_tools"]["s5cmd"] == {"ok": False, "path": str(broken), "version": None}
+    assert report["transfer_tools"]["selected"] == "s5cmd", "the engine would still pick it"
+    assert report["can_upload"] is False
 
 
 def test_engine_exception_names_the_unconfirmed_files(uploads, staged, monkeypatch):

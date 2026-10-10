@@ -69,8 +69,23 @@ def run(job_id: str, cache_dir: Path) -> int:
         return 1
 
     manifest = result.get("manifest_path")
+    if result.get("error") == "access_denied":  # access that the plan had can be gone by the time the worker runs
+        store.end(
+            job_id,
+            FAILED,
+            f"The AWS profile {job.profile!r} can no longer list {job.target} (hca-smart-sync's access check failed: "
+            f"access denied, no such bucket, or no valid credentials for the profile). Not uploaded: "
+            f"{', '.join(sorted(expected))}. Run start_upload again once access is restored",
+        )
+        return 1
     if result.get("error"):
-        store.end(job_id, FAILED, f"hca-smart-sync reported {result['error']!r}", manifest)
+        store.end(
+            job_id,
+            FAILED,
+            f"hca-smart-sync reported {result['error']!r}; not uploaded: {', '.join(sorted(expected))}. "
+            "Run start_upload again",
+            manifest,
+        )
         return 1
     if result.get("all_up_to_date"):  # uploaded by someone else between the plan and now
 
