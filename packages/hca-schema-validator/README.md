@@ -244,8 +244,9 @@ lists every case separately.
 
 ### Location notes
 
-Some Details lines end with a note comparing where the old and new genes sit on
-the genome:
+When Ensembl replaced a gene with one gene in the allowed gene set (the
+`[rename]` and `[review]` rows), the validator compares where the old and new
+genes sit on the genome. Other rows get no comparison and no note.
 
 - **No note**: the new gene covers the old one, which is the usual case.
 - **`old contains new`**: the new gene lies inside the old one.
