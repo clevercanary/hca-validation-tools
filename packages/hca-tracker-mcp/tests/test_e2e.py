@@ -85,6 +85,8 @@ def tracker(tmp_path, monkeypatch):
         fake_s3(tmp_path / "s3", "hca-atlas-tracker-data-dev")
         save_profile(tmp_path / "home", "team-profile")
         monkeypatch.setenv("HOME", str(tmp_path / "home"))
+        # The fake engine transfers nothing itself, and CI has neither s5cmd nor aws.
+        monkeypatch.setattr("hca_tracker_client.uploads.transfer_tool", lambda: ("s5cmd", "/usr/local/bin/s5cmd"))
         monkeypatch.delenv("HCA_AWS_PROFILE", raising=False)
         yield fake
         shutdown(cache)

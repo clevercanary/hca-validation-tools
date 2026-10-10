@@ -32,6 +32,7 @@ from hca_tracker_client.uploads import (
 from .conftest import make_config, make_file, wait_for
 
 FAKE_ENGINE = "hca_tracker_client.testing:FakeSmartSync"
+REAL_TRANSFER_TOOL = module.transfer_tool  # captured before any fixture replaces it
 PROD_URL = "https://tracker.data.humancellatlas.org"
 DEV_URL = "https://test-tracker.data.humancellatlas.dev.clevercanary.com/"
 
@@ -59,7 +60,13 @@ def profile(tmp_path, monkeypatch):
 
 
 @pytest.fixture
-def uploads(cache_dir, tracker, fake_s3, profile):
+def transfer_tool(monkeypatch):
+    """Pretend s5cmd is installed: the fake engine transfers nothing, and CI has neither tool."""
+    monkeypatch.setattr("hca_tracker_client.uploads.transfer_tool", lambda: ("s5cmd", "/usr/local/bin/s5cmd"))
+
+
+@pytest.fixture
+def uploads(cache_dir, tracker, fake_s3, profile, transfer_tool):
     """Uploads against the fake tracker, declared the dev tracker, with the fake engine."""
     return Uploads(make_config(cache_dir, tracker, tracker_environment="dev", upload_engine=FAKE_ENGINE))
 
@@ -326,7 +333,7 @@ def test_plan(uploads, staged, fake_s3):
     assert (plan["version"], plan["atlas_folder"]) == ("v1.0", "gut-v1")
     assert (plan["environment"], plan["profile"], plan["force"]) == ("dev", "team-profile", False)
     assert plan["profile_source"].endswith(".hca-smart-sync/config.yaml")
-    assert plan["transfer_tool"] in ("s5cmd", "aws")
+    assert plan["transfer_tool"] == "s5cmd"
     assert [(f["name"], f["size_bytes"], f["reason"]) for f in plan["files"]] == [
         ("a.h5ad", 20_000, "new"),
         ("b.h5ad", 30_000, "new"),
@@ -497,6 +504,18 @@ def test_interrupted_job_does_not_block_its_folder(uploads, staged, monkeypatch)
     assert wait_for(uploads, again["job_id"], UPLOAD_ENDED, timeout=30)["state"] == "done"
 
 
+def test_start_refuses_without_a_transfer_tool(uploads, staged, monkeypatch):
+    monkeypatch.setattr("hca_tracker_client.uploads.transfer_tool", lambda: None)
+    plan = uploads.plan("gut", "gut", "source-datasets", str(staged))
+    assert (plan["transfer_tool"], plan["warnings"]) == (
+        None,
+        ["Neither s5cmd nor aws is on PATH, so nothing can be transferred; install one"],
+    )
+    with pytest.raises(CheckError, match="Neither s5cmd nor aws is on PATH"):
+        uploads.start("gut", "gut", "source-datasets", str(staged))
+    assert uploads.status() == {"jobs": []}
+
+
 def test_spawn_failure_is_recorded(uploads, staged, monkeypatch):
     def broken(*args, **kwargs):
         raise NotImplementedError("setsid")
@@ -611,7 +630,8 @@ def test_store_skips_a_record_from_an_older_version(uploads, cache_dir):
 # --- check_environment ---------------------------------------------------------
 
 
-def test_environment_report(uploads, fake_s3, profile):
+def test_environment_report(uploads, fake_s3, profile, monkeypatch):
+    monkeypatch.setattr(module, "transfer_tool", REAL_TRANSFER_TOOL)  # CI has neither tool, a laptop usually has one
     report = environment_report(uploads.config)["upload"]
     assert report["smart_sync"]["ok"] is True and report["smart_sync"]["version"].startswith("0.4.")
     assert set(report["transfer_tools"]) == {"s5cmd", "aws", "selected"}
