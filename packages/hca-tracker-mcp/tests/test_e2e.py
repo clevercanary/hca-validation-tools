@@ -322,6 +322,17 @@ async def test_upload_flow(client, tracker, tmp_path):
     assert again["job_id"] is None and "force=true" in again["message"]
 
 
+def test_module_version_matches_the_distribution():
+    """The hand-bumped __version__ of both private packages must move with their pyproject."""
+    from importlib.metadata import version
+
+    import hca_tracker_client
+    import hca_tracker_mcp
+
+    assert hca_tracker_mcp.__version__ == version("hca-tracker-mcp")
+    assert hca_tracker_client.__version__ == version("hca-tracker-client")
+
+
 def test_unexpected_errors_are_redacted(monkeypatch):
     """The fallback for non-tracker errors strips URLs and the token from the message."""
     from hca_tracker_mcp.tools import _call
