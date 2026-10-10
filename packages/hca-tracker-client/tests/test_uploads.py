@@ -464,6 +464,28 @@ def test_worker_outlives_the_caller(uploads, staged, monkeypatch, fake_s3):
     assert wait_upload(uploads, started["job_id"])["state"] == "done"
 
 
+def test_last_progress_line(tmp_path):
+    """s5cmd appends frames with no separator when its output is a file; the AWS CLI uses carriage returns."""
+    from hca_tracker_client.uploads import last_progress_line
+
+    log = tmp_path / "job.log"
+    assert last_progress_line(str(log)) is None
+    log.write_text(
+        "0.78%  ━─────  163.84 kB / 20.97 MB ? p/s ? (0/1)9.69%  ━━━───  2.03 MB / 20.97 MB ? p/s ? (0/1)"
+        "42.81%  ━━━━──  8.98 MB / 20.97 MB (6.74 MB/s) 1s left (0/1)"
+    )
+    assert last_progress_line(str(log)) == "42.81%  ━━━━──  8.98 MB / 20.97 MB (6.74 MB/s) 1s left (0/1)"
+    log.write_text(
+        "Completed 1.0 MiB/4.8 GiB (6.1 MiB/s) with 1 file(s) remaining\r"
+        "Completed 2.0 MiB/4.8 GiB (6.2 MiB/s) with 1 file(s) remaining\r"
+    )
+    assert last_progress_line(str(log)) == "Completed 2.0 MiB/4.8 GiB (6.2 MiB/s) with 1 file(s) remaining"
+    log.write_text("\x1b[2Kfirst\x1b[Gsecond\n\n")
+    assert last_progress_line(str(log)) == "second"
+    log.write_bytes(b"x" * 10_000)
+    assert len(last_progress_line(str(log)) or "") == 200
+
+
 def test_store_never_rewrites_a_finished_record(cache_dir):
     store = UploadStore(cache_dir)
     assert store.update("nope", lambda job: None) is None

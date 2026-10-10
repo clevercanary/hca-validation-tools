@@ -393,11 +393,17 @@ def _alive(pid: int | None) -> bool:
     return True
 
 
-def last_progress_line(log_path: str, tail: int = 4096) -> str | None:
-    """The transfer tool's latest progress line, as it drew it (minus terminal escapes).
+# One s5cmd progress frame: "42.81%  ━━━───  8.98 MB / 20.97 MB (6.74 MB/s) 1s left (0/1)".
+_S5CMD_FRAME = re.compile(r"\d{1,3}\.\d{2}%\s+\S+\s+.*?\(\d+/\d+\)")
 
-    s5cmd and the AWS CLI redraw one line with carriage returns, so the end of
-    the log is the current state of the transfer.
+
+def last_progress_line(log_path: str, tail: int = 4096) -> str | None:
+    """The transfer tool's latest progress frame, as it drew it (minus terminal escapes).
+
+    The AWS CLI redraws one line with carriage returns, so the end of the log
+    is the current state. s5cmd, writing to a file rather than a terminal,
+    appends each frame to the same line with no separator at all, so the last
+    frame is picked out by its shape.
     """
     try:
         with Path(log_path).open("rb") as handle:
@@ -407,8 +413,12 @@ def last_progress_line(log_path: str, tail: int = 4096) -> str | None:
             text = handle.read().decode("utf-8", "replace")
     except OSError:
         return None
-    lines = [_ANSI.sub("", part).strip() for part in re.split(r"[\r\n]", text)]
-    return next((line for line in reversed(lines) if line), None)
+    lines = [part.strip() for part in re.split(r"[\r\n]", _ANSI.sub("\n", text))]
+    line = next((line for line in reversed(lines) if line), None)
+    if line is None:
+        return None
+    frames = _S5CMD_FRAME.findall(line)
+    return frames[-1] if frames else line[-200:]
 
 
 class Uploads:
