@@ -4,13 +4,14 @@ Checks single-cell data files in h5ad format (the
 [AnnData](https://anndata.readthedocs.io/) file format) against the Human Cell
 Atlas (HCA) metadata schema.
 
-- Built on the CELLxGENE schema validator by the Chan Zuckerberg Initiative
-  (CZI). A copy of the CELLxGENE validator (`cellxgene-schema` 7.0.1) is
-  included in this package, and every CELLxGENE rule still runs.
-- This package changes some CELLxGENE rules for HCA, and adds HCA-only checks.
-  See
-  [What this validator checks](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/README.md#what-this-validator-checks).
-- Reports **errors**, which fail the file, and **warnings**, which do not fail
+- This package extends the CELLxGENE schema validator from the Chan Zuckerberg
+  Initiative (CZI), and in some places overrides the CELLxGENE rules. A copy of the CELLxGENE
+  validator (`cellxgene-schema` 7.0.1) is included in this package.
+- The CELLxGENE rules run, with the exceptions listed in
+  [Where HCA changes CELLxGENE's rules](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/README.md#where-hca-changes-cellxgenes-rules).
+- This package also adds HCA-only checks, listed in
+  [Checks added by HCA](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/README.md#checks-added-by-hca).
+- The validator reports **errors**, which fail the file, and **warnings**, which do not fail
   the file but point to something to review or fix.
 
 ## Installation
@@ -79,8 +80,9 @@ Terms used below:
 
 CELLxGENE is CZI's single-cell data portal. The CELLxGENE schema says what a
 file must contain to be accepted by the portal. The CELLxGENE validator
-(`cellxgene-schema` 7.0.1), included in this package, checks the groups below. Groups marked "Changed for HCA" are
-covered in the next section.
+(`cellxgene-schema` 7.0.1) checks the groups below. The CELLxGENE rules run,
+except where a group is marked "Changed for HCA". The exceptions are listed in
+the next section.
 
 - **File format**: the h5ad encoding version, unique column names, and no
   reserved or deprecated columns.
