@@ -68,8 +68,9 @@ else:
 
 ## What this validator checks
 
-Each check is listed with the reason for it. The rules the gene ID checks are
-built against are in the
+The HCA overrides and HCA extensions are listed with the reason for each. The
+core CELLxGENE checks are CELLxGENE's own rules, listed as CELLxGENE states
+them. The rules the gene ID checks are built against are in the
 [gene ID contract](https://github.com/clevercanary/hca-validation-tools/blob/main/docs/gene-id-contract.md).
 
 ### Parts of an h5ad file
@@ -87,7 +88,8 @@ built against are in the
 
 CELLxGENE is CZI's single-cell data portal, and the CELLxGENE schema defines
 what the portal accepts. The CELLxGENE validator runs every check in this
-section. Groups marked *HCA override* behave differently for HCA files, as
+section. CELLxGENE's reasoning for these rules is in the
+[CELLxGENE schema 7.0.0](https://github.com/chanzuckerberg/single-cell-curation/blob/main/schema/7.0.0/schema.md). Groups marked *HCA override* behave differently for HCA files, as
 described in [HCA overrides](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/README.md#hca-overrides).
 
 ### File structure
