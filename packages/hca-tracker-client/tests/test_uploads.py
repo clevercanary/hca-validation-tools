@@ -535,7 +535,7 @@ def test_spawn_failure_is_recorded(uploads, staged, monkeypatch):
         raise NotImplementedError("posix_spawn: unavailable")
 
     with monkeypatch.context() as patched:
-        patched.setattr(os, "posix_spawn", broken)
+        patched.setattr(Uploads, "_spawn", broken)
         with pytest.raises(
             CheckError, match="The upload worker could not be started: NotImplementedError: posix_spawn"
         ):
@@ -650,27 +650,31 @@ def test_worker_environment_has_no_token(monkeypatch):
     assert "HCA_TRACKER_API_TOKEN" not in env and env["HCA_TRACKER_FAKE_S3"] == "/s3"
 
 
-def test_job_stays_active_while_the_transfer_outlives_the_worker(uploads):
+def test_job_stays_active_while_the_transfer_outlives_the_worker(uploads, tmp_path):
     """A killed worker's group still holds its transfer subprocess; the job is not retired under it."""
     from hca_tracker_client.daemon import group_commands
     from hca_tracker_client.uploads import UploadJob
 
+    fake_tool = tmp_path / "bin" / "s5cmd"  # a transfer tool by name, sleep by behaviour
+    fake_tool.parent.mkdir()
+    fake_tool.write_text('#!/bin/sh\nsleep "$1"\n')
+    fake_tool.chmod(0o755)
     leader = os.posix_spawn(
         sys.executable,
         [
             sys.executable,
             "-c",
-            "import os,subprocess,time; os.setsid(); subprocess.Popen(['sleep', '30']); time.sleep(30)",
+            f"import os,subprocess,time; os.setsid(); subprocess.Popen([{str(fake_tool)!r}, '30']); time.sleep(30)",
         ],
         os.environ,
     )
     try:
         deadline = time.monotonic() + 10
-        while not any("sleep 30" in command for command in group_commands(leader)) and time.monotonic() < deadline:
+        while not any("s5cmd 30" in command for command in group_commands(leader)) and time.monotonic() < deadline:
             time.sleep(0.05)
         os.kill(leader, signal.SIGKILL)
         os.waitpid(leader, 0)
-        assert [command for command in group_commands(leader) if "sleep 30" in command]
+        assert [command for command in group_commands(leader) if "s5cmd 30" in command]
         job = UploadJob(
             "x",
             "gut",
@@ -721,7 +725,7 @@ def test_access_lost_before_the_worker_runs(uploads, staged, fake_s3):
 def test_environment_report_marks_a_broken_tool_not_ok(uploads, fake_s3, profile, monkeypatch, tmp_path):
     broken = tmp_path / "bin" / "s5cmd"
     broken.parent.mkdir()
-    broken.write_text("#!/bin/sh\nexit 7\n")
+    broken.write_text("#!/bin/sh\necho v9.9.9\nexit 7\n")  # prints a version line, but a nonzero exit is not healthy
     broken.chmod(0o755)
     monkeypatch.setattr(module, "transfer_tool", REAL_TRANSFER_TOOL)
     monkeypatch.setenv("PATH", str(broken.parent))

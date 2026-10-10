@@ -1,9 +1,8 @@
 """The detached process that runs one upload job: ``python -m hca_tracker_client.upload_worker <job_id> <cache_dir>``.
 
-``Uploads.start`` spawns it with stdout and stderr on the job's log, so the
-transfer tool's progress lands there; it moves into a session of its own at
-once, so it outlives the MCP server and a signal to the server's process
-group does not reach it. It records the outcome in the job's record; ``Uploads.status``
+``Uploads.start`` spawns it in a session of its own with stdout and stderr on
+the job's log, so the transfer tool's progress lands there and it outlives
+the MCP server. It records the outcome in the job's record; ``Uploads.status``
 notices if it dies without doing so.
 """
 
@@ -112,7 +111,7 @@ def run(job_id: str, cache_dir: Path) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    with contextlib.suppress(OSError):  # already a session leader when run by hand from a shell
+    with contextlib.suppress(OSError):  # a session leader already when Uploads.start spawned it
         os.setsid()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("job_id")

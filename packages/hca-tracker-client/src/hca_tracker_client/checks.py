@@ -47,6 +47,8 @@ def version_output(path: str, *args: str) -> str | None:
         result = subprocess.run([path, *args], capture_output=True, text=True, timeout=30)
     except (OSError, subprocess.SubprocessError):
         return None
+    if result.returncode != 0:
+        return None
     lines = (result.stdout or result.stderr).strip().splitlines()
     return lines[0] if lines else None
 

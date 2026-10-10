@@ -18,13 +18,13 @@ Uploads are an AWS-credential action against a shared bucket, so:
   a file the bucket already holds.
 """
 
-import contextlib
 import io
 import os
 import pkgutil
 import re
 import secrets
 import shutil
+import subprocess
 import sys
 import tempfile
 import time
@@ -450,24 +450,39 @@ class UploadStore(RecordStore[UploadJob]):
         return self.update(job_id, change)
 
 
+# Workers this process started, so they are reaped once they exit rather than left as zombies.
+_WORKERS: list[subprocess.Popen] = []
+
+
+def _reap_workers() -> None:
+    _WORKERS[:] = [worker for worker in _WORKERS if worker.poll() is None]
+
+
+def transfer_running(pgid: int) -> bool:
+    """Whether a transfer tool is running in process group ``pgid``.
+
+    The worker leads its own group, and the only long-lived thing it starts is
+    the transfer tool; a reused group id would have to be running s5cmd or aws
+    to be mistaken for it.
+    """
+    return any(Path(arg).name in TRANSFER_TOOLS for command in group_commands(pgid) for arg in command.split())
+
+
 def worker_alive(job: UploadJob) -> bool:
     """Whether the job's worker, or a transfer it started, is still running.
 
-    A worker this process spawned is reaped here once it has exited; otherwise
-    it would stay a zombie that looks alive. A pid that now belongs to some
-    other program (after a reboot, say) does not count as the worker. The
-    worker leads its own process group, so a transfer tool it started outlives
-    a killed worker inside that group; while any member remains, the upload is
-    still in flight and the job stays active rather than being retired under it.
+    A pid that now belongs to some other program (after a reboot, say) does
+    not count as the worker. A transfer tool the worker started outlives a
+    killed worker inside the worker's process group; while it runs, the
+    upload is still in flight and the job stays active rather than being
+    retired under it.
     """
     if not job.pid:
         return False
-    with contextlib.suppress(ChildProcessError):
-        if os.waitpid(job.pid, os.WNOHANG) != (0, 0):
-            pass  # reaped; its group may still hold the transfer
+    _reap_workers()
     if process_matches(job.pid, job.worker_marker):
         return True
-    return bool(group_commands(job.pid))
+    return transfer_running(job.pid)
 
 
 def worker_environment() -> dict[str, str]:
@@ -686,24 +701,27 @@ class Uploads:
         return {**self._describe(job), "message": f"Already uploading from {job.local_path}"}
 
     def _spawn(self, job: UploadJob) -> int:
-        """Start the worker with its output going to the job's log; it puts itself in a session of its own.
+        """Start the worker in a session of its own, its output going to the job's log.
 
-        ``os.posix_spawn`` rather than ``Popen``: nothing waits for the worker,
-        and a ``Popen`` collected while its child runs warns about it. Its
-        ``setsid`` option is missing from some Python builds (CI's, for one),
-        so the worker calls ``os.setsid()`` itself.
+        ``start_new_session`` puts the child in its own session before it runs
+        a single line of ours, so a signal to this process's group can never
+        reach it. The ``Popen`` is kept in ``_WORKERS`` and polled from
+        ``worker_alive``, so the worker is reaped when it exits and the object
+        is never collected while its child runs (which ``Popen`` warns about).
         """
         argv = [sys.executable, "-m", "hca_tracker_client.upload_worker", job.job_id, str(self.config.cache_dir)]
-        log = os.open(job.log_path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
-        try:
-            actions = [
-                (os.POSIX_SPAWN_OPEN, 0, os.devnull, os.O_RDONLY, 0),
-                (os.POSIX_SPAWN_DUP2, log, 1),
-                (os.POSIX_SPAWN_DUP2, log, 2),
-            ]
-            return os.posix_spawn(sys.executable, argv, worker_environment(), file_actions=actions)
-        finally:
-            os.close(log)
+        with Path(job.log_path).open("ab") as log:
+            process = subprocess.Popen(
+                argv,
+                stdin=subprocess.DEVNULL,
+                stdout=log,
+                stderr=subprocess.STDOUT,
+                env=worker_environment(),
+                start_new_session=True,
+                close_fds=True,
+            )
+        _WORKERS.append(process)
+        return process.pid
 
     def _refresh(self, job: UploadJob) -> UploadJob:
         """Mark a job whose worker has gone away without recording an outcome.
