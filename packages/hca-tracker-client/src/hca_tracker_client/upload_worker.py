@@ -1,18 +1,21 @@
 """The detached process that runs one upload job: ``python -m hca_tracker_client.upload_worker <job_id> <cache_dir>``.
 
-``Uploads.start`` spawns it in its own session with stdout and stderr on the
-job's log, so the transfer tool's progress lands there and the job outlives
-the MCP server. It records the outcome in the job's record; ``Uploads.status``
+``Uploads.start`` spawns it with stdout and stderr on the job's log, so the
+transfer tool's progress lands there; it moves into a session of its own at
+once, so it outlives the MCP server and a signal to the server's process
+group does not reach it. It records the outcome in the job's record; ``Uploads.status``
 notices if it dies without doing so.
 """
 
 import argparse
+import contextlib
+import os
 import sys
 import time
 from pathlib import Path
 
 from .errors import redact
-from .uploads import DONE, FAILED, UPLOADING, UploadStore, load_engine
+from .uploads import DONE, FAILED, UPLOADING, UploadStore, folder_changes, load_engine
 
 
 def run(job_id: str, cache_dir: Path) -> int:
@@ -22,13 +25,12 @@ def run(job_id: str, cache_dir: Path) -> int:
         print(f"No upload job {job_id!r} in {store.directory}", file=sys.stderr)
         return 2
     expected = {entry["name"] for entry in job.files}
-    present = {path.name for path in Path(job.local_path).glob("*.h5ad") if path.is_file()}
-    extra = sorted(present - expected - set(job.up_to_date))
-    if extra:  # the plan start() returned is the plan that runs; a changed folder needs a new one
+    changes = folder_changes(Path(job.local_path), job.snapshot)
+    if changes:  # the plan start() returned is the plan that runs; a changed folder needs a new one
         store.end(
             job_id,
             FAILED,
-            f"The folder changed since the plan: new {', '.join(extra)}; nothing was uploaded. Run start_upload again",
+            f"The folder changed since the plan: {changes}; nothing was uploaded. Run start_upload again",
         )
         return 1
 
@@ -80,6 +82,8 @@ def run(job_id: str, cache_dir: Path) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    with contextlib.suppress(OSError):  # already a session leader when run by hand from a shell
+        os.setsid()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("job_id")
     parser.add_argument("cache_dir", type=Path)

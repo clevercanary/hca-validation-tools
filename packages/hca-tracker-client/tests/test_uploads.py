@@ -518,11 +518,13 @@ def test_start_refuses_without_a_transfer_tool(uploads, staged, monkeypatch):
 
 def test_spawn_failure_is_recorded(uploads, staged, monkeypatch):
     def broken(*args, **kwargs):
-        raise NotImplementedError("setsid")
+        raise NotImplementedError("posix_spawn: unavailable")
 
     with monkeypatch.context() as patched:
         patched.setattr(os, "posix_spawn", broken)
-        with pytest.raises(CheckError, match="The upload worker could not be started: NotImplementedError: setsid"):
+        with pytest.raises(
+            CheckError, match="The upload worker could not be started: NotImplementedError: posix_spawn"
+        ):
             uploads.start("gut", "gut", "source-datasets", str(staged))
     (job,) = uploads.status()["jobs"]
     assert job["state"] == "failed"
@@ -562,24 +564,28 @@ def test_worker_holds_the_plan_it_was_given(uploads, staged, fake_s3):
         "Every file was already in the bucket with the same SHA-256; nothing to upload",
     )
 
-    # A file added after the plan: refused, nothing uploaded.
+    # A file added, one rewritten (same size, new mtime) and one removed after the plan: refused, nothing uploaded.
     make_file(staged / "c.h5ad", 1_000)
+    make_file(staged / "a.h5ad", 20_000)
+    (staged / "b.h5ad").unlink()
     job.state, job.finished_at = "queued", None
     uploads.store._write(job)
     assert upload_worker.run(job.job_id, uploads.config.cache_dir) == 1
     failed = uploads.status(job.job_id)
     assert failed["state"] == "failed"
-    assert (
-        failed["message"]
-        == "The folder changed since the plan: new c.h5ad; nothing was uploaded. Run start_upload again"
+    assert failed["message"] == (
+        "The folder changed since the plan: new c.h5ad; changed a.h5ad; missing b.h5ad; nothing was uploaded. "
+        "Run start_upload again"
     )
     assert not (fake_s3 / "hca-atlas-tracker-data-dev" / "gut/gut-v1/source-datasets" / "c.h5ad").exists()
+    assert "snapshot" not in failed and "snapshot" not in uploads.plan("gut", "gut", "source-datasets", str(staged))
 
 
 def test_worker_outlives_the_caller(uploads, staged, monkeypatch, fake_s3):
     """The worker is in its own session: killing the process group of the caller does not reach it."""
     monkeypatch.setenv("HCA_TRACKER_FAKE_S3_DELAY", "0.5")
     started = uploads.start("gut", "gut", "source-datasets", str(staged))
+    wait_for(uploads, started["job_id"], ("uploading",), timeout=30)  # the worker is up, so it has called setsid
     job = uploads.store.load(started["job_id"])
     assert job is not None and job.pid and os.getsid(job.pid) == job.pid, "the worker leads its own session"
     assert os.getsid(job.pid) != os.getsid(os.getpid())

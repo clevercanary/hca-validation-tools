@@ -326,11 +326,39 @@ def run_plan(engine: Any, directory: Path, url: str, profile: str, force: bool) 
         )
     planned = [_file_entry(info) for info in result.get("files_to_upload") or []]
     names = {entry["name"] for entry in planned}
-    present = sorted(path.name for path in directory.glob("*.h5ad") if path.is_file())
-    plan: dict = {"files": planned, "up_to_date": [name for name in present if name not in names]}
+    present = {path.name: snapshot_of(path) for path in sorted(directory.glob("*.h5ad")) if path.is_file()}
+    plan: dict = {
+        "files": planned,
+        "up_to_date": [name for name in present if name not in names],
+        "snapshot": present,
+    }
     if result.get("no_files_found"):
         plan["no_files_found"] = True
     return plan
+
+
+def snapshot_of(path: Path) -> list[int]:
+    """Size and modification time, the cheap check that a file is the one the plan saw."""
+    stat = path.stat()
+    return [stat.st_size, stat.st_mtime_ns]
+
+
+def folder_changes(directory: Path, snapshot: dict[str, list[int]]) -> str | None:
+    """How the folder's ``.h5ad`` files differ from ``snapshot``, or ``None`` when they are the same files.
+
+    An edit that keeps both size and modification time is not seen, the
+    limit rsync shares; everything else is.
+    """
+    present = {path.name: snapshot_of(path) for path in directory.glob("*.h5ad") if path.is_file()}
+    parts = []
+    for label, names in (
+        ("new", sorted(set(present) - set(snapshot))),
+        ("changed", sorted(name for name in snapshot if name in present and present[name] != snapshot[name])),
+        ("missing", sorted(set(snapshot) - set(present))),
+    ):
+        if names:
+            parts.append(f"{label} {', '.join(names)}")
+    return "; ".join(parts) or None
 
 
 def _local_directory(local_path: str) -> str:
@@ -372,6 +400,8 @@ class UploadJob:
     engine: str = DEFAULT_UPLOAD_ENGINE
     profile_source: str = ""
     up_to_date: list[str] = field(default_factory=list)
+    # Every .h5ad the plan saw, name -> [size, mtime_ns]; the worker refuses a folder that differs.
+    snapshot: dict[str, list[int]] = field(default_factory=dict)
     state: str = QUEUED
     message: str | None = None
     files_done: list[str] = field(default_factory=list)
@@ -469,6 +499,7 @@ class Plan:
     force: bool
     files: list[dict]
     up_to_date: list[str]
+    snapshot: dict[str, list[int]]
     no_files_found: bool
 
     def describe(self) -> dict:
@@ -543,6 +574,7 @@ class Uploads:
             force=force,
             files=found["files"],
             up_to_date=found["up_to_date"],
+            snapshot=found["snapshot"],
             no_files_found=bool(found.get("no_files_found")),
         )
 
@@ -584,8 +616,9 @@ class Uploads:
         """Plan, then run the upload in a detached worker; returns the job and its plan at once."""
         if transfer_tool() is None:  # before hashing a folder for nothing
             raise CheckError(transfer_tool_note(None) or "")
-        if self._active_job_for(_local_directory(local_path)) is not None:
-            return self._already_uploading(_local_directory(local_path))
+        running = self._active_job_for(_local_directory(local_path))
+        if running is not None:
+            return self._already_uploading(running)
         plan = self._plan(network, atlas, file_type, local_path, generation, environment, force)
         described = plan.describe()
         if not plan.files:
@@ -600,8 +633,9 @@ class Uploads:
         assert plan.tool is not None
 
         with self.store.locked():
-            if self._active_job_for(plan.directory) is not None:  # a second caller got here first
-                return self._already_uploading(plan.directory)
+            running = self._active_job_for(plan.directory)
+            if running is not None:  # a second caller got here first
+                return self._already_uploading(running)
             job_id = secrets.token_hex(8)
             job = UploadJob(
                 job_id=job_id,
@@ -619,29 +653,30 @@ class Uploads:
                 force=force,
                 files=plan.files,
                 up_to_date=plan.up_to_date,
+                snapshot=plan.snapshot,
                 log_path=str(self.store.directory / f"{job_id}.log"),
                 engine=self.config.upload_engine,
             )
             self.store.create(job)
             try:
                 pid = self._spawn(job)
-            except Exception as error:  # OSError, or NotImplementedError from a libc without setsid support
+            except Exception as error:  # OSError, or whatever a platform's posix_spawn refuses
                 message = redact(f"The upload worker could not be started: {type(error).__name__}: {error}")
                 self.store.end(job_id, FAILED, message)
                 raise CheckError(f"{message}; nothing was uploaded") from None
             job = self.store.update(job_id, lambda current: setattr(current, "pid", pid)) or job
         return {**self._describe(job), "warnings": described["warnings"]}
 
-    def _already_uploading(self, directory: str) -> dict:
-        job = self._active_job_for(directory)
-        assert job is not None
-        return {**self._describe(job), "message": f"Already uploading from {directory}"}
+    def _already_uploading(self, job: UploadJob) -> dict:
+        return {**self._describe(job), "message": f"Already uploading from {job.local_path}"}
 
     def _spawn(self, job: UploadJob) -> int:
-        """Start the worker in a session of its own, its output going to the job's log.
+        """Start the worker with its output going to the job's log; it puts itself in a session of its own.
 
         ``os.posix_spawn`` rather than ``Popen``: nothing waits for the worker,
-        and a ``Popen`` collected while its child runs warns about it.
+        and a ``Popen`` collected while its child runs warns about it. Its
+        ``setsid`` option is missing from some Python builds (CI's, for one),
+        so the worker calls ``os.setsid()`` itself.
         """
         argv = [sys.executable, "-m", "hca_tracker_client.upload_worker", job.job_id, str(self.config.cache_dir)]
         log = os.open(job.log_path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
@@ -651,7 +686,7 @@ class Uploads:
                 (os.POSIX_SPAWN_DUP2, log, 1),
                 (os.POSIX_SPAWN_DUP2, log, 2),
             ]
-            return os.posix_spawn(sys.executable, argv, dict(os.environ), file_actions=actions, setsid=True)
+            return os.posix_spawn(sys.executable, argv, dict(os.environ), file_actions=actions)
         finally:
             os.close(log)
 
