@@ -172,7 +172,8 @@ some columns must sit below a given parent term. Every problem here is an error.
 
 ### Embeddings (`obsm`)
 
-- Files from non-spatial assays have at least one embedding.
+- Every file has at least one embedding, and files from non-spatial assays have
+  at least one named `X_…`.
 - Embedding names start with a letter and use only letters, digits, `_`, `.`
   and `-`. `x_spatial` is not allowed.
 - An embedding not named `X_…` or `spatial` gets a warning, because the
@@ -214,12 +215,14 @@ HCA replaces some CELLxGENE rules with its own.
   - Organism is recorded per cell, in `obs['organism_ontology_term_id']`.
     CELLxGENE expects organism once, in `uns`, and rejects the `obs` column as
     deprecated.
-  - Fields are **required** by default (an error when missing). A field can
-    instead be **optional** (checked only when present), **strongly
-    recommended** (a warning when missing or empty, and an error for a value
-    holding a list separator such as `,` or `;`, or a placeholder) or **forbidden** (an error when
-    present). Self-reported ethnicity is forbidden, because HCA does not collect
-    it, to protect donor privacy.
+  - Each field has a level:
+    - **required** (the default): an error when missing
+    - **optional**: checked only when present
+    - **strongly recommended**: a warning when the column is absent or has
+      missing values, and an error for an empty string, a value holding a list
+      separator such as `,` or `;`, or a placeholder
+    - **forbidden**: an error when present. Self-reported ethnicity is
+      forbidden, because HCA does not collect it, to protect donor privacy.
   - Some fields must match a set format, and list fields must hold non-empty
     text.
 - **Label columns.** CELLxGENE rejects files that already carry label columns

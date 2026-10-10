@@ -16,7 +16,7 @@ uv run pytest tests/
 ## Project Structure
 
 ```
-hca_schema_validator/
+packages/hca-schema-validator/
 ├── src/
 │   └── hca_schema_validator/
 │       ├── __init__.py       # Package exports
@@ -248,8 +248,10 @@ from each release's own `gene` table, which is what this generator queries.
 
 This section used to give a second reason, that `mapping_session` stops at r99.
 That was wrong. `old_release` and `new_release` are `varchar`, so `MAX()`
-compares them lexically and `'99'` beats `'116'`; cast numerically and the
-sessions run continuously to r116.
+compares them lexically and `'99'` beats `'116'`; cast numerically, the session
+data extends through r116. Not every release boundary has a session, as
+[the session chain section](#the-session-chain-is-not-contiguous-and-that-is-correct)
+explains.
 
 ## Gene ID Event Table
 
