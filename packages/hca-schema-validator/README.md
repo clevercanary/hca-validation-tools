@@ -121,9 +121,9 @@ what the portal accepts. The CELLxGENE validator checks:
   such as `cell_type` and `tissue`, because the portal adds those labels itself.
   HCA files keep the label columns, and HCA checks each label against its
   ontology term instead.
-- **Gene ID warnings.** Each warning names the gene set version, for example
-  "not found in GENCODE v48 (Ensembl 114)", and gene ID warnings are listed
-  after all other warnings.
+- **Gene ID warnings.** Each `Feature ID '…' not found` warning names the gene
+  set version, for example "not found in GENCODE v48 (Ensembl 114)", and these
+  warnings are listed after all other warnings.
 - **Raw count checks.** CELLxGENE skips the raw count checks when a file already
   has errors. HCA runs them anyway, as long as `obs` has
   `assay_ontology_term_id`.
@@ -237,7 +237,7 @@ Details:
 | `[drop or re-align]` | Ensembl split the gene into several genes | Remove the gene, or re-run alignment against a newer annotation to get counts for the new genes. |
 | `[strip suffix]` | The ID has a version suffix, such as `.17` | Remove the suffix, then check the ID's Details line: removing the suffix alone may not make the ID valid. |
 | `[none]` | The gene is newer than the allowed gene set | Nothing. The file is correct. |
-| `[ask]` | Ensembl has no record of what happened to the ID, for example because the gene was removed before release 76 | Ask the data producer which gene annotation the file was built with. |
+| `[ask]` | The gene history shipped with this package (Ensembl releases 76 to 116) has no record of the ID, for example because the gene was removed before release 76 | Ask the data producer which gene annotation the file was built with. |
 
 The [check inventory](https://github.com/clevercanary/hca-validation-tools/blob/main/docs/dataset-validator-checks.md#44-retired-feature-identifiers-check_retired_feature_ids)
 lists every case separately.
