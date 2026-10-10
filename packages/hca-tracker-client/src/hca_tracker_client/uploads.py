@@ -643,10 +643,17 @@ class Uploads:
         """
         return self._plan(network, atlas, file_type, local_path, generation, environment, force).describe()
 
-    def _active_job_for(self, directory: str) -> UploadJob | None:
-        """The job still running from ``directory``, after retiring any whose worker is gone."""
+    def _active_job_for(self, directory: str, target: str | None = None) -> UploadJob | None:
+        """The job still running from ``directory`` or to ``target``, after retiring any whose worker is gone.
+
+        One uploader per atlas: two folders uploading to the same prefix at
+        once could each put a file of the same name there, both reporting
+        done, with the later one deciding what the tracker ingests.
+        """
         for job in self.store.all():
-            if job.state in ACTIVE and job.local_path == directory and self._refresh(job).state in ACTIVE:
+            if job.state not in ACTIVE or (job.local_path != directory and job.target != target):
+                continue
+            if self._refresh(job).state in ACTIVE:
                 return job
         return None
 
@@ -681,8 +688,8 @@ class Uploads:
         assert plan.tool is not None
 
         with self.store.locked():
-            running = self._active_job_for(plan.directory)
-            if running is not None:  # a second caller got here first
+            running = self._active_job_for(plan.directory, plan.target.url)
+            if running is not None:  # a second caller got here first, or another folder targets this prefix
                 return self._already_uploading(running)
             job_id = secrets.token_hex(8)
             job = UploadJob(
@@ -716,7 +723,7 @@ class Uploads:
         return {**self._describe(job), "warnings": described["warnings"]}
 
     def _already_uploading(self, job: UploadJob) -> dict:
-        return {**self._describe(job), "message": f"Already uploading from {job.local_path}"}
+        return {**self._describe(job), "message": f"Already uploading from {job.local_path} to {job.target}"}
 
     def _spawn(self, job: UploadJob) -> int:
         """Start the worker in a session of its own, its output going to the job's log.

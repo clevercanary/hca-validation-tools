@@ -486,7 +486,18 @@ def test_upload_in_flight_and_already_uploading(uploads, staged, monkeypatch):
     assert live["progress"] == "0.00%  ━  0 B / 20.0 kB (0 B/s) ?s left (0/1)", "s5cmd's own last frame, from the log"
     assert "elapsed" in live
     duplicate = uploads.start("gut", "gut", "source-datasets", str(staged))
-    assert (duplicate["job_id"], duplicate["message"]) == (started["job_id"], f"Already uploading from {staged}")
+    assert (duplicate["job_id"], duplicate["message"]) == (
+        started["job_id"],
+        f"Already uploading from {staged} to s3://hca-atlas-tracker-data-dev/gut/gut-v1/source-datasets/",
+    )
+    # Another folder aiming at the same prefix waits too: one uploader per atlas.
+    other = staged.parent / "other"
+    make_file(other / "a.h5ad", 5_000)
+    same_target = uploads.start("gut", "gut", "source-datasets", str(other))
+    assert same_target["job_id"] == started["job_id"] and same_target["message"].startswith("Already uploading from")
+    assert uploads.start("gut", "gut", "integrated-objects", str(other))["job_id"] != started["job_id"], (
+        "a different prefix of the same atlas is not blocked"
+    )
     assert wait_for(uploads, started["job_id"], UPLOAD_ENDED, timeout=30)["state"] == "done"
 
 
