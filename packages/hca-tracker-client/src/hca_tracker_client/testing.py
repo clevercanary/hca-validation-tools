@@ -421,7 +421,9 @@ class FakeSmartSync:
         for info in to_upload:
             if self.on_file_start:
                 self.on_file_start(info["filename"])
-            self._print(f"{info['filename']} 0%", end="\r")
+            self._print(
+                f"0.00%  ━  0 B / {info['size'] / 1000:.1f} kB (0 B/s) ?s left (0/1)", end=""
+            )  # s5cmd's frame shape
             time.sleep(self.delay)
             if info["filename"].startswith("fail-"):
                 self._print(f"upload failed for {info['filename']}")

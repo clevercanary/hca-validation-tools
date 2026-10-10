@@ -13,6 +13,7 @@ import sys
 import time
 from pathlib import Path
 
+from .config import UPLOAD_ENGINES
 from .errors import redact
 from .uploads import DONE, FAILED, UPLOADING, UploadStore, folder_changes, load_engine
 
@@ -23,8 +24,14 @@ def run(job_id: str, cache_dir: Path) -> int:
     if job is None:
         print(f"No upload job {job_id!r} in {store.directory}", file=sys.stderr)
         return 2
+    if job.engine not in UPLOAD_ENGINES:  # the record is written by us, but held to the configuration's rule
+        store.end(job_id, FAILED, f"The job names an upload engine this package does not know: {job.engine!r}")
+        return 2
     expected = {entry["name"] for entry in job.files}
-    changes = folder_changes(Path(job.local_path), job.snapshot)
+    try:
+        changes = folder_changes(Path(job.local_path), job.snapshot)
+    except OSError as error:  # a file or the folder vanished between listing and stat
+        changes = f"unreadable ({error.strerror}: {error.filename})"
     if changes:  # the plan start() returned is the plan that runs; a changed folder needs a new one
         store.end(
             job_id,
@@ -48,6 +55,7 @@ def run(job_id: str, cache_dir: Path) -> int:
     def begin(current) -> None:
         current.state = UPLOADING
         current.started_at = time.time()
+        current.pid = os.getpid()  # the parent records it too; this covers a parent that could not
 
     store.update(job_id, begin)
     sys.stdout.reconfigure(line_buffering=True)  # type: ignore[union-attr]

@@ -483,7 +483,7 @@ def test_upload_in_flight_and_already_uploading(uploads, staged, monkeypatch):
     started = uploads.start("gut", "gut", "source-datasets", str(staged))
     live = wait_for(uploads, started["job_id"], ("uploading",), timeout=30)
     assert live["current_file"] == "a.h5ad"
-    assert live["progress"] == "a.h5ad 0%", "the transfer tool's own last line, from the log"
+    assert live["progress"] == "0.00%  ━  0 B / 20.0 kB (0 B/s) ?s left (0/1)", "s5cmd's own last frame, from the log"
     assert "elapsed" in live
     duplicate = uploads.start("gut", "gut", "source-datasets", str(staged))
     assert (duplicate["job_id"], duplicate["message"]) == (started["job_id"], f"Already uploading from {staged}")
@@ -647,10 +647,12 @@ def test_last_progress_line(tmp_path):
         "Completed 2.0 MiB/4.8 GiB (6.2 MiB/s) with 1 file(s) remaining\r"
     )
     assert last_progress_line(str(log)) == "Completed 2.0 MiB/4.8 GiB (6.2 MiB/s) with 1 file(s) remaining"
-    log.write_text("\x1b[2Kfirst\x1b[Gsecond\n\n")
-    assert last_progress_line(str(log)) == "second"
-    log.write_bytes(b"x" * 10_000)
-    assert len(last_progress_line(str(log)) or "") == 200
+    log.write_text(
+        "\x1b[2KCompleted 1.0 MiB/4.8 GiB (6.1 MiB/s) with 1 file(s) remaining\x1b[GSuccessfully uploaded: a.h5ad\n\n"
+    )
+    assert last_progress_line(str(log)) is None, "a completion line between files is not progress"
+    log.write_text("Exit code: 1\n")
+    assert last_progress_line(str(log)) is None
 
 
 def test_upload_records_are_not_downloads(uploads, staged):
@@ -688,7 +690,8 @@ def test_job_stays_active_while_the_transfer_outlives_the_worker(uploads, tmp_pa
         [
             sys.executable,
             "-c",
-            f"import os,subprocess,time; os.setsid(); subprocess.Popen([{str(fake_tool)!r}, '30']); time.sleep(30)",
+            f"import os,subprocess,time; os.setsid(); "
+            f"subprocess.Popen([{str(fake_tool)!r}, '30', 's3://b/gut/gut-v1/source-datasets/a.h5ad']); time.sleep(30)",
         ],
         os.environ,
     )
@@ -707,7 +710,7 @@ def test_job_stays_active_while_the_transfer_outlives_the_worker(uploads, tmp_pa
             "gut-v1",
             "source-datasets",
             "dev",
-            "s3://b/p/",
+            "s3://b/gut/gut-v1/source-datasets/",
             "/d",
             "p",
             "s5cmd",
@@ -715,8 +718,11 @@ def test_job_stays_active_while_the_transfer_outlives_the_worker(uploads, tmp_pa
             [],
             "/l",
         )
+        assert job.atlas_prefix == "s3://b/gut/gut-v1/"
         job.pid = leader
         assert worker_alive(job) is True, "the transfer is still running"
+        other = UploadJob(**{**job.__dict__, "target": "s3://b/lung/lung-v1/source-datasets/"})
+        assert worker_alive(other) is False, "a transfer to another atlas is not this job's"
     finally:
         with contextlib.suppress(ProcessLookupError):
             os.killpg(leader, signal.SIGKILL)

@@ -73,6 +73,8 @@ SPAWN_GRACE_SECONDS = 60
 _ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
 # One s5cmd progress frame: "42.81%  ━━━───  8.98 MB / 20.97 MB (6.74 MB/s) 1s left (0/1)".
 _S5CMD_FRAME = re.compile(r"\d{1,3}\.\d{2}%\s+\S+\s+.*?\(\d+/\d+\)")
+# The AWS CLI's: "Completed 1.0 MiB/4.8 GiB (6.1 MiB/s) with 1 file(s) remaining".
+_AWS_PROGRESS = re.compile(r"^Completed .* remaining$")
 
 
 def smart_sync() -> Any:
@@ -425,6 +427,11 @@ class UploadJob:
         return Target(self.environment, self.network, self.atlas, self.version, self.atlas_folder, self.file_type)
 
     @property
+    def atlas_prefix(self) -> str:
+        """The atlas folder's prefix, which every object the worker copies (files and manifest) sits under."""
+        return self.target.rsplit("/", 2)[0] + "/"
+
+    @property
     def worker_marker(self) -> str:
         """What the worker's command line contains, so a reused pid is not mistaken for it."""
         return f"hca_tracker_client.upload_worker {self.job_id}"
@@ -467,14 +474,14 @@ def _remember_worker(process: subprocess.Popen) -> None:
         _WORKERS.append(process)
 
 
-def transfer_running(pgid: int) -> bool:
-    """Whether a transfer tool is running in process group ``pgid``.
+def transfer_running(pgid: int, atlas_prefix: str) -> bool:
+    """Whether a transfer to ``atlas_prefix`` is running in process group ``pgid``.
 
     The worker leads its own group, and the only long-lived thing it starts is
-    the transfer tool; a reused group id would have to be running s5cmd or aws
-    to be mistaken for it.
+    the transfer tool, whose command line names the object it is copying to; a
+    reused group id would have to be copying to this atlas to be mistaken for it.
     """
-    return any(Path(arg).name in TRANSFER_TOOLS for command in group_commands(pgid) for arg in command.split())
+    return any(atlas_prefix in command for command in group_commands(pgid))
 
 
 def worker_alive(job: UploadJob) -> bool:
@@ -490,7 +497,7 @@ def worker_alive(job: UploadJob) -> bool:
         return False
     if process_matches(job.pid, job.worker_marker):
         return True
-    return transfer_running(job.pid)
+    return transfer_running(job.pid, job.atlas_prefix)
 
 
 def worker_environment() -> dict[str, str]:
@@ -504,7 +511,8 @@ def last_progress_line(log_path: str, tail: int = 4096) -> str | None:
     The AWS CLI redraws one line with carriage returns, so the end of the log
     is the current state. s5cmd, writing to a file rather than a terminal,
     appends each frame to the same line with no separator at all, so the last
-    frame is picked out by its shape.
+    frame is picked out by its shape. Anything else at the end of the log (a
+    completion line between files, an error) is not progress and gives ``None``.
     """
     try:
         with Path(log_path).open("rb") as handle:
@@ -519,7 +527,9 @@ def last_progress_line(log_path: str, tail: int = 4096) -> str | None:
     if line is None:
         return None
     frames = _S5CMD_FRAME.findall(line)
-    return frames[-1] if frames else line[-200:]
+    if frames:
+        return frames[-1]
+    return line if _AWS_PROGRESS.match(line) else None
 
 
 @dataclass(frozen=True)
@@ -742,7 +752,7 @@ class Uploads:
         _reap_workers()  # on every refresh, so a finished worker never lingers as a zombie
         if job.state not in ACTIVE:
             return job
-        never_spawned = not job.pid and time.time() - job.created_at > SPAWN_GRACE_SECONDS
+        never_spawned = job.state == QUEUED and not job.pid and time.time() - job.created_at > SPAWN_GRACE_SECONDS
         if never_spawned:
             return (
                 self.store.end(job.job_id, INTERRUPTED, "The upload worker was never started; run start_upload again")
