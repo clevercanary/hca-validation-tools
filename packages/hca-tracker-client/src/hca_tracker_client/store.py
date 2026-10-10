@@ -190,7 +190,10 @@ class RecordStore(Generic[R]):
         except (OSError, ValueError):
             return None
         known = {f.name for f in fields(self.record_type)}  # type: ignore[arg-type]
-        return self.record_type(**{key: value for key, value in data.items() if key in known})
+        try:
+            return self.record_type(**{key: value for key, value in data.items() if key in known})
+        except TypeError:  # written by an older version of the record; unreadable, like a corrupt file
+            return None
 
     def all(self) -> list[R]:
         """Every record, oldest first."""

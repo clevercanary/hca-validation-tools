@@ -513,6 +513,19 @@ def test_store_never_rewrites_a_finished_record(cache_dir):
     assert store.end("nope", "done", "x") is None
 
 
+def test_store_skips_a_record_from_an_older_version(uploads, cache_dir):
+    """A record missing a field the dataclass now requires is unreadable, like a corrupt one, not fatal."""
+    store = UploadStore(cache_dir)
+    store.directory.mkdir(parents=True)
+    (store.directory / "abc123.json").write_text(json.dumps({"job_id": "abc123", "state": "done", "created_at": 1.0}))
+    (store.directory / "zzz999.json").write_text("{not json")
+    assert store.load("abc123") is None
+    assert store.all() == []
+    assert uploads.status() == {"jobs": []}
+    with pytest.raises(JobError, match="No upload job 'abc123'"):
+        uploads.status("abc123")
+
+
 # --- check_environment ---------------------------------------------------------
 
 
