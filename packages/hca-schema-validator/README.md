@@ -1,18 +1,16 @@
 # HCA Schema Validator
 
-Checks single-cell data files in h5ad format (the
+Validates single-cell data files in h5ad format (the
 [AnnData](https://anndata.readthedocs.io/) file format) against the Human Cell
 Atlas (HCA) metadata schema.
 
-- This package extends the CELLxGENE schema validator from the Chan Zuckerberg
-  Initiative (CZI), and in some places overrides the CELLxGENE rules. A copy of the CELLxGENE
-  validator (`cellxgene-schema` 7.0.1) is included in this package.
-- The CELLxGENE rules run, with the exceptions listed in
-  [Where HCA changes CELLxGENE's rules](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/README.md#where-hca-changes-cellxgenes-rules).
-- This package also adds HCA-only checks, listed in
-  [Checks added by HCA](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/README.md#checks-added-by-hca).
-- The validator reports **errors**, which fail the file, and **warnings**, which do not fail
-  the file but point to something to review or fix.
+- **Extends CELLxGENE.** This package extends the CELLxGENE schema validator
+  from the Chan Zuckerberg Initiative (CZI). A copy of the CELLxGENE validator
+  (`cellxgene-schema` 7.0.1) ships with the package.
+- **CELLxGENE rules run, with HCA overrides.** HCA overrides some CELLxGENE
+  rules and adds checks of its own.
+- **Errors and warnings.** Errors fail a file. Warnings do not fail a file, but
+  flag something to review or fix.
 
 ## Installation
 
@@ -64,10 +62,10 @@ else:
 
 ## What this validator checks
 
-This is a summary. The full list, with every rule, is in the
+The full list of rules is in the
 [check inventory](https://github.com/clevercanary/hca-validation-tools/blob/main/docs/dataset-validator-checks.md).
 
-Terms used below:
+### Parts of an h5ad file
 
 - **`obs`**: the table of cells and their metadata
 - **`var`** and **`raw.var`**: the tables of genes
@@ -76,141 +74,129 @@ Terms used below:
 - **`raw.X`**: the raw count matrix
 - **`obsm`**: cell embeddings, such as UMAP coordinates
 
-### Checks from CELLxGENE
+### CELLxGENE checks
 
-CELLxGENE is CZI's single-cell data portal. The CELLxGENE schema says what a
-file must contain to be accepted by the portal. The CELLxGENE validator
-(`cellxgene-schema` 7.0.1) checks the groups below. The CELLxGENE rules run,
-except where a group is marked "Changed for HCA". The exceptions are listed in
-the next section.
+CELLxGENE is CZI's single-cell data portal, and the CELLxGENE schema defines
+what the portal accepts. The CELLxGENE validator checks:
 
 - **File format**: the h5ad encoding version, unique column names, and no
   reserved or deprecated columns.
-  *[Changed for HCA](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/README.md#where-hca-changes-cellxgenes-rules).*
+  *[HCA override](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/README.md#hca-overrides).*
 - **Cell metadata (`obs`)**: required columns are present, values have the right
-  type, and values are not missing unless the schema allows a missing value for
-  that column. Ontology terms must be valid for cell type, tissue,
-  assay, disease, development stage, sex and organism.
-  *[Changed for HCA](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/README.md#where-hca-changes-cellxgenes-rules).*
+  type, and values are only missing where the schema allows. Ontology terms must
+  be valid for cell type, tissue, assay, disease, development stage, sex and
+  organism.
+  *[HCA override](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/README.md#hca-overrides).*
 - **Gene metadata (`var`, `raw.var`)**: gene IDs are unique and appear in the
   organism's gene list.
-  *[Changed for HCA](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/README.md#where-hca-changes-cellxgenes-rules).*
-- **File metadata (`uns`)**: title, batch condition, default embedding, and
-  plot colors.
-- **Matrices (`X`, `raw.X`)**: values are stored as 32-bit floats, either as a
-  dense matrix or in CSR (compressed sparse row) format, and CSR is required
-  when most values are zero. Non-zero raw counts are whole positive numbers.
-  Every cell has at least one count, and `X` and `raw.X` cover the same cells and genes.
-  *[Changed for HCA](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/README.md#where-hca-changes-cellxgenes-rules).*
+  *[HCA override](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/README.md#hca-overrides).*
+- **File metadata (`uns`)**: title, batch condition, default embedding, and plot
+  colors.
+- **Matrices (`X`, `raw.X`)**: values are 32-bit floats, stored as a dense
+  matrix or in CSR (compressed sparse row) format, with CSR required when most
+  values are zero. Non-zero raw counts are whole positive numbers. Every cell has
+  at least one count, and `X` and `raw.X` cover the same cells and genes.
+  *[HCA override](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/README.md#hca-overrides).*
 - **Embeddings (`obsm`)**: at least one embedding, with the right shape and no
   infinite values.
 - **Spatial data**: image and spot rules for Visium and Slide-seqV2.
 - **Duplicate cells**: no two cells have identical raw counts.
 
-Details: [CELLxGENE checks](https://github.com/clevercanary/hca-validation-tools/blob/main/docs/dataset-validator-checks.md#5-vendored-cellxgene_schema-checks-shared-by-cxg-and-hca-validators).
+[All CELLxGENE checks](https://github.com/clevercanary/hca-validation-tools/blob/main/docs/dataset-validator-checks.md#5-vendored-cellxgene_schema-checks-shared-by-cxg-and-hca-validators)
 
-### Where HCA changes CELLxGENE's rules
+### HCA overrides
 
-- **HCA's schema replaces CELLxGENE's** (`hca_schema_definition.yaml`):
-  - Organism is recorded on each cell in `obs`, not once in `uns`. CELLxGENE
-    rejects an `obs['organism_ontology_term_id']` column as deprecated; HCA
-    requires the column.
-  - Fields can be **optional** (checked only when present), **strongly
-    recommended** (a warning when missing, not an error) or **forbidden** (an
-    error when present, such as self-reported ethnicity, to protect donor
-    privacy).
-  - Some fields must match a set format.
-  - List fields must hold non-empty text.
-- **Label columns are allowed.** CELLxGENE reserves columns such as `cell_type`
-  and `tissue` for labels the CELLxGENE portal adds itself, so the CELLxGENE
-  validator rejects files that already have those columns. HCA files keep the
-  label columns, and HCA checks the label values instead (see below).
-- **Gene ID warnings are reworded.** Each one names the gene list version, for
-  example "not found in GENCODE v48 (Ensembl 114)", and all gene ID warnings are
-  listed after the other warnings.
-- **The raw count checks run even when there are other errors.** CELLxGENE
-  skips the raw count checks when a file already has errors. HCA runs the raw
-  count checks anyway, as long as
-  `obs` has `assay_ontology_term_id`, so one pass shows more problems.
-- **Extra cell metadata columns are left alone.** Columns in `obs` that are not
-  in the schema, such as ones a curator added, are not checked.
+- **Schema.** HCA uses its own schema (`hca_schema_definition.yaml`) in place of
+  the CELLxGENE schema:
+  - Organism is recorded per cell, in `obs['organism_ontology_term_id']`.
+    CELLxGENE expects organism once, in `uns`, and rejects the `obs` column as
+    deprecated.
+  - Fields are **optional** (checked only when present), **strongly
+    recommended** (a warning when missing) or **forbidden** (an error when
+    present). Self-reported ethnicity is forbidden, to protect donor privacy.
+  - Some fields must match a set format, and list fields must hold non-empty
+    text.
+- **Label columns.** CELLxGENE rejects files that already carry label columns
+  such as `cell_type` and `tissue`, because the portal adds those labels itself.
+  HCA files keep the label columns, and HCA checks each label against its
+  ontology term instead.
+- **Gene ID warnings.** Each warning names the gene set version, for example
+  "not found in GENCODE v48 (Ensembl 114)", and gene ID warnings are listed
+  after all other warnings.
+- **Raw count checks.** CELLxGENE skips the raw count checks when a file already
+  has errors. HCA runs them anyway, as long as `obs` has
+  `assay_ontology_term_id`.
+- **Extra `obs` columns.** Columns that are not in the schema, such as ones a
+  curator added, are not checked.
 
-Details: [HCA changes](https://github.com/clevercanary/hca-validation-tools/blob/main/docs/dataset-validator-checks.md#4-hca-schema-validator-hcavalidator).
+[All HCA overrides](https://github.com/clevercanary/hca-validation-tools/blob/main/docs/dataset-validator-checks.md#4-hca-schema-validator-hcavalidator)
 
-### Checks added by HCA
+### HCA checks
 
-- **Expression matrices**: `X` must be `raw.X`, or the ambient-RNA-corrected
-  counts in `layers['desouped_counts']` when those exist, normalized per cell and
-  log-transformed. The check finds an `X` that holds raw counts, was never
+- **Expression matrices.** `X` must be `raw.X`, or the ambient-RNA-corrected
+  counts in `layers['desouped_counts']` when present, normalized per cell and
+  log-transformed. The check catches an `X` that holds raw counts, was never
   normalized, or came from a different matrix.
-  [Details](https://github.com/clevercanary/hca-validation-tools/blob/main/docs/dataset-validator-checks.md#41-expression-matrix-contract-check_x_normalization).
-- **Cell metadata labels**: a text label column such as `tissue` must sit next to
-  the matching ontology term ID column (`tissue_ontology_term_id`), and each
-  label must match the official name of the term in the ID column.
-  [Details](https://github.com/clevercanary/hca-validation-tools/blob/main/docs/dataset-validator-checks.md#4-hca-schema-validator-hcavalidator).
-- **Donor metadata**: all cells from one `donor_id` must agree on organism, sex
-  and manner of death. Different development stages or diseases for one donor
-  are a warning only.
-  [Details](https://github.com/clevercanary/hca-validation-tools/blob/main/docs/dataset-validator-checks.md#42-donor-level-consistency-check_donor_consistency).
-- **Declared gene annotation**: the annotation version a file declares in
-  `obs['gene_annotation_version']` is compared with the genes the file actually
-  contains, and with `obs['reference_genome']`. Warnings only.
-  [Details](https://github.com/clevercanary/hca-validation-tools/blob/main/docs/dataset-validator-checks.md#43-declared-gene-annotation-vs-the-files-genes-check_gene_annotation_version).
-- **Outdated gene IDs**: human gene IDs that are not in the allowed gene set
-  are grouped by what happened to them, each with a suggested action. See
-  [Gene IDs](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/README.md#gene-ids).
-  [Details](https://github.com/clevercanary/hca-validation-tools/blob/main/docs/dataset-validator-checks.md#44-retired-feature-identifiers-check_retired_feature_ids).
+  [Details](https://github.com/clevercanary/hca-validation-tools/blob/main/docs/dataset-validator-checks.md#41-expression-matrix-contract-check_x_normalization)
+- **Cell metadata labels.** A label column such as `tissue` needs its ontology
+  term ID column (`tissue_ontology_term_id`), and every label must match the
+  official name of its term.
+  [Details](https://github.com/clevercanary/hca-validation-tools/blob/main/docs/dataset-validator-checks.md#4-hca-schema-validator-hcavalidator)
+- **Donor metadata.** All cells from one `donor_id` must agree on organism, sex
+  and manner of death. Differing development stages or diseases within one donor
+  are only a warning.
+  [Details](https://github.com/clevercanary/hca-validation-tools/blob/main/docs/dataset-validator-checks.md#42-donor-level-consistency-check_donor_consistency)
+- **Declared gene annotation.** The version in `obs['gene_annotation_version']`
+  is compared with the genes the file actually contains and with
+  `obs['reference_genome']`. Warnings only.
+  [Details](https://github.com/clevercanary/hca-validation-tools/blob/main/docs/dataset-validator-checks.md#43-declared-gene-annotation-vs-the-files-genes-check_gene_annotation_version)
+- **Outdated gene IDs.** Human gene IDs missing from the allowed gene set are
+  grouped by what Ensembl did to each gene, with a suggested action.
+  [Details](https://github.com/clevercanary/hca-validation-tools/blob/main/docs/dataset-validator-checks.md#44-retired-feature-identifiers-check_retired_feature_ids)
 
 ## Gene IDs
 
-The **allowed gene set** is the fixed list of human gene IDs a file is checked
-against: **GENCODE v48 (Ensembl release 114), primary assembly only**. The
-allowed gene set holds every gene on the chromosomes and on the unplaced and unlocalized
-scaffolds, **minus the genes on alternate (alt) and patch contigs**. The
-validator's output uses this name, and so does this README. The terms are
-explained below.
+The **allowed gene set** is the list of human gene IDs a file is checked
+against: **GENCODE v48 (Ensembl release 114), primary assembly only**, meaning
+every gene on the chromosomes and on the unplaced and unlocalized
+scaffolds, **minus the genes on alternate (alt) and patch contigs**. The allowed
+gene set is CELLxGENE's own, copied from `cellxgene-schema`.
 
-The rules behind this output, and the reasons for them, are in the
+The rules behind the gene ID report, and the reasoning for them, are in the
 [gene ID contract](https://github.com/clevercanary/hca-validation-tools/blob/main/docs/gene-id-contract.md).
 
 ### Background
 
-- **Ensembl** is the public genome annotation database run by EMBL-EBI (the
-  European Bioinformatics Institute). Ensembl gives each gene a stable ID, such as
-  `ENSG00000141510`, and publishes a numbered release a few times a year.
-- Between releases, Ensembl may rename, merge, split or remove genes. An ID that
-  was valid when a file was made can be outdated later.
-- **GENCODE** is the human gene annotation project. The GENCODE human gene set
-  is the same gene set Ensembl publishes, but GENCODE numbers its versions
-  differently: GENCODE v48 is
-  Ensembl release 114.
-- **Primary assembly** is the main human genome sequence (GRCh38): the
-  chromosomes, plus small pieces of sequence whose chromosome, or position on
-  the chromosome, is not yet known. The primary assembly leaves out the "patch" and "alternate" sequences that
-  describe variant versions of some regions.
+- **Ensembl**: the public genome annotation database run by EMBL-EBI (the
+  European Bioinformatics Institute). Ensembl gives every gene a stable ID, such
+  as `ENSG00000141510`, and publishes a numbered release a few times a year.
+  Between releases, genes can be renamed, merged, split or removed, so an ID
+  that was valid when a file was made can later be outdated.
+- **GENCODE**: the human gene annotation that Ensembl publishes, under GENCODE's
+  own version numbers. GENCODE v48 is Ensembl release 114.
+- **Primary assembly**: the main human genome sequence (GRCh38), made up of the
+  chromosomes plus short scaffolds whose chromosome or position is not yet
+  known. Alternate and patch sequences, which describe variant versions of some
+  regions, are not part of the primary assembly.
 
-### The allowed gene set
+### Warnings here, errors at CELLxGENE
 
-- The allowed gene set is CELLxGENE's own gene set, copied from
-  `cellxgene-schema`, so any ID missing from the allowed gene set is rejected by
-  CELLxGENE too.
-- Here, an ID that is not in the allowed gene set is a **warning**. At
-  CELLxGENE the same ID is an **error**.
-- Most of these IDs need a change, as the tags below say. An ID tagged `[none]`
-  is correct as written: the gene is newer than the allowed gene set.
+- A gene ID missing from the allowed gene set is a **warning** in this validator
+  and an **error** at CELLxGENE.
+- Most of these IDs need a change. The exception is `[none]`: the gene is newer
+  than the allowed gene set, and the ID is correct as written.
 
-### Reading the output
+### Reading the gene ID report
 
-All of the outdated human IDs are reported together as one block with four
-parts:
+All outdated human IDs are reported together in one block with four parts:
 
-- **Headline**: how many IDs are not in the allowed gene set
+- **Headline**: how many IDs are missing from the allowed gene set
 - **`Summary:`**: one line per group, with the count, what happened, and a tag
-- **`Actions:`**: what each tag in this file means
-- **`Details:`**: one line per ID, with the old ID, the new ID (if there is one),
-  what happened, and the tag
+- **`Actions:`**: what each tag in the report means
+- **`Details:`**: one line per ID, with the old ID, the new ID when there is
+  one, what happened, and the tag
 
-Example:
+For example:
 
 ```
 3 gene IDs are not in GENCODE v48 (Ensembl 114, primary assembly only).
@@ -228,49 +214,49 @@ Details:
   ENSG00000224247    retired; no successor  [drop]
 ```
 
-Things to know:
+- Each ID is listed once, even when the ID appears in both `var` and `raw.var`.
+- An ID in `Details:` does not also get a `Feature ID '…' not found` warning.
+  The Details line carries the same fact, plus what happened to the gene.
+- Any remaining `Feature ID '…' not found` warnings are for features the report
+  does not cover: anything that is not a human Ensembl gene ID, such as other
+  species' genes, spike-ins, transgenes or custom features.
+- Ensembl's history is followed to the end: if A became B and B later became C,
+  the new ID shown is C.
 
-- Each ID appears once, even when the ID is in both `var` and `raw.var`.
-- An ID listed under `Details:` does not also get a separate
-  `Feature ID '…' not found` warning. The Details line already says the ID is
-  not in the allowed gene set, and also says what happened to the gene.
-- Any `Feature ID '…' not found` warnings that remain are for features the
-  outdated gene ID report does not cover: anything that is not a human Ensembl gene ID, such as
-  other species' genes, spike-ins, transgenes or custom features.
-- Ensembl's history is followed through every step: if A became B and B later
-  became C, the new ID shown is C.
-
-### What each tag means
+### Tags
 
 | Tag | When you see it | What to do |
 |---|---|---|
-| `[rename]` | Ensembl replaced the gene with one new gene, which is in the allowed gene set and not already in the file | Replace the old ID with the new one |
-| `[review]` | The new gene is already in the file, or several IDs in the file lead to the same new gene, or the file spells the same gene more than one way (with and without a version suffix, or with two different suffixes) | Decide whether to combine the columns. The counts may not be independent, and adding them can double-count. The decision belongs with whoever produced the data. |
-| `[drop]` | The gene was removed with no replacement; or the gene's replacement was removed later; or the gene's replacement is not in the allowed gene set; or the gene is on a patch or alternate sequence | Remove the gene. The allowed gene set has no replacement to move the gene's counts to. |
-| `[drop or re-align]` | Ensembl split the gene into several genes | Remove the gene, or re-run alignment against a newer annotation to get counts for the new genes |
-| `[strip suffix]` | The ID has a version suffix, such as `.17` | Remove the suffix. Removing the suffix alone does not make the ID valid; check the ID's `Details:` line for anything else. |
-| `[none]` | The gene is newer than the allowed gene set | Nothing. The file is correct; the allowed gene set is older than the file. |
-| `[ask]` | Ensembl has no record of what happened to the ID, for example because the gene was removed before release 76 | Ask the data producer which gene annotation the file was built with |
+| `[rename]` | Ensembl replaced the gene with one new gene, which is in the allowed gene set and not yet in the file | Replace the old ID with the new one. |
+| `[review]` | The new gene is already in the file; or several IDs in the file lead to the same new gene; or the file spells one gene more than one way (with and without a version suffix, or with two different suffixes) | Decide whether to combine the columns. Their counts may not be independent, so adding them can double-count. Whoever produced the data should decide. |
+| `[drop]` | The gene was removed with no replacement; or the replacement was itself removed later; or the replacement is not in the allowed gene set; or the gene is on a patch or alternate sequence | Remove the gene. There is no replacement in the allowed gene set to move its counts to. |
+| `[drop or re-align]` | Ensembl split the gene into several genes | Remove the gene, or re-run alignment against a newer annotation to get counts for the new genes. |
+| `[strip suffix]` | The ID has a version suffix, such as `.17` | Remove the suffix, then check the ID's Details line: removing the suffix alone may not make the ID valid. |
+| `[none]` | The gene is newer than the allowed gene set | Nothing. The file is correct. |
+| `[ask]` | Ensembl has no record of what happened to the ID, for example because the gene was removed before release 76 | Ask the data producer which gene annotation the file was built with. |
 
-The same tags, with each case listed separately, are in the
-[check inventory](https://github.com/clevercanary/hca-validation-tools/blob/main/docs/dataset-validator-checks.md#44-retired-feature-identifiers-check_retired_feature_ids).
+The [check inventory](https://github.com/clevercanary/hca-validation-tools/blob/main/docs/dataset-validator-checks.md#44-retired-feature-identifiers-check_retired_feature_ids)
+lists every case separately.
 
-Some `Details:` lines end with a note on where the old and new genes sit on the
-genome:
+### Location notes
 
-- **No note**: the new gene covers the old one. This is the usual case.
-- **`old contains new`**: the new gene is inside the old one.
-- **`overlap`**: the old and new genes share some positions, but neither covers the other.
-- **`disjoint`**: the old and new genes share no positions, or are on a different chromosome or
-  strand.
+Some Details lines end with a note comparing where the old and new genes sit on
+the genome:
 
-A note does not mean the replacement is wrong. A note means the line is worth a
+- **No note**: the new gene covers the old one, which is the usual case.
+- **`old contains new`**: the new gene lies inside the old one.
+- **`overlap`**: the two genes share some positions, but neither covers the
+  other.
+- **`disjoint`**: the two genes share no positions, or sit on different
+  chromosomes or strands.
+
+A note does not mean the replacement is wrong, only that the line deserves a
 closer look before renaming.
 
-### Which versions are used
+### Data versions
 
-Three gene data sources are used. The three sources are updated separately, so
-their versions can differ:
+The gene ID checks use three data sources. Each is updated on its own schedule,
+so their versions can differ.
 
 | Data | Version | Used for |
 |---|---|---|
@@ -278,8 +264,8 @@ their versions can differ:
 | Gene history ([gene ID event table](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/README.md#gene-id-event-table)) | Ensembl releases 76 to 116 | What happened to an outdated ID |
 | Gene presence by release ([gene release interval table](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/README.md#gene-release-interval-table)) | Ensembl releases 76 to 116 | Checking the declared gene annotation, and telling genes on patch or alternate sequences apart from genes newer than the allowed gene set |
 
-A gene Ensembl added after the allowed gene set was made is in Ensembl but not
-in the allowed gene set. Such a gene gets the `[none]` tag.
+A gene Ensembl added after the allowed gene set was made appears in the gene
+history but not in the allowed gene set, and gets the `[none]` tag.
 
 <!-- Maintainers: these versions are typed by hand, here and elsewhere in this
 README (search for "v48", "114" and "116", including the example output). Update
@@ -515,7 +501,7 @@ MySQL to `ensembldb.ensembl.org:3306` (user `anonymous`, no password).
    ```
 
 4. Commit the regenerated file, and update the **Current table** above and the
-   [versions table](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/README.md#which-versions-are-used) under Gene IDs.
+   [data versions table](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/README.md#data-versions) under Gene IDs.
 
 ### Why not `stable_id_event`
 
@@ -638,7 +624,7 @@ password). About four minutes, mostly the per-release coordinate queries.
    ```
 
 5. Commit the regenerated file, and update the **Current table** above and the
-   [versions table](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/README.md#which-versions-are-used) under Gene IDs.
+   [data versions table](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/README.md#data-versions) under Gene IDs.
 
 ### The session chain is not contiguous, and that is correct
 
@@ -660,7 +646,7 @@ archive, and with it every identifier changed across it.
   is built on their schema validator, `cellxgene-schema`, from
   [chanzuckerberg/single-cell-curation](https://github.com/chanzuckerberg/single-cell-curation).
   A copy of `cellxgene-schema` is included here under the MIT License and
-  extended for HCA. Every CELLxGENE check listed above, and the allowed gene
+  extended for HCA. Every CELLxGENE check in this validator, and the allowed gene
   set, comes from the CELLxGENE team's work. See [`NOTICE`](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/NOTICE).
 - **`cellxgene-ontology-guide`**, also by the CZI CELLxGENE team, which supplies
   the ontology data the validator checks terms against, and the build pipeline
