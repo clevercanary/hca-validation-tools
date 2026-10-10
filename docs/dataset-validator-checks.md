@@ -1,12 +1,13 @@
 # Dataset Validator — Batch Service Checks
 
-The dataset validator runs as an AWS Batch job. It makes its own integrity checks, then runs three validators (CAP, CELLxGENE, HCA schema) on the file. This document covers what the Batch service adds; what the CELLxGENE and HCA schema validators check is in the [`hca-schema-validator` README](../packages/hca-schema-validator/README.md#what-this-validator-checks).
+The dataset validator runs as an AWS Batch job. It makes its own integrity checks, then runs three validators on the file: CAP, HCA schema and HCA cell annotation. The standalone CELLxGENE validator is not run. This document covers what the Batch service adds; what the CELLxGENE and HCA schema validators check is in the [`hca-schema-validator` README](../packages/hca-schema-validator/README.md#what-this-validator-checks).
 
 Source files:
 - Orchestrator: `services/dataset-validator/src/dataset_validator/main.py`
 - CAP wrapper: `services/dataset-validator/src/dataset_validator/cap_validator_script.py`
 - CELLxGENE wrapper: `services/cellxgene-validator/src/cellxgene_validator/main.py`
 - HCA wrapper: `services/hca-schema-validator/src/hca_schema_validator_service/main.py`
+- HCA cell annotation validator: `packages/hca-schema-validator/src/hca_schema_validator/cell_annotation_validator.py`
 - HCA validator: `packages/hca-schema-validator/src/hca_schema_validator/validator.py`
 - Vendored core: `packages/hca-schema-validator/src/hca_schema_validator/_vendored/cellxgene_schema/`
 
@@ -31,15 +32,29 @@ Runs the external `cap_upload_validator` package against the file. Validates CAP
 
 ---
 
-## 3. CELLxGENE validator (vendored `cellxgene_schema.validate.validate`)
+## 3. CELLxGENE validator (not run)
 
-Runs the vendored CELLxGENE validator against the unmodified CELLxGENE schema. The rules are the [core CELLxGENE checks](../packages/hca-schema-validator/README.md#core-cellxgene-checks), without the HCA overrides or extensions.
+`main.py` does not run the standalone CELLxGENE validator. The Tracker UI hides the CELLxGENE tab, so its results were never seen and crowded out visible warnings under SNS truncation. The job sends an empty, passing stub under `tool_reports.cellxgene` so the SNS payload schema stays satisfied (#382). The core CELLxGENE checks still run inside the HCA schema validator.
 
 ---
 
 ## 4. HCA schema validator (`HCAValidator`)
 
 Runs `HCAValidator` from the `hca-schema-validator` package. Every check it makes — the core CELLxGENE checks, the HCA overrides and the HCA extensions — is listed, with the reason for each, in the [package README](../packages/hca-schema-validator/README.md#what-this-validator-checks). This document does not repeat them.
+
+---
+
+## 5. HCA cell annotation validator (`HCACellAnnotationValidator`)
+
+Runs `HCACellAnnotationValidator` from the same package, in the HCA schema validator's environment. Structural checks on the CAP annotations under `uns['cap_metadata']`, all errors:
+
+- At least one CAP annotation set is present (`uns['cap_metadata']['cellannotation_metadata']` is a non-empty dict).
+- `uns['cap_metadata']['cellannotation_schema_version']` is present and well-formed.
+- `cellannotation_metadata` is a dict, and each annotation set's value is a dict.
+- Each annotation set has the per-set `obs` columns CAP requires.
+- The old top-level layout (`uns['cellannotation_metadata']`, `uns['cellannotation_schema_version']`) is rejected (#452).
+
+The per-set required fields, marker-gene coverage and Cell Ontology term validity are left to CAP's own validator.
 
 ---
 
@@ -50,5 +65,6 @@ Runs `HCAValidator` from the `hca-schema-validator` package. Every check it make
 | Env & S3 integrity | `main.py` | Hard fail, no tool reports |
 | Metadata summary | `main.py:read_metadata` | Exception → failure message |
 | CAP | `cap_validator_script.py` | `tool_reports.cap.errors` |
-| CELLxGENE | `services/cellxgene-validator` → vendored `validate()` | `tool_reports.cellxgene` |
+| CELLxGENE | Not run; empty passing stub | `tool_reports.cellxgene` |
 | HCA | `services/hca-schema-validator` → `HCAValidator` | `tool_reports.hcaSchema` |
+| HCA cell annotation | `services/hca-schema-validator` → `HCACellAnnotationValidator` | `tool_reports.hcaCellAnnotation` |
