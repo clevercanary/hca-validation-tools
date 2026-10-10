@@ -66,6 +66,8 @@ DONE = "done"
 FAILED = "failed"
 INTERRUPTED = "interrupted"
 ACTIVE = (QUEUED, UPLOADING)
+# How long a record may sit without a pid before it counts as a spawn that never completed.
+SPAWN_GRACE_SECONDS = 60
 
 _ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
 # One s5cmd progress frame: "42.81%  ━━━───  8.98 MB / 20.97 MB (6.74 MB/s) 1s left (0/1)".
@@ -86,9 +88,10 @@ def smart_sync() -> Any:
 def resolve_profile(environ: dict[str, str] | None = None) -> tuple[str, str]:
     """The AWS profile uploads sign with, and where it came from.
 
-    ``HCA_AWS_PROFILE`` is the explicit override; otherwise the profile the
-    hca-smart-sync CLI saved with ``hca-smart-sync config``; otherwise
-    ``AWS_PROFILE``, which boto3 and the transfer tools honour on their own.
+    The profile the hca-smart-sync CLI saved with ``hca-smart-sync config``,
+    so both front ends sign the same way; otherwise ``AWS_PROFILE``, which
+    boto3 and the transfer tools honour on their own. ``HCA_AWS_PROFILE`` is
+    this package's own override, which the CLI does not read.
     """
     env = os.environ if environ is None else environ
     if env.get("HCA_AWS_PROFILE"):
@@ -113,11 +116,17 @@ def tracker_environment(config: Config) -> tuple[str, str]:
     """The configured tracker's host and which environment (``dev`` or ``prod``) it belongs to."""
     url, _ = config.require_tracker()
     host = urlparse(url).hostname or ""
-    environment = config.tracker_environment or TRACKER_HOSTS.get(host)
-    if environment is None:
-        known = ", ".join(f"{name} ({env})" for name, env in TRACKER_HOSTS.items())
+    known = TRACKER_HOSTS.get(host)
+    if config.tracker_environment and known and config.tracker_environment != known:
         raise CheckError(
-            f"The configured tracker host {host!r} is not one this package knows ({known}), so the bucket "
+            f"HCA_TRACKER_ENVIRONMENT={config.tracker_environment!r} contradicts the configured tracker {host!r}, "
+            f"which is the {known} tracker; unset it (it is for hosts this package does not know). Nothing was uploaded"
+        )
+    environment = known or config.tracker_environment
+    if environment is None:
+        names = ", ".join(f"{name} ({env})" for name, env in TRACKER_HOSTS.items())
+        raise CheckError(
+            f"The configured tracker host {host!r} is not one this package knows ({names}), so the bucket "
             "it ingests from is unknown; set HCA_TRACKER_ENVIRONMENT to dev or prod. Nothing was uploaded"
         )
     return host, environment
@@ -271,17 +280,16 @@ def make_engine(
     console = Console(file=log, force_terminal=False, width=120) if log else Console(quiet=True)
 
     class ReportingSync(package.SmartSync):
-        """The engine, with its two per-file hooks forwarded to the callbacks."""
+        """The engine, with its per-file upload forwarded to the callbacks (the manifest goes up without a checksum)."""
 
         def _upload_file(self, local_path, s3_url, include_checksum=True, file_size=None):
-            if include_checksum and on_file_start:  # the manifest goes up without a checksum
-                on_file_start(Path(local_path).name)
-            return super()._upload_file(local_path, s3_url, include_checksum, file_size)
-
-        def _report_upload_success(self, filename, file_size, start_time):
-            super()._report_upload_success(filename, file_size, start_time)
-            if on_file_done and not filename.endswith(".json"):
-                on_file_done(filename, file_size)
+            name = Path(local_path).name
+            if include_checksum and on_file_start:
+                on_file_start(name)
+            ok = super()._upload_file(local_path, s3_url, include_checksum, file_size)
+            if ok and include_checksum and on_file_done:
+                on_file_done(name, file_size if file_size is not None else Path(local_path).stat().st_size)
+            return ok
 
     return ReportingSync(config, console=console)
 
@@ -326,6 +334,8 @@ def run_plan(engine: Any, directory: Path, url: str, profile: str, force: bool) 
 
 
 def _local_directory(local_path: str) -> str:
+    if not local_path.strip():
+        raise CheckError("local_path must name the folder to upload from")
     directory = Path(local_path).expanduser().resolve()
     if directory.is_file():
         raise CheckError(
@@ -360,6 +370,8 @@ class UploadJob:
     files: list[dict]
     log_path: str
     engine: str = DEFAULT_UPLOAD_ENGINE
+    profile_source: str = ""
+    up_to_date: list[str] = field(default_factory=list)
     state: str = QUEUED
     message: str | None = None
     files_done: list[str] = field(default_factory=list)
@@ -374,6 +386,10 @@ class UploadJob:
     @property
     def total_bytes(self) -> int:
         return sum(entry["size_bytes"] for entry in self.files)
+
+    @property
+    def target_record(self) -> Target:
+        return Target(self.environment, self.network, self.atlas, self.version, self.atlas_folder, self.file_type)
 
     @property
     def worker_marker(self) -> str:
@@ -549,7 +565,11 @@ class Uploads:
         return self._plan(network, atlas, file_type, local_path, generation, environment, force).describe()
 
     def _active_job_for(self, directory: str) -> UploadJob | None:
-        return next((job for job in self.store.all() if job.state in ACTIVE and job.local_path == directory), None)
+        """The job still running from ``directory``, after retiring any whose worker is gone."""
+        for job in self.store.all():
+            if job.state in ACTIVE and job.local_path == directory and self._refresh(job).state in ACTIVE:
+                return job
+        return None
 
     def start(
         self,
@@ -594,25 +614,28 @@ class Uploads:
                 target=plan.target.url,
                 local_path=plan.directory,
                 profile=plan.profile,
+                profile_source=plan.profile_source,
                 transfer_tool=plan.tool[0],
                 force=force,
                 files=plan.files,
+                up_to_date=plan.up_to_date,
                 log_path=str(self.store.directory / f"{job_id}.log"),
                 engine=self.config.upload_engine,
             )
             self.store.create(job)
             try:
                 pid = self._spawn(job)
-            except OSError as error:
-                self.store.end(job_id, FAILED, f"The upload worker could not be started: {error}")
-                raise CheckError(f"The upload worker could not be started, so nothing was uploaded: {error}") from None
+            except Exception as error:  # OSError, or NotImplementedError from a libc without setsid support
+                message = redact(f"The upload worker could not be started: {type(error).__name__}: {error}")
+                self.store.end(job_id, FAILED, message)
+                raise CheckError(f"{message}; nothing was uploaded") from None
             job = self.store.update(job_id, lambda current: setattr(current, "pid", pid)) or job
-        return {**self._describe(job), "up_to_date": plan.up_to_date, "warnings": described["warnings"]}
+        return {**self._describe(job), "warnings": described["warnings"]}
 
     def _already_uploading(self, directory: str) -> dict:
         job = self._active_job_for(directory)
         assert job is not None
-        return {**self._describe(self._refresh(job)), "message": f"Already uploading from {directory}"}
+        return {**self._describe(job), "message": f"Already uploading from {directory}"}
 
     def _spawn(self, job: UploadJob) -> int:
         """Start the worker in a session of its own, its output going to the job's log.
@@ -633,8 +656,21 @@ class Uploads:
             os.close(log)
 
     def _refresh(self, job: UploadJob) -> UploadJob:
-        """Mark a job whose worker has gone away without recording an outcome."""
-        if job.state in ACTIVE and job.pid and not worker_alive(job):
+        """Mark a job whose worker has gone away without recording an outcome.
+
+        A record with no pid is one whose spawn did not complete; ``start``
+        records that itself, so one still queued a minute later is a failed
+        spawn that nothing recorded.
+        """
+        if job.state not in ACTIVE:
+            return job
+        never_spawned = not job.pid and time.time() - job.created_at > SPAWN_GRACE_SECONDS
+        if never_spawned:
+            return (
+                self.store.end(job.job_id, INTERRUPTED, "The upload worker was never started; run start_upload again")
+                or job
+            )
+        if job.pid and not worker_alive(job):
             ended = self.store.end(
                 job.job_id,
                 INTERRUPTED,
@@ -649,20 +685,17 @@ class Uploads:
         result: dict = {
             "job_id": job.job_id,
             "state": job.state,
-            "environment": job.environment,
-            "target": job.target,
-            "network": job.network,
-            "atlas": job.atlas,
-            "version": job.version,
-            "file_type": job.file_type,
+            **job.target_record.describe(),
             "local_path": job.local_path,
             "profile": job.profile,
+            "profile_source": job.profile_source,
             "transfer_tool": job.transfer_tool,
             "force": job.force,
             "files": [_with_size(entry) for entry in job.files],
             "files_total": len(job.files),
             "files_done": len(job.files_done),
             "uploaded": job.files_done,
+            "up_to_date": job.up_to_date,
             "bytes_total": job.total_bytes,
             "bytes_done": job.bytes_done,
             "size_total": human_size(job.total_bytes),

@@ -108,12 +108,6 @@ def test_smart_sync_import_contract(tmp_path):
         "include_checksum",
         "file_size",
     ]
-    assert list(inspect.signature(SmartSync._report_upload_success).parameters) == [
-        "self",
-        "filename",
-        "file_size",
-        "start_time",
-    ]
     assert get_config_path() == Path.home() / ".hca-smart-sync" / "config.yaml"
     assert load_smart_sync_config(tmp_path / "missing.yaml") is None
 
@@ -234,6 +228,13 @@ def test_tracker_environment_by_host(cache_dir, tracker):
     assert tracker_environment(make_config(cache_dir, tracker, tracker_environment="prod")) == ("127.0.0.1", "prod")
     with pytest.raises(CheckError, match=r"host '127.0.0.1' is not one this package knows.*HCA_TRACKER_ENVIRONMENT"):
         tracker_environment(make_config(cache_dir, tracker))
+    with pytest.raises(
+        CheckError, match=r"HCA_TRACKER_ENVIRONMENT='prod' contradicts the configured tracker .*dev tracker"
+    ):
+        tracker_environment(make_config(cache_dir, tracker, tracker_url=DEV_URL, tracker_environment="prod"))
+    assert (
+        tracker_environment(make_config(cache_dir, tracker, tracker_url=DEV_URL, tracker_environment="dev"))[1] == "dev"
+    )
     with pytest.raises(ConfigError, match="HCA_TRACKER_URL must be set"):
         tracker_environment(make_config(cache_dir, tracker, tracker_url=None))
     assert set(TRACKER_HOSTS.values()) == set(BUCKETS)
@@ -367,6 +368,8 @@ def test_plan_refusals(uploads, staged, fake_s3, tmp_path):
         uploads.plan("gut", "gut", "source-datasets", str(staged / "a.h5ad"))
     with pytest.raises(CheckError, match="is not a folder"):
         uploads.plan("gut", "gut", "source-datasets", str(tmp_path / "nowhere"))
+    with pytest.raises(CheckError, match="local_path must name the folder to upload from"):
+        uploads.plan("gut", "gut", "source-datasets", "  ")
 
     empty = tmp_path / "empty"
     empty.mkdir()
@@ -395,6 +398,13 @@ def test_upload_end_to_end(uploads, staged, fake_s3):
     assert started["job_id"] and started["target"] == "s3://hca-atlas-tracker-data-dev/gut/gut-v1/source-datasets/"
     assert [f["name"] for f in started["files"]] == ["a.h5ad", "b.h5ad"], "the response carries the plan being run"
     assert (started["files_total"], started["bytes_total"], started["up_to_date"]) == (2, 50_000, [])
+    plan = uploads.plan("gut", "gut", "source-datasets", str(staged))
+    assert set(plan) - set(started) == {"total_bytes", "total_size"}, "start carries every key of the plan"
+    assert (started["atlas_folder"], started["prefix"], started["profile_source"]) == (
+        plan["atlas_folder"],
+        plan["prefix"],
+        plan["profile_source"],
+    )
 
     done = wait_for(uploads, started["job_id"], UPLOAD_ENDED, timeout=30)
     assert done["state"] == "done", done
@@ -467,6 +477,84 @@ def test_interrupted_worker(uploads, staged, monkeypatch):
     assert fresh.status(started["job_id"])["state"] == "interrupted"
     with pytest.raises(JobError, match="No upload job 'nope'"):
         fresh.status("nope")
+
+
+def test_interrupted_job_does_not_block_its_folder(uploads, staged, monkeypatch):
+    """A folder whose last job died is restarted, not reported as still uploading."""
+    monkeypatch.setenv("HCA_TRACKER_FAKE_S3_DELAY", "5")
+    started = uploads.start("gut", "gut", "source-datasets", str(staged))
+    wait_for(uploads, started["job_id"], ("uploading",), timeout=30)
+    job = uploads.store.load(started["job_id"])
+    assert job is not None and job.pid
+    os.kill(job.pid, signal.SIGKILL)
+    deadline = time.monotonic() + 10
+    while worker_alive(job) and time.monotonic() < deadline:
+        time.sleep(0.05)
+    monkeypatch.setenv("HCA_TRACKER_FAKE_S3_DELAY", "0")
+    again = uploads.start("gut", "gut", "source-datasets", str(staged))
+    assert again["job_id"] != started["job_id"] and again["state"] in ("queued", "uploading")
+    assert uploads.status(started["job_id"])["state"] == "interrupted"
+    assert wait_for(uploads, again["job_id"], UPLOAD_ENDED, timeout=30)["state"] == "done"
+
+
+def test_spawn_failure_is_recorded(uploads, staged, monkeypatch):
+    def broken(*args, **kwargs):
+        raise NotImplementedError("setsid")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(os, "posix_spawn", broken)
+        with pytest.raises(CheckError, match="The upload worker could not be started: NotImplementedError: setsid"):
+            uploads.start("gut", "gut", "source-datasets", str(staged))
+    (job,) = uploads.status()["jobs"]
+    assert job["state"] == "failed"
+    assert uploads.start("gut", "gut", "source-datasets", str(staged))["state"] in ("queued", "uploading")
+
+
+def test_record_without_a_pid_is_retired_after_the_grace_period(uploads, staged):
+    started = uploads.start("gut", "gut", "source-datasets", str(staged))
+    wait_for(uploads, started["job_id"], UPLOAD_ENDED, timeout=30)
+    job = uploads.store.load(started["job_id"])
+    assert job is not None
+    job.state, job.pid, job.created_at = "queued", None, time.time()
+    uploads.store._write(job)  # a record whose spawn never completed, as a crash between create and update leaves it
+    assert uploads.status(started["job_id"])["state"] == "queued"  # a fresh one is still within the grace period
+    job.created_at = time.time() - 120
+    uploads.store._write(job)
+    assert uploads.status(started["job_id"])["message"] == "The upload worker was never started; run start_upload again"
+    assert uploads.status(started["job_id"])["state"] == "interrupted"
+
+
+def test_worker_holds_the_plan_it_was_given(uploads, staged, fake_s3):
+    """The worker refuses a folder that changed since the plan, and reports files uploaded meanwhile as done."""
+    from hca_tracker_client import upload_worker
+
+    started = uploads.start("gut", "gut", "source-datasets", str(staged))
+    wait_for(uploads, started["job_id"], UPLOAD_ENDED, timeout=30)
+    job = uploads.store.load(started["job_id"])
+    assert job is not None and job.state == "done"
+
+    # Everything already in the bucket when the worker runs: done, not "0 of 2 uploaded".
+    job.state, job.files_done, job.bytes_done, job.finished_at, job.manifest_path = "queued", [], 0, None, None
+    uploads.store._write(job)
+    assert upload_worker.run(job.job_id, uploads.config.cache_dir) == 0
+    done = uploads.status(job.job_id)
+    assert (done["state"], done["message"]) == (
+        "done",
+        "Every file was already in the bucket with the same SHA-256; nothing to upload",
+    )
+
+    # A file added after the plan: refused, nothing uploaded.
+    make_file(staged / "c.h5ad", 1_000)
+    job.state, job.finished_at = "queued", None
+    uploads.store._write(job)
+    assert upload_worker.run(job.job_id, uploads.config.cache_dir) == 1
+    failed = uploads.status(job.job_id)
+    assert failed["state"] == "failed"
+    assert (
+        failed["message"]
+        == "The folder changed since the plan: new c.h5ad; nothing was uploaded. Run start_upload again"
+    )
+    assert not (fake_s3 / "hca-atlas-tracker-data-dev" / "gut/gut-v1/source-datasets" / "c.h5ad").exists()
 
 
 def test_worker_outlives_the_caller(uploads, staged, monkeypatch, fake_s3):

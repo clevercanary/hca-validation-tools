@@ -18,7 +18,8 @@ tools.
 - A tracker API token (read-only), created at `<tracker>/api-token`.
 - For uploads: `s5cmd` (`brew install peak/tap/s5cmd`) or the AWS CLI on
   `PATH`, and an AWS profile with access to the tracker bucket, saved with
-  `hca-smart-sync config` (or set as `HCA_AWS_PROFILE`). The server installs
+  `hca-smart-sync config` (or `HCA_AWS_PROFILE`, an override only this server
+  reads). The server installs
   `hca-smart-sync` itself; the CLI need not be installed.
 
 ## Configuration

@@ -22,6 +22,15 @@ def run(job_id: str, cache_dir: Path) -> int:
         print(f"No upload job {job_id!r} in {store.directory}", file=sys.stderr)
         return 2
     expected = {entry["name"] for entry in job.files}
+    present = {path.name for path in Path(job.local_path).glob("*.h5ad") if path.is_file()}
+    extra = sorted(present - expected - set(job.up_to_date))
+    if extra:  # the plan start() returned is the plan that runs; a changed folder needs a new one
+        store.end(
+            job_id,
+            FAILED,
+            f"The folder changed since the plan: new {', '.join(extra)}; nothing was uploaded. Run start_upload again",
+        )
+        return 1
 
     def started(name: str) -> None:
         store.update(job_id, lambda current: setattr(current, "current_file", name))
@@ -52,6 +61,9 @@ def run(job_id: str, cache_dir: Path) -> int:
     if result.get("error"):
         store.end(job_id, FAILED, f"hca-smart-sync reported {result['error']!r}", manifest)
         return 1
+    if result.get("all_up_to_date"):  # uploaded by someone else between the plan and now
+        store.end(job_id, DONE, "Every file was already in the bucket with the same SHA-256; nothing to upload")
+        return 0
     uploaded = set(result.get("files") or [])
     missing = sorted(expected - uploaded)
     if missing:

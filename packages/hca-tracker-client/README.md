@@ -89,11 +89,11 @@ directory (only `HCA_TRACKER_*` keys are read from it):
 The token and presigned download URLs are never logged, returned, or put in an
 error message.
 
-The AWS profile uploads sign with is not read from here. It is
-`hca-smart-sync`'s own setting, resolved as its CLI resolves it: `HCA_AWS_PROFILE`
-in the environment, else the `profile` saved by `hca-smart-sync config` in
-`~/.hca-smart-sync/config.yaml`, else `AWS_PROFILE`. With none set, uploads
-refuse.
+The AWS profile uploads sign with is not read from here. It is the `profile`
+saved by `hca-smart-sync config` in `~/.hca-smart-sync/config.yaml`, so this
+client and the CLI sign the same way; else `AWS_PROFILE`, which the AWS tools
+honour on their own. `HCA_AWS_PROFILE` is this package's own override, which
+the CLI does not read. With none set, uploads refuse.
 
 ## Usage
 
