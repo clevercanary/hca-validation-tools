@@ -13,6 +13,7 @@ import time
 from pathlib import Path
 
 from .api import TrackerClient, probe
+from .catalog import atlas_files
 from .checks import (
     check_space,
     check_writable,
@@ -26,7 +27,7 @@ from .config import Config
 from .daemon import Aria2, Aria2Error, connect, daemon_dir, ensure_daemon
 from .errors import AuthError, CheckError, ConfigError, JobError, TrackerError
 from .outcome import finalize, record_error
-from .selection import atlas_version, find_file, select_atlas
+from .selection import atlas_label, atlas_version, find_file, select_atlas
 from .store import (
     ACTIVE,
     CANCELLED,
@@ -243,11 +244,9 @@ class Downloads:
         tracker = self.tracker
         version_record = select_atlas(tracker.list_atlases(), network, atlas, generation, published)
         version = atlas_version(version_record)
-        label = f"{network}/{atlas} {version}"
+        label = atlas_label(network, atlas, version)
         atlas_id = version_record["id"]
-        files = [{**f, "kind": "integrated object"} for f in tracker.component_atlases(atlas_id)]
-        files += [{**f, "kind": "source dataset"} for f in tracker.source_datasets(atlas_id)]
-        entry = find_file(files, file, label)
+        entry = find_file(atlas_files(tracker, atlas_id), file, label)
 
         warnings = []
         integrity = entry.get("integrityStatus")

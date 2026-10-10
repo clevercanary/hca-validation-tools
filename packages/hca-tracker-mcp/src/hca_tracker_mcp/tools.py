@@ -3,13 +3,14 @@
 import contextlib
 import functools
 from collections.abc import Awaitable, Callable
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 import anyio
 from pydantic import Field
 
 from hca_tracker_client import (
     INTEGRATED,
+    MAX_MESSAGES,
     SOURCE,
     Downloads,
     TrackerClient,
@@ -18,8 +19,10 @@ from hca_tracker_client import (
     load_config,
     redact,
 )
+from hca_tracker_client import get_atlas as _get_atlas
 from hca_tracker_client import list_atlases as _list_atlases
 from hca_tracker_client import list_files as _list_files
+from hca_tracker_client import validation_report as _validation_report
 
 
 def _call(func: Callable[..., dict], *args: Any, **kwargs: Any) -> dict:
@@ -59,6 +62,7 @@ Generation = Annotated[
 ]
 Published = Annotated[bool, Field(description="Only consider published atlas versions.")]
 JobId = Annotated[str, Field(description="job_id returned by start_download.")]
+File = Annotated[str, Field(description="File name or file_id, from list_integrated_objects/list_source_datasets.")]
 
 
 @_tool
@@ -71,7 +75,15 @@ def list_atlases() -> dict:
 def list_integrated_objects(
     network: Network, atlas: Atlas, generation: Generation = None, published: Published = False
 ) -> dict:
-    """List an atlas version's integrated objects: name, size, file_id, integrity_status."""
+    """List an atlas version's integrated objects with their validation summary and CAP / Tier 1 status.
+
+    Per file: name, size, file_id, integrity_status, entry_id and kind (what get_validation_report takes), title,
+    cell_count, revision, wip_number, uploaded_at, is_archived, cap_url, validation_status,
+    validation_error_message, validation (overall_valid and, per validator cap / cellxgene / hca_schema /
+    hca_cell_annotation, valid, error_count, warning_count; null when validation produced no result),
+    tier1_status (VALID, INVALID, UNKNOWN) and cap_status (PUBLISHED, CAP_READY, CAP_VALIDATION_FAILED,
+    NEEDS_VALIDATION, INFO_REQUIRED, NOT_REQUIRED). Use get_validation_report for the messages behind the counts.
+    """
     return _list_files(_tracker(), network, atlas, INTEGRATED, generation, published)
 
 
@@ -79,15 +91,61 @@ def list_integrated_objects(
 def list_source_datasets(
     network: Network, atlas: Atlas, generation: Generation = None, published: Published = False
 ) -> dict:
-    """List an atlas version's source datasets: name, size, file_id, integrity_status."""
+    """List an atlas version's source datasets with their validation summary and CAP / Tier 1 status.
+
+    Per file: the same fields as list_integrated_objects, plus reprocessed_status, publication_status,
+    source_study_title and integrated_objects (the integrated objects using it). Use get_validation_report
+    for the messages behind the counts.
+    """
     return _list_files(_tracker(), network, atlas, SOURCE, generation, published)
+
+
+@_tool
+def get_atlas(network: Network, atlas: Atlas, generation: Generation = None, published: Published = False) -> dict:
+    """An atlas version's record: title, status (IN_PROGRESS, OC_ENDORSED), wave, target_completion,
+    cap_project_url, integration_leads (name, email, tracker_account, last_login), counts of source studies,
+    source datasets and integrated objects, ingestion_tasks per system (count, completed), publications.
+
+    tracker_account is active, disabled, or unknown when no tracker user has the lead's contact email; people
+    log in with a Google address that can differ from it, so unknown does not mean no account. last_login is
+    null when unknown or when the user has never logged in.
+    """
+    return _get_atlas(_tracker(), network, atlas, generation, published)
+
+
+@_tool
+def get_validation_report(
+    network: Network,
+    atlas: Atlas,
+    entry_id: Annotated[str, Field(description="entry_id from list_integrated_objects/list_source_datasets.")],
+    kind: Annotated[Literal["integrated", "source"], Field(description="kind from the same list row.")],
+    generation: Generation = None,
+    published: Published = False,
+    validator: Annotated[
+        Literal["cap", "cellxgene", "hca_schema", "hca_cell_annotation"] | None,
+        Field(description="Keep one validator's report only."),
+    ] = None,
+    max_messages: Annotated[
+        int, Field(ge=1, description="Most errors and most warnings returned per validator; the counts stay complete.")
+    ] = MAX_MESSAGES,
+) -> dict:
+    """The validators' error and warning messages for one file, by the entry_id and kind of its list row.
+
+    reports holds, per validator, valid, started_at, finished_at, error_count, warning_count, errors,
+    warnings and truncated (true when a list was cut to max_messages; a file can carry tens of thousands
+    of warnings). reports is null when validation never completed: a job_failed file has only
+    validation_error_message.
+    """
+    return _validation_report(
+        _tracker(), network, atlas, entry_id, kind, generation, published, validator, max_messages
+    )
 
 
 @_tool
 def start_download(
     network: Network,
     atlas: Atlas,
-    file: Annotated[str, Field(description="File name or file_id, from list_integrated_objects/list_source_datasets.")],
+    file: File,
     generation: Generation = None,
     published: Published = False,
     dest_dir: Annotated[str | None, Field(description="Folder to save to instead of the cache.")] = None,

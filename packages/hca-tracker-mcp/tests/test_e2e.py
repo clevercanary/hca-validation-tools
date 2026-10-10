@@ -19,6 +19,8 @@ TOOLS = {
     "list_atlases",
     "list_integrated_objects",
     "list_source_datasets",
+    "get_atlas",
+    "get_validation_report",
     "start_download",
     "download_status",
     "cancel_download",
@@ -32,12 +34,41 @@ TOOLS = {
 def tracker(tmp_path, monkeypatch):
     """A fake tracker with one atlas and one file, and the server configured for it."""
     with FakeTracker() as fake:
-        atlas_id = fake.add_atlas("gut", "gut", 1, 0, published=True)
+        atlas_id = fake.add_atlas(
+            "gut",
+            "gut",
+            1,
+            0,
+            published=True,
+            leads=[{"name": "Ann Lead", "email": "ann@example.org"}, {"name": "No Account", "email": "x@example.org"}],
+            sourceDatasetCount=1,
+            componentAtlasCount=1,
+        )
+        fake.add_user("Ann Lead", "ann@example.org", last_login="2026-03-01T10:00:00.000Z")
         data = tmp_path / "bucket" / "gut"
         data.parent.mkdir()
         data.write_bytes(os.urandom(500_000))
         fake.add_file(atlas_id, "gut.h5ad", data, integrity="pending")
-        fake.add_file(atlas_id, "src.h5ad", data, kind="source")
+        fake.add_file(
+            atlas_id,
+            "src.h5ad",
+            data,
+            kind="source",
+            validationStatus="completed",
+            reports={
+                "cap": {"valid": True},
+                "hcaSchema": {"valid": False, "errors": ["ERROR: e1"], "warnings": ["w1", "w2", "w3"]},
+            },
+            used_by=["gut.h5ad"],
+        )
+        fake.add_file(
+            atlas_id,
+            "broken.h5ad",
+            data,
+            kind="source",
+            validationStatus="job_failed",
+            validationErrorMessage="Dataset Validator failed: file signature not found",
+        )
         cache = tmp_path / "cache"
         monkeypatch.chdir(tmp_path)  # no stray .env
         monkeypatch.setenv("HCA_TRACKER_URL", fake.url)
@@ -73,6 +104,12 @@ async def test_registered_tools(client):
     assert "1 = v1.x" in params["generation"]["description"]
     assert "list_atlases" in params["network"]["description"]
     assert "confirm" not in tools["start_download"].inputSchema["properties"]
+    # The validator names the schema offers are the client's; a validator added there must be added here.
+    from hca_tracker_client.status import VALIDATORS
+
+    validator = tools["get_validation_report"].inputSchema["properties"]["validator"]
+    offered = next(option["enum"] for option in validator["anyOf"] if "enum" in option)
+    assert offered == list(VALIDATORS.values())
 
 
 @pytest.mark.asyncio
@@ -97,10 +134,68 @@ async def test_listing(client, tracker):
             "size": "500.0 KB",
             "file_id": "file-1",
             "integrity_status": "pending",
+            "entry_id": "entry-1",
+            "kind": "integrated",
+            "title": "gut",
+            "cell_count": 1000,
+            "revision": 1,
+            "wip_number": 1,
+            "uploaded_at": "2026-01-01T12:00:00.000Z",
+            "is_archived": False,
+            "cap_url": None,
+            "validation_status": "pending",
+            "validation_error_message": None,
+            "validation": None,
+            "tier1_status": "UNKNOWN",
+            "cap_status": "NEEDS_VALIDATION",
         }
     ]
     sources = await _call(client, "list_source_datasets", {"network": "gut", "atlas": "gut", "published": True})
-    assert [f["name"] for f in sources["files"]] == ["src.h5ad"]
+    assert [f["name"] for f in sources["files"]] == ["src.h5ad", "broken.h5ad"]
+    src, broken = sources["files"]
+    assert src["validation"]["validators"]["hca_schema"] == {"valid": False, "error_count": 1, "warning_count": 3}
+    assert src["validation"]["validators"]["cellxgene"] is None
+    assert (src["tier1_status"], src["cap_status"], src["integrated_objects"]) == ("INVALID", "CAP_READY", ["gut.h5ad"])
+    assert (broken["validation"], broken["tier1_status"], broken["cap_status"]) == (None, "UNKNOWN", "NEEDS_VALIDATION")
+    assert broken["validation_error_message"].startswith("Dataset Validator failed")
+
+
+@pytest.mark.asyncio
+async def test_atlas_record(client, tracker):
+    record = await _call(client, "get_atlas", {"network": "gut", "atlas": "gut"})
+    assert (record["version"], record["status"], record["counts"]["source_datasets"]) == ("v1.0", "IN_PROGRESS", 1)
+    assert record["integration_leads"] == [
+        {
+            "name": "Ann Lead",
+            "email": "ann@example.org",
+            "tracker_account": "active",
+            "last_login": "2026-03-01T10:00:00.000Z",
+        },
+        {"name": "No Account", "email": "x@example.org", "tracker_account": "unknown", "last_login": None},
+    ]
+    assert record["ingestion_tasks"]["cap"] == {"count": 0, "completed": 0}
+
+
+@pytest.mark.asyncio
+async def test_validation_report(client, tracker):
+    args = {"network": "gut", "atlas": "gut", "entry_id": "entry-2", "kind": "source"}
+    report = await _call(client, "get_validation_report", args)
+    assert (report["file"], report["kind"], report["validation_status"]) == ("src.h5ad", "source", "completed")
+    assert report["reports"]["hca_schema"]["warnings"] == ["w1", "w2", "w3"]
+    assert report["reports"]["hca_schema"]["truncated"] is False
+    assert report["reports"]["cellxgene"] is None
+
+    capped = await _call(client, "get_validation_report", {**args, "validator": "hca_schema", "max_messages": 1})
+    assert list(capped["reports"]) == ["hca_schema"]
+    assert capped["reports"]["hca_schema"]["warnings"] == ["w1"]
+    assert (capped["reports"]["hca_schema"]["warning_count"], capped["reports"]["hca_schema"]["truncated"]) == (3, True)
+
+    failed = await _call(client, "get_validation_report", {**args, "entry_id": "entry-3"})
+    assert (failed["validation_status"], failed["reports"]) == ("job_failed", None)
+    assert failed["validation_error_message"] == "Dataset Validator failed: file signature not found"
+
+    unknown = await _call(client, "get_validation_report", {**args, "entry_id": "entry-9"})
+    assert unknown["error"].startswith("No source dataset 'entry-9' in gut/gut v1.0")
 
 
 @pytest.mark.asyncio
@@ -152,8 +247,9 @@ async def test_download_flow(client, tracker):
     assert environment["cache_dir"]["writable"] is True
     assert environment["tracker"] == {"url": tracker.url, "reachable": True, "token_valid": True}
 
-    # Nothing any tool returned carries the token or a presigned URL. Only
-    # check_environment names a URL at all: the tracker's base URL.
+    # Nothing any tool returned carries the token or a presigned URL. The
+    # only URLs are the tracker's base URL (check_environment) and public
+    # CAP links, which no fixture here sets.
     text = "\n".join(OUTPUTS)
     assert tracker.token not in text
     assert "X-Amz" not in text

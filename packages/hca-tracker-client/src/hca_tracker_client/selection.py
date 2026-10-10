@@ -8,10 +8,20 @@ ambiguous when another network adds the same slug.
 
 from .errors import SelectionError
 
+INTEGRATED = "integrated"
+SOURCE = "source"
+# How each kind of file is named in messages and results.
+KIND_LABELS = {INTEGRATED: "integrated object", SOURCE: "source dataset"}
+
 
 def atlas_version(atlas: dict) -> str:
     """The display version of an atlas, e.g. ``v1.2``."""
     return f"v{atlas['generation']}.{atlas['revision']}"
+
+
+def atlas_label(network: str, atlas: str, version: str) -> str:
+    """How messages name an atlas version, e.g. ``lung/adipose v1.2``."""
+    return f"{network}/{atlas} {version}"
 
 
 def _pairs(atlases: list[dict]) -> list[str]:
@@ -59,6 +69,11 @@ def select_atlas(
     return max(versions, key=lambda a: (a["generation"], a["revision"]))
 
 
+def _kind_label(entry: dict) -> str:
+    kind = entry.get("kind") or "file"
+    return KIND_LABELS.get(kind, kind)
+
+
 def find_file(files: list[dict], file: str, label: str) -> dict:
     """Find a file by its exact ``fileName`` or its ``fileId``.
 
@@ -70,7 +85,7 @@ def find_file(files: list[dict], file: str, label: str) -> dict:
     if len(matches) == 1:
         return matches[0]
     if len(matches) > 1:
-        options = ", ".join(f"{f['fileId']} ({f.get('kind', 'file')})" for f in matches)
+        options = ", ".join(f"{f['fileId']} ({_kind_label(f)})" for f in matches)
         raise SelectionError(f"Several files in {label} match {file!r}: {options}. Pass one of these file_ids instead")
     names = sorted(str(f.get("fileName") or f["fileId"]) for f in files if f.get("fileId"))
     raise SelectionError(f"No file {file!r} in {label}. Files: {', '.join(names) or '(none)'}")

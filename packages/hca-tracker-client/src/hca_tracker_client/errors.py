@@ -13,7 +13,11 @@ def redact(text: str, *secrets: str | None) -> str:
 
 
 class TrackerError(Exception):
-    pass
+    """A tracker API call failed; ``status`` is the HTTP status when the tracker answered."""
+
+    def __init__(self, message: str, status: int | None = None):
+        super().__init__(message)
+        self.status = status
 
 
 class ConfigError(TrackerError):
