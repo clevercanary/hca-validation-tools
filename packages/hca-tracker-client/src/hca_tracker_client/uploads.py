@@ -37,7 +37,7 @@ from urllib.parse import urlparse
 from .api import TrackerClient
 from .checks import human_duration, human_size, version_output
 from .config import DEFAULT_UPLOAD_ENGINE, ENVIRONMENTS, Config
-from .daemon import process_matches
+from .daemon import group_commands, process_matches
 from .errors import CheckError, ConfigError, JobError, redact
 from .selection import atlas_label, atlas_version, select_atlas
 from .store import RecordStore
@@ -449,18 +449,28 @@ class UploadStore(RecordStore[UploadJob]):
 
 
 def worker_alive(job: UploadJob) -> bool:
-    """Whether the job's worker process is still running.
+    """Whether the job's worker, or a transfer it started, is still running.
 
     A worker this process spawned is reaped here once it has exited; otherwise
     it would stay a zombie that looks alive. A pid that now belongs to some
-    other program (after a reboot, say) does not count as the worker.
+    other program (after a reboot, say) does not count as the worker. The
+    worker leads its own process group, so a transfer tool it started outlives
+    a killed worker inside that group; while any member remains, the upload is
+    still in flight and the job stays active rather than being retired under it.
     """
     if not job.pid:
         return False
     with contextlib.suppress(ChildProcessError):
         if os.waitpid(job.pid, os.WNOHANG) != (0, 0):
-            return False
-    return process_matches(job.pid, job.worker_marker)
+            pass  # reaped; its group may still hold the transfer
+    if process_matches(job.pid, job.worker_marker):
+        return True
+    return bool(group_commands(job.pid))
+
+
+def worker_environment() -> dict[str, str]:
+    """The worker's environment: this process's, without the tracker token it and the transfer tools never need."""
+    return {key: value for key, value in os.environ.items() if key != "HCA_TRACKER_API_TOKEN"}
 
 
 def last_progress_line(log_path: str, tail: int = 4096) -> str | None:
@@ -592,7 +602,9 @@ class Uploads:
 
         Every check ``start`` makes runs here too: the tracker and the bucket
         agree, the atlas resolves and hca-smart-sync knows it, a profile is
-        configured, and it can list the target.
+        configured, and it can list the target. One difference: a missing
+        transfer tool is a warning here, so the plan is still shown, where
+        ``start`` refuses.
         """
         return self._plan(network, atlas, file_type, local_path, generation, environment, force).describe()
 
@@ -686,7 +698,7 @@ class Uploads:
                 (os.POSIX_SPAWN_DUP2, log, 1),
                 (os.POSIX_SPAWN_DUP2, log, 2),
             ]
-            return os.posix_spawn(sys.executable, argv, dict(os.environ), file_actions=actions)
+            return os.posix_spawn(sys.executable, argv, worker_environment(), file_actions=actions)
         finally:
             os.close(log)
 
@@ -766,11 +778,16 @@ def upload_report(config: Config) -> dict:
     except ConfigError as error:
         smart_sync_report = {"ok": False, "error": str(error)}
 
-    tools: dict = {tool: {"ok": shutil.which(tool) is not None} for tool in TRANSFER_TOOLS}
+    tools: dict = {}
+    for tool in TRANSFER_TOOLS:
+        path = shutil.which(tool)
+        tools[tool] = {"ok": path is not None}
+        if path:
+            tools[tool] |= {
+                "path": path,
+                "version": version_output(path, "version" if tool == "s5cmd" else "--version"),
+            }
     selected = transfer_tool()
-    if selected:  # only the tool the engine would use is asked for its version (aws takes a third of a second)
-        tool, path = selected
-        tools[tool] |= {"path": path, "version": version_output(path, "version" if tool == "s5cmd" else "--version")}
     tools["selected"] = selected[0] if selected else None
 
     profile: str | None = None

@@ -230,7 +230,9 @@ def plan_upload(
     atlas resolves and hca-smart-sync knows it under the same bionetwork, an AWS profile is configured (from
     hca-smart-sync's own settings), and the profile can list the target. Returns target (bucket and prefix,
     no credentials), profile, transfer_tool (s5cmd or aws), files (name, size, sha256, reason: new, changed or
-    forced), up_to_date (files already in the bucket unchanged, which are skipped) and warnings.
+    forced), up_to_date (files already in the bucket unchanged, which are skipped) and warnings. One difference
+    from start_upload: a missing transfer tool (s5cmd or aws) is a warning here, so the plan is still shown,
+    where start_upload refuses.
     """
     return Uploads(load_config()).plan(network, atlas, file_type, local_path, generation, environment, force)
 

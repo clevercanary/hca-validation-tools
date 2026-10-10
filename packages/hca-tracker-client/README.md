@@ -167,7 +167,9 @@ compared with the bucket, and a manifest written beside them. So does
 `Uploads`; stage the files you mean to upload in a folder of their own.
 
 `plan()` and `start()` run the same checks, in this order, before anything
-touches the bucket:
+touches the bucket (with one difference: a missing transfer tool, `s5cmd` or
+`aws`, is a warning on the plan, so you still see what would upload, and a
+refusal on `start()`):
 
 1. The bucket matches the tracker. `environment` picks the bucket (`dev`,
    the default, is `hca-atlas-tracker-data-dev`; `prod` is

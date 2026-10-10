@@ -1,5 +1,6 @@
 """Uploads: the target path, the trust boundary, the plan, and the detached worker, over a fake engine."""
 
+import contextlib
 import inspect
 import json
 import os
@@ -636,6 +637,61 @@ def test_upload_records_are_not_downloads(uploads, staged):
     assert uploads.status(started["job_id"])["state"] == "done"
 
 
+def test_worker_environment_has_no_token(monkeypatch):
+    monkeypatch.setenv("HCA_TRACKER_API_TOKEN", "secret")
+    monkeypatch.setenv("HCA_TRACKER_FAKE_S3", "/s3")
+    env = module.worker_environment()
+    assert "HCA_TRACKER_API_TOKEN" not in env and env["HCA_TRACKER_FAKE_S3"] == "/s3"
+
+
+def test_job_stays_active_while_the_transfer_outlives_the_worker(uploads):
+    """A killed worker's group still holds its transfer subprocess; the job is not retired under it."""
+    from hca_tracker_client.daemon import group_commands
+    from hca_tracker_client.uploads import UploadJob
+
+    leader = os.posix_spawn(
+        sys.executable,
+        [
+            sys.executable,
+            "-c",
+            "import os,subprocess,time; os.setsid(); subprocess.Popen(['sleep', '30']); time.sleep(30)",
+        ],
+        os.environ,
+    )
+    try:
+        deadline = time.monotonic() + 10
+        while not any("sleep 30" in command for command in group_commands(leader)) and time.monotonic() < deadline:
+            time.sleep(0.05)
+        os.kill(leader, signal.SIGKILL)
+        os.waitpid(leader, 0)
+        assert [command for command in group_commands(leader) if "sleep 30" in command]
+        job = UploadJob(
+            "x",
+            "gut",
+            "gut",
+            "v1.0",
+            "gut-v1",
+            "source-datasets",
+            "dev",
+            "s3://b/p/",
+            "/d",
+            "p",
+            "s5cmd",
+            False,
+            [],
+            "/l",
+        )
+        job.pid = leader
+        assert worker_alive(job) is True, "the transfer is still running"
+    finally:
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(leader, signal.SIGKILL)
+    deadline = time.monotonic() + 10
+    while group_commands(leader) and time.monotonic() < deadline:
+        time.sleep(0.05)
+    assert worker_alive(job) is False
+
+
 def test_store_never_rewrites_a_finished_record(cache_dir):
     store = UploadStore(cache_dir)
     assert store.update("nope", lambda job: None) is None
@@ -664,8 +720,10 @@ def test_environment_report(uploads, fake_s3, profile, monkeypatch):
     assert report["smart_sync"]["ok"] is True and report["smart_sync"]["version"].startswith("0.4.")
     assert set(report["transfer_tools"]) == {"s5cmd", "aws", "selected"}
     selected = report["transfer_tools"]["selected"]
-    if selected:
-        assert report["transfer_tools"][selected]["ok"] and report["transfer_tools"][selected]["path"]
+    for tool in ("s5cmd", "aws"):  # every installed tool is reported with its path and version (#738)
+        entry = report["transfer_tools"][tool]
+        assert set(entry) == ({"ok", "path", "version"} if entry["ok"] else {"ok"})
+    assert selected == next((tool for tool in ("s5cmd", "aws") if report["transfer_tools"][tool]["ok"]), None)
     assert report["profile"] == {
         "ok": True,
         "name": "team-profile",

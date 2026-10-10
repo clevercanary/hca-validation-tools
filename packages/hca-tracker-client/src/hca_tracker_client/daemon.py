@@ -181,6 +181,17 @@ def process_matches(pid: int, marker: str) -> bool:
     return marker in result.stdout
 
 
+def group_commands(pgid: int) -> list[str]:
+    """The command lines of every live process in process group ``pgid``."""
+    result = subprocess.run(["ps", "-A", "-o", "pgid=,args="], capture_output=True, text=True)
+    commands = []
+    for line in result.stdout.splitlines():
+        group, _, args = line.strip().partition(" ")
+        if group.isdigit() and int(group) == pgid:
+            commands.append(args.strip())
+    return commands
+
+
 def _is_daemon(directory: Path, pid: int) -> bool:
     """True if pid is the aria2c started with this folder's config."""
     return process_matches(pid, f"--conf-path={directory / CONF}")
