@@ -157,7 +157,8 @@ some columns must sit below a given parent term. Every problem here is an error.
 
 *[HCA override](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/README.md#hca-overrides)*
 
-- Non-zero values are 32-bit floats.
+- Non-zero values in the raw matrix (`raw.X`, or `X` when there is no
+  `raw.X`) are 32-bit floats.
 - Matrices are dense or CSR (compressed sparse row). CSR is required when more
   than half the values are zero.
 - Non-zero raw counts are whole positive numbers.
@@ -204,17 +205,6 @@ some columns must sit below a given parent term. Every problem here is an error.
 - No two cells have identical raw counts. For Visium, spots outside the tissue
   are left out of this check.
 
-### ATAC-seq fragment files
-
-These checks run when an ATAC-seq fragment file is validated alongside the
-h5ad.
-
-- The organism is human or mouse, and every cell is primary data.
-- Each fragment sits on a valid chromosome for the organism, within that
-  chromosome's length, with a start before its end and at least one supporting
-  read.
-- No fragment is repeated, and every barcode is a cell in `obs`.
-
 ## HCA overrides
 
 HCA replaces some CELLxGENE rules with its own.
@@ -256,10 +246,10 @@ HCA adds checks that CELLxGENE does not have.
 
 ### Expression matrices
 
-An HCA file holds up to three matrices, and the validator checks that they
+HCA expects up to three matrices in a file, and the validator checks that they
 agree with each other.
 
-| Matrix | Required | Holds |
+| Matrix | Expected | Holds |
 |---|---|---|
 | `raw.X` | Yes | Raw counts as 32-bit floats, with only empty droplets removed |
 | `layers['desouped_counts']` | When ambient RNA was removed | The counts left after ambient RNA removal |
@@ -309,10 +299,11 @@ What is checked, in this order. The first problem found is the one reported.
 
 Notes:
 
+- A file with raw counts in `X` and no `raw.X` is not rejected for the missing
+  matrix. The CELLxGENE rules give a warning that normalized data is strongly
+  recommended, and none of the checks in this section run.
 - Checks 1 to 4 scan the whole matrices. Checks 5 to 9 use the first 200 cells,
   because each cell is checked on its own.
-- Nothing here runs when `raw.X` is missing. The CELLxGENE raw count checks
-  report that.
 - These checks run for every assay. ATAC-seq and methylation assays are not
   exempt yet, and HCA does not accept them today.
 - `desouped_counts` is not yet checked as counts in its own right (data type,
