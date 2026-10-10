@@ -182,7 +182,10 @@ def test_smart_sync_import_contract(tmp_path):
     engine._s3_client = Current()
     result = engine.sync(tmp_path, "s3://b/p/q/")
     assert (result["all_up_to_date"], result["files_uploaded"], result["files_to_upload"]) == (True, 0, [])
-    assert "files" not in result, "the worker reads files_to_upload, not files, to tell skipped from attempted"
+    # No "files" key on this path. The worker reads "files" (what this run uploaded) and counts the rest of
+    # the plan as not uploaded; one uploader per atlas, so a planned file skipped as already current is not
+    # a case it handles (declined in the review of #738).
+    assert "files" not in result
 
 
 def test_prefix_matches_the_cli_for_every_known_atlas():
