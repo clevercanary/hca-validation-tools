@@ -4,13 +4,16 @@ Validates single-cell data files in h5ad format (the
 [AnnData](https://anndata.readthedocs.io/) file format) against the Human Cell
 Atlas (HCA) metadata schema.
 
-- **Extends CELLxGENE.** This package extends the CELLxGENE schema validator
+The checks fall into three groups:
+
+- **Core CELLxGENE checks.** This package extends the CELLxGENE schema validator
   from the Chan Zuckerberg Initiative (CZI). A copy of the CELLxGENE validator
-  (`cellxgene-schema` 7.0.1) ships with the package.
-- **CELLxGENE rules run, with HCA overrides.** HCA overrides some CELLxGENE
-  rules and adds checks of its own.
-- **Errors and warnings.** Errors fail a file. Warnings do not fail a file, but
-  flag something to review or fix.
+  (`cellxgene-schema` 7.0.1) ships with the package and runs on every file.
+- **HCA overrides.** HCA replaces some CELLxGENE rules with its own.
+- **HCA extensions.** HCA adds checks that CELLxGENE does not have.
+
+Errors fail a file. Warnings do not fail a file, but flag something to review
+or fix.
 
 ## Installation
 
@@ -74,7 +77,7 @@ The full list of rules is in the
 - **`raw.X`**: the raw count matrix
 - **`obsm`**: cell embeddings, such as UMAP coordinates
 
-### CELLxGENE checks
+### Core CELLxGENE checks
 
 CELLxGENE is CZI's single-cell data portal, and the CELLxGENE schema defines
 what the portal accepts. The CELLxGENE validator checks:
@@ -134,7 +137,7 @@ what the portal accepts. The CELLxGENE validator checks:
 
 [All HCA overrides](https://github.com/clevercanary/hca-validation-tools/blob/main/docs/dataset-validator-checks.md#4-hca-schema-validator-hcavalidator)
 
-### HCA checks
+### HCA extensions
 
 - **Expression matrices.** `X` must be derived from `raw.X` (or from the
   ambient-RNA-corrected counts in `layers['desouped_counts']`, when present) by
