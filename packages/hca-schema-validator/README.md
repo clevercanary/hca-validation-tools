@@ -226,8 +226,8 @@ HCA replaces some CELLxGENE rules with its own.
     - **required** (the default): an error when missing
     - **optional**: checked only when present
     - **strongly recommended**: a warning when the column is absent or has
-      missing values, and an error for an empty string, a value holding a list
-      separator such as `,` or `;`, or a placeholder
+      missing values, and an error for a value holding a list separator such as
+      `,` or `;`, or a placeholder
     - **forbidden**: an error when present. Self-reported ethnicity is
       forbidden, because HCA does not collect it, to protect donor privacy.
   - Some fields must match a set format, and list fields must hold non-empty
@@ -244,7 +244,8 @@ HCA replaces some CELLxGENE rules with its own.
   ([Gene IDs outside the allowed gene set](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/README.md#gene-ids-outside-the-allowed-gene-set)).
 - **Raw count checks.** CELLxGENE skips the raw count checks when a file already
   has errors. HCA runs them anyway, as long as `obs` has
-  `assay_ontology_term_id`, so one pass shows more problems.
+  `assay_ontology_term_id` and the assay needs raw counts (ATAC-seq and
+  methylation assays are exempt), so one pass shows more problems.
 - **Extra `obs` columns.** Curators often add columns of their own, such as an
   original cell type. Columns that are not in the schema skip the per-column
   type and value checks, so warnings about columns the schema says nothing about
@@ -394,7 +395,7 @@ Two comparisons:
   version suffix such as `.18`) are matched. Gorilla
   IDs start with `ENSGGOG` and would pass a looser test. Spike-ins, other
   species and custom genes are left out, and their count is mentioned next to
-  any finding.
+  most findings.
 - The declared organism only controls the assembly comparison, because Ensembl
   numbers its releases across all species: release 110 means GRCh38 only for a
   human file. Release matching still runs, because an `ENSG` ID is a human gene
@@ -539,7 +540,8 @@ A gene Ensembl added after the allowed gene set was made appears in the gene
 presence table but not in the allowed gene set, and gets the `[none]` tag.
 
 <!-- Maintainers: these versions are typed by hand, here and elsewhere in this
-README (search for "v48", "114" and "116", including the example output). Update
+README (search for "v48", "114", "116" and "7.0.1", including the example
+output). Update
 them when cellxgene-schema is upgraded or either table is regenerated. -->
 
 ## Developing
