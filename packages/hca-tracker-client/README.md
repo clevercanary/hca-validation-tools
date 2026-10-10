@@ -225,6 +225,14 @@ worker dies without recording an outcome, `status()` reports the job
 `interrupted`. Either way, `start()` again plans only what the bucket still
 lacks.
 
+The plan `start()` returned is the plan the worker runs: it refuses a folder
+in which any `.h5ad` was added, removed, or changed since, judged by name,
+size and modification time. That check reads no file content, so an edit
+that keeps both the size and the modification time is not seen, and the
+engine would then upload bytes other than the SHA-256 the plan showed (the
+limit rsync and the `hca-smart-sync` CLI share). Re-hashing at transfer time
+is the subject of #741.
+
 **Closing the loop.** Once the tracker has ingested the file, `list_files()`
 shows its new revision (`uploaded_at`, `wip_number`) and `validation_report()`
 the validators' verdict.

@@ -15,7 +15,7 @@ import pytest
 from hca_tracker_client import CheckError, ConfigError, JobError, Uploads, environment_report, load_config
 from hca_tracker_client import uploads as module
 from hca_tracker_client.testing import fake_s3 as make_fake_s3
-from hca_tracker_client.testing import save_profile
+from hca_tracker_client.testing import save_profile, sha256_of
 from hca_tracker_client.uploads import (
     BUCKETS,
     TRACKER_HOSTS,
@@ -159,6 +159,30 @@ def test_smart_sync_import_contract(tmp_path):
 
     engine._s3_client = Denied()
     assert engine.sync(tmp_path, "s3://b/p/q/", plan_only=True)["error"] == "access_denied"
+
+    # The full run's result, with only the transfer stubbed: the keys the worker reads.
+    engine._s3_client = S3()
+    make_file(tmp_path / "x.h5ad", 10)
+    transfers: list[tuple[str, str, bool]] = []
+    engine._upload_file = lambda local_path, s3_url, include_checksum=True, file_size=None: (
+        transfers.append((Path(local_path).name, s3_url, include_checksum)) or True
+    )
+    result = engine.sync(tmp_path, "s3://b/p/q/")
+    assert (result["files_uploaded"], result["files"]) == (1, ["x.h5ad"])
+    assert [entry["filename"] for entry in result["files_to_upload"]] == ["x.h5ad"]
+    assert Path(result["manifest_path"]).parent == tmp_path and Path(result["manifest_path"]).exists()
+    assert transfers[0] == ("x.h5ad", "s3://b/p/q/x.h5ad", True)
+    assert transfers[1][1].startswith("s3://b/p/manifests/manifest-") and transfers[1][2] is False
+    assert "error" not in result and "all_up_to_date" not in result
+
+    class Current(S3):
+        def head_object(self, **kwargs):
+            return {"Metadata": {"source-sha256": sha256_of(tmp_path / "x.h5ad")}, "ContentLength": 10}
+
+    engine._s3_client = Current()
+    result = engine.sync(tmp_path, "s3://b/p/q/")
+    assert (result["all_up_to_date"], result["files_uploaded"], result["files_to_upload"]) == (True, 0, [])
+    assert "files" not in result, "the worker reads files_to_upload, not files, to tell skipped from attempted"
 
 
 def test_prefix_matches_the_cli_for_every_known_atlas():
