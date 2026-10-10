@@ -9,6 +9,7 @@ import anyio
 from pydantic import Field
 
 from hca_tracker_client import (
+    DEV,
     INTEGRATED,
     MAX_MESSAGES,
     SOURCE,
@@ -220,7 +221,7 @@ def plan_upload(
     file_type: FileType,
     local_path: LocalPath,
     generation: Generation = None,
-    environment: Environment = "dev",
+    environment: Environment = DEV,
     force: Force = False,
 ) -> dict:
     """What start_upload would upload from a folder, with no side effects; safe to call freely.
@@ -241,7 +242,7 @@ def start_upload(
     file_type: FileType,
     local_path: LocalPath,
     generation: Generation = None,
-    environment: Environment = "dev",
+    environment: Environment = DEV,
     force: Force = False,
 ) -> dict:
     """Plan, then upload the folder's new and changed .h5ad files in the background; returns job_id at once.

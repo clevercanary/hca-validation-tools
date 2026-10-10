@@ -1,6 +1,6 @@
 """Uploading curated h5ad files to the tracker's bucket with hca-smart-sync's engine.
 
-The tracker ingests whatever lands under ``s3://<bucket>/<bionetwork>/<atlas>/<file-type>/``;
+The tracker ingests whatever lands under ``s3://<bucket>/<bionetwork>/<atlas-folder>/<file-type>/``;
 atlas teams put files there with the ``hca-smart-sync`` CLI. This module drives that CLI's
 engine (``hca_smart_sync.sync_engine.SmartSync``) and replaces only its terminal front end,
 so a file uploaded here lands exactly where the CLI would put it: the bucket names, the
@@ -19,31 +19,30 @@ Uploads are an AWS-credential action against a shared bucket, so:
 """
 
 import contextlib
-import importlib
 import io
 import os
+import pkgutil
 import re
 import secrets
 import shutil
-import subprocess
 import sys
 import tempfile
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, TextIO
 from urllib.parse import urlparse
 
 from .api import TrackerClient
-from .checks import human_duration, human_size
-from .config import DEFAULT_UPLOAD_ENGINE, Config
-from .errors import CheckError, ConfigError, JobError
+from .checks import human_duration, human_size, version_output
+from .config import DEFAULT_UPLOAD_ENGINE, ENVIRONMENTS, Config
+from .daemon import process_matches
+from .errors import CheckError, ConfigError, JobError, redact
 from .selection import atlas_label, atlas_version, select_atlas
 from .store import RecordStore
 
-DEV = "dev"
-PROD = "prod"
+DEV, PROD = ENVIRONMENTS
 # The buckets the hca-smart-sync CLI hardcodes per --environment (``sync`` in
 # hca_smart_sync.cli). The engine takes any ``s3://`` URL, so these are what
 # keep an upload landing where the CLI's would; test_uploads.py pins them.
@@ -69,6 +68,8 @@ INTERRUPTED = "interrupted"
 ACTIVE = (QUEUED, UPLOADING)
 
 _ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
+# One s5cmd progress frame: "42.81%  ━━━───  8.98 MB / 20.97 MB (6.74 MB/s) 1s left (0/1)".
+_S5CMD_FRAME = re.compile(r"\d{1,3}\.\d{2}%\s+\S+\s+.*?\(\d+/\d+\)")
 
 
 def smart_sync() -> Any:
@@ -108,20 +109,18 @@ def resolve_profile(environ: dict[str, str] | None = None) -> tuple[str, str]:
     )
 
 
-def tracker_environment(config: Config) -> str:
-    """Which environment (``dev`` or ``prod``) the configured tracker belongs to, by its host."""
-    if config.tracker_environment:
-        return config.tracker_environment
-    config.require_tracker()  # a missing HCA_TRACKER_URL is named as such, not as an unknown host
-    host = urlparse(config.tracker_url or "").hostname
-    environment = TRACKER_HOSTS.get(host or "")
+def tracker_environment(config: Config) -> tuple[str, str]:
+    """The configured tracker's host and which environment (``dev`` or ``prod``) it belongs to."""
+    url, _ = config.require_tracker()
+    host = urlparse(url).hostname or ""
+    environment = config.tracker_environment or TRACKER_HOSTS.get(host)
     if environment is None:
         known = ", ".join(f"{name} ({env})" for name, env in TRACKER_HOSTS.items())
         raise CheckError(
             f"The configured tracker host {host!r} is not one this package knows ({known}), so the bucket "
             "it ingests from is unknown; set HCA_TRACKER_ENVIRONMENT to dev or prod. Nothing was uploaded"
         )
-    return environment
+    return host, environment
 
 
 def bucket_for(environment: str) -> str:
@@ -153,11 +152,13 @@ def s3_prefix(bionetwork: str, folder: str, file_type: str) -> str:
 
 @dataclass(frozen=True)
 class Target:
-    """Where an upload goes: a bucket and the atlas's prefix in it."""
+    """Where an upload goes: an atlas version's folder in one environment's bucket.
+
+    The bionetwork in the prefix is the tracker's ``network``; ``resolve_target``
+    has checked that hca-smart-sync's map agrees before building one of these.
+    """
 
     environment: str
-    bucket: str
-    prefix: str
     network: str
     atlas: str
     version: str
@@ -165,21 +166,19 @@ class Target:
     file_type: str
 
     @property
+    def bucket(self) -> str:
+        return BUCKETS[self.environment]
+
+    @property
+    def prefix(self) -> str:
+        return s3_prefix(self.network, self.atlas_folder, self.file_type)
+
+    @property
     def url(self) -> str:
         return f"s3://{self.bucket}/{self.prefix}"
 
     def describe(self) -> dict:
-        return {
-            "environment": self.environment,
-            "bucket": self.bucket,
-            "prefix": self.prefix,
-            "target": self.url,
-            "network": self.network,
-            "atlas": self.atlas,
-            "version": self.version,
-            "atlas_folder": self.atlas_folder,
-            "file_type": self.file_type,
-        }
+        return {**asdict(self), "bucket": self.bucket, "prefix": self.prefix, "target": self.url}
 
 
 def resolve_target(
@@ -193,7 +192,7 @@ def resolve_target(
     folder names the selected revision, and a published one is refused: the
     tracker rejects uploads to it, after the transfer, in its own log.
     """
-    bucket = bucket_for(environment)
+    bucket_for(environment)
     if file_type not in FILE_TYPES:
         raise CheckError(f"file_type must be one of {', '.join(FILE_TYPES)}, got {file_type!r}")
     version = select_atlas(atlases, network, atlas, generation)
@@ -217,27 +216,32 @@ def resolve_target(
             f"Atlas version {label} is published, and the tracker refuses uploads to a published version. "
             "Create its next revision in the tracker (a draft) and upload again; nothing was uploaded"
         )
-    folder = atlas_folder(atlas, version["generation"], version["revision"])
     return Target(
         environment=environment,
-        bucket=bucket,
-        prefix=s3_prefix(mapped, folder, file_type),
         network=network,
         atlas=atlas,
         version=atlas_version(version),
-        atlas_folder=folder,
+        atlas_folder=atlas_folder(atlas, version["generation"], version["revision"]),
         file_type=file_type,
     )
 
 
-def transfer_tool() -> str | None:
-    """The transfer tool the engine will pick: ``s5cmd`` if present, else ``aws``, else ``None``."""
-    return next((tool for tool in TRANSFER_TOOLS if shutil.which(tool)), None)
+def transfer_tool() -> tuple[str, str] | None:
+    """The transfer tool the engine will pick and its path: ``s5cmd`` if present, else ``aws``, else ``None``."""
+    for tool in TRANSFER_TOOLS:
+        path = shutil.which(tool)
+        if path:
+            return tool, path
+    return None
 
 
-# The engine factory: (profile, log, on_file_start, on_file_done) -> an object with
-# SmartSync.sync's signature. Tests swap in hca_tracker_client.testing.fake_engine.
-EngineFactory = Callable[[str, TextIO | None, Callable[[str], None] | None, Callable[[str, int], None] | None], Any]
+def transfer_tool_note(tool: str | None) -> str | None:
+    """What to say about the transfer tool found, or ``None`` when it is the preferred one."""
+    if tool is None:
+        return "Neither s5cmd nor aws is on PATH, so nothing can be transferred; install one"
+    if tool == "aws":
+        return "s5cmd is not on PATH; the slower AWS CLI will transfer the files"
+    return None
 
 
 def make_engine(
@@ -249,7 +253,9 @@ def make_engine(
     """A ``SmartSync`` configured as the CLI configures it, printing to ``log`` (or nowhere).
 
     The callbacks hear about each data file as the engine starts and finishes
-    uploading it; the manifest it uploads last is not reported.
+    uploading it; the manifest it uploads last is not reported. This is the
+    default engine factory; tests point ``HCA_TRACKER_UPLOAD_ENGINE`` at
+    ``hca_tracker_client.testing:FakeSmartSync``, which has the same signature.
     """
     package = smart_sync()
     import boto3
@@ -280,51 +286,46 @@ def make_engine(
     return ReportingSync(config, console=console)
 
 
-def load_engine(spec: str) -> EngineFactory:
-    """Resolve ``module:attribute`` to an engine factory."""
-    module_name, _, attribute = spec.partition(":")
-    return getattr(importlib.import_module(module_name), attribute)
+def load_engine(spec: str) -> Callable[..., Any]:
+    """Resolve the ``module:attribute`` of an engine factory."""
+    return pkgutil.resolve_name(spec)
 
 
 def _file_entry(info: dict) -> dict:
     """One planned file, in this package's names (the engine's are filename/checksum/local_path)."""
-    size = int(info["size"])
     return {
         "name": info["filename"],
-        "size_bytes": size,
-        "size": human_size(size),
+        "size_bytes": int(info["size"]),
         "sha256": info["checksum"],
         "reason": info["reason"],
     }
 
 
-def run_plan(engine: Any, directory: Path, target: Target, profile: str, force: bool) -> dict:
-    """``sync(plan_only=True)``, with the engine's result shapes folded into one."""
+def _with_size(entry: dict) -> dict:
+    return {**entry, "size": human_size(entry["size_bytes"])}
+
+
+def run_plan(engine: Any, directory: Path, url: str, profile: str, force: bool) -> dict:
+    """``sync(plan_only=True)`` against ``url``, with the engine's result shapes folded into one."""
     try:
-        result = engine.sync(directory, target.url, force=force, plan_only=True)
+        result = engine.sync(directory, url, force=force, plan_only=True)
     except RuntimeError as error:  # the engine's "Failed to check S3 status for <file>: <code> - <message>"
-        raise CheckError(f"hca-smart-sync could not compare {directory} with {target.url}: {error}") from None
+        raise CheckError(redact(f"hca-smart-sync could not compare {directory} with {url}: {error}")) from None
     if result.get("error") == "access_denied":
         raise CheckError(
-            f"The AWS profile {profile!r} cannot list {target.url} (hca-smart-sync's access check failed: "
+            f"The AWS profile {profile!r} cannot list {url} (hca-smart-sync's access check failed: "
             "access denied, no such bucket, or no valid credentials for the profile). Nothing was uploaded"
         )
     planned = [_file_entry(info) for info in result.get("files_to_upload") or []]
     names = {entry["name"] for entry in planned}
     present = sorted(path.name for path in directory.glob("*.h5ad") if path.is_file())
-    plan: dict = {
-        "local_path": str(directory),
-        "files": planned,
-        "total_bytes": sum(entry["size_bytes"] for entry in planned),
-        "up_to_date": [name for name in present if name not in names],
-    }
-    plan["total_size"] = human_size(plan["total_bytes"])
+    plan: dict = {"files": planned, "up_to_date": [name for name in present if name not in names]}
     if result.get("no_files_found"):
         plan["no_files_found"] = True
     return plan
 
 
-def _local_directory(local_path: str) -> Path:
+def _local_directory(local_path: str) -> str:
     directory = Path(local_path).expanduser().resolve()
     if directory.is_file():
         raise CheckError(
@@ -333,12 +334,16 @@ def _local_directory(local_path: str) -> Path:
         )
     if not directory.is_dir():
         raise CheckError(f"local_path {str(directory)!r} is not a folder")
-    return directory
+    return str(directory)
 
 
 @dataclass
 class UploadJob:
-    """One upload run: a folder to a target, from start to its outcome."""
+    """One upload run: a folder to a target, from start to its outcome.
+
+    A field added after a release needs a default, so records written before
+    it still load (see ``RecordStore.load``).
+    """
 
     job_id: str
     network: str
@@ -347,14 +352,12 @@ class UploadJob:
     atlas_folder: str
     file_type: str
     environment: str
-    bucket: str
-    prefix: str
+    target: str
     local_path: str
     profile: str
     transfer_tool: str
     force: bool
     files: list[dict]
-    total_bytes: int
     log_path: str
     engine: str = DEFAULT_UPLOAD_ENGINE
     state: str = QUEUED
@@ -369,8 +372,13 @@ class UploadJob:
     finished_at: float | None = None
 
     @property
-    def target(self) -> str:
-        return f"s3://{self.bucket}/{self.prefix}"
+    def total_bytes(self) -> int:
+        return sum(entry["size_bytes"] for entry in self.files)
+
+    @property
+    def worker_marker(self) -> str:
+        """What the worker's command line contains, so a reused pid is not mistaken for it."""
+        return f"hca_tracker_client.upload_worker {self.job_id}"
 
 
 class UploadStore(RecordStore[UploadJob]):
@@ -394,27 +402,19 @@ class UploadStore(RecordStore[UploadJob]):
         return self.update(job_id, change)
 
 
-def _alive(pid: int | None) -> bool:
-    """Whether the worker process is still running.
+def worker_alive(job: UploadJob) -> bool:
+    """Whether the job's worker process is still running.
 
-    A worker this process spawned is reaped here when it has exited;
-    otherwise it would stay a zombie that ``kill(pid, 0)`` reports as alive.
+    A worker this process spawned is reaped here once it has exited; otherwise
+    it would stay a zombie that looks alive. A pid that now belongs to some
+    other program (after a reboot, say) does not count as the worker.
     """
-    if not pid:
+    if not job.pid:
         return False
     with contextlib.suppress(ChildProcessError):
-        return os.waitpid(pid, os.WNOHANG) == (0, 0)
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    return True
-
-
-# One s5cmd progress frame: "42.81%  ━━━───  8.98 MB / 20.97 MB (6.74 MB/s) 1s left (0/1)".
-_S5CMD_FRAME = re.compile(r"\d{1,3}\.\d{2}%\s+\S+\s+.*?\(\d+/\d+\)")
+        if os.waitpid(job.pid, os.WNOHANG) != (0, 0):
+            return False
+    return process_matches(job.pid, job.worker_marker)
 
 
 def last_progress_line(log_path: str, tail: int = 4096) -> str | None:
@@ -441,14 +441,47 @@ def last_progress_line(log_path: str, tail: int = 4096) -> str | None:
     return frames[-1] if frames else line[-200:]
 
 
+@dataclass(frozen=True)
+class Plan:
+    """Everything ``start`` needs from the checks, before it is flattened for the caller."""
+
+    target: Target
+    directory: str
+    profile: str
+    profile_source: str
+    tool: tuple[str, str] | None
+    force: bool
+    files: list[dict]
+    up_to_date: list[str]
+    no_files_found: bool
+
+    def describe(self) -> dict:
+        tool = self.tool[0] if self.tool else None
+        note = transfer_tool_note(tool)
+        result = {
+            **self.target.describe(),
+            "profile": self.profile,
+            "profile_source": self.profile_source,
+            "transfer_tool": tool,
+            "force": self.force,
+            "local_path": self.directory,
+            "files": [_with_size(entry) for entry in self.files],
+            "total_bytes": sum(entry["size_bytes"] for entry in self.files),
+            "up_to_date": self.up_to_date,
+        }
+        result["total_size"] = human_size(result["total_bytes"])
+        if self.no_files_found:
+            result["no_files_found"] = True
+        result["warnings"] = [note] if note else []
+        return result
+
+
 class Uploads:
     """Plan and run uploads, and report on them. One instance per call is fine."""
 
     def __init__(self, config: Config, tracker: TrackerClient | None = None):
         self.config = config
         self._tracker = tracker
-        self.engine = config.upload_engine
-        self.cache_dir = config.cache_dir
         self.store = UploadStore(config.cache_dir)
 
     @property
@@ -459,15 +492,43 @@ class Uploads:
 
     def _check_environment(self, environment: str) -> None:
         bucket = bucket_for(environment)
-        configured = tracker_environment(self.config)
+        host, configured = tracker_environment(self.config)
         if configured != environment:
-            host = urlparse(self.config.tracker_url or "").hostname
             raise CheckError(
                 f"The configured tracker ({host}) is the {configured} tracker, which ingests from "
                 f"{BUCKETS[configured]}, but environment={environment!r} names {bucket}; a file uploaded there "
                 f"would never appear in this tracker's lists. Pass environment={configured!r}, or point "
                 f"HCA_TRACKER_URL at the {environment} tracker. Nothing was uploaded"
             )
+
+    def _plan(
+        self,
+        network: str,
+        atlas: str,
+        file_type: str,
+        local_path: str,
+        generation: int | None,
+        environment: str,
+        force: bool,
+    ) -> Plan:
+        self._check_environment(environment)
+        directory = _local_directory(local_path)
+        target = resolve_target(self.tracker.list_atlases(), network, atlas, generation, file_type, environment)
+        profile, profile_source = resolve_profile()
+        tool = transfer_tool()
+        engine = load_engine(self.config.upload_engine)(profile, None, None, None)
+        found = run_plan(engine, Path(directory), target.url, profile, force)
+        return Plan(
+            target=target,
+            directory=directory,
+            profile=profile,
+            profile_source=profile_source,
+            tool=tool,
+            force=force,
+            files=found["files"],
+            up_to_date=found["up_to_date"],
+            no_files_found=bool(found.get("no_files_found")),
+        )
 
     def plan(
         self,
@@ -485,27 +546,10 @@ class Uploads:
         agree, the atlas resolves and hca-smart-sync knows it, a profile is
         configured, and it can list the target.
         """
-        self._check_environment(environment)
-        directory = _local_directory(local_path)
-        target = resolve_target(self.tracker.list_atlases(), network, atlas, generation, file_type, environment)
-        profile, profile_source = resolve_profile()
-        engine = load_engine(self.engine)(profile, None, None, None)
-        plan = run_plan(engine, directory, target, profile, force)
-        tool = transfer_tool()
-        warnings = []
-        if tool is None:
-            warnings.append("Neither s5cmd nor aws is on PATH, so start_upload would refuse; install one")
-        elif tool == "aws":
-            warnings.append("s5cmd is not on PATH; the slower AWS CLI will transfer the files")
-        return {
-            **target.describe(),
-            "profile": profile,
-            "profile_source": profile_source,
-            "transfer_tool": tool,
-            "force": force,
-            **plan,
-            "warnings": warnings,
-        }
+        return self._plan(network, atlas, file_type, local_path, generation, environment, force).describe()
+
+    def _active_job_for(self, directory: str) -> UploadJob | None:
+        return next((job for job in self.store.all() if job.state in ACTIVE and job.local_path == directory), None)
 
     def start(
         self,
@@ -518,44 +562,43 @@ class Uploads:
         force: bool = False,
     ) -> dict:
         """Plan, then run the upload in a detached worker; returns the job and its plan at once."""
-        plan = self.plan(network, atlas, file_type, local_path, generation, environment, force)
-        if plan["transfer_tool"] is None:
-            raise CheckError("Neither s5cmd nor aws is on PATH, so nothing can be transferred; install one")
-        directory = plan["local_path"]
-        if not plan["files"]:
-            if plan.get("no_files_found"):
-                message = f"No .h5ad files directly in {directory}; nothing to upload"
+        if transfer_tool() is None:  # before hashing a folder for nothing
+            raise CheckError(transfer_tool_note(None) or "")
+        if self._active_job_for(_local_directory(local_path)) is not None:
+            return self._already_uploading(_local_directory(local_path))
+        plan = self._plan(network, atlas, file_type, local_path, generation, environment, force)
+        described = plan.describe()
+        if not plan.files:
+            if plan.no_files_found:
+                message = f"No .h5ad files directly in {plan.directory}; nothing to upload"
             else:
                 message = (
-                    f"Every .h5ad in {directory} is already in {plan['target']} with the same SHA-256; "
+                    f"Every .h5ad in {plan.directory} is already in {plan.target.url} with the same SHA-256; "
                     "nothing to upload. Pass force=true to upload them again"
                 )
-            return {**plan, "job_id": None, "state": None, "message": message}
+            return {**described, "job_id": None, "state": None, "message": message}
+        assert plan.tool is not None
 
         with self.store.locked():
-            for job in self.store.all():
-                job = self._refresh(job)
-                if job.state in ACTIVE and job.local_path == directory:
-                    return {**self._describe(job), "message": f"Already uploading from {directory}"}
+            if self._active_job_for(plan.directory) is not None:  # a second caller got here first
+                return self._already_uploading(plan.directory)
             job_id = secrets.token_hex(8)
             job = UploadJob(
                 job_id=job_id,
-                network=network,
-                atlas=atlas,
-                version=plan["version"],
-                atlas_folder=plan["atlas_folder"],
-                file_type=file_type,
-                environment=environment,
-                bucket=plan["bucket"],
-                prefix=plan["prefix"],
-                local_path=directory,
-                profile=plan["profile"],
-                transfer_tool=plan["transfer_tool"],
+                network=plan.target.network,
+                atlas=plan.target.atlas,
+                version=plan.target.version,
+                atlas_folder=plan.target.atlas_folder,
+                file_type=plan.target.file_type,
+                environment=plan.target.environment,
+                target=plan.target.url,
+                local_path=plan.directory,
+                profile=plan.profile,
+                transfer_tool=plan.tool[0],
                 force=force,
-                files=plan["files"],
-                total_bytes=plan["total_bytes"],
+                files=plan.files,
                 log_path=str(self.store.directory / f"{job_id}.log"),
-                engine=self.engine,
+                engine=self.config.upload_engine,
             )
             self.store.create(job)
             try:
@@ -564,7 +607,12 @@ class Uploads:
                 self.store.end(job_id, FAILED, f"The upload worker could not be started: {error}")
                 raise CheckError(f"The upload worker could not be started, so nothing was uploaded: {error}") from None
             job = self.store.update(job_id, lambda current: setattr(current, "pid", pid)) or job
-        return {**self._describe(job), "up_to_date": plan["up_to_date"], "warnings": plan["warnings"]}
+        return {**self._describe(job), "up_to_date": plan.up_to_date, "warnings": described["warnings"]}
+
+    def _already_uploading(self, directory: str) -> dict:
+        job = self._active_job_for(directory)
+        assert job is not None
+        return {**self._describe(self._refresh(job)), "message": f"Already uploading from {directory}"}
 
     def _spawn(self, job: UploadJob) -> int:
         """Start the worker in a session of its own, its output going to the job's log.
@@ -572,7 +620,7 @@ class Uploads:
         ``os.posix_spawn`` rather than ``Popen``: nothing waits for the worker,
         and a ``Popen`` collected while its child runs warns about it.
         """
-        argv = [sys.executable, "-m", "hca_tracker_client.upload_worker", job.job_id, str(self.cache_dir)]
+        argv = [sys.executable, "-m", "hca_tracker_client.upload_worker", job.job_id, str(self.config.cache_dir)]
         log = os.open(job.log_path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
         try:
             actions = [
@@ -586,13 +634,13 @@ class Uploads:
 
     def _refresh(self, job: UploadJob) -> UploadJob:
         """Mark a job whose worker has gone away without recording an outcome."""
-        if job.state in ACTIVE and job.pid and not _alive(job.pid):
-            done = len(job.files_done)
+        if job.state in ACTIVE and job.pid and not worker_alive(job):
             ended = self.store.end(
                 job.job_id,
                 INTERRUPTED,
-                f"The upload worker (pid {job.pid}) stopped without finishing: {done} of {len(job.files)} files "
-                f"uploaded. Run start_upload again; hca-smart-sync skips the files already in the bucket",
+                f"The upload worker (pid {job.pid}) stopped without finishing: {len(job.files_done)} of "
+                f"{len(job.files)} files uploaded. Run start_upload again; hca-smart-sync skips the files already "
+                "in the bucket",
             )
             return ended or job
         return job
@@ -611,7 +659,7 @@ class Uploads:
             "profile": job.profile,
             "transfer_tool": job.transfer_tool,
             "force": job.force,
-            "files": job.files,
+            "files": [_with_size(entry) for entry in job.files],
             "files_total": len(job.files),
             "files_done": len(job.files_done),
             "uploaded": job.files_done,
@@ -643,62 +691,51 @@ class Uploads:
         return {"jobs": list(reversed(jobs))}
 
 
-def _tool_version(tool: str, path: str) -> str | None:
-    args = [path, "version"] if tool == "s5cmd" else [path, "--version"]
-    with contextlib.suppress(OSError, subprocess.SubprocessError):
-        result = subprocess.run(args, capture_output=True, text=True, timeout=30)
-        line = (result.stdout or result.stderr).strip().splitlines()
-        return line[0] if line else None
-    return None
-
-
 def upload_report(config: Config) -> dict:
     """What an upload needs, and whether each piece is in place: for ``check_environment``."""
-    report: dict = {"smart_sync": {}, "transfer_tools": {}, "profile": {}, "bucket": {}}
     try:
-        package = smart_sync()
-        report["smart_sync"] = {"ok": True, "version": package.__version__}
+        smart_sync_report: dict = {"ok": True, "version": smart_sync().__version__}
     except ConfigError as error:
-        report["smart_sync"] = {"ok": False, "error": str(error)}
+        smart_sync_report = {"ok": False, "error": str(error)}
 
-    for tool in TRANSFER_TOOLS:
-        path = shutil.which(tool)
-        entry: dict = {"ok": path is not None}
-        if path:
-            entry |= {"path": path, "version": _tool_version(tool, path)}
-        report["transfer_tools"][tool] = entry
-    tool = transfer_tool()
-    report["transfer_tools"]["selected"] = tool
+    tools: dict = {tool: {"ok": shutil.which(tool) is not None} for tool in TRANSFER_TOOLS}
+    selected = transfer_tool()
+    if selected:  # only the tool the engine would use is asked for its version (aws takes a third of a second)
+        tool, path = selected
+        tools[tool] |= {"path": path, "version": version_output(path, "version" if tool == "s5cmd" else "--version")}
+    tools["selected"] = selected[0] if selected else None
 
     profile: str | None = None
-    if report["smart_sync"]["ok"]:
+    profile_report: dict = {}
+    if smart_sync_report["ok"]:
         try:
             profile, source = resolve_profile()
-            report["profile"] = {"ok": True, "name": profile, "source": source}
+            profile_report = {"ok": True, "name": profile, "source": source}
         except ConfigError as error:
-            report["profile"] = {"ok": False, "error": str(error)}
+            profile_report = {"ok": False, "error": str(error)}
 
     bucket: dict = {"ok": False}
     try:
-        environment = tracker_environment(config)
+        _, environment = tracker_environment(config)
         bucket |= {"environment": environment, "name": BUCKETS[environment]}
-    except CheckError as error:
+    except (CheckError, ConfigError) as error:
         bucket["error"] = str(error)
     if profile and "name" in bucket:
-        target = Target(bucket["environment"], bucket["name"], "", "", "", "", "", SOURCE_DATASETS)  # the bucket root
         try:
             # A plan over an empty folder runs the engine's access check and nothing else.
             with tempfile.TemporaryDirectory() as empty:
                 engine = load_engine(config.upload_engine)(profile, None, None, None)
-                run_plan(engine, Path(empty), target, profile, False)
+                run_plan(engine, Path(empty), f"s3://{bucket['name']}/", profile, False)
             bucket["ok"] = True
         except (CheckError, ConfigError) as error:
             bucket["error"] = str(error)
-    report["bucket"] = bucket
 
-    notes = []
-    if tool == "aws":
-        notes.append("Only the AWS CLI was found; s5cmd is faster for multi-GB files")
-    report["can_upload"] = bool(report["smart_sync"]["ok"] and tool and bucket["ok"])
-    report["notes"] = notes
-    return report
+    note = transfer_tool_note(tools["selected"])
+    return {
+        "smart_sync": smart_sync_report,
+        "transfer_tools": tools,
+        "profile": profile_report,
+        "bucket": bucket,
+        "can_upload": bool(smart_sync_report["ok"] and selected and bucket["ok"]),
+        "notes": [note] if note else [],
+    }

@@ -11,6 +11,7 @@ import sys
 import time
 from pathlib import Path
 
+from .errors import redact
 from .uploads import DONE, FAILED, UPLOADING, UploadStore, load_engine
 
 
@@ -44,7 +45,7 @@ def run(job_id: str, cache_dir: Path) -> int:
         engine = load_engine(job.engine)(job.profile, sys.stdout, started, finished)
         result = engine.sync(Path(job.local_path), job.target, force=job.force)
     except Exception as error:
-        store.end(job_id, FAILED, f"hca-smart-sync failed: {type(error).__name__}: {error}")
+        store.end(job_id, FAILED, redact(f"hca-smart-sync failed: {type(error).__name__}: {error}"))
         return 1
 
     manifest = result.get("manifest_path")

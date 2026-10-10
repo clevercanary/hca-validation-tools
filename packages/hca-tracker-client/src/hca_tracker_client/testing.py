@@ -22,6 +22,11 @@ from urllib.parse import parse_qs, urlparse
 from .api import SHA256_HEADER
 
 
+def sha256_of(path: Path) -> str:
+    """The checksum hca-smart-sync stamps on an upload."""
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
 def _versioned(name: str) -> str:
     """The name the real tracker presigns: the listed name with ``-r1`` before its extension."""
     dot = name.rfind(".")
@@ -138,7 +143,7 @@ class FakeTracker:
         """
         file_id = f"file-{len(self.blobs) + 1}"
         if sha256 is True:
-            sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
+            sha256 = sha256_of(path)
         self.blobs[file_id] = _Blob(file_id, name, path, sha256 or None)
         size = path.stat().st_size if listed_size is None else listed_size
         entry_id = f"00000000-0000-4000-8000-{len(self.blobs):012d}"  # the tracker's ids are UUIDs
@@ -373,7 +378,7 @@ class FakeSmartSync:
         local_files = []
         for path in sorted(Path(local_path).glob("*.h5ad")):
             if path.is_file():
-                digest = hashlib.sha256(path.read_bytes()).hexdigest()
+                digest = sha256_of(path)
                 local_files.append(
                     {
                         "local_path": path,
@@ -442,6 +447,17 @@ class FakeSmartSync:
         }
 
 
-def fake_engine(profile, log=None, on_file_start=None, on_file_done=None) -> FakeSmartSync:
-    """Engine factory for ``HCA_TRACKER_UPLOAD_ENGINE=hca_tracker_client.testing:fake_engine``."""
-    return FakeSmartSync(profile, log, on_file_start, on_file_done)
+def fake_s3(root: Path, *buckets: str) -> Path:
+    """Create the folder ``FakeSmartSync`` uses as S3, with the given buckets, and point the engine at it."""
+    for bucket in buckets:
+        (root / bucket).mkdir(parents=True, exist_ok=True)
+    os.environ["HCA_TRACKER_FAKE_S3"] = str(root)
+    return root
+
+
+def save_profile(home: Path, profile: str) -> Path:
+    """Write the settings file ``hca-smart-sync config`` writes, under ``home``, naming ``profile``."""
+    path = home / ".hca-smart-sync" / "config.yaml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(f"profile: {profile}\n")
+    return path

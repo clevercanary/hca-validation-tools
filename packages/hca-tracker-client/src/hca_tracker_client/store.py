@@ -118,13 +118,19 @@ R = TypeVar("R", bound=Record)
 
 
 class RecordStore(Generic[R]):
-    """One JSON file per record in ``directory``; subclasses name the record type and its active states."""
+    """One JSON file per record in ``directory``; subclasses name the record type and its active states.
+
+    Records outlive releases: a field added to a record type after a release
+    must have a default, or records written before it become unreadable and
+    an active job among them is lost to ``all()``.
+    """
 
     record_type: type[R]
     active: tuple[str, ...]
 
     def __init__(self, directory: Path):
         self.directory = directory
+        self._fields = {f.name for f in fields(self.record_type)}  # type: ignore[arg-type]
 
     def _file(self, job_id: str) -> Path:
         return self.directory / f"{job_id}.json"
@@ -189,10 +195,9 @@ class RecordStore(Generic[R]):
             data = json.loads(self._file(job_id).read_text())
         except (OSError, ValueError):
             return None
-        known = {f.name for f in fields(self.record_type)}  # type: ignore[arg-type]
         try:
-            return self.record_type(**{key: value for key, value in data.items() if key in known})
-        except TypeError:  # written by an older version of the record; unreadable, like a corrupt file
+            return self.record_type(**{key: value for key, value in data.items() if key in self._fields})
+        except TypeError:  # a required field this version added: unreadable, like a corrupt file
             return None
 
     def all(self) -> list[R]:

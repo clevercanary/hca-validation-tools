@@ -10,7 +10,7 @@ import pytest_asyncio
 from fastmcp.client import Client
 
 from hca_tracker_client.daemon import shutdown
-from hca_tracker_client.testing import FakeTracker
+from hca_tracker_client.testing import FakeTracker, fake_s3, save_profile
 from hca_tracker_mcp.server import mcp
 
 requires_aria2 = pytest.mark.skipif(shutil.which("aria2c") is None, reason="aria2c is not installed")
@@ -80,11 +80,10 @@ def tracker(tmp_path, monkeypatch):
         monkeypatch.setattr("hca_tracker_client.checks.free_bytes", lambda path: 10**12)
         # Uploads: the fake tracker is "dev", S3 is a folder, and the profile is one saved by `hca-smart-sync config`.
         monkeypatch.setenv("HCA_TRACKER_ENVIRONMENT", "dev")
-        monkeypatch.setenv("HCA_TRACKER_UPLOAD_ENGINE", "hca_tracker_client.testing:fake_engine")
-        (tmp_path / "s3" / "hca-atlas-tracker-data-dev").mkdir(parents=True)
-        monkeypatch.setenv("HCA_TRACKER_FAKE_S3", str(tmp_path / "s3"))
-        (tmp_path / "home" / ".hca-smart-sync").mkdir(parents=True)
-        (tmp_path / "home" / ".hca-smart-sync" / "config.yaml").write_text("profile: team-profile\n")
+        monkeypatch.setenv("HCA_TRACKER_UPLOAD_ENGINE", "hca_tracker_client.testing:FakeSmartSync")
+        monkeypatch.setenv("HCA_TRACKER_FAKE_S3", "")  # restored by monkeypatch; fake_s3 sets it
+        fake_s3(tmp_path / "s3", "hca-atlas-tracker-data-dev")
+        save_profile(tmp_path / "home", "team-profile")
         monkeypatch.setenv("HOME", str(tmp_path / "home"))
         monkeypatch.delenv("HCA_AWS_PROFILE", raising=False)
         yield fake
@@ -108,6 +107,18 @@ async def _call(client, tool, args=None) -> dict:
     return json.loads(text)
 
 
+async def _wait(client, tool: str, job_id: str, states: tuple[str, ...], timeout: float = 60) -> dict:
+    """Poll a status tool until the job reaches one of ``states``."""
+    deadline = time.monotonic() + timeout
+    status: dict = {}
+    while time.monotonic() < deadline:
+        status = await _call(client, tool, {"job_id": job_id})
+        if status["state"] in states:
+            break
+        time.sleep(0.1)
+    return status
+
+
 @pytest.mark.asyncio
 async def test_registered_tools(client):
     tools = {tool.name: tool for tool in await client.list_tools()}
@@ -123,11 +134,12 @@ async def test_registered_tools(client):
     offered = next(option["enum"] for option in validator["anyOf"] if "enum" in option)
     assert offered == list(VALIDATORS.values())
     # The upload file types are the client's constants, and environment defaults to dev.
-    from hca_tracker_client import INTEGRATED_OBJECTS, SOURCE_DATASETS
+    from hca_tracker_client import DEV, INTEGRATED_OBJECTS, SOURCE_DATASETS
+    from hca_tracker_client.config import ENVIRONMENTS
 
     upload = tools["start_upload"].inputSchema["properties"]
     assert upload["file_type"]["enum"] == [SOURCE_DATASETS, INTEGRATED_OBJECTS]
-    assert (upload["environment"]["default"], upload["environment"]["enum"]) == ("dev", ["dev", "prod"])
+    assert (upload["environment"]["default"], upload["environment"]["enum"]) == (DEV, list(ENVIRONMENTS))
     assert tools["plan_upload"].inputSchema["properties"] == upload
 
 
@@ -239,13 +251,7 @@ async def test_download_flow(client, tracker):
     assert set(started) >= {"job_id", "path", "size", "state"}
     assert started["warnings"] == ["The tracker's integrity status for this file is 'pending', not 'valid'"]
 
-    deadline = time.monotonic() + 60
-    status = {}
-    while time.monotonic() < deadline:
-        status = await _call(client, "download_status", {"job_id": started["job_id"]})
-        if status["state"] in ("done", "failed"):
-            break
-        time.sleep(0.1)
+    status = await _wait(client, "download_status", started["job_id"], ("done", "failed"))
     assert status["state"] == "done", status
     assert status["verified"] == "sha256"
 
@@ -301,13 +307,7 @@ async def test_upload_flow(client, tracker, tmp_path):
 
     started = await _call(client, "start_upload", args)
     assert started["job_id"] and started["files"] == plan["files"]
-    deadline = time.monotonic() + 30
-    status = {}
-    while time.monotonic() < deadline:
-        status = await _call(client, "upload_status", {"job_id": started["job_id"]})
-        if status["state"] in ("done", "failed", "interrupted"):
-            break
-        time.sleep(0.1)
+    status = await _wait(client, "upload_status", started["job_id"], ("done", "failed", "interrupted"), timeout=30)
     assert status["state"] == "done", status
     assert (status["files_done"], status["files_total"]) == (1, 1)
     assert status["manifest_path"].startswith(str(outbox))

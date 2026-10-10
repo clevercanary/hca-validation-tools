@@ -41,6 +41,16 @@ def human_duration(seconds: float) -> str:
     return f"{secs}s"
 
 
+def version_output(path: str, *args: str) -> str | None:
+    """The first line a tool prints for its version flag, or ``None`` when it does not run."""
+    try:
+        result = subprocess.run([path, *args], capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    lines = (result.stdout or result.stderr).strip().splitlines()
+    return lines[0] if lines else None
+
+
 def parse_aria2_version(output: str) -> tuple[int, int, int] | None:
     match = re.search(r"aria2 version (\d+)\.(\d+)\.(\d+)", output)
     if not match:

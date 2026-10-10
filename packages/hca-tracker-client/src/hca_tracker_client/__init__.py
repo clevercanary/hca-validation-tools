@@ -13,14 +13,16 @@ from .downloads import Downloads, environment_report
 from .errors import AuthError, CheckError, ConfigError, JobError, SelectionError, TrackerError, redact
 from .selection import INTEGRATED, SOURCE, atlas_version, find_file, select_atlas
 from .status import cap_status, tier1_status
-from .uploads import INTEGRATED_OBJECTS, SOURCE_DATASETS, Uploads
+from .uploads import DEV, INTEGRATED_OBJECTS, PROD, SOURCE_DATASETS, Uploads
 
 __version__ = "0.3.0"
 
 __all__ = [
+    "DEV",
     "INTEGRATED",
     "INTEGRATED_OBJECTS",
     "MAX_MESSAGES",
+    "PROD",
     "SOURCE",
     "SOURCE_DATASETS",
     "AuthError",

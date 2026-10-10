@@ -13,6 +13,8 @@ import pytest
 
 from hca_tracker_client import CheckError, ConfigError, JobError, Uploads, environment_report, load_config
 from hca_tracker_client import uploads as module
+from hca_tracker_client.testing import fake_s3 as make_fake_s3
+from hca_tracker_client.testing import save_profile
 from hca_tracker_client.uploads import (
     BUCKETS,
     TRACKER_HOSTS,
@@ -24,11 +26,12 @@ from hca_tracker_client.uploads import (
     s3_prefix,
     smart_sync_atlas,
     tracker_environment,
+    worker_alive,
 )
 
-from .conftest import make_config, make_file
+from .conftest import make_config, make_file, wait_for
 
-FAKE_ENGINE = "hca_tracker_client.testing:fake_engine"
+FAKE_ENGINE = "hca_tracker_client.testing:FakeSmartSync"
 PROD_URL = "https://tracker.data.humancellatlas.org"
 DEV_URL = "https://test-tracker.data.humancellatlas.dev.clevercanary.com/"
 
@@ -39,20 +42,16 @@ DEV_URL = "https://test-tracker.data.humancellatlas.dev.clevercanary.com/"
 @pytest.fixture
 def fake_s3(tmp_path, monkeypatch):
     """A folder standing in for S3, with both buckets present."""
-    root = tmp_path / "s3"
-    for bucket in BUCKETS.values():
-        (root / bucket).mkdir(parents=True)
-    monkeypatch.setenv("HCA_TRACKER_FAKE_S3", str(root))
     monkeypatch.delenv("HCA_TRACKER_FAKE_S3_DELAY", raising=False)
-    return root
+    monkeypatch.setenv("HCA_TRACKER_FAKE_S3", "")  # restored by monkeypatch; make_fake_s3 sets it
+    return make_fake_s3(tmp_path / "s3", *BUCKETS.values())
 
 
 @pytest.fixture
 def profile(tmp_path, monkeypatch):
     """A profile saved the way `hca-smart-sync config` saves it, in a HOME of its own."""
     home = tmp_path / "home"
-    (home / ".hca-smart-sync").mkdir(parents=True)
-    (home / ".hca-smart-sync" / "config.yaml").write_text("profile: team-profile\natlas: gut-v1\n")
+    save_profile(home, "team-profile")
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.delenv("HCA_AWS_PROFILE", raising=False)
     monkeypatch.delenv("AWS_PROFILE", raising=False)
@@ -75,15 +74,7 @@ def staged(tmp_path):
     return folder
 
 
-def wait_upload(uploads: Uploads, job_id: str, states=("done", "failed", "interrupted"), timeout=30) -> dict:
-    deadline = time.monotonic() + timeout
-    while True:
-        status = uploads.status(job_id)
-        if status["state"] in states:
-            return status
-        if time.monotonic() > deadline:
-            raise AssertionError(f"job {job_id} still {status['state']} after {timeout}s: {status}")
-        time.sleep(0.05)
+UPLOAD_ENDED = ("done", "failed", "interrupted")
 
 
 # --- the hca-smart-sync contract ------------------------------------------------
@@ -235,9 +226,12 @@ def test_profile_resolution(profile, monkeypatch, tmp_path):
 
 
 def test_tracker_environment_by_host(cache_dir, tracker):
-    assert tracker_environment(make_config(cache_dir, tracker, tracker_url=PROD_URL)) == "prod"
-    assert tracker_environment(make_config(cache_dir, tracker, tracker_url=DEV_URL)) == "dev"
-    assert tracker_environment(make_config(cache_dir, tracker, tracker_environment="prod")) == "prod"
+    assert tracker_environment(make_config(cache_dir, tracker, tracker_url=PROD_URL)) == (
+        "tracker.data.humancellatlas.org",
+        "prod",
+    )
+    assert tracker_environment(make_config(cache_dir, tracker, tracker_url=DEV_URL))[1] == "dev"
+    assert tracker_environment(make_config(cache_dir, tracker, tracker_environment="prod")) == ("127.0.0.1", "prod")
     with pytest.raises(CheckError, match=r"host '127.0.0.1' is not one this package knows.*HCA_TRACKER_ENVIRONMENT"):
         tracker_environment(make_config(cache_dir, tracker))
     with pytest.raises(ConfigError, match="HCA_TRACKER_URL must be set"):
@@ -402,7 +396,7 @@ def test_upload_end_to_end(uploads, staged, fake_s3):
     assert [f["name"] for f in started["files"]] == ["a.h5ad", "b.h5ad"], "the response carries the plan being run"
     assert (started["files_total"], started["bytes_total"], started["up_to_date"]) == (2, 50_000, [])
 
-    done = wait_upload(uploads, started["job_id"])
+    done = wait_for(uploads, started["job_id"], UPLOAD_ENDED, timeout=30)
     assert done["state"] == "done", done
     assert (done["files_done"], done["bytes_done"], done["uploaded"]) == (2, 50_000, ["a.h5ad", "b.h5ad"])
     assert done["message"] == "2 files uploaded and the manifest written"
@@ -425,26 +419,26 @@ def test_upload_end_to_end(uploads, staged, fake_s3):
 
     forced = uploads.start("gut", "gut", "source-datasets", str(staged), force=True)
     assert forced["job_id"] != started["job_id"]
-    assert wait_upload(uploads, forced["job_id"])["state"] == "done"
+    assert wait_for(uploads, forced["job_id"], UPLOAD_ENDED, timeout=30)["state"] == "done"
     assert [j["job_id"] for j in uploads.status()["jobs"]] == [forced["job_id"], started["job_id"]], "newest first"
 
 
 def test_upload_in_flight_and_already_uploading(uploads, staged, monkeypatch):
     monkeypatch.setenv("HCA_TRACKER_FAKE_S3_DELAY", "0.6")
     started = uploads.start("gut", "gut", "source-datasets", str(staged))
-    live = wait_upload(uploads, started["job_id"], states=("uploading",))
+    live = wait_for(uploads, started["job_id"], ("uploading",), timeout=30)
     assert live["current_file"] == "a.h5ad"
     assert live["progress"] == "a.h5ad 0%", "the transfer tool's own last line, from the log"
     assert "elapsed" in live
     duplicate = uploads.start("gut", "gut", "source-datasets", str(staged))
     assert (duplicate["job_id"], duplicate["message"]) == (started["job_id"], f"Already uploading from {staged}")
-    assert wait_upload(uploads, started["job_id"])["state"] == "done"
+    assert wait_for(uploads, started["job_id"], UPLOAD_ENDED, timeout=30)["state"] == "done"
 
 
 def test_partial_failure(uploads, staged, fake_s3):
     make_file(staged / "fail-c.h5ad", 1_000)
     started = uploads.start("gut", "gut", "source-datasets", str(staged))
-    failed = wait_upload(uploads, started["job_id"])
+    failed = wait_for(uploads, started["job_id"], UPLOAD_ENDED, timeout=30)
     assert failed["state"] == "failed"
     assert failed["message"].startswith("2 of 3 files uploaded; not uploaded: fail-c.h5ad.")
     assert (failed["files_done"], failed["uploaded"]) == (2, ["a.h5ad", "b.h5ad"])
@@ -457,12 +451,12 @@ def test_partial_failure(uploads, staged, fake_s3):
 def test_interrupted_worker(uploads, staged, monkeypatch):
     monkeypatch.setenv("HCA_TRACKER_FAKE_S3_DELAY", "5")
     started = uploads.start("gut", "gut", "source-datasets", str(staged))
-    wait_upload(uploads, started["job_id"], states=("uploading",))
+    wait_for(uploads, started["job_id"], ("uploading",), timeout=30)
     job = uploads.store.load(started["job_id"])
     assert job is not None and job.pid
     os.kill(job.pid, signal.SIGKILL)
     deadline = time.monotonic() + 10
-    while module._alive(job.pid) and time.monotonic() < deadline:
+    while worker_alive(job) and time.monotonic() < deadline:
         time.sleep(0.05)
     status = uploads.status(started["job_id"])
     assert status["state"] == "interrupted"
@@ -482,7 +476,7 @@ def test_worker_outlives_the_caller(uploads, staged, monkeypatch, fake_s3):
     job = uploads.store.load(started["job_id"])
     assert job is not None and job.pid and os.getsid(job.pid) == job.pid, "the worker leads its own session"
     assert os.getsid(job.pid) != os.getsid(os.getpid())
-    assert wait_upload(uploads, started["job_id"])["state"] == "done"
+    assert wait_for(uploads, started["job_id"], UPLOAD_ENDED, timeout=30)["state"] == "done"
 
 
 def test_last_progress_line(tmp_path):
@@ -533,13 +527,16 @@ def test_environment_report(uploads, fake_s3, profile):
     report = environment_report(uploads.config)["upload"]
     assert report["smart_sync"]["ok"] is True and report["smart_sync"]["version"].startswith("0.4.")
     assert set(report["transfer_tools"]) == {"s5cmd", "aws", "selected"}
+    selected = report["transfer_tools"]["selected"]
+    if selected:
+        assert report["transfer_tools"][selected]["ok"] and report["transfer_tools"][selected]["path"]
     assert report["profile"] == {
         "ok": True,
         "name": "team-profile",
         "source": str(Path.home() / ".hca-smart-sync/config.yaml"),
     }
     assert report["bucket"] == {"ok": True, "environment": "dev", "name": "hca-atlas-tracker-data-dev"}
-    assert report["can_upload"] is (report["transfer_tools"]["selected"] is not None)
+    assert report["can_upload"] is (selected is not None)
 
     (fake_s3 / "hca-atlas-tracker-data-dev" / "DENIED").touch()
     report = environment_report(uploads.config)["upload"]

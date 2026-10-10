@@ -169,8 +169,8 @@ def _pid(directory: Path) -> int | None:
         return None
 
 
-def _is_daemon(directory: Path, pid: int) -> bool:
-    """True if pid is the aria2c started with this folder's config, not a reused pid of something else."""
+def process_matches(pid: int, marker: str) -> bool:
+    """True if ``pid`` is alive and its command line contains ``marker``: not a reused pid of something else."""
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
@@ -178,7 +178,12 @@ def _is_daemon(directory: Path, pid: int) -> bool:
     except PermissionError:
         pass
     result = subprocess.run(["ps", "-ww", "-p", str(pid), "-o", "args="], capture_output=True, text=True)
-    return f"--conf-path={directory / CONF}" in result.stdout
+    return marker in result.stdout
+
+
+def _is_daemon(directory: Path, pid: int) -> bool:
+    """True if pid is the aria2c started with this folder's config."""
+    return process_matches(pid, f"--conf-path={directory / CONF}")
 
 
 def connect(cache_dir: Path) -> Aria2 | None:
