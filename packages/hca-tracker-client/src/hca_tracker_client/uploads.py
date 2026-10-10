@@ -112,6 +112,7 @@ def tracker_environment(config: Config) -> str:
     """Which environment (``dev`` or ``prod``) the configured tracker belongs to, by its host."""
     if config.tracker_environment:
         return config.tracker_environment
+    config.require_tracker()  # a missing HCA_TRACKER_URL is named as such, not as an unknown host
     host = urlparse(config.tracker_url or "").hostname
     environment = TRACKER_HOSTS.get(host or "")
     if environment is None:

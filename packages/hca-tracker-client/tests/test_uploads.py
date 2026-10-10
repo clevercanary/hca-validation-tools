@@ -239,6 +239,8 @@ def test_tracker_environment_by_host(cache_dir, tracker):
     assert tracker_environment(make_config(cache_dir, tracker, tracker_environment="prod")) == "prod"
     with pytest.raises(CheckError, match=r"host '127.0.0.1' is not one this package knows.*HCA_TRACKER_ENVIRONMENT"):
         tracker_environment(make_config(cache_dir, tracker))
+    with pytest.raises(ConfigError, match="HCA_TRACKER_URL must be set"):
+        tracker_environment(make_config(cache_dir, tracker, tracker_url=None))
     assert set(TRACKER_HOSTS.values()) == set(BUCKETS)
 
 
