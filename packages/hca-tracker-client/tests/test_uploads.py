@@ -763,6 +763,22 @@ def test_engine_exception_names_the_unconfirmed_files(uploads, staged, monkeypat
         "bucket are skipped). Error: RuntimeError: boom <url>"
     )
 
+    # Every file confirmed, then the manifest upload raised: nothing to retry, and the message says so.
+    class ManifestOnly(Flaky):
+        def sync(self, local_path, s3_path, force=False, **kwargs):
+            self.on_file_done("a.h5ad", 20_000)
+            self.on_file_done("b.h5ad", 30_000)
+            raise RuntimeError("Failed to upload manifest")
+
+    job.state, job.files_done, job.bytes_done, job.finished_at = "queued", [], 0, None
+    uploads.store._write(job)
+    monkeypatch.setattr(upload_worker, "load_engine", lambda spec: ManifestOnly)
+    assert upload_worker.run(job.job_id, uploads.config.cache_dir) == 1
+    failed = uploads.status(job.job_id)
+    assert failed["files_done"] == 2
+    assert failed["message"].startswith("hca-smart-sync failed after every file was uploaded, so only the manifest")
+    assert failed["message"].endswith("Error: RuntimeError: Failed to upload manifest")
+
 
 def test_store_never_rewrites_a_finished_record(cache_dir):
     store = UploadStore(cache_dir)

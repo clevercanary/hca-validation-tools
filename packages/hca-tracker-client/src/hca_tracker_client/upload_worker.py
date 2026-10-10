@@ -57,14 +57,18 @@ def run(job_id: str, cache_dir: Path) -> int:
     except Exception as error:
         current = store.load(job_id)
         unconfirmed = sorted(expected - set(current.files_done if current else []))
-        store.end(
-            job_id,
-            FAILED,
-            redact(  # the error text last: a URL in it would swallow any punctuation after it
-                f"hca-smart-sync failed; not confirmed uploaded: {', '.join(unconfirmed) or 'none'}. Run start_upload "
-                f"again (files already in the bucket are skipped). Error: {type(error).__name__}: {error}"
-            ),
-        )
+        if unconfirmed:
+            outcome = (
+                f"hca-smart-sync failed; not confirmed uploaded: {', '.join(unconfirmed)}. Run start_upload again "
+                "(files already in the bucket are skipped)."
+            )
+        else:  # the manifest, which goes up after the data files, is the only thing left to fail
+            outcome = (
+                "hca-smart-sync failed after every file was uploaded, so only the manifest is missing; the tracker "
+                "ingests the files and does not read manifests, so nothing needs to be retried."
+            )
+        # The error text last: a URL in it would swallow any punctuation after it.
+        store.end(job_id, FAILED, redact(f"{outcome} Error: {type(error).__name__}: {error}"))
         return 1
 
     manifest = result.get("manifest_path")
