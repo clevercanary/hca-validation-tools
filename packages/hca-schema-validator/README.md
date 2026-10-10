@@ -133,9 +133,9 @@ what the portal accepts. The CELLxGENE validator checks:
 
 ### HCA checks
 
-- **Expression matrices.** `X` must be `raw.X`, or the ambient-RNA-corrected
-  counts in `layers['desouped_counts']` when present, normalized per cell and
-  log-transformed. The check catches an `X` that holds raw counts, was never
+- **Expression matrices.** `X` must be derived from `raw.X` (or from the
+  ambient-RNA-corrected counts in `layers['desouped_counts']`, when present) by
+  normalizing each cell and log-transforming. The check catches an `X` that holds raw counts, was never
   normalized, or came from a different matrix.
   [Details](https://github.com/clevercanary/hca-validation-tools/blob/main/docs/dataset-validator-checks.md#41-expression-matrix-contract-check_x_normalization)
 - **Cell metadata labels.** A label column such as `tissue` needs its ontology
@@ -150,8 +150,10 @@ what the portal accepts. The CELLxGENE validator checks:
   is compared with the genes the file actually contains and with
   `obs['reference_genome']`. Warnings only.
   [Details](https://github.com/clevercanary/hca-validation-tools/blob/main/docs/dataset-validator-checks.md#43-declared-gene-annotation-vs-the-files-genes-check_gene_annotation_version)
-- **Outdated gene IDs.** Human gene IDs missing from the allowed gene set are
-  grouped by what Ensembl did to each gene, with a suggested action.
+- **Gene IDs outside the allowed gene set.** Human gene IDs missing from the
+  allowed gene set are grouped by cause (renamed, merged, split or removed by
+  Ensembl; on a patch or alternate sequence; newer than the allowed gene set),
+  each with a suggested action.
   [Details](https://github.com/clevercanary/hca-validation-tools/blob/main/docs/dataset-validator-checks.md#44-retired-feature-identifiers-check_retired_feature_ids)
 
 ## Gene IDs
@@ -188,7 +190,8 @@ The rules behind the gene ID report, and the reasoning for them, are in the
 
 ### Reading the gene ID report
 
-All outdated human IDs are reported together in one block with four parts:
+All human gene IDs outside the allowed gene set are reported together in one
+block with four parts:
 
 - **Headline**: how many IDs are missing from the allowed gene set
 - **`Summary:`**: one line per group, with the count, what happened, and a tag
@@ -261,7 +264,7 @@ so their versions can differ.
 | Data | Version | Used for |
 |---|---|---|
 | Allowed gene set | GENCODE v48 (Ensembl release 114) | Whether an ID is valid |
-| Gene history ([gene ID event table](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/README.md#gene-id-event-table)) | Ensembl releases 76 to 116 | What happened to an outdated ID |
+| Gene history ([gene ID event table](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/README.md#gene-id-event-table)) | Ensembl releases 76 to 116 | What happened to a retired ID |
 | Gene presence by release ([gene release interval table](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/README.md#gene-release-interval-table)) | Ensembl releases 76 to 116 | Checking the declared gene annotation, and telling genes on patch or alternate sequences apart from genes newer than the allowed gene set |
 
 A gene Ensembl added after the allowed gene set was made appears in the gene
@@ -519,9 +522,9 @@ sessions run continuously to r116.
 
 ## Gene ID Event Table
 
-`check_retired_feature_ids` produces the outdated gene ID report described in
+`check_retired_feature_ids` produces the gene ID report described in
 [Gene IDs](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/README.md#gene-ids). `src/hca_schema_validator/gene_id_events.csv.gz` records
-what Ensembl says became of each retired ID, and the outdated gene ID report is
+what Ensembl says became of each retired ID, and the gene ID report is
 built from that table.
 
 ### How it works
