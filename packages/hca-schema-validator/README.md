@@ -144,6 +144,8 @@ some columns must sit below a given parent term. Every problem here is an error.
 
 ### File metadata (`uns`)
 
+*[HCA override](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/README.md#hca-overrides)*
+
 - `uns` exists.
 - `title` is not empty and has no leading, trailing or double spaces.
 - `batch_condition` lists `obs` column names.
@@ -215,6 +217,8 @@ HCA replaces some CELLxGENE rules with its own.
   - Organism is recorded per cell, in `obs['organism_ontology_term_id']`.
     CELLxGENE expects organism once, in `uns`, and rejects the `obs` column as
     deprecated.
+  - `uns['study_pi']` is required: a list naming the study's principal
+    investigators, each a non-empty string.
   - Each field has a level:
     - **required** (the default): an error when missing
     - **optional**: checked only when present
