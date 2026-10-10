@@ -84,7 +84,7 @@ def test_list_files_fields_and_no_secrets(tracker, tmp_path):
                 "size": "1.2 KB",
                 "file_id": "file-1",
                 "integrity_status": "pending",
-                "entry_id": "entry-1",
+                "entry_id": "00000000-0000-4000-8000-000000000001",
                 "kind": "integrated",
                 "title": "lung-r2",
                 "cell_count": 1000,
@@ -123,7 +123,7 @@ def test_results_carry_cap_urls_but_never_the_tracker_url_or_token(tracker, tmp_
     tracker.add_atlas("heart", "heart", 1, 0, capId="https://celltype.info/project/heart")
     results = [
         list_files(client(tracker), "gut", "gut", "integrated"),
-        validation_report(client(tracker), "gut", "gut", "entry-1", "integrated"),
+        validation_report(client(tracker), "gut", "gut", "00000000-0000-4000-8000-000000000001", "integrated"),
         get_atlas(client(tracker), "heart", "heart"),
     ]
     text = json.dumps(results)
@@ -279,10 +279,11 @@ def test_get_atlas_record_and_lead_logins(tracker):
     assert tracker.token not in json.dumps(record)
 
 
-def test_never_logged_in_in_any_server_time_zone(tracker):
-    """The tracker serialises epoch 0 in its server's zone; a 1970 instant is never a real login."""
+@pytest.mark.parametrize("serialised", ["1970-01-01T05:00:00.000Z", "1969-12-31T19:00:00.000Z", "1970-01-01T00:00:00"])
+def test_never_logged_in_in_any_server_time_zone(tracker, serialised):
+    """The tracker serialises epoch 0 in its server's zone: west of UTC it lands in 1970, east of UTC in 1969."""
     tracker.add_atlas("heart", "heart", 1, 0, leads=[{"name": "Lead", "email": "lead@example.org"}])
-    tracker.add_user("Lead", "lead@example.org", last_login="1970-01-01T05:00:00.000Z")
+    tracker.add_user("Lead", "lead@example.org", last_login=serialised)
     assert get_atlas(client(tracker), "heart", "heart")["integration_leads"][0]["last_login"] is None
 
 
@@ -296,10 +297,10 @@ def test_get_atlas_selects_the_version(tracker):
 
 def test_validation_report_messages_and_truncation(tracker, tmp_path):
     validated_file(tracker, tmp_path, "gut-all.h5ad")
-    report = validation_report(client(tracker), "gut", "gut", "entry-1", "integrated")
+    report = validation_report(client(tracker), "gut", "gut", "00000000-0000-4000-8000-000000000001", "integrated")
     assert report["file"] == "gut-all.h5ad"
     assert report["file_id"] == "file-1"
-    assert (report["entry_id"], report["kind"]) == ("entry-1", "integrated")
+    assert (report["entry_id"], report["kind"]) == ("00000000-0000-4000-8000-000000000001", "integrated")
     assert report["validation_status"] == "completed"
     assert report["validation_error_message"] is None
     assert report["max_messages"] == 200
@@ -317,7 +318,13 @@ def test_validation_report_messages_and_truncation(tracker, tmp_path):
     assert report["reports"]["cellxgene"]["errors"] == []
 
     capped = validation_report(
-        client(tracker), "gut", "gut", "entry-1", "integrated", validator="hca_schema", max_messages=2
+        client(tracker),
+        "gut",
+        "gut",
+        "00000000-0000-4000-8000-000000000001",
+        "integrated",
+        validator="hca_schema",
+        max_messages=2,
     )
     assert list(capped["reports"]) == ["hca_schema"]
     assert capped["reports"]["hca_schema"]["warnings"] == ["w1", "w2"]
@@ -336,7 +343,7 @@ def test_validation_report_for_a_file_without_one(tracker, tmp_path):
         validationStatus="job_failed",
         validationErrorMessage="Dataset Validator failed: file signature not found",
     )
-    report = validation_report(client(tracker), "gut", "gut", "entry-1", "source")
+    report = validation_report(client(tracker), "gut", "gut", "00000000-0000-4000-8000-000000000001", "source")
     assert report["kind"] == "source"
     assert report["validation_status"] == "job_failed"
     assert report["validation_error_message"] == "Dataset Validator failed: file signature not found"
@@ -351,22 +358,33 @@ def test_validation_report_partial_reports_and_arguments(tracker, tmp_path):
         validationStatus="completed",
         reports={"cap": {"valid": True}},
     )
-    report = validation_report(client(tracker), "gut", "gut", "entry-1", "integrated")
+    report = validation_report(client(tracker), "gut", "gut", "00000000-0000-4000-8000-000000000001", "integrated")
     assert report["reports"]["cap"]["valid"] is True
     assert report["reports"]["hca_schema"] is None
     with pytest.raises(SelectionError, match="No validator 'hcaSchema'; validators: cap, cellxgene, hca_schema"):
-        validation_report(client(tracker), "gut", "gut", "entry-1", "integrated", validator="hcaSchema")
+        validation_report(
+            client(tracker), "gut", "gut", "00000000-0000-4000-8000-000000000001", "integrated", validator="hcaSchema"
+        )
     with pytest.raises(ValueError, match="max_messages must be at least 1"):
-        validation_report(client(tracker), "gut", "gut", "entry-1", "integrated", max_messages=0)
+        validation_report(
+            client(tracker), "gut", "gut", "00000000-0000-4000-8000-000000000001", "integrated", max_messages=0
+        )
     with pytest.raises(ValueError, match="kind must be"):
-        validation_report(client(tracker), "gut", "gut", "entry-1", "files")
-    with pytest.raises(SelectionError, match="entry_id must be given"):
+        validation_report(client(tracker), "gut", "gut", "00000000-0000-4000-8000-000000000001", "files")
+    with pytest.raises(SelectionError, match="entry_id must be the entry_id from list_integrated_objects"):
         validation_report(client(tracker), "gut", "gut", "", "integrated")
+    with pytest.raises(SelectionError, match="got 'cap-only.h5ad'"):
+        validation_report(client(tracker), "gut", "gut", "cap-only.h5ad", "integrated")
     # The wrong kind for a real entry, or an unknown entry, is a 404 from the tracker, reported as a selection error.
-    with pytest.raises(SelectionError, match="No source dataset 'entry-1' in gut/gut v1.0; take entry_id and kind"):
-        validation_report(client(tracker), "gut", "gut", "entry-1", "source")
-    with pytest.raises(SelectionError, match="No integrated object 'entry-9' in gut/gut v1.0"):
-        validation_report(client(tracker), "gut", "gut", "entry-9", "integrated")
+    with pytest.raises(
+        SelectionError,
+        match="No source dataset '00000000-0000-4000-8000-000000000001' in gut/gut v1.0; take entry_id and kind",
+    ):
+        validation_report(client(tracker), "gut", "gut", "00000000-0000-4000-8000-000000000001", "source")
+    with pytest.raises(
+        SelectionError, match="No integrated object '00000000-0000-4000-8000-000000000009' in gut/gut v1.0"
+    ):
+        validation_report(client(tracker), "gut", "gut", "00000000-0000-4000-8000-000000000009", "integrated")
 
 
 def test_token_goes_only_to_the_tracker(monkeypatch):

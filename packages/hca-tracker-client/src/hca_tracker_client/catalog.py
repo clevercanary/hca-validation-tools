@@ -1,6 +1,7 @@
 """Listing atlases and the files linked to an atlas version; an atlas's record; a file's validation report."""
 
-from datetime import datetime
+import re
+from datetime import datetime, timedelta, timezone
 
 from .api import TrackerClient
 from .checks import human_size
@@ -9,6 +10,8 @@ from .selection import INTEGRATED, KIND_LABELS, SOURCE, atlas_label, atlas_versi
 from .status import VALIDATORS, cap_status, tier1_status
 
 MAX_MESSAGES = 200
+_EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
+_UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
 
 # Per kind, the TrackerClient methods for an atlas version's list and for one entry's detail.
 _ROUTES = {
@@ -141,14 +144,19 @@ def atlas_files(tracker: TrackerClient, atlas_id: str) -> list[dict]:
 def _last_login(user: dict) -> str | None:
     """A user's ``lastLogin``, or None for the tracker's never-logged-in value.
 
-    The tracker stores epoch 0 and serialises it in its server's time zone,
-    so any instant in 1970 means never: no real login predates the tracker.
+    The tracker stores epoch 0 in a timestamp without time zone and serialises
+    it in its server's zone, so the value can land a few hours either side of
+    the epoch. Anything within a day of it means never: no real login
+    predates the tracker.
     """
     value = user.get("lastLogin")
     if not value:
         return None
     try:
-        never = datetime.fromisoformat(value.replace("Z", "+00:00")).year == 1970
+        instant = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if instant.tzinfo is None:
+            instant = instant.replace(tzinfo=timezone.utc)
+        never = abs(instant - _EPOCH) < timedelta(days=1)
     except ValueError:
         never = False
     return None if never else value
@@ -252,8 +260,11 @@ def validation_report(
     names = list(VALIDATORS.values())
     if validator is not None and validator not in names:
         raise SelectionError(f"No validator {validator!r}; validators: {', '.join(names)}")
-    if not entry_id:
-        raise SelectionError("entry_id must be given; take it from list_integrated_objects or list_source_datasets")
+    if not _UUID.match(entry_id or ""):
+        # The tracker answers 500, not 404, to a non-UUID id; a file name or file_id pasted here is the usual cause.
+        raise SelectionError(
+            f"entry_id must be the entry_id from list_integrated_objects or list_source_datasets, got {entry_id!r}"
+        )
     version = select_atlas(tracker.list_atlases(), network, atlas, generation, published)
     try:
         detail = getattr(tracker, _ROUTES[kind][1])(version["id"], entry_id)

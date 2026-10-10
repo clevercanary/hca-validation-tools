@@ -94,8 +94,8 @@ All read-only, matching the token's scope.
 - **list_atlases** — every atlas version: `network`, `atlas` (slug), `version`,
   `is_latest`, `published`. Use it to find the `network`/`atlas` pair.
 - **list_integrated_objects** / **list_source_datasets** `(network, atlas,
-  generation?, published?)` — an atlas version's files: `name`, `size`,
-  `file_id`, `integrity_status`, then `entry_id` and `kind` (what
+  generation?, published?)` — an atlas version's files: `name`, `size_bytes`,
+  `size`, `file_id`, `integrity_status`, then `entry_id` and `kind` (what
   `get_validation_report` takes), `title`, `cell_count`, `revision`,
   `wip_number`, `uploaded_at`, `is_archived`, `cap_url`, `validation_status`,
   `validation_error_message`, `validation` (`overall_valid` and, per validator
@@ -112,7 +112,8 @@ All read-only, matching the token's scope.
   `OC_ENDORSED`), `published_at`, `wave`, `target_completion`,
   `cap_project_url`, `integration_leads` (`name`, `email`, `tracker_account`,
   `last_login`), `counts` (`source_studies`, `source_datasets`,
-  `integrated_objects`), `ingestion_tasks` per system (`count`, `completed`),
+  `integrated_objects`), `ingestion_tasks` (`cap`, `cellxgene`,
+  `hca_data_repository`, each `count` and `completed`),
   `publications` (`doi`, `title`). `tracker_account` is `active`, `disabled`,
   or `unknown` when no tracker user has the lead's contact email; people log
   in with a Google address that can differ from it, so `unknown` is not
@@ -120,7 +121,9 @@ All read-only, matching the token's scope.
   the user has never logged in.
 - **get_validation_report** `(network, atlas, entry_id, kind, generation?,
   published?, validator?, max_messages?)` — one file's validator messages,
-  by the `entry_id` and `kind` of its list row. `reports` holds,
+  by the `entry_id` and `kind` of its list row. Returns `file`, `file_id`,
+  `entry_id`, `kind`, `validation_status`, `validation_error_message`,
+  `max_messages` and `reports`. `reports` holds,
   per validator, `valid`, `started_at`, `finished_at`, `error_count`,
   `warning_count`, `errors`, `warnings` and `truncated`: each list is cut to
   `max_messages` (default 200; a file can carry tens of thousands of warnings)

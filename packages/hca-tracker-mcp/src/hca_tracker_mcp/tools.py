@@ -77,7 +77,8 @@ def list_integrated_objects(
 ) -> dict:
     """List an atlas version's integrated objects with their validation summary and CAP / Tier 1 status.
 
-    Per file: name, size, file_id, integrity_status, entry_id and kind (what get_validation_report takes), title,
+    Per file: name, size_bytes, size, file_id, integrity_status, entry_id and kind (what get_validation_report
+    takes), title,
     cell_count, revision, wip_number, uploaded_at, is_archived, cap_url, validation_status,
     validation_error_message, validation (overall_valid and, per validator cap / cellxgene / hca_schema /
     hca_cell_annotation, valid, error_count, warning_count; null when validation produced no result),
@@ -104,7 +105,8 @@ def list_source_datasets(
 def get_atlas(network: Network, atlas: Atlas, generation: Generation = None, published: Published = False) -> dict:
     """An atlas version's record: title, status (IN_PROGRESS, OC_ENDORSED), wave, target_completion,
     cap_project_url, integration_leads (name, email, tracker_account, last_login), counts of source studies,
-    source datasets and integrated objects, ingestion_tasks per system (count, completed), publications.
+    source datasets and integrated objects, ingestion_tasks (cap, cellxgene, hca_data_repository: count,
+    completed), publications (doi, title).
 
     tracker_account is active, disabled, or unknown when no tracker user has the lead's contact email; people
     log in with a Google address that can differ from it, so unknown does not mean no account. last_login is
@@ -131,10 +133,11 @@ def get_validation_report(
 ) -> dict:
     """The validators' error and warning messages for one file, by the entry_id and kind of its list row.
 
-    reports holds, per validator, valid, started_at, finished_at, error_count, warning_count, errors,
-    warnings and truncated (true when a list was cut to max_messages; a file can carry tens of thousands
-    of warnings). reports is null when validation never completed: a job_failed file has only
-    validation_error_message.
+    Returns file, file_id, entry_id, kind, validation_status, validation_error_message, max_messages and
+    reports. reports holds, per validator, valid, started_at, finished_at, error_count, warning_count,
+    errors, warnings and truncated (true when a list was cut to max_messages; a file can carry tens of
+    thousands of warnings). reports is null when validation_status is not completed, e.g. job_failed, where
+    validation_error_message says why.
     """
     return _validation_report(
         _tracker(), network, atlas, entry_id, kind, generation, published, validator, max_messages

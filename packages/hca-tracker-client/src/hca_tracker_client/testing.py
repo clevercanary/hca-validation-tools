@@ -139,7 +139,7 @@ class FakeTracker:
             sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
         self.blobs[file_id] = _Blob(file_id, name, path, sha256 or None)
         size = path.stat().st_size if listed_size is None else listed_size
-        entry_id = f"entry-{len(self.blobs)}"
+        entry_id = f"00000000-0000-4000-8000-{len(self.blobs):012d}"  # the tracker's ids are UUIDs
         summary = None
         if reports is not None:
             validators = {

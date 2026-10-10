@@ -134,7 +134,7 @@ async def test_listing(client, tracker):
             "size": "500.0 KB",
             "file_id": "file-1",
             "integrity_status": "pending",
-            "entry_id": "entry-1",
+            "entry_id": "00000000-0000-4000-8000-000000000001",
             "kind": "integrated",
             "title": "gut",
             "cell_count": 1000,
@@ -178,7 +178,7 @@ async def test_atlas_record(client, tracker):
 
 @pytest.mark.asyncio
 async def test_validation_report(client, tracker):
-    args = {"network": "gut", "atlas": "gut", "entry_id": "entry-2", "kind": "source"}
+    args = {"network": "gut", "atlas": "gut", "entry_id": "00000000-0000-4000-8000-000000000002", "kind": "source"}
     report = await _call(client, "get_validation_report", args)
     assert (report["file"], report["kind"], report["validation_status"]) == ("src.h5ad", "source", "completed")
     assert report["reports"]["hca_schema"]["warnings"] == ["w1", "w2", "w3"]
@@ -190,12 +190,12 @@ async def test_validation_report(client, tracker):
     assert capped["reports"]["hca_schema"]["warnings"] == ["w1"]
     assert (capped["reports"]["hca_schema"]["warning_count"], capped["reports"]["hca_schema"]["truncated"]) == (3, True)
 
-    failed = await _call(client, "get_validation_report", {**args, "entry_id": "entry-3"})
+    failed = await _call(client, "get_validation_report", {**args, "entry_id": "00000000-0000-4000-8000-000000000003"})
     assert (failed["validation_status"], failed["reports"]) == ("job_failed", None)
     assert failed["validation_error_message"] == "Dataset Validator failed: file signature not found"
 
-    unknown = await _call(client, "get_validation_report", {**args, "entry_id": "entry-9"})
-    assert unknown["error"].startswith("No source dataset 'entry-9' in gut/gut v1.0")
+    unknown = await _call(client, "get_validation_report", {**args, "entry_id": "00000000-0000-4000-8000-000000000009"})
+    assert unknown["error"].startswith("No source dataset '00000000-0000-4000-8000-000000000009' in gut/gut v1.0")
 
 
 @pytest.mark.asyncio
