@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.3](https://github.com/clevercanary/hca-validation-tools/compare/hca-schema-validator-v0.15.2...hca-schema-validator-v0.15.3) (2026-10-10)
+
+
+### Features
+
+* **hca-schema-validator:** classify retired feature IDs using an Ensembl gene-event table ([#728](https://github.com/clevercanary/hca-validation-tools/issues/728)) ([#733](https://github.com/clevercanary/hca-validation-tools/issues/733)) ([0b2d7eb](https://github.com/clevercanary/hca-validation-tools/commit/0b2d7ebf145bed8886373d1139e601f16e8fa479))
+
 ## [0.15.2](https://github.com/clevercanary/hca-validation-tools/compare/hca-schema-validator-v0.15.1...hca-schema-validator-v0.15.2) (2026-10-05)
 
 
