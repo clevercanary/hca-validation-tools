@@ -570,6 +570,7 @@ def test_worker_holds_the_plan_it_was_given(uploads, staged, fake_s3):
         "done",
         "Every file was already in the bucket with the same SHA-256; nothing to upload",
     )
+    assert (done["files_done"], done["bytes_done"]) == (2, 50_000), "the planned files count as done"
 
     # A file added, one rewritten (same size, new mtime) and one removed after the plan: refused, nothing uploaded.
     make_file(staged / "c.h5ad", 1_000)
@@ -619,6 +620,20 @@ def test_last_progress_line(tmp_path):
     assert last_progress_line(str(log)) == "second"
     log.write_bytes(b"x" * 10_000)
     assert len(last_progress_line(str(log)) or "") == 200
+
+
+def test_upload_records_are_not_downloads(uploads, staged):
+    """list_downloads and delete_download leave the upload store's records and logs alone."""
+    from hca_tracker_client import Downloads
+
+    started = uploads.start("gut", "gut", "source-datasets", str(staged))
+    wait_for(uploads, started["job_id"], UPLOAD_ENDED, timeout=30)
+    downloads = Downloads(uploads.config)
+    assert downloads.list_files()["files"] == []
+    with pytest.raises(JobError, match="is not in the download cache"):
+        downloads.delete(started["log_path"])
+    assert Path(started["log_path"]).exists()
+    assert uploads.status(started["job_id"])["state"] == "done"
 
 
 def test_store_never_rewrites_a_finished_record(cache_dir):

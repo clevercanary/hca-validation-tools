@@ -99,7 +99,7 @@ the CLI does not read. With none set, uploads refuse.
 
 ```python
 from hca_tracker_client import (
-    Downloads, TrackerClient, get_atlas, list_atlases, list_files, load_config, validation_report,
+    Downloads, TrackerClient, Uploads, get_atlas, list_atlases, list_files, load_config, validation_report,
 )
 
 config = load_config()

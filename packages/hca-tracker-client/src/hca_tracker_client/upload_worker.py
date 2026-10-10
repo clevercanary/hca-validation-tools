@@ -64,6 +64,12 @@ def run(job_id: str, cache_dir: Path) -> int:
         store.end(job_id, FAILED, f"hca-smart-sync reported {result['error']!r}", manifest)
         return 1
     if result.get("all_up_to_date"):  # uploaded by someone else between the plan and now
+
+        def all_done(current) -> None:
+            current.files_done = [entry["name"] for entry in current.files]
+            current.bytes_done = current.total_bytes
+
+        store.update(job_id, all_done)
         store.end(job_id, DONE, "Every file was already in the bucket with the same SHA-256; nothing to upload")
         return 0
     uploaded = set(result.get("files") or [])
