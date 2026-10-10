@@ -245,7 +245,7 @@ lists every case separately.
 ### Location notes
 
 When Ensembl replaced a gene with one gene in the allowed gene set (the
-`[rename]` and `[review]` rows), the validator compares where the old and new
+`[rename]` rows and most `[review]` rows), the validator compares where the old and new
 genes sit on the genome. Other rows get no comparison and no note.
 
 - **No note**: the new gene covers the old one, which is the usual case.
