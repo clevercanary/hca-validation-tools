@@ -10,7 +10,7 @@ import pytest_asyncio
 from fastmcp.client import Client
 
 from hca_tracker_client.daemon import shutdown
-from hca_tracker_client.testing import FakeTracker
+from hca_tracker_client.testing import FakeTracker, fake_s3, save_profile
 from hca_tracker_mcp.server import mcp
 
 requires_aria2 = pytest.mark.skipif(shutil.which("aria2c") is None, reason="aria2c is not installed")
@@ -26,6 +26,9 @@ TOOLS = {
     "cancel_download",
     "list_downloads",
     "delete_download",
+    "plan_upload",
+    "start_upload",
+    "upload_status",
     "check_environment",
 }
 
@@ -75,6 +78,16 @@ def tracker(tmp_path, monkeypatch):
         monkeypatch.setenv("HCA_TRACKER_API_TOKEN", fake.token)
         monkeypatch.setenv("HCA_TRACKER_CACHE_DIR", str(cache))
         monkeypatch.setattr("hca_tracker_client.checks.free_bytes", lambda path: 10**12)
+        # Uploads: the fake tracker is "dev", S3 is a folder, and the profile is one saved by `hca-smart-sync config`.
+        monkeypatch.setenv("HCA_TRACKER_ENVIRONMENT", "dev")
+        monkeypatch.setenv("HCA_TRACKER_UPLOAD_ENGINE", "hca_tracker_client.testing:FakeSmartSync")
+        monkeypatch.setenv("HCA_TRACKER_FAKE_S3", "")  # restored by monkeypatch; fake_s3 sets it
+        fake_s3(tmp_path / "s3", "hca-atlas-tracker-data-dev")
+        save_profile(tmp_path / "home", "team-profile")
+        monkeypatch.setenv("HOME", str(tmp_path / "home"))
+        # The fake engine transfers nothing itself, and CI has neither s5cmd nor aws.
+        monkeypatch.setattr("hca_tracker_client.uploads.transfer_tool", lambda: ("s5cmd", "/usr/local/bin/s5cmd"))
+        monkeypatch.delenv("HCA_AWS_PROFILE", raising=False)
         yield fake
         shutdown(cache)
 
@@ -96,6 +109,18 @@ async def _call(client, tool, args=None) -> dict:
     return json.loads(text)
 
 
+async def _wait(client, tool: str, job_id: str, states: tuple[str, ...], timeout: float = 60) -> dict:
+    """Poll a status tool until the job reaches one of ``states``."""
+    deadline = time.monotonic() + timeout
+    status: dict = {}
+    while time.monotonic() < deadline:
+        status = await _call(client, tool, {"job_id": job_id})
+        if status["state"] in states:
+            break
+        time.sleep(0.1)
+    return status
+
+
 @pytest.mark.asyncio
 async def test_registered_tools(client):
     tools = {tool.name: tool for tool in await client.list_tools()}
@@ -110,6 +135,14 @@ async def test_registered_tools(client):
     validator = tools["get_validation_report"].inputSchema["properties"]["validator"]
     offered = next(option["enum"] for option in validator["anyOf"] if "enum" in option)
     assert offered == list(VALIDATORS.values())
+    # The upload file types are the client's constants, and environment defaults to dev.
+    from hca_tracker_client import DEV, INTEGRATED_OBJECTS, SOURCE_DATASETS
+    from hca_tracker_client.config import ENVIRONMENTS
+
+    upload = tools["start_upload"].inputSchema["properties"]
+    assert upload["file_type"]["enum"] == [SOURCE_DATASETS, INTEGRATED_OBJECTS]
+    assert (upload["environment"]["default"], upload["environment"]["enum"]) == (DEV, list(ENVIRONMENTS))
+    assert tools["plan_upload"].inputSchema["properties"] == upload
 
 
 @pytest.mark.asyncio
@@ -220,13 +253,7 @@ async def test_download_flow(client, tracker):
     assert set(started) >= {"job_id", "path", "size", "state"}
     assert started["warnings"] == ["The tracker's integrity status for this file is 'pending', not 'valid'"]
 
-    deadline = time.monotonic() + 60
-    status = {}
-    while time.monotonic() < deadline:
-        status = await _call(client, "download_status", {"job_id": started["job_id"]})
-        if status["state"] in ("done", "failed"):
-            break
-        time.sleep(0.1)
+    status = await _wait(client, "download_status", started["job_id"], ("done", "failed"))
     assert status["state"] == "done", status
     assert status["verified"] == "sha256"
 
@@ -246,6 +273,8 @@ async def test_download_flow(client, tracker):
     assert environment["aria2_daemon"]["running"] is True
     assert environment["cache_dir"]["writable"] is True
     assert environment["tracker"] == {"url": tracker.url, "reachable": True, "token_valid": True}
+    assert environment["upload"]["profile"]["name"] == "team-profile"
+    assert environment["upload"]["bucket"] == {"ok": True, "environment": "dev", "name": "hca-atlas-tracker-data-dev"}
 
     # Nothing any tool returned carries the token or a presigned URL. The
     # only URLs are the tracker's base URL (check_environment) and public
@@ -255,6 +284,53 @@ async def test_download_flow(client, tracker):
     assert "X-Amz" not in text
     assert "/s3/" not in text
     assert "http" not in text.replace(tracker.url, "")
+
+
+@pytest.mark.asyncio
+async def test_upload_flow(client, tracker, tmp_path):
+    outbox = tmp_path / "outbox"
+    outbox.mkdir()
+    (outbox / "curated.h5ad").write_bytes(os.urandom(10_000))
+    args = {"network": "gut", "atlas": "gut", "file_type": "source-datasets", "local_path": str(outbox)}
+
+    published = await _call(client, "plan_upload", args)
+    assert published["error"].startswith("Atlas version gut/gut v1.0 is published, and the tracker refuses uploads")
+
+    tracker.add_atlas("gut", "gut", 1, 1)  # the draft revision
+    plan = await _call(client, "plan_upload", args)
+    assert plan["target"] == "s3://hca-atlas-tracker-data-dev/gut/gut-v1-1/source-datasets/"
+    assert (plan["version"], plan["atlas_folder"]) == ("v1.1", "gut-v1-1")
+    assert [(f["name"], f["reason"]) for f in plan["files"]] == [("curated.h5ad", "new")]
+    assert (plan["environment"], plan["profile"]) == ("dev", "team-profile")
+    assert not list(outbox.glob("manifest-*.json"))
+
+    refused = await _call(client, "plan_upload", {**args, "environment": "prod"})
+    assert refused["error"].startswith("The configured tracker (127.0.0.1) is the dev tracker")
+
+    started = await _call(client, "start_upload", args)
+    assert started["job_id"] and started["files"] == plan["files"]
+    status = await _wait(client, "upload_status", started["job_id"], ("done", "failed", "interrupted"), timeout=30)
+    assert status["state"] == "done", status
+    assert (status["files_done"], status["files_total"]) == (1, 1)
+    assert status["manifest_path"].startswith(str(outbox))
+    assert (tmp_path / "s3" / "hca-atlas-tracker-data-dev" / "gut/gut-v1-1/source-datasets/curated.h5ad").exists()
+    every = await _call(client, "upload_status")
+    assert [j["job_id"] for j in every["jobs"]] == [started["job_id"]]
+    assert started["job_id"] not in str(await _call(client, "download_status")), "uploads are not download jobs"
+
+    again = await _call(client, "start_upload", args)
+    assert again["job_id"] is None and "force=true" in again["message"]
+
+
+def test_module_version_matches_the_distribution():
+    """The hand-bumped __version__ of both private packages must move with their pyproject."""
+    from importlib.metadata import version
+
+    import hca_tracker_client
+    import hca_tracker_mcp
+
+    assert hca_tracker_mcp.__version__ == version("hca-tracker-mcp")
+    assert hca_tracker_client.__version__ == version("hca-tracker-client")
 
 
 def test_unexpected_errors_are_redacted(monkeypatch):

@@ -42,6 +42,7 @@ from .store import (
     final_path,
     part_path,
 )
+from .uploads import UploadStore, upload_report
 
 _CONTROL = re.compile(r"[\x00-\x1f\x7f\\]")
 
@@ -140,7 +141,7 @@ class Downloads:
 
     def _internal_dirs(self) -> set[Path]:
         """Folders under the cache that hold this package's own state, not downloads."""
-        return {daemon_dir(self.cache_dir), self.store.directory}
+        return {daemon_dir(self.cache_dir), self.store.directory, UploadStore(self.cache_dir).directory}
 
     # -- state ---------------------------------------------------------------
 
@@ -541,4 +542,5 @@ def environment_report(config: Config) -> dict:
         tracker |= {"reachable": None if isinstance(error, ConfigError) else False, "token_valid": None}
         tracker["error"] = str(error)
     report["tracker"] = tracker
+    report["upload"] = upload_report(config)
     return report

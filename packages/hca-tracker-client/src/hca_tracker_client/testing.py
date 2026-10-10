@@ -9,7 +9,9 @@ uploaded with hca-smart-sync.
 
 import hashlib
 import json
+import os
 import secrets
+import shutil
 import threading
 import time
 from dataclasses import dataclass, field
@@ -18,6 +20,11 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from .api import SHA256_HEADER
+
+
+def sha256_of(path: Path) -> str:
+    """The checksum hca-smart-sync stamps on an upload."""
+    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def _versioned(name: str) -> str:
@@ -136,7 +143,7 @@ class FakeTracker:
         """
         file_id = f"file-{len(self.blobs) + 1}"
         if sha256 is True:
-            sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
+            sha256 = sha256_of(path)
         self.blobs[file_id] = _Blob(file_id, name, path, sha256 or None)
         size = path.stat().st_size if listed_size is None else listed_size
         entry_id = f"00000000-0000-4000-8000-{len(self.blobs):012d}"  # the tracker's ids are UUIDs
@@ -333,3 +340,126 @@ class FakeTracker:
     def __exit__(self, *exc) -> None:
         self._server.shutdown()
         self._server.server_close()
+
+
+class FakeSmartSync:
+    """hca-smart-sync's engine with a folder standing in for S3, for tests and the worker.
+
+    ``HCA_TRACKER_FAKE_S3`` names the folder: ``<folder>/<bucket>/<prefix><name>``
+    holds an uploaded file and ``<name>.sha256`` its recorded checksum. A file
+    named ``DENIED`` directly under ``<bucket>`` fails the access check. A
+    local file whose name starts with ``fail-`` is never uploaded, as the
+    engine's ``_upload_file`` returning False. ``HCA_TRACKER_FAKE_S3_DELAY``
+    seconds are slept per file, so a test can watch a job in flight. The
+    return dicts have the engine's shapes, key for key.
+    """
+
+    def __init__(self, profile, log=None, on_file_start=None, on_file_done=None):
+        self.profile = profile
+        self.log = log
+        self.on_file_start = on_file_start
+        self.on_file_done = on_file_done
+        self.root = Path(os.environ["HCA_TRACKER_FAKE_S3"])
+        self.delay = float(os.environ.get("HCA_TRACKER_FAKE_S3_DELAY") or 0)
+
+    def _print(self, text: str, end: str = "\n") -> None:
+        if self.log:
+            self.log.write(text + end)
+            self.log.flush()
+
+    def _target(self, s3_path: str) -> tuple[Path, str]:
+        bucket, _, prefix = s3_path.removeprefix("s3://").partition("/")
+        return self.root / bucket, prefix
+
+    def sync(self, local_path, s3_path, dry_run=False, verbose=False, force=False, plan_only=False) -> dict:
+        bucket_dir, prefix = self._target(s3_path)
+        if not bucket_dir.is_dir() or (bucket_dir / "DENIED").exists():
+            return {"files_uploaded": 0, "manifest_path": None, "error": "access_denied"}
+        local_files = []
+        for path in sorted(Path(local_path).glob("*.h5ad")):
+            if path.is_file():
+                digest = sha256_of(path)
+                local_files.append(
+                    {
+                        "local_path": path,
+                        "filename": path.name,
+                        "size": path.stat().st_size,
+                        "checksum": digest,
+                        "modified": None,
+                    }
+                )
+        to_upload = []
+        for info in local_files:
+            stored = bucket_dir / prefix / info["filename"]
+            sidecar = Path(f"{stored}.sha256")
+            if force:
+                to_upload.append({**info, "reason": "forced"})
+            elif not stored.exists():
+                to_upload.append({**info, "reason": "new"})
+            elif not (
+                sidecar.exists() and sidecar.read_text() == info["checksum"] and stored.stat().st_size == info["size"]
+            ):
+                to_upload.append({**info, "reason": "changed"})
+        if not local_files:
+            return {"files_uploaded": 0, "files_to_upload": [], "manifest_path": None, "no_files_found": True}
+        if not to_upload:
+            return {
+                "files_uploaded": 0,
+                "files_to_upload": [],
+                "manifest_path": None,
+                "local_files": local_files,
+                "all_up_to_date": True,
+            }
+        if dry_run:
+            return {"files_uploaded": 0, "files_to_upload": to_upload, "manifest_path": None, "dry_run": True}
+        if plan_only:
+            return {"files_uploaded": 0, "files_to_upload": to_upload, "manifest_path": None, "plan_only": True}
+
+        manifest = Path(local_path) / f"manifest-{time.strftime('%Y-%m-%d-%H-%M-%S')}.json"
+        manifest.write_text(json.dumps({"files": [f["filename"] for f in to_upload], "upload_destination": s3_path}))
+        uploaded = []
+        for info in to_upload:
+            if self.on_file_start:
+                self.on_file_start(info["filename"])
+            self._print(
+                f"0.00%  ━  0 B / {info['size'] / 1000:.1f} kB (0 B/s) ?s left (0/1)", end=""
+            )  # s5cmd's frame shape
+            time.sleep(self.delay)
+            if info["filename"].startswith("fail-"):
+                self._print(f"upload failed for {info['filename']}")
+                continue
+            stored = bucket_dir / prefix / info["filename"]
+            stored.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(info["local_path"], stored)
+            Path(f"{stored}.sha256").write_text(info["checksum"])
+            self._print(f"{info['filename']} 100%")
+            self._print(f"Successfully uploaded: {info['filename']}")
+            if self.on_file_done:
+                self.on_file_done(info["filename"], info["size"])
+            uploaded.append(info)
+        if uploaded:
+            manifests = bucket_dir / "/".join(prefix.rstrip("/").split("/")[:-1] + ["manifests"])
+            manifests.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(manifest, manifests / manifest.name)
+        return {
+            "files_uploaded": len(uploaded),
+            "files_to_upload": to_upload,
+            "manifest_path": str(manifest),
+            "files": [f["local_path"].name for f in uploaded],
+        }
+
+
+def fake_s3(root: Path, *buckets: str) -> Path:
+    """Create the folder ``FakeSmartSync`` uses as S3, with the given buckets, and point the engine at it."""
+    for bucket in buckets:
+        (root / bucket).mkdir(parents=True, exist_ok=True)
+    os.environ["HCA_TRACKER_FAKE_S3"] = str(root)
+    return root
+
+
+def save_profile(home: Path, profile: str) -> Path:
+    """Write the settings file ``hca-smart-sync config`` writes, under ``home``, naming ``profile``."""
+    path = home / ".hca-smart-sync" / "config.yaml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(f"profile: {profile}\n")
+    return path

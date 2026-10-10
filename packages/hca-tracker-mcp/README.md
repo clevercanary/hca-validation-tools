@@ -1,9 +1,10 @@
 # hca-tracker-mcp
 
-MCP server to list, download and report on atlas files from the HCA Atlas
-Tracker. It is a thin wrapper over [`hca-tracker-client`](../hca-tracker-client), which holds the
-logic; see its README for how version selection, the checks before
-downloading, verification and resume work.
+MCP server to list, download, upload and report on atlas files from the HCA
+Atlas Tracker. It is a thin wrapper over
+[`hca-tracker-client`](../hca-tracker-client), which holds the logic; see its
+README for how version selection, the checks before downloading, verification,
+resume, and the checks before uploading work.
 
 It is a separate server from `hca-anndata-mcp`, so that server's tool list stays
 focused and the tracker token stays here. The two work together through local
@@ -15,6 +16,11 @@ tools.
 - `aria2c` 1.35.0 or newer on `PATH` (`brew install aria2`, `apt install aria2`;
   see the client README for other systems).
 - A tracker API token (read-only), created at `<tracker>/api-token`.
+- For uploads: `s5cmd` (`brew install peak/tap/s5cmd`) or the AWS CLI on
+  `PATH`, and an AWS profile with access to the tracker bucket, saved with
+  `hca-smart-sync config` (or `HCA_AWS_PROFILE`, an override only this server
+  reads). The server installs
+  `hca-smart-sync` itself; the CLI need not be installed.
 
 ## Configuration
 
@@ -24,6 +30,7 @@ tools.
 | `HCA_TRACKER_API_TOKEN` | — | Read-only API token |
 | `HCA_TRACKER_CACHE_DIR` | `~/.cache/hca-tracker` | Where files and job state live |
 | `HCA_TRACKER_MAX_CONCURRENT` | `2` | Downloads running at once; the rest queue |
+| `HCA_TRACKER_ENVIRONMENT` | by host | `dev` or `prod`, when the tracker's host is not the prod or dev tracker's |
 
 Set them in the server's environment, or in a `.env` file in the directory the
 server runs in (only `HCA_TRACKER_*` keys are read from it). Claude Code starts
@@ -89,7 +96,8 @@ Or point at the checkout's venv binary (`uv sync` in this folder first):
 
 ## Tools
 
-All read-only, matching the token's scope.
+The tracker side is read-only, matching the token's scope. Uploads go to the
+tracker's S3 bucket with the AWS profile above; the tracker ingests from there.
 
 - **list_atlases** — every atlas version: `network`, `atlas` (slug), `version`,
   `is_latest`, `published`. Use it to find the `network`/`atlas` pair.
@@ -141,11 +149,53 @@ All read-only, matching the token's scope.
 - **delete_download** `(path)` — deletes a file, its partial download and
   its job records. Only files in the cache, or exactly a job's own file when
   it was saved elsewhere.
+- **plan_upload** `(network, atlas, file_type, local_path, generation?,
+  environment?, force?)` — what `start_upload` would upload, with no side
+  effects. `file_type` is `source-datasets` or `integrated-objects`;
+  `local_path` a folder, whose top-level `.h5ad` files are considered
+  (`hca-smart-sync` syncs a folder, never one file; stage what you mean to
+  upload in a folder of its own). Returns `target` (`s3://<bucket>/<prefix>`,
+  no credentials), `bucket`, `prefix`, `profile`, `transfer_tool` (`s5cmd` or
+  `aws`), `files` (`name`, `size_bytes`, `sha256`, `reason`: `new`, `changed`
+  or `forced`), `up_to_date` (already in the bucket unchanged; skipped) and
+  `warnings`. Refuses, before touching the bucket, an `environment` other than
+  the configured tracker's, an atlas `hca-smart-sync` does not know or files
+  under a different bionetwork than the tracker does, a published atlas
+  version (the tracker rejects uploads to one; create its next revision
+  first), a missing profile, and a profile that cannot list the target. The
+  folder in the prefix names the revision: `gut-v1` is v1.0, `gut-v1-1` is
+  v1.1.
+- **start_upload** `(same)` — runs the plan in a detached worker and returns
+  `job_id` with the plan being executed. Nothing is started when every file is
+  up to date (`job_id` is `null`); `force` uploads them anyway. One job per
+  folder at a time.
+- **upload_status** `(job_id?)` — state (`queued`, `uploading`, `done`,
+  `failed`, `interrupted`), `files_done` of `files_total`, bytes, the
+  `current_file` and the transfer tool's latest `progress` line for it, then
+  `manifest_path` when done. Without `job_id`, every job.
 - **check_environment** — `aria2c` path and version, the daemon, the cache
-  folder and free space, whether the tracker is reachable and the token valid.
+  folder and free space, whether the tracker is reachable and the token valid;
+  under `upload`: `hca-smart-sync`, `s5cmd` and `aws`, the AWS profile and its
+  source, whether it can list the bucket the configured tracker ingests from,
+  and the verdict `can_upload`.
 
 `cap_status` and `tier1_status` are not served by the tracker API; the client
 mirrors the tracker's own rules (see the client README).
 
 Downloads run in a detached aria2 daemon: they continue after the server or
-the session ends, and `download_status` in a new session reports them.
+the session ends, and `download_status` in a new session reports them. Uploads
+run in a detached worker process the same way; `upload_status` follows them.
+
+## Putting a curated file back
+
+```
+plan_upload(network, atlas, file_type, local_path)   # see what would go where; nothing happens
+start_upload(...)                                     # same arguments; returns job_id
+upload_status(job_id)                                 # until state is done
+list_source_datasets / list_integrated_objects        # the file's new revision: uploaded_at, wip_number
+get_validation_report(entry_id, kind)                 # the validators' verdict on it
+```
+
+`environment` defaults to `dev` and must be the configured tracker's; `prod`
+is always explicit. The tracker ingests the file after the upload completes,
+so the new revision appears in the lists a little later than `done`.
