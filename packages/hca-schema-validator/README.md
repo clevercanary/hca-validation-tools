@@ -98,6 +98,7 @@ described in [HCA overrides](https://github.com/clevercanary/hca-validation-tool
 - Column names in `obs`, `var` and `raw.var` are unique.
 - No column name starts with `__`, which is reserved.
 - Reserved and deprecated columns are absent.
+- No array stored in `obsm`, `obsp`, `varm` or `varp` is empty.
 
 ### Cell metadata (`obs`)
 
@@ -155,14 +156,14 @@ some columns must sit below a given parent term. Every problem here is an error.
 - Color lists (`<column>_colors`) belong to an existing category column, have
   at least one color per category, and are all hex codes or all CSS color names.
 
-### Matrices (`X`, `raw.X`)
+### Matrices (`X`, `raw.X`, `layers`)
 
 *[HCA override](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/README.md#hca-overrides)*
 
 - Non-zero values in the raw matrix (`raw.X`, or `X` when there is no
   `raw.X`) are 32-bit floats.
-- Matrices are dense or CSR (compressed sparse row). CSR is required when more
-  than half the values are zero.
+- Every matrix, including each layer, is dense or CSR (compressed sparse row).
+  CSR is required when more than half the values are zero.
 - Non-zero raw counts are whole positive numbers.
 - Every cell has at least one raw count. Visium spots outside the tissue follow
   a separate rule.
@@ -184,6 +185,8 @@ some columns must sit below a given parent term. Every problem here is an error.
   dimensions and no infinite values. `X_…` and `spatial` embeddings have at
   least two columns. `spatial` has no missing values, and other embeddings are
   not entirely missing.
+- A `spatial` embedding is required when `uns['spatial']['is_single']` is true,
+  and not allowed when `is_single` is not set.
 
 ### Spatial data
 
@@ -387,7 +390,8 @@ Two comparisons:
 | An assembly accession (`GCF_000001405.40`) | Names a genome, not a gene annotation, and is reported as such |
 | Unreadable | No message. The schema's format rule reports it. |
 
-- Only human Ensembl gene IDs (`ENSG` followed by digits) are matched. Gorilla
+- Only human Ensembl gene IDs (`ENSG` followed by digits, with or without a
+  version suffix such as `.18`) are matched. Gorilla
   IDs start with `ENSGGOG` and would pass a looser test. Spike-ins, other
   species and custom genes are left out, and their count is mentioned next to
   any finding.
