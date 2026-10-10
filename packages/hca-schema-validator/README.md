@@ -157,7 +157,9 @@ Details: [HCA changes](https://github.com/clevercanary/hca-validation-tools/blob
 ## Gene IDs
 
 The **allowed gene set** is the fixed list of human gene IDs a file is checked
-against: **GENCODE v48 (Ensembl release 114), primary assembly only**. The
+against: **GENCODE v48 (Ensembl release 114), primary assembly only**. That
+means every gene on the chromosomes and on the unplaced and unlocalized
+scaffolds, **minus the genes on alternate (alt) and patch contigs**. The
 validator's output uses this name, and so does this README. The terms are
 explained below.
 
