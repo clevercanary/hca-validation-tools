@@ -56,7 +56,16 @@ def run(job_id: str, cache_dir: Path) -> int:
         engine = load_engine(job.engine)(job.profile, sys.stdout, started, finished)
         result = engine.sync(Path(job.local_path), job.target, force=job.force)
     except Exception as error:
-        store.end(job_id, FAILED, redact(f"hca-smart-sync failed: {type(error).__name__}: {error}"))
+        current = store.load(job_id)
+        unconfirmed = sorted(expected - set(current.files_done if current else []))
+        store.end(
+            job_id,
+            FAILED,
+            redact(  # the error text last: a URL in it would swallow any punctuation after it
+                f"hca-smart-sync failed; not confirmed uploaded: {', '.join(unconfirmed) or 'none'}. Run start_upload "
+                f"again (files already in the bucket are skipped). Error: {type(error).__name__}: {error}"
+            ),
+        )
         return 1
 
     manifest = result.get("manifest_path")

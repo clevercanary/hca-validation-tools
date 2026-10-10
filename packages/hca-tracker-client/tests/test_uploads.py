@@ -692,6 +692,35 @@ def test_job_stays_active_while_the_transfer_outlives_the_worker(uploads):
     assert worker_alive(job) is False
 
 
+def test_engine_exception_names_the_unconfirmed_files(uploads, staged, monkeypatch):
+    """An engine that raises mid-run leaves a record saying which planned files are not confirmed uploaded."""
+    from hca_tracker_client import upload_worker
+
+    started = uploads.start("gut", "gut", "source-datasets", str(staged))
+    wait_for(uploads, started["job_id"], UPLOAD_ENDED, timeout=30)
+    job = uploads.store.load(started["job_id"])
+    assert job is not None
+    job.state, job.files_done, job.bytes_done, job.finished_at = "queued", [], 0, None
+    uploads.store._write(job)
+
+    class Flaky:
+        def __init__(self, profile, log, on_file_start, on_file_done):
+            self.on_file_done = on_file_done
+
+        def sync(self, local_path, s3_path, force=False, **kwargs):
+            self.on_file_done("a.h5ad", 20_000)
+            raise RuntimeError("boom https://example.com/secret")
+
+    monkeypatch.setattr(upload_worker, "load_engine", lambda spec: Flaky)
+    assert upload_worker.run(job.job_id, uploads.config.cache_dir) == 1
+    failed = uploads.status(job.job_id)
+    assert failed["state"] == "failed" and failed["files_done"] == 1
+    assert failed["message"] == (
+        "hca-smart-sync failed; not confirmed uploaded: b.h5ad. Run start_upload again (files already in the "
+        "bucket are skipped). Error: RuntimeError: boom <url>"
+    )
+
+
 def test_store_never_rewrites_a_finished_record(cache_dir):
     store = UploadStore(cache_dir)
     assert store.update("nope", lambda job: None) is None
