@@ -2434,7 +2434,7 @@ def test_annotation_version_version_suffix_is_matched_not_split_off():
     adata = _version_adata(["ENSG00000141510.beta", _POST_R98, "mycustom.1", "mycustom.2"], version="v87")
     warnings, _ = check_gene_annotation_version(adata)
     assert len(warnings) == 1, warnings
-    assert "3 features excluded from dating" in warnings[0], warnings[0]
+    assert "3 features excluded from release matching" in warnings[0], warnings[0]
     assert "1 of this file's 1 gene did not exist" in warnings[0], warnings[0]
 
 
@@ -2447,12 +2447,12 @@ def test_annotation_version_excluded_count_is_of_rejected_features():
         warnings, _ = check_gene_annotation_version(_version_adata(ids, version="v87"))
         return warnings[0] if warnings else ""
 
-    assert "excluded from dating" not in excluded([_TP53, _TP53, _TP53, _POST_R98])
-    assert "excluded from dating" not in excluded([f"{_TP53}.18", f"{_TP53}.19", _POST_R98])
+    assert "excluded from release matching" not in excluded([_TP53, _TP53, _TP53, _POST_R98])
+    assert "excluded from release matching" not in excluded([f"{_TP53}.18", f"{_TP53}.19", _POST_R98])
     # Real non-Ensembl features are still counted, and the reason no longer
     # claims they have no Ensembl release -- _PAR_Y ids do.
-    assert "2 features excluded from dating" in excluded([_TP53, _POST_R98, "ERCC-00002", "ERCC-00003"])
-    assert "2 features excluded from dating" in excluded(
+    assert "2 features excluded from release matching" in excluded([_TP53, _POST_R98, "ERCC-00002", "ERCC-00003"])
+    assert "2 features excluded from release matching" in excluded(
         [_TP53, "ENSG00000182378_PAR_Y", "ENSG00000185960_PAR_Y", _POST_R98]
     )
 
