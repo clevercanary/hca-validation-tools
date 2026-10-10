@@ -15,6 +15,7 @@ from hca_tracker_client import (
     Downloads,
     TrackerClient,
     TrackerError,
+    Uploads,
     environment_report,
     load_config,
     redact,
@@ -63,6 +64,26 @@ Generation = Annotated[
 Published = Annotated[bool, Field(description="Only consider published atlas versions.")]
 JobId = Annotated[str, Field(description="job_id returned by start_download.")]
 File = Annotated[str, Field(description="File name or file_id, from list_integrated_objects/list_source_datasets.")]
+# The literals are the client's SOURCE_DATASETS / INTEGRATED_OBJECTS (a Literal cannot name them); test_e2e pins it.
+FileType = Annotated[
+    Literal["source-datasets", "integrated-objects"],
+    Field(description="Which folder of the atlas the files go to: source-datasets or integrated-objects."),
+]
+LocalPath = Annotated[
+    str,
+    Field(
+        description="Folder whose top-level .h5ad files are uploaded (hca-smart-sync scans a folder, never one "
+        "file). Stage what you mean to upload in a folder of its own."
+    ),
+]
+Environment = Annotated[
+    Literal["dev", "prod"],
+    Field(
+        description="Which tracker bucket: dev (default) or prod. It must be the environment of the configured "
+        "tracker, or the upload is refused."
+    ),
+]
+Force = Annotated[bool, Field(description="Upload every file, even one the bucket already holds unchanged.")]
 
 
 @_tool
@@ -193,6 +214,64 @@ def delete_download(
 
 
 @_tool
+def plan_upload(
+    network: Network,
+    atlas: Atlas,
+    file_type: FileType,
+    local_path: LocalPath,
+    generation: Generation = None,
+    environment: Environment = "dev",
+    force: Force = False,
+) -> dict:
+    """What start_upload would upload from a folder, with no side effects; safe to call freely.
+
+    Runs every check start_upload runs: the configured tracker and the bucket are the same environment, the
+    atlas resolves and hca-smart-sync knows it under the same bionetwork, an AWS profile is configured (from
+    hca-smart-sync's own settings), and the profile can list the target. Returns target (bucket and prefix,
+    no credentials), profile, transfer_tool (s5cmd or aws), files (name, size, sha256, reason: new, changed or
+    forced), up_to_date (files already in the bucket unchanged, which are skipped) and warnings.
+    """
+    return Uploads(load_config()).plan(network, atlas, file_type, local_path, generation, environment, force)
+
+
+@_tool
+def start_upload(
+    network: Network,
+    atlas: Atlas,
+    file_type: FileType,
+    local_path: LocalPath,
+    generation: Generation = None,
+    environment: Environment = "dev",
+    force: Force = False,
+) -> dict:
+    """Plan, then upload the folder's new and changed .h5ad files in the background; returns job_id at once.
+
+    The response carries the plan being executed (files, target, profile). The upload runs in a detached
+    worker, so it continues after this session ends; poll upload_status. hca-smart-sync writes a manifest
+    beside the files and stamps each object with its SHA-256; the tracker ingests the files from the bucket
+    and lists them (with a new wip_number) in list_source_datasets / list_integrated_objects, where
+    get_validation_report then gives the validators' verdict. Nothing is uploaded when every file is up to
+    date (job_id is null); pass force to upload anyway.
+    """
+    return Uploads(load_config()).start(network, atlas, file_type, local_path, generation, environment, force)
+
+
+@_tool
+def upload_status(
+    job_id: Annotated[str | None, Field(description="job_id returned by start_upload. Omit to list every job.")] = None,
+) -> dict:
+    """State (queued, uploading, done, failed, interrupted) and progress of one upload job, or all.
+
+    Progress is per file (files_done of files_total, bytes) plus the transfer tool's own latest progress line
+    for the file in flight. A done job carries manifest_path; a failed or interrupted one says which files
+    were not uploaded, and start_upload again skips those already in the bucket.
+    """
+    return Uploads(load_config()).status(job_id)
+
+
+@_tool
 def check_environment() -> dict:
-    """Check aria2c, the aria2 daemon, the cache folder and free space, the tracker, and the token."""
+    """Check what downloads and uploads need: aria2c and its daemon, the cache folder and free space, the
+    tracker and the token; hca-smart-sync, s5cmd / aws, the AWS profile and whether it can list the bucket
+    the configured tracker ingests from (upload.can_upload)."""
     return environment_report(load_config())

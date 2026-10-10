@@ -11,6 +11,8 @@ from .errors import ConfigError
 PREFIX = "HCA_TRACKER_"
 DEFAULT_CACHE_DIR = Path("~/.cache/hca-tracker")
 DEFAULT_MAX_CONCURRENT = 2
+DEFAULT_UPLOAD_ENGINE = "hca_tracker_client.uploads:make_engine"
+ENVIRONMENTS = ("dev", "prod")
 
 
 @dataclass(frozen=True)
@@ -25,6 +27,11 @@ class Config:
     api_token: str | None = field(repr=False)
     cache_dir: Path
     max_concurrent: int
+    # Which environment the tracker is (dev or prod), when its host is not one of the two known
+    # ones; decides the bucket uploads may go to. None: decide from the host.
+    tracker_environment: str | None = None
+    # ``module:attribute`` of the upload engine factory; tests point it at a fake.
+    upload_engine: str = DEFAULT_UPLOAD_ENGINE
 
     def require_tracker(self) -> tuple[str, str]:
         """Return (tracker URL, token), or raise if either is unset."""
@@ -92,9 +99,14 @@ def load_config(env: Mapping[str, str] | None = None, env_file: Path | None = No
 
     cache_dir = Path(values.get("HCA_TRACKER_CACHE_DIR") or DEFAULT_CACHE_DIR).expanduser().resolve()
     max_concurrent = int(_number(values, "HCA_TRACKER_MAX_CONCURRENT", DEFAULT_MAX_CONCURRENT, int))
+    environment = values.get("HCA_TRACKER_ENVIRONMENT") or None
+    if environment is not None and environment not in ENVIRONMENTS:
+        raise ConfigError(f"HCA_TRACKER_ENVIRONMENT must be one of {', '.join(ENVIRONMENTS)}, got {environment!r}")
     return Config(
         tracker_url=values.get("HCA_TRACKER_URL"),
         api_token=values.get("HCA_TRACKER_API_TOKEN"),
         cache_dir=cache_dir,
         max_concurrent=max_concurrent,
+        tracker_environment=environment,
+        upload_engine=values.get("HCA_TRACKER_UPLOAD_ENGINE") or DEFAULT_UPLOAD_ENGINE,
     )

@@ -42,6 +42,7 @@ from .store import (
     final_path,
     part_path,
 )
+from .uploads import upload_report
 
 _CONTROL = re.compile(r"[\x00-\x1f\x7f\\]")
 
@@ -541,4 +542,5 @@ def environment_report(config: Config) -> dict:
         tracker |= {"reachable": None if isinstance(error, ConfigError) else False, "token_valid": None}
         tracker["error"] = str(error)
     report["tracker"] = tracker
+    report["upload"] = upload_report(config)
     return report
