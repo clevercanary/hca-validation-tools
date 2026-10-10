@@ -111,7 +111,8 @@ what the portal accepts. The CELLxGENE validator checks:
   - Organism is recorded per cell, in `obs['organism_ontology_term_id']`.
     CELLxGENE expects organism once, in `uns`, and rejects the `obs` column as
     deprecated.
-  - Fields are **optional** (checked only when present), **strongly
+  - Fields are **required** by default (an error when missing). A field can
+    instead be **optional** (checked only when present), **strongly
     recommended** (a warning when missing) or **forbidden** (an error when
     present). Self-reported ethnicity is forbidden, to protect donor privacy.
   - Some fields must match a set format, and list fields must hold non-empty
@@ -127,7 +128,7 @@ what the portal accepts. The CELLxGENE validator checks:
   has errors. HCA runs them anyway, as long as `obs` has
   `assay_ontology_term_id`.
 - **Extra `obs` columns.** Columns that are not in the schema, such as ones a
-  curator added, are not checked.
+  curator added, skip the per-column type and value checks.
 
 [All HCA overrides](https://github.com/clevercanary/hca-validation-tools/blob/main/docs/dataset-validator-checks.md#4-hca-schema-validator-hcavalidator)
 
@@ -268,7 +269,7 @@ so their versions can differ.
 | Gene presence by release ([gene release interval table](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/README.md#gene-release-interval-table)) | Ensembl releases 76 to 116 | Checking the declared gene annotation, and telling genes on patch or alternate sequences apart from genes newer than the allowed gene set |
 
 A gene Ensembl added after the allowed gene set was made appears in the gene
-history but not in the allowed gene set, and gets the `[none]` tag.
+presence table but not in the allowed gene set, and gets the `[none]` tag.
 
 <!-- Maintainers: these versions are typed by hand, here and elsewhere in this
 README (search for "v48", "114" and "116", including the example output). Update
