@@ -804,6 +804,20 @@ def test_engine_exception_names_the_unconfirmed_files(uploads, staged, monkeypat
     assert failed["message"].endswith("Error: RuntimeError: Failed to upload manifest")
 
 
+def test_finished_workers_are_reaped(uploads, staged):
+    """A done job's worker is reaped by the next status call, not left as a zombie behind a kept Popen."""
+    started = uploads.start("gut", "gut", "source-datasets", str(staged))
+    assert any(worker.pid == uploads.store.load(started["job_id"]).pid for worker in module._WORKERS)  # type: ignore[union-attr]
+    wait_for(uploads, started["job_id"], UPLOAD_ENDED, timeout=30)
+    deadline = time.monotonic() + 10
+    while module._WORKERS and time.monotonic() < deadline:
+        uploads.status(started["job_id"])
+        time.sleep(0.05)
+    assert module._WORKERS == []
+    with pytest.raises(ChildProcessError):  # nothing left to wait for: the child was reaped
+        os.waitpid(started["job_id"] and uploads.store.load(started["job_id"]).pid, os.WNOHANG)  # type: ignore[union-attr]
+
+
 def test_store_never_rewrites_a_finished_record(cache_dir):
     store = UploadStore(cache_dir)
     assert store.update("nope", lambda job: None) is None

@@ -27,6 +27,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
@@ -451,11 +452,19 @@ class UploadStore(RecordStore[UploadJob]):
 
 
 # Workers this process started, so they are reaped once they exit rather than left as zombies.
+# Reaped on every status refresh and before every spawn; the MCP server runs tool calls on threads.
 _WORKERS: list[subprocess.Popen] = []
+_WORKERS_LOCK = threading.Lock()
 
 
 def _reap_workers() -> None:
-    _WORKERS[:] = [worker for worker in _WORKERS if worker.poll() is None]
+    with _WORKERS_LOCK:
+        _WORKERS[:] = [worker for worker in _WORKERS if worker.poll() is None]
+
+
+def _remember_worker(process: subprocess.Popen) -> None:
+    with _WORKERS_LOCK:
+        _WORKERS.append(process)
 
 
 def transfer_running(pgid: int) -> bool:
@@ -479,7 +488,6 @@ def worker_alive(job: UploadJob) -> bool:
     """
     if not job.pid:
         return False
-    _reap_workers()
     if process_matches(job.pid, job.worker_marker):
         return True
     return transfer_running(job.pid)
@@ -709,6 +717,7 @@ class Uploads:
         ``worker_alive``, so the worker is reaped when it exits and the object
         is never collected while its child runs (which ``Popen`` warns about).
         """
+        _reap_workers()
         argv = [sys.executable, "-m", "hca_tracker_client.upload_worker", job.job_id, str(self.config.cache_dir)]
         with Path(job.log_path).open("ab") as log:
             process = subprocess.Popen(
@@ -720,7 +729,7 @@ class Uploads:
                 start_new_session=True,
                 close_fds=True,
             )
-        _WORKERS.append(process)
+        _remember_worker(process)
         return process.pid
 
     def _refresh(self, job: UploadJob) -> UploadJob:
@@ -730,6 +739,7 @@ class Uploads:
         records that itself, so one still queued a minute later is a failed
         spawn that nothing recorded.
         """
+        _reap_workers()  # on every refresh, so a finished worker never lingers as a zombie
         if job.state not in ACTIVE:
             return job
         never_spawned = not job.pid and time.time() - job.created_at > SPAWN_GRACE_SECONDS
