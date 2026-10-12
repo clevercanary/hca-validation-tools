@@ -29,6 +29,10 @@ MCP server is a thin wrapper over it.
   lands under the same prefix with the same `source-sha256` metadata; only
   the terminal front end is replaced. Uploads run in a detached worker and
   outlive the caller too. See [How an upload works](#how-an-upload-works).
+- **Files already on disk can be checked and adopted.** `Verifier` matches an
+  atlas folder's `tracker-source/` files to the tracker and hashes them in a
+  detached worker; a verified file can then be adopted as a download. See
+  [Checking files already on disk](#checking-files-already-on-disk).
 
 ## Install
 
@@ -99,7 +103,8 @@ the CLI does not read. With none set, uploads refuse.
 
 ```python
 from hca_tracker_client import (
-    Downloads, TrackerClient, Uploads, get_atlas, list_atlases, list_files, load_config, validation_report,
+    Downloads, TrackerClient, Uploads, Verifier, get_atlas, list_atlases, list_files, load_config,
+    validation_report,
 )
 
 config = load_config()
@@ -122,6 +127,11 @@ uploads = Uploads(config)                                   # needs the upload e
 uploads.plan("gut", "gut", "source-datasets", "~/outbox")   # what start() would upload; no side effects
 job = uploads.start("gut", "gut", "source-datasets", "~/outbox", environment="dev")
 uploads.status(job["job_id"])     # queued, uploading, done, failed, interrupted
+
+verifier = Verifier(config)
+job = verifier.start("liver", "liver", "~/hca-tracker-upload/prod/liver/liver-v1")
+verifier.status(job["job_id"])    # queued, hashing, done, failed, interrupted; per-file results
+verifier.adopt("liver", "liver", "~/.../tracker-source/adata_myeloid-r1-wip-2.h5ad")
 ```
 
 ## How a download works
@@ -236,6 +246,45 @@ is the subject of #741.
 **Closing the loop.** Once the tracker has ingested the file, `list_files()`
 shows its new revision (`uploaded_at`, `wip_number`) and `validation_report()`
 the validators' verdict.
+
+## Checking files already on disk
+
+A file that reached the disk some other way than `Downloads.start` (a browser
+download, a copy from another machine) has no job record, so `start()` refuses
+it at its destination. `Verifier` checks such files and adopts them.
+
+`start(network, atlas, path)` takes an **atlas folder**, one holding
+`integrated-objects/tracker-source/` and/or `source-datasets/tracker-source/`
+(only those two are read), or **any other folder**, such as a download folder,
+whose own files are read. Only `.h5ad` files directly in a folder count
+(`.part` files are skipped). Each file is matched to the names `start_download`
+would save the tracker's files under, and reported with its kind:
+
+| Status | Meaning |
+|---|---|
+| `stale` | another revision or wip of a listed file (`current_name` is the listed one) |
+| `unknown` | not a listed file |
+| `size_mismatch` | the tracker's name, another size |
+| `no_checksum` | the tracker stores no SHA-256 for it |
+| `verified` / `mismatch` | hashed, and its SHA-256 equals / differs from the tracker's |
+| `changed` | its size or modification time changed after `start()`, so its hash proves nothing |
+| `unreadable` | it could not be read |
+
+For an atlas folder, `misplaced` marks a listed file in the other kind's
+folder and `missing` lists the tracker's files with no local copy; another
+folder is not expected to hold the whole atlas, so it has no `missing` list. Every tracker call (listing, presigning,
+the ranged GET that reads each file's stored checksum) happens in `start()`;
+the hashing runs in a detached worker that never sees the token, and outlives
+the caller. Nothing is written to the files or the tracker.
+
+`adopt(network, atlas, path)` records one `verified` file as a finished,
+SHA-256 verified download at the path it has now, under the atlas version it
+was verified against. It is found by name, size and modification time rather
+than by path, so a file verified in one folder and then **moved** (which keeps
+both) still matches; a copy (which usually gets a new modification time) or a
+file changed since must be verified again. The tracker's current checksum is read again first, so a file
+the tracker has replaced since is refused. An adopted file is a download like
+any other: `start()` with `dest_dir` set to its folder returns `cached: true` for it, and `delete()` can delete it.
 
 ## The aria2 daemon
 

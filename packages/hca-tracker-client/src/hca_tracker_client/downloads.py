@@ -35,6 +35,7 @@ from .store import (
     DOWNLOADING,
     INTERRUPTED,
     QUEUED,
+    VERIFY_DIR,
     VERIFYING,
     Job,
     JobStore,
@@ -70,6 +71,14 @@ def _allocated(path: Path) -> int:
         return path.stat().st_blocks * 512
     except (FileNotFoundError, AttributeError):
         return 0
+
+
+def _cached(previous: list[Job], final: Path, size: int, sha256: str | None) -> Job | None:
+    """The finished download ``final`` already is, if its record matches this revision's size and checksum."""
+    done = [job for job in previous if job.state == DONE]
+    if done and final.stat().st_size == size and done[-1].sha256 == sha256:
+        return done[-1]
+    return None
 
 
 def _cancel_message(job: Job) -> str:
@@ -141,7 +150,12 @@ class Downloads:
 
     def _internal_dirs(self) -> set[Path]:
         """Folders under the cache that hold this package's own state, not downloads."""
-        return {daemon_dir(self.cache_dir), self.store.directory, UploadStore(self.cache_dir).directory}
+        return {
+            daemon_dir(self.cache_dir),
+            self.store.directory,
+            UploadStore(self.cache_dir).directory,
+            self.cache_dir / VERIFY_DIR,
+        }
 
     # -- state ---------------------------------------------------------------
 
@@ -295,9 +309,9 @@ class Downloads:
                 return {**self._describe(active[-1]), "message": "Already downloading", "warnings": warnings}
 
             if final.exists():
-                done = [job for job in previous if job.state == DONE]
-                if done and final.stat().st_size == size and done[-1].sha256 == probed.sha256:
-                    cached = {"job_id": done[-1].job_id, "state": DONE, "cached": True, "verified": done[-1].verified}
+                done = _cached(previous, final, size, probed.sha256)
+                if done is not None:
+                    cached = {"job_id": done.job_id, "state": DONE, "cached": True, "verified": done.verified}
                     return {**summary, **cached}
                 raise CheckError(
                     f"{final} already exists but is not a verified download of this file revision; "
@@ -371,6 +385,43 @@ class Downloads:
                 # disk usage overstates what has been downloaded. download_status has that.
                 result["message"] = "Resuming the partial download from aria2's control file"
             return result
+
+    def adopt(self, final: Path, network: str, atlas: str, version: str, file_id: str, sha256: str) -> dict:
+        """Record a file whose SHA-256 the caller has verified as a finished download at ``final``.
+
+        ``Verifier.adopt`` is the caller: it hashed the file and re-read the
+        tracker's checksum. Afterwards ``start`` treats the file as cached, by
+        the same rule it applies to a file it downloaded itself.
+        """
+        if any(final.is_relative_to(folder.resolve()) for folder in self._internal_dirs()):
+            raise CheckError(f"{final} is in the download cache's own state, not a download")
+        size = final.stat().st_size
+        with self.store.locked():
+            aria2 = self._running_daemon()
+            previous = [self._refresh(job, aria2)[0] for job in self.store.for_path(final)]
+            active = [job for job in previous if job.state in ACTIVE]
+            if active:
+                raise CheckError(f"{final.name} is being downloaded (job {active[-1].job_id}); cancel_download first")
+            done = _cached(previous, final, size, sha256)
+            if done is not None:
+                return {**self._describe(done), "cached": True, "message": "Already a verified download"}
+            job = Job(
+                job_id=secrets.token_hex(8),
+                network=network,
+                atlas=atlas,
+                version=version,
+                file_name=final.name,
+                file_id=file_id,
+                path=str(final),
+                size=size,
+                sha256=sha256,
+                state=DONE,
+                message="Adopted: SHA-256 verified on disk by verify_local",
+                verified="sha256",
+                finished_at=time.time(),
+            )
+            self.store.create(job)
+        return self._describe(job)
 
     def status(self, job_id: str | None = None) -> dict:
         """One job's state and progress, or every job's when no id is given."""

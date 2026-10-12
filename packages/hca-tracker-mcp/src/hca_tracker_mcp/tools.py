@@ -17,6 +17,7 @@ from hca_tracker_client import (
     TrackerClient,
     TrackerError,
     Uploads,
+    Verifier,
     environment_report,
     load_config,
     redact,
@@ -85,6 +86,13 @@ Environment = Annotated[
     ),
 ]
 Force = Annotated[bool, Field(description="Upload every file, even one the bucket already holds unchanged.")]
+VerifyFolder = Annotated[
+    str,
+    Field(
+        description="An atlas folder (holding integrated-objects/tracker-source/ and/or "
+        "source-datasets/tracker-source/; only those are read), or any other folder, whose own .h5ad files are read."
+    ),
+]
 
 
 @_tool
@@ -270,6 +278,42 @@ def upload_status(
     were not uploaded, and start_upload again skips those already in the bucket.
     """
     return Uploads(load_config()).status(job_id)
+
+
+@_tool
+def verify_local(
+    network: Network, atlas: Atlas, path: VerifyFolder, generation: Generation = None, published: Published = False
+) -> dict:
+    """Check a folder's .h5ad files against the tracker; returns job_id at once.
+
+    Per file (with its kind): stale (another revision or wip of a listed file; current_name is the listed
+    one), unknown, size_mismatch, no_checksum, or hashed in the background against the tracker's SHA-256
+    into verified, mismatch, changed or unreadable. For an atlas folder, misplaced marks a file in the other
+    kind's folder and missing lists tracker files with no local copy. Read-only. Poll verify_status.
+    """
+    return Verifier(load_config()).start(network, atlas, path, generation, published)
+
+
+@_tool
+def verify_status(
+    job_id: Annotated[str | None, Field(description="job_id returned by verify_local. Omit to list every job.")] = None,
+) -> dict:
+    """State (queued, hashing, done, failed, interrupted), progress and per-file results of one verify job, or all."""
+    return Verifier(load_config()).status(job_id)
+
+
+@_tool
+def adopt_download(
+    network: Network,
+    atlas: Atlas,
+    path: Annotated[str, Field(description="The verified .h5ad file, where it now is (it may have been moved).")],
+) -> dict:
+    """Record a verified file as a finished download at its current path, under the version verified against.
+
+    Matched by name, size and modification time, so move a verified file, don't copy it; the tracker's checksum
+    is re-checked. start_download with dest_dir = its folder then returns cached: true.
+    """
+    return Verifier(load_config()).adopt(network, atlas, path)
 
 
 @_tool

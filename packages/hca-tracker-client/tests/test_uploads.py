@@ -12,7 +12,7 @@ from typing import ClassVar
 
 import pytest
 
-from hca_tracker_client import CheckError, ConfigError, JobError, Uploads, environment_report, load_config
+from hca_tracker_client import CheckError, ConfigError, JobError, Uploads, environment_report, load_config, workers
 from hca_tracker_client import uploads as module
 from hca_tracker_client.testing import fake_s3 as make_fake_s3
 from hca_tracker_client.testing import save_profile, sha256_of
@@ -686,7 +686,7 @@ def test_upload_records_are_not_downloads(uploads, staged):
 def test_worker_environment_has_no_token(monkeypatch):
     monkeypatch.setenv("HCA_TRACKER_API_TOKEN", "secret")
     monkeypatch.setenv("HCA_TRACKER_FAKE_S3", "/s3")
-    env = module.worker_environment()
+    env = workers.worker_environment()
     assert "HCA_TRACKER_API_TOKEN" not in env and env["HCA_TRACKER_FAKE_S3"] == "/s3"
 
 
@@ -827,13 +827,13 @@ def test_engine_exception_names_the_unconfirmed_files(uploads, staged, monkeypat
 def test_finished_workers_are_reaped(uploads, staged):
     """A done job's worker is reaped by the next status call, not left as a zombie behind a kept Popen."""
     started = uploads.start("gut", "gut", "source-datasets", str(staged))
-    assert any(worker.pid == uploads.store.load(started["job_id"]).pid for worker in module._WORKERS)  # type: ignore[union-attr]
+    assert any(worker.pid == uploads.store.load(started["job_id"]).pid for worker in workers._WORKERS)  # type: ignore[union-attr]
     wait_for(uploads, started["job_id"], UPLOAD_ENDED, timeout=30)
     deadline = time.monotonic() + 10
-    while module._WORKERS and time.monotonic() < deadline:
+    while workers._WORKERS and time.monotonic() < deadline:
         uploads.status(started["job_id"])
         time.sleep(0.05)
-    assert module._WORKERS == []
+    assert workers._WORKERS == []
     with pytest.raises(ChildProcessError):  # nothing left to wait for: the child was reaped
         os.waitpid(started["job_id"] and uploads.store.load(started["job_id"]).pid, os.WNOHANG)  # type: ignore[union-attr]
 
