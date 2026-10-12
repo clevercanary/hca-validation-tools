@@ -4,7 +4,7 @@ This library exists to back hca-tracker-mcp, so its error messages name the
 MCP tools to call next (``start_download``, ``delete_download``, ...). Each
 maps to a ``Downloads`` method of the same purpose; the upload tools
 (``plan_upload``, ``start_upload``, ``upload_status``) to ``Uploads`` methods; the verify tools
-(``verify_local``, ``verify_status``, ``adopt_download``) to ``Verifier`` methods.
+(``verify_local``, ``verify_status``) to ``Verifier`` methods.
 """
 
 from .api import TrackerClient

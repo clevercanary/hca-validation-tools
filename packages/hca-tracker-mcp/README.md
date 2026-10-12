@@ -180,18 +180,14 @@ tracker's S3 bucket with the AWS profile above; the tracker ingests from there.
   folder. Each file, with its kind, is `stale` (another revision or wip of a
   listed file; `current_name` is the listed one), `unknown`, `size_mismatch`,
   `no_checksum`, or hashed by a detached worker into `verified`, `mismatch`,
-  `changed` or `unreadable`. For an atlas folder, `misplaced` marks a listed
+  `changed` or `unreadable`; `ambiguous` when the tracker gives the name to
+  more than one file (`duplicate_names` lists them). For an atlas folder,
+  `misplaced` marks a listed
   file in the other kind's folder, and `missing` lists tracker files with no
   local copy. Read-only. Returns `job_id` at once.
 - **verify_status** `(job_id?)` — state (`queued`, `hashing`, `done`,
   `failed`, `interrupted`), files and bytes hashed, per-file results. Without
   `job_id`, every job.
-- **adopt_download** `(network, atlas, path)` — records a `verified` file as a
-  finished download at its current path, under the atlas version it was
-  verified against, after checking the tracker's checksum again. It is found
-  by name, size and modification time: **move** a verified file into place,
-  don't copy it (a copy, or a changed file, must be verified again). `start_download` with `dest_dir` set
-  to the file's folder then returns `cached: true` for it, and `delete_download` can delete it.
 - **check_environment** — `aria2c` path and version, the daemon, the cache
   folder and free space, whether the tracker is reachable and the token valid;
   under `upload`: `hca-smart-sync`, `s5cmd` and `aws`, the AWS profile and its

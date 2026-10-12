@@ -31,7 +31,6 @@ TOOLS = {
     "upload_status",
     "verify_local",
     "verify_status",
-    "adopt_download",
     "check_environment",
 }
 
@@ -325,7 +324,6 @@ async def test_upload_flow(client, tracker, tmp_path):
     assert again["job_id"] is None and "force=true" in again["message"]
 
 
-@requires_aria2
 @pytest.mark.asyncio
 async def test_verify_flow(client, tracker, tmp_path):
     root = tmp_path / "gut-v1"
@@ -343,14 +341,6 @@ async def test_verify_flow(client, tracker, tmp_path):
         "notes.h5ad": "unknown",
     }
     assert sorted(m["name"] for m in status["missing"]) == ["broken-r1.h5ad", "src-r1.h5ad"]
-
-    adopted = await _call(client, "adopt_download", {**args, "path": str(integrated / "gut-r1.h5ad")})
-    assert (adopted["state"], adopted["verified"]) == ("done", "sha256")
-    cached = await _call(client, "start_download", {**args, "file": "gut.h5ad", "dest_dir": str(integrated)})
-    assert cached["cached"] is True
-
-    refused = await _call(client, "adopt_download", {**args, "path": str(integrated / "notes.h5ad")})
-    assert refused["error"] == "notes.h5ad was not verified (status 'unknown' in job " + started["job_id"] + ")"
 
 
 def test_module_version_matches_the_distribution():

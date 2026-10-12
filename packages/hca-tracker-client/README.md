@@ -29,9 +29,9 @@ MCP server is a thin wrapper over it.
   lands under the same prefix with the same `source-sha256` metadata; only
   the terminal front end is replaced. Uploads run in a detached worker and
   outlive the caller too. See [How an upload works](#how-an-upload-works).
-- **Files already on disk can be checked and adopted.** `Verifier` matches an
-  atlas folder's `tracker-source/` files to the tracker and hashes them in a
-  detached worker; a verified file can then be adopted as a download. See
+- **Files already on disk can be checked.** `Verifier` matches a folder's
+  files to the tracker and hashes them in a detached worker, to say which are
+  current copies. See
   [Checking files already on disk](#checking-files-already-on-disk).
 
 ## Install
@@ -131,7 +131,6 @@ uploads.status(job["job_id"])     # queued, uploading, done, failed, interrupted
 verifier = Verifier(config)
 job = verifier.start("liver", "liver", "~/hca-tracker-upload/prod/liver/liver-v1")
 verifier.status(job["job_id"])    # queued, hashing, done, failed, interrupted; per-file results
-verifier.adopt("liver", "liver", "~/.../tracker-source/adata_myeloid-r1-wip-2.h5ad")
 ```
 
 ## How a download works
@@ -249,9 +248,9 @@ the validators' verdict.
 
 ## Checking files already on disk
 
-A file that reached the disk some other way than `Downloads.start` (a browser
-download, a copy from another machine) has no job record, so `start()` refuses
-it at its destination. `Verifier` checks such files and adopts them.
+`Verifier` says whether files already on disk, however they got there (a
+browser download, a copy from another machine), are current copies of the
+tracker's.
 
 `start(network, atlas, path)` takes an **atlas folder**, one holding
 `integrated-objects/tracker-source/` and/or `source-datasets/tracker-source/`
@@ -262,6 +261,7 @@ would save the tracker's files under, and reported with its kind:
 
 | Status | Meaning |
 |---|---|
+| `ambiguous` | the tracker gives its name to more than one file (`duplicate_names` lists them); not hashed |
 | `stale` | another revision or wip of a listed file (`current_name` is the listed one) |
 | `unknown` | not a listed file |
 | `size_mismatch` | the tracker's name, another size |
@@ -277,14 +277,6 @@ the ranged GET that reads each file's stored checksum) happens in `start()`;
 the hashing runs in a detached worker that never sees the token, and outlives
 the caller. Nothing is written to the files or the tracker.
 
-`adopt(network, atlas, path)` records one `verified` file as a finished,
-SHA-256 verified download at the path it has now, under the atlas version it
-was verified against. It is found by name, size and modification time rather
-than by path, so a file verified in one folder and then **moved** (which keeps
-both) still matches; a copy (which usually gets a new modification time) or a
-file changed since must be verified again. The tracker's current checksum is read again first, so a file
-the tracker has replaced since is refused. An adopted file is a download like
-any other: `start()` with `dest_dir` set to its folder returns `cached: true` for it, and `delete()` can delete it.
 
 ## The aria2 daemon
 

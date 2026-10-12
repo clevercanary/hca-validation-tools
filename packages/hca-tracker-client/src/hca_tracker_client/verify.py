@@ -1,17 +1,13 @@
-"""Checking files already on disk against the tracker, and adopting them as verified downloads.
+"""Checking whether files already on disk are current copies of the tracker's.
 
-A file that reached the disk some other way than ``start_download`` (a
-browser download, a copy from another machine) has no job record, so
-``start_download`` refuses it and nothing says whether it is current.
 ``Verifier.start`` answers that for a folder: an atlas folder's two
-``tracker-source/`` folders, or any other folder's own ``.h5ad`` files. It
-matches each to the tracker's download names and hashes the matches in a
-detached worker against the SHA-256 the tracker stores with each file.
-``Verifier.adopt`` then records one verified file as a finished download, so
-``start_download`` treats it as cached.
+``tracker-source/`` folders, or any other folder's own ``.h5ad`` files (a
+browser download, a copy from another machine). It matches each to the
+tracker's download names and hashes the matches in a detached worker against
+the SHA-256 the tracker stores with each file.
 
 Like the upload worker, the hashing worker never sees the tracker token: every
-tracker call happens in ``start`` and ``adopt``.
+tracker call happens in ``start``.
 """
 
 import re
@@ -27,7 +23,6 @@ from .catalog import atlas_files
 from .checks import human_duration, human_size
 from .config import Config
 from .daemon import process_matches
-from .downloads import Downloads
 from .errors import CheckError, JobError
 from .selection import INTEGRATED, SOURCE, atlas_version, select_atlas
 from .store import DONE, FAILED, INTERRUPTED, VERIFY_DIR, RecordStore
@@ -45,6 +40,7 @@ TRACKER_THREADS = 8
 
 # A local file's status. The first group is decided from names and sizes, the
 # second by hashing; PENDING is a file still waiting for the worker.
+AMBIGUOUS = "ambiguous"  # its name is the download name of more than one tracker file
 STALE = "stale"  # another revision or wip of a file the tracker lists; current_name is the one it lists
 UNKNOWN = "unknown"  # not a file the tracker lists
 SIZE_MISMATCH = "size_mismatch"  # the tracker's name, a different size
@@ -79,11 +75,12 @@ class VerifyJob:
     network: str
     atlas: str
     version: str
-    atlas_id: str
     root: str
     files: list[dict]
     missing: list[dict]
     log_path: str
+    # Download names the tracker gives to more than one file: {"name", "kinds"}.
+    duplicate_names: list[dict] = field(default_factory=list)
     # "atlas" (its tracker-source/ folders, missing files listed) or "folder" (its own files, no missing list).
     layout: str = "atlas"
     state: str = QUEUED
@@ -161,15 +158,29 @@ def local_files(folders: dict[str | None, Path]) -> list[dict]:
     return found
 
 
-def tracker_names(tracker: TrackerClient, atlas_id: str) -> dict[str, dict]:
-    """Each listed, unarchived file by its download name: what a ``start_download`` of it would save."""
+def tracker_names(tracker: TrackerClient, atlas_id: str) -> dict[str, list[dict]]:
+    """The listed, unarchived files by download name (what a ``start_download`` would save each as).
+
+    A name with more than one file is a duplicate the tracker should not hold; it is reported, never guessed at.
+    """
     entries = [entry for entry in atlas_files(tracker, atlas_id) if not entry.get("isArchived")]
     with ThreadPoolExecutor(TRACKER_THREADS) as pool:
         presigned = list(pool.map(lambda entry: tracker.presigned_url(atlas_id, entry["fileId"]), entries))
-    return {link.filename: {"entry": entry, "presigned": link} for entry, link in zip(entries, presigned, strict=False)}
+    names: dict[str, list[dict]] = {}
+    for entry, link in zip(entries, presigned, strict=True):
+        names.setdefault(link.filename, []).append({"entry": entry, "presigned": link})
+    return names
 
 
-def classify(local: list[dict], listed: dict[str, dict]) -> list[dict]:
+def duplicates(listed: dict[str, list[dict]]) -> list[dict]:
+    return [
+        {"name": name, "kinds": sorted(item["entry"]["kind"] for item in items)}
+        for name, items in sorted(listed.items())
+        if len(items) > 1
+    ]
+
+
+def classify(local: list[dict], listed: dict[str, list[dict]]) -> list[dict]:
     """Set each local file's status from names alone; returns the listed files with no local copy.
 
     A file the tracker lists gets ``kind`` and ``file_id``, and ``misplaced`` when it was found in a
@@ -178,31 +189,38 @@ def classify(local: list[dict], listed: dict[str, dict]) -> list[dict]:
     stems = {file_stem(name): name for name in listed}
     present = set()
     for entry in local:
-        match = listed.get(entry["name"])
-        if match is None:
+        matches = listed.get(entry["name"])
+        if matches is None:
             current = stems.get(file_stem(entry["name"]))
             entry.update({"status": STALE, "current_name": current} if current else {"status": UNKNOWN})
             continue
         present.add(entry["name"])
+        if len(matches) > 1:
+            entry.update({"status": AMBIGUOUS, "matches": sorted(item["entry"]["kind"] for item in matches)})
+            continue
+        match = matches[0]
         kind = match["entry"]["kind"]
         entry.update({"kind": kind, "file_id": match["entry"]["fileId"]})
         if entry["folder_kind"] is not None:
             entry["misplaced"] = kind != entry["folder_kind"]
     missing = []
-    for name, item in sorted(listed.items()):
-        if name not in present:
+    for name, items in sorted(listed.items()):
+        if name in present:
+            continue
+        for item in items:
             size = int(item["entry"].get("sizeBytes") or 0)
             missing.append({"name": name, "kind": item["entry"]["kind"], "size_bytes": size, "size": human_size(size)})
     return missing
 
 
-def check_sizes(local: list[dict], listed: dict[str, dict]) -> None:
+def check_sizes(local: list[dict], listed: dict[str, list[dict]]) -> None:
     """Read the stored size and checksum of each listed local file; those that can be hashed become pending."""
     matched = [entry for entry in local if "file_id" in entry]
     with ThreadPoolExecutor(TRACKER_THREADS) as pool:
-        probes = list(pool.map(lambda entry: probe(listed[entry["name"]]["presigned"]), matched))
-    for entry, probed in zip(matched, probes, strict=False):
-        size = probed.size if probed.size is not None else int(listed[entry["name"]]["entry"].get("sizeBytes") or 0)
+        probes = list(pool.map(lambda entry: probe(listed[entry["name"]][0]["presigned"]), matched))
+    for entry, probed in zip(matched, probes, strict=True):
+        listed_size = int(listed[entry["name"]][0]["entry"].get("sizeBytes") or 0)
+        size = probed.size if probed.size is not None else listed_size
         entry["tracker_size_bytes"] = size
         if size != entry["size_bytes"]:
             entry["status"] = SIZE_MISMATCH
@@ -213,7 +231,7 @@ def check_sizes(local: list[dict], listed: dict[str, dict]) -> None:
 
 
 class Verifier:
-    """Verify a folder against the tracker (``start``, ``status``) and adopt verified files (``adopt``)."""
+    """Verify a folder against the tracker: ``start`` it, follow it with ``status``."""
 
     def __init__(self, config: Config, tracker: TrackerClient | None = None):
         self.config = config
@@ -253,12 +271,12 @@ class Verifier:
             network=network,
             atlas=atlas,
             version=atlas_version(record),
-            atlas_id=record["id"],
             root=str(root),
             files=files,
             missing=missing,
             log_path=str(self.store.directory / f"{job_id}.log"),
             layout=layout,
+            duplicate_names=duplicates(listed),
         )
         if not job.to_hash:  # nothing to hash: the answer is complete now
             job.state, job.finished_at = DONE, time.time()
@@ -326,6 +344,8 @@ class Verifier:
         }
         if job.layout == "atlas":
             result["counts"]["missing"] = len(job.missing)
+        if job.duplicate_names:
+            result["duplicate_names"] = job.duplicate_names
         if job.state == HASHING and job.started_at:
             result["elapsed"] = human_duration(time.time() - job.started_at)
         if job.message:
@@ -347,57 +367,9 @@ class Verifier:
             return self._describe(self._refresh(job))
         return {"jobs": [self._summary(self._refresh(job)) for job in reversed(self.store.all())]}
 
-    # -- adopt ---------------------------------------------------------------
-
-    def _verified_entry(self, path: Path) -> tuple[VerifyJob, dict]:
-        """The newest finished verification of a file with this name, size and modification time.
-
-        Matched by those three rather than by path, so a file verified in one
-        folder and then moved (which keeps its size and modification time) is
-        still recognised.
-        """
-        stat = path.stat()
-        seen = (path.name, stat.st_size, stat.st_mtime_ns)
-        for job in reversed(self.store.all()):
-            if job.state != DONE:
-                continue
-            for entry in job.files:
-                if (entry["name"], entry["size_bytes"], entry["mtime_ns"]) != seen:
-                    continue
-                if entry["status"] != VERIFIED:
-                    raise CheckError(f"{path.name} was not verified (status {entry['status']!r} in job {job.job_id})")
-                return job, entry
-        raise CheckError(
-            f"No finished verification of {path.name} with this size and modification time; run verify_local on "
-            "its folder first. A file copied (not moved) or changed since it was verified must be verified again"
-        )
-
-    def adopt(self, network: str, atlas: str, path: str) -> dict:
-        """Record one verified file as a finished download, so ``start_download`` treats it as cached.
-
-        The download is recorded under the atlas version the file was verified against.
-        """
-        final = Path(path).expanduser().resolve()
-        if not final.is_file():
-            raise CheckError(f"No file at {final}")
-        job, entry = self._verified_entry(final)
-        if (job.network, job.atlas) != (network, atlas):
-            raise CheckError(f"{final.name} was verified against {job.network}/{job.atlas}, not {network}/{atlas}")
-
-        # The tracker's file may have moved on since the verification; adopt only what it holds now.
-        presigned = self.tracker.presigned_url(job.atlas_id, entry["file_id"])
-        if presigned.filename != final.name or probe(presigned).sha256 != entry["sha256_expected"]:
-            raise CheckError(
-                f"The tracker's copy of {final.name} has changed since it was verified (job {job.job_id}); "
-                "run verify_local again"
-            )
-        return Downloads(self.config, self.tracker).adopt(
-            final, network, atlas, job.version, entry["file_id"], entry["sha256_expected"]
-        )
-
 
 def _row(entry: dict) -> dict:
-    """A file's entry as reported: what was found and its status, without the internals adopt matches on."""
+    """A file's entry as reported: what was found and its status, without the worker's internals."""
     row = {
         "name": entry["name"],
         "path": entry["path"],
@@ -406,7 +378,7 @@ def _row(entry: dict) -> dict:
         "size": human_size(entry["size_bytes"]),
         "folder_kind": entry["folder_kind"],
     }
-    for key in ("kind", "misplaced", "current_name", "tracker_size_bytes", "sha256", "error"):
+    for key in ("kind", "matches", "misplaced", "current_name", "tracker_size_bytes", "sha256", "error"):
         if key in entry:
             row[key] = entry[key]
     return row

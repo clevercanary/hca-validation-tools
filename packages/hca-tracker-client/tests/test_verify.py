@@ -1,4 +1,4 @@
-"""verify_local / adopt_download: classify an atlas folder against the tracker, hash in a worker, adopt."""
+"""verify_local: classify a folder against the tracker, hash in a worker."""
 
 import os
 import shutil
@@ -9,11 +9,11 @@ import pytest
 from hca_tracker_client import CheckError, Verifier, verify_worker
 from hca_tracker_client import verify as verify_module
 from hca_tracker_client.api import Probe
-from hca_tracker_client.store import INTERRUPTED, JobStore
+from hca_tracker_client.store import INTERRUPTED
 from hca_tracker_client.verify import check_sizes, file_stem
 from hca_tracker_client.verify_worker import hash_entry
 
-from .conftest import make_config, make_file, requires_aria2, wait_for
+from .conftest import make_config, make_file, wait_for
 
 SIZE = 50_000
 
@@ -131,7 +131,7 @@ def test_no_such_folder_is_refused(verifier, tmp_path):
 
 def test_a_probe_without_a_size_falls_back_to_the_listed_size(monkeypatch):
     local = [{"name": "x-r1.h5ad", "file_id": "f", "size_bytes": 10}]
-    listed = {"x-r1.h5ad": {"entry": {"sizeBytes": 99}, "presigned": None}}
+    listed = {"x-r1.h5ad": [{"entry": {"sizeBytes": 99}, "presigned": None}]}
     monkeypatch.setattr(verify_module, "probe", lambda presigned: Probe(size=None, sha256="a" * 64))
     check_sizes(local, listed)
     assert (local[0]["status"], local[0]["tracker_size_bytes"]) == ("size_mismatch", 99)
@@ -176,75 +176,23 @@ def test_hash_entry_reports_a_changed_file(tmp_path):
     assert hash_entry(entry)["status"] == "unreadable"
 
 
-def _verified(verifier, atlas, tmp_path) -> Path:
+def test_duplicate_tracker_names_are_reported_not_guessed(cache_dir, tracker, tmp_path):
+    blob = make_file(tracker.data_dir / "twin.h5ad", SIZE)
+    tracker.add_file(tracker.ids["gut"], "twin.h5ad", blob, kind="integrated")
+    tracker.add_file(tracker.ids["gut"], "twin.h5ad", blob, kind="source")
     root = tmp_path / "gut-v1"
-    target = copy(atlas, "all.h5ad", folder(root, "integrated-objects"))
-    result = wait_for(verifier, verifier.start("gut", "gut", str(root))["job_id"], ("done",))
-    assert by_name(result)["all-r1.h5ad"]["status"] == "verified"
-    return target
-
-
-@requires_aria2
-def test_adopted_file_is_a_cached_download(verifier, atlas, downloads, plenty_of_space, tmp_path):
-    target = _verified(verifier, atlas, tmp_path)
-    adopted = verifier.adopt("gut", "gut", str(target))
-    assert (adopted["state"], adopted["verified"], adopted["path"]) == ("done", "sha256", str(target.resolve()))
-
-    cached = downloads.start("gut", "gut", "all.h5ad", dest_dir=str(target.parent))
-    assert cached["cached"] is True and cached["job_id"] == adopted["job_id"]
-    again = verifier.adopt("gut", "gut", str(target))
-    assert again["cached"] is True and again["job_id"] == adopted["job_id"]
-
-
-def test_a_moved_file_is_adopted_where_it_now_is(verifier, atlas, cache_dir, tmp_path):
-    target = _verified(verifier, atlas, tmp_path)
-    moved = tmp_path / "elsewhere" / target.name
-    moved.parent.mkdir()
-    target.rename(moved)  # keeps size and modification time
-    adopted = verifier.adopt("gut", "gut", str(moved))
-    assert adopted["path"] == str(moved.resolve())
-    assert [job.path for job in JobStore(cache_dir).all()] == [str(moved.resolve())]
-
-
-def test_a_file_changed_since_verification_is_refused(verifier, atlas, tmp_path):
-    target = _verified(verifier, atlas, tmp_path)
-    stat = target.stat()
-    os.utime(target, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000))
-    with pytest.raises(CheckError, match="No finished verification"):
-        verifier.adopt("gut", "gut", str(target))
-
-
-def test_a_mismatch_is_never_adopted(verifier, atlas, cache_dir, tmp_path):
-    root = tmp_path / "gut-v1"
-    bad = make_file(folder(root, "source-datasets") / "wells-r1.h5ad", SIZE)
-    wait_for(verifier, verifier.start("gut", "gut", str(root))["job_id"], ("done",))
-    with pytest.raises(CheckError, match="was not verified"):
-        verifier.adopt("gut", "gut", str(bad))
-    assert JobStore(cache_dir).all() == []
-
-
-def test_a_tracker_file_replaced_since_verification_is_refused(verifier, atlas, tmp_path):
-    target = _verified(verifier, atlas, tmp_path)
-    blob = next(b for b in atlas.blobs.values() if b.name == "all.h5ad")
-    blob.sha256 = "f" * 64  # a new upload under the same name
-    with pytest.raises(CheckError, match="has changed since it was verified"):
-        verifier.adopt("gut", "gut", str(target))
-
-
-def test_adopt_records_the_version_it_was_verified_against(verifier, atlas, cache_dir, tmp_path):
-    target = _verified(verifier, atlas, tmp_path)
-    assert verifier.adopt("gut", "gut", str(target))["version"] == "v1.0"
-    assert [job.version for job in JobStore(cache_dir).all()] == ["v1.0"]
-
-
-def test_adopt_needs_the_atlas_it_was_verified_against(verifier, atlas, tmp_path):
-    target = _verified(verifier, atlas, tmp_path)
-    with pytest.raises(CheckError, match="was verified against gut/gut"):
-        verifier.adopt("lung", "adipose", str(target))
+    shutil.copyfile(blob, folder(root, "integrated-objects") / "twin-r1.h5ad")
+    result = Verifier(make_config(cache_dir, tracker)).start("gut", "gut", str(root))
+    assert result["state"] == "done"  # nothing to hash
+    row = by_name(result)["twin-r1.h5ad"]
+    assert (row["status"], row["matches"]) == ("ambiguous", ["integrated", "source"])
+    assert result["duplicate_names"] == [{"name": "twin-r1.h5ad", "kinds": ["integrated", "source"]}]
 
 
 def test_files_are_never_written(verifier, atlas, tmp_path):
-    target = _verified(verifier, atlas, tmp_path)
+    root = tmp_path / "gut-v1"
+    target = copy(atlas, "all.h5ad", folder(root, "integrated-objects"))
     before = (target.stat().st_mtime_ns, target.read_bytes())
-    verifier.adopt("gut", "gut", str(target))
+    result = wait_for(verifier, verifier.start("gut", "gut", str(root))["job_id"], ("done",))
+    assert by_name(result)["all-r1.h5ad"]["status"] == "verified"
     assert (target.stat().st_mtime_ns, target.read_bytes()) == before

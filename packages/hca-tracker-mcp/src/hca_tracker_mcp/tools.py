@@ -288,8 +288,9 @@ def verify_local(
 
     Per file (with its kind): stale (another revision or wip of a listed file; current_name is the listed
     one), unknown, size_mismatch, no_checksum, or hashed in the background against the tracker's SHA-256
-    into verified, mismatch, changed or unreadable. For an atlas folder, misplaced marks a file in the other
-    kind's folder and missing lists tracker files with no local copy. Read-only. Poll verify_status.
+    into verified, mismatch, changed or unreadable; ambiguous when the tracker gives the name to more than one
+    file (duplicate_names lists them). For an atlas folder, misplaced marks a file in the other kind's folder and
+    missing lists tracker files with no local copy. Read-only. Poll verify_status.
     """
     return Verifier(load_config()).start(network, atlas, path, generation, published)
 
@@ -300,20 +301,6 @@ def verify_status(
 ) -> dict:
     """State (queued, hashing, done, failed, interrupted), progress and per-file results of one verify job, or all."""
     return Verifier(load_config()).status(job_id)
-
-
-@_tool
-def adopt_download(
-    network: Network,
-    atlas: Atlas,
-    path: Annotated[str, Field(description="The verified .h5ad file, where it now is (it may have been moved).")],
-) -> dict:
-    """Record a verified file as a finished download at its current path, under the version verified against.
-
-    Matched by name, size and modification time, so move a verified file, don't copy it; the tracker's checksum
-    is re-checked. start_download with dest_dir = its folder then returns cached: true.
-    """
-    return Verifier(load_config()).adopt(network, atlas, path)
 
 
 @_tool
