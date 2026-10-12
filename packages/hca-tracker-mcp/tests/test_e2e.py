@@ -329,7 +329,7 @@ async def test_verify_flow(client, tracker, tmp_path):
     root = tmp_path / "gut-v1"
     integrated = root / "integrated-objects" / "tracker-source"
     integrated.mkdir(parents=True)
-    shutil.copyfile(tracker.blobs["file-1"].path, integrated / "gut-r1.h5ad")
+    shutil.copyfile(tracker.blobs["file-1"].path, integrated / "gut-r1-wip-1.h5ad")
     (integrated / "notes.h5ad").write_bytes(b"x")
     args = {"network": "gut", "atlas": "gut"}
 
@@ -337,10 +337,10 @@ async def test_verify_flow(client, tracker, tmp_path):
     status = await _wait(client, "verify_status", started["job_id"], ("done", "failed", "interrupted"))
     assert status["state"] == "done", status
     assert {row["name"]: row["status"] for row in status["files"]} == {
-        "gut-r1.h5ad": "verified",
+        "gut-r1-wip-1.h5ad": "verified",
         "notes.h5ad": "unknown",
     }
-    assert sorted(m["name"] for m in status["missing"]) == ["broken-r1.h5ad", "src-r1.h5ad"]
+    assert sorted(m["name"] for m in status["missing"]) == ["broken-r1-wip-1.h5ad", "src-r1-wip-1.h5ad"]
 
 
 def test_module_version_matches_the_distribution():

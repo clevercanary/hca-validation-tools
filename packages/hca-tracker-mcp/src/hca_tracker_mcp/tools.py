@@ -286,11 +286,11 @@ def verify_local(
 ) -> dict:
     """Check a folder's .h5ad files against the tracker; returns job_id at once.
 
-    Per file (with its kind): stale (another revision or wip of a listed file; current_name is the listed
-    one), unknown, size_mismatch, no_checksum, or hashed in the background against the tracker's SHA-256
-    into verified, mismatch, changed or unreadable; ambiguous when the tracker gives the name to more than one
-    file (duplicate_names lists them). For an atlas folder, misplaced marks a file in the other kind's folder and
-    missing lists tracker files with no local copy. Read-only. Poll verify_status.
+    A file matches by its download name or its upload name (tracker_name gives the download name). Per file,
+    with its kind: stale (another revision or wip; current_name is the listed one), unknown, size_mismatch,
+    no_checksum, ambiguous (could be more than one tracker file; matches lists them), or hashed in the
+    background into verified, mismatch, changed or unreadable. For an atlas folder, misplaced and missing (the
+    tracker files with no local copy, of both kinds). Read-only. Poll verify_status.
     """
     return Verifier(load_config()).start(network, atlas, path, generation, published)
 

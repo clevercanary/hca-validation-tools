@@ -31,15 +31,15 @@ def gut_file(tracker):
 def test_download_end_to_end(downloads, tracker, gut_file):
     started = downloads.start("gut", "gut", "gut.h5ad")
     assert started["state"] == "queued"
-    assert started["path"].endswith("cache/gut/gut_v1.0/gut-r1.h5ad")
+    assert started["path"].endswith("cache/gut/gut_v1.0/gut-r1-wip-1.h5ad")
 
     done = wait_for(downloads, started["job_id"], ("done", "failed"))
     assert done["state"] == "done", done
     assert done["verified"] == "sha256"
     assert done["message"] == "Size and SHA-256 verified"
-    final = downloads.cache_dir / "gut" / "gut_v1.0" / "gut-r1.h5ad"
+    final = downloads.cache_dir / "gut" / "gut_v1.0" / "gut-r1-wip-1.h5ad"
     assert final.read_bytes() == gut_file.read_bytes()
-    assert not (final.parent / "gut-r1.h5ad.part").exists()
+    assert not (final.parent / "gut-r1-wip-1.h5ad.part").exists()
 
     again = downloads.start("gut", "gut", "gut.h5ad")
     assert again["cached"] is True
@@ -58,10 +58,10 @@ def test_checksum_mismatch_keeps_part_and_blocks_resume(downloads, tracker):
     assert failed["state"] == "failed"
     assert failed["error_code"] == 32
     assert failed["message"].startswith("Checksum mismatch")
-    part = downloads.cache_dir / "gut" / "gut_v1.0" / "bad-r1.h5ad.part"
+    part = downloads.cache_dir / "gut" / "gut_v1.0" / "bad-r1-wip-1.h5ad.part"
     assert failed["partial_path"] == str(part)
     assert part.stat().st_size == 100_000
-    assert not (part.parent / "bad-r1.h5ad").exists()
+    assert not (part.parent / "bad-r1-wip-1.h5ad").exists()
 
     # aria2 has forgotten it, so a daemon restart will not re-hash it.
     aria2 = connect(downloads.cache_dir)
@@ -169,7 +169,7 @@ def test_cancel_then_resume(downloads, tracker, gut_file):
     time.sleep(1)
     cancelled = downloads.cancel(started["job_id"])
     assert cancelled["state"] == "cancelled"
-    assert cancelled["partial_path"].endswith("gut-r1.h5ad.part")
+    assert cancelled["partial_path"].endswith("gut-r1-wip-1.h5ad.part")
 
     tracker.rate_bps = 0
     resumed = downloads.start("gut", "gut", "gut.h5ad")

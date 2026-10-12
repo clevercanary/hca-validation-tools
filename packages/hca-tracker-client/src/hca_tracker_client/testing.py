@@ -28,9 +28,10 @@ def sha256_of(path: Path) -> str:
 
 
 def _versioned(name: str) -> str:
-    """The name the real tracker presigns: the listed name with ``-r1`` before its extension."""
+    """The name the real tracker presigns: the listed name with ``-r<revision>-wip-<n>`` (here ``-r1-wip-1``)
+    before its extension."""
     dot = name.rfind(".")
-    return f"{name[:dot]}-r1{name[dot:]}" if dot > 0 else f"{name}-r1"
+    return f"{name[:dot]}-r1-wip-1{name[dot:]}" if dot > 0 else f"{name}-r1-wip-1"
 
 
 @dataclass

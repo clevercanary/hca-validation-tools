@@ -177,14 +177,17 @@ tracker's S3 bucket with the AWS profile above; the tracker ingests from there.
   checks a folder's `.h5ad` files against the tracker: an atlas folder's
   `integrated-objects/tracker-source/` and `source-datasets/tracker-source/`
   (only those are read), or any other folder's own files, such as a download
-  folder. Each file, with its kind, is `stale` (another revision or wip of a
-  listed file; `current_name` is the listed one), `unknown`, `size_mismatch`,
-  `no_checksum`, or hashed by a detached worker into `verified`, `mismatch`,
-  `changed` or `unreadable`; `ambiguous` when the tracker gives the name to
-  more than one file (`duplicate_names` lists them). For an atlas folder,
-  `misplaced` marks a listed
-  file in the other kind's folder, and `missing` lists tracker files with no
-  local copy. Read-only. Returns `job_id` at once.
+  folder. A file matches a tracker file by its download name or by the name
+  it was uploaded under (`tracker_name` gives the download name). Each file,
+  with its kind, is `stale` (another revision or wip of a listed file;
+  `current_name` is the listed one), `unknown`, `size_mismatch`, `no_checksum`,
+  `ambiguous` (it could be more than one tracker file; `matches` lists them,
+  and `duplicate_names` lists download names the tracker gives to several
+  files), or hashed by a detached worker into `verified`, `mismatch`, `changed`
+  or `unreadable`. For an atlas folder, `misplaced` marks a listed file in the
+  other kind's folder, and `missing` lists tracker files with no local copy,
+  of both kinds, so a folder with only one `tracker-source/` lists every file
+  of the other kind. Read-only. Returns `job_id` at once.
 - **verify_status** `(job_id?)` — state (`queued`, `hashing`, `done`,
   `failed`, `interrupted`), files and bytes hashed, per-file results. Without
   `job_id`, every job.

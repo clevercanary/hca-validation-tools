@@ -34,7 +34,7 @@ def test_probe_reads_size_and_checksum(tracker, tmp_path):
     path = make_file(tmp_path / "f.h5ad", 5000)
     file_id = tracker.add_file(tracker.ids["gut"], "f.h5ad", path)
     presigned = client(tracker).presigned_url(tracker.ids["gut"], file_id)
-    assert presigned.filename == "f-r1.h5ad"
+    assert presigned.filename == "f-r1-wip-1.h5ad"
     assert presigned.url not in repr(presigned)
     result = probe(presigned)
     assert result.size == 5000
@@ -48,7 +48,7 @@ def test_probe_refused_names_file_not_url(tracker, tmp_path):
     tracker.expire_links()
     with pytest.raises(CheckError) as error:
         probe(presigned)
-    assert str(error.value) == "The file f-r1.h5ad was refused (HTTP 403); nothing was downloaded"
+    assert str(error.value) == "The file f-r1-wip-1.h5ad was refused (HTTP 403); nothing was downloaded"
 
 
 def test_list_atlases_fields(tracker):
@@ -468,5 +468,5 @@ def test_probe_names_empty_and_missing_files(monkeypatch, code, reason):
         raise urllib.error.HTTPError(request.full_url, code, "x", {}, None)
 
     monkeypatch.setattr(api.urllib.request, "urlopen", refuse)
-    with pytest.raises(CheckError, match=f"The file f-r1.h5ad {reason}"):
-        probe(api.Presigned(url="https://bucket/f?X-Amz-Signature=1", filename="f-r1.h5ad"))
+    with pytest.raises(CheckError, match=f"The file f-r1-wip-1.h5ad {reason}"):
+        probe(api.Presigned(url="https://bucket/f?X-Amz-Signature=1", filename="f-r1-wip-1.h5ad"))

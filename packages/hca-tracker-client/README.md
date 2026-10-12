@@ -256,12 +256,14 @@ tracker's.
 `integrated-objects/tracker-source/` and/or `source-datasets/tracker-source/`
 (only those two are read), or **any other folder**, such as a download folder,
 whose own files are read. Only `.h5ad` files directly in a folder count
-(`.part` files are skipped). Each file is matched to the names `start_download`
-would save the tracker's files under, and reported with its kind:
+(`.part` files are skipped). Each file is matched to a tracker file by the name
+`start_download` would save it under or by the name it was uploaded under
+(how a copy from elsewhere is usually named; `tracker_name` gives the download
+name), and reported with its kind:
 
 | Status | Meaning |
 |---|---|
-| `ambiguous` | the tracker gives its name to more than one file (`duplicate_names` lists them); not hashed |
+| `ambiguous` | it could be more than one tracker file (`matches` lists them; `duplicate_names` lists download names the tracker gives to several files); not hashed |
 | `stale` | another revision or wip of a listed file (`current_name` is the listed one) |
 | `unknown` | not a listed file |
 | `size_mismatch` | the tracker's name, another size |
@@ -271,8 +273,10 @@ would save the tracker's files under, and reported with its kind:
 | `unreadable` | it could not be read |
 
 For an atlas folder, `misplaced` marks a listed file in the other kind's
-folder and `missing` lists the tracker's files with no local copy; another
-folder is not expected to hold the whole atlas, so it has no `missing` list. Every tracker call (listing, presigning,
+folder and `missing` lists the tracker's files with no local copy, of both
+kinds (so a folder with only `integrated-objects/tracker-source/` lists every
+source dataset); another folder is not expected to hold the whole atlas, so it
+has no `missing` list. Every tracker call (listing, presigning,
 the ranged GET that reads each file's stored checksum) happens in `start()`;
 the hashing runs in a detached worker that never sees the token, and outlives
 the caller. Nothing is written to the files or the tracker.

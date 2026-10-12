@@ -40,7 +40,7 @@ TRACKER_THREADS = 8
 
 # A local file's status. The first group is decided from names and sizes, the
 # second by hashing; PENDING is a file still waiting for the worker.
-AMBIGUOUS = "ambiguous"  # its name is the download name of more than one tracker file
+AMBIGUOUS = "ambiguous"  # its name could be more than one tracker file's; matches lists them
 STALE = "stale"  # another revision or wip of a file the tracker lists; current_name is the one it lists
 UNKNOWN = "unknown"  # not a file the tracker lists
 SIZE_MISMATCH = "size_mismatch"  # the tracker's name, a different size
@@ -51,9 +51,8 @@ MISMATCH = "mismatch"
 CHANGED = "changed"  # its size or modification time changed after start, so its hash proves nothing
 UNREADABLE = "unreadable"
 
-# The tracker's download names end in -r<revision>-wip-<n> (-r<revision> alone on the test double); the part
-# before is the file's stem.
-_VERSIONED = re.compile(r"^(?P<stem>.+)-r\d+(?:-wip-\d+)?\.h5ad$")
+# The tracker's download names end in -r<revision>-wip-<n>; the part before is the file's stem.
+_VERSIONED = re.compile(r"^(?P<stem>.+)-r\d+-wip-\d+\.h5ad$")
 
 
 def file_stem(name: str) -> str:
@@ -142,7 +141,11 @@ def local_files(folders: dict[str | None, Path]) -> list[dict]:
     """Every ``.h5ad`` directly in each folder, with its size and modification time; partial downloads skipped."""
     found = []
     for kind, folder in folders.items():
-        for path in sorted(folder.iterdir()):
+        try:
+            paths = sorted(folder.iterdir())
+        except OSError as error:  # e.g. a macOS-protected folder the MCP host has no access to
+            raise CheckError(f"Cannot read {folder}: {error.strerror}") from None
+        for path in paths:
             if path.suffix != ".h5ad" or path.name.startswith(".") or not path.is_file():
                 continue
             stat = path.stat()
@@ -183,26 +186,40 @@ def duplicates(listed: dict[str, list[dict]]) -> list[dict]:
 def classify(local: list[dict], listed: dict[str, list[dict]]) -> list[dict]:
     """Set each local file's status from names alone; returns the listed files with no local copy.
 
-    A file the tracker lists gets ``kind`` and ``file_id``, and ``misplaced`` when it was found in a
-    folder of one kind; ``check_sizes`` then decides whether it is hashed.
+    A local file matches a listed one by its download name, or by the name it was uploaded under, which
+    is how a copy that never went through ``start_download`` is usually named. A matched file gets
+    ``tracker_name``, ``kind`` and ``file_id``, and ``misplaced`` when it was found in a folder of one kind;
+    ``check_sizes`` then decides whether it is hashed. A name that could be more than one file is reported
+    ``ambiguous``, never guessed at.
     """
-    stems = {file_stem(name): name for name in listed}
+    stems: dict[str, set[str]] = {}
+    uploaded_as: dict[str, set[str]] = {}
+    for name, items in listed.items():
+        stems.setdefault(file_stem(name), set()).add(name)
+        for item in items:
+            if item["entry"].get("fileName"):
+                uploaded_as.setdefault(item["entry"]["fileName"], set()).add(name)
     present = set()
     for entry in local:
-        matches = listed.get(entry["name"])
-        if matches is None:
-            current = stems.get(file_stem(entry["name"]))
-            entry.update({"status": STALE, "current_name": current} if current else {"status": UNKNOWN})
+        names = {entry["name"]} if entry["name"] in listed else uploaded_as.get(entry["name"], set())
+        if not names:
+            others = stems.get(file_stem(entry["name"]), set())
+            if len(others) == 1:
+                entry.update({"status": STALE, "current_name": next(iter(others))})
+            elif others:
+                entry.update({"status": AMBIGUOUS, "matches": _matches(others, listed)})
+            else:
+                entry["status"] = UNKNOWN
             continue
-        present.add(entry["name"])
-        if len(matches) > 1:
-            entry.update({"status": AMBIGUOUS, "matches": sorted(item["entry"]["kind"] for item in matches)})
+        present.update(names)
+        if sum(len(listed[name]) for name in names) > 1:
+            entry.update({"status": AMBIGUOUS, "matches": _matches(names, listed)})
             continue
-        match = matches[0]
-        kind = match["entry"]["kind"]
-        entry.update({"kind": kind, "file_id": match["entry"]["fileId"]})
+        name = next(iter(names))
+        match = listed[name][0]["entry"]
+        entry.update({"tracker_name": name, "kind": match["kind"], "file_id": match["fileId"]})
         if entry["folder_kind"] is not None:
-            entry["misplaced"] = kind != entry["folder_kind"]
+            entry["misplaced"] = match["kind"] != entry["folder_kind"]
     missing = []
     for name, items in sorted(listed.items()):
         if name in present:
@@ -213,13 +230,17 @@ def classify(local: list[dict], listed: dict[str, list[dict]]) -> list[dict]:
     return missing
 
 
+def _matches(names: set[str], listed: dict[str, list[dict]]) -> list[dict]:
+    return [{"name": name, "kind": item["entry"]["kind"]} for name in sorted(names) for item in listed[name]]
+
+
 def check_sizes(local: list[dict], listed: dict[str, list[dict]]) -> None:
     """Read the stored size and checksum of each listed local file; those that can be hashed become pending."""
     matched = [entry for entry in local if "file_id" in entry]
     with ThreadPoolExecutor(TRACKER_THREADS) as pool:
-        probes = list(pool.map(lambda entry: probe(listed[entry["name"]][0]["presigned"]), matched))
+        probes = list(pool.map(lambda entry: probe(listed[entry["tracker_name"]][0]["presigned"]), matched))
     for entry, probed in zip(matched, probes, strict=True):
-        listed_size = int(listed[entry["name"]][0]["entry"].get("sizeBytes") or 0)
+        listed_size = int(listed[entry["tracker_name"]][0]["entry"].get("sizeBytes") or 0)
         size = probed.size if probed.size is not None else listed_size
         entry["tracker_size_bytes"] = size
         if size != entry["size_bytes"]:
@@ -280,7 +301,10 @@ class Verifier:
         )
         if not job.to_hash:  # nothing to hash: the answer is complete now
             job.state, job.finished_at = DONE, time.time()
-            job.message = "No file matched a tracker file of the same size and checksum to hash"
+            if not files:
+                job.message = f"No .h5ad files in {', '.join(str(folder) for folder in folders.values())}"
+            else:
+                job.message = "No file matched a tracker file of the same size and checksum to hash"
             self.store.create(job)
             return self._describe(job)
 
@@ -378,7 +402,16 @@ def _row(entry: dict) -> dict:
         "size": human_size(entry["size_bytes"]),
         "folder_kind": entry["folder_kind"],
     }
-    for key in ("kind", "matches", "misplaced", "current_name", "tracker_size_bytes", "sha256", "error"):
+    for key in (
+        "tracker_name",
+        "kind",
+        "matches",
+        "misplaced",
+        "current_name",
+        "tracker_size_bytes",
+        "sha256",
+        "error",
+    ):
         if key in entry:
             row[key] = entry[key]
     return row
