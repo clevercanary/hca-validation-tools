@@ -204,8 +204,9 @@ def classify(local: list[dict], listed: dict[str, list[dict]]) -> list[dict]:
         names = {entry["name"]} if entry["name"] in listed else uploaded_as.get(entry["name"], set())
         if not names:
             others = stems.get(file_stem(entry["name"]), set())
-            if len(others) == 1:
-                entry.update({"status": STALE, "current_name": next(iter(others))})
+            if sum(len(listed[name]) for name in others) == 1:
+                current = next(iter(others))
+                entry.update({"status": STALE, "current_name": current, "kind": listed[current][0]["entry"]["kind"]})
             elif others:
                 entry.update({"status": AMBIGUOUS, "matches": _matches(others, listed)})
             else:
@@ -274,11 +275,11 @@ class Verifier:
         """Classify the folder's files, then hash the matches in a detached worker; returns at once."""
         root = Path(path).expanduser().resolve()
         layout, folders = folders_to_scan(root)
-        running = self._active_job_for(root)
+        record = select_atlas(self.tracker.list_atlases(), network, atlas, generation, published)
+        scope = (str(root), network, atlas, atlas_version(record))
+        running = self._active_job_for(scope)
         if running is not None:
             return {**self._describe(running), "message": f"Already verifying {root}"}
-
-        record = select_atlas(self.tracker.list_atlases(), network, atlas, generation, published)
         listed = tracker_names(self.tracker, record["id"])
         files = local_files(folders)
         missing = classify(files, listed)
@@ -309,7 +310,7 @@ class Verifier:
             return self._describe(job)
 
         with self.store.locked():
-            running = self._active_job_for(root)
+            running = self._active_job_for(scope)
             if running is not None:  # a second caller got here first
                 return {**self._describe(running), "message": f"Already verifying {root}"}
             self.store.create(job)
@@ -322,9 +323,10 @@ class Verifier:
             job = self.store.update(job_id, lambda current: setattr(current, "pid", pid)) or job
         return self._describe(job)
 
-    def _active_job_for(self, root: Path) -> VerifyJob | None:
+    def _active_job_for(self, scope: tuple[str, str, str, str]) -> VerifyJob | None:
+        """A running job for the same folder, atlas and version (root, network, atlas, version)."""
         for job in self.store.all():
-            if job.root == str(root) and self._refresh(job).state in ACTIVE:
+            if (job.root, job.network, job.atlas, job.version) == scope and self._refresh(job).state in ACTIVE:
                 return job
         return None
 
@@ -349,7 +351,7 @@ class Verifier:
     def _summary(self, job: VerifyJob) -> dict:
         """The job without its per-file rows: what a listing of every job shows."""
         total = sum(entry["size_bytes"] for entry in job.to_hash)
-        done = sum(entry["size_bytes"] for entry in job.hashed)
+        done = sum(entry["size_bytes"] for entry in job.hashed if entry["status"] in (VERIFIED, MISMATCH))
         result: dict = {
             "job_id": job.job_id,
             "state": job.state,

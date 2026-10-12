@@ -95,6 +95,7 @@ def test_mixed_folder_is_classified(verifier, atlas, tmp_path):
         "stale",
         "myeloid-r1-wip-1.h5ad",
     )
+    assert rows["myeloid-r1-wip-0.h5ad"]["kind"] == "integrated"
     assert rows["notes.h5ad"]["status"] == "unknown"
     assert rows["wells-r1-wip-1.h5ad"]["status"] == "mismatch"
     assert rows["stroma-r1-wip-1.h5ad"]["status"] == "size_mismatch"
@@ -193,6 +194,9 @@ def test_duplicate_tracker_names_are_reported_not_guessed(cache_dir, tracker, tm
         [{"name": "twin-r1-wip-1.h5ad", "kind": "integrated"}, {"name": "twin-r1-wip-1.h5ad", "kind": "source"}],
     )
     assert result["duplicate_names"] == [{"name": "twin-r1-wip-1.h5ad", "kinds": ["integrated", "source"]}]
+    shutil.copyfile(blob, folder(root, "integrated-objects") / "twin-r1-wip-0.h5ad")  # another wip of the twins
+    again = by_name(Verifier(make_config(cache_dir, tracker)).start("gut", "gut", str(root)))["twin-r1-wip-0.h5ad"]
+    assert again["status"] == "ambiguous" and len(again["matches"]) == 2
 
 
 def test_files_are_never_written(verifier, atlas, tmp_path):
