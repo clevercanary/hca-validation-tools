@@ -2400,20 +2400,101 @@ def test_annotation_version_silent_on_non_human():
     assert check_gene_annotation_version(adata) == ([], [])
 
 
-@pytest.mark.parametrize("sentinel", ["nan", "unknown", "Not available", "NA", "", "none", "not applicable"])
-def test_annotation_version_every_missing_sentinel_is_silent(sentinel):
-    # A column of sentinels is not a declaration, so there is nothing to check --
-    # including the file-level findings, which fired on everything but the
-    # literal "nan" when the filter was one hardcoded string. The gene list here
-    # carries an identifier the table has never heard of, which is what those
-    # file-level findings key on.
-    adata = _version_adata([_TP53, "ENSG99999999999"], version=sentinel)
-    assert check_gene_annotation_version(adata) == ([], []), sentinel
+@pytest.mark.parametrize("sentinel", ["nan", "unknown", "Not available", "NA", "", "none", "not applicable", None])
+def test_annotation_version_every_missing_sentinel_is_undeclared(sentinel):
+    # A column of sentinels is not a declaration, and neither is no column at
+    # all (None here), so nothing is contradicted -- but the gene list is still
+    # dated (#734). Every sentinel gets the same output, which is what the
+    # file-level findings lacked when the filter was one hardcoded string.
+    adata = _version_adata([_TP53, _RETIRED_AT_102], version=sentinel)
+    if sentinel is None:
+        del adata.obs["gene_annotation_version"]
+    assert check_gene_annotation_version(adata) == (
+        ["obs['gene_annotation_version'] is not declared. This file's gene set is consistent with r76 to r102."],
+        [],
+    ), sentinel
 
 
-def test_annotation_version_silent_without_the_column():
+def test_annotation_version_undeclared_window_keeps_resurrection_gaps():
+    # The same runs rendering as the contradiction finding: a resurrected gene
+    # punches a hole, and naming the releases in it would be wrong.
+    adata = _version_adata([_RESURRECTED], version="nan")
+    warnings, _ = check_gene_annotation_version(adata)
+    assert warnings == [
+        "obs['gene_annotation_version'] is not declared. This file's gene set is consistent with "
+        "r100 to r104 and r109 to r116."
+    ]
+
+
+def test_annotation_version_undeclared_reuses_the_file_level_findings():
+    # Unknown identifiers and a gene list no release fits are reported exactly
+    # as they are for a declared file; the undeclared branch adds only a window,
+    # and there is none to add when no release fits.
+    unknown = check_gene_annotation_version(_version_adata([_TP53, "ENSG99999999999"], version="nan"))[0]
+    assert len(unknown) == 2, unknown
+    assert "are in none of the releases" in unknown[0], unknown
+    assert unknown[1] == (
+        "obs['gene_annotation_version'] is not declared. This file's known genes are consistent with r76 to r116."
+    )
+
+    cannot_infer = (
+        "obs['gene_annotation_version'] is not declared, and this file's genes do not fit a single release "
+        "this reference data covers, so it cannot be inferred."
+    )
+    no_fit = check_gene_annotation_version(_version_adata([_POST_R98, _RETIRED_AT_102], version="nan"))[0]
+    assert len(no_fit) == 2, no_fit
+    assert no_fit[0].startswith("No Ensembl release this reference data covers"), no_fit
+    assert no_fit[1] == cannot_infer
+
+    # Every identifier unknown to the table: the unknown-identifier finding says
+    # why, and the undeclared value is still asked for.
+    all_unknown = check_gene_annotation_version(_version_adata(["ENSG99999999999"], version="nan"))[0]
+    assert len(all_unknown) == 2, all_unknown
+    assert "are in none of the releases" in all_unknown[0], all_unknown
+    assert all_unknown[1] == cannot_infer
+
+
+def test_annotation_version_undeclared_without_human_genes():
+    # Human cells with no ENSG identifiers to date: say the release cannot be
+    # inferred. A file that does not state human cells was never going to have
+    # any, so it stays silent.
+    adata = _version_adata(["TP53", "ERCC-00002"], version="nan")
+    assert check_gene_annotation_version(adata) == (
+        [
+            "obs['gene_annotation_version'] is not declared, and this file has no human Ensembl gene ids "
+            "to infer it from."
+        ],
+        [],
+    )
+    for organism in ("NCBITaxon:10090", None):
+        adata = _version_adata(["ENSMUSG00000059552"], version="nan", organism=organism)
+        assert check_gene_annotation_version(adata) == ([], []), organism
+
+
+def test_annotation_version_silent_with_nothing_to_read():
+    # No annotation column, no organism, no genes: nothing declared and nothing
+    # to date.
     adata = anndata.AnnData(obs=pd.DataFrame({"donor_id": ["d1"]}, index=["cell_0"]))
     assert check_gene_annotation_version(adata) == ([], [])
+
+
+def test_annotation_version_undeclared_only_when_nothing_is_declared():
+    # One declared value is a declaration: the file gets the existing findings
+    # and nothing from the undeclared branch.
+    adata = _version_adata([_TP53, _POST_R98], version="v98")
+    adata.obs["gene_annotation_version"] = ["v98", "nan"]
+    warnings, _ = check_gene_annotation_version(adata)
+    assert warnings, warnings
+    assert not any("is not declared" in w for w in warnings), warnings
+
+
+def test_annotation_version_undeclared_prose_keeps_the_routing_invariants():
+    # Contract 5.6-5.7: the ordering rule and /curate-h5ad's routing match on
+    # these phrases, so the new finding must not carry them.
+    for genes in ([_TP53, _RETIRED_AT_102], ["TP53"], [_POST_R98, _RETIRED_AT_102]):
+        for w in check_gene_annotation_version(_version_adata(genes, version="nan"))[0]:
+            for phrase in ("Feature ID '", "are not in the declared release", "did not exist in"):
+                assert phrase not in w, (phrase, w)
 
 
 def test_annotation_version_version_suffix_is_matched_not_split_off():

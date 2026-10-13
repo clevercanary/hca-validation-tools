@@ -1738,6 +1738,9 @@ def check_gene_annotation_version(adata):
        genes are retired as well as born, so a declared release can fall after
        the window as well as before it -- nine prod declarations do.
 
+    A file declaring nothing -- no column, or only missing values -- still has
+    its gene list dated, and is told the window it is consistent with (#734).
+
     Dates on human ``ENSG`` identifiers only. Spike-ins, other species and
     custom features have no Ensembl release, and left in they would make every
     release fail to explain the file. The match is exact rather than a prefix
@@ -1759,7 +1762,7 @@ def check_gene_annotation_version(adata):
         values are conforming rather than mistaken.
     """
     obs = getattr_anndata(adata, "obs")
-    if obs is None or "gene_annotation_version" not in obs.columns:
+    if obs is None:
         return [], []
 
     # A duplicated column name makes obs[name] a DataFrame rather than a Series,
@@ -1798,7 +1801,14 @@ def check_gene_annotation_version(adata):
     # "unknown" states no more than an absent one -- and every row must carry
     # the human one.
     organism = obs["organism_ontology_term_id"] if "organism_ontology_term_id" in obs.columns else None
-    human = organism is not None and bool((organism.astype(str) == _HUMAN_ORGANISM).all())
+    # Over the distinct values, not every cell: the same tests, without a
+    # string pass over a two-million-cell column.
+    organisms = {str(v) for v in organism.unique()} if organism is not None else None
+    human = organisms is not None and organisms <= {_HUMAN_ORGANISM}
+    # Looser, and used only to decide whether a file with no human ENSG ids is
+    # worth telling so when it declares no annotation: any human cell means
+    # human genes were expected. A mouse file was never going to have any.
+    states_human = organisms is not None and _HUMAN_ORGANISM in organisms
 
     # Filtered by what the parser calls a missing value, not by one hardcoded
     # string. Discarding only "nan" left a column of "unknown" or "Not
@@ -1807,33 +1817,14 @@ def check_gene_annotation_version(adata):
     # silent. One rule for what counts as a declaration, and the parser owns it.
     # Stripped before de-duplication: parse_annotation_version strips, so "v98"
     # and " v98 " parse identically and produced two byte-identical warnings.
-    declared = {str(v).strip() for v in obs["gene_annotation_version"].dropna().unique()}
-    declared = {v for v in declared if parse_annotation_version(v).kind != "missing"}
-    if not declared:
-        return [], []
-
-    # Which assemblies each declared version is paired with, and on how many
-    # cells. Pairwise rather than column-wide: an integrated object legitimately
-    # carries cells from several assemblies, so the question is not whether the
-    # column is unanimous but whether any pair contradicts itself.
-    pairs = _assembly_pairs(obs)
-    n_cells = len(obs)
-    # Counted over the column, not over the assemblies _assembly_pairs kept. A
-    # column holding GRCh37 beside "not applicable" varies, even though only one
-    # of those names an assembly -- counting the kept subset made it look uniform
-    # and the message then said the whole file is GRCh37 when some cells are not.
-    # dropna before astype(str): astype turns NaN into the string "nan", which
-    # nunique then counts as an assembly. A column of GRCh38 beside NaN looked
-    # like it varied, so the message framed every cell naming an assembly as a
-    # minority -- the reading this count exists to prevent.
-    # Stripped before counting, for the same reason the pairs are: "GRCh38" and
-    # " GRCh38 " are one assembly, and counting them as two makes n_genomes > 1
-    # on a file whose column does not vary -- the message then names a cell
-    # split that is not there, which is the exact reading this count exists to
-    # prevent.
-    n_genomes = (
-        obs["reference_genome"].dropna().astype(str).str.strip().nunique() if "reference_genome" in obs.columns else 0
+    # An absent column declares nothing, the same as one holding only missing
+    # values; both still get the gene list dated, below.
+    declared = (
+        {str(v).strip() for v in obs["gene_annotation_version"].dropna().unique()}
+        if "gene_annotation_version" in obs.columns
+        else set()
     )
+    declared = {v for v in declared if parse_annotation_version(v).kind != "missing"}
 
     var = getattr_anndata(adata, "var")
     # fullmatch, not match: Python's "$" also matches immediately before a final
@@ -1869,6 +1860,38 @@ def check_gene_annotation_version(adata):
         # file's gene list, not about any one declared value, so it is said once
         # however many values the file carries.
         warnings.append(_unknown_identifiers_message(dated[2], ensg))
+
+    if not declared:
+        # Nothing to contradict, but the dating above still says which releases
+        # the gene list fits -- a file that states no annotation should not learn
+        # less than one that states it wrongly. #734.
+        undeclared = _undeclared_release_message(dated, states_human)
+        if undeclared:
+            warnings.append(undeclared)
+        return warnings, []
+
+    # Which assemblies each declared version is paired with, and on how many
+    # cells. Pairwise rather than column-wide: an integrated object legitimately
+    # carries cells from several assemblies, so the question is not whether the
+    # column is unanimous but whether any pair contradicts itself.
+    pairs = _assembly_pairs(obs)
+    n_cells = len(obs)
+    # Counted over the column, not over the assemblies _assembly_pairs kept. A
+    # column holding GRCh37 beside "not applicable" varies, even though only one
+    # of those names an assembly -- counting the kept subset made it look uniform
+    # and the message then said the whole file is GRCh37 when some cells are not.
+    # dropna before astype(str): astype turns NaN into the string "nan", which
+    # nunique then counts as an assembly. A column of GRCh38 beside NaN looked
+    # like it varied, so the message framed every cell naming an assembly as a
+    # minority -- the reading this count exists to prevent.
+    # Stripped before counting, for the same reason the pairs are: "GRCh38" and
+    # " GRCh38 " are one assembly, and counting them as two makes n_genomes > 1
+    # on a file whose column does not vary -- the message then names a cell
+    # split that is not there, which is the exact reading this count exists to
+    # prevent.
+    n_genomes = (
+        obs["reference_genome"].dropna().astype(str).str.strip().nunique() if "reference_genome" in obs.columns else 0
+    )
 
     for value in sorted(declared):
         warnings.extend(
@@ -2097,6 +2120,47 @@ def _no_release_explains_message(dated, ensg: set[str], n_non_ensembl: int) -> s
     )
 
 
+def _undeclared_release_message(dated, states_human: bool) -> str | None:
+    """Say which releases the gene list fits when the file declares none. #734.
+
+    Where no release fits, or no identifier is one the table knows, the
+    file-level findings already say why exactly as they do for a declared file;
+    this adds only that nothing is declared, so the missing value is still
+    asked for. Where only some identifiers are unknown, the window is drawn
+    from the known ones and says so.
+
+    "Consistent with", the same words the contradiction finding uses: the window
+    is evidence for the producer to confirm, not a value to write into the file.
+    """
+    if dated is None:
+        # No human ENSG identifiers to date.
+        if states_human:
+            return (
+                "obs['gene_annotation_version'] is not declared, and this file has no human Ensembl gene ids "
+                "to infer it from."
+            )
+        return None
+    if dated[0] is None:
+        return (
+            "obs['gene_annotation_version'] is not declared, and this file's genes do not fit a single release "
+            "this reference data covers, so it cannot be inferred."
+        )
+    return f"obs['gene_annotation_version'] is not declared. {_consistent_window(dated)}."
+
+
+def _consistent_window(dated) -> str:
+    """The releases a gene list fits, as one clause: "This file's gene set is consistent with r105 to r110".
+
+    Shared by the contradiction finding and the undeclared one, so the two
+    render a window identically.
+    """
+    _, shortfall, unknown = dated
+    # The window is computed over the genes the table knows, so say so when some
+    # are not -- otherwise this contradicts the unknown-identifiers warning.
+    scope = "This file's known genes are" if unknown else "This file's gene set is"
+    return f"{scope} consistent with {_format_runs(r for r, missing in shortfall.items() if not missing)}"
+
+
 def _unknown_identifiers_message(unknown: set[str], ensg: set[str]) -> str:
     """Report identifiers no release in the shipped table contains.
 
@@ -2263,9 +2327,6 @@ def _release_against_genes(parsed, ensg: set[str], n_non_ensembl: int, dated) ->
             ]
         return []
 
-    # The window is computed over the genes the table knows, so say so when some
-    # are not -- otherwise this contradicts the unknown-identifiers warning above.
-    scope = "This file's known genes are" if unknown else "This file's gene set is"
     # The shortfall counts only genes the table knows, so the denominator counts
     # those too -- dividing by every ENSG-shaped id mixed two populations and
     # read as "1 of 3" where one of the three was deliberately excluded from the
@@ -2309,7 +2370,7 @@ def _release_against_genes(parsed, ensg: set[str], n_non_ensembl: int, dated) ->
         # Reported as runs rather than min to max: a resurrected gene punches a
         # hole, and min-max would name releases that do not explain the file --
         # the same release the message is reporting as wrong.
-        window = f"{scope} consistent with {_format_runs(r for r, missing in shortfall.items() if not missing)}"
+        window = _consistent_window(dated)
         # Drawn from the known genes only, so the examples are a sample of the
         # very genes the count is of; an unknown gene is absent at every release
         # and has its own message above.
