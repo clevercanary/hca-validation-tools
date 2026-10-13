@@ -143,6 +143,26 @@ class HCAValidator(Validator):
         # moved to the end and everything else keeps the order it was added in.
         self._check_retired_feature_ids()
 
+    def _are_descendants_of(self, component, column, ontology_name, ancestors):
+        """
+        The base method, skipping values that are not strings.
+
+        The base class reaches this only when obs has no errors, so it never
+        sees an empty assay. Our _deep_check retries _validate_raw when it does
+        have errors, and the parser raises TypeError on a NaN (#754). A
+        non-string can't be a descendant of anything, and the obs column check
+        already reports it.
+        """
+        curies = getattr(getattr(self.adata, component), column).drop_duplicates()
+        for curie in curies:
+            if (
+                isinstance(curie, str)
+                and ONTOLOGY_PARSER.is_valid_term_id(curie)
+                and set(ONTOLOGY_PARSER.get_term_ancestors(curie, include_self=True)) & set(ancestors)
+            ):
+                return True
+        return False
+
     def _validate_list(self, list_name, current_list, element_type):
         """
         Extends base list validation with support for element_type: string.
@@ -307,14 +327,18 @@ class HCAValidator(Validator):
                 )
 
     def _get_organism_from_obs(self) -> str | None:
-        """Get organism_ontology_term_id from obs (HCA schema stores it in obs)."""
-        if (
-            hasattr(self, "adata")
-            and self.adata is not None
-            and "organism_ontology_term_id" in self.adata.obs.columns
-            and len(self.adata.obs) > 0
-        ):
-            return str(self.adata.obs["organism_ontology_term_id"].iloc[0])
+        """The dataset's organism: the first organism_ontology_term_id in obs the
+        ontology parser can query (HCA schema stores it in obs), or None.
+
+        Empty and malformed values are skipped, not returned: callers hand the
+        result to ONTOLOGY_PARSER, which raises on them, and validate_adata turns
+        that into "Unexpected validation error" and skips the rest of the run
+        (#754). The obs column check reports the values themselves.
+        """
+        if hasattr(self, "adata") and self.adata is not None and "organism_ontology_term_id" in self.adata.obs.columns:
+            for value in self.adata.obs["organism_ontology_term_id"].unique():
+                if isinstance(value, str) and ONTOLOGY_PARSER.is_valid_term_id(value):
+                    return value
         return None
 
     def _get_gencode_version_label(self) -> str:
