@@ -2400,10 +2400,13 @@ def test_annotation_version_silent_on_non_human():
     assert check_gene_annotation_version(adata) == ([], [])
 
 
-@pytest.mark.parametrize("sentinel", ["nan", "unknown", "Not available", "NA", "", "none", "not applicable", None])
+@pytest.mark.parametrize(
+    "sentinel", ["nan", "unknown", "Not available", "NA", "", "none", "not applicable", float("nan"), None]
+)
 def test_annotation_version_every_missing_sentinel_is_undeclared(sentinel):
-    # A column of sentinels is not a declaration, and neither is no column at
-    # all (None here), so nothing is contradicted -- but the gene list is still
+    # A column of sentinels is not a declaration -- a real null that stays in
+    # the column (float nan) included -- and neither is no column at all (None
+    # here), so nothing is contradicted -- but the gene list is still
     # dated (#734). Every sentinel gets the same output, which is what the
     # file-level findings lacked when the filter was one hardcoded string.
     adata = _version_adata([_TP53, _RETIRED_AT_102], version=sentinel)
