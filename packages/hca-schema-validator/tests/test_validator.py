@@ -2438,8 +2438,8 @@ def test_annotation_version_undeclared_reuses_the_file_level_findings():
     )
 
     cannot_infer = (
-        "obs['gene_annotation_version'] is not declared, and this file's genes do not fit a single release "
-        "this reference data covers, so it cannot be inferred."
+        "obs['gene_annotation_version'] is not declared, and no release this reference data covers explains "
+        "this file's genes, so it cannot be inferred."
     )
     no_fit = check_gene_annotation_version(_version_adata([_POST_R98, _RETIRED_AT_102], version="nan"))[0]
     assert len(no_fit) == 2, no_fit
@@ -2479,13 +2479,43 @@ def test_annotation_version_silent_with_nothing_to_read():
 
 
 def test_annotation_version_undeclared_only_when_nothing_is_declared():
-    # One declared value is a declaration: the file gets the existing findings
-    # and nothing from the undeclared branch.
+    # One declared value is a declaration: the file gets exactly the existing
+    # contradiction finding and nothing from the undeclared branch.
     adata = _version_adata([_TP53, _POST_R98], version="v98")
     adata.obs["gene_annotation_version"] = ["v98", "nan"]
-    warnings, _ = check_gene_annotation_version(adata)
-    assert warnings, warnings
-    assert not any("is not declared" in w for w in warnings), warnings
+    assert check_gene_annotation_version(adata) == (
+        [
+            f"obs['gene_annotation_version'] is 'v98', but 1 of this file's 2 genes did not exist in Ensembl r98: "
+            f"they were defined after it -- for example {_POST_R98}. This file's gene set is consistent with "
+            f"r105 to r116. If this is a source dataset -- one study, one annotation -- the declared value cannot "
+            f"be correct. On an integrated object each declared value must instead match the source dataset its "
+            f"cells came from."
+        ],
+        [],
+    )
+
+
+def test_annotation_version_undeclared_prints_above_the_retired_identifier_blocks():
+    # #734: like the other gene_annotation_version findings, the undeclared line
+    # sits above the retired-identifier blocks once validate_adata has ordered
+    # the warnings. ENSG00000112096 was renamed to ENSG00000291237.
+    from .fixtures.hca_fixtures import adata
+
+    adata = adata.copy()
+    adata.obs["gene_annotation_version"] = "nan"
+    index = ["ENSG00000112096", *adata.var.index[1:]]
+    raw = adata.raw.to_adata()
+    raw.var.index = index
+    adata.var.index = index
+    adata.raw = raw
+    _, validator = _validate_from_fixture(adata)
+
+    def position(fragment):
+        return next(i for i, w in enumerate(validator.warnings) if fragment in w)
+
+    undeclared = position("obs['gene_annotation_version'] is not declared.")
+    assert undeclared < position("gene ID is not in GENCODE"), validator.warnings
+    assert undeclared < position("Summary:"), validator.warnings
 
 
 def test_annotation_version_undeclared_prose_keeps_the_routing_invariants():

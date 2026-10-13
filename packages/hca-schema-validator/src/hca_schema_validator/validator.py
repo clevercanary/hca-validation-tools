@@ -2142,8 +2142,8 @@ def _undeclared_release_message(dated, states_human: bool) -> str | None:
         return None
     if dated[0] is None:
         return (
-            "obs['gene_annotation_version'] is not declared, and this file's genes do not fit a single release "
-            "this reference data covers, so it cannot be inferred."
+            "obs['gene_annotation_version'] is not declared, and no release this reference data covers explains "
+            "this file's genes, so it cannot be inferred."
         )
     return f"obs['gene_annotation_version'] is not declared. {_consistent_window(dated)}."
 
