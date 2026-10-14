@@ -143,6 +143,20 @@ class HCAValidator(Validator):
         # moved to the end and everything else keeps the order it was added in.
         self._check_retired_feature_ids()
 
+    def _are_descendants_of(self, component, column, ontology_name, ancestors):
+        """The vendored validate.py method, skipping non-strings: our _deep_check
+        retries _validate_raw when obs has errors, so a NaN assay reaches the
+        parser, which raises TypeError on it (#754)."""
+        curies = getattr(getattr(self.adata, component), column).drop_duplicates()
+        for curie in curies:
+            if (
+                isinstance(curie, str)
+                and ONTOLOGY_PARSER.is_valid_term_id(curie)
+                and set(ONTOLOGY_PARSER.get_term_ancestors(curie, include_self=True)) & set(ancestors)
+            ):
+                return True
+        return False
+
     def _validate_list(self, list_name, current_list, element_type):
         """
         Extends base list validation with support for element_type: string.
@@ -307,17 +321,16 @@ class HCAValidator(Validator):
                 )
 
     def _get_organism_from_obs(self) -> str | None:
-        """Get organism_ontology_term_id from obs (HCA schema stores it in obs)."""
-        if (
-            hasattr(self, "adata")
-            and self.adata is not None
-            and "organism_ontology_term_id" in self.adata.obs.columns
-            and len(self.adata.obs) > 0
-        ):
-            return str(self.adata.obs["organism_ontology_term_id"].iloc[0])
+        """The first NCBITaxon term in obs organism_ontology_term_id, or None.
+        Callers hand it to the parser, which raises on NaN and malformed values
+        (#754); the obs column check reports every other value."""
+        if hasattr(self, "adata") and self.adata is not None and "organism_ontology_term_id" in self.adata.obs.columns:
+            for value in self.adata.obs["organism_ontology_term_id"].unique():
+                if isinstance(value, str) and ONTOLOGY_PARSER.is_valid_term_id(value, "NCBITaxon"):
+                    return value
         return None
 
-    def _get_gencode_version_label(self) -> str:
+    def _get_gencode_version_label(self, organism: str | None) -> str:
         """A human-readable GENCODE version string for the dataset's organism.
 
         The Ensembl release is derived, not written out: GENCODE's human and
@@ -325,7 +338,6 @@ class HCAValidator(Validator):
         the offset names it for both. Writing "114" here left the per-identifier
         warnings disagreeing with the derived summary after a schema bump.
         """
-        organism = self._get_organism_from_obs()
         ensembl = int(_gene_info["human"]["version"]) + _GENCODE_ENSEMBL_OFFSET
         if organism == "NCBITaxon:9606":
             return _REFERENCE_LABEL
@@ -337,8 +349,8 @@ class HCAValidator(Validator):
         """
         Override to improve warning messages with GENCODE version info.
         """
-        version_label = self._get_gencode_version_label()
         dataset_organism = self._get_organism_from_obs()
+        version_label = self._get_gencode_version_label(dataset_organism)
         invalid_gene_organisms = []
 
         for feature_id in column:

@@ -1091,6 +1091,103 @@ def test_raw_validation_runs_despite_unrelated_errors():
     )
 
 
+# The checks _deep_check runs after the base pass. A crash anywhere before them
+# is caught by validate_adata and silently skips them all (#754). Read from the
+# class, not listed, so a check added later is covered without editing this.
+_FOLLOW_ON_CHECKS = tuple(name for name in vars(HCAValidator) if name.startswith("_check_"))
+
+
+def _record_follow_on_checks(monkeypatch):
+    ran = []
+    for name in _FOLLOW_ON_CHECKS:
+        original = getattr(HCAValidator, name)
+
+        def wrapper(self, _name=name, _original=original):
+            ran.append(_name)
+            return _original(self)
+
+        monkeypatch.setattr(HCAValidator, name, wrapper)
+    return ran
+
+
+@pytest.mark.parametrize(
+    "empty_columns",
+    [
+        ("assay_ontology_term_id",),
+        ("organism_ontology_term_id",),
+        ("assay_ontology_term_id", "organism_ontology_term_id"),
+    ],
+)
+def test_empty_assay_or_organism_does_not_cut_the_run_short(monkeypatch, empty_columns):
+    """An empty value in the first cell's assay or organism is reported, not crashed on.
+
+    Regression test for #754: on kidney, NaN assay values reached the ontology
+    parser in the raw re-run, and a NaN first-cell organism became the string
+    "nan" in _validate_feature_ids. Either one ended the run with "Unexpected
+    validation error" and skipped every check after it, including the raw-layer
+    check that should have caught a normalized raw.X.
+    """
+    from .fixtures.hca_fixtures import adata_no_raw_values
+
+    modified = adata_no_raw_values.copy()
+    for col in empty_columns:
+        modified.obs[col] = [np.nan, *modified.obs[col].iloc[1:]]
+    ran = _record_follow_on_checks(monkeypatch)
+
+    _, validator = _validate_from_fixture(modified)
+
+    assert not [e for e in validator.errors if "Unexpected validation error" in e], validator.errors
+    for col in empty_columns:
+        assert f"ERROR: Column '{col}' in dataframe 'obs' must not contain NaN values." in validator.errors
+    assert "ERROR: Raw data may be missing: data in 'raw.X' does not meet schema requirements." in validator.errors
+    assert _FOLLOW_ON_CHECKS
+    assert set(ran) == set(_FOLLOW_ON_CHECKS)
+
+
+@pytest.mark.parametrize(
+    ("values", "expected"),
+    [
+        (["NCBITaxon:9606", "NCBITaxon:10090"], "NCBITaxon:9606"),
+        ([np.nan, "NCBITaxon:9606"], "NCBITaxon:9606"),
+        ([np.nan, np.nan], None),
+        (["", "NCBITaxon:9606"], "NCBITaxon:9606"),
+        (["   ", "NCBITaxon:9606"], "NCBITaxon:9606"),
+        (["nan", "NCBITaxon:9606"], "NCBITaxon:9606"),
+        (["human", "NCBITaxon:9606"], "NCBITaxon:9606"),
+        (["EFO:0009899", "NCBITaxon:9606"], "NCBITaxon:9606"),  # a real term, but not an organism
+        (["nan", "human"], None),
+    ],
+)
+def test_organism_from_obs_is_the_first_valid_term_id(values, expected):
+    """Values the ontology parser can't query are skipped, never handed to it (#754)."""
+    validator = HCAValidator()
+    validator.adata = _obs_only_adata(organism_ontology_term_id=values)
+    assert validator._get_organism_from_obs() == expected
+
+
+def test_organism_from_obs_without_the_column_or_rows():
+    validator = HCAValidator()
+    validator.adata = anndata.AnnData(obs=pd.DataFrame(index=["a"]))
+    assert validator._get_organism_from_obs() is None
+    validator.adata = _obs_only_adata(organism_ontology_term_id=[])
+    assert validator._get_organism_from_obs() is None
+
+
+@pytest.mark.parametrize(
+    ("values", "expected"),
+    [
+        ([np.nan, "EFO:0007045"], True),  # ATAC-seq beside an empty value
+        ([np.nan, "EFO:0009899"], False),  # 10x 3' v2 is not under ATAC-seq
+        ([np.nan, np.nan], False),
+    ],
+)
+def test_are_descendants_of_skips_empty_values(values, expected):
+    """The raw re-run hands assay values to the ontology parser; NaN is not one (#754)."""
+    validator = HCAValidator()
+    validator.adata = _obs_only_adata(assay_ontology_term_id=values)
+    assert validator._are_descendants_of("obs", "assay_ontology_term_id", "EFO", ["EFO:0007045"]) is expected
+
+
 def test_non_schema_obs_column_with_unused_categories_is_skipped():
     """Non-schema obs columns are excluded from the vendored per-column sanity
     loop. A curator-extra column with many unused Categorical levels would
