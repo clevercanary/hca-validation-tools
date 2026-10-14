@@ -1092,14 +1092,9 @@ def test_raw_validation_runs_despite_unrelated_errors():
 
 
 # The checks _deep_check runs after the base pass. A crash anywhere before them
-# is caught by validate_adata and silently skips them all (#754).
-_FOLLOW_ON_CHECKS = (
-    "_check_cosmetic_label_columns",
-    "_check_x_normalization",
-    "_check_donor_consistency",
-    "_check_gene_annotation_version",
-    "_check_retired_feature_ids",
-)
+# is caught by validate_adata and silently skips them all (#754). Read from the
+# class, not listed, so a check added later is covered without editing this.
+_FOLLOW_ON_CHECKS = tuple(name for name in vars(HCAValidator) if name.startswith("_check_"))
 
 
 def _record_follow_on_checks(monkeypatch):
@@ -1145,7 +1140,8 @@ def test_empty_assay_or_organism_does_not_cut_the_run_short(monkeypatch, empty_c
     for col in empty_columns:
         assert f"ERROR: Column '{col}' in dataframe 'obs' must not contain NaN values." in validator.errors
     assert "ERROR: Raw data may be missing: data in 'raw.X' does not meet schema requirements." in validator.errors
-    assert ran == list(_FOLLOW_ON_CHECKS)
+    assert _FOLLOW_ON_CHECKS
+    assert set(ran) == set(_FOLLOW_ON_CHECKS)
 
 
 @pytest.mark.parametrize(
@@ -1158,13 +1154,14 @@ def test_empty_assay_or_organism_does_not_cut_the_run_short(monkeypatch, empty_c
         (["   ", "NCBITaxon:9606"], "NCBITaxon:9606"),
         (["nan", "NCBITaxon:9606"], "NCBITaxon:9606"),
         (["human", "NCBITaxon:9606"], "NCBITaxon:9606"),
+        (["EFO:0009899", "NCBITaxon:9606"], "NCBITaxon:9606"),  # a real term, but not an organism
         (["nan", "human"], None),
     ],
 )
 def test_organism_from_obs_is_the_first_valid_term_id(values, expected):
     """Values the ontology parser can't query are skipped, never handed to it (#754)."""
     validator = HCAValidator()
-    validator.adata = anndata.AnnData(obs=pd.DataFrame({"organism_ontology_term_id": values}, index=["a", "b"]))
+    validator.adata = _obs_only_adata(organism_ontology_term_id=values)
     assert validator._get_organism_from_obs() == expected
 
 
@@ -1172,9 +1169,7 @@ def test_organism_from_obs_without_the_column_or_rows():
     validator = HCAValidator()
     validator.adata = anndata.AnnData(obs=pd.DataFrame(index=["a"]))
     assert validator._get_organism_from_obs() is None
-    validator.adata = anndata.AnnData(
-        obs=pd.DataFrame({"organism_ontology_term_id": pd.Series([], dtype=object, index=pd.Index([], dtype=str))})
-    )
+    validator.adata = _obs_only_adata(organism_ontology_term_id=[])
     assert validator._get_organism_from_obs() is None
 
 
@@ -1189,7 +1184,7 @@ def test_organism_from_obs_without_the_column_or_rows():
 def test_are_descendants_of_skips_empty_values(values, expected):
     """The raw re-run hands assay values to the ontology parser; NaN is not one (#754)."""
     validator = HCAValidator()
-    validator.adata = anndata.AnnData(obs=pd.DataFrame({"assay_ontology_term_id": values}, index=["a", "b"]))
+    validator.adata = _obs_only_adata(assay_ontology_term_id=values)
     assert validator._are_descendants_of("obs", "assay_ontology_term_id", "EFO", ["EFO:0007045"]) is expected
 
 
