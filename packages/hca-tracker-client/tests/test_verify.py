@@ -251,6 +251,18 @@ def test_two_tracker_files_with_one_stem_are_reported_not_guessed():
         assert [m["name"] for m in local[0]["matches"]] == ["x-r1-wip-1.h5ad", "x-r1-wip-3.h5ad"]
 
 
+def test_a_download_name_that_is_another_files_upload_name_is_ambiguous():
+    listed = {
+        "x-r1-wip-1.h5ad": [{"entry": {"kind": "integrated", "fileId": "a", "fileName": "x.h5ad"}}],
+        "x-r1-wip-1-r1-wip-1.h5ad": [{"entry": {"kind": "source", "fileId": "b", "fileName": "x-r1-wip-1.h5ad"}}],
+    }
+    local = [{"name": "x-r1-wip-1.h5ad", "folder_kind": None}]
+    missing = classify(local, listed)
+    assert local[0]["status"] == "ambiguous" and "file_id" not in local[0]
+    assert [m["name"] for m in local[0]["matches"]] == ["x-r1-wip-1-r1-wip-1.h5ad", "x-r1-wip-1.h5ad"]
+    assert [m["name"] for m in missing] == ["x-r1-wip-1-r1-wip-1.h5ad", "x-r1-wip-1.h5ad"]
+
+
 def test_a_folder_with_no_h5ad_files_says_so(verifier, tmp_path):
     (tmp_path / "empty").mkdir()
     result = verifier.start("gut", "gut", str(tmp_path / "empty"))

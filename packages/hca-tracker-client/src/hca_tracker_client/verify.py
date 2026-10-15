@@ -204,7 +204,7 @@ def classify(local: list[dict], listed: dict[str, list[dict]]) -> list[dict]:
                 uploaded_as.setdefault(item["entry"]["fileName"], set()).add(name)
     present = set()
     for entry in local:
-        names = {entry["name"]} if entry["name"] in listed else uploaded_as.get(entry["name"], set())
+        names = ({entry["name"]} & listed.keys()) | uploaded_as.get(entry["name"], set())
         if not names:
             stem = file_stem(entry["name"])
             others = stems.get(stem, set()) if stem is not None else set()
