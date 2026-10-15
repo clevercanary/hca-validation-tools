@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.15.3](https://github.com/clevercanary/hca-validation-tools/compare/hca-schema-validator-v0.15.2...hca-schema-validator-v0.15.3) (2026-10-15)
+
+
+### Features
+
+* **hca-schema-validator:** classify retired feature IDs using an Ensembl gene-event table ([#728](https://github.com/clevercanary/hca-validation-tools/issues/728)) ([#733](https://github.com/clevercanary/hca-validation-tools/issues/733)) ([0b2d7eb](https://github.com/clevercanary/hca-validation-tools/commit/0b2d7ebf145bed8886373d1139e601f16e8fa479))
+* **hca-schema-validator:** date the gene list when gene_annotation_version is not declared ([#734](https://github.com/clevercanary/hca-validation-tools/issues/734)) ([#755](https://github.com/clevercanary/hca-validation-tools/issues/755)) ([bc43206](https://github.com/clevercanary/hca-validation-tools/commit/bc4320631a132f8022ea3fc6b3db6f9f44a3ff6c))
+
+
+### Bug Fixes
+
+* **hca-schema-validator:** empty assay or organism values no longer crash validation ([#754](https://github.com/clevercanary/hca-validation-tools/issues/754)) ([#757](https://github.com/clevercanary/hca-validation-tools/issues/757)) ([7e5ec42](https://github.com/clevercanary/hca-validation-tools/commit/7e5ec4282348b346c6cbfd91b3f11452e3bd94f8))
+
 ## [0.15.2](https://github.com/clevercanary/hca-validation-tools/compare/hca-schema-validator-v0.15.1...hca-schema-validator-v0.15.2) (2026-10-05)
 
 
