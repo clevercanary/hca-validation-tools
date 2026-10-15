@@ -22,23 +22,25 @@ CHUNK = 8 << 20
 WORKERS = 4
 
 
-def _unchanged(path: Path, entry: dict) -> bool:
-    stat = path.stat()
-    return (stat.st_size, stat.st_mtime_ns) == (entry["size_bytes"], entry["mtime_ns"])
+def _identity(stat: os.stat_result) -> tuple[int, ...]:
+    """Which file it is and its state: the change time moves on any write or timestamp reset."""
+    return (stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns)
 
 
 def hash_entry(entry: dict) -> dict:
-    """The file's outcome: verified or mismatch by SHA-256, changed if it was modified around the hash."""
+    """The file's outcome: verified or mismatch by SHA-256, changed if it was modified or replaced around the hash."""
     path = Path(entry["path"])
     try:
-        if not _unchanged(path, entry):
-            return {"status": CHANGED}
         digest = hashlib.sha256()
         with path.open("rb") as handle:
+            opened = os.fstat(handle.fileno())
+            if (opened.st_size, opened.st_mtime_ns) != (entry["size_bytes"], entry["mtime_ns"]):
+                return {"status": CHANGED}
             while chunk := handle.read(CHUNK):
                 digest.update(chunk)
-        if not _unchanged(path, entry):  # written to while it was being read
-            return {"status": CHANGED}
+            # Written to, or another file put at the path, while it was being read.
+            if not _identity(opened) == _identity(os.fstat(handle.fileno())) == _identity(path.stat()):
+                return {"status": CHANGED}
     except OSError as error:
         return {"status": UNREADABLE, "error": f"{error.strerror}: {error.filename}"}
     sha256 = digest.hexdigest()

@@ -269,7 +269,7 @@ name), and reported with its kind:
 | `size_mismatch` | the tracker's name, another size |
 | `no_checksum` | the tracker stores no SHA-256 for it |
 | `verified` / `mismatch` | hashed, and its SHA-256 equals / differs from the tracker's |
-| `changed` | its size or modification time changed after `start()`, so its hash proves nothing |
+| `changed` | its size or modification time changed after `start()`, or it was written to or replaced while being hashed, so its hash proves nothing |
 | `unreadable` | it could not be read |
 
 For an atlas folder, `misplaced` marks a file matched by name that sits in

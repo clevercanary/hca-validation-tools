@@ -48,7 +48,7 @@ NO_CHECKSUM = "no_checksum"  # the tracker stores no SHA-256 for it, so it canno
 PENDING = "pending"
 VERIFIED = "verified"
 MISMATCH = "mismatch"
-CHANGED = "changed"  # its size or modification time changed after start, so its hash proves nothing
+CHANGED = "changed"  # modified after start, or replaced or written to while hashed, so its hash proves nothing
 UNREADABLE = "unreadable"
 
 # The tracker's download names end in -r<revision>-wip-<n>, or -r<revision> once published; the part

@@ -3,6 +3,7 @@
 import os
 import shutil
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -196,6 +197,31 @@ def test_hash_entry_reports_a_changed_file(tmp_path):
     assert hash_entry(entry) == {"status": "changed"}
     path.unlink()
     assert hash_entry(entry)["status"] == "unreadable"
+
+
+def test_a_file_replaced_while_it_is_hashed_is_changed(tmp_path, monkeypatch):
+    """A same-size copy with the same modification time, renamed over the file mid-hash."""
+    path = make_file(tmp_path / "f.h5ad", 100)
+    stat = path.stat()
+    entry = {"path": str(path), "size_bytes": stat.st_size, "mtime_ns": stat.st_mtime_ns}
+    entry["sha256_expected"] = hash_entry({**entry, "sha256_expected": ""})["sha256"]
+    real = verify_worker.hashlib.sha256
+
+    def swapping():
+        digest = real()
+        update = digest.update
+
+        def swap_then_update(chunk):
+            other = tmp_path / "other.h5ad"
+            other.write_bytes(b"y" * stat.st_size)
+            os.utime(other, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+            other.replace(path)
+            update(chunk)
+
+        return SimpleNamespace(update=swap_then_update, hexdigest=digest.hexdigest)
+
+    monkeypatch.setattr(verify_worker, "hashlib", SimpleNamespace(sha256=swapping))
+    assert hash_entry(entry) == {"status": "changed"}
 
 
 def test_duplicate_tracker_names_are_reported_not_guessed(cache_dir, tracker, tmp_path):
