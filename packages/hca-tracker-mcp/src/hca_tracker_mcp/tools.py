@@ -289,8 +289,8 @@ def verify_local(
     A file matches by its download name or its upload name (tracker_name gives the download name). Per file,
     with its kind: stale (another revision or wip; current_name is the listed one), unknown, size_mismatch,
     no_checksum, ambiguous (could be more than one tracker file; matches lists them), or hashed in the
-    background into verified, mismatch, changed or unreadable. For an atlas folder, misplaced and missing (the
-    tracker files with no local copy, of both kinds). Read-only. Poll verify_status.
+    background into verified, mismatch, changed or unreadable. For an atlas folder, misplaced (matched, in the
+    other kind's folder) and missing (tracker files with no local copy, of both kinds). Read-only. Poll verify_status.
     """
     return Verifier(load_config()).start(network, atlas, path, generation, published)
 

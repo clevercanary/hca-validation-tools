@@ -184,8 +184,8 @@ tracker's S3 bucket with the AWS profile above; the tracker ingests from there.
   `ambiguous` (it could be more than one tracker file; `matches` lists them,
   and `duplicate_names` lists download names the tracker gives to several
   files), or hashed by a detached worker into `verified`, `mismatch`, `changed`
-  or `unreadable`. For an atlas folder, `misplaced` marks a listed file in the
-  other kind's folder, and `missing` lists tracker files with no local copy,
+  or `unreadable`. For an atlas folder, `misplaced` marks a file matched by
+  name in the other kind's folder, and `missing` lists tracker files with no local copy,
   of both kinds, so a folder with only one `tracker-source/` lists every file
   of the other kind. Read-only. Returns `job_id` at once.
 - **verify_status** `(job_id?)` — state (`queued`, `hashing`, `done`,

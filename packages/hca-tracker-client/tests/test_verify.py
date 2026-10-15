@@ -60,7 +60,25 @@ def by_name(result: dict) -> dict[str, dict]:
 def test_file_stem():
     assert file_stem("hgca-v1-kong-2023-v3-r1-wip-6.h5ad") == "hgca-v1-kong-2023-v3"
     assert file_stem("gut-r1-wip-1.h5ad") == "gut"
-    assert file_stem("Human liver cell atlas - all cells.h5ad") == "Human liver cell atlas - all cells"
+    assert file_stem("ihbca-v1-gray-2022-r1.h5ad") == "ihbca-v1-gray-2022"  # a published version's name
+    assert file_stem("Human liver cell atlas - all cells.h5ad") is None
+    assert file_stem("all.h5ad") is None
+
+
+def test_a_wip_of_a_published_file_is_stale():
+    """A published version's download names end in -r<revision>, with no -wip-<n>."""
+    listed = {"gray-r1.h5ad": [{"entry": {"kind": "source", "fileId": "a", "fileName": "gray.h5ad"}}]}
+    local = [{"name": "gray-r1-wip-3.h5ad", "folder_kind": None}, {"name": "gray-r1.h5ad", "folder_kind": None}]
+    assert classify(local, listed) == []
+    assert (local[0]["status"], local[0]["current_name"]) == ("stale", "gray-r1.h5ad")
+    assert local[1]["tracker_name"] == "gray-r1.h5ad"
+
+
+def test_an_unversioned_name_is_never_stale():
+    listed = {"all-r1-wip-2.h5ad": [{"entry": {"kind": "integrated", "fileId": "a", "fileName": "all_v2.h5ad"}}]}
+    local = [{"name": "all.h5ad", "folder_kind": None}]
+    classify(local, listed)
+    assert local[0]["status"] == "unknown"
 
 
 def test_mixed_folder_is_classified(verifier, atlas, tmp_path):
@@ -194,6 +212,10 @@ def test_duplicate_tracker_names_are_reported_not_guessed(cache_dir, tracker, tm
         [{"name": "twin-r1-wip-1.h5ad", "kind": "integrated"}, {"name": "twin-r1-wip-1.h5ad", "kind": "source"}],
     )
     assert result["duplicate_names"] == [{"name": "twin-r1-wip-1.h5ad", "kinds": ["integrated", "source"]}]
+    assert [(m["name"], m["kind"]) for m in result["missing"]] == [  # neither twin is known to be on disk
+        ("twin-r1-wip-1.h5ad", "integrated"),
+        ("twin-r1-wip-1.h5ad", "source"),
+    ]
     shutil.copyfile(blob, folder(root, "integrated-objects") / "twin-r1-wip-0.h5ad")  # another wip of the twins
     again = by_name(Verifier(make_config(cache_dir, tracker)).start("gut", "gut", str(root)))["twin-r1-wip-0.h5ad"]
     assert again["status"] == "ambiguous" and len(again["matches"]) == 2
@@ -235,7 +257,7 @@ def test_a_folder_with_no_h5ad_files_says_so(verifier, tmp_path):
     assert result["state"] == "done" and result["message"] == f"No .h5ad files in {(tmp_path / 'empty').resolve()}"
 
 
-def test_an_unreadable_folder_is_refused_by_name(verifier, tmp_path, monkeypatch):
+def test_an_unreadable_folder_is_refused_by_name(verifier, atlas, tmp_path, monkeypatch):
     (tmp_path / "locked").mkdir()
 
     def denied(self):
@@ -244,3 +266,16 @@ def test_an_unreadable_folder_is_refused_by_name(verifier, tmp_path, monkeypatch
     monkeypatch.setattr(Path, "iterdir", denied)
     with pytest.raises(CheckError, match="Cannot read .*locked: Operation not permitted"):
         verifier.start("gut", "gut", str(tmp_path / "locked"))
+    assert not atlas.links  # refused before any file was presigned
+
+
+def test_a_running_job_for_the_same_folder_is_reused(verifier, atlas, tmp_path, monkeypatch):
+    root, other = tmp_path / "gut-v1", tmp_path / "Downloads"
+    copy(atlas, "all.h5ad", folder(root, "integrated-objects"))
+    other.mkdir()
+    copy(atlas, "all.h5ad", other)
+    monkeypatch.setattr(verify_module, "spawn_worker", lambda *args: 0)  # the job stays queued
+    first = verifier.start("gut", "gut", str(root))
+    again = verifier.start("gut", "gut", str(root))
+    assert again["job_id"] == first["job_id"] and again["message"] == f"Already verifying {root.resolve()}"
+    assert verifier.start("gut", "gut", str(other))["job_id"] != first["job_id"]

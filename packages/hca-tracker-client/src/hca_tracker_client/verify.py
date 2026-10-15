@@ -51,14 +51,15 @@ MISMATCH = "mismatch"
 CHANGED = "changed"  # its size or modification time changed after start, so its hash proves nothing
 UNREADABLE = "unreadable"
 
-# The tracker's download names end in -r<revision>-wip-<n>; the part before is the file's stem.
-_VERSIONED = re.compile(r"^(?P<stem>.+)-r\d+-wip-\d+\.h5ad$")
+# The tracker's download names end in -r<revision>-wip-<n>, or -r<revision> once published; the part
+# before is the file's stem.
+_VERSIONED = re.compile(r"^(?P<stem>.+)-r\d+(?:-wip-\d+)?\.h5ad$")
 
 
-def file_stem(name: str) -> str:
-    """The part of a download name shared by every revision and wip of one file."""
+def file_stem(name: str) -> str | None:
+    """The part of a download name shared by every revision and wip of one file; None for an unversioned name."""
     match = _VERSIONED.match(name)
-    return match.group("stem") if match else name.removesuffix(".h5ad")
+    return match.group("stem") if match else None
 
 
 @dataclass
@@ -189,13 +190,15 @@ def classify(local: list[dict], listed: dict[str, list[dict]]) -> list[dict]:
     A local file matches a listed one by its download name, or by the name it was uploaded under, which
     is how a copy that never went through ``start_download`` is usually named. A matched file gets
     ``tracker_name``, ``kind`` and ``file_id``, and ``misplaced`` when it was found in a folder of one kind;
-    ``check_sizes`` then decides whether it is hashed. A name that could be more than one file is reported
-    ``ambiguous``, never guessed at.
+    ``check_sizes`` then decides whether it is hashed. Only a versioned name can be ``stale``. A name that could
+    be more than one file is reported ``ambiguous``, never guessed at, and counts none of them as present.
     """
     stems: dict[str, set[str]] = {}
     uploaded_as: dict[str, set[str]] = {}
     for name, items in listed.items():
-        stems.setdefault(file_stem(name), set()).add(name)
+        stem = file_stem(name)
+        if stem is not None:
+            stems.setdefault(stem, set()).add(name)
         for item in items:
             if item["entry"].get("fileName"):
                 uploaded_as.setdefault(item["entry"]["fileName"], set()).add(name)
@@ -203,7 +206,8 @@ def classify(local: list[dict], listed: dict[str, list[dict]]) -> list[dict]:
     for entry in local:
         names = {entry["name"]} if entry["name"] in listed else uploaded_as.get(entry["name"], set())
         if not names:
-            others = stems.get(file_stem(entry["name"]), set())
+            stem = file_stem(entry["name"])
+            others = stems.get(stem, set()) if stem is not None else set()
             if sum(len(listed[name]) for name in others) == 1:
                 current = next(iter(others))
                 entry.update({"status": STALE, "current_name": current, "kind": listed[current][0]["entry"]["kind"]})
@@ -212,11 +216,11 @@ def classify(local: list[dict], listed: dict[str, list[dict]]) -> list[dict]:
             else:
                 entry["status"] = UNKNOWN
             continue
-        present.update(names)
         if sum(len(listed[name]) for name in names) > 1:
             entry.update({"status": AMBIGUOUS, "matches": _matches(names, listed)})
             continue
         name = next(iter(names))
+        present.add(name)
         match = listed[name][0]["entry"]
         entry.update({"tracker_name": name, "kind": match["kind"], "file_id": match["fileId"]})
         if entry["folder_kind"] is not None:
@@ -275,13 +279,13 @@ class Verifier:
         """Classify the folder's files, then hash the matches in a detached worker; returns at once."""
         root = Path(path).expanduser().resolve()
         layout, folders = folders_to_scan(root)
+        files = local_files(folders)  # before any tracker call, so an unreadable folder is refused at once
         record = select_atlas(self.tracker.list_atlases(), network, atlas, generation, published)
         scope = (str(root), network, atlas, atlas_version(record))
         running = self._active_job_for(scope)
         if running is not None:
             return {**self._describe(running), "message": f"Already verifying {root}"}
         listed = tracker_names(self.tracker, record["id"])
-        files = local_files(folders)
         missing = classify(files, listed)
         if layout == "folder":  # a folder of downloads is not expected to hold the whole atlas
             missing = []

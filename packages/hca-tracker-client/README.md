@@ -264,7 +264,7 @@ name), and reported with its kind:
 | Status | Meaning |
 |---|---|
 | `ambiguous` | it could be more than one tracker file (`matches` lists them; `duplicate_names` lists download names the tracker gives to several files); not hashed |
-| `stale` | another revision or wip of a listed file (`current_name` is the listed one) |
+| `stale` | another revision or wip of a listed file, by a name ending `-r<n>-wip-<n>` or, once published, `-r<n>` (`current_name` is the listed one) |
 | `unknown` | not a listed file |
 | `size_mismatch` | the tracker's name, another size |
 | `no_checksum` | the tracker stores no SHA-256 for it |
@@ -272,10 +272,12 @@ name), and reported with its kind:
 | `changed` | its size or modification time changed after `start()`, so its hash proves nothing |
 | `unreadable` | it could not be read |
 
-For an atlas folder, `misplaced` marks a listed file in the other kind's
-folder and `missing` lists the tracker's files with no local copy, of both
-kinds (so a folder with only `integrated-objects/tracker-source/` lists every
-source dataset); another folder is not expected to hold the whole atlas, so it
+For an atlas folder, `misplaced` marks a file matched by name that sits in
+the other kind's folder (a `stale` file is not hashed, so it carries no
+`misplaced`), and `missing` lists the tracker's files with no local copy, of
+both kinds (so a folder with only `integrated-objects/tracker-source/` lists
+every source dataset; an `ambiguous` file's candidates stay listed, since which
+one it is is unknown); another folder is not expected to hold the whole atlas, so it
 has no `missing` list. Every tracker call (listing, presigning,
 the ranged GET that reads each file's stored checksum) happens in `start()`;
 the hashing runs in a detached worker that never sees the token, and outlives
