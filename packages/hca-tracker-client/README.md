@@ -29,6 +29,10 @@ MCP server is a thin wrapper over it.
   lands under the same prefix with the same `source-sha256` metadata; only
   the terminal front end is replaced. Uploads run in a detached worker and
   outlive the caller too. See [How an upload works](#how-an-upload-works).
+- **Files already on disk can be checked.** `Verifier` matches a folder's
+  files to the tracker and hashes them in a detached worker, to say which are
+  current copies. See
+  [Checking files already on disk](#checking-files-already-on-disk).
 
 ## Install
 
@@ -99,7 +103,8 @@ the CLI does not read. With none set, uploads refuse.
 
 ```python
 from hca_tracker_client import (
-    Downloads, TrackerClient, Uploads, get_atlas, list_atlases, list_files, load_config, validation_report,
+    Downloads, TrackerClient, Uploads, Verifier, get_atlas, list_atlases, list_files, load_config,
+    validation_report,
 )
 
 config = load_config()
@@ -122,6 +127,10 @@ uploads = Uploads(config)                                   # needs the upload e
 uploads.plan("gut", "gut", "source-datasets", "~/outbox")   # what start() would upload; no side effects
 job = uploads.start("gut", "gut", "source-datasets", "~/outbox", environment="dev")
 uploads.status(job["job_id"])     # queued, uploading, done, failed, interrupted
+
+verifier = Verifier(config)
+job = verifier.start("liver", "liver", "~/hca-tracker-upload/prod/liver/liver-v1")
+verifier.status(job["job_id"])    # queued, hashing, done, failed, interrupted; per-file results
 ```
 
 ## How a download works
@@ -236,6 +245,44 @@ is the subject of #741.
 **Closing the loop.** Once the tracker has ingested the file, `list_files()`
 shows its new revision (`uploaded_at`, `wip_number`) and `validation_report()`
 the validators' verdict.
+
+## Checking files already on disk
+
+`Verifier` says whether files already on disk, however they got there (a
+browser download, a copy from another machine), are current copies of the
+tracker's.
+
+`start(network, atlas, path)` takes an **atlas folder**, one holding
+`integrated-objects/tracker-source/` and/or `source-datasets/tracker-source/`
+(only those two are read), or **any other folder**, such as a download folder,
+whose own files are read. Only `.h5ad` files directly in a folder count
+(`.part` files are skipped). Each file is matched to a tracker file by the name
+`start_download` would save it under or by the name it was uploaded under
+(how a copy from elsewhere is usually named; `tracker_name` gives the download
+name), and reported with its kind:
+
+| Status | Meaning |
+|---|---|
+| `ambiguous` | it could be more than one tracker file (`matches` lists them; `duplicate_names` lists download names the tracker gives to several files); not hashed |
+| `stale` | another revision or wip of a listed file, by a name ending `-r<n>-wip-<n>` or, once published, `-r<n>` (`current_name` is the listed one) |
+| `unknown` | not a listed file |
+| `size_mismatch` | the tracker's name, another size |
+| `no_checksum` | the tracker stores no SHA-256 for it |
+| `verified` / `mismatch` | hashed, and its SHA-256 equals / differs from the tracker's |
+| `changed` | its size or modification time changed after `start()`, or it was written to or replaced while being hashed, so its hash proves nothing |
+| `unreadable` | it could not be read |
+
+For an atlas folder, `misplaced` marks a file matched by name that sits in
+the other kind's folder (a `stale` file is not hashed, so it carries no
+`misplaced`), and `missing` lists the tracker's files with no local copy, of
+both kinds (so a folder with only `integrated-objects/tracker-source/` lists
+every source dataset; an `ambiguous` file's candidates stay listed, since which
+one it is is unknown); another folder is not expected to hold the whole atlas, so it
+has no `missing` list. Every tracker call (listing, presigning,
+the ranged GET that reads each file's stored checksum) happens in `start()`;
+the hashing runs in a detached worker that never sees the token, and outlives
+the caller. Nothing is written to the files or the tracker.
+
 
 ## The aria2 daemon
 

@@ -48,7 +48,7 @@ def test_folder_not_writable(downloads, tracker, small_file, tmp_path, plenty_of
 
 
 def test_existing_unverified_file_is_not_overwritten(downloads, tracker, small_file):
-    target = downloads.cache_dir / "gut" / "gut_v1.0" / "gut-r1.h5ad"
+    target = downloads.cache_dir / "gut" / "gut_v1.0" / "gut-r1-wip-1.h5ad"
     target.parent.mkdir(parents=True)
     target.write_bytes(b"someone else's file")
     with pytest.raises(CheckError, match="already exists but is not a verified download"):
@@ -59,7 +59,7 @@ def test_existing_unverified_file_is_not_overwritten(downloads, tracker, small_f
 def test_size_mismatch_between_tracker_and_object(downloads, tracker):
     path = make_file(tracker.data_dir / "f", 1000)
     tracker.add_file(tracker.ids["gut"], "gut.h5ad", path, listed_size=999)
-    with pytest.raises(CheckError, match="lists gut-r1.h5ad as 999 bytes, but the stored file is 1000 bytes"):
+    with pytest.raises(CheckError, match="lists gut-r1-wip-1.h5ad as 999 bytes, but the stored file is 1000 bytes"):
         downloads.start("gut", "gut", "gut.h5ad")
 
 
@@ -72,7 +72,7 @@ def test_unsafe_file_name_rejected(downloads, tracker):
 
 
 @pytest.mark.parametrize(
-    "name", ["x-r1.h5ad\n allow-overwrite=true", "x\\r1.h5ad", "x\x00.h5ad", "x.h5ad.part", "x.h5ad.part.aria2"]
+    "name", ["x-r1-wip-1.h5ad\n allow-overwrite=true", "x\\r1.h5ad", "x\x00.h5ad", "x.h5ad.part", "x.h5ad.part.aria2"]
 )
 def test_control_characters_in_file_name_rejected(downloads, tracker, name):
     """A newline would become extra options in aria2's session file."""
@@ -118,7 +118,7 @@ def test_dest_dir_inside_cache_state_rejected(downloads, small_file):
 
 
 def test_restart_keeps_old_files_when_a_check_fails(downloads, small_file, monkeypatch):
-    part = downloads.cache_dir / "gut" / "gut_v1.0" / "gut-r1.h5ad.part"
+    part = downloads.cache_dir / "gut" / "gut_v1.0" / "gut-r1-wip-1.h5ad.part"
     part.parent.mkdir(parents=True)
     part.write_bytes(b"partial")
     monkeypatch.setattr(checks.shutil, "which", lambda name: None)

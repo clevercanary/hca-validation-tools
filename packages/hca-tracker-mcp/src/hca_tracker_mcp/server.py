@@ -17,6 +17,8 @@ from hca_tracker_mcp.tools import (
     start_download,
     start_upload,
     upload_status,
+    verify_local,
+    verify_status,
 )
 
 mcp = FastMCP(
@@ -39,6 +41,8 @@ mcp = FastMCP(
         "then ingests it from the bucket and lists it with a new wip_number, and get_validation_report gives "
         "its verdict. environment defaults to dev and must match the configured tracker; the AWS profile comes "
         "from hca-smart-sync's own settings. "
+        "verify_local checks a folder's files (or an atlas folder's tracker-source/) against the tracker "
+        "(SHA-256 in a background job; verify_status). "
         "check_environment diagnoses setup problems (aria2c, cache folder, token, s5cmd/aws, AWS profile, bucket)."
     ),
 )
@@ -56,4 +60,6 @@ mcp.tool()(delete_download)
 mcp.tool()(plan_upload)
 mcp.tool()(start_upload)
 mcp.tool()(upload_status)
+mcp.tool()(verify_local)
+mcp.tool()(verify_status)
 mcp.tool()(check_environment)

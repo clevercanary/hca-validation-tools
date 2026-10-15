@@ -173,6 +173,24 @@ tracker's S3 bucket with the AWS profile above; the tracker ingests from there.
   `failed`, `interrupted`), `files_done` of `files_total`, bytes, the
   `current_file` and the transfer tool's latest `progress` line for it, then
   `manifest_path` when done. Without `job_id`, every job.
+- **verify_local** `(network, atlas, path, generation?, published?)` —
+  checks a folder's `.h5ad` files against the tracker: an atlas folder's
+  `integrated-objects/tracker-source/` and `source-datasets/tracker-source/`
+  (only those are read), or any other folder's own files, such as a download
+  folder. A file matches a tracker file by its download name or by the name
+  it was uploaded under (`tracker_name` gives the download name). Each file,
+  with its kind, is `stale` (another revision or wip of a listed file;
+  `current_name` is the listed one), `unknown`, `size_mismatch`, `no_checksum`,
+  `ambiguous` (it could be more than one tracker file; `matches` lists them,
+  and `duplicate_names` lists download names the tracker gives to several
+  files), or hashed by a detached worker into `verified`, `mismatch`, `changed`
+  or `unreadable`. For an atlas folder, `misplaced` marks a file matched by
+  name in the other kind's folder, and `missing` lists tracker files with no local copy,
+  of both kinds, so a folder with only one `tracker-source/` lists every file
+  of the other kind. Read-only. Returns `job_id` at once.
+- **verify_status** `(job_id?)` — state (`queued`, `hashing`, `done`,
+  `failed`, `interrupted`), files and bytes hashed, per-file results. Without
+  `job_id`, every job.
 - **check_environment** — `aria2c` path and version, the daemon, the cache
   folder and free space, whether the tracker is reachable and the token valid;
   under `upload`: `hca-smart-sync`, `s5cmd` and `aws`, the AWS profile and its
@@ -184,7 +202,8 @@ mirrors the tracker's own rules (see the client README).
 
 Downloads run in a detached aria2 daemon: they continue after the server or
 the session ends, and `download_status` in a new session reports them. Uploads
-run in a detached worker process the same way; `upload_status` follows them.
+run in a detached worker process the same way; `upload_status` follows them,
+as `verify_status` follows the hashing of `verify_local`.
 
 ## Putting a curated file back
 

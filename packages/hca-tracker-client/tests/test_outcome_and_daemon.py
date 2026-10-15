@@ -17,7 +17,7 @@ from hca_tracker_client.store import DONE, Job, JobStore
 def test_finalize_twice_from_stale_copies(tmp_path):
     """The hook and download_status can both finalize; the slower one must not fail."""
     store = JobStore(tmp_path)
-    final = tmp_path / "x-r1.h5ad"
+    final = tmp_path / "x-r1-wip-1.h5ad"
     job = Job("a1b2", "gut", "gut", "v1.0", final.name, "f1", str(final), 4, None, state="downloading")
     store.create(job)
     job.part.write_bytes(b"abcd")

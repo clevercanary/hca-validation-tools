@@ -24,10 +24,7 @@ import pkgutil
 import re
 import secrets
 import shutil
-import subprocess
-import sys
 import tempfile
-import threading
 import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
@@ -41,7 +38,8 @@ from .config import DEFAULT_UPLOAD_ENGINE, ENVIRONMENTS, Config
 from .daemon import group_commands, process_matches
 from .errors import CheckError, ConfigError, JobError, redact
 from .selection import atlas_label, atlas_version, select_atlas
-from .store import RecordStore
+from .store import UPLOADS_DIR, RecordStore
+from .workers import SPAWN_GRACE_SECONDS, reap_workers, spawn_worker
 
 DEV, PROD = ENVIRONMENTS
 # The buckets the hca-smart-sync CLI hardcodes per --environment (``sync`` in
@@ -67,8 +65,6 @@ DONE = "done"
 FAILED = "failed"
 INTERRUPTED = "interrupted"
 ACTIVE = (QUEUED, UPLOADING)
-# How long a record may sit without a pid before it counts as a spawn that never completed.
-SPAWN_GRACE_SECONDS = 60
 
 _ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
 # One s5cmd progress frame: "42.81%  ━━━───  8.98 MB / 20.97 MB (6.74 MB/s) 1s left (0/1)".
@@ -442,7 +438,7 @@ class UploadStore(RecordStore[UploadJob]):
     active = ACTIVE
 
     def __init__(self, cache_dir: Path):
-        super().__init__(cache_dir / "uploads")
+        super().__init__(cache_dir / UPLOADS_DIR)
 
     def end(self, job_id: str, state: str, message: str, manifest_path: str | None = None) -> UploadJob | None:
         """Record how a job ended; a job already ended keeps its first outcome."""
@@ -456,22 +452,6 @@ class UploadStore(RecordStore[UploadJob]):
                 job.manifest_path = manifest_path
 
         return self.update(job_id, change)
-
-
-# Workers this process started, so they are reaped once they exit rather than left as zombies.
-# Reaped on every status refresh and before every spawn; the MCP server runs tool calls on threads.
-_WORKERS: list[subprocess.Popen] = []
-_WORKERS_LOCK = threading.Lock()
-
-
-def _reap_workers() -> None:
-    with _WORKERS_LOCK:
-        _WORKERS[:] = [worker for worker in _WORKERS if worker.poll() is None]
-
-
-def _remember_worker(process: subprocess.Popen) -> None:
-    with _WORKERS_LOCK:
-        _WORKERS.append(process)
 
 
 def transfer_running(pgid: int, atlas_prefix: str) -> bool:
@@ -498,11 +478,6 @@ def worker_alive(job: UploadJob) -> bool:
     if process_matches(job.pid, job.worker_marker):
         return True
     return transfer_running(job.pid, job.atlas_prefix)
-
-
-def worker_environment() -> dict[str, str]:
-    """The worker's environment: this process's, without the tracker token it and the transfer tools never need."""
-    return {key: value for key, value in os.environ.items() if key != "HCA_TRACKER_API_TOKEN"}
 
 
 def last_progress_line(log_path: str, tail: int = 4096) -> str | None:
@@ -726,28 +701,8 @@ class Uploads:
         return {**self._describe(job), "message": f"Already uploading from {job.local_path} to {job.target}"}
 
     def _spawn(self, job: UploadJob) -> int:
-        """Start the worker in a session of its own, its output going to the job's log.
-
-        ``start_new_session`` puts the child in its own session before it runs
-        a single line of ours, so a signal to this process's group can never
-        reach it. The ``Popen`` is kept in ``_WORKERS`` and polled from
-        ``worker_alive``, so the worker is reaped when it exits and the object
-        is never collected while its child runs (which ``Popen`` warns about).
-        """
-        _reap_workers()
-        argv = [sys.executable, "-m", "hca_tracker_client.upload_worker", job.job_id, str(self.config.cache_dir)]
-        with Path(job.log_path).open("ab") as log:
-            process = subprocess.Popen(
-                argv,
-                stdin=subprocess.DEVNULL,
-                stdout=log,
-                stderr=subprocess.STDOUT,
-                env=worker_environment(),
-                start_new_session=True,
-                close_fds=True,
-            )
-        _remember_worker(process)
-        return process.pid
+        """Start the worker in a session of its own, its output going to the job's log."""
+        return spawn_worker("hca_tracker_client.upload_worker", job.job_id, self.config.cache_dir, job.log_path)
 
     def _refresh(self, job: UploadJob) -> UploadJob:
         """Mark a job whose worker has gone away without recording an outcome.
@@ -756,7 +711,7 @@ class Uploads:
         records that itself, so one still queued a minute later is a failed
         spawn that nothing recorded.
         """
-        _reap_workers()  # on every refresh, so a finished worker never lingers as a zombie
+        reap_workers()  # on every refresh, so a finished worker never lingers as a zombie
         if job.state not in ACTIVE:
             return job
         never_spawned = job.state == QUEUED and not job.pid and time.time() - job.created_at > SPAWN_GRACE_SECONDS

@@ -35,6 +35,7 @@ from .store import (
     DOWNLOADING,
     INTERRUPTED,
     QUEUED,
+    VERIFY_DIR,
     VERIFYING,
     Job,
     JobStore,
@@ -141,7 +142,12 @@ class Downloads:
 
     def _internal_dirs(self) -> set[Path]:
         """Folders under the cache that hold this package's own state, not downloads."""
-        return {daemon_dir(self.cache_dir), self.store.directory, UploadStore(self.cache_dir).directory}
+        return {
+            daemon_dir(self.cache_dir),
+            self.store.directory,
+            UploadStore(self.cache_dir).directory,
+            self.cache_dir / VERIFY_DIR,
+        }
 
     # -- state ---------------------------------------------------------------
 

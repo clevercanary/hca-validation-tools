@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from hca_tracker_client import Config, Downloads, Uploads
+from hca_tracker_client import Config, Downloads, Uploads, Verifier
 from hca_tracker_client.daemon import shutdown
 from hca_tracker_client.testing import FakeTracker
 
@@ -69,8 +69,8 @@ def plenty_of_space(monkeypatch):
     monkeypatch.setattr("hca_tracker_client.checks.free_bytes", lambda path: 1_000_000_000_000)
 
 
-def wait_for(jobs: Downloads | Uploads, job_id: str, states: tuple[str, ...], timeout: float = 60) -> dict:
-    """Poll a download or upload job until it reaches one of ``states``."""
+def wait_for(jobs: Downloads | Uploads | Verifier, job_id: str, states: tuple[str, ...], timeout: float = 60) -> dict:
+    """Poll a download, upload or verify job until it reaches one of ``states``."""
     deadline = time.monotonic() + timeout
     while True:
         status = jobs.status(job_id)

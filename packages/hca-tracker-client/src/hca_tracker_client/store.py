@@ -30,6 +30,11 @@ CANCELLED = "cancelled"
 INTERRUPTED = "interrupted"
 ACTIVE = (QUEUED, DOWNLOADING, VERIFYING)
 
+# The cache folder's own state, one folder per kind of record (aria2's daemon is under "aria2").
+JOBS_DIR = "jobs"
+UPLOADS_DIR = "uploads"
+VERIFY_DIR = "verify"
+
 # aria2 error codes (see "EXIT STATUS" in the aria2c manual).
 CHECKSUM_MISMATCH = 32
 
@@ -218,7 +223,7 @@ class JobStore(RecordStore[Job]):
     active = ACTIVE
 
     def __init__(self, cache_dir: Path):
-        super().__init__(cache_dir / "jobs")
+        super().__init__(cache_dir / JOBS_DIR)
 
     def end(self, job: Job, state: str, message: str, error_code: int | None = None) -> Job:
         """Record how a job ended and save it; returns the stored record."""
