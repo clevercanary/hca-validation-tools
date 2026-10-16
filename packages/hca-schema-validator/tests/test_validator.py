@@ -1299,6 +1299,38 @@ def _make_adata(x, raw_x, layers=None):
     return make_adata(x, raw_x, layers=layers)
 
 
+# The fixture h5ad is 2x7. That reaches every branch of the verdict, but a row of
+# seven genes sits under the _SCALE_MIN_GENES floor and gives no scale, so the
+# tests that need a verdict *through the validator* use this 2x40 matrix. The
+# shared 2x7 fixture is left alone; everything else about the object is the same.
+_WIDE_GENES = 40
+
+
+def _wide_var():
+    """`feature_is_filtered` over 40 human protein-coding genes from the vendored gene table."""
+    from hca_schema_validator._vendored.cellxgene_schema.gencode import SupportedOrganisms, get_gene_checker
+
+    table = get_gene_checker(SupportedOrganisms.HOMO_SAPIENS).gene_dict
+    ids = [gene for gene, (_, _, kind) in table.items() if kind == "protein_coding"][:_WIDE_GENES]
+    return pd.DataFrame({"feature_is_filtered": [False] * len(ids)}, index=ids)
+
+
+def _wide_counts():
+    """2x40 counts with the 2x7 fixture's point of disagreement: cell 1, gene 3 holds 4."""
+    from scipy import sparse
+
+    counts = np.random.default_rng(570).integers(1, 6, size=(2, _WIDE_GENES)).astype(np.float32)
+    counts[:, 0] = 1  # a single-count gene pins the scale (``_row_scale``)
+    counts[1, 3] = 4  # what ``_desouped`` alters, as in the 2x7 fixture
+    return sparse.csr_matrix(counts)
+
+
+def _make_wide_adata(x, raw_x, layers=None):
+    from .fixtures.hca_fixtures import make_adata
+
+    return make_adata(x, raw_x, var=_wide_var(), layers=layers)
+
+
 def _x_normalization_errors(validator):
     """Validator errors raised by the X/source-matrix checks.
 
@@ -1399,9 +1431,9 @@ def test_x_normalized_from_a_matrix_holding_more_counts_errors():
     and ambient RNA removal all take counts away, and nothing puts them back, so
     a matrix holding *more* than raw.X cannot have been derived from it.
     """
-    counts = _raw_counts()
+    counts = _wide_counts()
     inflated = _desouped(counts, gene=3, value=9)  # raw holds 4 there
-    is_valid, validator = _validate_from_fixture(_make_adata(_normalize_counts(inflated.toarray()), counts))
+    is_valid, validator = _validate_from_fixture(_make_wide_adata(_normalize_counts(inflated.toarray()), counts))
 
     _assert_only_x_error(is_valid, validator, "normalized from a different matrix than raw.X")
 
@@ -1413,9 +1445,9 @@ def test_x_normalized_from_desouped_counts_without_the_layer_errors():
     above it — counts were removed between the two. Those removed counts cannot
     be recomputed, so the file is unverifiable until the layer is retained.
     """
-    counts = _raw_counts()
+    counts = _wide_counts()
     desouped = _desouped(counts, gene=3, value=3)  # raw holds 4 there
-    is_valid, validator = _validate_from_fixture(_make_adata(_normalize_counts(desouped.toarray()), counts))
+    is_valid, validator = _validate_from_fixture(_make_wide_adata(_normalize_counts(desouped.toarray()), counts))
 
     _assert_only_x_error(is_valid, validator, f"layers['{DESOUPED_COUNTS_LAYER}'] is missing")
 
@@ -1431,8 +1463,10 @@ def test_x_from_a_non_count_transform_errors():
     """
     from scipy import sparse
 
-    counts = _raw_counts()
-    is_valid, validator = _validate_from_fixture(_make_adata(sparse.csr_matrix(_log2_cpm(counts.toarray())), counts))
+    counts = _wide_counts()
+    is_valid, validator = _validate_from_fixture(
+        _make_wide_adata(sparse.csr_matrix(_log2_cpm(counts.toarray())), counts),
+    )
 
     _assert_only_x_error(is_valid, validator, "not a normalization of any count matrix")
 
@@ -1755,9 +1789,10 @@ def test_integrality_is_decidable_up_to_the_documented_ceiling():
 def test_implied_counts_verdict_separates_the_failure_modes():
     """Unit-level, on a matrix large enough to be classified.
 
-    The fixture h5ad is 2x7, which is thirteen usable entries — enough to reach
-    every branch, but not enough to show that the classification holds up at a
-    realistic width. These are the same shapes at 40x60.
+    The fixture h5ad is 2x7, which sits under the _SCALE_MIN_GENES floor; the
+    validator-level tests use a 2x40 matrix, enough to reach every branch but
+    not to show that the classification holds up at a realistic width. These
+    are the same shapes at 40x60.
     """
     from hca_schema_validator.validator import (
         _VERDICT_DESOUPED,
@@ -1807,14 +1842,12 @@ def test_x_disagreeing_with_raw_x_in_both_directions_errors():
     message leads with it; the removal is mentioned only to point at where the
     desouped counts belong once raw.X is corrected.
     """
-    counts = _raw_counts().toarray().astype(np.float32)
-    source = counts.copy()
+    counts = _wide_counts()
+    source = counts.toarray()
     source[1, 3] -= 1  # a count removed
     source[1, 5] += 2  # a count that raw.X does not have
 
-    is_valid, validator = _validate_from_fixture(
-        _make_adata(_normalize_counts(source), _raw_counts()),
-    )
+    is_valid, validator = _validate_from_fixture(_make_wide_adata(_normalize_counts(source), counts))
 
     _assert_only_x_error(is_valid, validator, "higher for some genes, lower for others")
 
@@ -1890,9 +1923,20 @@ def _desouped_at_random(rng, raw, share, drop_ones=0.0):
 def test_row_scale_is_the_smallest_nonzero_entry():
     from hca_schema_validator.validator import _row_scale
 
-    assert _row_scale(np.array([6.0, 0.0, 1.5, 4.5])) == 1.5
-    assert _row_scale(np.array([0.0, 0.0])) is None
-    assert _row_scale(np.array([np.nan, np.inf, -1.0])) is None
+    assert _row_scale(np.array([6.0, 0.0, 1.5, 4.5] + [3.0] * 27)) == 1.5
+    assert _row_scale(np.zeros(40)) is None
+    assert _row_scale(np.array([np.nan, np.inf, -1.0] * 10)) is None
+
+
+def test_row_scale_needs_the_gene_floor():
+    """A near-empty row carries no lattice to read, so it gives no scale and casts no vote."""
+    from hca_schema_validator.validator import _SCALE_MIN_GENES, _row_scale
+
+    lattice = np.arange(1, _SCALE_MIN_GENES + 1) * 0.7
+    assert _row_scale(lattice) == pytest.approx(0.7)
+    assert _row_scale(lattice[:-1]) is None
+    # Zeros, non-finite and negative entries are not genes the row carries.
+    assert _row_scale(np.concatenate([lattice[:-1], [0.0, np.nan, -0.7]])) is None
 
 
 @pytest.mark.parametrize("seed", range(20))
@@ -1927,13 +1971,34 @@ def test_row_scale_errs_high_by_a_whole_multiple_when_no_gene_kept_one_count():
     """The failure that remains, and the shape it takes: fractional counts, never excess."""
     from hca_schema_validator.validator import _row_scale
 
-    desouped = np.array([2.0, 3.0, 5.0, 2.0, 8.0])
+    desouped = np.tile([2.0, 3.0, 5.0, 2.0, 8.0], 6)
     scale = _row_scale(_round_trip(desouped, 0.7))
 
     assert scale == pytest.approx(2 * 0.7, rel=1e-5)
     implied = _round_trip(desouped, 0.7) / scale
     assert not np.allclose(implied, np.rint(implied), atol=0.05)
     assert (implied <= desouped).all()
+
+
+def test_near_empty_rows_do_not_vote(monkeypatch):
+    """The control failure (#570): three-gene barcodes in a correctly normalized file read as desouped.
+
+    With counts 3, 18 and 198 the smallest entry is three times the scale, the
+    recovered counts are 1, 6 and 66 — whole, and below raw.X — and each such
+    row votes DESOUPED on a file where nothing was removed. 998 of the 1,080
+    false blocks in the control sweep came from rows like these.
+    """
+    from hca_schema_validator import validator as V
+
+    raw = _sparse_counts(np.random.default_rng(0), 200, 1000)
+    raw[:150] = 0
+    raw[:150, :3] = [3.0, 18.0, 198.0]
+    normalized = _normalize_counts(raw).toarray()
+
+    assert V._implied_counts_verdict(normalized, raw) is None
+
+    monkeypatch.setattr(V, "_SCALE_MIN_GENES", 1)
+    assert V._implied_counts_verdict(normalized, raw) == V._VERDICT_DESOUPED
 
 
 def test_row_scale_recovers_the_scale_when_most_genes_lost_counts():

@@ -496,6 +496,17 @@ _INTEGRAL_FRACTION = 0.95
 # on the wrong side. Requiring both keeps the verdict honest at either size.
 _MIN_NON_INTEGRAL_ENTRIES = 3
 
+# Genes a row must carry before its scale is read. The scale is the smallest
+# nonzero entry of expm1(X), which is right whenever some gene kept exactly one
+# count. A near-empty barcode is where that fails: desouping strips the count-1
+# genes out of a row of a few genes and leaves nothing at the lattice spacing.
+# Measured on 605,828 ORCF ground-truth cells (#570), the recovered scale was
+# wrong in 44% of rows with 0-4 genes, 7.5% at 5-9, 7.0% at 10-19, 0.11% at
+# 20-29 (24 cells), and in none of the 499,183 rows with 30 or more. Rows under
+# the floor give no scale and do not vote. The cost is sample size: 17.6% of
+# ORCF rows sit under it, and 14 of 3,032 200-row blocks end without a verdict.
+_SCALE_MIN_GENES = 30
+
 # Why X and its source disagree. NOT_COUNTS says X is not a normalization of any
 # count matrix; EXCESS that it came from a different one; DESOUPED that it came
 # from this one with counts removed; MIXED makes the EXCESS claim with removal
@@ -773,23 +784,27 @@ def _row_scale(expanded):
     every recovered count inflates, and untouched genes read as counts raw.X
     lacks — a single such cell turns a desouped sample into MIXED. The smallest
     entry cannot err that way: removal lowers entries, never raises them, and no
-    gene sits below one count. Where no gene in the row kept exactly one count
-    the estimate is a whole multiple too high, which makes the recovered counts
-    fractional rather than excess: its odd counts land on .5 and vote
-    NOT_COUNTS, and once non-integral entries make up more than
-    1 - _INTEGRAL_FRACTION of the sample's testable entries (at least
-    _MIN_NON_INTEGRAL_ENTRIES of them) the sample reads as not counts.
-    Measured on the 62 ORCF source datasets that carry their desouped
-    layer (#570), 1.4% of cells and 19 of 3,032 200-cell blocks err this way;
-    none errs low. The same rule anchors the ``stancounts`` package
+    gene sits below one count. It errs only where no gene in the row kept
+    exactly one count, and then by a whole multiple too high, which shrinks the
+    recovered counts rather than inflating them: fractional where the true
+    counts are odd, whole but below raw.X where they are even. In the data that
+    happens only in near-empty rows, where removal took the few count-1 genes
+    there were, so rows under _SCALE_MIN_GENES genes give no scale and do not
+    vote. Measured on the 62 ORCF source datasets that carry their desouped
+    layer (#570): with the floor, 499,183 of 499,183 scales exact, none low,
+    none high, and 3,009 of 3,032 200-row blocks DESOUPED; on 2.2M cells in 230
+    files whose X is a correct normalization of its source, no false verdict.
+    The same smallest-entry rule anchors the ``stancounts`` package
     (https://github.com/chansigit/stancounts).
 
     Under a transform that is not a normalization the smallest entry still
     belongs to the count-1 genes, so dividing by it leaves the other genes where
     the transform put them — not whole numbers — and NOT_COUNTS still fires.
     """
-    smallest = np.min(expanded, initial=np.inf, where=np.isfinite(expanded) & (expanded > 0))
-    return None if np.isinf(smallest) else float(smallest)
+    usable = np.isfinite(expanded) & (expanded > 0)
+    if np.count_nonzero(usable) < _SCALE_MIN_GENES:
+        return None
+    return float(np.min(expanded, initial=np.inf, where=usable))
 
 
 def _implied_counts(x_row, source_row):
