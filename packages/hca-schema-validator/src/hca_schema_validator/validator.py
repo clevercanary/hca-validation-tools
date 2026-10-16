@@ -775,9 +775,11 @@ def _row_scale(expanded):
     entry cannot err that way: removal lowers entries, never raises them, and no
     gene sits below one count. Where no gene in the row kept exactly one count
     the estimate is a whole multiple too high, which makes the recovered counts
-    fractional rather than excess: such a row votes NOT_COUNTS, and a sample
-    with more than _INTEGRAL_FRACTION of its entries in such rows reads as not
-    counts. Measured on the 62 ORCF source datasets that carry their desouped
+    fractional rather than excess: its odd counts land on .5 and vote
+    NOT_COUNTS, and once non-integral entries make up more than
+    1 - _INTEGRAL_FRACTION of the sample's testable entries (at least
+    _MIN_NON_INTEGRAL_ENTRIES of them) the sample reads as not counts.
+    Measured on the 62 ORCF source datasets that carry their desouped
     layer (#570), 1.4% of cells and 19 of 3,032 200-cell blocks err this way;
     none errs low. The same rule anchors the ``stancounts`` package
     (https://github.com/chansigit/stancounts).
