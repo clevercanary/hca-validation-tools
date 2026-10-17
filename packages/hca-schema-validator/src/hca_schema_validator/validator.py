@@ -457,17 +457,18 @@ DESOUPED_COUNTS_LAYER = "desouped_counts"
 # small counts that make up almost every entry; the relative term keeps deep
 # genes from drifting into a false verdict.
 #
-# The relative term is set three orders above what the round trip alone costs. X
-# is stored float32, so recovering a count through log1p/expm1 carries a relative
-# error of roughly 1e-6 — but the recovery also divides by a scale estimated as a
-# median over the row, which carries the spread of whatever that row disagrees
-# about, and that is the larger of the two errors on exactly the rows this has to
-# judge.
+# The relative term is slack by design. X is stored float32, so recovering a
+# count through log1p/expm1 carries a relative error of roughly 1e-6, and the
+# division by the estimated scale (``_row_scale``), itself one such value, at
+# most doubles that — three orders below the term.
 #
-# The margin is affordable because the populations it separates sit nowhere near
-# it. Measured across the 140-file local prod corpus: genuinely desouped files
-# score 0.0000% of entries above raw.X and 0.00% non-integral, while files whose
-# X is not a normalization of any count matrix score 19.5-40.2% non-integral.
+# The slack is affordable because the populations it separates sit nowhere near
+# it. Measured across the 140-file local prod corpus under the median scale this
+# estimator replaced: genuinely desouped files scored 0.0000% of entries above
+# raw.X and 0.00% non-integral, while files whose X is not a normalization of
+# any count matrix scored 19.5-40.2% non-integral. The smallest-entry scale
+# (#570) was measured against 605,828 ground-truth cells and never sat below the
+# true scale, so the "above raw.X" side can only have moved toward zero.
 _IMPLIED_COUNT_ATOL = 0.05
 _IMPLIED_COUNT_RTOL = 1e-3
 
@@ -495,9 +496,21 @@ _INTEGRAL_FRACTION = 0.95
 # on the wrong side. Requiring both keeps the verdict honest at either size.
 _MIN_NON_INTEGRAL_ENTRIES = 3
 
+# Genes a row must carry before its scale is read. The scale is the smallest
+# nonzero entry of expm1(X), which is right whenever some gene kept exactly one
+# count. A near-empty barcode is where that fails: desouping strips the count-1
+# genes out of a row of a few genes and leaves nothing at the lattice spacing.
+# Measured on 605,828 ORCF ground-truth cells (#570), the recovered scale was
+# wrong in 44% of rows with 0-4 genes, 7.5% at 5-9, 7.0% at 10-19, 0.11% at
+# 20-29 (24 cells), and in none of the 499,183 rows with 30 or more. Rows under
+# the floor give no scale and do not vote. The cost is sample size: 17.6% of
+# ORCF rows sit under it, and 14 of 3,032 200-row blocks end without a verdict.
+_SCALE_MIN_GENES = 30
+
 # Why X and its source disagree. NOT_COUNTS says X is not a normalization of any
 # count matrix; EXCESS that it came from a different one; DESOUPED that it came
-# from this one with counts removed; MIXED that both are true at once.
+# from this one with counts removed; MIXED makes the EXCESS claim with removal
+# evident as well.
 _VERDICT_NOT_COUNTS = "not_counts"
 _VERDICT_EXCESS = "excess"
 _VERDICT_DESOUPED = "desouped"
@@ -756,15 +769,52 @@ def _counts_equal(left, right):
     return np.isclose(left, right, rtol=_IMPLIED_COUNT_RTOL, atol=_IMPLIED_COUNT_ATOL)
 
 
+def _row_scale(expanded):
+    """The factor ``normalize_total`` applied to one row, or None if unusable.
+
+    ``expanded`` is ``expm1(X)`` over the genes the row carries. Every entry is
+    ``scale * count`` for a whole-number count, so the entries sit on a lattice
+    whose spacing is the scale, and the smallest nonzero entry is the scale times
+    the smallest count in the row — which is 1 in nearly every cell, since
+    droplet data is dominated by single-count genes.
+
+    Reading the scale off X alone is what makes the estimate robust to desouping.
+    The median of ``expm1(X)/raw`` finds the scale only while most genes kept
+    their counts; once removal touches a majority it lands on an altered gene,
+    every recovered count inflates, and untouched genes read as counts raw.X
+    lacks — a single such cell turns a desouped sample into MIXED. The smallest
+    entry cannot err that way: removal lowers entries, never raises them, and no
+    gene sits below one count. It errs only where no gene in the row kept
+    exactly one count, and then by a whole multiple too high, which shrinks the
+    recovered counts rather than inflating them: fractional where the true
+    counts are odd, whole but below raw.X where they are even. In the data that
+    happens only in near-empty rows, where removal took the few count-1 genes
+    there were, so rows under _SCALE_MIN_GENES genes give no scale and do not
+    vote. Measured on the 62 ORCF source datasets that carry their desouped
+    layer (#570): with the floor, 499,183 of 499,183 scales exact, none low,
+    none high, and 3,009 of 3,032 200-row blocks DESOUPED; on 2.2M cells in 230
+    files whose X is a correct normalization of its source, no false verdict.
+    The same smallest-entry rule anchors the ``stancounts`` package
+    (https://github.com/chansigit/stancounts).
+
+    Under a transform that is not a normalization the smallest entry still
+    belongs to the count-1 genes, so dividing by it leaves the other genes where
+    the transform put them — not whole numbers — and NOT_COUNTS still fires.
+    """
+    usable = np.isfinite(expanded) & (expanded > 0)
+    if np.count_nonzero(usable) < _SCALE_MIN_GENES:
+        return None
+    return float(np.min(expanded, initial=np.inf, where=usable))
+
+
 def _implied_counts(x_row, source_row):
     """Counts recovered from one row of X, and the source counts beside them.
 
     ``normalize_total`` multiplied the cell by one constant, so undoing ``log1p``
     leaves every gene scaled by that same constant. Recovering it does not need
-    the target sum: the ratio ``expm1(X)/source`` is that constant at every gene
-    the two matrices agree on, so its **median** recovers it even when a minority
-    of genes disagree — which is exactly the case desouping produces, and is why
-    the median is load-bearing here rather than a robustness flourish.
+    the target sum or the source: ``_row_scale`` reads it off X's own values, so
+    the comparison with the source counts that follows is an independent check
+    rather than a comparison against a number derived from them.
 
     Returns ``(implied, source)`` over the genes X carries, or ``None`` when the
     row cannot be used. Both are count-scale vectors, directly comparable.
@@ -774,11 +824,8 @@ def _implied_counts(x_row, source_row):
         return None
     expanded, source_support = comparable
 
-    scaled = source_support > 0
-    if not scaled.any():
-        return None
-    scale = float(np.median(expanded[scaled] / source_support[scaled]))
-    if not np.isfinite(scale) or scale <= 0:
+    scale = _row_scale(expanded)
+    if scale is None:
         return None
 
     return expanded / scale, source_support
@@ -798,12 +845,15 @@ def _implied_counts_verdict(x_rows, raw_rows):
     - **DESOUPED** — whole numbers, never above the raw counts, below them
       somewhere. Counts were removed between the two, which is what ambient RNA
       removal does.
-    - **MIXED** — both directions at once, which is neither of the above and is
-      reported as neither. Measured across the prod corpus, this is a real
-      population rather than a tolerance artifact: all 31 genuinely-desouped
-      files score *exactly* zero entries above raw.X, while four eye objects
-      carry heavy removal (12-13% of entries) alongside a trace of genes that X
-      has and raw.X does not. Float error would appear in all of them or none.
+    - **MIXED** — both directions at once. The claim is the same as EXCESS — X
+      did not come from raw.X — with removal evident as well. Measured across
+      the prod corpus this is a real population rather than a tolerance
+      artifact: the 32 genuinely-desouped files score *exactly* zero entries
+      above raw.X, while the two Ocular Outflow objects carry removal alongside
+      genes that X has and raw.X does not, under every scale estimator tried.
+      (Four RPE/Choroid copies that once scored here were a scale artifact —
+      heavy desouping pulled the median scale low; see ``_row_scale`` — and
+      read DESOUPED once the scale is right, #570.)
 
     Returns None when none of these fits — the sample recovers to whole numbers
     that match the raw counts, yet the profile still disagreed. That leaves the
@@ -974,12 +1024,12 @@ def _source_mismatch_error(verdict, worst, n_rows):
 
     if verdict == _VERDICT_MIXED:
         return (
-            f"X disagrees with raw.X in both directions: counts were removed across most of the "
-            f"genes that differ, which is the signature of ambient RNA removal, but X also holds "
-            f"counts that raw.X does not. Nothing adds counts, so raw.X cannot be the matrix X was "
-            f"normalized from even though desouping evidently ran. Retain the counts X was derived "
-            f"from as layers['{DESOUPED_COUNTS_LAYER}'], and confirm raw.X holds the counts those "
-            f"were removed from."
+            f"X was normalized from a different matrix than raw.X. Undoing the normalization "
+            f"recovers whole-number counts, so X is a normalization of some count matrix, but "
+            f"those counts do not match raw.X: higher for some genes, lower for others. raw.X "
+            f"must hold the counts X was normalized from. If those were desouped counts, keep "
+            f"them as layers['{DESOUPED_COUNTS_LAYER}'] and keep the counts they were removed "
+            f"from in raw.X."
         )
 
     if verdict == _VERDICT_DESOUPED:
