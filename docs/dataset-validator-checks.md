@@ -88,9 +88,11 @@ Checks run cheapest first and short-circuit, so one defect yields one message:
    | not whole numbers | `X` is not a normalization of any count matrix (a different transform, or altered afterwards) |
    | whole, only above `raw.X` | `X` came from a different matrix |
    | whole, only below `raw.X` | desouping ran and `layers['desouped_counts']` is missing |
-   | whole, both above and below | both at once — desouping ran, *and* `raw.X` cannot be its source |
+   | whole, both above and below | `X` came from a different matrix (removal is evident too, but `raw.X` is not what it was removed from) |
 
    The last row is a real population rather than a tolerance artifact; the corpus measurement that establishes that is recorded on `_implied_counts_verdict`.
+
+   Undoing the per-cell scaling needs each cell's scale, which is read off `X` alone as its smallest nonzero `expm1` entry — the scale times a count of 1, which nearly every cell has. It cannot sit *below* the true scale on whole-number counts, the direction that would manufacture excess, and in the data it erred *above* it only in near-empty rows where removal took the count-1 genes, so rows with fewer than 30 genes do not vote. With that floor the estimate was exact in every one of 499,183 voting ground-truth cells and raised no false verdict on 2.2M correctly normalized cells; the measurements are recorded on `_row_scale` and `_SCALE_MIN_GENES` (#570).
 
 9. **`X` log-transformed but never total-normalized** — every cell's recovered total is its own depth, so no rescaling was applied.
 

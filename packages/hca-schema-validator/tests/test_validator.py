@@ -1299,6 +1299,38 @@ def _make_adata(x, raw_x, layers=None):
     return make_adata(x, raw_x, layers=layers)
 
 
+# The fixture h5ad is 2x7. That reaches every branch of the verdict, but a row of
+# seven genes sits under the _SCALE_MIN_GENES floor and gives no scale, so the
+# tests that need a verdict *through the validator* use this 2x40 matrix. The
+# shared 2x7 fixture is left alone; everything else about the object is the same.
+_WIDE_GENES = 40
+
+
+def _wide_var():
+    """`feature_is_filtered` over 40 human protein-coding genes from the vendored gene table."""
+    from hca_schema_validator._vendored.cellxgene_schema.gencode import SupportedOrganisms, get_gene_checker
+
+    table = get_gene_checker(SupportedOrganisms.HOMO_SAPIENS).gene_dict
+    ids = [gene for gene, (_, _, kind) in table.items() if kind == "protein_coding"][:_WIDE_GENES]
+    return pd.DataFrame({"feature_is_filtered": [False] * len(ids)}, index=ids)
+
+
+def _wide_counts():
+    """2x40 counts with the 2x7 fixture's point of disagreement: cell 1, gene 3 holds 4."""
+    from scipy import sparse
+
+    counts = np.random.default_rng(570).integers(1, 6, size=(2, _WIDE_GENES)).astype(np.float32)
+    counts[:, 0] = 1  # a single-count gene pins the scale (``_row_scale``)
+    counts[1, 3] = 4  # what ``_desouped`` alters, as in the 2x7 fixture
+    return sparse.csr_matrix(counts)
+
+
+def _make_wide_adata(x, raw_x, layers=None):
+    from .fixtures.hca_fixtures import make_adata
+
+    return make_adata(x, raw_x, var=_wide_var(), layers=layers)
+
+
 def _x_normalization_errors(validator):
     """Validator errors raised by the X/source-matrix checks.
 
@@ -1399,9 +1431,9 @@ def test_x_normalized_from_a_matrix_holding_more_counts_errors():
     and ambient RNA removal all take counts away, and nothing puts them back, so
     a matrix holding *more* than raw.X cannot have been derived from it.
     """
-    counts = _raw_counts()
+    counts = _wide_counts()
     inflated = _desouped(counts, gene=3, value=9)  # raw holds 4 there
-    is_valid, validator = _validate_from_fixture(_make_adata(_normalize_counts(inflated.toarray()), counts))
+    is_valid, validator = _validate_from_fixture(_make_wide_adata(_normalize_counts(inflated.toarray()), counts))
 
     _assert_only_x_error(is_valid, validator, "normalized from a different matrix than raw.X")
 
@@ -1413,9 +1445,9 @@ def test_x_normalized_from_desouped_counts_without_the_layer_errors():
     above it — counts were removed between the two. Those removed counts cannot
     be recomputed, so the file is unverifiable until the layer is retained.
     """
-    counts = _raw_counts()
+    counts = _wide_counts()
     desouped = _desouped(counts, gene=3, value=3)  # raw holds 4 there
-    is_valid, validator = _validate_from_fixture(_make_adata(_normalize_counts(desouped.toarray()), counts))
+    is_valid, validator = _validate_from_fixture(_make_wide_adata(_normalize_counts(desouped.toarray()), counts))
 
     _assert_only_x_error(is_valid, validator, f"layers['{DESOUPED_COUNTS_LAYER}'] is missing")
 
@@ -1431,8 +1463,10 @@ def test_x_from_a_non_count_transform_errors():
     """
     from scipy import sparse
 
-    counts = _raw_counts()
-    is_valid, validator = _validate_from_fixture(_make_adata(sparse.csr_matrix(_log2_cpm(counts.toarray())), counts))
+    counts = _wide_counts()
+    is_valid, validator = _validate_from_fixture(
+        _make_wide_adata(sparse.csr_matrix(_log2_cpm(counts.toarray())), counts),
+    )
 
     _assert_only_x_error(is_valid, validator, "not a normalization of any count matrix")
 
@@ -1741,9 +1775,10 @@ def test_integrality_is_decidable_up_to_the_documented_ceiling():
 
     rng = np.random.default_rng(1)
     raw = rng.integers(600, 5000, size=(40, 60)).astype(np.float64)
+    raw[:, 0] = 1  # one single-count gene per cell pins the scale (``_row_scale``)
 
     # Whole-number counts offset by a constant fraction: integral nowhere, and
-    # every entry sits between 450 and _INTEGRAL_TEST_MAX_COUNT.
+    # every other entry sits between 450 and _INTEGRAL_TEST_MAX_COUNT.
     fractional = raw + 0.37
     assert _implied_counts_verdict(_normalize_counts(fractional).toarray(), raw) == _VERDICT_NOT_COUNTS
 
@@ -1754,9 +1789,10 @@ def test_integrality_is_decidable_up_to_the_documented_ceiling():
 def test_implied_counts_verdict_separates_the_failure_modes():
     """Unit-level, on a matrix large enough to be classified.
 
-    The fixture h5ad is 2x7, which is thirteen usable entries — enough to reach
-    every branch, but not enough to show that the classification holds up at a
-    realistic width. These are the same shapes at 40x60.
+    The fixture h5ad is 2x7, which sits under the _SCALE_MIN_GENES floor; the
+    validator-level tests use a 2x40 matrix, enough to reach every branch but
+    not to show that the classification holds up at a realistic width. These
+    are the same shapes at 40x60.
     """
     from hca_schema_validator.validator import (
         _VERDICT_DESOUPED,
@@ -1768,6 +1804,7 @@ def test_implied_counts_verdict_separates_the_failure_modes():
 
     rng = np.random.default_rng(0)
     raw = rng.integers(1, 200, size=(40, 60)).astype(np.float64)
+    raw[:, 0] = 1  # one single-count gene per cell pins the scale (``_row_scale``)
 
     def normalized(source):
         """Dense, because _implied_counts_verdict densifies its input anyway."""
@@ -1782,9 +1819,8 @@ def test_implied_counts_verdict_separates_the_failure_modes():
     assert _implied_counts_verdict(normalized(inflated), raw) == _VERDICT_EXCESS
 
     # Counts removed from most genes that differ, and a few appearing from
-    # nowhere — the shape of the four real objects `_implied_counts_verdict`
-    # documents. The removal is what a curator would act on, but raw.X still
-    # cannot be the source, so neither verdict alone would be honest.
+    # nowhere — the Ocular Outflow shape `_implied_counts_verdict` documents.
+    # raw.X cannot be the source; the removal says where the source belongs.
     both = raw.copy()
     both[:, 7:20] -= 1
     both[:, 3] += 2
@@ -1802,21 +1838,247 @@ def test_implied_counts_verdict_separates_the_failure_modes():
 def test_x_disagreeing_with_raw_x_in_both_directions_errors():
     """Counts removed *and* counts invented, through the validator.
 
-    Reported as its own finding rather than collapsed into either neighbour:
-    naming only the removal would tell a curator to retain the desouped counts
-    while leaving raw.X unquestioned, and naming only the excess would bury the
-    signal they can actually act on.
+    The claim is the one EXCESS makes — X did not come from raw.X — and the
+    message leads with it; the removal is mentioned only to point at where the
+    desouped counts belong once raw.X is corrected.
     """
-    counts = _raw_counts().toarray().astype(np.float32)
-    source = counts.copy()
+    counts = _wide_counts()
+    source = counts.toarray()
     source[1, 3] -= 1  # a count removed
     source[1, 5] += 2  # a count that raw.X does not have
 
-    is_valid, validator = _validate_from_fixture(
-        _make_adata(_normalize_counts(source), _raw_counts()),
-    )
+    is_valid, validator = _validate_from_fixture(_make_wide_adata(_normalize_counts(source), counts))
 
-    _assert_only_x_error(is_valid, validator, "in both directions")
+    _assert_only_x_error(is_valid, validator, "higher for some genes, lower for others")
+
+
+# ---------------------------------------------------------------------------
+# Per-cell scale recovery (#570)
+
+
+def _sparse_counts(rng, n_cells, n_genes):
+    """Counts shaped like a droplet matrix: mostly zeros, and mostly 1s among the rest.
+
+    The shape matters here in a way uniform counts hide: the scale is read off the
+    single-count genes (``_row_scale``), which real data has in every cell.
+    """
+    counts = rng.geometric(0.5, size=(n_cells, n_genes)).astype(np.float64)
+    counts[rng.random(counts.shape) < 0.6] = 0
+    counts[:, 0] += 5  # no empty rows
+    return counts
+
+
+def _round_trip(desouped, scale):
+    """``expm1(X)`` for one row of ``desouped`` counts normalized by ``scale`` and stored float32."""
+    return np.expm1(np.log1p(desouped * scale).astype(np.float32).astype(np.float64))
+
+
+def _halved_cell():
+    """``(raw, desouped)`` for a cell where most genes lost counts, and most of those were halved.
+
+    Modelled on RPE/Choroid row 50836 (#570): 2→1, 4→2 and 6→3 put 384 genes at
+    half the scale, against 183 left untouched, so the median ratio lands on an
+    altered gene. 543 genes end at one count, which is where the scale is read.
+    """
+    raw, desouped = [], []
+
+    def take(count, n, to):
+        raw.extend([count] * n)
+        desouped.extend([to] * n)
+
+    take(1, 133, 1)
+    take(2, 304, 1)
+    take(2, 32, 2)
+    take(3, 150, 2)
+    take(3, 106, 1)
+    take(3, 7, 3)
+    take(4, 74, 2)
+    take(4, 82, 1)
+    take(4, 12, 3)
+    take(4, 6, 4)
+    take(5, 93, 2)
+    take(5, 3, 5)
+    take(6, 6, 3)
+    take(6, 58, 4)
+    take(6, 2, 6)
+    take(7, 45, 5)
+    return np.array(raw, dtype=np.float64), np.array(desouped, dtype=np.float64)
+
+
+def _desouped_at_random(rng, raw, share, drop_ones=0.0):
+    """``raw`` with ``share`` of its reducible genes lowered by a random whole amount.
+
+    Single-count genes can only go to zero, which takes them out of X entirely, so
+    they are handled apart: each is removed with probability ``drop_ones``.
+    """
+    desouped = raw.copy()
+    reducible = np.flatnonzero(raw >= 2)
+    touched = rng.choice(reducible, size=int(reducible.size * share), replace=False)
+    desouped[touched] -= rng.integers(1, raw[touched].astype(int))
+    ones = raw == 1
+    desouped[ones & (rng.random(raw.shape) < drop_ones)] = 0
+    return desouped
+
+
+def test_row_scale_is_the_smallest_nonzero_entry():
+    from hca_schema_validator.validator import _row_scale
+
+    assert _row_scale(np.array([6.0, 0.0, 1.5, 4.5] + [3.0] * 27)) == 1.5
+    assert _row_scale(np.zeros(40)) is None
+    assert _row_scale(np.array([np.nan, np.inf, -1.0] * 10)) is None
+
+
+def test_row_scale_needs_the_gene_floor():
+    """A near-empty row carries no lattice to read, so it gives no scale and casts no vote."""
+    from hca_schema_validator.validator import _SCALE_MIN_GENES, _row_scale
+
+    lattice = np.arange(1, _SCALE_MIN_GENES + 1) * 0.7
+    assert _row_scale(lattice) == pytest.approx(0.7)
+    assert _row_scale(lattice[:-1]) is None
+    # Zeros, non-finite and negative entries are not genes the row carries.
+    assert _row_scale(np.concatenate([lattice[:-1], [0.0, np.nan, -0.7]])) is None
+
+
+@pytest.mark.parametrize("seed", range(20))
+def test_row_scale_is_exact_while_any_gene_keeps_one_count(seed):
+    """However heavy the removal, one count-1 gene pins the scale."""
+    from hca_schema_validator.validator import _row_scale
+
+    rng = np.random.default_rng(seed)
+    raw = _sparse_counts(rng, 1, 2000)[0]
+    raw = raw[raw > 0]
+    desouped = _desouped_at_random(rng, raw, rng.uniform(0.0, 1.0))
+    assert (desouped == 1).any()
+    scale = rng.uniform(0.05, 5.0)
+
+    assert _row_scale(_round_trip(desouped, scale)) == pytest.approx(scale, rel=1e-5)
+
+
+@pytest.mark.parametrize("seed", range(20))
+def test_row_scale_never_sits_below_the_true_scale_on_whole_counts(seed):
+    """Too low is the direction that manufactures excess; whole counts rule it out."""
+    from hca_schema_validator.validator import _row_scale
+
+    rng = np.random.default_rng(seed)
+    raw = rng.integers(1, 50, size=500).astype(np.float64)
+    desouped = _desouped_at_random(rng, raw, rng.uniform(0.0, 1.0), drop_ones=0.5)
+    scale = rng.uniform(0.05, 5.0)
+
+    assert _row_scale(_round_trip(desouped, scale)) >= scale * (1 - 1e-5)
+
+
+def test_row_scale_errs_high_by_a_whole_multiple_when_no_gene_kept_one_count():
+    """The failure that remains, and the shape it takes: fractional counts, never excess."""
+    from hca_schema_validator.validator import _row_scale
+
+    desouped = np.tile([2.0, 3.0, 5.0, 2.0, 8.0], 6)
+    scale = _row_scale(_round_trip(desouped, 0.7))
+
+    assert scale == pytest.approx(2 * 0.7, rel=1e-5)
+    implied = _round_trip(desouped, 0.7) / scale
+    assert not np.allclose(implied, np.rint(implied), atol=0.05)
+    assert (implied <= desouped).all()
+
+
+def test_near_empty_rows_do_not_vote(monkeypatch):
+    """The control failure (#570): three-gene barcodes in a correctly normalized file read as desouped.
+
+    With counts 3, 18 and 198 the smallest entry is three times the scale, the
+    recovered counts are 1, 6 and 66 — whole, and below raw.X — and each such
+    row votes DESOUPED on a file where nothing was removed. 998 of the 1,080
+    false blocks in the control sweep came from rows like these.
+    """
+    from hca_schema_validator import validator as V
+
+    raw = _sparse_counts(np.random.default_rng(0), 200, 1000)
+    raw[:150] = 0
+    raw[:150, :3] = [3.0, 18.0, 198.0]
+    normalized = _normalize_counts(raw).toarray()
+
+    assert V._implied_counts_verdict(normalized, raw) is None
+
+    monkeypatch.setattr(V, "_SCALE_MIN_GENES", 1)
+    assert V._implied_counts_verdict(normalized, raw) == V._VERDICT_DESOUPED
+
+
+def test_row_scale_recovers_the_scale_when_most_genes_lost_counts():
+    from hca_schema_validator.validator import _row_scale
+
+    raw, desouped = _halved_cell()
+    expanded = _round_trip(desouped, 2.124)
+
+    # The median this replaces misses, so the case discriminates.
+    assert float(np.median(expanded / raw)) != pytest.approx(2.124, rel=1e-3)
+
+    assert _row_scale(expanded) == pytest.approx(2.124, rel=1e-5)
+
+
+@pytest.mark.parametrize("share", [0.6, 0.8, 0.9])
+def test_heavy_desouping_is_named_as_desouping(share):
+    """At 60%+ of genes the median absorbed the removal and the verdict read NOT_COUNTS or MIXED."""
+    from hca_schema_validator.validator import _VERDICT_DESOUPED, _implied_counts_verdict
+
+    rng = np.random.default_rng(0)
+    raw = _sparse_counts(rng, 200, 1000)
+    desouped = np.stack([_desouped_at_random(rng, row, share, drop_ones=share) for row in raw])
+
+    assert _implied_counts_verdict(_normalize_counts(desouped).toarray(), raw) == _VERDICT_DESOUPED
+
+
+def test_one_heavily_desouped_cell_does_not_turn_the_sample_into_both_directions():
+    """The RPE/Choroid failure (#570): one cell's wrong scale read as excess."""
+    from hca_schema_validator.validator import _VERDICT_DESOUPED, _implied_counts_verdict
+
+    rng = np.random.default_rng(0)
+    halved_raw, halved_desouped = _halved_cell()
+    raw = _sparse_counts(rng, 200, halved_raw.size)
+    raw[0] = halved_raw
+    desouped = raw.copy()
+    desouped[1:, 0] -= 1  # light desouping everywhere else
+    desouped[0] = halved_desouped
+
+    assert _implied_counts_verdict(_normalize_counts(desouped).toarray(), raw) == _VERDICT_DESOUPED
+
+
+def test_removal_beside_counts_raw_x_lacks_stays_mixed():
+    """The Ocular Outflow shape (#566): the excess is in the data, and must survive the new scale."""
+    from hca_schema_validator.validator import _VERDICT_MIXED, _implied_counts_verdict
+
+    rng = np.random.default_rng(0)
+    raw = _sparse_counts(rng, 200, 1000)
+    source = raw.copy()
+    source[:, 0] -= 1
+    for cell in range(70):
+        source[cell, np.flatnonzero(raw[cell] == 0)[:2]] += 1  # a count where raw.X has none
+
+    assert _implied_counts_verdict(_normalize_counts(source).toarray(), raw) == _VERDICT_MIXED
+
+
+def test_a_cell_raw_x_lacks_entirely_votes_excess():
+    """A cell with counts in X and none in raw.X came from a different matrix.
+
+    The median scale needed raw.X > 0 to exist at all, so such a cell silently
+    dropped out of the sample. The scale now comes from X alone, and the cell
+    votes what it shows: every gene is a count raw.X does not hold.
+    """
+    from hca_schema_validator.validator import _VERDICT_MIXED, _implied_counts_verdict
+
+    rng = np.random.default_rng(0)
+    source = _sparse_counts(rng, 200, 1000)
+    raw = source.copy()
+    raw[:, 0] += 1  # light desouping everywhere
+    raw[5] = 0  # one cell raw.X never had
+
+    assert _implied_counts_verdict(_normalize_counts(source).toarray(), raw) == _VERDICT_MIXED
+
+
+def test_a_transform_on_droplet_shaped_counts_is_still_not_counts():
+    """The count-1 genes share a ratio under log2(CPM+1); that must not pass as the scale."""
+    from hca_schema_validator.validator import _VERDICT_NOT_COUNTS, _implied_counts_verdict
+
+    raw = _sparse_counts(np.random.default_rng(0), 200, 1000)
+
+    assert _implied_counts_verdict(_log2_cpm(raw), raw) == _VERDICT_NOT_COUNTS
 
 
 # ---------------------------------------------------------------------------
