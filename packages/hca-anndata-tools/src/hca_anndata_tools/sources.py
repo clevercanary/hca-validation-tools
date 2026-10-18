@@ -19,11 +19,19 @@ seven sources is a set intersection per source. A content tier — hashing each 
 on the pair's shared var axis, which is what recovers provenance for the
 positional or synthetic IDs of liver-v1 and MSK — is a follow-up; the result
 shape leaves room for it beside ``matched_by_id``.
+
+Each source is also named as the tracker names it (#776). A download is
+``<tracker name>-r<revision>-wip-<n>.h5ad``, so the name is read back off the
+file; :func:`hca_anndata_tools.source_dataset.set_source_dataset` writes those
+names into ``obs['source_dataset']``, and both tools match through
+:func:`match_sources` so the preview and the write cannot disagree.
 """
 
 from __future__ import annotations
 
 import os
+import re
+from dataclasses import dataclass
 from pathlib import Path
 
 import h5py
@@ -43,6 +51,18 @@ SOURCE_SUBDIR = Path("source-datasets") / "tracker-source"
 # The partition verdict: a code, as every sibling check reports, so a reader
 # switches on it and composes any prose from ``target``'s counts.
 PARTITIONS = ("exact", "incomplete")
+
+# The tracker's download names end in -r<revision>-wip-<n>, or -r<revision> once
+# published; the part before is the file's name on the tracker. The same rule as
+# hca_tracker_client.verify.file_stem, copied rather than imported: this package
+# is published and cannot depend on the private client.
+_TRACKER_DOWNLOAD = re.compile(r"^(?P<stem>.+)-r\d+(?:-wip-\d+)?\.h5ad$")
+
+
+def tracker_name(filename: str) -> str | None:
+    """The tracker's name for a downloaded file: our ``-edit-`` suffix, then the tracker's, removed; None if not one."""
+    match = _TRACKER_DOWNLOAD.match(strip_timestamp(filename))
+    return match.group("stem") if match else None
 
 
 @gate_h5ad_paths
@@ -66,12 +86,19 @@ def find_source_datasets(path: str) -> dict:
     gate refuses the target. ``-edit-`` snapshots in the source directory
     collapse to the latest per stem, as every tool resolves a path.
 
+    Each candidate is named as the tracker names it (:func:`tracker_name`):
+    a candidate whose file name is not a tracker download name is refused, as
+    are two candidates naming the same tracker source dataset (two revisions
+    side by side), since both would claim the same cells.
+
     Args:
         path: Path to an integrated-object .h5ad under the tracker layout.
 
     Returns:
-        Dict with ``filename``, ``source_dir``, ``sources`` (one row per
-        candidate — ``filename``, ``n_obs``, ``matched_by_id``,
+        Dict with ``filename``, ``tracker_name`` (the target's, or None when
+        its file name is not a tracker download name — a CAP export's, say),
+        ``source_dir``, ``sources`` (one row per
+        candidate — ``filename``, ``tracker_name``, ``n_obs``, ``matched_by_id``,
         ``fraction_of_target``; ordered by ``fraction_of_target`` descending,
         zero-match rows kept so the reader sees what was tried), ``target``
         (``n_obs``, ``accounted`` = cells matched by at least one candidate,
@@ -151,7 +178,57 @@ def _read_candidate_ids(path: Path) -> np.ndarray:
     return _read_ids(path)[0]
 
 
-def _find_source_datasets_at_path(path: str) -> dict:
+@dataclass
+class SourceMatch:
+    """Which source each of an integrated object's cells comes from, by cell ID.
+
+    ``sources`` is one row per candidate in candidate order, and ``owner`` holds,
+    per target cell, the position in it of a source claiming that cell (-1 for
+    none); only where ``claims`` is 1 is that the one source.
+    """
+
+    target: Path
+    source_dir: Path
+    target_ids: np.ndarray
+    index_name: str
+    sources: list[dict]
+    owner: np.ndarray
+    claims: np.ndarray
+
+    def findings(self) -> list[dict]:
+        """The cells that keep the match from being a partition, in the shared finding shape."""
+        unaccounted, twice = np.flatnonzero(self.claims == 0), np.flatnonzero(self.claims > 1)
+        element = f"obs/{self.index_name}"
+        return [
+            finding(code, where.size, self.target_ids[where[:SAMPLE_ID_LIMIT]], element)
+            for code, where in (("unaccounted_cells", unaccounted), ("cells_claimed_twice", twice))
+            if where.size
+        ]
+
+
+def _candidate_names(candidates: list[Path]) -> list[str]:
+    """Each candidate's tracker name, refusing a file that is not a tracker download and two files that are one."""
+    read = [(c.name, tracker_name(c.name)) for c in candidates]
+    unfit = [filename for filename, name in read if name is None]
+    if unfit:
+        raise Refusal(
+            f"not tracker download names (<name>-r<revision>-wip-<n>.h5ad or <name>-r<revision>.h5ad), so "
+            f"their tracker names cannot be read: {unfit}"
+        )
+    names = [name for _, name in read if name is not None]
+    by_name: dict[str, list[str]] = {}
+    for (filename, _), name in zip(read, names, strict=True):
+        by_name.setdefault(name, []).append(filename)
+    # Two revisions of one source downloaded side by side: both would claim the
+    # same cells, and the double claim would not say why.
+    repeated = {name: files for name, files in by_name.items() if len(files) > 1}
+    if repeated:
+        raise Refusal(f"more than one copy of the same tracker source dataset; keep one of each: {repeated}")
+    return names
+
+
+def match_sources(path: str) -> SourceMatch:
+    """Match an integrated object's cells against its tracker source datasets by ID; refuses as the tools document."""
     # Lexically normalised, not resolved: a ``..`` hop must not slip a file
     # from outside the layout past the ancestor walk, while a symlinked tree
     # (a scratch copy of the layout) keeps the layout it was built with —
@@ -159,6 +236,7 @@ def _find_source_datasets_at_path(path: str) -> dict:
     target = Path(os.path.abspath(path))  # noqa: PTH100
     source_dir = source_directory(target)
     candidates = list_candidates(source_dir, target)
+    names = _candidate_names(candidates)
 
     target_ids, index_name = _read_ids(target)  # the gate has opened the target through anndata already
     index = pd.Index(target_ids)
@@ -166,41 +244,45 @@ def _find_source_datasets_at_path(path: str) -> dict:
         raise Refusal(f"{dup}; an intersection over duplicate IDs has no single meaning")
     n_obs = len(index)
     claims = np.zeros(n_obs, dtype=np.int64)
+    owner = np.full(n_obs, -1, dtype=np.int64)
 
     rows = []
-    for candidate in candidates:
+    for position, (candidate, name) in enumerate(zip(candidates, names, strict=True)):
         ids = _read_candidate_ids(candidate)
         # Probe the candidate's IDs against the target's hash engine, built
         # once above; unique positions so a duplicated source ID counts once.
         hit = np.unique(index.get_indexer(ids))
         hit = hit[hit >= 0]
         claims[hit] += 1
+        owner[hit] = position
         rows.append(
             {
                 "filename": candidate.name,
+                "tracker_name": name,
                 "n_obs": len(ids),
                 "matched_by_id": int(hit.size),
                 "fraction_of_target": hit.size / n_obs if n_obs else 0.0,
             }
         )
-    rows.sort(key=lambda r: (-r["fraction_of_target"], r["filename"]))
+    return SourceMatch(target, source_dir, target_ids, index_name, rows, owner, claims)
 
-    unaccounted, twice = np.flatnonzero(claims == 0), np.flatnonzero(claims > 1)
-    element = f"obs/{index_name}"
-    findings = [
-        finding(code, where.size, target_ids[where[:SAMPLE_ID_LIMIT]], element)
-        for code, where in (("unaccounted_cells", unaccounted), ("cells_claimed_twice", twice))
-        if where.size
-    ]
+
+def _find_source_datasets_at_path(path: str) -> dict:
+    match = match_sources(path)
+    rows = sorted(match.sources, key=lambda r: (-r["fraction_of_target"], r["filename"]))
+    findings = match.findings()
+    n_obs = len(match.target_ids)
+    unaccounted, twice = int((match.claims == 0).sum()), int((match.claims > 1).sum())
     return {
-        "filename": target.name,
-        "source_dir": str(source_dir),
+        "filename": match.target.name,
+        "tracker_name": tracker_name(match.target.name),
+        "source_dir": str(match.source_dir),
         "sources": rows,
         "target": {
             "n_obs": n_obs,
-            "accounted": n_obs - unaccounted.size,
-            "unaccounted": int(unaccounted.size),
-            "claimed_twice": int(twice.size),
+            "accounted": n_obs - unaccounted,
+            "unaccounted": unaccounted,
+            "claimed_twice": twice,
         },
         "partition": "exact" if not findings else "incomplete",
         "findings": findings,
