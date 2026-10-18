@@ -18,10 +18,11 @@ from anndata.io import read_elem, write_elem
 
 from ._errors import failure_result
 from ._io import gate_h5ad_paths, read_edit_log_h5py, read_uns, update_column_order, write_edit_log_h5py
-from .sources import SOURCE_DATASET_COLUMN, match_sources
+from .cap import cellxgene_schema_version
+from .guards import legacy_layout_problems
+from .sources import SOURCE_DATASET_COLUMN as COLUMN
+from .sources import match_sources, tracker_name
 from .write import build_edit_log, cleanup_previous_version, make_edit_entry, resolve_latest, snapshot_copy_hashed
-
-COLUMN = SOURCE_DATASET_COLUMN
 
 
 def _describe(findings: list[dict]) -> str:
@@ -38,9 +39,12 @@ def _describe(findings: list[dict]) -> str:
 def set_source_dataset(path: str) -> dict:
     """Write ``obs['source_dataset']``: each cell's tracker source dataset, matched by cell ID.
 
-    Recomputes :func:`~hca_anndata_tools.sources.find_source_datasets`'s match
-    and refuses what it refuses; on top of that it writes only a partition,
-    naming the cells that match no source or more than one. The value is each
+    Refuses an export, which we never write to: a file whose name is not a
+    tracker download name (a CAP export is named by its title), or one
+    declaring a CellxGENE schema version or the legacy CAP layout. Recomputes
+    :func:`~hca_anndata_tools.sources.find_source_datasets`'s match and refuses
+    what it refuses; on top of that it writes only a partition, naming the
+    cells that match no source or more than one. The value is each
     source's tracker name (``hgca-v1-burclaff-2022`` for
     ``hgca-v1-burclaff-2022-r1-wip-8.h5ad``), as a categorical of the names in
     use, sorted. The column is this tool's own, so an existing one is replaced
@@ -65,6 +69,26 @@ def set_source_dataset(path: str) -> dict:
         path = resolve_latest(path)
         if not Path(path).is_file():
             return {"error": f"File not found: {path}"}
+
+        # CAP is the system of record for its exports, and we never write to one
+        # (contract, Scope). A CAP export of an atlas is named by its title, not
+        # as a tracker download, and may carry neither marker below — the gut
+        # exports carry neither — so the name is the check that catches it.
+        name = Path(path).name
+        if tracker_name(name) is None:
+            return {
+                "error": f"Refusing to set {COLUMN}: {name} is not a tracker download name "
+                f"(<name>-r<revision>[-wip-<n>].h5ad), so it is not one of the tracker's integrated objects — "
+                f"a CAP export, say, which we never write to"
+            }
+        with h5py.File(path, "r") as f_in:
+            if version := cellxgene_schema_version(f_in):
+                return {
+                    "error": f"Refusing to set {COLUMN}: the file declares CellxGENE schema {version}, so it is an "
+                    f"export (a CAP export, say), which we never write to"
+                }
+            if legacy := legacy_layout_problems(read_uns(f_in)):
+                return {"error": f"Refusing to set {COLUMN}: {legacy[0]}"}
 
         match = match_sources(path)
         if findings := match.findings():

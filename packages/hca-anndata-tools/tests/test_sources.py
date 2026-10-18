@@ -421,6 +421,7 @@ def test_a_column_matching_the_match_is_correct(tree, two_sources):
         "agree": 5,
         "unset": 0,
         "wrong": 0,
+        "unverifiable": 0,
         "wrong_values": [],
         "wrong_sample_ids": [],
     }
@@ -459,12 +460,28 @@ def test_a_string_column_is_read_like_a_categorical(tree, two_sources, nullable)
     assert existing["wrong_values"] == [{"value": "x", "expected": "b", "cells": 1}]
 
 
-def test_cells_no_single_source_claims_are_left_to_the_partition_findings(tree, two_sources):
+def test_cells_no_single_source_claims_make_the_column_unverifiable(tree, two_sources):
+    """The compared cells agree, but one could not be compared, so the column is not called correct."""
     column = np.array(["a", "a", "a", "b", "b", "anything"], dtype=object)
     target = tree.target([*two_sources, "stray_0"], columns={"source_dataset": column})
     result = _ok(find_source_datasets(str(target)))
     assert result["partition"] == "incomplete"
-    assert result["source_dataset"]["status"] == "correct"
+    existing = result["source_dataset"]
+    assert (existing["status"], existing["agree"], existing["unverifiable"]) == ("unverifiable", 5, 1)
+
+
+def test_a_column_no_cell_of_which_matches_is_unverifiable_not_correct(tree):
+    """Liver's positional IDs: nothing matches, so nothing about the column can be said."""
+    tree.source("a-r1-wip-1", _ids("a", 3))
+    target = tree.target(["0", "1", "2"], columns={"source_dataset": np.array(["x", "y", "z"], dtype=object)})
+    existing = _ok(find_source_datasets(str(target)))["source_dataset"]
+    assert (existing["status"], existing["agree"], existing["unverifiable"]) == ("unverifiable", 0, 3)
+
+
+def test_a_wrong_value_outranks_unverifiable_cells(tree, two_sources):
+    column = np.array(["a", "a", "a", "b", "x", "anything"], dtype=object)
+    target = tree.target([*two_sources, "stray_0"], columns={"source_dataset": column})
+    assert _ok(find_source_datasets(str(target)))["source_dataset"]["status"] == "wrong"
 
 
 def test_wrong_values_are_capped(tree):

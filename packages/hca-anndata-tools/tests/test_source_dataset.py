@@ -222,12 +222,43 @@ def test_a_source_without_a_tracker_name_is_refused(tree):
     assert_no_snapshot_written(tree.targets / "atlas-r1-wip-3.h5ad")
 
 
+def test_a_cap_export_named_by_its_title_is_refused(tree):
+    """The gut CAP exports carry neither export marker; their title names them."""
+    a = _ids("a", 3)
+    tree.source("a-r1-wip-1", a)
+    export = _write(tree.project / INTEGRATED_DIR / "cap-source" / "Atlas v1 - All Cells.h5ad", a)
+    result = set_source_dataset(str(export))
+
+    assert set(result) == {"error"}
+    assert "not a tracker download name" in result["error"] and "CAP export" in result["error"]
+    assert_no_snapshot_written(export)
+
+
+@pytest.mark.parametrize(
+    ("uns", "says"),
+    [
+        ({"schema_version": "5.2.0"}, "declares CellxGENE schema 5.2.0"),
+        ({"cellannotation_schema_version": "1.0.0"}, "deprecated top-level CAP layout"),
+    ],
+    ids=["schema-version", "legacy-cap-layout"],
+)
+def test_an_export_marker_is_refused(tree, uns, says):
+    a = _ids("a", 3)
+    tree.source("a-r1-wip-1", a)
+    target = tree.target(a, uns=uns)
+    result = set_source_dataset(str(target))
+
+    assert set(result) == {"error"}
+    assert says in result["error"]
+    assert_no_snapshot_written(target)
+
+
 def test_a_target_outside_the_layout_is_refused(tmp_path):
-    target = _write(tmp_path / "loose.h5ad", _ids("a", 3))
+    target = _write(tmp_path / "loose-r1-wip-1.h5ad", _ids("a", 3))
     result = set_source_dataset(str(target))
     assert set(result) == {"error"}
     assert "integrated-objects" in result["error"]
-    assert sorted(p.name for p in tmp_path.iterdir()) == ["loose.h5ad"]
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["loose-r1-wip-1.h5ad"]
 
 
 def test_a_missing_file_keeps_the_tools_own_message(tree):

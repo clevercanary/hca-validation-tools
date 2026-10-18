@@ -56,10 +56,11 @@ SOURCE_SUBDIR = Path("source-datasets") / "tracker-source"
 PARTITIONS = ("exact", "incomplete")
 
 # The obs column set_source_dataset writes, and what the preview says about the
-# one already there: none, every cell right, some cells empty and none wrong, or
-# at least one cell holding a different source.
+# one already there: none; every cell compared and right; some cells empty; some
+# cells not comparable, because no single source claims them (``partition``
+# says why); or at least one cell holding a different source.
 SOURCE_DATASET_COLUMN = "source_dataset"
-EXISTING_STATES = ("absent", "correct", "incomplete", "wrong")
+EXISTING_STATES = ("absent", "correct", "incomplete", "unverifiable", "wrong")
 WRONG_VALUES_LIMIT = 20
 
 # The tracker's download names end in -r<revision>-wip-<n>, or -r<revision> once
@@ -120,9 +121,10 @@ def find_source_datasets(path: str) -> dict:
         ``findings`` — ``unaccounted_cells`` and ``cells_claimed_twice`` in
         the shared finding shape, IDs capped at 20 — and ``source_dataset``,
         the target's existing ``obs['source_dataset']`` judged against the
-        match over the cells exactly one source claims: ``status`` (one of
-        :data:`EXISTING_STATES`; only it, when ``"absent"``), the ``agree`` /
-        ``unset`` / ``wrong`` cell counts, ``wrong_values`` (each wrong value
+        match: ``status`` (one of :data:`EXISTING_STATES`, worst first —
+        wrong, incomplete, unverifiable — and only it when ``"absent"``), the
+        ``agree`` / ``unset`` / ``wrong`` / ``unverifiable`` cell counts (a cell
+        no single source claims cannot be compared), ``wrong_values`` (each wrong value
         with the name it should be and its cells, most first, capped at
         :data:`WRONG_VALUES_LIMIT`) and ``wrong_sample_ids``. On failure,
         ``error`` is returned instead.
@@ -283,11 +285,13 @@ def match_sources(path: str) -> SourceMatch:
 
 
 def _existing_column(match: SourceMatch) -> dict:
-    """The target's ``obs['source_dataset']`` against the match, over the cells exactly one source claims.
+    """The target's ``obs['source_dataset']`` against the match.
 
     Read through anndata's reader, so a categorical, a plain string array and a
-    nullable one are compared alike. An empty or blank value is unset; any
-    other value that is not the matched source's tracker name is wrong.
+    nullable one are compared alike. Only a cell exactly one source claims can
+    be compared; any other is unverifiable. An empty or blank value is unset,
+    and any other value that is not the matched source's tracker name is wrong.
+    ``correct`` therefore means every cell was compared and agrees.
     """
     with h5py.File(match.target, "r") as f:
         obs = require_obs_group(f)
@@ -304,10 +308,13 @@ def _existing_column(match: SourceMatch) -> dict:
     wrong = single & ~unset & (text != expected)
     agree = single & ~unset & ~wrong
 
+    unverifiable = ~single
     if wrong.any():
         status = "wrong"
     elif unset.any():
         status = "incomplete"
+    elif unverifiable.any():
+        status = "unverifiable"
     else:
         status = "correct"
     pairs = pd.DataFrame({"value": text[wrong], "expected": expected[wrong]}).value_counts()
@@ -320,6 +327,7 @@ def _existing_column(match: SourceMatch) -> dict:
         "agree": int(agree.sum()),
         "unset": int(unset.sum()),
         "wrong": int(wrong.sum()),
+        "unverifiable": int(unverifiable.sum()),
         "wrong_values": wrong_values[:WRONG_VALUES_LIMIT],
         "wrong_sample_ids": [str(i) for i in match.target_ids[wrong][:SAMPLE_ID_LIMIT]],
     }
@@ -330,7 +338,8 @@ def _find_source_datasets_at_path(path: str) -> dict:
     rows = sorted(match.sources, key=lambda r: (-r["fraction_of_target"], r["filename"]))
     findings = match.findings()
     n_obs = len(match.target_ids)
-    unaccounted, twice = int((match.claims == 0).sum()), int((match.claims > 1).sum())
+    counted = {f["code"]: f["count"] for f in findings}
+    unaccounted, twice = counted.get("unaccounted_cells", 0), counted.get("cells_claimed_twice", 0)
     return {
         "filename": match.target.name,
         "tracker_name": tracker_name(match.target.name),
