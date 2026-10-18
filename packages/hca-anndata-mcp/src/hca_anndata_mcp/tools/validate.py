@@ -15,7 +15,8 @@ def validate_schema(path: str, object_kind: ObjectKind) -> dict:
 
     ``object_kind`` is required: say whether the tracker lists the file as a
     source dataset or an integrated object. It is never read off the path.
-    Nothing branches on the kind yet (#770); the result reports it.
+    The kind chooses the closing sentence of some gene_annotation_version
+    warnings (#774), never which findings fire; the result reports it.
 
     Args:
         path: Path to an .h5ad file.
