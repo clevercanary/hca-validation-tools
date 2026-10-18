@@ -43,8 +43,8 @@ SCHEMA_FILENAME = "hca_schema_definition.yaml"
 # several. The file does not record which it is -- the tracker's S3 layout
 # does ({bionetwork}/{atlas}/source-datasets/... or .../integrated-objects/...)
 # -- so the caller, which knows where the file came from, has to say. There is
-# deliberately no "unknown": a check that will one day branch on the kind
-# must never be handed a file nobody classified. check_gene_annotation_version
+# deliberately no "unknown": a check that branches on the kind must never be
+# handed a file nobody classified. check_gene_annotation_version
 # chooses its scope sentence by it (#774).
 ObjectKind = Literal["source", "integrated"]
 OBJECT_KINDS: tuple[str, ...] = get_args(ObjectKind)
