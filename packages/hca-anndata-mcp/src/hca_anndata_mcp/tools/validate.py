@@ -3,30 +3,35 @@
 from pathlib import Path
 
 from hca_anndata_tools.write import resolve_latest
-from hca_schema_validator import HCACellAnnotationValidator, HCAValidator
+from hca_schema_validator import HCACellAnnotationValidator, HCAValidator, ObjectKind
 
 
-def validate_schema(path: str) -> dict:
+def validate_schema(path: str, object_kind: ObjectKind) -> dict:
     """Validate an .h5ad file against the HCA schema.
 
     Wraps :class:`hca_schema_validator.HCAValidator` and returns a
     structured verdict. Auto-resolves to the latest timestamped edit
     snapshot before validating.
 
+    ``object_kind`` is required: say whether the tracker lists the file as a
+    source dataset or an integrated object. It is never read off the path.
+    Nothing branches on the kind yet (#770); the result reports it.
+
     Args:
         path: Path to an .h5ad file.
+        object_kind: ``"source"`` or ``"integrated"``.
 
     Returns:
-        Dict with ``filename``, ``is_valid``, ``error_count``,
-        ``warning_count``, ``errors`` (list of str), and ``warnings``
-        (list of str, with feature-ID warnings ordered last). On
-        failure, ``error`` is returned instead.
+        Dict with ``filename``, ``object_kind``, ``is_valid``,
+        ``error_count``, ``warning_count``, ``errors`` (list of str), and
+        ``warnings`` (list of str, with feature-ID warnings ordered last).
+        On failure, ``error`` is returned instead.
     """
     try:
         path = resolve_latest(path)
         if not Path(path).is_file():
             return {"error": f"File not found: {path}"}
-        v = HCAValidator()
+        v = HCAValidator(object_kind=object_kind)
         try:
             v.validate_adata(path)
         except SystemExit:
@@ -36,6 +41,7 @@ def validate_schema(path: str) -> dict:
                 return {"error": f"Validator could not read {Path(path).name}"}
         return {
             "filename": Path(path).name,
+            "object_kind": v.object_kind,
             "is_valid": v.is_valid,
             "error_count": len(v.errors),
             "warning_count": len(v.warnings),

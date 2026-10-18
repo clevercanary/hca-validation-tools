@@ -67,6 +67,9 @@ def _mcp_only() -> list[tuple[str, object]]:
 
 MCP_ONLY = _mcp_only()
 
+# Required non-path arguments a command needs before it reaches the file at all.
+REQUIRED_ARGS: dict[str, dict[str, object]] = {"validate_schema": {"object_kind": "source"}}
+
 
 @pytest.fixture
 def truncated(tmp_path) -> str:
@@ -83,7 +86,7 @@ def test_mcp_only_command_refuses_a_truncated_file(name, fn, truncated):
     for #661 — an unreadable file comes back as ``is_valid: False`` carrying
     the read failure, which is a refusal by any reading that matters.
     """
-    result = fn(path=truncated)
+    result = fn(path=truncated, **REQUIRED_ARGS.get(name, {}))
 
     assert isinstance(result, dict), f"{name} did not return the command error shape"
     refused = "error" in result or result.get("is_valid") is False

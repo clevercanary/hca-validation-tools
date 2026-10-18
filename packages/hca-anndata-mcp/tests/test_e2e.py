@@ -162,7 +162,8 @@ async def test_plot_embedding(client, sample_h5ad):
 
 @pytest.mark.asyncio
 async def test_validate_schema(client, sample_h5ad):
-    data = await _call(client, "validate_schema", {"path": str(sample_h5ad)})
+    data = await _call(client, "validate_schema", {"path": str(sample_h5ad), "object_kind": "source"})
+    assert data["object_kind"] == "source"
     assert isinstance(data["is_valid"], bool)
     assert isinstance(data["errors"], list)
     assert isinstance(data["warnings"], list)
@@ -173,7 +174,7 @@ async def test_validate_schema(client, sample_h5ad):
 
 @pytest.mark.asyncio
 async def test_validate_schema_missing_file(client):
-    data = await _call(client, "validate_schema", {"path": "/nonexistent/file.h5ad"})
+    data = await _call(client, "validate_schema", {"path": "/nonexistent/file.h5ad", "object_kind": "source"})
     assert "error" in data
 
 
