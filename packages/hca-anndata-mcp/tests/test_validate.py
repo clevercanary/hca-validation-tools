@@ -1,6 +1,7 @@
 """Unit tests for the validate_schema + validate_cell_annotation MCP wrappers."""
 
 import anndata as ad
+import pytest
 
 from hca_anndata_mcp.tools.validate import validate_cell_annotation, validate_schema
 from hca_anndata_tools.testing import create_sample_h5ad
@@ -9,23 +10,57 @@ from hca_schema_validator.testing import create_cap_annotated_h5ad, create_label
 
 
 def test_validate_schema_shape(sample_h5ad):
-    result = validate_schema(str(sample_h5ad))
+    result = validate_schema(str(sample_h5ad), object_kind="source")
     assert set(result.keys()) == {
         "filename",
+        "object_kind",
         "is_valid",
         "error_count",
         "warning_count",
         "errors",
         "warnings",
     }
+    assert result["object_kind"] == "source"
     assert isinstance(result["is_valid"], bool)
     assert result["error_count"] == len(result["errors"])
     assert result["warning_count"] == len(result["warnings"])
 
 
 def test_validate_schema_missing_file():
-    result = validate_schema("/nonexistent/file.h5ad")
+    result = validate_schema("/nonexistent/file.h5ad", object_kind="source")
     assert "error" in result
+
+
+# ---------------------------------------------------------------------------
+# object_kind (#770): required, said by the caller, never read off the path
+
+
+def test_validate_schema_requires_object_kind(sample_h5ad):
+    """No default and no inference from the path: the caller says which kind it is."""
+    with pytest.raises(TypeError, match="object_kind"):
+        validate_schema(str(sample_h5ad))  # type: ignore[call-arg]
+
+
+@pytest.mark.parametrize("kind", ["source", "integrated"])
+def test_validate_schema_reports_the_kind_it_was_given(tmp_path, kind):
+    # The path says the opposite of the parameter; the parameter is what counts.
+    folder = tmp_path / ("integrated-objects" if kind == "source" else "source-datasets")
+    folder.mkdir()
+    path = create_sample_h5ad(folder / "dataset.h5ad")
+
+    result = validate_schema(str(path), object_kind=kind)
+
+    assert result["object_kind"] == kind
+
+
+def test_validate_schema_object_kind_does_not_change_the_verdict(sample_h5ad):
+    """Plumbing only (#770): same file, either kind, same verdict and messages."""
+    as_source = validate_schema(str(sample_h5ad), object_kind="source")
+    as_integrated = validate_schema(str(sample_h5ad), object_kind="integrated")
+
+    assert as_source["is_valid"] == as_integrated["is_valid"]
+    assert as_source["errors"] == as_integrated["errors"]
+    assert as_source["warnings"] == as_integrated["warnings"]
 
 
 def test_validate_schema_surfaces_cosmetic_check(tmp_path):
@@ -39,7 +74,7 @@ def test_validate_schema_surfaces_cosmetic_check(tmp_path):
     adata.obs["tissue"] = "WRONG_TISSUE_LABEL"
     adata.write_h5ad(path)
 
-    result = validate_schema(str(path))
+    result = validate_schema(str(path), object_kind="source")
 
     assert any("'WRONG_TISSUE_LABEL'" in e and "Either delete the cosmetic column" in e for e in result["errors"]), (
         result["errors"]
@@ -56,7 +91,7 @@ def test_validate_schema_no_cosmetic_warning_when_labels_match(tmp_path):
     adata.obs["tissue"] = "lung"  # canonical for UBERON:0002048
     adata.write_h5ad(path)
 
-    result = validate_schema(str(path))
+    result = validate_schema(str(path), object_kind="source")
 
     assert not any("obs['tissue']" in w for w in result["warnings"]), result["warnings"]
     assert not any("obs['tissue']" in e for e in result["errors"]), result["errors"]
@@ -73,7 +108,7 @@ def test_validate_schema_resolves_latest(tmp_path):
     # Capture the original's baseline before any snapshot exists in the
     # directory — otherwise resolve_latest would pick the snapshot when we
     # ask about the original path.
-    direct_original = validate_schema(str(original))
+    direct_original = validate_schema(str(original), object_kind="source")
 
     snapshot = tmp_path / "dataset-edit-2026-04-17-06-00-00.h5ad"
     create_sample_h5ad(snapshot)
@@ -81,8 +116,8 @@ def test_validate_schema_resolves_latest(tmp_path):
     del adata.uns["title"]
     adata.write_h5ad(snapshot)
 
-    direct_snapshot = validate_schema(str(snapshot))
-    via_lineage = validate_schema(str(original))  # resolve_latest picks the snapshot
+    direct_snapshot = validate_schema(str(snapshot), object_kind="source")
+    via_lineage = validate_schema(str(original), object_kind="source")  # resolve_latest picks the snapshot
 
     assert direct_original["errors"] != direct_snapshot["errors"]  # discriminator works
     assert via_lineage == direct_snapshot

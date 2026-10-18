@@ -14,7 +14,9 @@ requires-python = ">=3.10,<4.0"
 # policy in CLAUDE.md, 0.x packages signal breaking changes with a minor
 # bump, so <1 would accept versions this package was never tested against.
 # hca-anndata-tools admits 0.7 because this package was updated for the
-# 0.7 breaking change (#619) in the same PR that made it.
+# 0.7 breaking change (#619) in the same PR that made it; hca-schema-validator
+# admits 0.16 for the same reason (#770: validate_schema passes the
+# object_kind that HCAValidator requires from 0.16).
 #
 # The lower bound is what this package can actually import. Seven of the
 # symbols it imports at module scope first appear in hca-anndata-tools 0.7.1,
@@ -26,7 +28,7 @@ requires-python = ">=3.10,<4.0"
 dependencies = [
     "fastmcp>=2,<3",
     "hca-anndata-tools>=0.7.1,<0.8",
-    "hca-schema-validator>=0.15,<0.16",
+    "hca-schema-validator>=0.16,<0.17",
 ]
 
 [project.urls]
