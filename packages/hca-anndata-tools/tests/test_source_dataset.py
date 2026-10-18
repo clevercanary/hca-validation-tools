@@ -12,9 +12,11 @@ import json
 from pathlib import Path
 
 import anndata as ad
+import h5py
 import numpy as np
 import pandas as pd
 import pytest
+from anndata.io import write_elem
 
 from hca_anndata_tools._io import read_obs_column_names
 from hca_anndata_tools.source_dataset import set_source_dataset
@@ -125,9 +127,8 @@ def test_records_the_edit_with_per_source_counts(tree):
     [
         pd.Categorical([np.nan] * 3, categories=["stale"]),
         pd.Categorical(["Study1", "wrong", np.nan]),
-        np.array(["x", "y", "z"], dtype=object),
     ],
-    ids=["empty", "holding-values", "plain-strings"],
+    ids=["empty", "holding-values"],
 )
 def test_an_existing_column_is_replaced_in_place(tree, existing):
     """The column is ours to write, so whatever it holds is recomputed, keeping its position."""
@@ -140,6 +141,20 @@ def test_an_existing_column_is_replaced_in_place(tree, existing):
     assert read_obs_column_names(result["output_path"]) == ["source_dataset", "donor_id"]
     written = ad.read_h5ad(result["output_path"]).obs["source_dataset"]
     assert list(written) == ["a"] * 3 and list(written.cat.categories) == ["a"]
+
+
+def test_a_plain_string_column_is_replaced_in_place(tree):
+    """anndata writes object columns as categoricals, so the string-array encoding is built by hand."""
+    a = _ids("a", 3)
+    tree.source("a-r1-wip-1", a)
+    target = tree.target(a, obs={"donor_id": ["d1"] * 3})
+    with h5py.File(target, "r+") as f:
+        write_elem(f["obs"], "source_dataset", np.array(["x", "y", "z"], dtype=object))
+        f["obs"].attrs["column-order"] = ["source_dataset", "donor_id"]
+    result = _ok(set_source_dataset(str(target)))
+
+    assert read_obs_column_names(result["output_path"]) == ["source_dataset", "donor_id"]
+    assert list(ad.read_h5ad(result["output_path"]).obs["source_dataset"]) == ["a"] * 3
 
 
 def test_running_again_recomputes_the_same_column(tree):

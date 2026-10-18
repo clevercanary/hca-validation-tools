@@ -17,9 +17,18 @@ import numpy as np
 import pandas as pd
 import pytest
 import scipy.sparse as sp
+from anndata.io import write_elem
 
 from hca_anndata_tools.qc import SAMPLE_ID_LIMIT
-from hca_anndata_tools.sources import INTEGRATED_DIR, PARTITIONS, SOURCE_SUBDIR, find_source_datasets, tracker_name
+from hca_anndata_tools.sources import (
+    EXISTING_STATES,
+    INTEGRATED_DIR,
+    PARTITIONS,
+    SOURCE_SUBDIR,
+    WRONG_VALUES_LIMIT,
+    find_source_datasets,
+    tracker_name,
+)
 from hca_anndata_tools.testing import create_truncated_h5ad, make_nullable_string_array
 
 
@@ -27,9 +36,9 @@ def _ids(prefix: str, n: int) -> list[str]:
     return [f"{prefix}_{i}" for i in range(n)]
 
 
-def _write(path: Path, ids: list[str], X=None) -> Path:
+def _write(path: Path, ids: list[str], X=None, columns: dict | None = None) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
-    obs = pd.DataFrame(index=pd.Index(ids, name="cellID"))
+    obs = pd.DataFrame(columns or {}, index=pd.Index(ids, name="cellID"))
     ad.AnnData(X=X, obs=obs).write_h5ad(path)  # pyright: ignore[reportArgumentType]
     return path
 
@@ -42,8 +51,15 @@ class Tree:
         self.integrated = self.project / INTEGRATED_DIR
         self.sources = self.project / SOURCE_SUBDIR
 
-    def target(self, ids: list[str], where: str = "tracker-source", name: str = "atlas-r1-wip-3.h5ad", X=None) -> Path:
-        return _write(self.integrated / where / name, ids, X)
+    def target(
+        self,
+        ids: list[str],
+        where: str = "tracker-source",
+        name: str = "atlas-r1-wip-3.h5ad",
+        X=None,
+        columns: dict | None = None,
+    ) -> Path:
+        return _write(self.integrated / where / name, ids, X, columns)
 
     def source(self, name: str, ids: list[str]) -> Path:
         return _write(self.sources / f"{name}.h5ad", ids)
@@ -379,6 +395,92 @@ def test_two_copies_of_one_tracker_source_are_refused(tree):
     assert set(result) == {"error"}
     assert "more than one copy" in result["error"]
     assert "a-r1-wip-1.h5ad" in result["error"] and "a-r1-wip-2.h5ad" in result["error"]
+
+
+# --- The existing source_dataset column (#776) -----------------------------
+
+
+@pytest.fixture
+def two_sources(tree):
+    """Five cells: three from source a, two from source b."""
+    tree.source("a-r1-wip-1", _ids("a", 3))
+    tree.source("b-r1-wip-1", _ids("b", 2))
+    return _ids("a", 3) + _ids("b", 2)
+
+
+def test_no_column_is_absent(tree, two_sources):
+    result = _ok(find_source_datasets(str(tree.target(two_sources))))
+    assert result["source_dataset"] == {"status": "absent"}
+
+
+def test_a_column_matching_the_match_is_correct(tree, two_sources):
+    column = pd.Categorical(["a", "a", "a", "b", "b"])
+    result = _ok(find_source_datasets(str(tree.target(two_sources, columns={"source_dataset": column}))))
+    assert result["source_dataset"] == {
+        "status": "correct",
+        "agree": 5,
+        "unset": 0,
+        "wrong": 0,
+        "wrong_values": [],
+        "wrong_sample_ids": [],
+    }
+
+
+def test_empty_and_blank_cells_are_incomplete(tree, two_sources):
+    column = np.array(["a", None, "a", " ", "b"], dtype=object)
+    result = _ok(find_source_datasets(str(tree.target(two_sources, columns={"source_dataset": column}))))
+    existing = result["source_dataset"]
+    assert (existing["status"], existing["agree"], existing["unset"], existing["wrong"]) == ("incomplete", 3, 2, 0)
+
+
+def test_other_values_are_wrong_and_listed_with_what_they_should_be(tree, two_sources):
+    """The team's own labels, say: right cells, wrong names."""
+    column = pd.Categorical(["StudyA", "StudyA", "a", "StudyB", np.nan])
+    result = _ok(find_source_datasets(str(tree.target(two_sources, columns={"source_dataset": column}))))
+    existing = result["source_dataset"]
+    assert (existing["status"], existing["agree"], existing["unset"], existing["wrong"]) == ("wrong", 1, 1, 3)
+    assert existing["wrong_values"] == [
+        {"value": "StudyA", "expected": "a", "cells": 2},
+        {"value": "StudyB", "expected": "b", "cells": 1},
+    ]
+    assert existing["wrong_sample_ids"] == ["a_0", "a_1", "b_0"]
+
+
+@pytest.mark.parametrize("nullable", [False, True], ids=["plain-strings", "nullable-strings"])
+def test_a_string_column_is_read_like_a_categorical(tree, two_sources, nullable):
+    """anndata writes object columns as categoricals, so the string encodings are built by hand."""
+    target = tree.target(two_sources, columns={"other": ["v"] * 5})
+    with h5py.File(target, "r+") as f:
+        write_elem(f["obs"], "source_dataset", np.array(["a", "a", "a", "b", "x"], dtype=object))
+        if nullable:
+            make_nullable_string_array(f["obs"], "source_dataset")  # pyright: ignore[reportArgumentType]
+    existing = _ok(find_source_datasets(str(target)))["source_dataset"]
+    assert existing["status"] == "wrong"
+    assert existing["wrong_values"] == [{"value": "x", "expected": "b", "cells": 1}]
+
+
+def test_cells_no_single_source_claims_are_left_to_the_partition_findings(tree, two_sources):
+    column = np.array(["a", "a", "a", "b", "b", "anything"], dtype=object)
+    target = tree.target([*two_sources, "stray_0"], columns={"source_dataset": column})
+    result = _ok(find_source_datasets(str(target)))
+    assert result["partition"] == "incomplete"
+    assert result["source_dataset"]["status"] == "correct"
+
+
+def test_wrong_values_are_capped(tree):
+    n = WRONG_VALUES_LIMIT + 5
+    tree.source("a-r1-wip-1", _ids("a", n))
+    column = np.array([f"label{i}" for i in range(n)], dtype=object)
+    existing = _ok(find_source_datasets(str(tree.target(_ids("a", n), columns={"source_dataset": column}))))[
+        "source_dataset"
+    ]
+    assert existing["wrong"] == n
+    assert len(existing["wrong_values"]) == WRONG_VALUES_LIMIT
+
+
+def test_existing_status_is_always_a_known_state(tree, two_sources):
+    result = _ok(find_source_datasets(str(tree.target(two_sources))))
+    assert result["source_dataset"]["status"] in EXISTING_STATES
 
 
 # --- Target and candidate faults ------------------------------------------

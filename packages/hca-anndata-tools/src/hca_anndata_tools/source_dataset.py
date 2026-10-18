@@ -25,10 +25,10 @@ from anndata.io import read_elem, write_elem
 
 from ._errors import failure_result
 from ._io import gate_h5ad_paths, read_edit_log_h5py, read_uns, update_column_order, write_edit_log_h5py
-from .sources import match_sources
+from .sources import SOURCE_DATASET_COLUMN, match_sources
 from .write import build_edit_log, cleanup_previous_version, make_edit_entry, resolve_latest, snapshot_copy_hashed
 
-COLUMN = "source_dataset"
+COLUMN = SOURCE_DATASET_COLUMN
 
 
 def _describe(findings: list[dict]) -> str:
