@@ -10,7 +10,9 @@ from .cell_annotation_validator import HCACellAnnotationValidator
 from .labeler import HCA_DERIVED_OBS_LABELS, HCALabeler
 from .populator import populate_in_memory
 from .validator import (
+    OBJECT_KINDS,
     HCAValidator,
+    ObjectKind,
     check_cosmetic_labels,
     check_donor_consistency,
     check_gene_annotation_version,
@@ -19,9 +21,11 @@ from .validator import (
 
 __all__ = [
     "HCA_DERIVED_OBS_LABELS",
+    "OBJECT_KINDS",
     "HCACellAnnotationValidator",
     "HCALabeler",
     "HCAValidator",
+    "ObjectKind",
     "check_cosmetic_labels",
     "check_donor_consistency",
     "check_gene_annotation_version",

@@ -3,13 +3,13 @@
 Simple script to validate h5ad files with HCA schema.
 
 Usage:
-    uv run python validate_file.py <path/to/file.h5ad>
-    uv run python validate_file.py <path/to/file.h5ad> --with-labels
+    uv run python validate_file.py <path/to/file.h5ad> --object-kind source
+    uv run python validate_file.py <path/to/file.h5ad> --object-kind integrated --with-labels
 """
 
 import argparse
 
-from hca_schema_validator import HCAValidator
+from hca_schema_validator import OBJECT_KINDS, HCAValidator
 
 # Display constants
 SEPARATOR_WIDTH = 70
@@ -22,11 +22,17 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  uv run python validate_file.py data.h5ad
-  uv run python validate_file.py data.h5ad --with-labels
+  uv run python validate_file.py data.h5ad --object-kind source
+  uv run python validate_file.py data.h5ad --object-kind integrated --with-labels
         """,
     )
     parser.add_argument("file", help="Path to the h5ad file to validate")
+    parser.add_argument(
+        "--object-kind",
+        required=True,
+        choices=OBJECT_KINDS,
+        help="What the tracker lists the file as: a source dataset or an integrated object",
+    )
     parser.add_argument(
         "--with-labels",
         action="store_true",
@@ -41,10 +47,11 @@ Examples:
     print("HCA Schema Validator")
     print(f"{'=' * SEPARATOR_WIDTH}")
     print(f"File: {h5ad_file}")
+    print(f"Object kind: {args.object_kind}")
     print(f"Ignore Labels: {ignore_labels}")
     print(f"{'=' * SEPARATOR_WIDTH}\n")
 
-    validator = HCAValidator(ignore_labels=ignore_labels)
+    validator = HCAValidator(ignore_labels=ignore_labels, object_kind=args.object_kind)
     is_valid = validator.validate_adata(h5ad_file)
 
     print(f"\n{'=' * SEPARATOR_WIDTH}")

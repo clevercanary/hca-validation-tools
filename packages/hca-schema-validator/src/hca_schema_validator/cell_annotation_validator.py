@@ -63,8 +63,9 @@ LEGACY_LAYOUT_ERROR = (
 class HCACellAnnotationValidator:
     """Validate an h5ad's conformance to the HCA Cell Annotation schema.
 
-    Mirrors the shape of :class:`hca_schema_validator.HCAValidator`: construct
-    with no arguments, then call :meth:`validate_adata` with a file path. The
+    Mirrors the shape of :class:`hca_schema_validator.HCAValidator`: construct,
+    then call :meth:`validate_adata` with a file path. (Unlike HCAValidator it
+    takes no ``object_kind``: nothing here depends on the distinction.) The
     method populates :attr:`errors` and :attr:`warnings` and returns a bool.
     Errors and warnings are also emitted via the module logger so service
     wrappers can capture them with a ``logging.Handler``.

@@ -8,6 +8,7 @@ import heapq
 import re
 from collections import Counter, namedtuple
 from pathlib import Path
+from typing import Literal, get_args
 
 import numpy as np
 import pandas as pd
@@ -37,6 +38,17 @@ with _GENE_INFO_PATH.open() as _f:
 SCHEMA_DIR = "schema_definitions"
 SCHEMA_FILENAME = "hca_schema_definition.yaml"
 
+# What the tracker says an upload is. A source dataset is one study's cells as
+# its authors released them; an integrated object is an atlas built from
+# several. The file does not record which it is -- the tracker's S3 layout
+# does ({bionetwork}/{atlas}/source-datasets/... or .../integrated-objects/...)
+# -- so the caller, which knows where the file came from, has to say. There is
+# deliberately no "unknown": a check that will one day branch on the kind
+# must never be handed a file nobody classified. Nothing branches on it yet
+# (#770); #767 and #768 are the first that will.
+ObjectKind = Literal["source", "integrated"]
+OBJECT_KINDS: tuple[str, ...] = get_args(ObjectKind)
+
 
 class HCAValidator(Validator):
     """
@@ -46,17 +58,30 @@ class HCAValidator(Validator):
     - organism and organism_ontology_term_id are in obs (not uns)
     """
 
-    def __init__(self, ignore_labels=True):
+    def __init__(self, ignore_labels=True, *, object_kind: ObjectKind):
         """
         Initialize HCA validator.
 
         Args:
             ignore_labels: If True, skip label validation
+            object_kind: ``"source"`` or ``"integrated"``; see :data:`ObjectKind`.
+                Required and keyword-only.
+
+        Raises:
+            ValueError: when ``object_kind`` is neither of the two kinds.
         """
+        if object_kind not in OBJECT_KINDS:
+            raise ValueError(f"object_kind must be one of {OBJECT_KINDS}, got {object_kind!r}.")
+        self._object_kind: ObjectKind = object_kind
         super().__init__(ignore_labels=ignore_labels)
         # Initialize all validator state so the exception handler in
         # validate_adata() works even if reset() hasn't been called yet.
         self.reset()
+
+    @property
+    def object_kind(self) -> ObjectKind:
+        """The kind this validator was told it is validating; read-only."""
+        return self._object_kind
 
     def _set_schema_def(self):
         """

@@ -35,8 +35,10 @@ uv run pytest tests/
 ```python
 from hca_schema_validator import HCAValidator
 
-# Create validator instance
-validator = HCAValidator()
+# Create validator instance. object_kind is required: say whether the tracker
+# lists the file as a source dataset ("source") or an integrated object
+# ("integrated"). The library never infers it from the path.
+validator = HCAValidator(object_kind="source")
 
 # Validate an h5ad file
 is_valid = validator.validate_adata("path/to/file.h5ad")

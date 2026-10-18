@@ -35,7 +35,7 @@ def _validate_from_fixture(adata):
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir) / "test.h5ad"
         adata.write_h5ad(str(tmp_path))
-        validator = HCAValidator()
+        validator = HCAValidator(object_kind="source")
         is_valid = validator.validate_adata(str(tmp_path))
         return is_valid, validator
 
@@ -54,7 +54,7 @@ def test_error_handling_before_reset(monkeypatch):
 
     monkeypatch.setattr(validate_mod, "read_h5ad", fake_read_h5ad)
 
-    validator = HCAValidator()
+    validator = HCAValidator(object_kind="source")
     is_valid = validator.validate_adata("dummy.h5ad")
 
     assert is_valid is False
@@ -69,7 +69,7 @@ def test_import():
 
 def test_instantiate():
     """Test that HCAValidator can be instantiated."""
-    validator = HCAValidator()
+    validator = HCAValidator(object_kind="source")
     assert validator is not None
     assert hasattr(validator, "validate_adata")
 
@@ -78,13 +78,13 @@ def test_inheritance():
     """Test that HCAValidator inherits from Validator."""
     from hca_schema_validator._vendored.cellxgene_schema.validate import Validator
 
-    validator = HCAValidator()
+    validator = HCAValidator(object_kind="source")
     assert isinstance(validator, Validator)
 
 
 def test_has_validation_methods():
     """Test that HCAValidator has expected validation methods."""
-    validator = HCAValidator()
+    validator = HCAValidator(object_kind="source")
 
     # Public methods
     assert hasattr(validator, "validate_adata")
@@ -93,6 +93,72 @@ def test_has_validation_methods():
     assert hasattr(validator, "_deep_check")
     assert hasattr(validator, "_validate_feature_ids")
     assert hasattr(validator, "_set_schema_def")
+
+
+# ---------------------------------------------------------------------------
+# object_kind (#770): required, keyword-only, two values, carried and not acted on
+
+
+def test_object_kind_is_required():
+    """Omitting object_kind is Python's own missing-argument error, not a silent default."""
+    with pytest.raises(TypeError, match="object_kind"):
+        HCAValidator()  # type: ignore[call-arg]
+    with pytest.raises(TypeError, match="object_kind"):
+        HCAValidator(ignore_labels=True)  # type: ignore[call-arg]
+
+
+def test_object_kind_is_keyword_only():
+    """A second positional argument is not a way to pass the kind."""
+    with pytest.raises(TypeError):
+        HCAValidator(True, "source")  # type: ignore[misc]
+
+
+@pytest.mark.parametrize("kind", ["source", "integrated"])
+def test_object_kind_accepts_both_kinds_and_exposes_them(kind):
+    validator = HCAValidator(object_kind=kind)
+    assert validator.object_kind == kind
+
+
+def test_object_kinds_constant_is_exactly_the_two():
+    from hca_schema_validator import OBJECT_KINDS
+
+    assert OBJECT_KINDS == ("source", "integrated")
+
+
+@pytest.mark.parametrize("bad", ["unknown", "Source", "integrated-objects", "", None, 1])
+def test_object_kind_rejects_anything_else(bad):
+    """No 'unknown', no case folding, no directory names: the two exact strings
+    or an error that names the value given and the two kinds allowed."""
+    with pytest.raises(ValueError, match="object_kind must be one of") as exc_info:
+        HCAValidator(object_kind=bad)
+    message = str(exc_info.value)
+    assert repr(bad) in message
+    assert "'source'" in message and "'integrated'" in message
+
+
+def test_object_kind_is_read_only():
+    validator = HCAValidator(object_kind="source")
+    with pytest.raises(AttributeError):
+        validator.object_kind = "integrated"  # type: ignore[misc]
+    assert validator.object_kind == "source"
+
+
+@pytest.mark.parametrize("fixture_name", ["example_valid.h5ad", "example_invalid_CL.h5ad"])
+def test_object_kind_does_not_change_the_verdict(fixture_name):
+    """Plumbing only (#770): the same file validated as either kind yields the
+    same verdict, the same errors and the same warnings, in the same order."""
+    test_file = FIXTURES_DIR / fixture_name
+    if not test_file.exists():
+        pytest.skip(f"Test fixture not found: {test_file}")
+
+    as_source = HCAValidator(object_kind="source")
+    as_integrated = HCAValidator(object_kind="integrated")
+    source_valid = as_source.validate_adata(str(test_file))
+    integrated_valid = as_integrated.validate_adata(str(test_file))
+
+    assert source_valid == integrated_valid
+    assert as_source.errors == as_integrated.errors
+    assert as_source.warnings == as_integrated.warnings
 
 
 def test_validate_valid_h5ad():
@@ -107,7 +173,7 @@ def test_validate_valid_h5ad():
     if not test_file.exists():
         pytest.skip(f"Test fixture not found: {test_file}")
 
-    validator = HCAValidator()
+    validator = HCAValidator(object_kind="source")
     is_valid = validator.validate_adata(str(test_file))
 
     # Should FAIL validation because CELLxGENE v6+ files have organism in uns,
@@ -126,7 +192,7 @@ def test_validate_invalid_h5ad():
     if not test_file.exists():
         pytest.skip(f"Test fixture not found: {test_file}")
 
-    validator = HCAValidator()
+    validator = HCAValidator(object_kind="source")
     is_valid = validator.validate_adata(str(test_file))
 
     # Should fail validation
@@ -148,7 +214,7 @@ def test_organism_in_obs():
         tmp_path = Path(tmpdir) / "test.h5ad"
         adata.write_h5ad(str(tmp_path))
 
-        validator = HCAValidator()
+        validator = HCAValidator(object_kind="source")
         is_valid = validator.validate_adata(str(tmp_path))
 
         # HCA requirement: Should accept organism_ontology_term_id in obs
@@ -395,7 +461,7 @@ def test_cosmetic_check_fires_with_ignore_labels_false():
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir) / "test.h5ad"
         modified.write_h5ad(str(tmp_path))
-        validator = HCAValidator(ignore_labels=False)
+        validator = HCAValidator(ignore_labels=False, object_kind="source")
         validator.validate_adata(str(tmp_path))
 
     warnings, errors = _cosmetic_check_messages(validator)
@@ -776,7 +842,7 @@ class TestValidateList:
     """Direct unit tests for HCAValidator._validate_list with element_type 'string'."""
 
     def _make_validator(self):
-        validator = HCAValidator()
+        validator = HCAValidator(object_kind="source")
         validator.errors = []
         return validator
 
@@ -822,7 +888,7 @@ class TestValidateColumn:
     """Direct unit tests for HCAValidator._validate_column with pattern support."""
 
     def _make_validator(self):
-        validator = HCAValidator()
+        validator = HCAValidator(object_kind="source")
         validator.errors = []
         return validator
 
@@ -1051,7 +1117,7 @@ def test_optional_column_emits_warning_message():
 
     from hca_schema_validator.validator import HCAValidator
 
-    v = HCAValidator()
+    v = HCAValidator(object_kind="source")
     v.reset()
     v.adata = test_adata
     v._set_schema_def()
@@ -1160,13 +1226,13 @@ def test_empty_assay_or_organism_does_not_cut_the_run_short(monkeypatch, empty_c
 )
 def test_organism_from_obs_is_the_first_valid_term_id(values, expected):
     """Values the ontology parser can't query are skipped, never handed to it (#754)."""
-    validator = HCAValidator()
+    validator = HCAValidator(object_kind="source")
     validator.adata = _obs_only_adata(organism_ontology_term_id=values)
     assert validator._get_organism_from_obs() == expected
 
 
 def test_organism_from_obs_without_the_column_or_rows():
-    validator = HCAValidator()
+    validator = HCAValidator(object_kind="source")
     validator.adata = anndata.AnnData(obs=pd.DataFrame(index=["a"]))
     assert validator._get_organism_from_obs() is None
     validator.adata = _obs_only_adata(organism_ontology_term_id=[])
@@ -1183,7 +1249,7 @@ def test_organism_from_obs_without_the_column_or_rows():
 )
 def test_are_descendants_of_skips_empty_values(values, expected):
     """The raw re-run hands assay values to the ontology parser; NaN is not one (#754)."""
-    validator = HCAValidator()
+    validator = HCAValidator(object_kind="source")
     validator.adata = _obs_only_adata(assay_ontology_term_id=values)
     assert validator._are_descendants_of("obs", "assay_ontology_term_id", "EFO", ["EFO:0007045"]) is expected
 
