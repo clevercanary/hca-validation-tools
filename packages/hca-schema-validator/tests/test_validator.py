@@ -2953,7 +2953,7 @@ def test_annotation_version_silent_with_nothing_to_read():
 
 # The closing sentence each kind gets (#774). Spelled out rather than imported,
 # so a change to the wording has to be made here as well.
-_TOO_EARLY = {
+_RULED_OUT = {
     "source": "This file is a source dataset -- one study, one annotation -- so the declared value cannot be correct.",
     "integrated": (
         "This file is an integrated object, so each declared value must match the source dataset its cells came from."
@@ -2980,23 +2980,22 @@ _SCOPE_SITES = {
         "more than the closest",
         _NO_RELEASE,
     ),
-    "below the table, refuted by later genes": ([_TP53, _POST_R98], "v75", None, "cannot have been in r75", _TOO_EARLY),
-    "outside the window that fits": ([_TP53, _POST_R98], "v98", "GRCh38", "consistent with r105", _TOO_EARLY),
+    "below the table, refuted by later genes": ([_TP53, _POST_R98], "v75", None, "cannot have been in r75", _RULED_OUT),
+    "too early for the window that fits": ([_TP53, _POST_R98], "v98", "GRCh38", "consistent with r105", _RULED_OUT),
+    "too late for the window that fits": ([_TP53, _RETIRED_AT_102], "v110", "GRCh38", "retired before it", _RULED_OUT),
 }
 
 
 @pytest.mark.parametrize("object_kind", ["source", "integrated"])
 @pytest.mark.parametrize("site", list(_SCOPE_SITES))
 def test_annotation_version_scope_sentence_follows_object_kind(site, object_kind):
-    # Each finding states the one reading the kind implies; the hedge naming
-    # both is gone (#774).
+    # Each finding ends with the one sentence its kind implies, and only that one (#774).
     genes, version, genome, needle, scope = _SCOPE_SITES[site]
     adata = _version_adata(genes, version=version, genome=genome)
     warnings, _ = check_gene_annotation_version(adata, object_kind=object_kind)
     finding = next(w for w in warnings if needle in w)
     assert finding.endswith(f". {scope[object_kind]}"), finding
     assert finding.count("This file is a") == 1, finding
-    assert "If this is a source dataset" not in finding and "On an integrated object" not in finding, finding
 
 
 @pytest.mark.parametrize("site", list(_SCOPE_SITES))
@@ -3004,15 +3003,12 @@ def test_annotation_version_verdict_does_not_depend_on_object_kind(site):
     # The kind chooses a sentence, never a finding: the same file yields the
     # same findings in the same order, differing only in the scope sentence.
     genes, version, genome, _, _ = _SCOPE_SITES[site]
-    source, source_errors = check_gene_annotation_version(
-        _version_adata(genes, version=version, genome=genome), object_kind="source"
-    )
-    integrated, integrated_errors = check_gene_annotation_version(
-        _version_adata(genes, version=version, genome=genome), object_kind="integrated"
-    )
+    adata = _version_adata(genes, version=version, genome=genome)
+    source, source_errors = check_gene_annotation_version(adata, object_kind="source")
+    integrated, integrated_errors = check_gene_annotation_version(adata, object_kind="integrated")
     assert source_errors == integrated_errors == []
     translated = source
-    for scope in (_TOO_EARLY, _NO_RELEASE):
+    for scope in (_RULED_OUT, _NO_RELEASE):
         translated = [w.replace(scope["source"], scope["integrated"]) for w in translated]
     assert translated == integrated
     assert source != integrated
@@ -3027,7 +3023,7 @@ def test_hca_validator_passes_its_object_kind_to_the_annotation_check():
     validator = HCAValidator(object_kind="integrated")
     validator.adata = _version_adata([_TP53, _POST_R98], version="v98")
     validator._check_gene_annotation_version()
-    assert any(w.endswith(_TOO_EARLY["integrated"]) for w in validator.warnings), validator.warnings
+    assert any(w.endswith(_RULED_OUT["integrated"]) for w in validator.warnings), validator.warnings
 
 
 def test_annotation_version_undeclared_only_when_nothing_is_declared():

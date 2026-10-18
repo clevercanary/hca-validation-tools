@@ -44,10 +44,17 @@ SCHEMA_FILENAME = "hca_schema_definition.yaml"
 # does ({bionetwork}/{atlas}/source-datasets/... or .../integrated-objects/...)
 # -- so the caller, which knows where the file came from, has to say. There is
 # deliberately no "unknown": a check that will one day branch on the kind
-# must never be handed a file nobody classified. Nothing branches on it yet
-# (#770); #767 and #768 are the first that will.
+# must never be handed a file nobody classified. check_gene_annotation_version
+# chooses its scope sentence by it (#774).
 ObjectKind = Literal["source", "integrated"]
 OBJECT_KINDS: tuple[str, ...] = get_args(ObjectKind)
+
+
+def _require_object_kind(object_kind) -> ObjectKind:
+    """Return ``object_kind`` unchanged if it is one of :data:`OBJECT_KINDS`, else raise ``ValueError``."""
+    if object_kind not in OBJECT_KINDS:
+        raise ValueError(f"object_kind must be one of {OBJECT_KINDS}, got {object_kind!r}.")
+    return object_kind
 
 
 class HCAValidator(Validator):
@@ -70,9 +77,7 @@ class HCAValidator(Validator):
         Raises:
             ValueError: when ``object_kind`` is neither of the two kinds.
         """
-        if object_kind not in OBJECT_KINDS:
-            raise ValueError(f"object_kind must be one of {OBJECT_KINDS}, got {object_kind!r}.")
-        self._object_kind: ObjectKind = object_kind
+        self._object_kind: ObjectKind = _require_object_kind(object_kind)
         super().__init__(ignore_labels=ignore_labels)
         # Initialize all validator state so the exception handler in
         # validate_adata() works even if reset() hasn't been called yet.
@@ -1655,10 +1660,11 @@ _ORGANISM_CURIE_RE = re.compile(r"^NCBITaxon:\d+$")
 # source used the newest annotation and need not match any single one. On an
 # integrated object the result is therefore not a weaker verdict but a different
 # and expected one, and only the sentence differs -- which findings fire does not.
-# _SCOPE_TOO_EARLY is appended to a finding where a release *was* found to fit, so
+# _SCOPE_RULED_OUT ends a finding that the genes rule out the declared release, in
+# either direction. It is appended where a release *was* found to fit, so
 # it must not repeat _SCOPE_NO_RELEASE's union argument: saying "no single release
 # fits it" beside a sentence naming the releases that do contradicts the finding.
-_SCOPE_TOO_EARLY: dict[ObjectKind, str] = {
+_SCOPE_RULED_OUT: dict[ObjectKind, str] = {
     "source": " This file is a source dataset -- one study, one annotation -- so the declared value cannot be correct.",
     "integrated": (
         " This file is an integrated object, so each declared value must match the source dataset its cells came from."
@@ -1842,8 +1848,9 @@ def check_gene_annotation_version(adata, *, object_kind: ObjectKind):
     Args:
         adata: the AnnData object to check.
         object_kind: ``"source"`` or ``"integrated"``; see :data:`ObjectKind`.
-            Chooses the closing sentence of the too-early and no-release
-            findings, never which findings fire.
+            Chooses the closing sentence of the findings that rule out a
+            declared release, in either direction, and of the no-release
+            findings -- never which findings fire.
 
     Returns:
         ``(warnings, errors)`` -- two lists of strings. Everything here is a
@@ -1854,8 +1861,7 @@ def check_gene_annotation_version(adata, *, object_kind: ObjectKind):
     Raises:
         ValueError: when ``object_kind`` is neither of the two kinds.
     """
-    if object_kind not in OBJECT_KINDS:
-        raise ValueError(f"object_kind must be one of {OBJECT_KINDS}, got {object_kind!r}.")
+    _require_object_kind(object_kind)
     obs = getattr_anndata(adata, "obs")
     if obs is None:
         return [], []
@@ -2346,7 +2352,7 @@ def _refuted_by_later_genes(parsed, ensg: set[str], dated, object_kind: ObjectKi
         f"obs['gene_annotation_version'] is {parsed.raw!r}, but {len(born_later):,} of this file's "
         f"{len(ensg) - len(unknown):,} known genes did not exist until after Ensembl r{first_covered} -- "
         f"for example {', '.join(born_later[:3])}, so they cannot have been in r{parsed.release}."
-        f"{_SCOPE_TOO_EARLY[object_kind]}"
+        f"{_SCOPE_RULED_OUT[object_kind]}"
     )
 
 
@@ -2481,7 +2487,7 @@ def _release_against_genes(parsed, ensg: set[str], n_non_ensembl: int, dated, ob
         said.append(
             f"obs['gene_annotation_version'] is {parsed.raw!r}, but {missing_here:,} of this file's "
             f"{datable:,} {noun} {absence} -- for example {', '.join(examples)}. "
-            f"{window}{context}.{_SCOPE_TOO_EARLY[object_kind]}"
+            f"{window}{context}.{_SCOPE_RULED_OUT[object_kind]}"
         )
     return said
 

@@ -136,7 +136,7 @@ Report these but don't attempt to fix:
 
   | the warning says | whose it is | what to do |
   |---|---|---|
-  | genes "did not exist in" / "are not in" the declared release | producer | relay: the declared value and the gene list disagree |
+  | genes "did not exist in" / "are not in" the declared release | producer | relay: the declared value and the gene list disagree. On an integrated object, don't relay; relay the source dataset's finding instead |
   | "is not declared" | producer, as a question | ask which annotation their pipeline used. The window it names is evidence to check that answer against, not a value to fill in (see below). "cannot be inferred" or "no human Ensembl gene ids to infer it from" is the same question with no evidence attached; the no-release or unknown-identifier finding beside it is routed by its own row |
   | "name different assemblies" | producer | relay: `gene_annotation_version` and `reference_genome` contradict each other |
   | "is a GRCh37 annotation ... this reference data does not cover" | **ours** | nothing to relay. Nothing says the declaration is wrong — only that our table starts at r76, so a genuinely GRCh37-aligned file cannot be checked. Extending it is #724 |
@@ -149,7 +149,7 @@ Report these but don't attempt to fix:
   | "No Ensembl release … contains every one of this file's known genes" | by its last sentence | "This file is an integrated object, so this is expected" — nothing to relay: a union of sources matches none of them, and what each value must match is the source dataset its cells came from. "This file is a source dataset, so its gene list spans releases" — producer; relay |
   | "newer than this reference data covers" | **ours** | nothing to relay. Our gene table needs regenerating — see the package README |
 
-  The too-early and no-release findings end in one sentence chosen by the `object_kind` you passed to `validate_schema` — "This file is a source dataset …" or "This file is an integrated object …" (#774). It restates what you told the validator, not something read off the file. If it disagrees with how the tracker lists the file, the call was wrong: re-run with the right kind before routing anything.
+  The findings that rule out a declared release (too early or too late) and the no-release findings end in one sentence chosen by the `object_kind` you passed to `validate_schema` — "This file is a source dataset …" or "This file is an integrated object …" (#774). It restates what you told the validator, not something read off the file. If it disagrees with how the tracker lists the file, the call was wrong: re-run with the right kind before routing anything.
 
   Nothing here is fixed by a tool. `set_uns` cannot reach an obs column, and `backfill_obs_from_source` fills only *gaps* — it never overwrites a value that is already set, reporting a disagreement as a conflict and writing nothing. These findings are by definition values that are present and wrong, which is exactly the case backfill declines.
 
