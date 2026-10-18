@@ -35,13 +35,13 @@ Separately, stop if `index_masked` is a number **greater than 0**: the index con
 - **Source datasets — integrated objects only** (the `object_kind` you pass to `validate_schema`; #776). Run `find_source_datasets $ARGUMENTS`, then compare it with `list_source_datasets` for the atlas version being curated, with `generation` passed explicitly — never the default, because 1.1 and 2.0 can be in progress at once; if the wrangler has not said which version, that is a B1 question. Report all of it:
   - **The existing column** — `source_dataset.status`: `absent`, `correct` (every cell compared and right), `incomplete` (some cells empty), `unverifiable` (some cells could not be compared, because no single source claims them — `partition` says why) or `wrong`, with the `agree` / `unset` / `wrong` / `unverifiable` counts, and for `wrong` every `wrong_values` row (the value, what it should be, its cells).
   - **The match** — `partition`. On `"incomplete"`, its `findings` name the cells no source or more than one source claims; the column cannot be set.
-  - **Every discrepancy with the tracker**, for each source with `matched_by_id` above zero. Two stop the write and send it to Bucket B with the discrepancy instead of Bucket A:
+  - **Every discrepancy with the tracker.** Compare names with any trailing `.h5ad` removed: the tracker's file `name` carries it, and an `integrated_objects` entry may. For each source with `matched_by_id` above zero, two stop the write and send it to Bucket B with the discrepancy instead of Bucket A:
     - `<tracker_name>.h5ad` is not a listed file `name` — the file was most likely renamed on the tracker, or the local copy belongs to another atlas version; get the current copy and run the check again.
     - `matched_by_id` is above that file's `cell_count`.
 
     Two are listed but do not stop:
     - `matched_by_id` below `cell_count` — normal, since not every source cell is integrated; list each with both counts.
-    - The tracker's `integrated_objects` disagreeing with the match — a source with cells whose list lacks this object's `tracker_name`, or one listing this object with no cells. The cell-ID match is the truth; the tracker's links are known to be wrong in places (liver's are inverted).
+    - The tracker's `integrated_objects` disagreeing with the match, checked for **every** candidate, zero-match rows included — a source with cells whose list lacks this object's `tracker_name`, or one whose list names this object while no cell matches it. The cell-ID match is the truth; the tracker's links are known to be wrong in places (liver's are inverted).
 - If the evaluator reports `schema: "cellxgene"`, **do not** run `validate_schema` yet — the HCA validator would report a large, mostly irrelevant error list. `convert_cellxgene_to_hca` moves into Bucket A; after it runs, re-enter Step 1 on the converted file to get the accurate HCA findings.
 
 ### Privacy scan — ethnicity and race columns only
