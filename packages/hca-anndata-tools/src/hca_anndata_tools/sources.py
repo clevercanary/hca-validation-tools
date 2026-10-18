@@ -33,6 +33,7 @@ import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 import h5py
 import numpy as np
@@ -215,16 +216,15 @@ def _candidate_names(candidates: list[Path]) -> list[str]:
             f"not tracker download names (<name>-r<revision>-wip-<n>.h5ad or <name>-r<revision>.h5ad), so "
             f"their tracker names cannot be read: {unfit}"
         )
-    names = [name for _, name in read if name is not None]
-    by_name: dict[str, list[str]] = {}
-    for (filename, _), name in zip(read, names, strict=True):
+    by_name: dict[str | None, list[str]] = {}
+    for filename, name in read:
         by_name.setdefault(name, []).append(filename)
     # Two revisions of one source downloaded side by side: both would claim the
     # same cells, and the double claim would not say why.
     repeated = {name: files for name, files in by_name.items() if len(files) > 1}
     if repeated:
         raise Refusal(f"more than one copy of the same tracker source dataset; keep one of each: {repeated}")
-    return names
+    return cast("list[str]", [name for _, name in read])  # every name is set: the unfit ones were refused
 
 
 def match_sources(path: str) -> SourceMatch:

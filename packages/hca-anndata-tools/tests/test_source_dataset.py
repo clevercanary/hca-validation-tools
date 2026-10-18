@@ -19,6 +19,7 @@ import pytest
 from hca_anndata_tools._io import read_obs_column_names
 from hca_anndata_tools.source_dataset import set_source_dataset
 from hca_anndata_tools.sources import INTEGRATED_DIR, SOURCE_SUBDIR
+from hca_anndata_tools.testing import assert_no_snapshot_written
 from hca_anndata_tools.write import EDIT_LOG_KEY
 
 
@@ -46,9 +47,6 @@ class Tree:
 
     def source(self, name: str, ids: list[str]) -> Path:
         return _write(self.sources / f"{name}.h5ad", ids)
-
-    def snapshots(self) -> list[str]:
-        return sorted(p.name for p in self.targets.glob("*-edit-*.h5ad"))
 
 
 @pytest.fixture
@@ -89,7 +87,7 @@ def test_writes_a_snapshot_and_leaves_the_original_alone(tree):
     result = _ok(set_source_dataset(str(target)))
 
     assert Path(result["output_path"]).parent == tree.targets
-    assert tree.snapshots() == [Path(result["output_path"]).name]
+    assert result["replaced"] is False
     assert "source_dataset" not in read_obs_column_names(str(target))
     assert read_obs_column_names(result["output_path"]) == ["donor_id", "source_dataset"]
 
@@ -114,18 +112,44 @@ def test_records_the_edit_with_per_source_counts(tree):
 
     log = json.loads(ad.read_h5ad(result["output_path"]).uns["provenance"][EDIT_LOG_KEY])
     assert log[-1]["operation"] == "set_source_dataset"
-    assert log[-1]["details"] == {"column": "source_dataset", "n_obs": 4, "sources": {"a": 3, "b": 1}}
+    assert log[-1]["details"] == {
+        "column": "source_dataset",
+        "n_obs": 4,
+        "replaced": False,
+        "sources": {"a": 3, "b": 1},
+    }
 
 
-def test_an_entirely_empty_column_is_replaced_in_place(tree):
+@pytest.mark.parametrize(
+    "existing",
+    [
+        pd.Categorical([np.nan] * 3, categories=["stale"]),
+        pd.Categorical(["Study1", "wrong", np.nan]),
+        np.array(["x", "y", "z"], dtype=object),
+    ],
+    ids=["empty", "holding-values", "plain-strings"],
+)
+def test_an_existing_column_is_replaced_in_place(tree, existing):
+    """The column is ours to write, so whatever it holds is recomputed, keeping its position."""
     a = _ids("a", 3)
     tree.source("a-r1-wip-1", a)
-    empty = pd.Categorical([np.nan] * 3, categories=["stale"])
-    target = tree.target(a, obs={"source_dataset": empty, "donor_id": ["d1"] * 3})
+    target = tree.target(a, obs={"source_dataset": existing, "donor_id": ["d1"] * 3})
     result = _ok(set_source_dataset(str(target)))
 
+    assert result["replaced"] is True
     assert read_obs_column_names(result["output_path"]) == ["source_dataset", "donor_id"]
-    assert list(ad.read_h5ad(result["output_path"]).obs["source_dataset"]) == ["a"] * 3
+    written = ad.read_h5ad(result["output_path"]).obs["source_dataset"]
+    assert list(written) == ["a"] * 3 and list(written.cat.categories) == ["a"]
+
+
+def test_running_again_recomputes_the_same_column(tree):
+    a, b = _ids("a", 2), _ids("b", 2)
+    tree.source("a-r1-wip-1", a)
+    tree.source("b-r1-wip-1", b)
+    first = _ok(set_source_dataset(str(tree.target(a + b))))
+    second = _ok(set_source_dataset(first["output_path"]))
+    assert second["replaced"] is True and second["sources"] == first["sources"]
+    assert list(ad.read_h5ad(second["output_path"]).obs["source_dataset"]) == ["a", "a", "b", "b"]
 
 
 def test_a_stale_palette_is_dropped(tree):
@@ -159,7 +183,7 @@ def test_cells_no_source_matches_are_refused(tree):
 
     assert set(result) == {"error"}
     assert "2 cells match no source dataset" in result["error"] and "stray_0" in result["error"]
-    assert tree.snapshots() == []
+    assert_no_snapshot_written(tree.targets / "atlas-r1-wip-3.h5ad")
 
 
 def test_cells_two_sources_claim_are_refused(tree):
@@ -170,26 +194,7 @@ def test_cells_two_sources_claim_are_refused(tree):
 
     assert set(result) == {"error"}
     assert "1 cell matches more than one" in result["error"] and "a_0" in result["error"]
-    assert tree.snapshots() == []
-
-
-def test_a_column_holding_values_is_refused(tree):
-    a = _ids("a", 3)
-    tree.source("a-r1-wip-1", a)
-    target = tree.target(a, obs={"source_dataset": pd.Categorical(["Study1", np.nan, np.nan])})
-    result = set_source_dataset(str(target))
-
-    assert set(result) == {"error"}
-    assert "'source_dataset' already exists in obs and holds values" in result["error"]
-    assert tree.snapshots() == []
-
-
-def test_both_refusals_are_reported_together(tree):
-    a = _ids("a", 3)
-    tree.source("a-r1-wip-1", a)
-    target = tree.target([*a, "stray_0"], obs={"source_dataset": pd.Categorical(["x"] * 4)})
-    result = set_source_dataset(str(target))
-    assert "1 cell matches no source dataset" in result["error"] and "holds values" in result["error"]
+    assert_no_snapshot_written(tree.targets / "atlas-r1-wip-3.h5ad")
 
 
 def test_a_source_without_a_tracker_name_is_refused(tree):
@@ -199,7 +204,7 @@ def test_a_source_without_a_tracker_name_is_refused(tree):
 
     assert set(result) == {"error"}
     assert "not tracker download names" in result["error"]
-    assert tree.snapshots() == []
+    assert_no_snapshot_written(tree.targets / "atlas-r1-wip-3.h5ad")
 
 
 def test_a_target_outside_the_layout_is_refused(tmp_path):

@@ -29,7 +29,6 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 
 import h5py
-import numpy as np
 
 from ._errors import Refusal
 from ._io import direct_members, obs_index_name, read_batch_condition
@@ -219,46 +218,3 @@ def batch_condition_refusal(columns: list[str], *, verbing: str) -> str:
         f"which columns define the experiment's batches, so {verbing} one changes "
         f"the declaration. Edit uns['batch_condition'] first if that is intended"
     )
-
-
-# Rows per read when scanning a column for emptiness. Rows, not bytes — the
-# width depends on the column, so this is 64 KB of int8 categorical codes and
-# 512 KB of float64. Sized against the storage chunks anndata writes (a few
-# thousand rows), so a read spans a handful of them rather than hundreds.
-_SCAN_CHUNK_ROWS = 1 << 16
-
-
-def _all_rows(ds: h5py.Dataset, predicate) -> bool:
-    """True when ``predicate`` holds for every row, read in bounded chunks.
-
-    Stops at the first chunk it does not hold for — chunk-level, not row-level:
-    each chunk is evaluated whole before ``all`` can bail. A populated column is
-    the refusal case and normally answers from the first chunk, so the common
-    path reads well under a megabyte of a column that may hold tens of millions
-    of rows.
-    """
-    return all(
-        predicate(ds[start : start + _SCAN_CHUNK_ROWS]).all() for start in range(0, ds.shape[0], _SCAN_CHUNK_ROWS)
-    )
-
-
-def is_empty_column(obs: h5py.Group, name: str) -> bool:
-    """True when every value in an obs column is null.
-
-    Deliberately narrow: it answers "can this be overwritten without losing
-    anything", so it recognizes only the two encodings where emptiness is
-    cheap to prove — a categorical whose codes are all ``-1``, and a float
-    array that is all NaN. Everything else counts as occupied, including
-    anndata's nullable-integer and nullable-boolean groups, which *do* carry a
-    null mask but are not worth a second decoder here. A caller who wants one
-    of those gone should drop it first and see the count they are discarding.
-    """
-    item = obs[name]
-    if isinstance(item, h5py.Group) and "categories" in item:  # a categorical
-        codes = item["codes"]
-        if not isinstance(codes, h5py.Dataset):  # narrows h5py's member union
-            return False
-        return _all_rows(codes, lambda a: a == -1)  # -1 is pandas' missing code
-    if isinstance(item, h5py.Dataset) and item.dtype.kind == "f":
-        return _all_rows(item, np.isnan)
-    return False

@@ -34,7 +34,6 @@ from .cap import CAP_METADATA_KEY
 from .guards import (
     ObsColumnReferences,
     detect_obs_references,
-    is_empty_column,
     is_malformed_name,
     legacy_layout_problems,
     malformed_name_problems,
@@ -48,6 +47,48 @@ from .write import (
     resolve_latest,
     snapshot_copy,
 )
+
+# Rows per read when scanning a column for emptiness. Rows, not bytes — the
+# width depends on the column, so this is 64 KB of int8 categorical codes and
+# 512 KB of float64. Sized against the storage chunks anndata writes (a few
+# thousand rows), so a read spans a handful of them rather than hundreds.
+_SCAN_CHUNK_ROWS = 1 << 16
+
+
+def _all_rows(ds: h5py.Dataset, predicate) -> bool:
+    """True when ``predicate`` holds for every row, read in bounded chunks.
+
+    Stops at the first chunk it does not hold for — chunk-level, not row-level:
+    each chunk is evaluated whole before ``all`` can bail. A populated column is
+    the refusal case and normally answers from the first chunk, so the common
+    path reads well under a megabyte of a column that may hold tens of millions
+    of rows.
+    """
+    return all(
+        predicate(ds[start : start + _SCAN_CHUNK_ROWS]).all() for start in range(0, ds.shape[0], _SCAN_CHUNK_ROWS)
+    )
+
+
+def _is_empty_column(obs: h5py.Group, name: str) -> bool:
+    """True when every value in an obs column is null.
+
+    Deliberately narrow: it answers "can this be overwritten without losing
+    anything", so it recognizes only the two encodings where emptiness is
+    cheap to prove — a categorical whose codes are all ``-1``, and a float
+    array that is all NaN. Everything else counts as occupied, including
+    anndata's nullable-integer and nullable-boolean groups, which *do* carry a
+    null mask but are not worth a second decoder here. A caller who wants one
+    of those gone should drop it first and see the count they are discarding.
+    """
+    item = obs[name]
+    if isinstance(item, h5py.Group) and "categories" in item:  # a categorical
+        codes = item["codes"]
+        if not isinstance(codes, h5py.Dataset):  # narrows h5py's member union
+            return False
+        return _all_rows(codes, lambda a: a == -1)  # -1 is pandas' missing code
+    if isinstance(item, h5py.Dataset) and item.dtype.kind == "f":
+        return _all_rows(item, np.isnan)
+    return False
 
 
 def _validate_request(
@@ -96,7 +137,7 @@ def _validate_request(
     # The one destination rule: an occupied name is refused, because silently
     # clobbering a populated column is never what a rename meant. A column
     # holding nothing carries no information to lose, so it gives way.
-    if new_name in members and not is_empty_column(obs, new_name):
+    if new_name in members and not _is_empty_column(obs, new_name):
         problems.append(
             f"'{new_name}' already exists in obs and holds values — drop it first if "
             f"replacing it is intended (a column that is entirely empty is overwritten "
@@ -129,7 +170,7 @@ def rename_obs_column(path: str, column: str, new_name: str) -> dict:
       be the obs index.
     * **The source must exist**, and must differ from the new name.
     * **The destination must not already exist** — unless it is provably
-      empty, in which case it is overwritten. See :func:`~hca_anndata_tools.guards.is_empty_column`.
+      empty, in which case it is overwritten. See :func:`_is_empty_column`.
 
     A column named by ``uns['batch_condition']`` is not refused: that entry is
     rewritten to the new name, since the same column still defines the batches

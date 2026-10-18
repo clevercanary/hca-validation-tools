@@ -24,23 +24,9 @@ import pandas as pd
 from anndata.io import read_elem, write_elem
 
 from ._errors import failure_result
-from ._io import (
-    direct_members,
-    gate_h5ad_paths,
-    read_edit_log_h5py,
-    read_uns,
-    update_column_order,
-    write_edit_log_h5py,
-)
-from .guards import is_empty_column, require_obs_group
+from ._io import gate_h5ad_paths, read_edit_log_h5py, read_uns, update_column_order, write_edit_log_h5py
 from .sources import match_sources
-from .write import (
-    build_edit_log,
-    cleanup_previous_version,
-    make_edit_entry,
-    resolve_latest,
-    snapshot_copy,
-)
+from .write import build_edit_log, cleanup_previous_version, make_edit_entry, resolve_latest, snapshot_copy_hashed
 
 COLUMN = "source_dataset"
 
@@ -69,11 +55,11 @@ def set_source_dataset(path: str) -> dict:
 
     The value is the source's tracker name (``hgca-v1-burclaff-2022`` for
     ``hgca-v1-burclaff-2022-r1-wip-8.h5ad``), as a categorical whose
-    categories are the names in use, sorted. An existing ``source_dataset``
-    column that holds values is refused — drop it first if replacing it is
-    intended — and one that is entirely empty is overwritten in place, keeping
-    its position; any ``uns['source_dataset_colors']`` goes with it, since a
-    palette describes the categories it was drawn for.
+    categories are the names in use, sorted. The column is this tool's to
+    write, so an existing ``source_dataset`` is replaced whatever it holds,
+    keeping its position, and running again simply recomputes it. Any
+    ``uns['source_dataset_colors']`` goes with it, since a palette describes the
+    categories it was drawn for.
 
     All-or-nothing: every refusal comes before the snapshot, and the written
     column is read back and compared before the edit is kept. Writes a new
@@ -85,9 +71,11 @@ def set_source_dataset(path: str) -> dict:
             Auto-resolves to the latest timestamped edit snapshot.
 
     Returns:
-        Dict with ``output_path``, ``column``, ``n_obs`` and ``sources`` (one
-        row per candidate — ``tracker_name``, ``filename``, ``cells`` — most
-        cells first) on success, or ``{"error": ...}``.
+        Dict with ``output_path``, ``column``, ``n_obs``, ``replaced`` (whether
+        a ``source_dataset`` column was already there) and ``sources`` (one row
+        per candidate — ``tracker_name``, ``filename``, ``cells`` — most cells
+        first, as ``find_source_datasets`` orders them) on success, or
+        ``{"error": ...}``.
     """
     try:
         path = resolve_latest(path)
@@ -95,68 +83,64 @@ def set_source_dataset(path: str) -> dict:
             return {"error": f"File not found: {path}"}
 
         match = match_sources(path)
-        problems = []
         if findings := match.findings():
-            problems.append(f"not every cell matches exactly one source dataset: {_describe(findings)}")
-        with h5py.File(path, "r") as f_in:
-            obs = require_obs_group(f_in)
-            replacing = COLUMN in direct_members(obs)
-            if replacing and not is_empty_column(obs, COLUMN):
-                problems.append(
-                    f"'{COLUMN}' already exists in obs and holds values — drop it first if replacing it is "
-                    f"intended (a column that is entirely empty is overwritten without complaint)"
-                )
-        if problems:
-            return {"error": f"Refusing to set {COLUMN}: " + "; ".join(problems)}
+            return {
+                "error": f"Refusing to set {COLUMN}: not every cell matches exactly one source dataset: "
+                + _describe(findings)
+            }
 
-        names = np.array([row["tracker_name"] for row in match.sources], dtype=object)
-        values = names[match.owner]  # a partition, so every owner is a real position
-        column = pd.Categorical(values, categories=sorted(set(values)))
-        cells = np.bincount(match.owner, minlength=len(names))
-        sources = sorted(
-            (
-                {"tracker_name": row["tracker_name"], "filename": row["filename"], "cells": int(n)}
-                for row, n in zip(match.sources, cells, strict=True)
-            ),
-            key=lambda r: (-r["cells"], r["tracker_name"]),
-        )
+        # On a partition each source's matched count is exactly its cell count.
+        sources = [
+            {"tracker_name": r["tracker_name"], "filename": r["filename"], "cells": r["matched_by_id"]}
+            for r in sorted(match.sources, key=lambda r: (-r["matched_by_id"], r["filename"]))
+        ]
+        categories = sorted(r["tracker_name"] for r in match.sources if r["matched_by_id"])
+        code_of = np.array([categories.index(r["tracker_name"]) if r["matched_by_id"] else -1 for r in match.sources])
+        column = pd.Categorical.from_codes(code_of[match.owner], categories=categories)
 
-        with snapshot_copy(path) as output_path, h5py.File(output_path, "a") as f_out:
+        with snapshot_copy_hashed(path) as (output_path, source_sha256), h5py.File(output_path, "a") as f_out:
             obs_out = f_out["obs"]
+            replaced = COLUMN in obs_out
+            if replaced:
+                del obs_out[COLUMN]
             uns_out = read_uns(f_out)
             palette = f"{COLUMN}_colors"
             if uns_out is not None and palette in uns_out:
                 del uns_out[palette]
-            if replacing:
-                del obs_out[COLUMN]
             # write_elem, not a hand-rolled codes/categories pair: anndata owns
             # the categorical encoding and its attrs.
             write_elem(obs_out, COLUMN, column)
             update_column_order(f_out, [COLUMN])  # appends; a replaced column keeps its place
 
             written = read_elem(obs_out[COLUMN])
-            if list(written.categories) != list(column.categories) or not np.array_equal(written.codes, column.codes):
+            if list(written.categories) != categories or not np.array_equal(written.codes, column.codes):
                 raise RuntimeError(f"obs['{COLUMN}'] read back differently from what was written")
 
-            used = [r for r in sources if r["cells"]]
             entry = make_edit_entry(
                 operation="set_source_dataset",
                 description=(
-                    f"Set obs['{COLUMN}'] from {len(used)} tracker source datasets, matched by cell ID"
-                    + (" (replacing an empty column)" if replacing else "")
+                    f"Set obs['{COLUMN}'] from {len(categories)} tracker source datasets, matched by cell ID"
+                    + (" (replacing the existing column)" if replaced else "")
                 ),
                 details={
                     "column": COLUMN,
-                    "n_obs": len(values),
-                    "sources": {r["tracker_name"]: r["cells"] for r in used},
+                    "n_obs": len(column),
+                    "replaced": replaced,
+                    "sources": {r["tracker_name"]: r["cells"] for r in sources if r["cells"]},
                 },
             )
-            log_result = build_edit_log(read_edit_log_h5py(f_out), [entry], path)
+            log_result = build_edit_log(read_edit_log_h5py(f_out), [entry], path, source_sha256)
             if "error" in log_result:
                 raise RuntimeError(log_result["error"])
             write_edit_log_h5py(f_out, log_result["json"])
 
         cleanup_previous_version(path, output_path)
-        return {"output_path": output_path, "column": COLUMN, "n_obs": len(values), "sources": sources}
+        return {
+            "output_path": output_path,
+            "column": COLUMN,
+            "n_obs": len(column),
+            "replaced": replaced,
+            "sources": sources,
+        }
     except Exception as e:
         return failure_result(e)
