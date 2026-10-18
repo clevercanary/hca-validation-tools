@@ -11,6 +11,7 @@ from hca_anndata_mcp.tools.populate import populate_labels
 from hca_anndata_mcp.tools.producer_uns import set_producer_uns
 from hca_anndata_mcp.tools.rename import rename_cell_ids
 from hca_anndata_mcp.tools.rename_column import rename_obs_column
+from hca_anndata_mcp.tools.source_dataset import set_source_dataset
 from hca_anndata_mcp.tools.strip import strip_forbidden_obs_columns
 from hca_anndata_mcp.tools.strip_cap import strip_cap_annotations
 from hca_anndata_mcp.tools.validate import validate_cell_annotation, validate_schema
@@ -188,6 +189,7 @@ mcp.tool()(check_embeddings)
 mcp.tool()(check_donor_sex)
 mcp.tool()(check_barcodes)
 mcp.tool()(find_source_datasets)
+mcp.tool()(set_source_dataset)
 mcp.tool()(check_schema_type)
 mcp.tool()(validate_schema)
 mcp.tool()(validate_cell_annotation)

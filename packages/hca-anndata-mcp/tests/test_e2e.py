@@ -272,4 +272,5 @@ async def test_registered_tool_names(client):
         "check_donor_sex",
         "check_barcodes",
         "find_source_datasets",
+        "set_source_dataset",
     } <= names

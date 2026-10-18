@@ -70,6 +70,7 @@ obvious sentence and it is false twice over:
 | Writer | Refuses a schema-version export | Refuses a legacy-layout export |
 |---|---|---|
 | `rename_cell_ids` | yes | yes |
+| `set_source_dataset` | yes | yes |
 | `drop_obs_columns` | **no** | yes |
 | `merge_obs_categories` | **no** | yes |
 | `backfill_obs_from_source` | **no** | yes |
@@ -78,8 +79,8 @@ obvious sentence and it is false twice over:
 | `strip_cap_annotations` | yes | **no** |
 | `set_uns`, `replace_placeholder_values`, `set_producer_uns`, `compress_h5ad`, `normalize_raw`, `copy_cap_annotations` (target) | **no** | **no** |
 
-Only `rename_cell_ids` implements the rule as stated. Per principle 8, seven
-hand-rolled preflights with three different predicates is the smell that the
+Only `rename_cell_ids` and `set_source_dataset` implement the rule as stated, and `set_source_dataset` also refuses a file not named as a tracker download, since a CAP export named by its title may carry neither marker (#776). Per principle 8, eight
+hand-rolled preflights with four different predicates is the smell that the
 chokepoint is missing.
 
 One consequence is worth stating, because it looks like an inconsistency and
