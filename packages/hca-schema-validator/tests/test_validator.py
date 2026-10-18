@@ -2413,11 +2413,13 @@ def test_annotation_version_accession_assemblies():
 
 def test_annotation_version_silent_when_consistent():
     # TP53 exists in every release, so no release is ruled out by it.
-    assert check_gene_annotation_version(_version_adata([_TP53], version="v98")) == ([], [])
+    assert check_gene_annotation_version(_version_adata([_TP53], version="v98"), object_kind="source") == ([], [])
 
 
 def test_annotation_version_too_early_names_the_genes():
-    warnings, errors = check_gene_annotation_version(_version_adata([_TP53, _POST_R98], version="v87"))
+    warnings, errors = check_gene_annotation_version(
+        _version_adata([_TP53, _POST_R98], version="v87"), object_kind="source"
+    )
     assert errors == []
     assert len(warnings) == 1, warnings
     assert _POST_R98 in warnings[0] and "did not exist in Ensembl r87" in warnings[0]
@@ -2429,7 +2431,9 @@ def test_annotation_version_too_late_is_reported_too():
     # so r110 cannot have produced a file containing it. Nine prod declarations
     # are wrong in this direction; without a retired gene in the fixture the
     # too-late path is never exercised.
-    warnings, _ = check_gene_annotation_version(_version_adata([_TP53, _RETIRED_AT_102], version="v110"))
+    warnings, _ = check_gene_annotation_version(
+        _version_adata([_TP53, _RETIRED_AT_102], version="v110"), object_kind="source"
+    )
     assert len(warnings) == 1, warnings
     assert _RETIRED_AT_102 in warnings[0], warnings[0]
     # The direction, not just the release number -- "r110" alone appears in any
@@ -2439,11 +2443,16 @@ def test_annotation_version_too_late_is_reported_too():
 
 def test_annotation_version_later_declaration_is_allowed():
     # The gene content gives a lower bound; declaring something newer is legitimate.
-    assert check_gene_annotation_version(_version_adata([_TP53, _POST_R98], version="v114")) == ([], [])
+    assert check_gene_annotation_version(_version_adata([_TP53, _POST_R98], version="v114"), object_kind="source") == (
+        [],
+        [],
+    )
 
 
 def test_annotation_version_assembly_mismatch():
-    warnings, _ = check_gene_annotation_version(_version_adata([_TP53], version="v98", genome="GRCh37"))
+    warnings, _ = check_gene_annotation_version(
+        _version_adata([_TP53], version="v98", genome="GRCh37"), object_kind="source"
+    )
     assert any("name different assemblies" in w for w in warnings), warnings
 
 
@@ -2455,7 +2464,9 @@ def test_annotation_version_assembly_mismatch_survives_padded_genome(genome):
     discarded and the version compared against nothing -- the same silent loss
     as a padded version, from the other column.
     """
-    warnings, _ = check_gene_annotation_version(_version_adata([_TP53], version="v98", genome=genome))
+    warnings, _ = check_gene_annotation_version(
+        _version_adata([_TP53], version="v98", genome=genome), object_kind="source"
+    )
     assert any("name different assemblies" in w for w in warnings), warnings
 
 
@@ -2477,7 +2488,9 @@ def test_annotation_version_padded_genome_is_not_a_second_assembly():
         index=[f"cell_{i}" for i in range(4)],
     )
     adata = anndata.AnnData(X=np.zeros((4, 1), dtype=np.float32), obs=obs, var=pd.DataFrame(index=[_TP53]))
-    mismatch = [w for w in check_gene_annotation_version(adata)[0] if "name different assemblies" in w]
+    mismatch = [
+        w for w in check_gene_annotation_version(adata, object_kind="source")[0] if "name different assemblies" in w
+    ]
     assert len(mismatch) == 1, mismatch
     assert "obs['reference_genome'] is 'GRCh37'" in mismatch[0], mismatch[0]
     assert "cells pair it with" not in mismatch[0], mismatch[0]
@@ -2491,7 +2504,9 @@ def test_annotation_version_assembly_name_is_not_case_folded():
     dropped and the enum keeps the error. Pinned because the padding fix sits one
     expression away from making this true by accident.
     """
-    warnings, _ = check_gene_annotation_version(_version_adata([_TP53], version="v98", genome="grch37"))
+    warnings, _ = check_gene_annotation_version(
+        _version_adata([_TP53], version="v98", genome="grch37"), object_kind="source"
+    )
     assert not any("name different assemblies" in w for w in warnings), warnings
 
 
@@ -2506,13 +2521,17 @@ def test_annotation_version_assembly_mismatch_survives_padding(version):
     one comparison that needs no reference data is the worst shape this failure
     could take, so every spelling is pinned rather than just the bare one.
     """
-    warnings, _ = check_gene_annotation_version(_version_adata([_TP53], version=version, genome="GRCh37"))
+    warnings, _ = check_gene_annotation_version(
+        _version_adata([_TP53], version=version, genome="GRCh37"), object_kind="source"
+    )
     assert any("name different assemblies" in w for w in warnings), warnings
 
 
 def test_annotation_version_accession_is_not_an_annotation():
     # The schema's own example is an accession (#719), so this is not the producer's error.
-    warnings, _ = check_gene_annotation_version(_version_adata([_TP53], version="GCF_000001405.39"))
+    warnings, _ = check_gene_annotation_version(
+        _version_adata([_TP53], version="GCF_000001405.39"), object_kind="source"
+    )
     assert len(warnings) == 1 and "names a genome assembly rather than a gene annotation" in warnings[0]
 
 
@@ -2522,15 +2541,15 @@ def test_annotation_version_sub_76_refutation_needs_no_organism():
     # human-confirmed path, and vanished on the 20 prod files that have none.
     # A stated non-human organism still silences it.
     genes = [_TP53, _POST_R98]
-    human, _ = check_gene_annotation_version(_version_adata(genes, version="v75", genome=None))
+    human, _ = check_gene_annotation_version(_version_adata(genes, version="v75", genome=None), object_kind="source")
     unknown = _version_adata(genes, version="v75", genome=None, organism=None)
     mouse = _version_adata(genes, version="v75", genome=None, organism=None)
     mouse.obs["organism_ontology_term_id"] = ["NCBITaxon:10090"] * len(mouse.obs)
     assert "cannot have been in r75" in human[0], human
-    assert check_gene_annotation_version(unknown)[0] == human
+    assert check_gene_annotation_version(unknown, object_kind="source")[0] == human
     # The organism gates assembly claims, not dating, so a stated mouse organism
     # does not suppress a refutation resting on ENSG identifiers.
-    assert check_gene_annotation_version(mouse)[0] == human
+    assert check_gene_annotation_version(mouse, object_kind="source")[0] == human
 
 
 def test_annotation_version_below_the_table_is_refuted_by_later_genes():
@@ -2539,7 +2558,7 @@ def test_annotation_version_below_the_table_is_refuted_by_later_genes():
     # the GRCh37 data being shipped (#724). twigger2022 declares v75 and carries
     # 11 such genes.
     adata = _version_adata([_TP53, _POST_R98], version="v75", genome=None)
-    warnings, _ = check_gene_annotation_version(adata)
+    warnings, _ = check_gene_annotation_version(adata, object_kind="source")
     assert len(warnings) == 1, warnings
     assert "did not exist until after Ensembl r76" in warnings[0], warnings[0]
     assert "cannot have been in r75" in warnings[0], warnings[0]
@@ -2549,7 +2568,7 @@ def test_annotation_version_below_the_table_without_later_genes_says_so():
     # With nothing to refute it, the limit is our coverage rather than the
     # declaration, and the message must say which.
     adata = _version_adata([_TP53], version="v75", genome=None)
-    warnings, _ = check_gene_annotation_version(adata)
+    warnings, _ = check_gene_annotation_version(adata, object_kind="source")
     assert len(warnings) == 1, warnings
     assert "does not cover" in warnings[0], warnings[0]
 
@@ -2557,7 +2576,9 @@ def test_annotation_version_below_the_table_without_later_genes_says_so():
 def test_annotation_version_below_the_table_is_grch37_not_nonexistent():
     # v75 is a real release -- the last GRCh37 one. Saying "no such release" would
     # be false, and would hide the finding that actually applies.
-    warnings, _ = check_gene_annotation_version(_version_adata([_TP53], version="v75", genome=None))
+    warnings, _ = check_gene_annotation_version(
+        _version_adata([_TP53], version="v75", genome=None), object_kind="source"
+    )
     assert len(warnings) == 1, warnings
     assert "GRCh37 annotation" in warnings[0] and "no such" not in warnings[0]
 
@@ -2567,7 +2588,9 @@ def test_annotation_version_pre_grch37_accession_claims_no_assembly():
     # genuinely wrong declaration compare clean against reference_genome GRCh37.
     assert parse_annotation_version("GCF_000001405.13").assembly == "GRCh37"
     assert parse_annotation_version("GCF_000001405.12").assembly is None
-    warnings, _ = check_gene_annotation_version(_version_adata([_TP53], version="GCF_000001405.12", genome="GRCh37"))
+    warnings, _ = check_gene_annotation_version(
+        _version_adata([_TP53], version="GCF_000001405.12", genome="GRCh37"), object_kind="source"
+    )
     assert not any("name different assemblies" in w for w in warnings), warnings
 
 
@@ -2578,7 +2601,7 @@ def test_annotation_version_reports_each_declared_value_separately():
     # the column holds one value per cell and the pattern rejects the joined form.
     adata = _version_adata([_TP53, _POST_R98], version="v87", n=2)
     adata.obs["gene_annotation_version"] = ["v87", "v93"]
-    warnings, _ = check_gene_annotation_version(adata)
+    warnings, _ = check_gene_annotation_version(adata, object_kind="source")
     dated = [w for w in warnings if "did not exist in Ensembl" in w]
     assert len(dated) == 2, warnings
     assert any("'v87'" in w and "r87" in w for w in dated), dated
@@ -2590,7 +2613,7 @@ def test_annotation_version_unknown_identifiers_reported_once_per_file():
     # value, so a file carrying two values must not get it twice.
     adata = _version_adata([_TP53, "ENSG99999999999"], version="v98")
     adata.obs["gene_annotation_version"] = ["v98", "v110"]
-    warnings, _ = check_gene_annotation_version(adata)
+    warnings, _ = check_gene_annotation_version(adata, object_kind="source")
     assert sum("none of the releases" in w for w in warnings) == 1, warnings
 
 
@@ -2599,7 +2622,9 @@ def test_annotation_version_settled_sub_76_still_compares_assemblies():
     # issued a 75, so the value can only be Ensembl r75 (GRCh37) -- and that
     # contradiction is one the issue names, so it must survive the ambiguity
     # handling rather than being silenced by it.
-    warnings, _ = check_gene_annotation_version(_version_adata([_TP53], version="v75", genome="GRCh38"))
+    warnings, _ = check_gene_annotation_version(
+        _version_adata([_TP53], version="v75", genome="GRCh38"), object_kind="source"
+    )
     assert any("name different assemblies" in w for w in warnings), warnings
     assert any("GRCh37 annotation" in w for w in warnings), warnings
 
@@ -2607,7 +2632,9 @@ def test_annotation_version_settled_sub_76_still_compares_assemblies():
 def test_annotation_version_truly_ambiguous_makes_no_assembly_claim():
     # v32 is inside GENCODE's range, so no assembly can be asserted and no
     # mismatch may be reported against reference_genome.
-    warnings, _ = check_gene_annotation_version(_version_adata([_TP53], version="v32", genome="GRCh38"))
+    warnings, _ = check_gene_annotation_version(
+        _version_adata([_TP53], version="v32", genome="GRCh38"), object_kind="source"
+    )
     assert len(warnings) == 1 and "could be Ensembl r32 or GENCODE 32" in warnings[0], warnings
 
 
@@ -2615,7 +2642,9 @@ def test_annotation_version_gencode_number_is_not_called_grch37():
     # GENCODE names its releases the way Ensembl does, and GENCODE v32 is the
     # Cell Ranger 2020-A reference (= Ensembl r98, GRCh38). Reading it as Ensembl
     # r32 would report correct GRCh38 metadata as a GRCh37/GRCh38 mismatch.
-    warnings, _ = check_gene_annotation_version(_version_adata([_TP53], version="v32", genome="GRCh38"))
+    warnings, _ = check_gene_annotation_version(
+        _version_adata([_TP53], version="v32", genome="GRCh38"), object_kind="source"
+    )
     assert len(warnings) == 1, warnings
     assert "could be Ensembl r32 or GENCODE 32" in warnings[0]
     # No Ensembl equivalent is quoted: the two schemes only run a fixed distance
@@ -2647,7 +2676,9 @@ def test_gencode_ceiling_tracks_the_ensembl_table_not_the_vendored_pin():
     assert last_covered - 70 < ceiling < last_covered, (ceiling, last_covered)
     # The releases the pin would have excluded stay ambiguous.
     for release in range(pinned + 1, ceiling + 1):
-        warnings, _ = check_gene_annotation_version(_version_adata([_TP53], version=f"v{release}", genome="GRCh38"))
+        warnings, _ = check_gene_annotation_version(
+            _version_adata([_TP53], version=f"v{release}", genome="GRCh38"), object_kind="source"
+        )
         assert len(warnings) == 1 and "could be Ensembl" in warnings[0], (release, warnings)
 
 
@@ -2657,7 +2688,7 @@ def test_annotation_version_duplicate_columns_do_not_raise():
     # which the base validator already reports.
     adata = _version_adata([_TP53], version="v87")
     adata.obs = pd.concat([adata.obs, adata.obs[["gene_annotation_version"]]], axis=1)
-    assert check_gene_annotation_version(adata) == ([], [])
+    assert check_gene_annotation_version(adata, object_kind="source") == ([], [])
 
 
 def test_annotation_version_ambiguity_stops_where_gencode_has_not_reached():
@@ -2666,8 +2697,12 @@ def test_annotation_version_ambiguity_stops_where_gencode_has_not_reached():
     # gene_info.yml, which lags. Above the ceiling only Ensembl has issued the
     # number, so the value can only be an Ensembl release.
     highest = _highest_gencode_release()
-    ambiguous, _ = check_gene_annotation_version(_version_adata([_TP53], version=f"v{highest}", genome=None))
-    settled, _ = check_gene_annotation_version(_version_adata([_TP53], version=f"v{highest + 1}", genome=None))
+    ambiguous, _ = check_gene_annotation_version(
+        _version_adata([_TP53], version=f"v{highest}", genome=None), object_kind="source"
+    )
+    settled, _ = check_gene_annotation_version(
+        _version_adata([_TP53], version=f"v{highest + 1}", genome=None), object_kind="source"
+    )
     assert "could be Ensembl" in ambiguous[0]
     assert "could be Ensembl" not in settled[0]
 
@@ -2682,14 +2717,16 @@ def test_annotation_version_pre_grch37_releases_claim_no_assembly():
     from hca_schema_validator.validator import _FIRST_GRCH37_RELEASE
 
     older, _ = check_gene_annotation_version(
-        _version_adata([_TP53], version=f"v{_FIRST_GRCH37_RELEASE - 1}", genome=None)
+        _version_adata([_TP53], version=f"v{_FIRST_GRCH37_RELEASE - 1}", genome=None), object_kind="source"
     )
-    grch37, _ = check_gene_annotation_version(_version_adata([_TP53], version=f"v{_FIRST_GRCH37_RELEASE}", genome=None))
+    grch37, _ = check_gene_annotation_version(
+        _version_adata([_TP53], version=f"v{_FIRST_GRCH37_RELEASE}", genome=None), object_kind="source"
+    )
     assert "predates both" in older[0] and "is a GRCh37 annotation" not in older[0], older[0]
     assert "is a GRCh37 annotation" in grch37[0], grch37[0]
     # And claiming no assembly means no mismatch is reported against GRCh38.
     against_38, _ = check_gene_annotation_version(
-        _version_adata([_TP53], version=f"v{_FIRST_GRCH37_RELEASE - 1}", genome="GRCh38")
+        _version_adata([_TP53], version=f"v{_FIRST_GRCH37_RELEASE - 1}", genome="GRCh38"), object_kind="source"
     )
     assert not any("name different assemblies" in w for w in against_38), against_38
 
@@ -2697,7 +2734,9 @@ def test_annotation_version_pre_grch37_releases_claim_no_assembly():
 def test_annotation_version_above_the_table_blames_the_reference_data():
     # A release newer than the shipped table is a gap in our reference data, not a
     # producer error: Ensembl keeps shipping releases after we regenerate.
-    warnings, _ = check_gene_annotation_version(_version_adata([_TP53], version="v999", genome=None))
+    warnings, _ = check_gene_annotation_version(
+        _version_adata([_TP53], version="v999", genome=None), object_kind="source"
+    )
     assert len(warnings) == 1, warnings
     assert "newer than this reference data covers" in warnings[0]
 
@@ -2706,21 +2745,21 @@ def test_annotation_version_ignores_non_human_ensg_lookalikes():
     # Gorilla identifiers are ENSGGOG..., so a prefix test would date them as human
     # and report every one of them as unknown to Ensembl.
     adata = _version_adata([_TP53, "ENSGGOG00000010861"], version="v98")
-    assert check_gene_annotation_version(adata) == ([], [])
+    assert check_gene_annotation_version(adata, object_kind="source") == ([], [])
 
 
 def test_annotation_version_not_applicable_genome_is_not_a_different_assembly():
     # "not applicable" is one of reference_genome's own enum values; it declines to
     # name an assembly rather than naming one that disagrees.
     adata = _version_adata([_TP53], version="v98", genome="not applicable")
-    assert check_gene_annotation_version(adata) == ([], [])
+    assert check_gene_annotation_version(adata, object_kind="source") == ([], [])
 
 
 def test_annotation_version_all_unknown_genes_says_it_once():
     # With nothing the table knows, there is nothing left to date: the second
     # message would read "0 of 0 remain unexplained".
     adata = _version_adata(["ENSG99999999999", "ENSG99999999998"], version="v98")
-    warnings, _ = check_gene_annotation_version(adata)
+    warnings, _ = check_gene_annotation_version(adata, object_kind="source")
     assert len(warnings) == 1 and "none of the releases" in warnings[0], warnings
 
 
@@ -2728,7 +2767,7 @@ def test_annotation_version_examples_are_drawn_from_the_counted_genes():
     # The count is of genes the table knows and the release predates; an identifier
     # no release contains has its own message, and must not pad these examples.
     adata = _version_adata([_TP53, _POST_R98, "ENSG99999999999"], version="v87")
-    warnings, _ = check_gene_annotation_version(adata)
+    warnings, _ = check_gene_annotation_version(adata, object_kind="source")
     dated = next(w for w in warnings if "did not exist in Ensembl r87" in w)
     # Only _POST_R98 is both known to the table and absent at r87, so it is the
     # whole of the count and the whole of the examples. Asserting the identifier
@@ -2749,7 +2788,7 @@ def test_annotation_version_leaves_format_to_the_schema_pattern():
     # 'Ensembl 98-GENCODE 32' is a format error from the pattern; repeating it as a
     # warning here would say the same thing more quietly.
     adata = _version_adata([_TP53], version="Ensembl 98-GENCODE 32")
-    assert check_gene_annotation_version(adata) == ([], [])
+    assert check_gene_annotation_version(adata, object_kind="source") == ([], [])
 
 
 def test_annotation_version_dates_genes_without_an_organism_statement():
@@ -2757,7 +2796,7 @@ def test_annotation_version_dates_genes_without_an_organism_statement():
     # needs no organism column. A blanket gate silenced 20 prod files that have
     # none -- 17 of them eye -- losing findings that were true of them.
     adata = _version_adata([_TP53, _POST_R98], version="v87", genome="GRCh38", organism=None)
-    warnings, _ = check_gene_annotation_version(adata)
+    warnings, _ = check_gene_annotation_version(adata, object_kind="source")
     assert len(warnings) == 1, warnings
     assert "did not exist in Ensembl r87" in warnings[0], warnings[0]
     # ...but nothing assembly-shaped, since r87 means GRCh37 only for a human file.
@@ -2773,7 +2812,7 @@ def test_annotation_version_only_a_curie_is_a_claim_about_organism(organism):
     adata = _version_adata([_TP53, _POST_R98], version="v87", genome="GRCh37", organism=None)
     if organism is not None:
         adata.obs["organism_ontology_term_id"] = organism
-    warnings, _ = check_gene_annotation_version(adata)
+    warnings, _ = check_gene_annotation_version(adata, object_kind="source")
     assert any("did not exist in Ensembl r87" in w for w in warnings), (organism, warnings)
     assert not any("name different assemblies" in w for w in warnings), (organism, warnings)
 
@@ -2787,7 +2826,7 @@ def test_annotation_version_stated_non_human_does_not_silence_dating():
     for organism in (["NCBITaxon:10090"] * 2, ["NCBITaxon:9606", "NCBITaxon:10090"]):
         adata = _version_adata([_TP53, _POST_R98], version="v87", genome="GRCh38", organism=None)
         adata.obs["organism_ontology_term_id"] = organism
-        warnings, _ = check_gene_annotation_version(adata)
+        warnings, _ = check_gene_annotation_version(adata, object_kind="source")
         assert any("did not exist in Ensembl r87" in w for w in warnings), (organism, warnings)
         # ...but the assembly claim stays gated: r87 means GRCh37 only for human.
         assert not any("name different assemblies" in w for w in warnings), (organism, warnings)
@@ -2798,14 +2837,14 @@ def test_annotation_version_a_real_non_human_file_is_silent_anyway():
     # ENSG match leaves nothing to date, and the check falls silent on its own.
     adata = _version_adata(["ENSMUSG00000102693", "ENSMUSG00000051951"], version="v98", genome="GRCm39", organism=None)
     adata.obs["organism_ontology_term_id"] = ["NCBITaxon:10090"] * len(adata.obs)
-    assert check_gene_annotation_version(adata) == ([], [])
+    assert check_gene_annotation_version(adata, object_kind="source") == ([], [])
 
 
 def test_annotation_version_mouse_file_is_silent():
     # A real non-human file carries non-human features, so the ENSG filter
     # leaves nothing to date and the organism gate never has to catch it.
     adata = _version_adata(["ENSMUSG00000102693", "ENSMUSG00000051951"], version="v98", genome="GRCm39", organism=None)
-    assert check_gene_annotation_version(adata) == ([], [])
+    assert check_gene_annotation_version(adata, object_kind="source") == ([], [])
 
 
 def test_annotation_version_needs_organism_stated_not_merely_not_contradicted():
@@ -2817,12 +2856,12 @@ def test_annotation_version_needs_organism_stated_not_merely_not_contradicted():
         adata = _version_adata([_TP53], version="v98", genome="GRCm39", organism=None)
         if organism is not None:
             adata.obs["organism_ontology_term_id"] = organism
-        assert check_gene_annotation_version(adata) == ([], []), organism
+        assert check_gene_annotation_version(adata, object_kind="source") == ([], []), organism
 
 
 def test_annotation_version_silent_on_non_human():
     adata = _version_adata([_TP53], version="v87", organism="NCBITaxon:10090")
-    assert check_gene_annotation_version(adata) == ([], [])
+    assert check_gene_annotation_version(adata, object_kind="source") == ([], [])
 
 
 @pytest.mark.parametrize(
@@ -2837,7 +2876,7 @@ def test_annotation_version_every_missing_sentinel_is_undeclared(sentinel):
     adata = _version_adata([_TP53, _RETIRED_AT_102], version=sentinel)
     if sentinel is None:
         del adata.obs["gene_annotation_version"]
-    assert check_gene_annotation_version(adata) == (
+    assert check_gene_annotation_version(adata, object_kind="source") == (
         ["obs['gene_annotation_version'] is not declared. This file's gene set is consistent with r76 to r102."],
         [],
     ), sentinel
@@ -2847,7 +2886,7 @@ def test_annotation_version_undeclared_window_keeps_resurrection_gaps():
     # The same runs rendering as the contradiction finding: a resurrected gene
     # punches a hole, and naming the releases in it would be wrong.
     adata = _version_adata([_RESURRECTED], version="nan")
-    warnings, _ = check_gene_annotation_version(adata)
+    warnings, _ = check_gene_annotation_version(adata, object_kind="source")
     assert warnings == [
         "obs['gene_annotation_version'] is not declared. This file's gene set is consistent with "
         "r100 to r104 and r109 to r116."
@@ -2858,7 +2897,9 @@ def test_annotation_version_undeclared_reuses_the_file_level_findings():
     # Unknown identifiers and a gene list no release fits are reported exactly
     # as they are for a declared file; the undeclared branch adds only a window,
     # and there is none to add when no release fits.
-    unknown = check_gene_annotation_version(_version_adata([_TP53, "ENSG99999999999"], version="nan"))[0]
+    unknown = check_gene_annotation_version(
+        _version_adata([_TP53, "ENSG99999999999"], version="nan"), object_kind="source"
+    )[0]
     assert len(unknown) == 2, unknown
     assert "are in none of the releases" in unknown[0], unknown
     assert unknown[1] == (
@@ -2869,14 +2910,18 @@ def test_annotation_version_undeclared_reuses_the_file_level_findings():
         "obs['gene_annotation_version'] is not declared, and no release this reference data covers explains "
         "this file's genes, so it cannot be inferred."
     )
-    no_fit = check_gene_annotation_version(_version_adata([_POST_R98, _RETIRED_AT_102], version="nan"))[0]
+    no_fit = check_gene_annotation_version(
+        _version_adata([_POST_R98, _RETIRED_AT_102], version="nan"), object_kind="source"
+    )[0]
     assert len(no_fit) == 2, no_fit
     assert no_fit[0].startswith("No Ensembl release this reference data covers"), no_fit
     assert no_fit[1] == cannot_infer
 
     # Every identifier unknown to the table: the unknown-identifier finding says
     # why, and the undeclared value is still asked for.
-    all_unknown = check_gene_annotation_version(_version_adata(["ENSG99999999999"], version="nan"))[0]
+    all_unknown = check_gene_annotation_version(
+        _version_adata(["ENSG99999999999"], version="nan"), object_kind="source"
+    )[0]
     assert len(all_unknown) == 2, all_unknown
     assert "are in none of the releases" in all_unknown[0], all_unknown
     assert all_unknown[1] == cannot_infer
@@ -2887,7 +2932,7 @@ def test_annotation_version_undeclared_without_human_genes():
     # inferred. A file that does not state human cells was never going to have
     # any, so it stays silent.
     adata = _version_adata(["TP53", "ERCC-00002"], version="nan")
-    assert check_gene_annotation_version(adata) == (
+    assert check_gene_annotation_version(adata, object_kind="source") == (
         [
             "obs['gene_annotation_version'] is not declared, and this file has no human Ensembl gene ids "
             "to infer it from."
@@ -2896,14 +2941,93 @@ def test_annotation_version_undeclared_without_human_genes():
     )
     for organism in ("NCBITaxon:10090", None):
         adata = _version_adata(["ENSMUSG00000059552"], version="nan", organism=organism)
-        assert check_gene_annotation_version(adata) == ([], []), organism
+        assert check_gene_annotation_version(adata, object_kind="source") == ([], []), organism
 
 
 def test_annotation_version_silent_with_nothing_to_read():
     # No annotation column, no organism, no genes: nothing declared and nothing
     # to date.
     adata = anndata.AnnData(obs=pd.DataFrame({"donor_id": ["d1"]}, index=["cell_0"]))
-    assert check_gene_annotation_version(adata) == ([], [])
+    assert check_gene_annotation_version(adata, object_kind="source") == ([], [])
+
+
+# The closing sentence each kind gets (#774). Spelled out rather than imported,
+# so a change to the wording has to be made here as well.
+_TOO_EARLY = {
+    "source": "This file is a source dataset -- one study, one annotation -- so the declared value cannot be correct.",
+    "integrated": (
+        "This file is an integrated object, so each declared value must match the source dataset its cells came from."
+    ),
+}
+_NO_RELEASE = {
+    "source": (
+        "This file is a source dataset, so its gene list spans releases -- a reference that mixes them, or one built "
+        "outside Ensembl."
+    ),
+    "integrated": (
+        "This file is an integrated object, so this is expected: a union of sources annotated against different "
+        "releases matches none of them, and each declared value must match the source dataset its cells came from."
+    ),
+}
+# One case per site that appends a scope sentence: the fixture, the phrase that
+# picks out the finding, and which sentence it ends with.
+_SCOPE_SITES = {
+    "no release fits the file": ([_POST_R98, _RETIRED_AT_102], "v110", "GRCh38", "comes closest", _NO_RELEASE),
+    "declared release fits worse than the closest": (
+        [_POST_R98, _RETIRED_AT_102, _RESURRECTED],
+        "v76",
+        "GRCh38",
+        "more than the closest",
+        _NO_RELEASE,
+    ),
+    "below the table, refuted by later genes": ([_TP53, _POST_R98], "v75", None, "cannot have been in r75", _TOO_EARLY),
+    "outside the window that fits": ([_TP53, _POST_R98], "v98", "GRCh38", "consistent with r105", _TOO_EARLY),
+}
+
+
+@pytest.mark.parametrize("object_kind", ["source", "integrated"])
+@pytest.mark.parametrize("site", list(_SCOPE_SITES))
+def test_annotation_version_scope_sentence_follows_object_kind(site, object_kind):
+    # Each finding states the one reading the kind implies; the hedge naming
+    # both is gone (#774).
+    genes, version, genome, needle, scope = _SCOPE_SITES[site]
+    adata = _version_adata(genes, version=version, genome=genome)
+    warnings, _ = check_gene_annotation_version(adata, object_kind=object_kind)
+    finding = next(w for w in warnings if needle in w)
+    assert finding.endswith(f". {scope[object_kind]}"), finding
+    assert finding.count("This file is a") == 1, finding
+    assert "If this is a source dataset" not in finding and "On an integrated object" not in finding, finding
+
+
+@pytest.mark.parametrize("site", list(_SCOPE_SITES))
+def test_annotation_version_verdict_does_not_depend_on_object_kind(site):
+    # The kind chooses a sentence, never a finding: the same file yields the
+    # same findings in the same order, differing only in the scope sentence.
+    genes, version, genome, _, _ = _SCOPE_SITES[site]
+    source, source_errors = check_gene_annotation_version(
+        _version_adata(genes, version=version, genome=genome), object_kind="source"
+    )
+    integrated, integrated_errors = check_gene_annotation_version(
+        _version_adata(genes, version=version, genome=genome), object_kind="integrated"
+    )
+    assert source_errors == integrated_errors == []
+    translated = source
+    for scope in (_TOO_EARLY, _NO_RELEASE):
+        translated = [w.replace(scope["source"], scope["integrated"]) for w in translated]
+    assert translated == integrated
+    assert source != integrated
+
+
+def test_annotation_version_rejects_an_unknown_object_kind():
+    with pytest.raises(ValueError, match="object_kind must be one of"):
+        check_gene_annotation_version(_version_adata([_TP53]), object_kind="merged")  # type: ignore[arg-type]
+
+
+def test_hca_validator_passes_its_object_kind_to_the_annotation_check():
+    validator = HCAValidator(object_kind="integrated")
+    validator.adata = _version_adata([_TP53, _POST_R98], version="v98")
+    validator._check_gene_annotation_version()
+    assert any(w.endswith(_TOO_EARLY["integrated"]) for w in validator.warnings), validator.warnings
 
 
 def test_annotation_version_undeclared_only_when_nothing_is_declared():
@@ -2911,13 +3035,12 @@ def test_annotation_version_undeclared_only_when_nothing_is_declared():
     # contradiction finding and nothing from the undeclared branch.
     adata = _version_adata([_TP53, _POST_R98], version="v98")
     adata.obs["gene_annotation_version"] = ["v98", "nan"]
-    assert check_gene_annotation_version(adata) == (
+    assert check_gene_annotation_version(adata, object_kind="source") == (
         [
             f"obs['gene_annotation_version'] is 'v98', but 1 of this file's 2 genes did not exist in Ensembl r98: "
             f"they were defined after it -- for example {_POST_R98}. This file's gene set is consistent with "
-            f"r105 to r116. If this is a source dataset -- one study, one annotation -- the declared value cannot "
-            f"be correct. On an integrated object each declared value must instead match the source dataset its "
-            f"cells came from."
+            f"r105 to r116. This file is a source dataset -- one study, one annotation -- so the declared value "
+            f"cannot be correct."
         ],
         [],
     )
@@ -2950,7 +3073,7 @@ def test_annotation_version_undeclared_prose_keeps_the_routing_invariants():
     # Contract 5.6-5.7: the ordering rule and /curate-h5ad's routing match on
     # these phrases, so the new finding must not carry them.
     for genes in ([_TP53, _RETIRED_AT_102], ["TP53"], [_POST_R98, _RETIRED_AT_102]):
-        for w in check_gene_annotation_version(_version_adata(genes, version="nan"))[0]:
+        for w in check_gene_annotation_version(_version_adata(genes, version="nan"), object_kind="source")[0]:
             for phrase in ("Feature ID '", "are not in the declared release", "did not exist in"):
                 assert phrase not in w, (phrase, w)
 
@@ -2971,7 +3094,7 @@ def test_annotation_version_version_suffix_is_matched_not_split_off():
     # The dotted custom id is not dated, and both custom ids still count as
     # separate excluded features.
     adata = _version_adata(["ENSG00000141510.beta", _POST_R98, "mycustom.1", "mycustom.2"], version="v87")
-    warnings, _ = check_gene_annotation_version(adata)
+    warnings, _ = check_gene_annotation_version(adata, object_kind="source")
     assert len(warnings) == 1, warnings
     assert "3 features excluded from dating" in warnings[0], warnings[0]
     assert "1 of this file's 1 gene did not exist" in warnings[0], warnings[0]
@@ -2983,7 +3106,7 @@ def test_annotation_version_excluded_count_is_of_rejected_features():
     # with no Ensembl release: duplicates, version variants, and _PAR_Y pairs are
     # all Ensembl genes. Counted as they are rejected now.
     def excluded(ids):
-        warnings, _ = check_gene_annotation_version(_version_adata(ids, version="v87"))
+        warnings, _ = check_gene_annotation_version(_version_adata(ids, version="v87"), object_kind="source")
         return warnings[0] if warnings else ""
 
     assert "excluded from dating" not in excluded([_TP53, _TP53, _TP53, _POST_R98])
@@ -3003,19 +3126,21 @@ def test_annotation_version_trailing_newline_is_not_an_ensembl_id():
 
     assert _HUMAN_ENSG_RE.match(f"{_TP53}\n") is not None
     assert _HUMAN_ENSG_RE.fullmatch(f"{_TP53}\n") is None
-    warnings, _ = check_gene_annotation_version(_version_adata([f"{_TP53}\n", _POST_R98], version="v87"))
+    warnings, _ = check_gene_annotation_version(
+        _version_adata([f"{_TP53}\n", _POST_R98], version="v87"), object_kind="source"
+    )
     assert "1 of this file's 1 gene did not exist" in warnings[0], warnings[0]
 
 
 def test_annotation_version_ignores_non_ensembl_features():
     # Spike-ins have no Ensembl release; left in, every release would fail to explain them.
     adata = _version_adata([_TP53, "ERCC-00096", "ERCC-00171"], version="v98")
-    assert check_gene_annotation_version(adata) == ([], [])
+    assert check_gene_annotation_version(adata, object_kind="source") == ([], [])
 
 
 def test_annotation_version_reports_genes_no_release_knows():
     adata = _version_adata([_TP53, "ENSG99999999999"], version="v98")
-    warnings, _ = check_gene_annotation_version(adata)
+    warnings, _ = check_gene_annotation_version(adata, object_kind="source")
     assert len(warnings) == 1, warnings
     # Both ends of the covered range, and both readings. Naming only the upper
     # bound points the reader at a newer annotation, when a gene retired before
@@ -3038,7 +3163,7 @@ def test_annotation_version_resurrection_gap_is_explained_and_excluded():
     # say the file is consistent with r100 to r116, which contains the very
     # release being reported as wrong.
     adata = _version_adata([_TP53, _RESURRECTED], version="v106")
-    warnings, _ = check_gene_annotation_version(adata)
+    warnings, _ = check_gene_annotation_version(adata, object_kind="source")
     assert len(warnings) == 1, warnings
     assert "retired before it and defined again later" in warnings[0], warnings[0]
     # Only the gap is asserted. The run after it ends at whatever release the
@@ -3064,7 +3189,7 @@ def test_annotation_version_no_release_names_the_unexplained_genes():
     # _RETIRED_AT_102 is gone by r103, so no release holds both -- and nothing
     # else in the output would name an identifier to investigate.
     adata = _version_adata([_POST_R98, _RETIRED_AT_102], version="v110")
-    warnings, _ = check_gene_annotation_version(adata)
+    warnings, _ = check_gene_annotation_version(adata, object_kind="source")
     no_release = next(w for w in warnings if "comes closest" in w)
     assert "for example" in no_release, no_release
     # Not a disjunction: the closest release here is the table's floor (ties
@@ -3086,7 +3211,7 @@ def test_first_grch38_release_is_not_read_off_the_table():
     _, first_covered, _ = _gene_release_intervals()
     assert first_covered == _FIRST_GRCH38_RELEASE
     warnings, _ = check_gene_annotation_version(
-        _version_adata([_TP53], version=f"v{_FIRST_GRCH38_RELEASE - 1}", genome=None)
+        _version_adata([_TP53], version=f"v{_FIRST_GRCH38_RELEASE - 1}", genome=None), object_kind="source"
     )
     assert f"Ensembl r{_FIRST_GRCH38_RELEASE} is the first GRCh38 release" in warnings[0], warnings[0]
 

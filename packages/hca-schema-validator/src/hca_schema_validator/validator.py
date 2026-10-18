@@ -126,7 +126,7 @@ class HCAValidator(Validator):
         self.errors.extend(errors)
 
     def _check_gene_annotation_version(self):
-        warnings, errors = check_gene_annotation_version(self.adata)
+        warnings, errors = check_gene_annotation_version(self.adata, object_kind=self.object_kind)
         self.warnings.extend(warnings)
         self.errors.extend(errors)
 
@@ -1649,34 +1649,31 @@ _HUMAN_ORGANISM = "NCBITaxon:9606"
 # like "unknown", free text like "Homo sapiens", a typo -- states nothing, and
 # is the same epistemic position as an absent column.
 _ORGANISM_CURIE_RE = re.compile(r"^NCBITaxon:\d+$")
-# Stated rather than detected, because nothing in the file reliably says whether
-# it is merged. Three candidate signals were measured across the corpus and all
-# fail: 7 of 111 source datasets carry a uns copy of the field, 90 of 103
-# integrated objects declare only one version, and a dataset/study obs column is
-# absent from 23 integrated objects while 6 source datasets have one holding
-# several values (site, chemistry, cohort, subject -- the name does not pin the
-# meaning). A merged gene list is a union of its sources: the breast atlas is
-# exactly the union of its seven, 36,788 genes against an intersection of 11,711,
-# so its apparent release is set by whichever source used the newest annotation
-# and need not match any single one. So each finding names both readings rather
-# than hedging one of them -- on a merged object the result is not a weaker
-# verdict but a different and expected one. Remove these once #719's
-# source_dataset_id makes merged-ness a fact the check can read, and gate on it.
-# Appended to a finding where a release *was* found to fit, so it must not
-# repeat _SCOPE_NO_RELEASE's union argument: saying "no single release fits it"
-# beside a sentence naming the releases that do contradicts the finding, and an
-# integrated-object reader takes the second clause as the operative one.
-_SCOPE_TOO_EARLY = (
-    " If this is a source dataset -- one study, one annotation -- the declared value cannot be "
-    "correct. On an integrated object each declared value must instead match the source dataset its "
-    "cells came from."
-)
-_SCOPE_NO_RELEASE = (
-    " If this is a source dataset, its gene list spans releases -- a reference that mixes them, or "
-    "one built outside Ensembl. On an integrated object this is expected: a union of sources "
-    "annotated against different releases matches none of them, and each declared value must match "
-    "the source dataset its cells came from."
-)
+# Chosen by the object kind the caller states. A merged gene list is a union of
+# its sources: the breast atlas is exactly the union of its seven, 36,788 genes
+# against an intersection of 11,711, so its apparent release is set by whichever
+# source used the newest annotation and need not match any single one. On an
+# integrated object the result is therefore not a weaker verdict but a different
+# and expected one, and only the sentence differs -- which findings fire does not.
+# _SCOPE_TOO_EARLY is appended to a finding where a release *was* found to fit, so
+# it must not repeat _SCOPE_NO_RELEASE's union argument: saying "no single release
+# fits it" beside a sentence naming the releases that do contradicts the finding.
+_SCOPE_TOO_EARLY: dict[ObjectKind, str] = {
+    "source": " This file is a source dataset -- one study, one annotation -- so the declared value cannot be correct.",
+    "integrated": (
+        " This file is an integrated object, so each declared value must match the source dataset its cells came from."
+    ),
+}
+_SCOPE_NO_RELEASE: dict[ObjectKind, str] = {
+    "source": (
+        " This file is a source dataset, so its gene list spans releases -- a reference that mixes them, or one built "
+        "outside Ensembl."
+    ),
+    "integrated": (
+        " This file is an integrated object, so this is expected: a union of sources annotated against different "
+        "releases matches none of them, and each declared value must match the source dataset its cells came from."
+    ),
+}
 # The assembly names obs['reference_genome'] may hold. Anything else -- a
 # placeholder like "not applicable", or a malformed value the column's own enum
 # already errors on -- names no assembly, so there is nothing to compare against.
@@ -1812,7 +1809,7 @@ def _earliest_release_explaining(genes: set[str]) -> tuple[int | None, dict[int,
     return earliest, shortfall, unknown
 
 
-def check_gene_annotation_version(adata):
+def check_gene_annotation_version(adata, *, object_kind: ObjectKind):
     """Report a declared gene annotation the file's own genes rule out. #710.
 
     Two independent comparisons, one needing no reference data:
@@ -1842,12 +1839,23 @@ def check_gene_annotation_version(adata):
     so a file claiming another organism while carrying human genes is still
     dated against them.
 
+    Args:
+        adata: the AnnData object to check.
+        object_kind: ``"source"`` or ``"integrated"``; see :data:`ObjectKind`.
+            Chooses the closing sentence of the too-early and no-release
+            findings, never which findings fire.
+
     Returns:
         ``(warnings, errors)`` -- two lists of strings. Everything here is a
         warning: the field is the producer's to correct, and the schema itself
         documents it with assembly accessions (#719), so some non-datable
         values are conforming rather than mistaken.
+
+    Raises:
+        ValueError: when ``object_kind`` is neither of the two kinds.
     """
+    if object_kind not in OBJECT_KINDS:
+        raise ValueError(f"object_kind must be one of {OBJECT_KINDS}, got {object_kind!r}.")
     obs = getattr_anndata(adata, "obs")
     if obs is None:
         return [], []
@@ -1939,7 +1947,7 @@ def check_gene_annotation_version(adata):
 
     warnings = []
     if dated and dated[0] is None and len(ensg) > len(dated[2]):
-        warnings.append(_no_release_explains_message(dated, ensg, n_non_ensembl))
+        warnings.append(_no_release_explains_message(dated, ensg, n_non_ensembl, object_kind))
 
     if dated and dated[2]:
         # A gene no release contains means a newer annotation than this table
@@ -1991,6 +1999,7 @@ def check_gene_annotation_version(adata):
                 ensg,
                 n_non_ensembl,
                 dated,
+                object_kind,
             )
         )
     return warnings, []
@@ -2028,7 +2037,7 @@ def _assembly_pairs(obs) -> dict[str, dict[str, int]]:
 
 
 def _annotation_version_messages(
-    parsed, genomes, n_cells, n_genomes, human, ensg: set[str], n_non_ensembl: int, dated
+    parsed, genomes, n_cells, n_genomes, human, ensg: set[str], n_non_ensembl: int, dated, object_kind: ObjectKind
 ) -> list[str]:
     """Everything sayable about one declared value.
 
@@ -2054,7 +2063,7 @@ def _annotation_version_messages(
         # than an annotation whoever produced it. What stays gated is the GRCh37
         # and GRCh38 classification of a release, which holds only for human.
         if parsed.kind == "release" and parsed.release >= _FIRST_GRCH38_RELEASE:
-            return _release_against_genes(parsed, ensg, n_non_ensembl, dated)
+            return _release_against_genes(parsed, ensg, n_non_ensembl, dated, object_kind)
         if parsed.kind == "ambiguous" and parsed.release <= _highest_gencode_release():
             # Only while the number really is ambiguous -- above the ceiling it
             # can only be an Ensembl release, and saying which assembly that
@@ -2067,7 +2076,7 @@ def _annotation_version_messages(
             # refutes it the coverage limit is still worth saying. Returning
             # nothing here made the value silent on a file with no organism
             # column while the same file with one got a finding.
-            refuted = _refuted_by_later_genes(parsed, ensg, dated)
+            refuted = _refuted_by_later_genes(parsed, ensg, dated, object_kind)
             if refuted:
                 return [refuted]
             _, first_covered, _ = _gene_release_intervals()
@@ -2116,7 +2125,7 @@ def _annotation_version_messages(
         said.extend(_ambiguous_release_number(parsed))
         return said
 
-    said.extend(_release_against_genes(parsed, ensg, n_non_ensembl, dated))
+    said.extend(_release_against_genes(parsed, ensg, n_non_ensembl, dated, object_kind))
     return said
 
 
@@ -2176,7 +2185,7 @@ def _ambiguous_release_number(parsed) -> list[str]:
     ]
 
 
-def _no_release_explains_message(dated, ensg: set[str], n_non_ensembl: int) -> str:
+def _no_release_explains_message(dated, ensg: set[str], n_non_ensembl: int, object_kind: ObjectKind) -> str:
     """Report that no covered release contains every gene the table knows.
 
     A property of the gene list, so it is said once however many versions the
@@ -2203,7 +2212,7 @@ def _no_release_explains_message(dated, ensg: set[str], n_non_ensembl: int) -> s
         f"No Ensembl release this reference data covers, r{first_covered} to r{last_covered}, contains "
         f"every one of this file's known genes -- "
         f"r{closest} comes closest, with {shortfall[closest]:,} of {len(ensg) - len(unknown):,} still "
-        f"unexplained -- for example {', '.join(examples)}{context}.{_SCOPE_NO_RELEASE}"
+        f"unexplained -- for example {', '.join(examples)}{context}.{_SCOPE_NO_RELEASE[object_kind]}"
     )
 
 
@@ -2306,7 +2315,7 @@ def _why_absent(ensg: set[str], unknown: set[str], table, release: int) -> tuple
     return born_later, retired_earlier, in_gap
 
 
-def _refuted_by_later_genes(parsed, ensg: set[str], dated) -> str | None:
+def _refuted_by_later_genes(parsed, ensg: set[str], dated, object_kind: ObjectKind) -> str | None:
     """Rule out a release below the table's floor using genes born after it.
 
     A gene whose first appearance is later than the floor did not exist at any
@@ -2337,11 +2346,11 @@ def _refuted_by_later_genes(parsed, ensg: set[str], dated) -> str | None:
         f"obs['gene_annotation_version'] is {parsed.raw!r}, but {len(born_later):,} of this file's "
         f"{len(ensg) - len(unknown):,} known genes did not exist until after Ensembl r{first_covered} -- "
         f"for example {', '.join(born_later[:3])}, so they cannot have been in r{parsed.release}."
-        f"{_SCOPE_TOO_EARLY}"
+        f"{_SCOPE_TOO_EARLY[object_kind]}"
     )
 
 
-def _release_against_genes(parsed, ensg: set[str], n_non_ensembl: int, dated) -> list[str]:
+def _release_against_genes(parsed, ensg: set[str], n_non_ensembl: int, dated, object_kind: ObjectKind) -> list[str]:
     """Compare a declared Ensembl release with what the gene list can support.
 
     A release outside the shipped table is reported as such rather than as
@@ -2374,7 +2383,7 @@ def _release_against_genes(parsed, ensg: set[str], n_non_ensembl: int, dated) ->
         # either, covered or not -- so it rules out every release below the
         # floor without the GRCh37 data being shipped (#724). Only a gene first
         # seen *at* the floor is genuinely unknown before it.
-        refuted = _refuted_by_later_genes(parsed, ensg, dated)
+        refuted = _refuted_by_later_genes(parsed, ensg, dated, object_kind)
         if refuted:
             return [refuted]
         # Nothing in the gene list rules it out, and the table cannot date it:
@@ -2410,7 +2419,7 @@ def _release_against_genes(parsed, ensg: set[str], n_non_ensembl: int, dated) ->
                 f"obs['gene_annotation_version'] is {parsed.raw!r}, but {missing_here:,} of this file's "
                 f"{len(ensg) - len(unknown):,} {'known genes' if unknown else 'genes'} are not in Ensembl "
                 f"r{parsed.release} -- {missing_here - best:,} more than the closest release leaves "
-                f"unexplained{context}.{_SCOPE_NO_RELEASE}"
+                f"unexplained{context}.{_SCOPE_NO_RELEASE[object_kind]}"
             ]
         return []
 
@@ -2472,7 +2481,7 @@ def _release_against_genes(parsed, ensg: set[str], n_non_ensembl: int, dated) ->
         said.append(
             f"obs['gene_annotation_version'] is {parsed.raw!r}, but {missing_here:,} of this file's "
             f"{datable:,} {noun} {absence} -- for example {', '.join(examples)}. "
-            f"{window}{context}.{_SCOPE_TOO_EARLY}"
+            f"{window}{context}.{_SCOPE_TOO_EARLY[object_kind]}"
         )
     return said
 

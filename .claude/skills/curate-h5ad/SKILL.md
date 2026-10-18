@@ -146,8 +146,10 @@ Report these but don't attempt to fix:
   | "names a genome assembly rather than a gene annotation" | **nobody — do not relay as an error** | the schema's own documented example is an accession (#719). The producer followed the documentation. Note it and move on |
   | "could be Ensembl rN or GENCODE N" | producer, as a question | ask which scheme they meant; do not guess |
   | "are in none of the releases this reference data covers" | producer | relay: the gene list points at a reference we do not have |
-  | "No Ensembl release … contains every one of this file's known genes" | depends | on an integrated object this is expected — a union of sources matches none of them, and what each value must match is the source dataset its cells came from. On a source dataset, relay |
+  | "No Ensembl release … contains every one of this file's known genes" | by its last sentence | "This file is an integrated object, so this is expected" — nothing to relay: a union of sources matches none of them, and what each value must match is the source dataset its cells came from. "This file is a source dataset, so its gene list spans releases" — producer; relay |
   | "newer than this reference data covers" | **ours** | nothing to relay. Our gene table needs regenerating — see the package README |
+
+  The too-early and no-release findings end in one sentence chosen by the `object_kind` you passed to `validate_schema` — "This file is a source dataset …" or "This file is an integrated object …" (#774). It restates what you told the validator, not something read off the file. If it disagrees with how the tracker lists the file, the call was wrong: re-run with the right kind before routing anything.
 
   Nothing here is fixed by a tool. `set_uns` cannot reach an obs column, and `backfill_obs_from_source` fills only *gaps* — it never overwrites a value that is already set, reporting a disagreement as a conflict and writing nothing. These findings are by definition values that are present and wrong, which is exactly the case backfill declines.
 
