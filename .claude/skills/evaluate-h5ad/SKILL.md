@@ -24,6 +24,10 @@ First batch — cheap, obs-sized:
 8. **check_embeddings** — every numeric array-encoded entry in `obsm` is 2-D, finite, and not degenerate (all-zero, constant, or zero-variance columns); other entries (a DataFrame, a sparse matrix, a bool, string, or complex array) are not value-checked and come back under `skipped`; a row-count mismatch fails anndata's open and arrives as the tool's `error`, not a finding
 9. **check_barcodes** — which cell IDs contain a run of 12 or more A/C/G/T bases, by run length (Lattice `extract_barcodes`). Structural only: a 16-base run is the shape of a 10x v2/v3 barcode and a 14-base run of Chromium v1, but nothing here checks a whitelist (that is #696), so never call a run a 10x barcode
 
+An **integrated object** — the wrangler says so, or the tracker lists it; never decided from the path — also gets, alongside the first batch:
+
+- **check_cap_currency** — whether the object's CAP annotations are the ones CAP now publishes (#781). It needs the tracker's `cap_url` for the object: call the tracker's `list_integrated_objects` once per network, atlas and generation (ask for them if not stated; never read them off the path; reuse the rows for every object in the run) and take the row whose `name`, `.h5ad` removed, is the file's tracker name — the file name with our `-edit-<timestamp>` and then the tracker's `-r<N>[-wip-<N>]` removed. A row with no `cap_url` gets no call; report "no CAP link on the tracker". The tracker, not the local export, says which CAP dataset is current, because the export can be stale too.
+
 Second batch, once `get_summary` and `get_cap_annotations` are back, in this order — the dependent calls first, the matrix passes last:
 
 10. **get_descriptive_stats** — `columns` set to the intersection of `["donor_id", "sample_id", "library_id"]` and the obs column names from `get_summary.obs_columns` (a list of `{name, dtype}` objects — extract `name`), which is why it waits for `get_summary`. Used only for the Provenance bullet in Section 1.
@@ -154,6 +158,16 @@ Then apply two checks, which mean different things and must not be merged:
 
 ## 6. CAP annotations
 - Are CAP annotation sets present? If yes, name them and give the cell-label count per set. If no, state that CAP is missing.
+- **CAP currency** — integrated objects, when `check_cap_currency` ran. Lead with its `status`, then the evidence:
+
+| | Object | Export (`export.path`) |
+|---|---|---|
+| `publication_version` | … | … |
+| `publication_timestamp` | … | … |
+| `cap_dataset_url` | … | … |
+| `cellannotation_schema_version` | … | … |
+
+  The tracker's `cap_url` goes under the table. By status: `current` — say so in one line, no table needed. `behind` — the object carries another CAP dataset than the tracker's or an older publication than the export; the fix is a re-import from `export.path`. `export_stale` — no file in `cap_source_dir` carries the tracker's `cap_url` (list `exports_checked` with their URLs), or the one that does is older than the object's copy; the current export has to be downloaded first. `absent` — no CAP block on the object; name the export if one matched.
 - If `view_edit_log` contains any `import_cap_annotations` entries, render the latest entry's overlap stats as a table (shows how the CAP source and the current HCA file align on both cells and genes — `n_cap` / `n_hca` are the totals on each side, `n_matched` is the intersection, and the `missing_from_*` rows are the asymmetric gaps with their percent denominators noted):
 
 | Metric | Value |
@@ -209,6 +223,7 @@ Format the timestamp as `YYYY-MM-DD HH:MM:SS` (drop the `T` and the fractional s
 ## 8. Summary & recommendations
 - One-line readiness verdict: ready / needs work / not started. A gate finding that names an objective defect forces at least **needs work** — `negative_values`, `non_finite_values`, `non_integer_values`, `zero_count_cells`, `empty_matrix`, any `check_embeddings` code, and `duplicate_cells` — whoever has to fix it, because no metadata state offsets a wrong value or a duplicated cell. `undetected_genes`, `no_barcode_in_index`, `sex_contradiction`, `sex_below_floor`, and `sex_fillable` are informational and do not affect the verdict. `sex_contradiction` is informational because the inference behind it is not reliable enough to force a verdict on its own (#707): all seven Y-linked panel genes are X-Y gametologs whose homology runs through the introns, so where the alignment counted introns any of them can pick up reads from its X copy and carry a female donor over the male cut. How many actually have in a given file is what `panel_summary` measures — four of the seven on the atlas in #707, but that is one observation, not a figure to expect. Report it with the evidence below and say it needs adjudication; do not state it as a defect the file is known to have.
 - Prioritized list of next actions, most important first, gate findings leading. `duplicate_cells` is a **relay-to-producer** action — no tool of ours fixes it, and which duplicate to keep is the producer's call — so name the group count so the message can be written from the report. `sex_contradiction` is an **adjudicate-first** action: name the donors, say what the per-gene evidence shows, and state that the call has to be settled against the study's own metadata (GEO, the publication, the submitter) before anything is relayed. Never relay a contradiction on the ratio alone.
+- CAP currency `behind` or `export_stale` forces at least **needs work**: the object would ship annotations CAP has replaced. `behind` → re-import from `export.path` with `/curate-h5ad`; `export_stale` → download the current export from the tracker's `cap_url` into `cap-source/` and evaluate again.
 - If `check_schema_type` reported `cellxgene`, the first action is `convert_cellxgene_to_hca`.
 - If the file is HCA-layout and has no labeling edit-log entry (`populate_labels`, or the older `label_h5ad`), recommend running `/curate-h5ad` so `populate_labels` fills `var['feature_name']` and the obs ontology labels before CAP handoff or marker-gene validation.
 

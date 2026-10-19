@@ -17,6 +17,7 @@ from hca_anndata_mcp.tools.strip_cap import strip_cap_annotations
 from hca_anndata_mcp.tools.validate import validate_cell_annotation, validate_schema
 from hca_anndata_tools import (
     check_barcodes,
+    check_cap_currency,
     check_donor_sex,
     check_duplicate_cells,
     check_embeddings,
@@ -190,6 +191,7 @@ mcp.tool()(check_donor_sex)
 mcp.tool()(check_barcodes)
 mcp.tool()(find_source_datasets)
 mcp.tool()(set_source_dataset)
+mcp.tool()(check_cap_currency)
 mcp.tool()(check_schema_type)
 mcp.tool()(validate_schema)
 mcp.tool()(validate_cell_annotation)
