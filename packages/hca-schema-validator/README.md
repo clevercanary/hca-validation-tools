@@ -308,7 +308,15 @@ What is checked, in this order. The first problem found is the one reported.
    | Not whole numbers | `X` is not a normalization of any count matrix |
    | Whole, only above `raw.X` | `X` came from a different matrix |
    | Whole, only below `raw.X` | Ambient RNA was removed, and `layers['desouped_counts']` is missing |
-   | Whole, both above and below | Both: ambient RNA was removed, and `raw.X` cannot be the source |
+   | Whole, both above and below | `X` came from a different matrix. Ambient RNA removal also shows, but `raw.X` is not what it was removed from. |
+
+   Recovering counts needs each cell's scale factor, which the validator reads
+   from `X` alone: a cell's smallest non-zero value is its scale times a count
+   of 1, and nearly every cell has a gene with a count of 1. Cells with fewer
+   than 30 genes are skipped, because ambient RNA removal can take all of their
+   count-1 genes. On about half a million cells with known answers, this
+   estimate was exact every time, and it raised no false finding on 2.2 million
+   correctly normalized cells.
 
 9. **`X` was log-transformed but never normalized per cell.** Each cell's
    recovered total is just its own read depth.
@@ -386,6 +394,17 @@ Two comparisons:
      about the declaration.
    - When a run reaches release 76 or 116, that end is where the gene table
      stops, not something the genes show.
+   - A finding that the genes rule out the declared release, or that no single
+     release fits them, ends with one sentence that depends on the
+     `object_kind` the validator was given:
+     - **source dataset** (one study, one annotation): the declared value
+       cannot be right, or the reference mixes releases or was built outside
+       Ensembl
+     - **integrated object** (its genes are the union of its sources' genes):
+       each declared value must match the source dataset its cells came from,
+       and no single release is expected to fit the whole union
+
+     `object_kind` changes only that sentence, never which findings appear.
 
 | Declared value | What happens |
 |---|---|
@@ -395,6 +414,7 @@ Two comparisons:
 | Newer than the gene table | Not checked. The message says so, and is the cue to regenerate the table. |
 | An assembly accession (`GCF_000001405.40`) | Names a genome, not a gene annotation, and is reported as such |
 | Unreadable | No message. The schema's format rule reports it. |
+| Nothing declared (no column, or only missing values such as `nan` or `unknown`) | The genes are still matched. Where they fit a range of releases, one warning says so: `obs['gene_annotation_version'] is not declared. This file's gene set is consistent with r105 to r110.` Where they fit no release, or the file has no human Ensembl gene IDs, one line says the version cannot be inferred. |
 
 - Only human Ensembl gene IDs (`ENSG` followed by digits, with or without a
   version suffix such as `.18`) are matched. Gorilla
