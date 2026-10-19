@@ -352,8 +352,9 @@ Notes:
 Checks 8 and 9 undo the normalization in `X` to recover each cell's counts.
 That needs each cell's scale factor, which the validator reads from `X` alone:
 
-- A cell's smallest non-zero value in `X` is its scale times a count of 1, and
-  nearly every cell has a gene with a count of 1.
+- `X` holds `log1p(scale × count)`, so the validator first undoes the log
+  transform with `expm1`. After that, a cell's smallest non-zero value is its
+  scale times a count of 1, and nearly every cell has a gene with a count of 1.
 - Cells with fewer than 30 genes are skipped, because ambient RNA removal can
   take all of their count-1 genes.
 - On about half a million cells with known answers, this estimate was exact
