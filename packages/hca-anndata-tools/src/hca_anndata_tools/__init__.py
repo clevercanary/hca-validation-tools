@@ -6,6 +6,7 @@ if TYPE_CHECKING:
     from .backfill import backfill_obs_from_source
     from .barcodes import check_barcodes
     from .cap import get_cap_annotations
+    from .cap_currency import check_cap_currency
     from .compress import compress_h5ad
     from .convert import convert_cellxgene_to_hca
     from .copy_cap import copy_cap_annotations
@@ -90,6 +91,7 @@ _LAZY_IMPORTS = {
     "check_barcodes": ".barcodes",
     "find_source_datasets": ".sources",
     "set_source_dataset": ".source_dataset",
+    "check_cap_currency": ".cap_currency",
 }
 
 __all__ = list(_LAZY_IMPORTS)  # pyright: ignore[reportUnsupportedDunderAll]

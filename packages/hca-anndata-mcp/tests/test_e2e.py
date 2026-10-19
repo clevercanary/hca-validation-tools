@@ -273,4 +273,5 @@ async def test_registered_tool_names(client):
         "check_barcodes",
         "find_source_datasets",
         "set_source_dataset",
+        "check_cap_currency",
     } <= names
