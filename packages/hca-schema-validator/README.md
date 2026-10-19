@@ -198,8 +198,10 @@ some columns must sit below a given parent term. Every problem here is an error.
 
 - Every file has at least one embedding, and files from non-spatial assays have
   at least one named `X_…`.
-- Embedding names start with a letter and use only letters, digits, `_`, `.`
-  and `-`. `x_spatial` is not allowed.
+- An embedding named `X_…` has a suffix that starts with a letter and uses
+  only letters, digits, `_`, `.` and `-`: `X_umap` is accepted, `X_1` and
+  `X__umap` are not. `X_spatial` is not allowed. Any other name follows the
+  same pattern as a whole.
 - An embedding not named `X_…` or `spatial` gets a warning, because the
   CELLxGENE Explorer will not show it.
 - Every embedding is a numeric array with one row per cell, at least two
