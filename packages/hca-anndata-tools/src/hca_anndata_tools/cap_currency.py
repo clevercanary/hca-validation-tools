@@ -16,7 +16,7 @@ import h5py
 from anndata.io import read_elem
 
 from ._errors import Refusal
-from ._io import gate_h5ad_paths, read_group, read_uns
+from ._io import gate_h5ad_paths, open_h5ad, read_group, read_uns
 from .cap import CAP_METADATA_KEY, LEGACY_LAYOUT_DESCRIPTION
 from .guards import legacy_layout_problems
 from .qc import run_read
@@ -36,8 +36,7 @@ STATUSES: tuple[Status, ...] = get_args(Status)
 def _read_cap(path: Path) -> tuple[bool, dict | None]:
     """Whether the file uses the deprecated top-level CAP layout, and its CAP block's fields (None if no block).
 
-    Raw h5py for four uns scalars: a second anndata open of each file would
-    materialise its obs, var and layers to read them.
+    Raw h5py, after the anndata open: the layout check takes the stored uns group.
     """
     with h5py.File(path, "r") as f:
         uns = read_uns(f)
@@ -82,15 +81,18 @@ def _check_at_path(path: str, cap_url: str) -> dict:
     if legacy:
         raise Refusal(f"Cannot check CAP currency: {target.name} uses {LEGACY_LAYOUT_DESCRIPTION}")
 
-    # An export that cannot be read (a download still in progress, say) is
-    # listed with its error and never matched, so it does not block the rest.
+    # Every export is opened through anndata first, as the contract's Scope rule
+    # requires. One anndata cannot open (a download still in progress, say) is
+    # listed with anndata's error and never matched, so it does not block the rest.
     checked, matches = [], []
     for p in sorted(cap_dir.glob("*.h5ad")):
         try:
-            p_legacy, fields = _read_cap(p)
-        except OSError as e:
+            with open_h5ad(str(p), backed="r"):
+                pass
+        except Exception as e:
             checked.append({"filename": p.name, "cap_dataset_url": None, "error": str(e)})
             continue
+        p_legacy, fields = _read_cap(p)
         checked.append({"filename": p.name, "cap_dataset_url": fields and fields["cap_dataset_url"]})
         if fields and fields["cap_dataset_url"] == cap_url:
             matches.append((p, p_legacy, fields))
@@ -106,7 +108,6 @@ def _check_at_path(path: str, cap_url: str) -> dict:
                 f"{p.name} carries {cap_url} but uses {LEGACY_LAYOUT_DESCRIPTION}, which copy_cap_annotations "
                 f"refuses; it has to be re-exported from CAP"
             )
-        # Not opened through anndata, which loads every layer; copy_cap_annotations gates it before writing.
         export = {"path": str(p), **fields}
 
     return {
@@ -131,8 +132,8 @@ def check_cap_currency(path: str, cap_url: str) -> dict:
 
     Refuses a path outside the tracker layout or inside ``cap-source/``, an
     object or matched export in the deprecated top-level CAP layout, and two
-    exports carrying ``cap_url``. An unreadable export is listed with its
-    ``error`` and never matched.
+    exports carrying ``cap_url``. An export anndata cannot open is listed with
+    anndata's ``error`` and never matched.
 
     Args:
         path: Integrated-object .h5ad; auto-resolves to the latest edit snapshot.

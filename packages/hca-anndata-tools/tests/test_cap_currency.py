@@ -11,13 +11,14 @@ from __future__ import annotations
 from pathlib import Path
 
 import anndata as ad
+import h5py
 import numpy as np
 import pandas as pd
 import pytest
 
 from hca_anndata_tools.cap_currency import CAP_SOURCE_DIR, check_cap_currency
 from hca_anndata_tools.sources import INTEGRATED_DIR
-from hca_anndata_tools.testing import create_truncated_h5ad
+from hca_anndata_tools.testing import create_truncated_h5ad, make_nullable_string_array
 
 V4 = "https://celltype.info/project/1030/dataset/3400"
 V5 = "https://celltype.info/project/1070/dataset/3548"
@@ -181,6 +182,20 @@ def test_a_broken_unrelated_export_does_not_block_the_match(tree):
     good = tree.export("Atlas", OCTOBER)
     create_truncated_h5ad(tree.caps / "Other lineage.h5ad", source=good)
     assert _ok(check_cap_currency(str(tree.target(OCTOBER)), V5))["status"] == "current"
+
+
+def test_an_export_anndata_cannot_open_is_not_matched_even_with_readable_cap_values(tree):
+    """The contract's Scope rule: a file anndata rejects is not reported on, though h5py could read its uns."""
+    export = tree.caps / "Atlas.h5ad"
+    export.parent.mkdir(parents=True)
+    obs = pd.DataFrame({"lineage": pd.Categorical(["a", "b", "a"])}, index=pd.Index(["c0", "c1", "c2"], name="cellID"))
+    ad.AnnData(X=np.zeros((3, 1), dtype=np.float32), obs=obs, uns={"cap_metadata": OCTOBER}).write_h5ad(export)
+    with h5py.File(export, "r+") as f:
+        make_nullable_string_array(f["obs/lineage"], "categories", masked=1)
+    result = _ok(check_cap_currency(str(tree.target(AUGUST)), V5))
+    assert result["status"] == "export_stale" and result["export"] is None
+    [row] = result["exports_checked"]
+    assert row["cap_dataset_url"] is None and "lineage" in row["error"]
 
 
 def test_a_matched_export_in_the_legacy_layout_is_refused(tree):
