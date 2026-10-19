@@ -99,12 +99,16 @@ def test_has_validation_methods():
 # object_kind (#770): required, keyword-only, two values, carried and not acted on
 
 
-def test_object_kind_is_required():
-    """Omitting object_kind is Python's own missing-argument error, not a silent default."""
-    with pytest.raises(TypeError, match="object_kind"):
-        HCAValidator()  # type: ignore[call-arg]
-    with pytest.raises(TypeError, match="object_kind"):
-        HCAValidator(ignore_labels=True)  # type: ignore[call-arg]
+@pytest.mark.parametrize(
+    "kwargs", [{}, {"ignore_labels": True}, {"object_kind": None}], ids=["bare", "ignore_labels", "none"]
+)
+def test_object_kind_is_required_and_the_error_says_what_to_pass(kwargs):
+    """Leaving object_kind out is an error naming both kinds, not a silent default."""
+    with pytest.raises(TypeError) as excinfo:
+        HCAValidator(**kwargs)
+    message = str(excinfo.value)
+    assert 'object_kind="source"' in message and "source dataset" in message
+    assert 'object_kind="integrated"' in message and "integrated object" in message
 
 
 def test_object_kind_is_keyword_only():
@@ -125,15 +129,16 @@ def test_object_kinds_constant_is_exactly_the_two():
     assert OBJECT_KINDS == ("source", "integrated")
 
 
-@pytest.mark.parametrize("bad", ["unknown", "Source", "integrated-objects", "", None, 1])
+@pytest.mark.parametrize("bad", ["unknown", "Source", "integrated-objects", "source-dataset", "", 1])
 def test_object_kind_rejects_anything_else(bad):
     """No 'unknown', no case folding, no directory names: the two exact strings
-    or an error that names the value given and the two kinds allowed."""
-    with pytest.raises(ValueError, match="object_kind must be one of") as exc_info:
+    or an error that names the value given and what each of the two kinds means."""
+    with pytest.raises(ValueError, match="object_kind must be") as exc_info:
         HCAValidator(object_kind=bad)
     message = str(exc_info.value)
     assert repr(bad) in message
-    assert "'source'" in message and "'integrated'" in message
+    assert '"source"' in message and "source dataset" in message
+    assert '"integrated"' in message and "integrated object" in message
 
 
 def test_object_kind_is_read_only():
@@ -3015,7 +3020,7 @@ def test_annotation_version_verdict_does_not_depend_on_object_kind(site):
 
 
 def test_annotation_version_rejects_an_unknown_object_kind():
-    with pytest.raises(ValueError, match="object_kind must be one of"):
+    with pytest.raises(ValueError, match="object_kind must be"):
         check_gene_annotation_version(_version_adata([_TP53]), object_kind="merged")  # type: ignore[arg-type]
 
 

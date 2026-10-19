@@ -53,7 +53,10 @@ OBJECT_KINDS: tuple[str, ...] = get_args(ObjectKind)
 def _require_object_kind(object_kind) -> ObjectKind:
     """Return ``object_kind`` unchanged if it is one of :data:`OBJECT_KINDS`, else raise ``ValueError``."""
     if object_kind not in OBJECT_KINDS:
-        raise ValueError(f"object_kind must be one of {OBJECT_KINDS}, got {object_kind!r}.")
+        raise ValueError(
+            'object_kind must be "source" (the tracker lists the file as a source dataset) or '
+            f'"integrated" (an integrated object), got {object_kind!r}.'
+        )
     return object_kind
 
 
@@ -65,18 +68,26 @@ class HCAValidator(Validator):
     - organism and organism_ontology_term_id are in obs (not uns)
     """
 
-    def __init__(self, ignore_labels=True, *, object_kind: ObjectKind):
+    def __init__(self, ignore_labels=True, *, object_kind: ObjectKind | None = None):
         """
         Initialize HCA validator.
 
         Args:
             ignore_labels: If True, skip label validation
             object_kind: ``"source"`` or ``"integrated"``; see :data:`ObjectKind`.
-                Required and keyword-only.
+                Required and keyword-only. The None default only lets a call
+                that leaves it out get an error saying what to pass; None
+                itself is not accepted.
 
         Raises:
-            ValueError: when ``object_kind`` is neither of the two kinds.
+            TypeError: when ``object_kind`` is left out or None.
+            ValueError: when ``object_kind`` is any other value than the two kinds.
         """
+        if object_kind is None:
+            raise TypeError(
+                'HCAValidator needs object_kind: pass object_kind="source" if the tracker lists the file as a '
+                'source dataset, or object_kind="integrated" if it lists it as an integrated object.'
+            )
         self._object_kind: ObjectKind = _require_object_kind(object_kind)
         super().__init__(ignore_labels=ignore_labels)
         # Initialize all validator state so the exception handler in
