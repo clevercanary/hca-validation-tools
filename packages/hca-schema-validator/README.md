@@ -86,6 +86,23 @@ them. The rules the gene ID checks are built against are in the
   `layers['desouped_counts']`
 - **`obsm`**: cell embeddings, such as UMAP coordinates
 
+### Source datasets and integrated objects
+
+`HCAValidator` must be told what kind of file it is checking, with
+`object_kind`:
+
+- **`"source"`**: the HCA Atlas Tracker lists the file as a source dataset, one
+  study built with one gene annotation.
+- **`"integrated"`**: the tracker lists the file as an integrated object, which
+  combines cells from several source datasets.
+
+The validator never guesses the kind from the file path. Leaving `object_kind`
+out, or passing any other value, raises an error that names the two choices.
+
+The kind changes one thing: the closing sentence on a declared-release finding
+([Declared gene annotation](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/README.md#declared-gene-annotation)). It never changes
+which findings appear.
+
 ## Core CELLxGENE checks
 
 CELLxGENE is CZI's single-cell data portal, and the CELLxGENE schema defines
@@ -251,6 +268,11 @@ HCA replaces some CELLxGENE rules with its own.
   has errors. HCA runs them anyway, as long as `obs` has
   `assay_ontology_term_id` and the assay needs raw counts (ATAC-seq and
   methylation assays are exempt), so one pass shows more problems.
+- **Missing or malformed assay and organism values.** A missing or malformed
+  value in `assay_ontology_term_id` or `organism_ontology_term_id` is reported
+  by the `obs` column checks, and the rest of validation still runs. (Before
+  this was fixed, such a value stopped validation with a crash.) The organism
+  used in gene ID warnings is the first valid NCBI Taxonomy term in the column.
 - **Extra `obs` columns.** Curators often add columns of their own, such as an
   original cell type. Columns that are not in the schema skip the per-column
   type and value checks, so warnings about columns the schema says nothing about
@@ -310,14 +332,6 @@ What is checked, in this order. The first problem found is the one reported.
    | Whole, only below `raw.X` | Ambient RNA was removed, and `layers['desouped_counts']` is missing |
    | Whole, both above and below | `X` came from a different matrix. Ambient RNA removal also shows, but `raw.X` is not what it was removed from. |
 
-   Recovering counts needs each cell's scale factor, which the validator reads
-   from `X` alone: a cell's smallest non-zero value is its scale times a count
-   of 1, and nearly every cell has a gene with a count of 1. Cells with fewer
-   than 30 genes are skipped, because ambient RNA removal can take all of their
-   count-1 genes. On about half a million cells with known answers, this
-   estimate was exact every time, and it raised no false finding on 2.2 million
-   correctly normalized cells.
-
 9. **`X` was log-transformed but never normalized per cell.** Each cell's
    recovered total is just its own read depth.
 
@@ -332,6 +346,19 @@ Notes:
   exempt yet, and HCA does not accept them today.
 - `desouped_counts` is not yet checked as counts in its own right (data type,
   whole numbers).
+
+#### How counts are recovered from `X`
+
+Checks 8 and 9 undo the normalization in `X` to recover each cell's counts.
+That needs each cell's scale factor, which the validator reads from `X` alone:
+
+- A cell's smallest non-zero value in `X` is its scale times a count of 1, and
+  nearly every cell has a gene with a count of 1.
+- Cells with fewer than 30 genes are skipped, because ambient RNA removal can
+  take all of their count-1 genes.
+- On about half a million cells with known answers, this estimate was exact
+  every time, and it raised no false finding on 2.2 million correctly
+  normalized cells.
 
 ### Cell metadata labels
 
@@ -414,7 +441,7 @@ Two comparisons:
 | Newer than the gene table | Not checked. The message says so, and is the cue to regenerate the table. |
 | An assembly accession (`GCF_000001405.40`) | Names a genome, not a gene annotation, and is reported as such |
 | Unreadable | No message. The schema's format rule reports it. |
-| Nothing declared (no column, or only missing values such as `nan` or `unknown`) | The genes are still matched. Where they fit a range of releases, one warning says so: `obs['gene_annotation_version'] is not declared. This file's gene set is consistent with r105 to r110.` Where they fit no release, or the file has no human Ensembl gene IDs, one line says the version cannot be inferred. |
+| Nothing declared | The genes are still matched ([When no version is declared](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/README.md#when-no-version-is-declared)) |
 
 - Only human Ensembl gene IDs (`ENSG` followed by digits, with or without a
   version suffix such as `.18`) are matched. Gorilla
@@ -430,6 +457,21 @@ Two comparisons:
   range can only come out wider than the truth. A declared release outside the
   range is still certainly wrong; what is weaker is pinning down the exact
   release.
+
+#### When no version is declared
+
+A file with no `obs['gene_annotation_version']` column, or only missing values
+such as `nan` or `unknown`, still has its genes matched against each release.
+Every finding about the gene list itself still appears, plus one warning about
+the missing version:
+
+- Where the genes fit a range of releases, the warning names it:
+  `obs['gene_annotation_version'] is not declared. This file's gene set is
+  consistent with r105 to r110.`
+- Where no release fits the genes, the warning says the version cannot be
+  inferred.
+- Where `obs` says the cells are human but the file has no human Ensembl gene
+  IDs, the warning says there are none to infer the version from.
 
 ### Gene IDs outside the allowed gene set
 
