@@ -349,14 +349,16 @@ Notes:
 
 #### How counts are recovered from `X`
 
-Checks 8 and 9 undo the normalization in `X` to recover each cell's counts.
-That needs each cell's scale factor, which the validator reads from `X` alone:
+When `X` does not match `raw.X` (check 8), the validator recovers each cell's
+counts to say why. That needs each cell's scale factor, which the validator
+reads from `X` alone:
 
 - `X` holds `log1p(scale × count)`, so the validator first undoes the log
   transform with `expm1`. After that, a cell's smallest non-zero value is its
   scale times a count of 1, and nearly every cell has a gene with a count of 1.
-- Cells with fewer than 30 genes are skipped, because ambient RNA removal can
-  take all of their count-1 genes.
+- Cells with fewer than 30 genes are left out of this explanation, because
+  ambient RNA removal can take all of their count-1 genes. The comparison
+  itself, and check 9, still cover those cells.
 - On about half a million cells with known answers, this estimate was exact
   every time, and it raised no false finding on 2.2 million correctly
   normalized cells.
@@ -411,7 +413,9 @@ Two comparisons:
    Values that name no assembly are skipped.
 2. **Declared release against the genes.** For each Ensembl release, the
    validator counts the file's genes that release does not have. The releases
-   that have every gene are the file's compatible releases.
+   that have every gene are the file's compatible releases. Human IDs the gene
+   table has never seen are left out of this range and named in a warning of
+   their own.
    - Both ends matter. Genes are removed as well as added, so a declared release
      can be too late as well as too early. For example, `ENSG00000130723` exists
      from release 76 to release 102 and then stops.
@@ -455,9 +459,11 @@ Two comparisons:
   whatever the organism column says.
 - **Limitation.** This matches a list of genes, and most files keep only the
   genes that were detected. Removing genes removes evidence, so the compatible
-  range can only come out wider than the truth. A declared release outside the
-  range is still certainly wrong; what is weaker is pinning down the exact
-  release.
+  range can only come out wider than the truth. For a source dataset, a
+  declared release outside the range is still certainly wrong; what is weaker
+  is pinning down the exact release. For an integrated object, the range covers
+  the union of its sources' genes, so a declared release outside it is not
+  wrong by itself: check it against the source dataset its cells came from.
 
 #### When no version is declared
 
