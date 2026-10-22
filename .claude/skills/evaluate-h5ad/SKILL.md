@@ -124,7 +124,7 @@ If nothing is missing, say so in a single line instead of an empty table.
 
 ### Against the source datasets
 
-Integrated objects, when `check_source_obs` ran. Lead with `cells.compared` of `cells.n_obs` cells compared across `len(sources)` source datasets, and `partition`; an `incomplete` partition gets the `unaccounted_cells` / `cells_claimed_twice` findings in one line, since those cells were not compared. When `cells.compared` is 0, say in one line that no cell matched exactly one source, so nothing was compared, and stop.
+Integrated objects, when `check_source_obs` ran. When `cells.compared` is 0, say in one line that no object cell ID matched exactly one source dataset in `source_dir`, so nothing was compared, cite a few `sample_ids` from the `unaccounted_cells` / `cells_claimed_twice` findings, and stop; do not render "across 0 source datasets", which reads as an empty directory. Otherwise lead with `cells.compared` of `cells.n_obs` cells compared across `len(sources)` source datasets, and `partition`; an `incomplete` partition gets the `unaccounted_cells` / `cells_claimed_twice` findings in one line, since those cells were not compared.
 
 When no `fields` row with `group` `"metadata"` has `differ`, `missing_in_object` or `missing_in_source` above zero, say in one line that no compared metadata field differs or is set on one side only. Otherwise, one table of those rows:
 

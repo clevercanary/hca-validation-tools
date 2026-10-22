@@ -234,7 +234,7 @@ def test_unclaimed_cells_are_not_compared(tree):
 
 def test_a_cell_two_sources_claim_is_not_compared(tree):
     tree.source("srcA", ["c1", "c2"], donor_id=["D1", "D2"])
-    tree.source("srcB", ["c2"], donor_id=["D9"])
+    tree.source("srcB", ["c2"], donor_id=["D9"], sex_ontology_term_id=["PATO:0000383"])
     target = tree.target(["c1", "c2"], donor_id=["D1", "D7"])
 
     result = _ok(check_source_obs(str(target)))
@@ -244,8 +244,22 @@ def test_a_cell_two_sources_claim_is_not_compared(tree):
     assert {s["tracker_name"]: s["cells_compared"] for s in result["sources"]} == {"srcA": 1}
     donor = _field(result, "donor_id")
     assert (donor["agree"], donor["in_sources"]) == (1, 1)  # srcB carries donor_id but holds no compared cell
+    assert "sex_ontology_term_id" in result["fields_absent"]  # only srcB carries it, and srcB is not read
     assert result["discrepancies"] == []
     assert [f["code"] for f in result["findings"]] == ["cells_claimed_twice"]
+
+
+def test_nothing_compared_when_no_cell_matches(tree):
+    tree.source("srcA", ["s1"], donor_id=["D1"])
+    target = tree.target(["o1"], donor_id=["D1"])
+
+    result = _ok(check_source_obs(str(target)))
+
+    assert result["cells"] == {"n_obs": 1, "compared": 0, "not_compared": 1}
+    assert result["sources"] == []
+    donor = _field(result, "donor_id")
+    assert all(donor[key] == 0 for key in ("agree", "differ", "missing_in_object", "missing_in_source"))
+    assert [f["code"] for f in result["findings"]] == ["unaccounted_cells"]
 
 
 def test_pairs_are_capped(tree):

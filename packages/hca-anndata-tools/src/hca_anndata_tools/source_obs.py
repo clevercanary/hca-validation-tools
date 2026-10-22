@@ -200,8 +200,8 @@ def check_source_obs(path: str) -> dict:
     Read-only; reads obs, no matrix. Each object cell is matched by ID to the
     source dataset that holds it, found as ``find_source_datasets`` finds them
     (the sibling ``source-datasets/tracker-source/`` under the tracker layout),
-    and every field the HCA schema stores in ``obs`` is compared between the two
-    rows by exact value, except ``is_primary_data``. One allowance: a whole
+    and every field the HCA schema stores in ``obs`` except ``is_primary_data``
+    is compared between the two rows by exact value. One allowance: a whole
     number stored as an int, a float or ``.0`` text compares as its integer
     text, so ``"2021.0"`` agrees with 2021 and is reported as ``"2021"``.
     Only a stored null is missing; any other text, placeholders
