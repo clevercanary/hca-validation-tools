@@ -63,7 +63,10 @@ def _canonical(values) -> np.ndarray:
         out[whole] = f[whole].astype(np.int64).astype(str)
         out[finite & ~whole] = f[finite & ~whole].astype(str)
         return out
-    text = s.where(s.notna(), "").astype(str)
+    # A whole number written as text keeps pandas' ".0" (pancreas sources carry
+    # "2021.0" where the object stores 2021.0); only that suffix is dropped, so
+    # "run01" and "01" stay distinct from "1".
+    text = s.where(s.notna(), "").astype(str).str.replace(r"^(-?\d+)\.0+$", r"\1", regex=True)
     out = text.to_numpy(dtype=object)
     blank = text.str.strip()
     out[((blank == "") | (blank.str.lower() == "nan")).to_numpy()] = None

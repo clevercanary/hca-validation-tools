@@ -136,6 +136,27 @@ def test_storage_does_not_make_a_difference(tree):
         assert _field(result, field)["agree"] == 3
 
 
+def test_whole_number_text_matches_the_number_and_leading_zeros_stay(tree):
+    ids = ["c1", "c2", "c3"]
+    tree.source(
+        "srcA",
+        ids,
+        sample_collection_year=pd.Categorical(["2021.0", "2022.0", "2022.0"]),
+        library_sequencing_run=["run01", "01", "1.0"],
+    )
+    target = tree.target(
+        ids,
+        sample_collection_year=np.array([2021.0, 2022.0, 2022.0]),
+        library_sequencing_run=["run1", "1", "1"],
+    )
+
+    result = _ok(check_source_obs(str(target)))
+
+    assert _field(result, "sample_collection_year")["agree"] == 3
+    run = _field(result, "library_sequencing_run")
+    assert (run["agree"], run["differ"]) == (1, 2)
+
+
 def test_blank_and_nan_text_are_missing_and_unknown_is_a_value(tree):
     tree.source("srcA", ["c1", "c2", "c3"], library_id=["L1", "L2", "nan"])
     target = tree.target(["c1", "c2", "c3"], library_id=["  ", "unknown", None])
