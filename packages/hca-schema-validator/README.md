@@ -28,11 +28,9 @@ pip install hca-schema-validator
 
 ### From Source (Development)
 
-Install uv by whichever method you prefer — see the
+Install uv by following the
 [official installation guide](https://docs.astral.sh/uv/getting-started/installation/).
-On macOS `brew install uv` and `pipx install uv` are both auditable alternatives
-to the piped install script. Any method works; uv's version is what matters, not
-how it got there.
+On macOS, `brew install uv` also works.
 
 ```bash
 # Clone the repository
@@ -51,29 +49,29 @@ uv run pytest tests/
 ```python
 from hca_schema_validator import HCAValidator
 
-# Create validator instance. object_kind is required: say whether the tracker
-# lists the file as a source dataset ("source") or an integrated object
-# ("integrated"). The library never infers it from the path.
+# object_kind is required: "source" for a source dataset (one study), or
+# "integrated" for an integrated object (cells combined from several datasets).
 validator = HCAValidator(object_kind="source")
 
-# Validate an h5ad file
+# Validate an h5ad file. The result is False when there are errors.
 is_valid = validator.validate_adata("path/to/file.h5ad")
 
-# Check results
-if is_valid:
-    print("✅ Validation passed!")
-else:
-    print("❌ Validation failed:")
-    for error in validator.errors:
-        print(f"  - {error}")
+print("✅ No errors" if is_valid else "❌ Errors:")
+for error in validator.errors:
+    print(f"  - {error}")
+
+# A file with no errors can still have warnings to review or fix,
+# including the gene ID report.
+for warning in validator.warnings:
+    print(f"  ! {warning}")
 ```
 
 ## What this validator checks
 
 The HCA overrides and HCA extensions are listed with the reason for each. The
 core CELLxGENE checks are CELLxGENE's own rules, listed as CELLxGENE states
-them. The rules the gene ID checks are built against are in the
-[gene ID contract](https://github.com/clevercanary/hca-validation-tools/blob/main/docs/gene-id-contract.md).
+them. The detailed rules behind the gene ID checks are in
+[docs/gene-id-contract.md](https://github.com/clevercanary/hca-validation-tools/blob/main/docs/gene-id-contract.md).
 
 ### Parts of an h5ad file
 
@@ -83,37 +81,69 @@ them. The rules the gene ID checks are built against are in the
 - **`X`**: the normalized expression matrix
 - **`raw.X`**: the raw count matrix
 - **`layers`**: extra matrices stored alongside `X`, such as
-  `layers['desouped_counts']`
+  `layers['desouped_counts']`, the counts left after ambient RNA removal.
+  Ambient RNA is RNA from broken cells floating in the sample, which gets
+  counted in every droplet.
 - **`obsm`**: cell embeddings, such as UMAP coordinates
+
+### Genes and gene annotations
+
+- **Gene annotation**: the list of genes, with their IDs and positions on the
+  genome, that sequencing reads were counted against when the file was made.
+- **Ensembl**: the public genome annotation database run by EMBL-EBI (the
+  European Bioinformatics Institute). Ensembl gives every gene a stable ID, such
+  as `ENSG00000141510`, and publishes a numbered release a few times a year.
+  Between releases, genes can be renamed, merged, split or removed, so an ID
+  that was valid when a file was made can later be outdated. Validator messages
+  write release 114 as `r114`.
+- **GENCODE**: the human gene annotation that Ensembl publishes, under GENCODE's
+  own version numbers. GENCODE v48 is Ensembl release 114.
+- **Genome assembly**: one version of the reference genome sequence, such as
+  GRCh38 (the current human assembly) or the older GRCh37. Gene positions are
+  given on an assembly.
+- **Primary assembly**: the main human genome sequence (GRCh38), made up of the
+  chromosomes plus short scaffolds whose chromosome or position is not yet
+  known. **Alternate and patch sequences**, which describe variant versions of
+  some regions, are not part of the primary assembly.
+- **Gene tables**: two tables built from Ensembl that ship with this package.
+  The **gene history table** records what happened to each gene ID across
+  releases. The **gene release table** records which releases each gene ID
+  appears in. Both cover Ensembl releases 76 to 116.
 
 ### Source datasets and integrated objects
 
 `HCAValidator` must be told what kind of file it is checking, with
 `object_kind`:
 
-- **`"source"`**: the HCA Atlas Tracker lists the file as a source dataset, one
-  study built with one gene annotation.
-- **`"integrated"`**: the tracker lists the file as an integrated object, which
-  combines cells from several source datasets.
+- **`"source"`**: a source dataset, one study built with one gene annotation.
+- **`"integrated"`**: an integrated object, which combines cells from several
+  source datasets.
+
+For files registered in the HCA Atlas Tracker (the HCA's record of each atlas
+and its files), use the kind the tracker lists the file under.
 
 The validator never guesses the kind from the file path. Leaving `object_kind`
 out, or passing any other value, raises an error that names the two choices.
 
-The kind changes one thing: the closing sentence on a declared-release finding
-([Declared gene annotation](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/README.md#declared-gene-annotation)). It never changes
-which findings appear.
+The kind changes only the last sentence of some warnings about the declared
+gene annotation ([Declared gene annotation](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/README.md#declared-gene-annotation)).
+It never changes which problems are reported.
 
 ## Core CELLxGENE checks
 
 CELLxGENE is CZI's single-cell data portal, and the CELLxGENE schema defines
 what the portal accepts. The CELLxGENE validator runs every check in this
 section. CELLxGENE's reasoning for these rules is in the
-[CELLxGENE schema 7.0.0](https://github.com/chanzuckerberg/single-cell-curation/blob/main/schema/7.0.0/schema.md). Groups marked *HCA override* behave differently for HCA files, as
-described in [HCA overrides](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/README.md#hca-overrides).
+[CELLxGENE schema 7.0.0](https://github.com/chanzuckerberg/single-cell-curation/blob/main/schema/7.0.0/schema.md),
+the schema version that `cellxgene-schema` 7.0.1 checks. Where HCA changes a
+group, a note under its heading says what changes;
+[HCA overrides](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/README.md#hca-overrides) gives the reasons.
 
 ### File structure
 
-*[HCA override](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/README.md#hca-overrides)*
+*[HCA override](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/README.md#hca-overrides): `obs['organism_ontology_term_id']` is
+required rather than rejected as deprecated, and reserved and label columns
+are allowed.*
 
 - Column names in `obs`, `var` and `raw.var` are unique.
 - No column name starts with `__`, which is reserved.
@@ -122,10 +152,13 @@ described in [HCA overrides](https://github.com/clevercanary/hca-validation-tool
 
 ### Cell metadata (`obs`)
 
-*[HCA override](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/README.md#hca-overrides)*
+*[HCA override](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/README.md#hca-overrides): HCA's own schema decides which columns
+are required, and columns outside the schema skip the type and value checks.*
 
 - `obs` exists, and every cell ID is unique.
-- Every required column is present.
+- Every required column is present (the
+  [HCA schema](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/src/hca_schema_validator/schema_definitions/hca_schema_definition.yaml)
+  lists them).
 - Category columns are stored as categories, and true/false columns as
   booleans. A category column holds one kind of value and no empty strings.
   Unused categories are a warning.
@@ -144,13 +177,16 @@ some columns must sit below a given parent term. Every problem here is an error.
 - **Tissue**: UBERON (the Uber-anatomy Ontology), or the organism's equivalent.
 - **Assay**: EFO (the Experimental Factor Ontology).
 - **Disease**: MONDO (the Mondo Disease Ontology).
-- **Development stage**: HsapDv for human, MmusDv for mouse.
+- **Development stage**: HsapDv (Human Developmental Stages) for human, MmusDv
+  (Mouse Developmental Stages) for mouse.
 - **Sex**: PATO (the Phenotype And Trait Ontology).
-- **Organism**: an allowed term from the NCBI Taxonomy.
+- **Organism**: an allowed term from the NCBI Taxonomy, the organism list of
+  the US National Center for Biotechnology Information.
 
 ### Genes (`var`, `raw.var`)
 
-*[HCA override](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/README.md#hca-overrides)*
+*[HCA override](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/README.md#hca-overrides): gene ID warnings name the gene set
+version, and human Ensembl gene IDs are listed in one gene ID report instead.*
 
 - `var` exists, and every gene ID is unique.
 - No column mixes value types.
@@ -165,7 +201,7 @@ some columns must sit below a given parent term. Every problem here is an error.
 
 ### File metadata (`uns`)
 
-*[HCA override](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/README.md#hca-overrides)*
+*[HCA override](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/README.md#hca-overrides): `uns['study_pi']` is required.*
 
 - `uns` exists.
 - `title` is not empty and has no leading, trailing or double spaces.
@@ -179,7 +215,8 @@ some columns must sit below a given parent term. Every problem here is an error.
 
 ### Matrices (`X`, `raw.X`, `layers`)
 
-*[HCA override](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/README.md#hca-overrides)*
+*[HCA override](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/README.md#hca-overrides): the raw count checks run even when
+the file has other errors.*
 
 - Non-zero values in the raw matrix (`raw.X`, or `X` when there is no
   `raw.X`) are 32-bit floats.
@@ -188,8 +225,9 @@ some columns must sit below a given parent term. Every problem here is an error.
 - Non-zero raw counts are whole positive numbers.
 - Every cell has at least one raw count. Visium spots outside the tissue follow
   a separate rule.
-- RNA-seq files have a raw matrix. A file with only a raw matrix and no
-  normalized `X` gets a warning.
+- RNA-seq files have a raw matrix. If `X` holds raw counts and there is no
+  `raw.X`, the file gets a warning that normalized data is strongly
+  recommended.
 - A gene marked filtered (`feature_is_filtered`) is all zeros in `X`. A gene
   that is all zeros in `X` is either marked filtered or all zeros in `raw.X` too.
 - `X` and `raw.X` hold the same cells and genes, in the same order.
@@ -198,10 +236,10 @@ some columns must sit below a given parent term. Every problem here is an error.
 
 - Every file has at least one embedding, and files from non-spatial assays have
   at least one named `X_…`.
-- An embedding named `X_…` has a suffix that starts with a letter and uses
-  only letters, digits, `_`, `.` and `-`: `X_umap` is accepted, `X_1` and
-  `X__umap` are not. `X_spatial` is not allowed. Any other name follows the
-  same pattern as a whole.
+- Embedding names start with a letter and use only letters, digits, `_`, `.`
+  and `-`. For a name starting with `X_`, the rule applies to the part after
+  `X_`: `X_umap` is accepted, `X_1` and `X__umap` are not.
+- `X_spatial` cannot be used. Spatial coordinates go in `spatial`.
 - An embedding not named `X_…` or `spatial` gets a warning, because the
   CELLxGENE Explorer will not show it.
 - Every embedding is a numeric array with one row per cell, at least two
@@ -215,8 +253,8 @@ some columns must sit below a given parent term. Every problem here is an error.
 
 - Spatial metadata is allowed only for Visium (a specific Visium assay term, not
   the general one) and Slide-seqV2, with one assay per file.
-- `uns['spatial']` holds an `is_single` true/false flag, and exactly one
-  library when one applies.
+- `uns['spatial']` holds an `is_single` true/false flag, plus at most one
+  library entry, which holds the section's images and scale factors.
 - For a single-section Visium file:
   - the high-resolution image is required: 8-bit, height × width × 3 or 4, with
     a longest side of 2,000 pixels (4,000 for the 11 mm slide)
@@ -238,8 +276,9 @@ some columns must sit below a given parent term. Every problem here is an error.
 
 HCA replaces some CELLxGENE rules with its own.
 
-- **Schema.** HCA uses its own schema (`hca_schema_definition.yaml`) in place of
-  the CELLxGENE schema:
+- **Schema.** HCA uses its own schema
+  ([`hca_schema_definition.yaml`](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/src/hca_schema_validator/schema_definitions/hca_schema_definition.yaml))
+  in place of the CELLxGENE schema:
   - Organism is recorded per cell, in `obs['organism_ontology_term_id']`.
     CELLxGENE expects organism once, in `uns`, and rejects the `obs` column as
     deprecated.
@@ -249,8 +288,10 @@ HCA replaces some CELLxGENE rules with its own.
     - **required** (the default): an error when missing
     - **optional**: checked only when present
     - **strongly recommended**: a warning when the column is absent or has
-      missing values, and an error for a value holding a list separator such as
-      `,` or `;`, or a placeholder
+      missing values. A value that packs several values into one, separated by
+      `,`, `;` or `|`, is an error. For some fields, a placeholder value such as
+      `unknown`, `na` or `tbd` is also an error: leave the value missing
+      instead.
     - **forbidden**: an error when present. Self-reported ethnicity is
       forbidden, because HCA does not collect it, to protect donor privacy.
   - Some fields must match a set format, and list fields must hold non-empty
@@ -263,8 +304,8 @@ HCA replaces some CELLxGENE rules with its own.
   ([Cell metadata labels](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/README.md#cell-metadata-labels)).
 - **Gene ID warnings.** Each `Feature ID '…' not found` warning names the gene
   set version, for example "not found in GENCODE v48 (Ensembl 114)", and these
-  warnings are listed after all other warnings. Human IDs among them are grouped
-  into one report
+  warnings are listed after all other warnings. Human Ensembl gene IDs do not
+  get this warning. They are listed in one gene ID report instead
   ([Gene IDs outside the allowed gene set](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/README.md#gene-ids-outside-the-allowed-gene-set)).
 - **Raw count checks.** CELLxGENE skips the raw count checks when a file already
   has errors. HCA runs them anyway, as long as `obs` has
@@ -272,8 +313,7 @@ HCA replaces some CELLxGENE rules with its own.
   methylation assays are exempt), so one pass shows more problems.
 - **Missing or malformed assay and organism values.** A missing or malformed
   value in `assay_ontology_term_id` or `organism_ontology_term_id` is reported
-  by the `obs` column checks, and the rest of validation still runs. (Before
-  this was fixed, such a value stopped validation with a crash.) The organism
+  by the `obs` column checks, and the rest of validation still runs. The organism
   used in gene ID warnings is the first valid NCBI Taxonomy term in the column.
 - **Extra `obs` columns.** Curators often add columns of their own, such as an
   original cell type. Columns that are not in the schema skip the per-column
@@ -302,7 +342,9 @@ Why these three:
   go out of date when the file is edited.
 - `desouped_counts` is required whenever ambient RNA was removed, because that
   step has settings and is often random, so it cannot be repeated exactly.
-  Without the layer, nobody can check how `X` was made.
+  Without the layer, nobody can check how `X` was made. The validator looks for
+  this exact name, whichever tool removed the ambient RNA (SoupX, CellBender,
+  DecontX or another).
 - The total each cell is normalized to is not fixed. The checks compare each
   cell's profile, where the total cancels out, so any target works.
 
@@ -321,31 +363,31 @@ What is checked, in this order. The first problem found is the one reported.
    as clean.
 6. **`layers['desouped_counts']` is larger than `raw.X` somewhere.** The layer
    is not a corrected version of `raw.X`.
-7. **No sampled cell could be compared.** The checks below could not run, and
-   passing in that case would look the same as passing a clean file.
-8. **`X` does not match its source.** When the source is `raw.X`, the counts
-   recovered from `X` show why. A pipeline can remove counts but never invent
-   them:
+7. **None of the first 200 cells could be compared.** For example, those
+   cells are empty in `X`. The checks below could not run, and passing in that
+   case would look the same as passing a clean file. Confirm `X` was not partly
+   emptied or overwritten.
+8. **`X` does not match its source.** When the source is `raw.X`, the validator
+   recovers each cell's counts from `X` to show why. A pipeline can remove
+   counts but never invent them:
 
-   | Recovered counts | Meaning |
-   |---|---|
-   | Not whole numbers | `X` is not a normalization of any count matrix |
-   | Whole, only above `raw.X` | `X` came from a different matrix |
-   | Whole, only below `raw.X` | Ambient RNA was removed, and `layers['desouped_counts']` is missing |
-   | Whole, both above and below | `X` came from a different matrix. Ambient RNA removal also shows, but `raw.X` is not what it was removed from. |
+   | Counts recovered from `X` | Meaning | What to do |
+   |---|---|---|
+   | Not whole numbers | `X` is not a normalization of any count matrix | Rebuild `X` by normalizing and log-transforming `raw.X` |
+   | Whole numbers, some higher than `raw.X` and none lower | `X` was made from a different matrix | Rebuild `X` from `raw.X`, or replace `raw.X` with the raw counts `X` was made from |
+   | Whole numbers, some lower than `raw.X` and none higher | Ambient RNA was removed, and `layers['desouped_counts']` is missing | Add the counts left after ambient RNA removal as `layers['desouped_counts']` |
+   | Whole numbers, some higher and some lower | `X` was made from a different matrix, after ambient RNA was removed from something other than `raw.X` | Find the raw counts the ambient RNA removal started from: store them as `raw.X` and its output as `layers['desouped_counts']` |
 
 9. **`X` was log-transformed but never normalized per cell.** Each cell's
    recovered total is just its own read depth.
 
 Notes:
 
-- A file with raw counts in `X` and no `raw.X` is not rejected for the missing
-  matrix. The CELLxGENE rules give a warning that normalized data is strongly
-  recommended, and none of the checks in this section run.
+- None of the checks in this section run when there is no `raw.X`.
 - Checks 1 to 4 scan the whole matrices. Checks 5 to 9 use the first 200 cells,
   because each cell is checked on its own.
-- These checks run for every assay. ATAC-seq and methylation assays are not
-  exempt yet, and HCA does not accept them today.
+- Unlike the raw count checks, these checks run for every assay, including
+  ATAC-seq and methylation. HCA does not accept those assays yet.
 - `desouped_counts` is not yet checked as counts in its own right (data type,
   whole numbers).
 
@@ -382,16 +424,17 @@ Each row in `obs` is otherwise checked on its own, so one donor recorded with
 two different sexes would pass. That usually means two people were mixed up, or
 a data entry error.
 
-Cells are grouped by `donor_id` alone, because one donor can appear in several
-datasets of an integrated atlas.
+Cells with the same `donor_id` are treated as one person, even when they come
+from different source datasets in an integrated object. A `donor_id` must name
+the same person everywhere in the file.
 
 | Column | Two or more different values | One value plus an unknown |
 |---|---|---|
 | Organism, sex, manner of death | Error | Warning: the unknown can be filled in |
 | Development stage, disease | Warning, because these can legitimately differ, for example over time or between a tumor and nearby tissue | Warning: the unknown can be filled in |
 
-- `unknown`, `na` and empty values count as unknown. `not applicable` counts as
-  a real value. Missing values are ignored.
+- `unknown`, `na` and empty strings count as unknown. `not applicable` counts
+  as a real value. Missing values (NaN) are ignored.
 - Donors named `pooled`, `unknown`, `na` or empty are skipped, because none of
   those names one person.
 - Each message names at most 10 donors, with up to 5 values each.
@@ -400,24 +443,34 @@ datasets of an integrated atlas.
 ### Declared gene annotation
 
 `obs['gene_annotation_version']` records the gene annotation a dataset was built
-with, and nothing used to check it. In one HCA atlas, six of seven source
-datasets declared a release their own genes rule out.
+with. Write `v` followed by the Ensembl release number, such as `v114`. The
+schema also accepts a GENCODE number, but every GENCODE number so far is below
+76 and reads the same as an old Ensembl release, so the genes cannot be checked
+against it. If you only know the GENCODE version, look up its Ensembl release:
+GENCODE v48 is Ensembl 114, for example.
 
-Every finding here is a warning. The producer has to correct the value, and some
-values, such as assembly accession numbers (`GCF_000001405.40`), are allowed by
-the schema.
+The validator checks that the declared version fits the genes in the file. This
+matters in practice: in one HCA atlas, six of seven source datasets declared a
+release their own genes rule out.
+
+Every finding here is a warning. Only the data producer (the lab or team that
+made the file) can correct the value, and some values the schema allows, such
+as assembly accession numbers (`GCF_000001405.40`), cannot be checked against
+the genes.
 
 Two comparisons:
 
-1. **Declared assembly against `obs['reference_genome']`.** Each distinct pair
-   of values is compared, because an integrated atlas can legitimately hold cells
-   aligned to different assemblies. The message names the cells that disagree.
-   Values that name no assembly are skipped.
+1. **Declared assembly against `obs['reference_genome']`.** For each
+   combination of `gene_annotation_version` and `reference_genome` found in the
+   cells, the validator checks that both name the same genome assembly, such as
+   GRCh38. An integrated atlas can hold cells aligned to different assemblies,
+   so each combination is checked on its own. The message names the cells that
+   disagree. A combination where either value names no assembly is skipped.
 2. **Declared release against the genes.** For each Ensembl release, the
    validator counts the file's genes that release does not have. The releases
    that have every gene are the file's compatible releases. Human IDs the gene
-   table has never seen are left out of this range and named in a warning of
-   their own.
+   release table has never seen are left out of this range and named in a
+   warning of their own.
    - Both ends matter. Genes are removed as well as added, so a declared release
      can be too late as well as too early. For example, `ENSG00000130723` exists
      from release 76 to release 102 and then stops.
@@ -426,8 +479,8 @@ Two comparisons:
    - The genes that rule out the declared release are split into those added
      after it and those removed before it, since the two say opposite things
      about the declaration.
-   - When a run reaches release 76 or 116, that end is where the gene table
-     stops, not something the genes show.
+   - The gene release table covers releases 76 to 116 only, so a run that ends
+     at 76 or 116 may really extend further.
    - A finding that the genes rule out the declared release, or that no single
      release fits them, ends with one sentence that depends on the
      `object_kind` the validator was given:
@@ -438,23 +491,19 @@ Two comparisons:
        each declared value must match the source dataset its cells came from,
        and no single release is expected to fit the whole union
 
-     `object_kind` changes only that sentence, never which findings appear.
-
 | Declared value | What happens |
 |---|---|
 | Ensembl release 76 or later (`v98`) | Matched against the file's genes |
 | A number below 76 (`v32`) | Ambiguous: Ensembl release 32 or GENCODE 32. No assembly is assumed. |
 | A number GENCODE has not reached, below 76 | Only Ensembl issued it (currently 51 to 75). Releases 55 to 75 are GRCh37, and 51 to 54 are the older NCBI36. |
-| Newer than the gene table | Not checked. The message says so, and is the cue to regenerate the table. |
+| Newer than release 116 | Not checked, because the gene release table stops at release 116. The message says so. A newer version of this package may cover it. |
 | An assembly accession (`GCF_000001405.40`) | Names a genome, not a gene annotation, and is reported as such |
 | Unreadable | No message. The schema's format rule reports it. |
 | Nothing declared | The genes are still matched ([When no version is declared](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/README.md#when-no-version-is-declared)) |
 
 - Only human Ensembl gene IDs (`ENSG` followed by digits, with or without a
-  version suffix such as `.18`) are matched. Gorilla
-  IDs start with `ENSGGOG` and would pass a looser test. Spike-ins, other
-  species and custom genes are left out, and their count is mentioned next to
-  most findings.
+  version suffix such as `.18`) are matched. Spike-ins, other species and
+  custom genes are left out, and their count is mentioned next to most findings.
 - The declared organism only controls the assembly comparison, because Ensembl
   numbers its releases across all species: release 110 means GRCh38 only for a
   human file. Release matching still runs, because an `ENSG` ID is a human gene
@@ -487,7 +536,7 @@ the missing version:
 The **allowed gene set** is the list of human gene IDs a file is checked
 against: **GENCODE v48 (Ensembl release 114), primary assembly only**, meaning
 every gene on the chromosomes and on the unplaced and unlocalized scaffolds,
-**minus the genes on alternate (alt) and patch contigs**. The allowed gene set
+**minus the genes on alternate (alt) and patch sequences**. The allowed gene set
 is CELLxGENE's own, copied from `cellxgene-schema`.
 
 A gene ID missing from the allowed gene set is a **warning** in this validator
@@ -497,20 +546,6 @@ same sentence for every cause. One integrated HCA atlas produced 1,482 of these
 warnings, for 741 distinct IDs. HCA groups them by what happened to each gene,
 so the pile becomes a handful of decisions.
 
-#### Background
-
-- **Ensembl**: the public genome annotation database run by EMBL-EBI (the
-  European Bioinformatics Institute). Ensembl gives every gene a stable ID, such
-  as `ENSG00000141510`, and publishes a numbered release a few times a year.
-  Between releases, genes can be renamed, merged, split or removed, so an ID
-  that was valid when a file was made can later be outdated.
-- **GENCODE**: the human gene annotation that Ensembl publishes, under GENCODE's
-  own version numbers. GENCODE v48 is Ensembl release 114.
-- **Primary assembly**: the main human genome sequence (GRCh38), made up of the
-  chromosomes plus short scaffolds whose chromosome or position is not yet
-  known. Alternate and patch sequences, which describe variant versions of some
-  regions, are not part of the primary assembly.
-
 #### Why alt and patch genes are left out
 
 - At Ensembl release 114, Ensembl lists 86,364 human genes and the allowed gene
@@ -518,7 +553,8 @@ so the pile becomes a handful of decisions.
   patch sequence.
 - Aligners count reads against the primary assembly for the same reason. If a
   region and its alternate copy were both included, reads would map to both. A
-  gene annotated only on a patch is real in Ensembl, but cannot be a column name.
+  gene annotated only on a patch is real in Ensembl, but a pipeline that aligns
+  to the primary assembly never counts it.
 - A file carrying many patch genes was aligned against a reference genome that
   includes patch sequences. Almost no pipeline does that, and the file's counts
   are hard to compare with other files. A few HCA files carry thousands of these
@@ -553,6 +589,10 @@ Details:
   ENSG00000224247    retired; no successor  [drop]
 ```
 
+- **Successor**: the ID Ensembl replaced the old ID with. In `Summary:`,
+  *replaced* covers both a rename and a merge; `Details:` says which.
+- **Shared**: two or more IDs in the file lead to the same successor.
+- **Feature**: a row of `var`, usually a gene.
 - Each ID is listed once, even when the ID appears in both `var` and `raw.var`.
 - An ID in `Details:` does not also get a `Feature ID '…' not found` warning.
   The Details line carries the same fact, plus what happened to the gene.
@@ -575,8 +615,8 @@ Details:
 | `[drop]` | The gene was removed with no replacement; or the replacement was itself removed later; or the replacement is not in the allowed gene set; or the gene is on a patch or alternate sequence | Remove the gene. There is no replacement in the allowed gene set to move its counts to. |
 | `[drop or re-align]` | Ensembl split the gene into several genes | Remove the gene, or re-run alignment against a newer annotation to get counts for the new genes. |
 | `[strip suffix]` | The ID has a version suffix, such as `.17` | Remove the suffix, then check the ID's Details line: removing the suffix alone may not make the ID valid. |
-| `[none]` | The gene is newer than the allowed gene set | Nothing. The file is correct. |
-| `[ask]` | The gene history shipped with this package (Ensembl releases 76 to 116) has no record of the ID, for example because the gene was removed before release 76 | Ask the data producer which gene annotation the file was built with. |
+| `[none]` | The gene is newer than the allowed gene set | Nothing to fix for HCA. CELLxGENE will reject the ID until it moves to a newer gene set. |
+| `[ask]` | The gene history table (Ensembl releases 76 to 116) has no record of the ID, for example because the gene was removed before release 76 | Ask the data producer which gene annotation the file was built with. |
 
 **Why `[review]` is not a mechanical fix.** Renaming would leave two columns
 with one name. Where a study was aligned against an annotation that treated the
@@ -609,11 +649,11 @@ so their versions can differ.
 | Data | Version | Used for |
 |---|---|---|
 | Allowed gene set | GENCODE v48 (Ensembl release 114) | Whether an ID is valid |
-| Gene history ([gene ID event table](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/DEVELOPMENT.md#gene-id-event-table)) | Ensembl releases 76 to 116 | What happened to a retired ID |
-| Gene presence by release ([gene release interval table](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/DEVELOPMENT.md#gene-release-interval-table)) | Ensembl releases 76 to 116 | Matching the declared gene annotation, and telling genes on patch or alternate sequences apart from genes newer than the allowed gene set |
+| Gene history table ([how it is built](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/DEVELOPMENT.md#gene-id-event-table)) | Ensembl releases 76 to 116 | What happened to a retired ID |
+| Gene release table ([how it is built](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/DEVELOPMENT.md#gene-release-interval-table)) | Ensembl releases 76 to 116 | Matching the declared gene annotation, and telling genes on patch or alternate sequences apart from genes newer than the allowed gene set |
 
 A gene Ensembl added after the allowed gene set was made appears in the gene
-presence table but not in the allowed gene set, and gets the `[none]` tag.
+release table but not in the allowed gene set, and gets the `[none]` tag.
 
 <!-- Maintainers: these versions are typed by hand, here and elsewhere in this
 README (search for "v48", "114", "116" and "7.0.1", including the example
