@@ -229,6 +229,21 @@ def test_unclaimed_cells_are_not_compared(tree):
     assert [f["code"] for f in result["findings"]] == ["unaccounted_cells"]
 
 
+def test_a_cell_two_sources_claim_is_not_compared(tree):
+    tree.source("srcA", ["c1", "c2"], donor_id=["D1", "D2"])
+    tree.source("srcB", ["c2"], donor_id=["D9"])
+    target = tree.target(["c1", "c2"], donor_id=["D1", "D7"])
+
+    result = _ok(check_source_obs(str(target)))
+
+    assert result["partition"] == "incomplete"
+    assert result["cells"] == {"n_obs": 2, "compared": 1, "not_compared": 1}
+    assert {s["tracker_name"]: s["cells_compared"] for s in result["sources"]} == {"srcA": 1}
+    assert _field(result, "donor_id")["agree"] == 1
+    assert result["discrepancies"] == []
+    assert [f["code"] for f in result["findings"]] == ["cells_claimed_twice"]
+
+
 def test_pairs_are_capped(tree):
     n = PAIRS_LIMIT + 5
     ids = [f"c{i}" for i in range(n)]
