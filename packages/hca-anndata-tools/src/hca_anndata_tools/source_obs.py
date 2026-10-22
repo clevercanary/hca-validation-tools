@@ -229,10 +229,11 @@ def check_source_obs(path: str) -> dict:
         it, and cell counts ``agree`` / ``differ`` / ``missing_in_object`` /
         ``missing_in_source`` / ``missing_in_both``), ``fields_absent`` (fields
         neither the object nor any of ``sources`` carries; a source holding no
-        compared cell is not read), ``discrepancies`` (one row per field and source with a
-        cell that differs or is set on one side only: the three counts and
-        ``pairs`` of ``source_value`` / ``object_value`` / ``cells``, a missing
-        side None, most cells first, capped at :data:`PAIRS_LIMIT`; metadata
+        compared cell is matched by ID but its fields are not read),
+        ``discrepancies`` (one row per field and source with a cell that
+        differs or is set on one side only: the three counts and ``pairs`` of
+        ``source_value`` / ``object_value`` / ``cells``, a missing side None,
+        most cells first, capped at :data:`PAIRS_LIMIT`; metadata
         before cell type) and ``findings`` (``values_differ``,
         ``missing_in_object``, ``missing_in_source`` per metadata field on
         ``obs/<field>``, in the shared shape). On failure, ``error`` is
