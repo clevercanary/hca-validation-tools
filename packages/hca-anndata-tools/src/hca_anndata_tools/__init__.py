@@ -31,6 +31,7 @@ if TYPE_CHECKING:
     from .rename import rename_cell_ids
     from .rename_column import rename_obs_column
     from .source_dataset import set_source_dataset
+    from .source_obs import check_source_obs
     from .sources import find_source_datasets
     from .stats import get_descriptive_stats
     from .storage import get_storage_info
@@ -92,6 +93,7 @@ _LAZY_IMPORTS = {
     "find_source_datasets": ".sources",
     "set_source_dataset": ".source_dataset",
     "check_cap_currency": ".cap_currency",
+    "check_source_obs": ".source_obs",
 }
 
 __all__ = list(_LAZY_IMPORTS)  # pyright: ignore[reportUnsupportedDunderAll]

@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .._keys import PROVENANCE_KEY
+from . import core
 from .core import (
     AdiposeDataset,
     Dataset,
@@ -140,3 +141,11 @@ def non_producer_uns_roots() -> frozenset[str]:
     Each caller renders its own message; only the set is shared.
     """
     return frozenset(uns_field_registry()) | {PROVENANCE_KEY}
+
+
+def obs_field_names() -> frozenset[str]:
+    """Every field the schema stores in ``obs``, across the base and bionetwork classes."""
+    models = [cls for cls in vars(core).values() if isinstance(cls, type) and issubclass(cls, core.ConfiguredBaseModel)]
+    return frozenset(
+        name for cls in models for name, fi in cls.model_fields.items() if _get_ann_data_location(fi) == "obs"
+    )

@@ -129,6 +129,7 @@ If the wrangler answers a B2 item during the session, that answer becomes a `set
 Report these but don't attempt to fix:
 
 - High NaN rates on non-allowed columns (e.g. `library_id`) — needs real values from source.
+- **Differences from the source datasets** (`check_source_obs` on an integrated object, from `/evaluate-h5ad` Section 3) — every metadata field that differs, or is set on one side only, goes here with its counts and top value pairs. Never fix one by copying either side's values: the tool does not say which side is right, and in kidney v1 it is the object for `library_id` and the source dataset for donors HKB26/HKB27. Cell-type rows are listed as information, not as items.
 - Sparse or missing `ambient_count_correction` / `doublet_detection` obs columns — per-cell values must come from the upstream source (each source dataset's processing record). Do not broadcast a single value. Report fill rate and move on.
 - Delimited-list values in single-identifier columns (e.g. `library_preparation_batch` containing `"lib1; lib2; lib3"`) — needs per-cell resolution, not placeholder replacement.
 - Gene IDs not in the allowed gene set (GENCODE v48, Ensembl 114, primary assembly) — needs annotation-version decision. The validator now classifies these rather than leaving them an undifferentiated wall (#728), so do not summarize the classification away: it is the `Summary:`/`Actions:`/`Details:` blocks, and the only thing that says what to do next. Route each class:
