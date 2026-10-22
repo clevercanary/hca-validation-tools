@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.16.0](https://github.com/clevercanary/hca-validation-tools/compare/hca-schema-validator-v0.15.2...hca-schema-validator-v0.16.0) (2026-10-22)
+
+
+### ⚠ BREAKING CHANGES
+
+* **hca-schema-validator:** check_gene_annotation_version requires a keyword-only object_kind ("source" or "integrated") and raises ValueError for any other value. HCAValidator passes its own object_kind.
+* require object_kind on HCAValidator and the MCP's validate_schema ([#770](https://github.com/clevercanary/hca-validation-tools/issues/770)) (#773)
+
+### Features
+
+* **hca-schema-validator:** classify retired feature IDs using an Ensembl gene-event table ([#728](https://github.com/clevercanary/hca-validation-tools/issues/728)) ([#733](https://github.com/clevercanary/hca-validation-tools/issues/733)) ([0b2d7eb](https://github.com/clevercanary/hca-validation-tools/commit/0b2d7ebf145bed8886373d1139e601f16e8fa479))
+* **hca-schema-validator:** date the gene list when gene_annotation_version is not declared ([#734](https://github.com/clevercanary/hca-validation-tools/issues/734)) ([#755](https://github.com/clevercanary/hca-validation-tools/issues/755)) ([bc43206](https://github.com/clevercanary/hca-validation-tools/commit/bc4320631a132f8022ea3fc6b3db6f9f44a3ff6c))
+* **hca-schema-validator:** say the one scope sentence the object kind implies ([#774](https://github.com/clevercanary/hca-validation-tools/issues/774)) ([#775](https://github.com/clevercanary/hca-validation-tools/issues/775)) ([7dae7d3](https://github.com/clevercanary/hca-validation-tools/commit/7dae7d3bbb3fbcacabbde1f215ae50638d861500))
+* require object_kind on HCAValidator and the MCP's validate_schema ([#770](https://github.com/clevercanary/hca-validation-tools/issues/770)) ([#773](https://github.com/clevercanary/hca-validation-tools/issues/773)) ([364b086](https://github.com/clevercanary/hca-validation-tools/commit/364b0865cc625e5989abea18e08e8257f9959377))
+
+
+### Bug Fixes
+
+* **hca-schema-validator:** empty assay or organism values no longer crash validation ([#754](https://github.com/clevercanary/hca-validation-tools/issues/754)) ([#757](https://github.com/clevercanary/hca-validation-tools/issues/757)) ([7e5ec42](https://github.com/clevercanary/hca-validation-tools/commit/7e5ec4282348b346c6cbfd91b3f11452e3bd94f8))
+* **hca-schema-validator:** recover the per-cell scale from X's own lattice, not the median against raw.X ([#570](https://github.com/clevercanary/hca-validation-tools/issues/570)) ([#766](https://github.com/clevercanary/hca-validation-tools/issues/766)) ([d860173](https://github.com/clevercanary/hca-validation-tools/commit/d86017337cb0d455e0086be65ad77372b34eba18))
+* **hca-schema-validator:** say what object_kind takes when it is missing or wrong ([#784](https://github.com/clevercanary/hca-validation-tools/issues/784)) ([#785](https://github.com/clevercanary/hca-validation-tools/issues/785)) ([4f1b434](https://github.com/clevercanary/hca-validation-tools/commit/4f1b43408150ba267c328c0d80d54a9cae7a4759))
+
 ## [0.15.2](https://github.com/clevercanary/hca-validation-tools/compare/hca-schema-validator-v0.15.1...hca-schema-validator-v0.15.2) (2026-10-05)
 
 
