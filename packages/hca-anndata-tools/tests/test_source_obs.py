@@ -170,6 +170,19 @@ def test_only_a_null_is_missing_and_placeholder_text_is_a_value(tree):
     assert ("nan", None) in {(p["source_value"], p["object_value"]) for p in discrepancy["pairs"]}
 
 
+def test_infinity_is_a_value_and_only_nan_is_missing(tree):
+    ids = ["c1", "c2", "c3"]
+    tree.source("srcA", ids, cell_viability_percentage=np.array([np.inf, np.inf, -np.inf]))
+    target = tree.target(ids, cell_viability_percentage=np.array([-np.inf, np.nan, -np.inf]))
+
+    result = _ok(check_source_obs(str(target)))
+
+    row = _field(result, "cell_viability_percentage")
+    assert (row["agree"], row["differ"], row["missing_in_object"], row["missing_in_both"]) == (1, 1, 1, 0)
+    (discrepancy,) = result["discrepancies"]
+    assert {(p["source_value"], p["object_value"]) for p in discrepancy["pairs"]} == {("inf", "-inf"), ("inf", None)}
+
+
 def test_a_field_one_side_lacks_counts_every_cell(tree):
     tree.source("srcA", ["c1", "c2"], library_sequencing_run=["R1", "R1"])
     target = tree.target(["c1", "c2"], donor_id=["D1", "D1"])

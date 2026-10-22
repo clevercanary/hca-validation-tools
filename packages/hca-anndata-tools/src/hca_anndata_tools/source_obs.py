@@ -62,6 +62,8 @@ def _canonical(values) -> np.ndarray:
         whole = finite & (f == np.round(f))
         out[whole] = f[whole].astype(np.int64).astype(str)
         out[finite & ~whole] = f[finite & ~whole].astype(str)
+        out[f == np.inf] = "inf"
+        out[f == -np.inf] = "-inf"
         return out
     # A whole number written as text keeps pandas' ".0" (pancreas sources carry
     # "2021.0" where the object stores 2021.0); only that suffix is dropped, so
