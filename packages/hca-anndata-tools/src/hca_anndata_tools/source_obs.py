@@ -44,12 +44,12 @@ CODES = {"differ": "values_differ", "missing_in_object": "missing_in_object", "m
 
 
 def _canonical(values) -> np.ndarray:
-    """One comparable text value per cell, None where the value is null, blank or the text ``nan``.
+    """One comparable text value per cell, None only where the stored value is null.
 
     Categorical, plain and nullable columns of one value read alike, and a
-    whole number reads the same stored as an int, a float or a string. ``nan``
-    is what pandas writes when it turns a null into text (kidney v1's sources
-    carry it in eight fields), so it is no value.
+    whole number reads the same stored as an int, a float or a string. Any
+    text is a value, placeholders included: whether a value is allowed in its
+    slot is the schema validator's question, not this check's.
     """
     s = pd.Series(values)
     if isinstance(s.dtype, pd.CategoricalDtype):
@@ -66,10 +66,9 @@ def _canonical(values) -> np.ndarray:
     # A whole number written as text keeps pandas' ".0" (pancreas sources carry
     # "2021.0" where the object stores 2021.0); only that suffix is dropped, so
     # "run01" and "01" stay distinct from "1".
-    text = s.where(s.notna(), "").astype(str).str.replace(r"^(-?\d+)\.0+$", r"\1", regex=True)
-    out = text.to_numpy(dtype=object)
-    blank = text.str.strip()
-    out[((blank == "") | (blank.str.lower() == "nan")).to_numpy()] = None
+    null = s.isna().to_numpy()
+    out = s.astype(str).str.replace(r"^(-?\d+)\.0+$", r"\1", regex=True).to_numpy(dtype=object)
+    out[null] = None
     return out
 
 
@@ -200,9 +199,11 @@ def check_source_obs(path: str) -> dict:
     source dataset that holds it, found as ``find_source_datasets`` finds them
     (the sibling ``source-datasets/tracker-source/`` under the tracker layout),
     and every field the HCA schema stores in ``obs`` is compared between the two
-    rows, except ``is_primary_data``. Null, blank and the text ``nan`` are
-    missing; any other value, ``"unknown"`` included, is a value. A cell no single source claims is
-    not compared and is listed in ``findings`` as ``find_source_datasets`` lists it.
+    rows, except ``is_primary_data``, by exact value. Only a stored null is
+    missing; any text, placeholders such as ``"unknown"`` or ``"nan"``
+    included, is a value, since whether it is allowed is the validator's call.
+    A cell no single source claims is not compared and is listed in
+    ``findings`` as ``find_source_datasets`` lists it.
 
     The check does not say which side is right. ``cell_type_ontology_term_id``
     and ``author_cell_type`` are reported with ``group`` ``"cell_type"`` and

@@ -157,14 +157,17 @@ def test_whole_number_text_matches_the_number_and_leading_zeros_stay(tree):
     assert (run["agree"], run["differ"]) == (1, 2)
 
 
-def test_blank_and_nan_text_are_missing_and_unknown_is_a_value(tree):
-    tree.source("srcA", ["c1", "c2", "c3"], library_id=["L1", "L2", "nan"])
-    target = tree.target(["c1", "c2", "c3"], library_id=["  ", "unknown", None])
+def test_only_a_null_is_missing_and_placeholder_text_is_a_value(tree):
+    ids = ["c1", "c2", "c3", "c4"]
+    tree.source("srcA", ids, library_id=["L1", "L2", "nan", None])
+    target = tree.target(ids, library_id=["", "unknown", None, None])
 
     result = _ok(check_source_obs(str(target)))
 
     row = _field(result, "library_id")
-    assert (row["missing_in_object"], row["differ"], row["missing_in_both"]) == (1, 1, 1)
+    assert (row["differ"], row["missing_in_object"], row["missing_in_both"]) == (2, 1, 1)
+    (discrepancy,) = result["discrepancies"]
+    assert ("nan", None) in {(p["source_value"], p["object_value"]) for p in discrepancy["pairs"]}
 
 
 def test_a_field_one_side_lacks_counts_every_cell(tree):
