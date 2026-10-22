@@ -146,13 +146,16 @@ def test_whole_number_text_matches_the_number_and_leading_zeros_stay(tree):
     )
     target = tree.target(
         ids,
-        sample_collection_year=np.array([2021.0, 2022.0, 2022.0]),
+        sample_collection_year=np.array([2021.0, 2022.0, 2023.0]),
         library_sequencing_run=["run1", "1", "1"],
     )
 
     result = _ok(check_source_obs(str(target)))
 
-    assert _field(result, "sample_collection_year")["agree"] == 3
+    year = _field(result, "sample_collection_year")
+    assert (year["agree"], year["differ"]) == (2, 1)
+    (pairs,) = [d["pairs"] for d in result["discrepancies"] if d["field"] == "sample_collection_year"]
+    assert pairs == [{"source_value": "2022", "object_value": "2023", "cells": 1}]  # as compared, not "2022.0"
     run = _field(result, "library_sequencing_run")
     assert (run["agree"], run["differ"]) == (1, 2)
 

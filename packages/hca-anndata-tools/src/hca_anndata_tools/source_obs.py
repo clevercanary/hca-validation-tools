@@ -223,7 +223,7 @@ def check_source_obs(path: str) -> dict:
     Returns:
         Dict with ``filename``, ``tracker_name``, ``source_dir``, ``partition``
         (``"exact"`` or ``"incomplete"``), ``cells`` (``n_obs``, ``compared``,
-        ``not_compared``), ``sources`` (each source holding object cells, with
+        ``not_compared``), ``sources`` (each source holding a compared cell, with
         ``cells_compared``), ``fields`` (one row per field either side carries:
         ``group``, ``in_object``, ``in_sources`` = how many of ``sources`` carry
         it, and cell counts ``agree`` / ``differ`` / ``missing_in_object`` /

@@ -126,7 +126,7 @@ If nothing is missing, say so in a single line instead of an empty table.
 
 Integrated objects, when `check_source_obs` ran. Lead with `cells.compared` of `cells.n_obs` cells compared across `len(sources)` source datasets, and `partition`; an `incomplete` partition gets the `unaccounted_cells` / `cells_claimed_twice` findings in one line, since those cells were not compared. When `cells.compared` is 0, say in one line that no cell matched exactly one source, so nothing was compared, and stop.
 
-When no `fields` row with `group` `"metadata"` has `differ`, `missing_in_object` or `missing_in_source` above zero, say in one line that every compared metadata field agrees. Otherwise, one table of those rows:
+When no `fields` row with `group` `"metadata"` has `differ`, `missing_in_object` or `missing_in_source` above zero, say in one line that no compared metadata field differs or is set on one side only. Otherwise, one table of those rows:
 
 | Field | Agree | Differ | Missing in object | Missing in source | Missing in both |
 |---|---|---|---|---|---|
