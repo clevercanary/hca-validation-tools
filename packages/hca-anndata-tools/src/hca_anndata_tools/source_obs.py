@@ -201,10 +201,10 @@ def check_source_obs(path: str) -> dict:
     source dataset that holds it, found as ``find_source_datasets`` finds them
     (the sibling ``source-datasets/tracker-source/`` under the tracker layout),
     and every field the HCA schema stores in ``obs`` is compared between the two
-    rows, except ``is_primary_data``, by exact value, with one allowance: a
-    whole number reads the same stored as an int, a float or text with a
-    ``.0`` suffix, so ``"2021.0"`` agrees with 2021 and is reported as
-    ``"2021"``. Only a stored null is missing; any other text, placeholders
+    rows by exact value, except ``is_primary_data``. One allowance: a whole
+    number stored as an int, a float or ``.0`` text compares as its integer
+    text, so ``"2021.0"`` agrees with 2021 and is reported as ``"2021"``.
+    Only a stored null is missing; any other text, placeholders
     such as ``"unknown"`` or ``"nan"`` included, is a value, since whether it
     is allowed is the validator's call.
     A cell no single source claims is not compared and is listed in

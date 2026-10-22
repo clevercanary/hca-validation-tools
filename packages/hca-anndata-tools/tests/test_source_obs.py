@@ -239,7 +239,8 @@ def test_a_cell_two_sources_claim_is_not_compared(tree):
     assert result["partition"] == "incomplete"
     assert result["cells"] == {"n_obs": 2, "compared": 1, "not_compared": 1}
     assert {s["tracker_name"]: s["cells_compared"] for s in result["sources"]} == {"srcA": 1}
-    assert _field(result, "donor_id")["agree"] == 1
+    donor = _field(result, "donor_id")
+    assert (donor["agree"], donor["in_sources"]) == (1, 1)  # srcB carries donor_id but holds no compared cell
     assert result["discrepancies"] == []
     assert [f["code"] for f in result["findings"]] == ["cells_claimed_twice"]
 

@@ -124,7 +124,7 @@ If nothing is missing, say so in a single line instead of an empty table.
 
 ### Against the source datasets
 
-Integrated objects, when `check_source_obs` ran. Lead with `cells.compared` of `cells.n_obs` cells compared across `len(sources)` source datasets, and `partition`; an `incomplete` partition gets the `unaccounted_cells` / `cells_claimed_twice` findings in one line, since those cells were not compared. When `cells.compared` is 0, say in one line that no cell matched a single source, so nothing was compared, and stop.
+Integrated objects, when `check_source_obs` ran. Lead with `cells.compared` of `cells.n_obs` cells compared across `len(sources)` source datasets, and `partition`; an `incomplete` partition gets the `unaccounted_cells` / `cells_claimed_twice` findings in one line, since those cells were not compared. When `cells.compared` is 0, say in one line that no cell matched exactly one source, so nothing was compared, and stop.
 
 When no `fields` row with `group` `"metadata"` has `differ`, `missing_in_object` or `missing_in_source` above zero, say in one line that every compared metadata field agrees. Otherwise, one table of those rows:
 
@@ -134,7 +134,7 @@ When no `fields` row with `group` `"metadata"` has `differ`, `missing_in_object`
 
 Then, per field in that table, its `discrepancies` rows: one line per source dataset with its counts, and its top `pairs` as `source value → object value (cells)`, a None side rendered `(missing)`. Pairs are capped at 20 per row, so cite the row's counts for totals. A pair shows the value as compared, not as stored: whole-number text loses its `.0` suffix, so a pair's `0` may be stored as `"0.0"`.
 
-Then, whether or not that table rendered and only when there are any, the `discrepancies` rows with `group` `"cell_type"` the same way, under their own heading that says an integrated object may re-annotate cell types on purpose, so these are not findings.
+Then, if any `discrepancies` row has `group` `"cell_type"`, render those rows the same way, even when the metadata table did not render, under their own heading that says an integrated object may re-annotate cell types on purpose, so these are not findings.
 
 Report differences as differences. The check does not say which side is right: in kidney v1 the object carries the right `library_id` and the source dataset the wrong one, and for donors HKB26/HKB27 the reverse. Never call a side wrong from this table alone. A field that agrees but is wrong on both sides (kidney's `gene_annotation_version`) is the validator's finding, not this one.
 
