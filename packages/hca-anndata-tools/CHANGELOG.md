@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.7.2](https://github.com/clevercanary/hca-validation-tools/compare/hca-anndata-tools-v0.7.1...hca-anndata-tools-v0.7.2) (2026-10-22)
+
+
+### Features
+
+* **hca-anndata-tools:** check an integrated object's obs metadata against its source datasets, cell by cell ([#793](https://github.com/clevercanary/hca-validation-tools/issues/793)) ([#794](https://github.com/clevercanary/hca-validation-tools/issues/794)) ([e7b2670](https://github.com/clevercanary/hca-validation-tools/commit/e7b2670d8daeaca2a1308543c8aa6aa23964f122))
+* **hca-anndata-tools:** report whether an integrated object's CAP annotations are current with CAP ([#781](https://github.com/clevercanary/hca-validation-tools/issues/781)) ([#783](https://github.com/clevercanary/hca-validation-tools/issues/783)) ([4553103](https://github.com/clevercanary/hca-validation-tools/commit/4553103eb549ef65cfd31a2be6e9fb45dc137cfc))
+* **hca-anndata-tools:** set obs['source_dataset'] on an integrated object from its tracker source datasets ([#776](https://github.com/clevercanary/hca-validation-tools/issues/776)) ([#777](https://github.com/clevercanary/hca-validation-tools/issues/777)) ([9495d12](https://github.com/clevercanary/hca-validation-tools/commit/9495d124519bfe6f922008de620c8bf62386170f))
+
+
+### Documentation
+
+* **hca-anndata-tools:** say what check_source_obs reads and reports, and render its empty cases ([#793](https://github.com/clevercanary/hca-validation-tools/issues/793)) ([#796](https://github.com/clevercanary/hca-validation-tools/issues/796)) ([039942f](https://github.com/clevercanary/hca-validation-tools/commit/039942f8d7395446f88e0557b8465a8e72c6a8ca))
+
 ## [0.7.1](https://github.com/clevercanary/hca-validation-tools/compare/hca-anndata-tools-v0.7.0...hca-anndata-tools-v0.7.1) (2026-09-30)
 
 
