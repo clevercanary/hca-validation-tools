@@ -176,7 +176,8 @@ some columns must sit below a given parent term. Every problem here is an error.
   equivalent for those organisms. Cell lines have their own rules.
 - **Tissue**: UBERON (the Uber-anatomy Ontology), or the organism's equivalent.
 - **Assay**: EFO (the Experimental Factor Ontology).
-- **Disease**: MONDO (the Mondo Disease Ontology).
+- **Disease**: MONDO (the Mondo Disease Ontology), or `PATO:0000461` (normal)
+  for healthy samples.
 - **Development stage**: HsapDv (Human Developmental Stages) for human, MmusDv
   (Mouse Developmental Stages) for mouse.
 - **Sex**: PATO (the Phenotype And Trait Ontology).
@@ -376,7 +377,7 @@ What is checked, in this order. The first problem found is the one reported.
    | Not whole numbers | `X` is not a normalization of any count matrix | Rebuild `X` by normalizing and log-transforming `raw.X` |
    | Whole numbers, some higher than `raw.X` and none lower | `X` was made from a different matrix | Rebuild `X` from `raw.X`, or replace `raw.X` with the raw counts `X` was made from |
    | Whole numbers, some lower than `raw.X` and none higher | Ambient RNA was removed, and `layers['desouped_counts']` is missing | Add the counts left after ambient RNA removal as `layers['desouped_counts']` |
-   | Whole numbers, some higher and some lower | `X` was made from a different matrix, after ambient RNA was removed from something other than `raw.X` | Find the raw counts the ambient RNA removal started from: store them as `raw.X` and its output as `layers['desouped_counts']` |
+   | Whole numbers, some higher and some lower | `X` was made from a different count matrix than `raw.X` | Store the counts `X` was made from in `raw.X`. If those were counts after ambient RNA removal, store them as `layers['desouped_counts']` instead, and keep the counts they were removed from in `raw.X` |
 
 9. **`X` was log-transformed but never normalized per cell.** Each cell's
    recovered total is just its own read depth.
