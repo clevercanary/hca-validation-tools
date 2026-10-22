@@ -200,10 +200,13 @@ def check_source_obs(path: str) -> dict:
     Read-only; reads obs, no matrix. Each object cell is matched by ID to the
     source dataset that holds it, found as ``find_source_datasets`` finds them
     (the sibling ``source-datasets/tracker-source/`` under the tracker layout),
-    and every field the HCA schema stores in ``obs`` is compared between the two
-    rows, except ``is_primary_data``, by exact value. Only a stored null is
-    missing; any text, placeholders such as ``"unknown"`` or ``"nan"``
-    included, is a value, since whether it is allowed is the validator's call.
+    and every field the HCA schema stores in ``obs`` except ``is_primary_data``
+    is compared between the two rows by exact value. One allowance: a whole
+    number stored as an int, a float or ``.0`` text compares as its integer
+    text, so ``"2021.0"`` agrees with 2021 and is reported as ``"2021"``.
+    Only a stored null is missing; any other text, placeholders
+    such as ``"unknown"`` or ``"nan"`` included, is a value, since whether it
+    is allowed is the validator's call.
     A cell no single source claims is not compared and is listed in
     ``findings`` as ``find_source_datasets`` lists it.
 
@@ -220,15 +223,17 @@ def check_source_obs(path: str) -> dict:
     Returns:
         Dict with ``filename``, ``tracker_name``, ``source_dir``, ``partition``
         (``"exact"`` or ``"incomplete"``), ``cells`` (``n_obs``, ``compared``,
-        ``not_compared``), ``sources`` (each source holding object cells, with
+        ``not_compared``), ``sources`` (each source holding a compared cell, with
         ``cells_compared``), ``fields`` (one row per field either side carries:
-        ``group``, ``in_object``, ``in_sources`` = how many sources carry it, and
-        cell counts ``agree`` / ``differ`` / ``missing_in_object`` /
+        ``group``, ``in_object``, ``in_sources`` = how many of ``sources`` carry
+        it, and cell counts ``agree`` / ``differ`` / ``missing_in_object`` /
         ``missing_in_source`` / ``missing_in_both``), ``fields_absent`` (fields
-        no file carries), ``discrepancies`` (one row per field and source with a
-        cell that differs or is set on one side only: the three counts and
-        ``pairs`` of ``source_value`` / ``object_value`` / ``cells``, a missing
-        side None, most cells first, capped at :data:`PAIRS_LIMIT`; metadata
+        neither the object nor any of ``sources`` carries; a source holding no
+        compared cell is matched by ID but its fields are not read),
+        ``discrepancies`` (one row per field and source with a cell that
+        differs or is set on one side only: the three counts and ``pairs`` of
+        ``source_value`` / ``object_value`` / ``cells``, a missing side None,
+        most cells first, capped at :data:`PAIRS_LIMIT`; metadata
         before cell type) and ``findings`` (``values_differ``,
         ``missing_in_object``, ``missing_in_source`` per metadata field on
         ``obs/<field>``, in the shared shape). On failure, ``error`` is
