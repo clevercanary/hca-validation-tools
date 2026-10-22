@@ -23,6 +23,7 @@ from hca_anndata_tools import (
     check_embeddings,
     check_raw_counts,
     check_schema_type,
+    check_source_obs,
     check_x_normalization,
     compress_h5ad,
     convert_cellxgene_to_hca,
@@ -192,6 +193,7 @@ mcp.tool()(check_barcodes)
 mcp.tool()(find_source_datasets)
 mcp.tool()(set_source_dataset)
 mcp.tool()(check_cap_currency)
+mcp.tool()(check_source_obs)
 mcp.tool()(check_schema_type)
 mcp.tool()(validate_schema)
 mcp.tool()(validate_cell_annotation)

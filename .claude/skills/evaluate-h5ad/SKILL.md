@@ -27,6 +27,7 @@ First batch — cheap, obs-sized:
 An **integrated object** — the wrangler says so, or the tracker lists it; never decided from the path — also gets, alongside the first batch:
 
 - **check_cap_currency** — whether the object's CAP annotations are the ones CAP now publishes (#781). It needs the tracker's `cap_url` for the object: call the tracker's `list_integrated_objects` once per network, atlas and generation (ask for them if not stated; never read them off the path; reuse the rows for every object in the run) and take the row whose `name`, `.h5ad` removed, is the file's tracker name — the file name with our `-edit-<timestamp>` and then the tracker's `-r<N>[-wip-<N>]` removed. A row with no `cap_url` gets no call; report "no CAP link on the tracker". The tracker, not the local export, says which CAP dataset is current, because the export can be stale too.
+- **check_source_obs** — whether each object cell carries the obs metadata of the same cell in its source dataset (#793). Takes only the path: cells are matched by ID to the source datasets in the sibling `source-datasets/tracker-source/`, as `find_source_datasets` matches them, so the object needs no `source_dataset` column. It opens every source dataset, so on a large atlas expect a minute or more. A refusal (no source directory, a source file that is not a tracker download name) is reported verbatim in Section 3 and the run goes on.
 
 Second batch, once `get_summary` and `get_cap_annotations` are back, in this order — the dependent calls first, the matrix passes last:
 
@@ -120,6 +121,20 @@ Neither correction applies to the single-donor check above, which uses one row's
 | Extra uns keys (not in schema) | list any `extra_uns_keys` |
 
 If nothing is missing, say so in a single line instead of an empty table.
+
+### Against the source datasets
+
+Integrated objects, when `check_source_obs` ran. Lead with `cells.compared` of `cells.n_obs` cells compared across `len(sources)` source datasets, and `partition`; an `incomplete` partition gets the `unaccounted_cells` / `cells_claimed_twice` findings in one line, since those cells were not compared. When `findings` is empty and no `discrepancies` row has `group` `"cell_type"`, say in one line that every compared field agrees and stop.
+
+Otherwise, one table of the `fields` rows with `group` `"metadata"` whose `differ`, `missing_in_object` or `missing_in_source` is above zero:
+
+| Field | Agree | Differ | Missing in object | Missing in source | Missing in both |
+|---|---|---|---|---|---|
+| `library_id` | 771,348 | 39,750 | 0 | 0 | 0 |
+
+Then, per field in that table, its `discrepancies` rows: one line per source dataset with its counts, and its top `pairs` as `source value → object value (cells)`, a None side rendered `(missing)`. Pairs are capped at 20 per row, so cite the row's counts for totals. Then the `"cell_type"` rows the same way, under their own heading that says an integrated object may re-annotate cell types on purpose, so these are not findings.
+
+Report differences as differences. The check does not say which side is right: in kidney v1 the object carries the right `library_id` and the source dataset the wrong one, and for donors HKB26/HKB27 the reverse. Never call a side wrong from this table alone. A field that agrees but is wrong on both sides (kidney's `gene_annotation_version`) is the validator's finding, not this one.
 
 ## 4. Storage & compression
 
