@@ -40,6 +40,38 @@ def test_generated_classes():
             assert hasattr(schema, class_name)
 
 
+def _bionetwork_annotations(schemaview):
+    """Map each class carrying a `bioNetwork` annotation to its key."""
+    annotated = {}
+    for class_name, class_info in schemaview.all_classes().items():
+        if class_info.annotations and "bioNetwork" in class_info.annotations:
+            annotated[class_name] = class_info.annotations["bioNetwork"].value
+    return annotated
+
+
+def test_bionetwork_annotations_are_enum_keys(schemaview):
+    """Every subclass's `bioNetwork` annotation is a key of the BioNetwork enum."""
+    keys = set(schemaview.get_enum("BioNetwork").permissible_values)
+    annotated = _bionetwork_annotations(schemaview)
+    assert annotated, "no class carries a bioNetwork annotation"
+    for class_name, network in annotated.items():
+        assert network in keys, f"{class_name} has bioNetwork {network!r}, not a BioNetwork key"
+
+
+def test_bionetwork_annotations_match_schema_classes(schemaview):
+    """`schema_classes` and the `bioNetwork` annotations name the same subclass for each network.
+
+    The two record the same fact; until one is derived from the other, this keeps them from drifting.
+    """
+    from_schema_classes = {
+        class_name: network
+        for classes in schema_classes.values()
+        for network, class_name in classes.items()
+        if network != "DEFAULT"
+    }
+    assert _bionetwork_annotations(schemaview) == from_schema_classes
+
+
 # Columns that live in obs and that consumers discover by walking the schema for an
 # `annDataLocation: obs` annotation. Before #538 these four were invisible to that walk:
 # the Cell pair had no home in the model at all, and the Sample pair carried no
