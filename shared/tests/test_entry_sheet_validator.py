@@ -809,6 +809,13 @@ class TestValidateGoogleSheet:
         _test_validation_with_mock_sheets_response(validate_google_sheet, mock_read_service_account, bionetwork="gut")
         # Confirm that correct class was used
         assert last_class_name_info["value"] == "GutDataset"
+        mock_read_service_account.reset_mock()
+        # Validate the mock sheet for a network with no subclass; its key is hyphenated, as the tracker sends it
+        _test_validation_with_mock_sheets_response(
+            validate_google_sheet, mock_read_service_account, bionetwork="oral-and-craniofacial"
+        )
+        # Confirm that the default class was used
+        assert last_class_name_info["value"] == "Dataset"
 
     @patch("hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account")
     def test_duplicate_ids(self, mock_read_service_account):
@@ -916,6 +923,11 @@ class TestValidateGoogleSheet:
         # Run validation
         with pytest.raises(ValueError, match="'not-a-bionetwork' is not a valid bionetwork"):
             validate_google_sheet(PUBLIC_SHEET_ID, bionetwork="not-a-bionetwork")
+
+    def test_retired_oral_bionetwork(self):
+        """Test that the old `oral` key is rejected; the network's key is `oral-and-craniofacial`."""
+        with pytest.raises(ValueError, match="'oral' is not a valid bionetwork"):
+            validate_google_sheet(PUBLIC_SHEET_ID, bionetwork="oral")
 
     @patch("hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account")
     def test_sheet_without_entities(self, mock_read_service_account):
