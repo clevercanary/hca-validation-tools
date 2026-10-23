@@ -3,7 +3,7 @@ from pathlib import Path
 
 import jsonasobj2
 from linkml_runtime import SchemaView
-from linkml_runtime.linkml_model.meta import SlotDefinition
+from linkml_runtime.linkml_model.meta import ClassDefinition, SlotDefinition
 
 # Map entity types and bionetworks to their corresponding class names
 schema_classes = {
@@ -65,6 +65,51 @@ def get_slot_anndata_location(slot: SlotDefinition) -> str | None:
         if name == "annDataLocation":
             return info.value
     return None
+
+
+def get_bionetwork_keys(schemaview: SchemaView) -> list[str]:
+    """Return the sorted keys of the schema's `BioNetwork` enum."""
+    enum_info = schemaview.get_enum("BioNetwork")
+    if enum_info is None or not enum_info.permissible_values:
+        raise ValueError("Schema has no BioNetwork enum")
+    return sorted(enum_info.permissible_values)
+
+
+def get_class_bionetwork(class_info: ClassDefinition) -> str | None:
+    """Return the network a class names in its `bioNetwork` annotation, if any."""
+    if not class_info.annotations:
+        return None
+    for name, info in jsonasobj2.items(class_info.annotations):
+        if name == "bioNetwork":
+            return info.value
+    return None
+
+
+def get_bionetwork_subclasses(schemaview: SchemaView, base_class: str) -> dict[str, str]:
+    """Map each subclass of `base_class` to the network its `bioNetwork` annotation names.
+
+    Only direct, concrete subclasses are supported; any other descendant is refused rather
+    than skipped, so its slots cannot silently go missing from callers.
+
+    Raises:
+        ValueError: If a descendant is abstract or indirect, or a subclass has no
+            `bioNetwork` annotation or one that is not a key of the `BioNetwork` enum
+    """
+    network_keys = get_bionetwork_keys(schemaview)
+    children = schemaview.class_children(base_class, mixins=False)
+    for descendant in schemaview.class_descendants(base_class, reflexive=False, mixins=False):
+        if descendant not in children or schemaview.get_class(descendant).abstract:
+            raise ValueError(f"{descendant} is not a direct, concrete subclass of {base_class}")
+    subclasses = {}
+    for subclass_name in children:
+        subclass_info = schemaview.get_class(subclass_name)
+        network = get_class_bionetwork(subclass_info)
+        if network is None:
+            raise ValueError(f"{subclass_name} extends {base_class} but has no bioNetwork annotation")
+        if network not in network_keys:
+            raise ValueError(f"{subclass_name} has bioNetwork {network!r}, which is not in the BioNetwork enum")
+        subclasses[subclass_name] = network
+    return subclasses
 
 
 def is_deprecated_slot(schemaview: SchemaView, slot: SlotDefinition) -> bool:

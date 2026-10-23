@@ -15,7 +15,7 @@ from typing import Any
 import jsonasobj2
 from linkml_runtime import SchemaView
 
-from hca_validation.schema_utils import get_class_entity_type
+from hca_validation.schema_utils import get_bionetwork_keys, get_bionetwork_subclasses, get_class_entity_type
 
 
 def transform_schema_to_data_dictionary(schemaview: SchemaView) -> dict[str, Any]:
@@ -67,9 +67,7 @@ def transform_schema_to_data_dictionary(schemaview: SchemaView) -> dict[str, Any
             attributes.append(attribute)
 
         # Slots only bionetwork subclasses add are folded in, scoped to those networks
-        for attribute, networks in fold_bionetwork_slots(schemaview, class_name, all_networks, schema_enum_names):
-            attribute.setdefault("annotations", {})["bioNetworks"] = networks
-            attributes.append(attribute)
+        attributes += fold_bionetwork_slots(schemaview, class_name, schema_enum_names)
 
         # Sort by name to retain consistent order
         class_entry["attributes"] = sorted(attributes, key=lambda attribute: attribute["name"])
@@ -80,71 +78,37 @@ def transform_schema_to_data_dictionary(schemaview: SchemaView) -> dict[str, Any
     return output
 
 
-def get_bionetwork_keys(schemaview: SchemaView) -> list[str]:
-    """Return the sorted keys of the schema's `BioNetwork` enum."""
-    enum_info = schemaview.get_enum("BioNetwork")
-    if enum_info is None or not enum_info.permissible_values:
-        raise ValueError("Schema has no BioNetwork enum to scope data dictionary fields by")
-    return sorted(enum_info.permissible_values)
-
-
-def fold_bionetwork_slots(
-    schemaview: SchemaView, base_class: str, all_networks: list[str], schema_enum_names: set[str]
-) -> list[tuple[dict[str, Any], list[str]]]:
+def fold_bionetwork_slots(schemaview: SchemaView, base_class: str, schema_enum_names: set[str]) -> list[dict[str, Any]]:
     """
-    Collect the slots that bionetwork subclasses add to a base class.
+    Return one attribute per slot that bionetwork subclasses add to `base_class`, with
+    `bioNetworks` set to the sorted union of the networks that add it.
 
-    Each direct, non-abstract subclass of `base_class` names its network in a
-    `bioNetwork` class annotation. A slot added by several subclasses is returned
-    once, with the sorted union of their networks. Only slots a subclass adds are
-    collected; a subclass that changes an existing base slot through `slot_usage`
-    is not reflected.
-
-    Args:
-        schemaview: The schema
-        base_class: Name of the base class, e.g. "Sample"
-        all_networks: Valid network keys, from `get_bionetwork_keys`
-        schema_enum_names: Names of all enums in the schema
-
-    Returns:
-        (attribute, networks) pairs, one per added slot
-
-    Raises:
-        ValueError: If a subclass has no `bioNetwork` annotation or an unknown key, or if
-            two subclasses define the same added slot differently
+    Raises ValueError if a subclass changes a base slot, or two subclasses define the same
+    added slot differently: the data dictionary can show only one definition per slot.
     """
-    base_slot_names = {slot.name for slot in schemaview.class_induced_slots(base_class)}
+    base_attributes = {
+        slot_info.name: slot_to_attribute(schemaview, slot_info, schema_enum_names)
+        for slot_info in schemaview.class_induced_slots(base_class)
+    }
     folded: dict[str, tuple[dict[str, Any], set[str]]] = {}
 
-    for subclass_name in schemaview.class_children(base_class, mixins=False):
-        subclass_info = schemaview.get_class(subclass_name)
-        if subclass_info.abstract:
-            continue
-
-        annotations = dict(jsonasobj2.items(subclass_info.annotations)) if subclass_info.annotations else {}
-        annotation = annotations.get("bioNetwork")
-        if annotation is None:
-            raise ValueError(f"{subclass_name} extends {base_class} but has no bioNetwork annotation")
-        network = annotation.value
-        if network not in all_networks:
-            raise ValueError(f"{subclass_name} has bioNetwork {network!r}, which is not in the BioNetwork enum")
-
+    for subclass_name, network in get_bionetwork_subclasses(schemaview, base_class).items():
         for slot_info in schemaview.class_induced_slots(subclass_name):
-            if slot_info.name in base_slot_names:
-                continue
             attribute = slot_to_attribute(schemaview, slot_info, schema_enum_names)
-            if slot_info.name in folded:
+            if slot_info.name in base_attributes:
+                if attribute != base_attributes[slot_info.name]:
+                    raise ValueError(f"{subclass_name} changes {base_class}'s {slot_info.name!r}")
+            elif slot_info.name in folded:
                 existing_attribute, networks = folded[slot_info.name]
                 if attribute != existing_attribute:
-                    raise ValueError(
-                        f"Bionetwork subclasses of {base_class} define {slot_info.name!r} differently; "
-                        "the data dictionary can only show one definition"
-                    )
+                    raise ValueError(f"Bionetwork subclasses of {base_class} define {slot_info.name!r} differently")
                 networks.add(network)
             else:
                 folded[slot_info.name] = (attribute, {network})
 
-    return [(attribute, sorted(networks)) for attribute, networks in folded.values()]
+    for attribute, networks in folded.values():
+        attribute.setdefault("annotations", {})["bioNetworks"] = sorted(networks)
+    return [attribute for attribute, _ in folded.values()]
 
 
 def slot_to_attribute(schemaview: SchemaView, slot_info, schema_enum_names: set[str]) -> dict[str, Any]:

@@ -9,12 +9,11 @@ import pytest
 from linkml_runtime import SchemaView
 
 from hca_validation.data_dictionary.generate_dictionary import transform_schema_to_data_dictionary
-from hca_validation.schema_utils.schema_utils import load_schemaview
 
 
 @pytest.fixture(scope="module")
-def data_dictionary():
-    return transform_schema_to_data_dictionary(load_schemaview())
+def data_dictionary(schemaview):
+    return transform_schema_to_data_dictionary(schemaview)
 
 
 def _attribute(data_dictionary, class_name, attribute_name):
@@ -172,4 +171,61 @@ def test_conflicting_definitions_are_refused(tmp_path):
         """,
     )
     with pytest.raises(ValueError, match="define 'gut_field' differently"):
+        transform_schema_to_data_dictionary(schemaview)
+
+
+def test_changed_base_slot_is_refused(tmp_path):
+    schemaview = _schemaview(
+        tmp_path,
+        """
+        GutDataset:
+          is_a: Dataset
+          annotations:
+            bioNetwork: gut
+          slot_usage:
+            title:
+              required: false
+        """,
+    )
+    with pytest.raises(ValueError, match="GutDataset changes Dataset's 'title'"):
+        transform_schema_to_data_dictionary(schemaview)
+
+
+@pytest.mark.parametrize(
+    "classes",
+    [
+        pytest.param(
+            """
+            NetworkDataset:
+              is_a: Dataset
+              abstract: true
+            GutDataset:
+              is_a: NetworkDataset
+              annotations:
+                bioNetwork: gut
+              slots:
+                - gut_field
+            """,
+            id="abstract-intermediate",
+        ),
+        pytest.param(
+            """
+            GutDataset:
+              is_a: Dataset
+              annotations:
+                bioNetwork: gut
+            GutPediatricDataset:
+              is_a: GutDataset
+              annotations:
+                bioNetwork: gut
+              slots:
+                - gut_field
+            """,
+            id="grandchild",
+        ),
+    ],
+)
+def test_indirect_subclass_is_refused(tmp_path, classes):
+    schemaview = _schemaview(tmp_path, classes)
+    with pytest.raises(ValueError, match="is not a direct, concrete subclass of Dataset"):
         transform_schema_to_data_dictionary(schemaview)

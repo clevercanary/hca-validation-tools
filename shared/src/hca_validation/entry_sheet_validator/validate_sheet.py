@@ -694,8 +694,10 @@ def validate_google_sheet(
     if bionetwork is not None:
         from hca_validation.schema.generated.core import BioNetwork
 
-        if bionetwork not in {network.value for network in BioNetwork}:
-            raise ValueError(f"'{bionetwork}' is not a valid bionetwork")
+        try:
+            BioNetwork(bionetwork)
+        except ValueError:
+            raise ValueError(f"'{bionetwork}' is not a valid bionetwork") from None
 
     import logging
 

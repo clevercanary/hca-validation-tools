@@ -6,6 +6,9 @@ This module provides utilities for interacting with the HCA schema.
 
 from .schema_utils import (
     coverage_classes,
+    get_bionetwork_keys,
+    get_bionetwork_subclasses,
+    get_class_bionetwork,
     get_class_entity_type,
     get_class_foreign_keys,
     get_class_identifier_name,
