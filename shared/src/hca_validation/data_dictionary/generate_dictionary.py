@@ -15,7 +15,7 @@ from typing import Any
 import jsonasobj2
 from linkml_runtime import SchemaView
 
-from hca_validation.schema_utils import get_class_entity_type
+from hca_validation.schema_utils import get_bionetwork_keys, get_bionetwork_subclasses, get_class_entity_type
 
 
 def transform_schema_to_data_dictionary(schemaview: SchemaView) -> dict[str, Any]:
@@ -43,6 +43,8 @@ def transform_schema_to_data_dictionary(schemaview: SchemaView) -> dict[str, Any
     # Get set of names of all enums in the schema
     schema_enum_names = set(schemaview.all_enums())
 
+    all_networks = get_bionetwork_keys(schemaview)
+
     # Process each class in the schema
     for class_name, class_info in schemaview.all_classes().items():
         # Skip abstract classes or other non-relevant classes
@@ -57,65 +59,108 @@ def transform_schema_to_data_dictionary(schemaview: SchemaView) -> dict[str, Any
             "attributes": [],
         }
 
-        # Get all slots for this class, sorting values from the returned set to retain consistent order
-        all_slots = sorted(schemaview.class_induced_slots(class_name), key=lambda slot: slot.name)
+        # Slots every network uses get the full network list
+        attributes = []
+        for slot_info in schemaview.class_induced_slots(class_name):
+            attribute = slot_to_attribute(schemaview, slot_info, schema_enum_names)
+            attribute.setdefault("annotations", {})["bioNetworks"] = list(all_networks)
+            attributes.append(attribute)
 
-        # Process each slot for this class
-        for slot_info in all_slots:
-            # Create the attribute entry with the exact structure requested
-            attribute = {
-                "name": slot_info.name,
-                # Use title from schema if available
-                "title": slot_info.title if slot_info.title is not None else slot_info.name,
-                "description": slot_info.description or "",
-                "range": slot_info.range if slot_info.range is not None else "string",
-                "required": slot_info.required if slot_info.required is not None else False,
-                "multivalued": slot_info.multivalued if slot_info.multivalued is not None else False,
-            }
+        # Slots only bionetwork subclasses add are folded in, scoped to those networks
+        attributes += fold_bionetwork_slots(schemaview, class_name, schema_enum_names)
 
-            # Add examples if available
-            if slot_info.examples:
-                # Get the first example value
-                example = slot_info.examples[0]
-                attribute["example"] = example.value
-
-            # Add annotations if available - format as requested
-            if slot_info.annotations:
-                formatted_annotations = {}
-                for annot_name, annot_info in jsonasobj2.items(slot_info.annotations):
-                    formatted_annotations[annot_name] = annot_info.value
-                attribute["annotations"] = formatted_annotations
-
-            # Add rationale if available in comments - as a string, not an array
-            if slot_info.comments:
-                if isinstance(slot_info.comments, list):
-                    attribute["rationale"] = "\n".join(slot_info.comments)
-                else:
-                    attribute["rationale"] = slot_info.comments
-
-            # Add values information if available in notes - as a string, not an array
-            if slot_info.notes:
-                if isinstance(slot_info.notes, list):
-                    attribute["values"] = "\n".join(slot_info.notes)
-                else:
-                    attribute["values"] = slot_info.notes
-
-            # If this is an enum, add the values
-            if slot_info.range in schema_enum_names:
-                enum_info = schemaview.induced_enum(slot_info.range)
-                values_list = []
-                for pv_name in enum_info.permissible_values or {}:
-                    values_list.append(pv_name)
-                if values_list:
-                    attribute["values"] = "; ".join(values_list)
-
-            # Add the attribute to the class
-            class_entry["attributes"].append(attribute)
+        # Sort by name to retain consistent order
+        class_entry["attributes"] = sorted(attributes, key=lambda attribute: attribute["name"])
 
         # Add the class to the output
         output["classes"].append(class_entry)
 
     return output
+
+
+def fold_bionetwork_slots(schemaview: SchemaView, base_class: str, schema_enum_names: set[str]) -> list[dict[str, Any]]:
+    """
+    Return one attribute per slot that bionetwork subclasses add to `base_class`, with
+    `bioNetworks` set to the sorted union of the networks that add it.
+
+    Raises ValueError if a subclass changes a base slot, or two subclasses define the same
+    added slot differently: the data dictionary can show only one definition per slot.
+    """
+    base_attributes = {
+        slot_info.name: slot_to_attribute(schemaview, slot_info, schema_enum_names)
+        for slot_info in schemaview.class_induced_slots(base_class)
+    }
+    folded: dict[str, tuple[dict[str, Any], set[str]]] = {}
+
+    for subclass_name, network in get_bionetwork_subclasses(schemaview, base_class).items():
+        for slot_info in schemaview.class_induced_slots(subclass_name):
+            attribute = slot_to_attribute(schemaview, slot_info, schema_enum_names)
+            if slot_info.name in base_attributes:
+                if attribute != base_attributes[slot_info.name]:
+                    raise ValueError(f"{subclass_name} changes {base_class}'s {slot_info.name!r}")
+            elif slot_info.name in folded:
+                existing_attribute, networks = folded[slot_info.name]
+                if attribute != existing_attribute:
+                    raise ValueError(f"Bionetwork subclasses of {base_class} define {slot_info.name!r} differently")
+                networks.add(network)
+            else:
+                folded[slot_info.name] = (attribute, {network})
+
+    for attribute, networks in folded.values():
+        attribute.setdefault("annotations", {})["bioNetworks"] = sorted(networks)
+    return [attribute for attribute, _ in folded.values()]
+
+
+def slot_to_attribute(schemaview: SchemaView, slot_info, schema_enum_names: set[str]) -> dict[str, Any]:
+    """Convert an induced slot into a data dictionary attribute."""
+    # Create the attribute entry with the exact structure requested
+    attribute = {
+        "name": slot_info.name,
+        # Use title from schema if available
+        "title": slot_info.title if slot_info.title is not None else slot_info.name,
+        "description": slot_info.description or "",
+        "range": slot_info.range if slot_info.range is not None else "string",
+        "required": slot_info.required if slot_info.required is not None else False,
+        "multivalued": slot_info.multivalued if slot_info.multivalued is not None else False,
+    }
+
+    # Add examples if available
+    if slot_info.examples:
+        # Get the first example value
+        example = slot_info.examples[0]
+        attribute["example"] = example.value
+
+    # Add annotations if available - format as requested
+    if slot_info.annotations:
+        formatted_annotations = {}
+        for annot_name, annot_info in jsonasobj2.items(slot_info.annotations):
+            formatted_annotations[annot_name] = annot_info.value
+        attribute["annotations"] = formatted_annotations
+
+    # Add rationale if available in comments - as a string, not an array
+    if slot_info.comments:
+        if isinstance(slot_info.comments, list):
+            attribute["rationale"] = "\n".join(slot_info.comments)
+        else:
+            attribute["rationale"] = slot_info.comments
+
+    # Add values information if available in notes - as a string, not an array
+    if slot_info.notes:
+        if isinstance(slot_info.notes, list):
+            attribute["values"] = "\n".join(slot_info.notes)
+        else:
+            attribute["values"] = slot_info.notes
+
+    # If this is an enum, add the values
+    if slot_info.range in schema_enum_names:
+        enum_info = schemaview.induced_enum(slot_info.range)
+        values_list = []
+        for pv_name in enum_info.permissible_values or {}:
+            values_list.append(pv_name)
+        if values_list:
+            attribute["values"] = "; ".join(values_list)
+
+    return attribute
 
 
 def generate_dictionary(schema_path=None, output_path=None):

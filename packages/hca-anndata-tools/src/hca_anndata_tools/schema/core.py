@@ -245,6 +245,30 @@ class Organism(str, Enum):
     NCBITaxonCOLON10090 = "NCBITaxon:10090"
 
 
+class BioNetwork(str, Enum):
+    """
+    HCA biological network keys, as used by the HCA Data Portal and the Atlas Tracker. Bionetwork subclasses name theirs in a `bioNetwork` class annotation.
+    """
+    adipose = "adipose"
+    breast = "breast"
+    development = "development"
+    eye = "eye"
+    genetic_diversity = "genetic-diversity"
+    gut = "gut"
+    heart = "heart"
+    immune = "immune"
+    kidney = "kidney"
+    liver = "liver"
+    lung = "lung"
+    musculoskeletal = "musculoskeletal"
+    nervous_system = "nervous-system"
+    oral_and_craniofacial = "oral-and-craniofacial"
+    organoid = "organoid"
+    pancreas = "pancreas"
+    reproduction = "reproduction"
+    skin = "skin"
+
+
 
 class Dataset(ConfiguredBaseModel):
     """
@@ -385,7 +409,8 @@ class AdiposeDataset(Dataset):
     """
     Dataset with Adipose BioNetwork–specific metadata requirements.
     """
-    linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'https://github.com/clevercanary/hca-validation-tools/schema/bionetwork/adipose'})
+    linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'annotations': {'bioNetwork': {'tag': 'bioNetwork', 'value': 'adipose'}},
+         'from_schema': 'https://github.com/clevercanary/hca-validation-tools/schema/bionetwork/adipose'})
 
     ambient_count_correction: str = Field(default=..., title="Ambient Count Correction", description="""Method used to correct ambient RNA contamination in single-cell data.""", json_schema_extra = { "linkml_meta": {'alias': 'ambient_count_correction',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
@@ -528,7 +553,8 @@ class GutDataset(Dataset):
     """
     Dataset with Gut BioNetwork–specific metadata requirements.
     """
-    linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'https://github.com/clevercanary/hca-validation-tools/schema/bionetwork/gut'})
+    linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'annotations': {'bioNetwork': {'tag': 'bioNetwork', 'value': 'gut'}},
+         'from_schema': 'https://github.com/clevercanary/hca-validation-tools/schema/bionetwork/gut'})
 
     ambient_count_correction: str = Field(default=..., title="Ambient Count Correction", description="""Method used to correct ambient RNA contamination in single-cell data.""", json_schema_extra = { "linkml_meta": {'alias': 'ambient_count_correction',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
@@ -999,7 +1025,8 @@ class AdiposeSample(Sample):
     """
     Sample with Adipose BioNetwork–specific metadata requirements.
     """
-    linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'https://github.com/clevercanary/hca-validation-tools/schema/bionetwork/adipose'})
+    linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'annotations': {'bioNetwork': {'tag': 'bioNetwork', 'value': 'adipose'}},
+         'from_schema': 'https://github.com/clevercanary/hca-validation-tools/schema/bionetwork/adipose'})
 
     dissociation_protocol: str = Field(default=..., title="Dissociation Protocol", description="""Dissociation chemicals used during sample preparation""", json_schema_extra = { "linkml_meta": {'alias': 'dissociation_protocol',
          'domain_of': ['AdiposeSample', 'GutSample'],
@@ -1256,7 +1283,8 @@ class GutSample(Sample):
     """
     Sample with Gut BioNetwork–specific metadata requirements.
     """
-    linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'https://github.com/clevercanary/hca-validation-tools/schema/bionetwork/gut'})
+    linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'annotations': {'bioNetwork': {'tag': 'bioNetwork', 'value': 'gut'}},
+         'from_schema': 'https://github.com/clevercanary/hca-validation-tools/schema/bionetwork/gut'})
 
     radial_tissue_term: RadialTissueTerm = Field(default=..., title="Radial Tissue Term", description="""Radial compartment/location of the tissue sample.""", json_schema_extra = { "linkml_meta": {'alias': 'radial_tissue_term', 'domain_of': ['GutSample']} })
     dissociation_protocol: str = Field(default=..., title="Dissociation Protocol", description="""Dissociation chemicals used during sample preparation""", json_schema_extra = { "linkml_meta": {'alias': 'dissociation_protocol',
@@ -1514,7 +1542,9 @@ class MusculoskeletalDataset(Dataset):
     """
     Dataset with Musculoskeletal BioNetwork–specific metadata requirements.
     """
-    linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'https://github.com/clevercanary/hca-validation-tools/schema/bionetwork/musculoskeletal'})
+    linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'annotations': {'bioNetwork': {'tag': 'bioNetwork',
+                                        'value': 'musculoskeletal'}},
+         'from_schema': 'https://github.com/clevercanary/hca-validation-tools/schema/bionetwork/musculoskeletal'})
 
     ambient_count_correction: str = Field(default=..., title="Ambient Count Correction", description="""Method used to correct ambient RNA contamination in single-cell data.""", json_schema_extra = { "linkml_meta": {'alias': 'ambient_count_correction',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},

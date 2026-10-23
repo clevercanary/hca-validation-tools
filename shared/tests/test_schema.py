@@ -7,19 +7,11 @@ import pytest
 import hca_validation.schema.generated.core as schema
 from hca_validation.schema_utils.schema_utils import (
     coverage_classes,
+    get_bionetwork_keys,
+    get_class_bionetwork,
     get_slot_anndata_location,
-    load_schemaview,
     schema_classes,
 )
-
-
-@pytest.fixture(scope="module")
-def schemaview():
-    """Shared across the module because `class_induced_slots` is the expensive part —
-    linkml_runtime memoizes it per SchemaView instance, so a fresh instance per test
-    re-pays roughly 40ms per class. Mirrors the fixture in the dataset-validator's
-    coverage tests."""
-    return load_schemaview()
 
 
 def test_schemaview_classes(schemaview):
@@ -38,6 +30,44 @@ def test_generated_classes():
     for classes in schema_classes.values():
         for class_name in classes.values():
             assert hasattr(schema, class_name)
+
+
+def _bionetwork_annotations(schemaview):
+    """Map every class carrying a `bioNetwork` annotation, at any depth, to its network."""
+    annotated = {}
+    for class_name, class_info in schemaview.all_classes().items():
+        network = get_class_bionetwork(class_info)
+        if network is not None:
+            annotated[class_name] = network
+    return annotated
+
+
+def test_bionetwork_annotations_are_enum_keys(schemaview):
+    """Every subclass's `bioNetwork` annotation is a key of the BioNetwork enum."""
+    keys = get_bionetwork_keys(schemaview)
+    annotated = _bionetwork_annotations(schemaview)
+    assert annotated, "no class carries a bioNetwork annotation"
+    for class_name, network in annotated.items():
+        assert network in keys, f"{class_name} has bioNetwork {network!r}, not a BioNetwork key"
+
+
+def test_generated_bionetwork_enum_matches_schema(schemaview):
+    """The generated `BioNetwork` the entry-sheet validator checks against is current with `enums.yaml`."""
+    assert sorted(network.value for network in schema.BioNetwork) == get_bionetwork_keys(schemaview)
+
+
+def test_bionetwork_annotations_match_schema_classes(schemaview):
+    """`schema_classes` and the `bioNetwork` annotations name the same subclass for each network.
+
+    The two record the same fact; until one is derived from the other, this keeps them from drifting.
+    """
+    from_schema_classes = {
+        class_name: network
+        for classes in schema_classes.values()
+        for network, class_name in classes.items()
+        if network != "DEFAULT"
+    }
+    assert _bionetwork_annotations(schemaview) == from_schema_classes
 
 
 # Columns that live in obs and that consumers discover by walking the schema for an

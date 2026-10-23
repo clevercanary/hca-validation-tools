@@ -22,6 +22,8 @@ classes:
   AdiposeDataset:
     is_a: Dataset
     description: Dataset with Adipose BioNetwork–specific metadata requirements.
+    annotations:
+      bioNetwork: adipose
     slots:
       - ambient_count_correction
       - doublet_detection
@@ -29,5 +31,7 @@ classes:
   AdiposeSample:
     is_a: Sample
     description: Sample with Adipose BioNetwork–specific metadata requirements.
+    annotations:
+      bioNetwork: adipose
     slots:
       - dissociation_protocol

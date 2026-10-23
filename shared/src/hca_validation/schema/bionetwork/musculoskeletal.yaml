@@ -21,6 +21,8 @@ classes:
   MusculoskeletalDataset:
     is_a: Dataset
     description: Dataset with Musculoskeletal BioNetwork–specific metadata requirements.
+    annotations:
+      bioNetwork: musculoskeletal
     slots:
       - ambient_count_correction
       - doublet_detection
