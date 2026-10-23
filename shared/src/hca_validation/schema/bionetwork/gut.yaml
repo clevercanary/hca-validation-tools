@@ -21,6 +21,8 @@ classes:
   GutDataset:
     is_a: Dataset
     description: Dataset with Gut BioNetwork–specific metadata requirements.
+    annotations:
+      bioNetwork: gut
     slots:
       - ambient_count_correction
       - doublet_detection
@@ -28,6 +30,8 @@ classes:
   GutSample:
     is_a: Sample
     description: Sample with Gut BioNetwork–specific metadata requirements.
+    annotations:
+      bioNetwork: gut
     slots:
       - radial_tissue_term
       - dissociation_protocol

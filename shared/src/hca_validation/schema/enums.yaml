@@ -121,3 +121,27 @@ enums:
     permissible_values:
       "NCBITaxon:9606": {}
       "NCBITaxon:10090": {}
+
+  BioNetwork:
+    description: >-
+      HCA biological network keys, as used by the HCA Data Portal and the Atlas
+      Tracker. Bionetwork subclasses name theirs in a `bioNetwork` class annotation.
+    permissible_values:
+      adipose: {}
+      breast: {}
+      development: {}
+      eye: {}
+      genetic-diversity: {}
+      gut: {}
+      heart: {}
+      immune: {}
+      kidney: {}
+      liver: {}
+      lung: {}
+      musculoskeletal: {}
+      nervous-system: {}
+      oral-and-craniofacial: {}
+      organoid: {}
+      pancreas: {}
+      reproduction: {}
+      skin: {}
