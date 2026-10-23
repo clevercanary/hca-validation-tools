@@ -113,28 +113,6 @@ class MissingSentinel(Enum):
 
 MISSING = MissingSentinel.MISSING
 
-# Possible bionetworks that a sheet may be associated with
-allowed_bionetwork_names = [
-    "adipose",
-    "breast",
-    "development",
-    "eye",
-    "genetic-diversity",
-    "gut",
-    "heart",
-    "immune",
-    "kidney",
-    "liver",
-    "lung",
-    "musculoskeletal",
-    "nervous-system",
-    "oral",
-    "organoid",
-    "pancreas",
-    "reproduction",
-    "skin",
-]
-
 # Mapping of supported entity types to information about how they're represented in spreadsheets
 sheet_structure_by_entity_type = {
     "dataset": {"sheet_index": 0, "primary_key_field": "dataset_id"},
@@ -713,8 +691,11 @@ def validate_google_sheet(
     # --- Parameter validation -------------------------------------------------
     if not sheet_id:
         raise ValueError("sheet_id is required for validate_google_sheet()")
-    if bionetwork is not None and bionetwork not in allowed_bionetwork_names:
-        raise ValueError(f"'{bionetwork}' is not a valid bionetwork")
+    if bionetwork is not None:
+        from hca_validation.schema.generated.core import BioNetwork
+
+        if bionetwork not in {network.value for network in BioNetwork}:
+            raise ValueError(f"'{bionetwork}' is not a valid bionetwork")
 
     import logging
 
