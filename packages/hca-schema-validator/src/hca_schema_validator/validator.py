@@ -2214,7 +2214,11 @@ def _no_release_explains_message(dated, ensg: set[str], n_non_ensembl: int, obje
     _, shortfall, unknown = dated
     closest = min(shortfall, key=lambda r: shortfall[r])
     skipped = n_non_ensembl
-    context = f" ({_plural(skipped, 'feature')} excluded from dating -- not plain Ensembl gene ids)" if skipped else ""
+    context = (
+        f" ({_plural(skipped, 'feature')} excluded from release matching -- not plain Ensembl gene ids)"
+        if skipped
+        else ""
+    )
     # Named, not just counted: #710 asks for the minimum *and* the unexplained
     # genes. On a file whose intervals are individually known but jointly
     # impossible, nothing else supplies an identifier to investigate -- the
@@ -2421,7 +2425,11 @@ def _release_against_genes(parsed, ensg: set[str], n_non_ensembl: int, dated, ob
     said = []
 
     skipped = n_non_ensembl
-    context = f" ({_plural(skipped, 'feature')} excluded from dating -- not plain Ensembl gene ids)" if skipped else ""
+    context = (
+        f" ({_plural(skipped, 'feature')} excluded from release matching -- not plain Ensembl gene ids)"
+        if skipped
+        else ""
+    )
     if earliest is None:
         # No release explains the whole gene list -- said once per file, from the
         # check itself. The declared value is still worth comparing against the

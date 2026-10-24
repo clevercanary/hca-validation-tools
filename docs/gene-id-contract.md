@@ -160,7 +160,7 @@ Ensembl says what changed. The allowed gene set says what is nameable. We only r
     the same collision rule as 3.5, by another route, and it applies whatever class the bare gene falls in.
     No prod file carries a versioned identifier today; Cell Ranger strips them.
 
-3.10 Human identifiers only, matched exactly. Gorilla is `ENSGGOG...`; a prefix test would date it as human.
+3.10 Human identifiers only, matched exactly. Gorilla is `ENSGGOG...`; a prefix test would treat it as human.
     Non-human features are left to the base validator, which checks each against its own organism's table.
 
 ## 4. Coordinates
