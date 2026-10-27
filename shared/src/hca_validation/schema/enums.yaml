@@ -3,7 +3,6 @@ name: hca-validation-enums
 title: Shared Enumerations for HCA Validation Tools
 description: Enumerations reused across HCA validation schemas
 license: MIT
-version: 0.1.0
 
 prefixes:
   linkml: https://w3id.org/linkml/

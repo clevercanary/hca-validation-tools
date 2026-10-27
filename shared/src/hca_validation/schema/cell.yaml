@@ -3,7 +3,6 @@ name: hca-validation-cell
 title: HCA Validation Cell Schema
 description: Schema for validating Human Cell Atlas (HCA) cell metadata
 license: MIT
-version: 0.1.0
 
 prefixes:
   linkml: https://w3id.org/linkml/

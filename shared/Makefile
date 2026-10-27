@@ -51,6 +51,9 @@ lint-schema-errors:
 gen-schema:
 	@echo "Generating models..."
 	@$(UV) gen-pydantic src/hca_validation/schema/core.yaml --meta AUTO > src/hca_validation/schema/generated/core.py
+	@# Mark the schema version line so release-please bumps it with core.yaml (docs/schema-version-contract.md)
+	@sed -E 's/^(version = "[^"]*")$$/\1  # x-release-please-version/' src/hca_validation/schema/generated/core.py > src/hca_validation/schema/generated/core.py.tmp
+	@mv src/hca_validation/schema/generated/core.py.tmp src/hca_validation/schema/generated/core.py
 	@echo "Done"
 
 # Generate data dictionary

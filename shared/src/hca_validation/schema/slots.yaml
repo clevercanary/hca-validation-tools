@@ -3,7 +3,6 @@ name: hca-validation-slots
 title: Shared Slot Definitions for HCA Validation Tools
 description: Reusable slots employed across multiple HCA validation schemas
 license: MIT
-version: 0.1.0
 
 prefixes:
   linkml: https://w3id.org/linkml/

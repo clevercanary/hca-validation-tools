@@ -2,7 +2,11 @@
 Test script for schema functionality.
 """
 
+import re
+from pathlib import Path
+
 import pytest
+import yaml
 
 import hca_validation.schema.generated.core as schema
 from hca_validation.schema_utils.schema_utils import (
@@ -38,6 +42,27 @@ def test_generated_classes():
     for classes in schema_classes.values():
         for class_name in classes.values():
             assert hasattr(schema, class_name)
+
+
+# One schema version, in core.yaml, mirrored by both generated modules (docs/schema-version-contract.md §1).
+_SCHEMA_DIR = Path(schema.__file__).parents[1]
+_BUNDLED_MODEL = Path(__file__).parents[2] / "packages/hca-anndata-tools/src/hca_anndata_tools/schema/core.py"
+
+
+def test_only_core_yaml_declares_a_version():
+    declaring = sorted(
+        str(path.relative_to(_SCHEMA_DIR))
+        for path in _SCHEMA_DIR.rglob("*.yaml")
+        if "version" in (yaml.safe_load(path.read_text()) or {})
+    )
+    assert declaring == ["core.yaml"]
+
+
+def test_generated_models_carry_the_schema_version(schemaview):
+    version = schemaview.schema.version
+    assert schema.version == version
+    bundled = re.search(r'^version = "([^"]*)"', _BUNDLED_MODEL.read_text(), flags=re.M)
+    assert bundled is not None and bundled.group(1) == version
 
 
 # Columns that live in obs and that consumers discover by walking the schema for an
