@@ -3,7 +3,7 @@ name: hca-validation-core
 title: HCA Validation Core Schema
 description: Core schema for validating Human Cell Atlas (HCA) data
 license: MIT
-version: 0.1.0  # x-release-please-version
+version: 0.2.0  # x-release-please-version
 
 prefixes:
   linkml: https://w3id.org/linkml/
