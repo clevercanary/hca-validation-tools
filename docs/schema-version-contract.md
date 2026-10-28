@@ -14,36 +14,45 @@ A version is only useful if a consumer can tell from it whether a file that pass
 1.1 **One version, in `shared/src/hca_validation/schema/core.yaml`.** No other schema file declares a `version:`.
     `core.yaml` imports every other schema file, so any change anywhere is a change to it.
 
-1.2 The generated Pydantic module (`generated/core.py`) and the bundled copy in `hca-anndata-tools`
-    (`hca_anndata_tools/schema/core.py`) carry the same value. `test_schema.py` fails if any of the three differ.
+1.2 The generated Pydantic module (`generated/core.py`), which lives in the schema directory, carries the same value.
+    `test_schema.py` fails if the two differ.
 
-1.3 The bionetwork schemas have no version of their own. Nothing loads one on its own, and all of them feed the one
+1.3 **The schema is versioned on its own.** A schema release touches only the schema directory and releases no
+    package. Each consumer adopts a new schema version in its own change, under its own version: `hca-anndata-tools`
+    by re-copying the generated model into its bundled copy (automating that copy is #536), the data portal by
+    bumping the tag it syncs from (DataBiosphere/data-portal#3263), the tracker by refreshing its dictionary. Until a
+    consumer adopts a release, it reports the version it last adopted.
+
+1.4 The bionetwork schemas have no version of their own. Nothing loads one on its own, and all of them feed the one
     published data dictionary. Revisit if Tier 2 (#790) makes networks change much faster than core.
 
-1.4 `hca-schema-validator`'s `__schema_version__` ("HCA anndata schema version 1.0.0") is a different number for a
+1.5 `hca-schema-validator`'s `__schema_version__` ("HCA anndata schema version 1.0.0") is a different number for a
     different rule set: that validator does not load the LinkML schema. How the two relate is #802.
 
 ## 2. How the version moves
 
 2.1 **Never edit the version by hand.** release-please owns it: the `hca-schema` component in
-    `release-please-config.json` (path `shared/src/hca_validation/schema`) bumps `core.yaml` and both generated
-    files, writes `CHANGELOG.md` beside `core.yaml`, and tags `hca-schema-vX.Y.Z`. Nothing is published to PyPI.
+    `release-please-config.json` (path `shared/src/hca_validation/schema`) bumps `core.yaml` and `generated/core.py`,
+    writes `CHANGELOG.md` beside `core.yaml`, and tags `hca-schema-vX.Y.Z`. Nothing is published to PyPI.
 
-2.2 **The bump comes from the conventional-commit type.** The repo squash-merges, so it is the **pull request
-    title** that decides. A schema change's title type is chosen against sections 3 to 5, not by habit.
+2.2 **The bump comes from the conventional-commit type in the pull request title.** The repo squash-merges with a
+    blank commit body, so the title is all release-please sees: a breaking change is marked with `!` in the title
+    (`feat(schema)!: …`). A `BREAKING CHANGE:` footer in a commit or the PR body never reaches `main`.
 
-2.3 **At 0.x the repo's release policy applies** (CLAUDE.md, Release Policy):
+2.3 **The type maps to a section below; the bump it gives at 0.x is CLAUDE.md's Release Policy**, as for the packages,
+    including cutting 1.0.0 deliberately with a `Release-As: 1.0.0` footer typed into the squash message at merge:
 
-| Commit type | 0.x bump | Use for |
-|---|---|---|
-| `feat!:` or a `BREAKING CHANGE:` footer | minor (`0.2.3` → `0.3.0`) | section 3 |
-| `feat:` | patch | section 4 |
-| `fix:` | patch | section 5 |
-| `chore:`, `refactor:`, `test:` | none | changes that alter no schema meaning, e.g. a regeneration-only diff |
+| Commit type | Use for |
+|---|---|
+| `feat!:` | section 3 |
+| `feat:` | section 4 |
+| `fix:` | section 5 |
+| `chore:`, `refactor:`, `test:` | changes that alter no schema meaning, e.g. a regeneration-only diff |
 
-2.4 Cutting 1.0.0 is a deliberate act, done with a `Release-As: 1.0.0` footer, as for the packages.
+2.3.1 Every commit type above releases at least a patch: `release-please-config.json` makes all of them visible
+      changelog sections. A schema-meaning-free change therefore still moves the version, and says so in the changelog.
 
-2.5 Only commits that touch `shared/src/hca_validation/schema/` count. A change to validator code alone (entry-sheet
+2.4 Only commits that touch `shared/src/hca_validation/schema/` count. A change to validator code alone (entry-sheet
     validation, `hca-schema-validator`) is not a schema change and does not appear in this changelog.
 
 ## 3. Breaking: a file or entry sheet that passed can now fail
@@ -70,8 +79,9 @@ A version is only useful if a consumer can tell from it whether a file that pass
 - annotations that change only the published data dictionary or coverage reporting, such as `bioNetwork`, `tier`,
   or `annDataLocation` on a slot that had none
 
-4.2 Dictionary-only changes are additions, not text fixes: the portal and the tracker consume the dictionary, and
-    a consumer pinned to a version must be able to see that it changed.
+4.2 Dictionary-only changes are additions, not text fixes: the portal and the tracker consume the dictionary, and a
+    consumer pinned to a release tag (DataBiosphere/data-portal#3263) must see from the changelog that it changed.
+    The dictionary itself does not yet state its version; recording it is #802.
 
 ## 5. Text: what is said about a slot, not what it allows
 
@@ -83,5 +93,4 @@ A version is only useful if a consumer can tell from it whether a file that pass
 6.1 Each entry comes from its pull request title, so the title names what changed in the schema's terms: the slots,
     enums or classes involved, and the network when only some are affected.
 
-6.2 `0.1.0` is a baseline, not one fixed schema: the schema changed under it from August 2025 without a bump.
-    `CHANGELOG.md` records this.
+6.2 `0.1.0` is a baseline, not one fixed schema; `CHANGELOG.md` explains why.

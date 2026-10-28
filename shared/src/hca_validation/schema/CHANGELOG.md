@@ -8,5 +8,6 @@ musculoskeletal bionetwork schema (December 2025) and the `Cell` class (#538). A
 or report that says `0.1.0` was checked against some schema from that period, but which
 one cannot be told from the version alone.
 
-From the next release on, `core.yaml`'s `version:` is bumped by release-please according
-to `docs/schema-version-contract.md`, and every change is listed here (#537).
+From 0.2.0 on, `core.yaml`'s `version:` is bumped by release-please according to
+`docs/schema-version-contract.md`, and every change is listed here (#537). The 0.2.0 entry
+also lists the earlier, unversioned changes, since no release marked where they ended.

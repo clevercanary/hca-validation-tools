@@ -3,6 +3,7 @@
 
 # Variables
 SCHEMA_DIR := src/hca_validation/schema
+GENERATED := $(SCHEMA_DIR)/generated/core.py
 SCHEMAS := $(wildcard $(SCHEMA_DIR)/*.yaml)
 UV := uv run
 SUPPRESS_WARNINGS := 2>/dev/null
@@ -50,10 +51,11 @@ lint-schema-errors:
 .PHONY: gen-schema
 gen-schema:
 	@echo "Generating models..."
-	@$(UV) gen-pydantic src/hca_validation/schema/core.yaml --meta AUTO > src/hca_validation/schema/generated/core.py
-	@# Mark the schema version line so release-please bumps it with core.yaml (docs/schema-version-contract.md)
-	@sed -E 's/^(version = "[^"]*")$$/\1  # x-release-please-version/' src/hca_validation/schema/generated/core.py > src/hca_validation/schema/generated/core.py.tmp
-	@mv src/hca_validation/schema/generated/core.py.tmp src/hca_validation/schema/generated/core.py
+	@# Generate to a temp file so a failed run leaves the committed model intact. sed marks the schema version line
+	@# so release-please bumps it with core.yaml (docs/schema-version-contract.md).
+	@$(UV) gen-pydantic $(SCHEMA_DIR)/core.yaml --meta AUTO > $(GENERATED).tmp
+	@sed -E 's/^(version = "[^"]*")$$/\1  # x-release-please-version/' $(GENERATED).tmp > $(GENERATED)
+	@rm $(GENERATED).tmp
 	@echo "Done"
 
 # Generate data dictionary

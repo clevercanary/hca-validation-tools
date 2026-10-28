@@ -24,8 +24,7 @@
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
         {"type": "generic", "path": "core.yaml"},
-        {"type": "generic", "path": "generated/core.py"},
-        {"type": "generic", "path": "/packages/hca-anndata-tools/src/hca_anndata_tools/schema/core.py"}
+        {"type": "generic", "path": "generated/core.py"}
       ]
     },
     "packages/hca-anndata-mcp": {

@@ -44,9 +44,8 @@ def test_generated_classes():
             assert hasattr(schema, class_name)
 
 
-# One schema version, in core.yaml, mirrored by both generated modules (docs/schema-version-contract.md §1).
+# One schema version, in core.yaml, mirrored by the generated module (docs/schema-version-contract.md §1).
 _SCHEMA_DIR = Path(schema.__file__).parents[1]
-_BUNDLED_MODEL = Path(__file__).parents[2] / "packages/hca-anndata-tools/src/hca_anndata_tools/schema/core.py"
 
 
 def test_only_core_yaml_declares_a_version():
@@ -58,11 +57,13 @@ def test_only_core_yaml_declares_a_version():
     assert declaring == ["core.yaml"]
 
 
-def test_generated_models_carry_the_schema_version(schemaview):
-    version = schemaview.schema.version
-    assert schema.version == version
-    bundled = re.search(r'^version = "([^"]*)"', _BUNDLED_MODEL.read_text(), flags=re.M)
-    assert bundled is not None and bundled.group(1) == version
+def test_generated_model_carries_the_schema_version(schemaview):
+    assert schema.version == schemaview.schema.version
+
+
+def test_generated_version_line_carries_the_release_please_marker():
+    """`make gen-schema` adds the marker with sed; a gen-pydantic output change would silently drop it."""
+    assert re.search(r'^version = "[^"]*"  # x-release-please-version$', Path(schema.__file__).read_text(), flags=re.M)
 
 
 # Columns that live in obs and that consumers discover by walking the schema for an

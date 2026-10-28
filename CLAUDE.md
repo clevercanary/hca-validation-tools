@@ -21,11 +21,9 @@ it governs; none repeats what the code already says.
 - **`docs/anndata-tools-contract.md`** — read wide, write narrow: the encoding
   profile `hca-anndata-tools` emits, the files it operates on, and what it
   refuses. Governs the tools package, the MCP server and the h5ad skills.
-- **`docs/schema-version-contract.md`** — the LinkML schema version: one version
-  in `core.yaml`, bumped only by release-please from the pull request title's
-  commit type, and which schema changes are breaking (`feat!:`), additions
-  (`feat:`) or text (`fix:`). Governs every change under
-  `shared/src/hca_validation/schema/`.
+- **`docs/schema-version-contract.md`** — the LinkML schema version: where it
+  lives, how it is bumped, and which schema changes are breaking. Governs every
+  change under `shared/src/hca_validation/schema/`.
 
 ## Build Commands
 
