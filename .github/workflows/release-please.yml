@@ -173,7 +173,7 @@ jobs:
           skip-existing: true
 
   publish-hca-anndata-mcp:
-    needs: [release-please, publish-hca-anndata-tools, publish-hca-schema-validator]
+    needs: [release-please, publish-hca-metadata-schema, publish-hca-anndata-tools, publish-hca-schema-validator]
     # Use always() + explicit result checks so mcp still publishes when
     # sibling publish jobs are intentionally skipped. With one release PR per
     # component (#804) that is the normal case: a push releases one component,
@@ -181,9 +181,12 @@ jobs:
     # across PRs is the merge order in CLAUDE.md's Release Policy.
     # !failure() alone is unreliable: GitHub Actions can propagate
     # skipped-dep state to downstream jobs.
+    # The schema job is listed too: when its publish fails, the tools job is
+    # skipped rather than failed, which the tools check below would accept.
     if: |
       always() && !cancelled() &&
       (needs['release-please'].outputs.hca_anndata_mcp_release == 'true' || github.event_name == 'workflow_dispatch') &&
+      (needs['publish-hca-metadata-schema'].result == 'success' || needs['publish-hca-metadata-schema'].result == 'skipped') &&
       (needs['publish-hca-anndata-tools'].result == 'success' || needs['publish-hca-anndata-tools'].result == 'skipped') &&
       (needs['publish-hca-schema-validator'].result == 'success' || needs['publish-hca-schema-validator'].result == 'skipped')
     runs-on: ubuntu-latest
