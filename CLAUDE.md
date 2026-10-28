@@ -114,6 +114,8 @@ Before tagging 1.0.0, widen the sibling bounds in `packages/hca-anndata-mcp/pypr
 
 **Minor-bumping a package means updating the bound in every sibling that depends on it.** release-please bumps a package's own version but has no Python plugin that rewrites dependents' constraints, so it will not do this for you. Concretely: if `hca-anndata-tools` goes `0.6.x` → `0.7.0` while `hca-anndata-mcp` still declares `hca-anndata-tools>=0.6,<0.7`, nothing breaks locally — but `hca-anndata-mcp`'s **next release will fail** at the `check_sibling_deps.py` step, because the wheel would tell consumers to install a version the package was never built against. That failure is intentional; fix it by widening the bound in `packages/hca-anndata-mcp/pyproject.toml`, not by bypassing the check.
 
+**Each component has its own release PR** (`"separate-pull-requests": true` in `release-please-config.json`, #804), and merging one releases only that component. **Merge `hca-anndata-mcp`'s release PR after its siblings' when its bounds need their new versions:** if `hca-anndata-mcp` requires `hca-anndata-tools>=0.7.2` and `hca-anndata-tools` 0.7.2 is still an open release PR, merge that one first. Merged the other way round, the MCP wheel reaches PyPI requiring a version that doesn't exist there yet, and can't be installed until the sibling is released.
+
 ## Updating hca-schema-validator in the Batch Service
 
 The Docker image installs from `uv.lock` (via `uv export`), so **the lock is what decides which version ships** — not the constraint in `pyproject.toml`. Which of the two you touch depends on where the new release lands.
