@@ -120,9 +120,12 @@ jobs:
   publish-hca-anndata-mcp:
     needs: [release-please, publish-hca-anndata-tools, publish-hca-schema-validator]
     # Use always() + explicit result checks so mcp still publishes when
-    # sibling publish jobs are intentionally skipped (e.g. only mcp is in
-    # this release). !failure() alone is unreliable: GitHub Actions can
-    # propagate skipped-dep state to downstream jobs.
+    # sibling publish jobs are intentionally skipped. With one release PR per
+    # component (#804) that is the normal case: a push releases one component,
+    # so this ordering only applies to workflow_dispatch runs. Release order
+    # across PRs is the merge order in CLAUDE.md's Release Policy.
+    # !failure() alone is unreliable: GitHub Actions can propagate
+    # skipped-dep state to downstream jobs.
     if: |
       always() && !cancelled() &&
       (needs['release-please'].outputs.hca_anndata_mcp_release == 'true' || github.event_name == 'workflow_dispatch') &&
