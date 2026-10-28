@@ -10,13 +10,6 @@ permissions:
   contents: write
   pull-requests: write
 
-# Queue runs rather than overlap them: with one release PR per component (#804),
-# back-to-back merges are routine, and two runs could race to create the same
-# tag and release. Never cancel: a cancelled run could stop mid-publish.
-concurrency:
-  group: release-please
-  cancel-in-progress: false
-
 jobs:
   release-please:
     runs-on: ubuntu-latest
