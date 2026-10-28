@@ -19,11 +19,18 @@ A version is only useful if a consumer can tell from it whether a file that pass
     the same value. The package's `tests/test_package.py` fails if any of them differ.
 
 1.3 **The schema is versioned on its own.** A schema release touches only the `hca-metadata-schema` package and
-    releases no other. Each consumer adopts a new schema version in its own way: `shared` and `hca-anndata-tools`
-    depend on the package with a bound capped at the next minor, so they take a patch release as soon as it is
-    published and a minor (breaking) release only when their bound is widened; the data portal by bumping the tag
-    it syncs from (DataBiosphere/data-portal#3263); the tracker by refreshing its dictionary. Until a consumer adopts
-    a release, it reports the version it last adopted.
+    releases no other. Each consumer adopts a new schema version in its own way:
+    - `shared`, and the services built from it, use the schema in the same checkout: the path source in
+      development, a source copy in the Docker images. They adopt every schema change in the pull request that
+      makes it, whatever its version, and `shared`'s declared bound is not enforced. A deployed service adopts it
+      when its image is rebuilt and redeployed.
+    - `hca-anndata-tools`, installed from PyPI, resolves the package by its bound, capped at the next minor: a patch
+      release reaches installs as soon as it is published; a minor (breaking) release only once the bound is
+      widened in a tools release.
+    - The data portal by bumping the tag it syncs from (DataBiosphere/data-portal#3263); the tracker by refreshing
+      its dictionary.
+
+    Until a consumer adopts a release, it reports the version it last adopted.
 
 1.4 The bionetwork schemas have no version of their own. Nothing loads one on its own, and all of them feed the one
     published data dictionary. Revisit if Tier 2 (#790) makes networks change much faster than core.
