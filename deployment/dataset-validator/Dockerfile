@@ -9,6 +9,9 @@ WORKDIR /build
 
 # Copy shared library (path dep of dataset-validator)
 COPY shared/ ./shared/
+# Only the schema package's pyproject: the export below needs nothing else, and its source is
+# COPY'd in the final stage, so a schema edit does not invalidate this stage.
+COPY packages/hca-metadata-schema/pyproject.toml ./packages/hca-metadata-schema/
 
 # Copy the services' uv project files
 COPY services/dataset-validator/pyproject.toml services/dataset-validator/uv.lock ./services/dataset-validator/
@@ -21,9 +24,11 @@ COPY services/hca-schema-validator/pyproject.toml services/hca-schema-validator/
 #   --no-emit-project                     the virtual projects install nothing themselves
 #   --no-emit-package hca-validation-shared  its source is COPY'd to /opt/python
 #                                          in the final stage, not installed here
+#   --no-emit-package hca-metadata-schema    likewise
 WORKDIR /build/services/dataset-validator
 RUN uv export --frozen --no-hashes --no-dev \
         --no-emit-project --no-emit-package hca-validation-shared \
+        --no-emit-package hca-metadata-schema \
         -o /tmp/requirements.txt
 
 WORKDIR /build/services/cellxgene-validator
@@ -82,6 +87,7 @@ COPY services/hca-schema-validator/src/hca_schema_validator_service/ /app/hca_sc
 # PYTHONPATH above). Keeping this out of /app avoids shadowing subprocess
 # validators' installed packages.
 COPY shared/src/hca_validation/ /opt/python/hca_validation/
+COPY packages/hca-metadata-schema/src/hca_metadata_schema/ /opt/python/hca_metadata_schema/
 
 # Set working directory
 WORKDIR /app

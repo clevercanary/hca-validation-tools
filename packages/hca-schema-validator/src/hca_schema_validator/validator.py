@@ -1491,7 +1491,7 @@ def _lookup_canonical_label(term_id, exceptions):
 # * the report is capped per column; Lattice displays the whole DataFrame.
 #
 # tests/test_validator.py asserts the error-tier columns equal the Donor
-# slots in shared/src/hca_validation/schema/donor.yaml, so this map cannot
+# slots in hca-metadata-schema's donor.yaml, so this map cannot
 # drift from the LinkML schema unnoticed.
 DONOR_GRAIN_COLUMNS: dict[str, str] = {
     "organism_ontology_term_id": "error",

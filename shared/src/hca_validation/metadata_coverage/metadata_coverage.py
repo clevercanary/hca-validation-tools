@@ -1,6 +1,6 @@
 """Compute the per-file `metadata_coverage` payload reported by the dataset validator.
 
-Driven by the LinkML schema in `shared/src/hca_validation/schema/`. For each
+Driven by the LinkML schema in the `hca-metadata-schema` package. For each
 LinkML class eligible for coverage reporting (currently Donor, Sample, Dataset),
 the module enumerates non-identifier, non-FK, non-deprecated slots that carry
 an `annDataLocation` annotation and buckets each entity instance into one of:

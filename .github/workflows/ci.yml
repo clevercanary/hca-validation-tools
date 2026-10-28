@@ -74,6 +74,9 @@ jobs:
             pytest-args: '-m "not integration"'
           # The published packages — untested by `make test-all`, so this is
           # net-new coverage of our PyPI artifacts.
+          - project: packages/hca-metadata-schema
+            sync-args: ''
+            pytest-args: ''
           - project: packages/hca-anndata-tools
             sync-args: ''
             pytest-args: ''

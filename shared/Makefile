@@ -2,11 +2,9 @@
 # Tasks specific to the shared validation library
 
 # Variables
-SCHEMA_DIR := src/hca_validation/schema
-GENERATED := $(SCHEMA_DIR)/generated/core.py
-SCHEMAS := $(wildcard $(SCHEMA_DIR)/*.yaml)
+# The LinkML schema lives in its own package (#350); the schema targets below run there.
+SCHEMA_PKG := ../packages/hca-metadata-schema
 UV := uv run
-SUPPRESS_WARNINGS := 2>/dev/null
 
 .PHONY: help
 help:
@@ -22,47 +20,16 @@ help:
 	@echo "  test-integration      - Run integration tests only"
 	@echo "  build                 - Build shared library (validate + generate)"
 
-# Schema validation
-.PHONY: validate-schema
-validate-schema:
-	@echo "Validating all schema files..."
-	@for schema in $(SCHEMAS); do \
-		schema_file=$$(basename $$schema); \
-		echo "Validating $$schema_file..."; \
-		$(UV) gen-yaml $(SCHEMA_DIR)/$$schema_file > /dev/null $(SUPPRESS_WARNINGS) || exit 1; \
-		echo "✓ $$schema_file is valid"; \
-	done
-	@echo "All schema files are valid!"
-
-# Lint schema files
-.PHONY: lint-schema
-lint-schema:
-	@echo "Linting schema files..."
-	@$(UV) linkml lint $(SCHEMA_DIR) --validate
-
-# Lint schema files with only errors (no style warnings)
-.PHONY: lint-schema-errors
-lint-schema-errors:
-	@echo "Linting schema files (errors only)..."
-	@$(UV) linkml lint $(SCHEMA_DIR) --validate --ignore-warnings || (echo "❌ Schema has critical errors" && exit 1)
-	@echo "✓ No critical errors found in schema files"
-
-# Generate Python models from schemas
-.PHONY: gen-schema
-gen-schema:
-	@echo "Generating models..."
-	@# Generate to a temp file so a failed run leaves the committed model intact. sed marks the schema version line
-	@# so release-please bumps it with core.yaml (docs/schema-version-contract.md).
-	@$(UV) gen-pydantic $(SCHEMA_DIR)/core.yaml --meta AUTO > $(GENERATED).tmp
-	@sed -E 's/^(version = "[^"]*")$$/\1  # x-release-please-version/' $(GENERATED).tmp > $(GENERATED)
-	@rm $(GENERATED).tmp
-	@echo "Done"
+# Schema targets: run in the hca-metadata-schema package, which owns the YAML and the generated models
+.PHONY: validate-schema lint-schema lint-schema-errors gen-schema
+validate-schema lint-schema lint-schema-errors gen-schema:
+	@$(MAKE) -C $(SCHEMA_PKG) $@
 
 # Generate data dictionary
 .PHONY: generate-data-dictionary
 generate-data-dictionary:
 	@echo "Generating data dictionary from core schema..."
-	@$(UV) python -c "from hca_validation.data_dictionary.generate_dictionary import generate_dictionary; generate_dictionary('src/hca_validation/schema/core.yaml', '../data_dictionaries/core_data_dictionary.json')"
+	@$(UV) python -c "from hca_validation.data_dictionary.generate_dictionary import generate_dictionary; generate_dictionary(output_path='../data_dictionaries/core_data_dictionary.json')"
 	@echo "✓ Data dictionary generated"
 
 # Run validator tests (in shared library)

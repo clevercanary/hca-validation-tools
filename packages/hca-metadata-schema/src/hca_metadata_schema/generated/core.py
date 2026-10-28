@@ -1,6 +1,3 @@
-# Bundled copy of shared/src/hca_validation/schema/generated/core.py
-# Generated from LinkML schemas via `cd shared && make gen-schema`.
-# To refresh: copy the generated file here after regeneration.
 from __future__ import annotations 
 
 import re
@@ -30,7 +27,7 @@ from pydantic import (
 
 
 metamodel_version = "None"
-version = "0.1.0"
+version = "0.2.0"  # x-release-please-version
 
 
 class ConfiguredBaseModel(BaseModel):
@@ -82,7 +79,7 @@ linkml_meta = LinkMLMeta({'default_prefix': 'hca',
                           'prefix_reference': 'https://github.com/clevercanary/hca-validation-tools/schema/'},
                   'linkml': {'prefix_prefix': 'linkml',
                              'prefix_reference': 'https://w3id.org/linkml/'}},
-     'source_file': 'src/hca_validation/schema/core.yaml',
+     'source_file': 'src/hca_metadata_schema/core.yaml',
      'title': 'HCA Validation Core Schema'} )
 
 class ReferenceGenomeEnum(str, Enum):

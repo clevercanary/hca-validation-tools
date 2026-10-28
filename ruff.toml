@@ -2,8 +2,7 @@ target-version = "py310"
 line-length = 120
 extend-exclude = [
     "*/_vendored/*",
-    "*/schema/generated/*",
-    "packages/hca-anndata-tools/src/hca_anndata_tools/schema/core.py",
+    "packages/hca-metadata-schema/src/hca_metadata_schema/generated/*",
 ]
 
 [lint]

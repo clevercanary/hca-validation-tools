@@ -24,7 +24,7 @@ This is error-prone and slow, especially for wranglers who aren't Python-fluent.
 
 ## HCA Tier 1 `uns` Fields
 
-Source: `shared/src/hca_validation/schema/slots.yaml`, `shared/src/hca_validation/schema/dataset.yaml`, `data_dictionaries/core_data_dictionary.json`
+Source: `hca_metadata_schema/slots.yaml`, `hca_metadata_schema/dataset.yaml` (in `packages/hca-metadata-schema/src/`), `data_dictionaries/core_data_dictionary.json`
 
 | Field | Required | Type | Validation |
 |-------|----------|------|------------|
@@ -89,10 +89,10 @@ Claude: [calls set_uns(output_path, "doublet_detection", "none")]
 
 ## Where the Schema Lives
 
-The canonical field definitions live in `shared/`:
-- **LinkML schemas**: `shared/src/hca_validation/schema/` — `dataset.yaml`, `slots.yaml`, etc.
+The canonical field definitions live in the `hca-metadata-schema` package (`packages/hca-metadata-schema/`, moved out of `shared/` in #350):
+- **LinkML schemas**: `packages/hca-metadata-schema/src/hca_metadata_schema/` — `dataset.yaml`, `slots.yaml`, etc.
 - **Data dictionary**: `data_dictionaries/core_data_dictionary.json` — generated from LinkML, has `annDataLocation` annotations
-- **Generated Pydantic models**: `shared/src/hca_validation/schema/generated/core.py`
+- **Generated Pydantic models**: `packages/hca-metadata-schema/src/hca_metadata_schema/generated/core.py`
 
 The edit tools should read from these sources, not duplicate them. This means:
 - `hca-anndata-tools` gains a dependency on `shared/` (or on the data dictionary JSON)
@@ -101,6 +101,10 @@ The edit tools should read from these sources, not duplicate them. This means:
 - These validation functions could also be used in a standalone h5ad validation step, independent of the vendored cellxgene validator
 
 ### Dependency approach: bundled generated Pydantic models
+
+> **Superseded by #350.** The bundled copy and its manual copy step are gone: the schema and its generated models
+> are published to PyPI as `hca-metadata-schema`, and `hca-anndata-tools` depends on it. The reasoning below —
+> pydantic-only models, no LinkML at runtime — is why that package depends only on pydantic.
 
 Bundle a copy of the generated Pydantic models file (`shared/src/hca_validation/schema/generated/core.py`) into `hca-anndata-tools`. This gives us real Pydantic validation for free — type checking, enum validation, required/optional — without depending on the full `shared/` package (which drags in LinkML, gspread, Google API client, etc.).
 
@@ -115,7 +119,7 @@ The generated `core.py` only imports `pydantic` and stdlib. No LinkML runtime ne
 
 ## Architecture
 
-- **Bundled schema**: `packages/hca-anndata-tools/src/hca_anndata_tools/schema/core.py` — copy of generated Pydantic models from `shared/`
+- **Schema models**: `hca_metadata_schema.generated.core`, from the `hca-metadata-schema` package (#350; until then a bundled copy at `hca_anndata_tools/schema/core.py`)
 - **Schema helpers**: `packages/hca-anndata-tools/src/hca_anndata_tools/schema/helpers.py` — introspect models to list uns fields, extract validation rules, check annDataLocation
 - **Edit logic**: `packages/hca-anndata-tools/src/hca_anndata_tools/edit.py` — `set_uns()` and `list_uns_fields()` functions
 - **MCP registration**: `packages/hca-anndata-mcp/src/hca_anndata_mcp/server.py`

@@ -1,0 +1,36 @@
+[project]
+name = "hca-metadata-schema"
+version = "0.2.0"
+description = "HCA metadata schema: LinkML definitions and the Pydantic models generated from them"
+authors = [{ name = "Clever Canary", email = "dave@clevercanary.com" }]
+license = "MIT"
+readme = "README.md"
+requires-python = ">=3.10,<4.0"
+# The generated models import only pydantic and the standard library. Keep it that way: this package
+# is what lets hca-anndata-tools use the schema without pulling in linkml.
+dependencies = [
+    "pydantic>=2,<3",
+]
+
+[project.urls]
+Homepage = "https://github.com/clevercanary/hca-validation-tools"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0,<9",
+    "pyyaml>=6.0,<7",
+]
+# gen-pydantic and gen-yaml for the Makefile's schema targets, kept out of `dev` so the tests (and CI)
+# do not install linkml. Same pin and linkml-runtime cap as shared/pyproject.toml, for the same reason.
+codegen = [
+    "linkml==1.9.2",
+    "linkml-runtime>=1.9.2,<1.10",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# Ships every file under the package directory, which is how the LinkML YAML reaches the wheel.
+[tool.hatch.build.targets.wheel]
+packages = ["src/hca_metadata_schema"]

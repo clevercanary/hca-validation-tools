@@ -27,6 +27,12 @@
 !shared/pyproject.toml
 !shared/src/
 
+# packages/hca-metadata-schema/ — shared's schema dependency (#350), consumed the
+# same way: its pyproject for the path dependency, and its source. Not its tests or
+# Makefile. No other package under packages/ is a build input.
+!packages/hca-metadata-schema/pyproject.toml
+!packages/hca-metadata-schema/src/
+
 # services/ — each service's pyproject, uv.lock and source. Covers all four;
 # the Batch image uses three and the Lambda image uses the fourth, and one
 # .dockerignore serves both builds. All services are on uv now (#474, #475), so

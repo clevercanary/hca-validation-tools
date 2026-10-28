@@ -9,6 +9,9 @@ WORKDIR /build
 
 # Copy shared library first (path dependency source)
 COPY shared/ ./shared/
+# Only the schema package's pyproject: the export below needs nothing else, and its source is
+# COPY'd in the final stage, so a schema edit does not reinstall every dependency.
+COPY packages/hca-metadata-schema/pyproject.toml ./packages/hca-metadata-schema/
 
 # Copy the service's uv project files
 COPY services/entry-sheet-validator/pyproject.toml services/entry-sheet-validator/uv.lock ./services/entry-sheet-validator/
@@ -19,12 +22,13 @@ WORKDIR /build/services/entry-sheet-validator
 # Export the locked runtime dependency closure and install it into /opt/python.
 #   --no-dev             the Lambda ships no test deps (pytest/moto/...)
 #   --no-emit-project    entry-sheet is a virtual project — nothing to install
-#   --no-emit-package …  shared is served as source from /var/task (final stage),
-#                        so only its dependencies go into /opt/python, not shared itself
+#   --no-emit-package …  shared and hca-metadata-schema are served as source from /var/task
+#                        (final stage), so only their dependencies go into /opt/python
 # The build-image python (3.10) is pinned so environment markers resolve for the
 # runtime interpreter, not the builder's default.
 RUN uv export --frozen --no-hashes --no-dev \
         --no-emit-project --no-emit-package hca-validation-shared \
+        --no-emit-package hca-metadata-schema \
         -o /tmp/requirements.txt && \
     uv pip install --no-cache --python /var/lang/bin/python --target /opt/python \
         -r /tmp/requirements.txt
@@ -51,6 +55,7 @@ COPY --from=builder /opt/extensions/ /opt/extensions/
 COPY services/entry-sheet-validator/src/entry_sheet_validator_lambda/ /var/task/entry_sheet_validator_lambda/
 # Copy shared library to container
 COPY shared/src/hca_validation/ /var/task/hca_validation/
+COPY packages/hca-metadata-schema/src/hca_metadata_schema/ /var/task/hca_metadata_schema/
 
 # Copy config.yaml for the AWS Parameters and Secrets Extension
 COPY deployment/entry-sheet-validator/config.yaml /var/task/config.yaml

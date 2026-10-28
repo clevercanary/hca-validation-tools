@@ -1,5 +1,6 @@
 # HCA Validation Tools Makefile
-# This Makefile orchestrates the multi-service build; schema targets live in shared/Makefile.
+# This Makefile orchestrates the multi-service build; schema targets live in packages/hca-metadata-schema/Makefile
+# (shared/Makefile forwards to them).
 
 # Load Make-specific environment overrides (not checked in)
 # Put only simple KEY=value pairs here (no JSON).
@@ -202,6 +203,7 @@ build-all:
 .PHONY: test-all
 test-all:
 	@echo "Running all tests across services..."
+	@$(MAKE) -C packages/hca-metadata-schema test
 	@$(MAKE) -C shared test-shared
 	@$(MAKE) -C services/entry-sheet-validator test-lambda-container
 	@$(MAKE) -C services/dataset-validator test
@@ -211,8 +213,8 @@ test-all:
 
 .PHONY: typecheck
 typecheck:
-	@echo "Running pyright (hca-anndata-tools, hca-anndata-mcp)..."
-	@cd packages/hca-anndata-mcp && uv run pyright --project ../.. ../hca-anndata-tools/src ../hca-anndata-mcp/src
+	@echo "Running pyright (hca-metadata-schema, hca-anndata-tools, hca-anndata-mcp)..."
+	@cd packages/hca-anndata-mcp && uv run pyright --project ../.. ../hca-metadata-schema/src ../hca-anndata-tools/src ../hca-anndata-mcp/src
 	@echo "Running pyright (hca-tracker-client, hca-tracker-mcp)..."
 	@cd packages/hca-tracker-mcp && uv run pyright --project ../.. ../hca-tracker-client/src ../hca-tracker-mcp/src
 	@echo "Running pyright (hca-schema-validator)..."

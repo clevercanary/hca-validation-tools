@@ -11,17 +11,19 @@ A version is only useful if a consumer can tell from it whether a file that pass
 
 ## 1. What is versioned
 
-1.1 **One version, in `shared/src/hca_validation/schema/core.yaml`.** No other schema file declares a `version:`.
-    `core.yaml` imports every other schema file, so any change anywhere is a change to it.
+1.1 **One version, in `packages/hca-metadata-schema/src/hca_metadata_schema/core.yaml`.** No other schema file
+    declares a `version:`. `core.yaml` imports every other schema file, so any change anywhere is a change to it.
 
-1.2 The generated Pydantic module (`generated/core.py`), which lives in the schema directory, carries the same value.
-    `test_schema.py` fails if the two differ.
+1.2 The schema is the `hca-metadata-schema` package on PyPI (#350), and the package version is the schema version.
+    The generated Pydantic module (`generated/core.py`), `__init__.py`'s `__version__` and `pyproject.toml` carry
+    the same value. The package's `tests/test_package.py` fails if any of them differ.
 
-1.3 **The schema is versioned on its own.** A schema release touches only the schema directory and releases no
-    package. Each consumer adopts a new schema version in its own change, under its own version: `hca-anndata-tools`
-    by re-copying the generated model into its bundled copy (automating that copy is #536), the data portal by
-    bumping the tag it syncs from (DataBiosphere/data-portal#3263), the tracker by refreshing its dictionary. Until a
-    consumer adopts a release, it reports the version it last adopted.
+1.3 **The schema is versioned on its own.** A schema release touches only the `hca-metadata-schema` package and
+    releases no other. Each consumer adopts a new schema version in its own way: `shared` and `hca-anndata-tools`
+    depend on the package with a bound capped at the next minor, so they take a patch release as soon as it is
+    published and a minor (breaking) release only when their bound is widened; the data portal by bumping the tag
+    it syncs from (DataBiosphere/data-portal#3263); the tracker by refreshing its dictionary. Until a consumer adopts
+    a release, it reports the version it last adopted.
 
 1.4 The bionetwork schemas have no version of their own. Nothing loads one on its own, and all of them feed the one
     published data dictionary. Revisit if Tier 2 (#790) makes networks change much faster than core.
@@ -31,9 +33,11 @@ A version is only useful if a consumer can tell from it whether a file that pass
 
 ## 2. How the version moves
 
-2.1 **Never edit the version by hand.** release-please owns it: the `hca-schema` component in
-    `release-please-config.json` (path `shared/src/hca_validation/schema`) bumps `core.yaml` and `generated/core.py`,
-    writes `CHANGELOG.md` beside `core.yaml`, and tags `hca-schema-vX.Y.Z`. Nothing is published to PyPI.
+2.1 **Never edit the version by hand.** release-please owns it: the `hca-metadata-schema` component in
+    `release-please-config.json` (path `packages/hca-metadata-schema`) bumps `pyproject.toml`, `__init__.py`,
+    `core.yaml` and `generated/core.py`, writes the package's `CHANGELOG.md`, tags `hca-metadata-schema-vX.Y.Z`, and
+    the release workflow publishes the package to PyPI. Releases up to 0.2.0 were tagged `hca-schema-vX.Y.Z`, before
+    the schema became a package; 0.2.0 is the first version on PyPI.
 
 2.2 **The bump comes from the conventional-commit type in the pull request title.** The repo squash-merges with a
     blank commit body, so the title is all release-please sees: a breaking change is marked with `!` in the title
@@ -52,7 +56,7 @@ A version is only useful if a consumer can tell from it whether a file that pass
 2.3.1 Every commit type above releases at least a patch: `release-please-config.json` makes all of them visible
       changelog sections. A schema-meaning-free change therefore still moves the version, and says so in the changelog.
 
-2.4 Only commits that touch `shared/src/hca_validation/schema/` count. A change to validator code alone (entry-sheet
+2.4 Only commits that touch `packages/hca-metadata-schema/` count. A change to validator code alone (entry-sheet
     validation, `hca-schema-validator`) is not a schema change and does not appear in this changelog.
 
 ## 3. Breaking: a file or entry sheet that passed can now fail

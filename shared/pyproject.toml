@@ -23,6 +23,9 @@ dependencies = [
     "pydantic-core>=2.33.2,<3",
     "google-api-python-client>=2.171.0,<3",
     "urllib3>=2.5.0,<3",
+    # The LinkML schema and its generated models (#350). Bounded at the next minor like any
+    # sibling: at 0.x a minor bump is a breaking schema change.
+    "hca-metadata-schema>=0.2,<0.3",
 ]
 
 # Optional: only needed by the `h5ad_storage` module (HDF5 introspection).
@@ -44,6 +47,10 @@ dev = [
 markers = [
     "integration: marks tests as integration tests (deselect with '-m \"not integration\"')"
 ]
+
+# Development only: resolves the schema from the local checkout.
+[tool.uv.sources]
+hca-metadata-schema = { path = "../packages/hca-metadata-schema", editable = true }
 
 [build-system]
 requires = ["hatchling"]
