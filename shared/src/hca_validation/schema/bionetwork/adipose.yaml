@@ -3,7 +3,6 @@ name: hca-validation-adipose
 title: Adipose BioNetwork Extensions
 description: Adipose network–specific refinements to the HCA dataset schema
 license: MIT
-version: 0.1.0
 
 prefixes:
   linkml: https://w3id.org/linkml/

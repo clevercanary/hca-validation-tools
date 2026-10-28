@@ -2,7 +2,11 @@
 Test script for schema functionality.
 """
 
+import re
+from pathlib import Path
+
 import pytest
+import yaml
 
 import hca_validation.schema.generated.core as schema
 from hca_validation.schema_utils.schema_utils import (
@@ -38,6 +42,28 @@ def test_generated_classes():
     for classes in schema_classes.values():
         for class_name in classes.values():
             assert hasattr(schema, class_name)
+
+
+# One schema version, in core.yaml, mirrored by the generated module (docs/schema-version-contract.md §1).
+_SCHEMA_DIR = Path(schema.__file__).parents[1]
+
+
+def test_only_core_yaml_declares_a_version():
+    declaring = sorted(
+        str(path.relative_to(_SCHEMA_DIR))
+        for path in _SCHEMA_DIR.rglob("*.yaml")
+        if "version" in (yaml.safe_load(path.read_text()) or {})
+    )
+    assert declaring == ["core.yaml"]
+
+
+def test_generated_model_carries_the_schema_version(schemaview):
+    assert schema.version == schemaview.schema.version
+
+
+def test_generated_version_line_carries_the_release_please_marker():
+    """`make gen-schema` adds the marker with sed; a gen-pydantic output change would silently drop it."""
+    assert re.search(r'^version = "[^"]*"  # x-release-please-version$', Path(schema.__file__).read_text(), flags=re.M)
 
 
 # Columns that live in obs and that consumers discover by walking the schema for an

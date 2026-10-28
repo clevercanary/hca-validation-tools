@@ -18,6 +18,15 @@
         "packages/hca-anndata-tools/src/hca_anndata_tools/__init__.py"
       ]
     },
+    "shared/src/hca_validation/schema": {
+      "release-type": "simple",
+      "component": "hca-schema",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        {"type": "generic", "path": "core.yaml"},
+        {"type": "generic", "path": "generated/core.py"}
+      ]
+    },
     "packages/hca-anndata-mcp": {
       "release-type": "python",
       "package-name": "hca-anndata-mcp",

@@ -8,9 +8,9 @@ HCA Validation Tools is a multi-service validation system for Human Cell Atlas (
 
 ## Contracts
 
-Two documents state rules that code review checks changes against, rather than
+Three documents state rules that code review checks changes against, rather than
 leaving each caller to improvise. Read the relevant one before changing the code
-it governs; neither repeats what the code already says.
+it governs; none repeats what the code already says.
 
 - **`docs/gene-id-contract.md`** — gene identifiers: what the allowed gene set
   is and what it is not, how the shipped Ensembl tables are generated and why
@@ -21,6 +21,9 @@ it governs; neither repeats what the code already says.
 - **`docs/anndata-tools-contract.md`** — read wide, write narrow: the encoding
   profile `hca-anndata-tools` emits, the files it operates on, and what it
   refuses. Governs the tools package, the MCP server and the h5ad skills.
+- **`docs/schema-version-contract.md`** — the LinkML schema version: where it
+  lives, how it is bumped, and which schema changes are breaking. Governs every
+  change under `shared/src/hca_validation/schema/`.
 
 ## Build Commands
 

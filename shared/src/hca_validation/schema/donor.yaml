@@ -3,7 +3,6 @@ name: hca-validation-donor
 title: HCA Validation Donor Schema
 description: Schema for validating Human Cell Atlas (HCA) donor metadata
 license: MIT
-version: 0.1.0
 
 prefixes:
   linkml: https://w3id.org/linkml/

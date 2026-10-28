@@ -3,7 +3,6 @@ name: hca-validation-musculoskeletal
 title: Musculoskeletal BioNetwork Extensions
 description: Musculoskeletal network–specific refinements to the HCA dataset schema
 license: MIT
-version: 0.1.0
 
 prefixes:
   linkml: https://w3id.org/linkml/
