@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import jsonasobj2
+from hca_metadata_schema import CORE_SCHEMA_PATH
 from linkml_runtime import SchemaView
 
 from hca_validation.schema_utils import get_class_entity_type
@@ -123,18 +124,15 @@ def generate_dictionary(schema_path=None, output_path=None):
     Generate a data dictionary JSON from the specified schema file.
 
     Args:
-        schema_path: Path to the schema file (default: core.yaml in the schema directory)
+        schema_path: Path to the schema file (default: hca-metadata-schema's core.yaml)
         output_path: Path to write the output JSON (default: standard path in data_dictionaries directory)
     """
     # Get paths
     current_dir = Path(__file__).parent
     project_root = current_dir.parent.parent.parent.parent
 
-    # Default to core.yaml if no schema path is provided
     if schema_path is None:
-        # Get the path to the schema directory (in shared library)
-        schema_dir = project_root / "shared" / "src" / "hca_validation" / "schema"
-        schema_path = schema_dir / "core.yaml"
+        schema_path = CORE_SCHEMA_PATH
 
     # Load the schema
     schemaview = SchemaView(str(schema_path), merge_imports=True)
@@ -161,13 +159,7 @@ def generate_dictionary(schema_path=None, output_path=None):
 def main():
     """Command-line entry point."""
     # Parse command line arguments
-    if len(sys.argv) > 1:
-        schema_path = sys.argv[1]
-    else:
-        # Default to core.yaml in the schema directory
-        current_dir = Path(__file__).parent
-        schema_dir = current_dir.parent / "schema"
-        schema_path = schema_dir / "core.yaml"
+    schema_path = sys.argv[1] if len(sys.argv) > 1 else None
 
     # If a specific output path is provided as an argument, use it
     output_path = sys.argv[2] if len(sys.argv) > 2 else None

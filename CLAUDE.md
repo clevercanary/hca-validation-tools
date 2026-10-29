@@ -23,7 +23,7 @@ it governs; none repeats what the code already says.
   refuses. Governs the tools package, the MCP server and the h5ad skills.
 - **`docs/schema-version-contract.md`** — the LinkML schema version: where it
   lives, how it is bumped, and which schema changes are breaking. Governs every
-  change under `shared/src/hca_validation/schema/`.
+  change under `packages/hca-metadata-schema/`.
 
 ## Build Commands
 
@@ -33,8 +33,8 @@ make build-all              # Build shared lib + containers + run all tests
 
 # Shared library (run from root or shared/)
 cd shared && make build     # Validate schemas, generate Python models, generate data dictionary
-cd shared && make validate-schema    # Validate LinkML YAML files only
-cd shared && make gen-schema         # Generate Pydantic models from schemas
+cd shared && make validate-schema    # Validate LinkML YAML files only (runs in packages/hca-metadata-schema)
+cd shared && make gen-schema         # Generate Pydantic models from schemas (runs in packages/hca-metadata-schema)
 ```
 
 ## Test Commands
@@ -59,9 +59,9 @@ cd services/hca-schema-validator && uv run pytest tests/ -v
 
 ## Type Checking
 
-Pyright covers `packages/hca-anndata-tools`, `packages/hca-anndata-mcp`, `packages/hca-schema-validator`, `packages/hca-tracker-client`, `packages/hca-tracker-mcp`, `services/dataset-validator`, and `services/hca-schema-validator`. Config is `pyrightconfig.json` at repo root. Runs one pass per venv since each has a disjoint dep set.
+Pyright covers `packages/hca-metadata-schema`, `packages/hca-anndata-tools`, `packages/hca-anndata-mcp`, `packages/hca-schema-validator`, `packages/hca-tracker-client`, `packages/hca-tracker-mcp`, `services/dataset-validator`, and `services/hca-schema-validator`. Config is `pyrightconfig.json` at repo root. Runs one pass per venv since each has a disjoint dep set.
 
-Note: `hca-anndata-tools` doesn't declare pyright as a dev dep — its files are checked from the `hca-anndata-mcp` venv (which depends on tools, so it's a superset). `hca-tracker-client` is checked the same way, from the `hca-tracker-mcp` venv. This asymmetry persists under uv: the uv migration (#248) deliberately does **not** use a workspace, so each project keeps its own venv rather than sharing one.
+Note: `hca-anndata-tools` and `hca-metadata-schema` don't declare pyright as a dev dep — their files are checked from the `hca-anndata-mcp` venv (which depends on tools, so it's a superset). `hca-tracker-client` is checked the same way, from the `hca-tracker-mcp` venv. This asymmetry persists under uv: the uv migration (#248) deliberately does **not** use a workspace, so each project keeps its own venv rather than sharing one.
 
 ```bash
 make typecheck
@@ -89,7 +89,7 @@ make batch-submit-job ENV=dev
 
 ## Release Policy
 
-All three publishable packages (`hca-schema-validator`, `hca-anndata-tools`, `hca-anndata-mcp`) are pre-1.0 and treated as still iterating. Two flags in `release-please-config.json` shape the bump behavior:
+All four publishable packages (`hca-metadata-schema`, `hca-schema-validator`, `hca-anndata-tools`, `hca-anndata-mcp`) are pre-1.0 and treated as still iterating. Two flags in `release-please-config.json` shape the bump behavior:
 
 - **`bump-minor-pre-major: true`** — on a 0.x package, `feat!` (BREAKING CHANGE) produces a minor bump (`0.12.1` → `0.13.0`), not release-please's default `0.x` → `1.0.0` promotion.
 - **`bump-patch-for-minor-pre-major: true`** — non-breaking `feat:` commits produce a patch bump (`0.12.1` → `0.12.2`), not the default minor. This keeps the minor bump as the explicit "breaking change" signal at 0.x.
@@ -115,6 +115,8 @@ Before tagging 1.0.0, widen the sibling bounds in `packages/hca-anndata-mcp/pypr
 **Minor-bumping a package means updating the bound in every sibling that depends on it.** release-please bumps a package's own version but has no Python plugin that rewrites dependents' constraints, so it will not do this for you. Concretely: if `hca-anndata-tools` goes `0.6.x` → `0.7.0` while `hca-anndata-mcp` still declares `hca-anndata-tools>=0.6,<0.7`, nothing breaks locally — but `hca-anndata-mcp`'s **next release will fail** at the `check_sibling_deps.py` step, because the wheel would tell consumers to install a version the package was never built against. That failure is intentional; fix it by widening the bound in `packages/hca-anndata-mcp/pyproject.toml`, not by bypassing the check.
 
 **Each component has its own release PR** (`"separate-pull-requests": true` in `release-please-config.json`, #804), and merging one releases only that component. **When `hca-anndata-mcp`'s bounds require sibling versions that are still in open release PRs, merge every one of those siblings' PRs first, and wait for each sibling's PyPI publish job to succeed.** For example, `hca-anndata-mcp` requiring `hca-anndata-tools>=0.7.2` while `hca-anndata-tools` 0.7.2 is an open release PR. Merged the other way round, `hca-anndata-mcp`'s tag is cut but its publish fails at the `check_sibling_deps.py` step, because the bound excludes the sibling version still in the repo. (The check reads sibling versions from the repo, not PyPI, so if a sibling's merge succeeded but its publish failed, it won't catch an MCP wheel that depends on the missing version.) Don't re-run the workflow to recover: a `workflow_dispatch` run builds `main` as it is now, not the tagged commit. Leave that version unpublished, merge the siblings' release PRs, and the next `hca-anndata-mcp` release publishes normally.
+
+**The same order applies one level down: `hca-anndata-tools` depends on `hca-metadata-schema`** (#350). Merge a schema release PR, and wait for its publish, before merging a tools release PR whose bound needs it. A schema **minor** bump (a breaking schema change, `docs/schema-version-contract.md` §3) also means widening `hca-metadata-schema>=0.x,<0.y` in `packages/hca-anndata-tools/pyproject.toml` before tools' next release, or that release fails at `check_sibling_deps.py`. `shared` declares the same bound, but nothing enforces it there: `shared` is not published, and its path source overrides the bound locally.
 
 ## Updating hca-schema-validator in the Batch Service
 
@@ -154,19 +156,20 @@ make batch-publish-container ENV=dev     # then ENV=prod, from main
 ## Architecture
 
 **Multi-Service Structure:**
-- `shared/` - Core library with LinkML schemas, Pydantic validation, entry sheet logic. All services depend on this via a uv path dependency (`[tool.uv.sources]`).
+- `shared/` - Core library with Pydantic validation, entry sheet logic and the data dictionary build. All services depend on this via a uv path dependency (`[tool.uv.sources]`).
 - `services/entry-sheet-validator/` - AWS Lambda service for Google Sheets validation
 - `services/dataset-validator/` - AWS Batch service for H5AD file validation using cap-upload-validator
 - `services/hca-schema-validator/` - Service wrapper for the published PyPI package
 - `services/cellxgene-validator/` - Wrapper for cellxgene-schema validator
 - `packages/hca-schema-validator/` - Publishable PyPI package (automated releases via release-please)
+- `packages/hca-metadata-schema/` - The LinkML schema and its generated Pydantic models, published to PyPI (#350). `shared` and `hca-anndata-tools` depend on it.
 - `packages/hca-anndata-tools/`, `packages/hca-anndata-mcp/` - h5ad inspection/editing library and its MCP server
 - `packages/hca-tracker-client/`, `packages/hca-tracker-mcp/` - HCA Atlas Tracker listing/download library (downloads run in an aria2 daemon) and its MCP server; private, not published to PyPI
 - `deployment/` - Dockerfiles and deployment configs per service
 
 **Schema-Driven Validation:**
-- LinkML YAML schemas in `shared/src/hca_validation/schema/` define entities (Dataset, Donor, Sample, Cell)
-- `make gen-schema` generates Pydantic models to `shared/src/hca_validation/schema/generated/core.py`
+- LinkML YAML schemas in `packages/hca-metadata-schema/src/hca_metadata_schema/` define entities (Dataset, Donor, Sample, Cell)
+- `make gen-schema` generates Pydantic models to `packages/hca-metadata-schema/src/hca_metadata_schema/generated/core.py`
 - Bionetwork-specific schemas (adipose, gut, musculoskeletal) extend the core schema
 
 **Service Independence:**

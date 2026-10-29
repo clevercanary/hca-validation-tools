@@ -889,12 +889,34 @@ dev = [
 ]
 
 [[package]]
+name = "hca-metadata-schema"
+version = "0.2.0"
+source = { editable = "../../packages/hca-metadata-schema" }
+dependencies = [
+    { name = "pydantic" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "pydantic", specifier = ">=2,<3" }]
+
+[package.metadata.requires-dev]
+codegen = [
+    { name = "linkml", specifier = "==1.9.2" },
+    { name = "linkml-runtime", specifier = ">=1.9.2,<1.10" },
+]
+dev = [
+    { name = "pytest", specifier = ">=8.0,<9" },
+    { name = "pyyaml", specifier = ">=6.0,<7" },
+]
+
+[[package]]
 name = "hca-validation-shared"
 version = "0.1.0"
 source = { editable = "../../shared" }
 dependencies = [
     { name = "google-api-python-client" },
     { name = "gspread" },
+    { name = "hca-metadata-schema" },
     { name = "linkml" },
     { name = "linkml-runtime" },
     { name = "linkml-validator" },
@@ -918,6 +940,7 @@ requires-dist = [
     { name = "google-api-python-client", specifier = ">=2.171.0,<3" },
     { name = "gspread", specifier = ">=6.2.0,<7" },
     { name = "h5py", marker = "extra == 'h5ad'", specifier = ">=3.8,<4" },
+    { name = "hca-metadata-schema", editable = "../../packages/hca-metadata-schema" },
     { name = "linkml", specifier = "==1.9.2" },
     { name = "linkml-runtime", specifier = ">=1.9.2,<1.10" },
     { name = "linkml-validator", specifier = ">=0.4.5,<0.5" },

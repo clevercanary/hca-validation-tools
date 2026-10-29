@@ -34,7 +34,13 @@ dependencies = [
 Homepage = "https://github.com/clevercanary/hca-validation-tools"
 
 [dependency-groups]
-dev = ["pytest>=8.0,<9", "pyright>=1.1.408,<2"]
+# hca-metadata-schema is test-only: the Donor parity test reads its donor.yaml. The validator itself does not
+# load the LinkML schema.
+dev = ["pytest>=8.0,<9", "pyright>=1.1.408,<2", "hca-metadata-schema>=0.2,<0.3"]
+
+# Development only: resolves the schema from the local checkout.
+[tool.uv.sources]
+hca-metadata-schema = { path = "../hca-metadata-schema", editable = true }
 
 [build-system]
 requires = ["hatchling"]

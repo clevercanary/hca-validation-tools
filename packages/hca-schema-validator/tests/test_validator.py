@@ -2342,15 +2342,14 @@ _DONOR_SLOTS_NOT_CHECKED = {
 def test_donor_grain_columns_match_linkml_donor_slots():
     """The error-tier columns are exactly the LinkML Donor slots, minus the listed exclusions.
 
-    The validator cannot import the LinkML schema (it is not a published
-    package), so the column map is a constant; this reads the schema by repo
-    path and fails if the two ever drift. #680, and #540 for the eventual
-    generation of the validator config from LinkML.
+    The validator does not load the LinkML schema, so the column map is a
+    constant; this reads the schema from hca-metadata-schema (a test-only
+    dependency) and fails if the two ever drift. #680, and #540 for the
+    eventual generation of the validator config from LinkML.
     """
-    repo_root = Path(__file__).resolve().parents[3]
-    if not (repo_root / "release-please-config.json").is_file():
-        pytest.skip("the LinkML schema lives in the monorepo checkout, not in the sdist")
-    donor_yaml = repo_root / "shared" / "src" / "hca_validation" / "schema" / "donor.yaml"
+    # A dev-group dependency, so an environment without it (e.g. tests run from the sdist) skips this one test.
+    schema = pytest.importorskip("hca_metadata_schema")
+    donor_yaml = schema.CORE_SCHEMA_PATH.parent / "donor.yaml"
     assert donor_yaml.is_file(), f"LinkML donor schema not found at {donor_yaml}"
     donor_slots = set(yaml.safe_load(donor_yaml.read_text())["classes"]["Donor"]["slots"])
     assert set(_DONOR_SLOTS_NOT_CHECKED) <= donor_slots, "exclusion list names a slot Donor no longer has"

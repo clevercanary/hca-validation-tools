@@ -7,12 +7,12 @@ This module provides the main validation functionality for HCA data using Pydant
 import itertools
 from typing import Any
 
+import hca_metadata_schema.generated.core as schema
 import pandas as pd
 from linkml_runtime import SchemaView
 from pydantic import ValidationError
 from pydantic_core import InitErrorDetails, PydanticCustomError
 
-import hca_validation.schema.generated.core as schema
 from hca_validation.schema_utils.schema_utils import (
     get_class_entity_type,
     get_class_foreign_keys,

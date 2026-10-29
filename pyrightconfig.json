@@ -4,6 +4,7 @@
   "include": [
     "packages/hca-anndata-tools/src",
     "packages/hca-anndata-mcp/src",
+    "packages/hca-metadata-schema/src",
     "packages/hca-schema-validator/src",
     "packages/hca-tracker-client/src",
     "packages/hca-tracker-mcp/src",
@@ -14,7 +15,7 @@
     "**/__pycache__",
     "**/.*",
     "**/_vendored/**",
-    "**/schema/generated/**",
+    "packages/hca-metadata-schema/src/hca_metadata_schema/generated/**",
     "**/.venv/**",
     "**/node_modules/**"
   ],

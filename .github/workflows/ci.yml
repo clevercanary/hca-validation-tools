@@ -55,6 +55,31 @@ jobs:
       - name: Typecheck (pyright)
         run: make typecheck
 
+  # The Pydantic models and the data dictionary are generated from the LinkML YAML and committed. Regenerate
+  # both and fail if anything differs, so a YAML edit without `make gen-schema` cannot merge (#350). The
+  # opt-in pre-commit hook `schema-generated` runs the same command at commit time.
+  generated-schema:
+    name: generated schema files are current
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          version: "0.10.9"
+          python-version: "3.11"
+          enable-cache: true
+      - name: Regenerate the models and the data dictionary
+        run: make -C shared gen-schema generate-data-dictionary
+      - name: Fail if they changed
+        run: |
+          changed=$(git status --porcelain -- packages/hca-metadata-schema data_dictionaries)
+          if [ -n "$changed" ]; then
+            echo "$changed"
+            git diff -- packages/hca-metadata-schema data_dictionaries
+            echo "::error::Generated schema files are stale. Run 'make -C shared gen-schema generate-data-dictionary' and commit the result."
+            exit 1
+          fi
+
   test:
     name: test (${{ matrix.project }})
     runs-on: ubuntu-latest
@@ -74,6 +99,9 @@ jobs:
             pytest-args: '-m "not integration"'
           # The published packages — untested by `make test-all`, so this is
           # net-new coverage of our PyPI artifacts.
+          - project: packages/hca-metadata-schema
+            sync-args: ''
+            pytest-args: ''
           - project: packages/hca-anndata-tools
             sync-args: ''
             pytest-args: ''

@@ -7,9 +7,18 @@ repos:
       - id: ruff-format
   - repo: local
     hooks:
+      # Regenerates the Pydantic models and the data dictionary when a schema YAML file is committed. If either
+      # changes, pre-commit fails the commit; add the regenerated files and commit again. CI's generated-schema
+      # job is the check that cannot be skipped (#350).
+      - id: schema-generated
+        name: regenerate schema models and data dictionary
+        entry: make -s -C shared gen-schema generate-data-dictionary
+        language: system
+        pass_filenames: false
+        files: ^packages/hca-metadata-schema/src/hca_metadata_schema/.*\.yaml$
       - id: pyright
         name: pyright
         entry: make typecheck
         language: system
         pass_filenames: false
-        files: ^(packages/(hca-anndata-tools|hca-anndata-mcp|hca-schema-validator|hca-tracker-client|hca-tracker-mcp)|services/(dataset-validator|hca-schema-validator))/src/.*\.py$|^(pyrightconfig\.json|Makefile)$
+        files: ^(packages/(hca-metadata-schema|hca-anndata-tools|hca-anndata-mcp|hca-schema-validator|hca-tracker-client|hca-tracker-mcp)|services/(dataset-validator|hca-schema-validator))/src/.*\.py$|^(pyrightconfig\.json|Makefile)$

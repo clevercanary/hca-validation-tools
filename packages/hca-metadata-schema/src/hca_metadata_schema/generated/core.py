@@ -79,7 +79,7 @@ linkml_meta = LinkMLMeta({'default_prefix': 'hca',
                           'prefix_reference': 'https://github.com/clevercanary/hca-validation-tools/schema/'},
                   'linkml': {'prefix_prefix': 'linkml',
                              'prefix_reference': 'https://w3id.org/linkml/'}},
-     'source_file': 'src/hca_validation/schema/core.yaml',
+     'source_file': 'src/hca_metadata_schema/core.yaml',
      'title': 'HCA Validation Core Schema'} )
 
 class ReferenceGenomeEnum(str, Enum):
