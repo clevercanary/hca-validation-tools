@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/clevercanary/hca-validation-tools/compare/hca-metadata-schema-v0.2.0...hca-metadata-schema-v0.2.1) (2026-10-29)
+
+
+### Build System
+
+* publish the LinkML schema to PyPI as hca-metadata-schema ([#350](https://github.com/clevercanary/hca-validation-tools/issues/350)) ([#811](https://github.com/clevercanary/hca-validation-tools/issues/811)) ([0240690](https://github.com/clevercanary/hca-validation-tools/commit/02406900b4e649ba61c37af86de4fe42aa8f67d1))
+
 ## [0.2.0](https://github.com/clevercanary/hca-validation-tools/compare/hca-schema-v0.1.0...hca-schema-v0.2.0) (2026-10-28)
 
 
