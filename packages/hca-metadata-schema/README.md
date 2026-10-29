@@ -37,3 +37,7 @@ make gen-schema       # regenerate generated/core.py from the YAML
 make validate-schema  # check every YAML file compiles
 uv run pytest tests/ -v
 ```
+
+After editing the YAML, regenerate the models and the data dictionary (`make -C shared gen-schema
+generate-data-dictionary` from the repo root) and commit the result. CI's `generated-schema` job fails if either is
+stale, and the opt-in pre-commit hook `schema-generated` regenerates them when a schema YAML file is committed.
