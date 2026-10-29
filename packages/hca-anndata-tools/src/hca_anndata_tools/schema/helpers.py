@@ -6,14 +6,15 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from .._keys import PROVENANCE_KEY
-from . import core
-from .core import (
+from hca_metadata_schema.generated import core
+from hca_metadata_schema.generated.core import (
     AdiposeDataset,
     Dataset,
     GutDataset,
     MusculoskeletalDataset,
 )
+
+from .._keys import PROVENANCE_KEY
 
 _BIONETWORK_CLASSES = [AdiposeDataset, GutDataset, MusculoskeletalDataset]
 
