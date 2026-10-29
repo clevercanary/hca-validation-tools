@@ -3,6 +3,7 @@ line-length = 120
 extend-exclude = [
     "*/_vendored/*",
     "packages/hca-metadata-schema/src/hca_metadata_schema/generated/*",
+    "packages/hca-anndata-tools/src/hca_anndata_tools/schema/core.py",
 ]
 
 [lint]

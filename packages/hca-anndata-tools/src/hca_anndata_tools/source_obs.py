@@ -19,12 +19,12 @@ import h5py
 import numpy as np
 import pandas as pd
 from anndata.io import read_elem
-from hca_metadata_schema.generated.core import Cell
 
 from ._errors import Refusal
 from ._io import check_duplicate_ids, gate_h5ad_paths, obs_index_name, read_index
 from .guards import require_obs_group
 from .qc import SAMPLE_ID_LIMIT, finding, run_read
+from .schema.core import Cell
 from .schema.helpers import obs_field_names
 from .sources import SourceMatch, match_sources, tracker_name
 

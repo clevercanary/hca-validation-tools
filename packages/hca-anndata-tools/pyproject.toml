@@ -27,10 +27,6 @@ dependencies = [
     "scanpy>=1.10",
     "matplotlib>=3.7",
     "pydantic>=2,<3",
-    # The HCA schema's Pydantic models, which set_uns, list_uns_fields and check_source_obs read.
-    # Until #350 this package carried a hand-made copy of them. Capped at the next minor: at 0.x
-    # a schema minor bump is a breaking change.
-    "hca-metadata-schema>=0.2,<0.3",
 ]
 
 [project.urls]
@@ -38,11 +34,6 @@ Homepage = "https://github.com/clevercanary/hca-validation-tools"
 
 [dependency-groups]
 dev = ["pytest>=8.0,<9"]
-
-# Development only: resolves the schema from the local checkout. uv strips this at build time and
-# publishes the version constraint declared above.
-[tool.uv.sources]
-hca-metadata-schema = { path = "../hca-metadata-schema", editable = true }
 
 [build-system]
 requires = ["hatchling"]
