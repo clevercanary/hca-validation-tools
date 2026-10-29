@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.9.0](https://github.com/clevercanary/hca-validation-tools/compare/hca-anndata-mcp-v0.8.2...hca-anndata-mcp-v0.9.0) (2026-10-29)
+
+
+### ⚠ BREAKING CHANGES
+
+* **hca-schema-validator:** check_gene_annotation_version requires a keyword-only object_kind ("source" or "integrated") and raises ValueError for any other value. HCAValidator passes its own object_kind.
+* require object_kind on HCAValidator and the MCP's validate_schema ([#770](https://github.com/clevercanary/hca-validation-tools/issues/770)) (#773)
+
+### Features
+
+* **hca-anndata-tools:** check an integrated object's obs metadata against its source datasets, cell by cell ([#793](https://github.com/clevercanary/hca-validation-tools/issues/793)) ([#794](https://github.com/clevercanary/hca-validation-tools/issues/794)) ([e7b2670](https://github.com/clevercanary/hca-validation-tools/commit/e7b2670d8daeaca2a1308543c8aa6aa23964f122))
+* **hca-anndata-tools:** report whether an integrated object's CAP annotations are current with CAP ([#781](https://github.com/clevercanary/hca-validation-tools/issues/781)) ([#783](https://github.com/clevercanary/hca-validation-tools/issues/783)) ([4553103](https://github.com/clevercanary/hca-validation-tools/commit/4553103eb549ef65cfd31a2be6e9fb45dc137cfc))
+* **hca-anndata-tools:** set obs['source_dataset'] on an integrated object from its tracker source datasets ([#776](https://github.com/clevercanary/hca-validation-tools/issues/776)) ([#777](https://github.com/clevercanary/hca-validation-tools/issues/777)) ([9495d12](https://github.com/clevercanary/hca-validation-tools/commit/9495d124519bfe6f922008de620c8bf62386170f))
+* **hca-schema-validator:** say the one scope sentence the object kind implies ([#774](https://github.com/clevercanary/hca-validation-tools/issues/774)) ([#775](https://github.com/clevercanary/hca-validation-tools/issues/775)) ([7dae7d3](https://github.com/clevercanary/hca-validation-tools/commit/7dae7d3bbb3fbcacabbde1f215ae50638d861500))
+* require object_kind on HCAValidator and the MCP's validate_schema ([#770](https://github.com/clevercanary/hca-validation-tools/issues/770)) ([#773](https://github.com/clevercanary/hca-validation-tools/issues/773)) ([364b086](https://github.com/clevercanary/hca-validation-tools/commit/364b0865cc625e5989abea18e08e8257f9959377))
+
 ## [0.8.2](https://github.com/clevercanary/hca-validation-tools/compare/hca-anndata-mcp-v0.8.1...hca-anndata-mcp-v0.8.2) (2026-09-30)
 
 
