@@ -66,8 +66,9 @@ jobs:
           packages-dir: packages/hca-schema-validator/dist/
           # Makes a workflow_dispatch retry safe: dispatch runs every
           # publish job, so a retry after a partial success would otherwise
-          # fail on "File already exists" — and publish-hca-anndata-mcp gates
-          # on the other two succeeding, locking it out of dispatch entirely.
+          # fail on "File already exists" — and the jobs that gate on other
+          # publishes succeeding (tools on the schema, mcp on the other three)
+          # would be locked out of dispatch entirely.
           skip-existing: true
 
   publish-hca-metadata-schema:
@@ -114,8 +115,9 @@ jobs:
           packages-dir: packages/hca-metadata-schema/dist/
           # Makes a workflow_dispatch retry safe: dispatch runs every
           # publish job, so a retry after a partial success would otherwise
-          # fail on "File already exists" — and publish-hca-anndata-mcp gates
-          # on the other two succeeding, locking it out of dispatch entirely.
+          # fail on "File already exists" — and the jobs that gate on other
+          # publishes succeeding (tools on the schema, mcp on the other three)
+          # would be locked out of dispatch entirely.
           skip-existing: true
 
   publish-hca-anndata-tools:
@@ -168,8 +170,9 @@ jobs:
           packages-dir: packages/hca-anndata-tools/dist/
           # Makes a workflow_dispatch retry safe: dispatch runs every
           # publish job, so a retry after a partial success would otherwise
-          # fail on "File already exists" — and publish-hca-anndata-mcp gates
-          # on the other two succeeding, locking it out of dispatch entirely.
+          # fail on "File already exists" — and the jobs that gate on other
+          # publishes succeeding (tools on the schema, mcp on the other three)
+          # would be locked out of dispatch entirely.
           skip-existing: true
 
   publish-hca-anndata-mcp:
@@ -228,6 +231,7 @@ jobs:
           packages-dir: packages/hca-anndata-mcp/dist/
           # Makes a workflow_dispatch retry safe: dispatch runs every
           # publish job, so a retry after a partial success would otherwise
-          # fail on "File already exists" — and publish-hca-anndata-mcp gates
-          # on the other two succeeding, locking it out of dispatch entirely.
+          # fail on "File already exists" — and the jobs that gate on other
+          # publishes succeeding (tools on the schema, mcp on the other three)
+          # would be locked out of dispatch entirely.
           skip-existing: true
