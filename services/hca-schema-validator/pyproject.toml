@@ -21,9 +21,10 @@ package = false
 
 # Coverage floor, enforced by CI's test matrix; how to measure and when to raise it: CLAUDE.md, Coverage (#548).
 [tool.coverage.run]
-source = ["hca_schema_validator_service"]
+source = ["src/hca_schema_validator_service"]
 # Also measure code the tests run in a child Python process (`python -m`, a script by path).
 patch = ["subprocess"]
+branch = true
 
 [tool.coverage.report]
-fail_under = 83
+fail_under = 92

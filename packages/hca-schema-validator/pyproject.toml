@@ -57,9 +57,10 @@ packages = ["src/hca_schema_validator"]
 source = ["hca_schema_validator"]
 # Also measure code the tests run in a child Python process (`python -m`, a script by path).
 patch = ["subprocess"]
+branch = true
 
 [tool.coverage.report]
-fail_under = 95
+fail_under = 93
 # The vendored cellxgene-schema copy is upstream's code, not ours: kept out of the floor, and reported
 # separately in CI's job summary (#548).
 omit = ["*/_vendored/*"]

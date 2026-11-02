@@ -39,9 +39,10 @@ hca-validation-shared = { path = "../../shared", editable = true }
 
 # Coverage floor, enforced by CI's test matrix; how to measure and when to raise it: CLAUDE.md, Coverage (#548).
 [tool.coverage.run]
-source = ["dataset_validator"]
+source = ["src/dataset_validator"]
 # Also measure code the tests run in a child Python process (`python -m`, a script by path).
 patch = ["subprocess"]
+branch = true
 
 [tool.coverage.report]
-fail_under = 91
+fail_under = 90

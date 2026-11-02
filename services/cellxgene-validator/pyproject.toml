@@ -18,9 +18,10 @@ package = false
 
 # Coverage floor, enforced by CI's test matrix; how to measure and when to raise it: CLAUDE.md, Coverage (#548).
 [tool.coverage.run]
-source = ["cellxgene_validator"]
+source = ["src/cellxgene_validator"]
 # Also measure code the tests run in a child Python process (`python -m`, a script by path).
 patch = ["subprocess"]
+branch = true
 
 [tool.coverage.report]
-fail_under = 89
+fail_under = 81

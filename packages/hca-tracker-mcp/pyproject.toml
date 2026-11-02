@@ -45,6 +45,7 @@ packages = ["src/hca_tracker_mcp"]
 source = ["hca_tracker_mcp"]
 # Also measure code the tests run in a child Python process (`python -m`, a script by path).
 patch = ["subprocess"]
+branch = true
 
 [tool.coverage.report]
-fail_under = 94
+fail_under = 88

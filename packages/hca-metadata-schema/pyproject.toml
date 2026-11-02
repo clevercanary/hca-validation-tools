@@ -41,6 +41,7 @@ packages = ["src/hca_metadata_schema"]
 source = ["hca_metadata_schema"]
 # Also measure code the tests run in a child Python process (`python -m`, a script by path).
 patch = ["subprocess"]
+branch = true
 
 [tool.coverage.report]
 fail_under = 98

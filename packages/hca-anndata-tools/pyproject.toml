@@ -58,6 +58,7 @@ packages = ["src/hca_anndata_tools"]
 source = ["hca_anndata_tools"]
 # Also measure code the tests run in a child Python process (`python -m`, a script by path).
 patch = ["subprocess"]
+branch = true
 
 [tool.coverage.report]
-fail_under = 94
+fail_under = 92

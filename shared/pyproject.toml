@@ -65,6 +65,7 @@ packages = ["src/hca_validation"]
 source = ["hca_validation"]
 # Also measure code the tests run in a child Python process (`python -m`, a script by path).
 patch = ["subprocess"]
+branch = true
 
 [tool.coverage.report]
-fail_under = 77
+fail_under = 74

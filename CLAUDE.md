@@ -60,7 +60,7 @@ cd services/hca-schema-validator && uv run pytest tests/ -v
 
 ### Coverage
 
-CI's test matrix measures coverage for every project it tests and fails a project below its floor (#548). Each floor is `fail_under` in that project's `pyproject.toml`, beside `[tool.coverage.run] source`. The numbers are in each test job's section of the CI run's Summary page.
+CI's test matrix measures coverage for every project it tests and fails a project below its floor (#548). Each floor is `fail_under` in that project's `pyproject.toml`, beside `[tool.coverage.run] source`. The numbers are in each test job's section of the CI run's Summary page. Coverage counts branches as well as lines (`branch = true`), so the side of an `if` that no test takes counts as missed. The services (`package = false`) name their source by path (`src/<package>`): a child Python process can't import them by name, so a name source would count nothing that tests run in a subprocess.
 
 ```bash
 cd packages/hca-anndata-tools && uv run pytest tests/ --cov --cov-report=term-missing   # coverage per file, checked against the floor

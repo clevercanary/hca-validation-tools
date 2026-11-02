@@ -43,8 +43,9 @@ packages = ["src/hca_tracker_client"]
 source = ["hca_tracker_client"]
 # Also measure code the tests run in a child Python process (`python -m`, a script by path).
 patch = ["subprocess"]
+branch = true
 
 [tool.coverage.report]
 # A fake tracker for tests: only tests run it, so counting it would lift the floor over shipped code.
 omit = ["*/hca_tracker_client/testing.py"]
-fail_under = 92
+fail_under = 76
