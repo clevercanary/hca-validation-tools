@@ -18,6 +18,7 @@ Homepage = "https://github.com/clevercanary/hca-validation-tools"
 [dependency-groups]
 dev = [
     "pytest>=8.0,<9",
+    "pytest-cov>=7,<8",
     "pyyaml>=6.0,<7",
 ]
 # gen-pydantic and gen-yaml for the Makefile's schema targets, kept out of `dev` so the tests (and CI)
@@ -34,3 +35,12 @@ build-backend = "hatchling.build"
 # Ships every file under the package directory, which is how the LinkML YAML reaches the wheel.
 [tool.hatch.build.targets.wheel]
 packages = ["src/hca_metadata_schema"]
+
+# Coverage floor, enforced by CI's test matrix; how to measure and when to raise it: CLAUDE.md, Coverage (#548).
+[tool.coverage.run]
+source = ["hca_metadata_schema"]
+# Also measure code the tests run in a child Python process (`python -m`, a script by path).
+patch = ["subprocess"]
+
+[tool.coverage.report]
+fail_under = 98

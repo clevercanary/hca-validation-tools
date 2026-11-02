@@ -23,7 +23,7 @@ upload = ["hca-smart-sync==0.4.*"]
 Homepage = "https://github.com/clevercanary/hca-validation-tools"
 
 [dependency-groups]
-dev = ["pytest>=8.0,<9", "hca-smart-sync==0.4.*"]
+dev = ["pytest>=8.0,<9", "pytest-cov>=7,<8", "hca-smart-sync==0.4.*"]
 
 [tool.pytest.ini_options]
 filterwarnings = [
@@ -37,3 +37,14 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/hca_tracker_client"]
+
+# Coverage floor, enforced by CI's test matrix; how to measure and when to raise it: CLAUDE.md, Coverage (#548).
+[tool.coverage.run]
+source = ["hca_tracker_client"]
+# Also measure code the tests run in a child Python process (`python -m`, a script by path).
+patch = ["subprocess"]
+
+[tool.coverage.report]
+# A fake tracker for tests: only tests run it, so counting it would lift the floor over shipped code.
+omit = ["*/hca_tracker_client/testing.py"]
+fail_under = 79

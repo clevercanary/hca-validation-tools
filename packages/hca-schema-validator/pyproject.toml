@@ -36,7 +36,7 @@ Homepage = "https://github.com/clevercanary/hca-validation-tools"
 [dependency-groups]
 # hca-metadata-schema is test-only: the Donor parity test reads its donor.yaml. The validator itself does not
 # load the LinkML schema.
-dev = ["pytest>=8.0,<9", "pyright>=1.1.408,<2", "hca-metadata-schema>=0.2,<0.3"]
+dev = ["pytest>=8.0,<9", "pytest-cov>=7,<8", "pyright>=1.1.408,<2", "hca-metadata-schema>=0.2,<0.3"]
 
 # Development only: resolves the schema from the local checkout.
 [tool.uv.sources]
@@ -51,3 +51,15 @@ build-backend = "hatchling.build"
 # wheel this way; the validator is non-functional without them.
 [tool.hatch.build.targets.wheel]
 packages = ["src/hca_schema_validator"]
+
+# Coverage floor, enforced by CI's test matrix; how to measure and when to raise it: CLAUDE.md, Coverage (#548).
+[tool.coverage.run]
+source = ["hca_schema_validator"]
+# Also measure code the tests run in a child Python process (`python -m`, a script by path).
+patch = ["subprocess"]
+
+[tool.coverage.report]
+fail_under = 95
+# The vendored cellxgene-schema copy is upstream's code, not ours: kept out of the floor, and reported
+# separately in CI's job summary (#548).
+omit = ["*/_vendored/*"]

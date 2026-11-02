@@ -127,9 +127,11 @@ jobs:
           - project: packages/hca-anndata-mcp
             sync-args: ''
             pytest-args: ''
+          # `cov-vendored`: shown in the job summary with no floor; see this project's [tool.coverage.report] omit.
           - project: packages/hca-schema-validator
             sync-args: ''
             pytest-args: ''
+            cov-vendored: '*/_vendored/*'
           # The tracker packages need aria2c for their download tests, which
           # skip without it.
           - project: packages/hca-tracker-client
@@ -162,6 +164,27 @@ jobs:
       - name: Sync dependencies
         run: uv sync ${{ matrix.sync-args }}
         working-directory: ${{ matrix.project }}
+      # --cov measures the project's own package (`[tool.coverage.run] source` in its pyproject.toml), and
+      # pytest-cov fails the run below that file's `[tool.coverage.report] fail_under` (#548).
       - name: Run tests
-        run: uv run pytest tests/ ${{ matrix.pytest-args }} -v
+        run: uv run pytest tests/ ${{ matrix.pytest-args }} -v --cov --cov-report=
+        working-directory: ${{ matrix.project }}
+      # Runs after a failed test step too, so a run that misses its floor still shows which files fell.
+      - name: Coverage summary
+        if: ${{ !cancelled() }}
+        run: |
+          [ -f .coverage ] || exit 0  # the test step failed before pytest measured anything
+          {
+            echo "### Coverage: ${{ matrix.project }}"
+            echo
+            uv run coverage report --format=markdown --fail-under=0
+            if [ -n "${{ matrix.cov-vendored }}" ]; then
+              echo
+              echo "#### Vendored code (no floor)"
+              echo
+              # The project config omits this code. A non-empty --omit replaces that list, so one matching nothing
+              # brings it back; --fail-under=0 because the project's floor is for its own code.
+              uv run coverage report --include='${{ matrix.cov-vendored }}' --omit='__none__' --fail-under=0 --format=markdown
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
         working-directory: ${{ matrix.project }}

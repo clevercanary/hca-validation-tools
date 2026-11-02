@@ -37,7 +37,7 @@ dependencies = [
 Homepage = "https://github.com/clevercanary/hca-validation-tools"
 
 [dependency-groups]
-dev = ["pytest>=8.0,<9"]
+dev = ["pytest>=8.0,<9", "pytest-cov>=7,<8"]
 
 # Development only: resolves the schema from the local checkout. uv strips this at build time and
 # publishes the version constraint declared above.
@@ -52,3 +52,12 @@ build-backend = "hatchling.build"
 # reference_data/*.csv.gz gene tables reach the wheel.
 [tool.hatch.build.targets.wheel]
 packages = ["src/hca_anndata_tools"]
+
+# Coverage floor, enforced by CI's test matrix; how to measure and when to raise it: CLAUDE.md, Coverage (#548).
+[tool.coverage.run]
+source = ["hca_anndata_tools"]
+# Also measure code the tests run in a child Python process (`python -m`, a script by path).
+patch = ["subprocess"]
+
+[tool.coverage.report]
+fail_under = 94
