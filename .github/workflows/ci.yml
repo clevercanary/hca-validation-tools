@@ -81,10 +81,10 @@ jobs:
           fi
 
   schema-lint:
-    # Two checks, each catching what the other misses (#546). validate-schema loads each file and names the file, line
-    # and cause when one does not load; linkml lint skips a file that does not load. The linter sees metamodel
-    # violations LinkML coerces at load time (a string where a list belongs). Lint errors fail; warnings are printed,
-    # not enforced.
+    # Two checks, each catching what the other misses (#546). linkml lint does not resolve references, so a class naming
+    # an unknown slot passes it; validate-schema catches that, and names the file, line and cause. The linter sees
+    # metamodel violations LinkML coerces at load time (a string where a list belongs). Lint errors fail; warnings are
+    # printed, not enforced.
     name: schema validate and lint
     runs-on: ubuntu-latest
     steps:
