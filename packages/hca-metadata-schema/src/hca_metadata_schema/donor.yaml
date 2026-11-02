@@ -42,9 +42,10 @@ slots:
     description: Reported sex of the donor.
     range: string
     required: true
-    notes: >
-      This must be a child of PATO:0001894 for phenotypic sex
-      or "unknown" if unavailable.
+    notes:
+      - >
+        This must be a child of PATO:0001894 for phenotypic sex
+        or "unknown" if unavailable.
     examples:
       - value: "PATO:0000383"
         description: female
@@ -75,7 +76,8 @@ slots:
     required: true
     examples:
       - value: "1"
-    notes: "1; 2; 3; 4; 0; unknown; not applicable"
+    notes:
+      - "1; 2; 3; 4; 0; unknown; not applicable"
     annotations:
       annDataLocation: obs
 
@@ -84,7 +86,8 @@ slots:
     description: The name given to the type of organism, collected in NCBITaxon:0000 format.
     range: Organism
     required: true
-    notes: "\"NCBITaxon:9606\" for Homo sapiens or \"NCBITaxon:10090\" for Mus musculus."
+    notes:
+      - "\"NCBITaxon:9606\" for Homo sapiens or \"NCBITaxon:10090\" for Mus musculus."
     annotations:
       annDataLocation: obs
       cxg: organism_ontology_term_id

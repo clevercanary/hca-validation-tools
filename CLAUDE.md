@@ -32,8 +32,9 @@ it governs; none repeats what the code already says.
 make build-all              # Build shared lib + containers + run all tests
 
 # Shared library (run from root or shared/)
-cd shared && make build     # Validate schemas, generate Python models, generate data dictionary
+cd shared && make build     # Validate and lint schemas, generate Python models, generate data dictionary
 cd shared && make validate-schema    # Validate LinkML YAML files only (runs in packages/hca-metadata-schema)
+cd shared && make lint-schema-errors # LinkML lint, errors only; CI and the pre-commit hook run it too (config: packages/hca-metadata-schema/.linkmllint.yaml)
 cd shared && make gen-schema         # Generate Pydantic models from schemas (runs in packages/hca-metadata-schema)
 ```
 

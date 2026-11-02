@@ -3,25 +3,28 @@
 
 SCHEMA_DIR := src/hca_metadata_schema
 GENERATED := $(SCHEMA_DIR)/generated/core.py
-SCHEMAS := $(wildcard $(SCHEMA_DIR)/*.yaml)
+# bionetwork/ too: core.yaml imports those files, but a break in one would otherwise be reported against core.yaml.
+SCHEMAS := $(wildcard $(SCHEMA_DIR)/*.yaml $(SCHEMA_DIR)/bionetwork/*.yaml)
 UV := uv run --group codegen
-SUPPRESS_WARNINGS := 2>/dev/null
+LINT := $(UV) linkml lint -c .linkmllint.yaml $(SCHEMA_DIR) --validate
 
 .PHONY: help
 help:
 	@echo "hca-metadata-schema tasks:"
 	@echo "  validate-schema - Validate all schema files"
 	@echo "  lint-schema     - Lint schema files"
+	@echo "  lint-schema-errors - Lint schema files (errors only; what CI runs)"
 	@echo "  gen-schema      - Generate the Pydantic models from the LinkML schemas"
 	@echo "  test            - Run the package tests"
 
-# Schema validation
+# Schema validation. gen-yaml's stderr is shown only on failure: on success it holds nothing but a click warning
+# about a duplicate -V option, and on failure it holds the file, line and cause (#546).
 .PHONY: validate-schema
 validate-schema:
 	@echo "Validating all schema files..."
 	@for schema in $(SCHEMAS); do \
 		echo "Validating $$(basename $$schema)..."; \
-		$(UV) gen-yaml $$schema > /dev/null $(SUPPRESS_WARNINGS) || exit 1; \
+		errors=$$($(UV) gen-yaml $$schema 2>&1 > /dev/null) || { echo "$$errors"; exit 1; }; \
 		echo "✓ $$(basename $$schema) is valid"; \
 	done
 	@echo "All schema files are valid!"
@@ -30,13 +33,13 @@ validate-schema:
 .PHONY: lint-schema
 lint-schema:
 	@echo "Linting schema files..."
-	@$(UV) linkml lint $(SCHEMA_DIR) --validate
+	@$(LINT)
 
 # Lint schema files with only errors (no style warnings)
 .PHONY: lint-schema-errors
 lint-schema-errors:
 	@echo "Linting schema files (errors only)..."
-	@$(UV) linkml lint $(SCHEMA_DIR) --validate --ignore-warnings || (echo "❌ Schema has critical errors" && exit 1)
+	@$(LINT) --ignore-warnings || (echo "❌ Schema has critical errors" && exit 1)
 	@echo "✓ No critical errors found in schema files"
 
 # Generate Python models from schemas

@@ -16,6 +16,13 @@ repos:
         language: system
         pass_filenames: false
         files: ^packages/hca-metadata-schema/src/hca_metadata_schema/.*\.yaml$
+      # Lint errors only; CI's schema-lint job runs the same target, after validate-schema (#546).
+      - id: schema-lint
+        name: lint the LinkML schema
+        entry: make -s -C packages/hca-metadata-schema lint-schema-errors
+        language: system
+        pass_filenames: false
+        files: ^packages/hca-metadata-schema/(\.linkmllint\.yaml|Makefile|src/hca_metadata_schema/.*\.yaml)$
       - id: pyright
         name: pyright
         entry: make typecheck
