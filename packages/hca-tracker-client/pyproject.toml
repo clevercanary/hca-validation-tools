@@ -47,4 +47,4 @@ patch = ["subprocess"]
 [tool.coverage.report]
 # A fake tracker for tests: only tests run it, so counting it would lift the floor over shipped code.
 omit = ["*/hca_tracker_client/testing.py"]
-fail_under = 79
+fail_under = 92

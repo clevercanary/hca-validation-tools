@@ -177,14 +177,14 @@ jobs:
           {
             echo "### Coverage: ${{ matrix.project }}"
             echo
-            uv run coverage report --format=markdown --fail-under=0
+            uv run coverage report --format=markdown --precision=2 --fail-under=0
             if [ -n "${{ matrix.cov-vendored }}" ]; then
               echo
               echo "#### Vendored code (no floor)"
               echo
               # The project config omits this code. A non-empty --omit replaces that list, so one matching nothing
               # brings it back; --fail-under=0 because the project's floor is for its own code.
-              uv run coverage report --include='${{ matrix.cov-vendored }}' --omit='__none__' --fail-under=0 --format=markdown
+              uv run coverage report --include='${{ matrix.cov-vendored }}' --omit='__none__' --fail-under=0 --format=markdown --precision=2
             fi
           } >> "$GITHUB_STEP_SUMMARY"
         working-directory: ${{ matrix.project }}
