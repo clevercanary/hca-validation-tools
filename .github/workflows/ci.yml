@@ -80,6 +80,25 @@ jobs:
             exit 1
           fi
 
+  schema-lint:
+    # Two checks, each catching what the other misses (#546). linkml lint does not resolve references, so a class naming
+    # an unknown slot passes it; validate-schema catches that, and names the file, line and cause. The linter sees
+    # metamodel violations LinkML coerces at load time (a string where a list belongs). Lint errors fail; warnings are
+    # printed, not enforced.
+    name: schema validate and lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          version: "0.10.9"
+          python-version: "3.11"
+          enable-cache: true
+      - name: Validate that each schema file loads
+        run: make -C packages/hca-metadata-schema validate-schema
+      - name: Lint the LinkML schema
+        run: make -C packages/hca-metadata-schema lint-schema-errors
+
   test:
     name: test (${{ matrix.project }})
     runs-on: ubuntu-latest

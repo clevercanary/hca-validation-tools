@@ -1,0 +1,10 @@
+# linkml lint config (#546). The Makefile's lint targets pass it with -c; `linkml lint` run by hand from this
+# directory also finds it by name.
+extends: recommended
+rules:
+  standard_naming:
+    # Permissible values are not ours to rename: they are external identifiers (`GRCh38`, `NCBITaxon:10090`,
+    # `EPI_LP_MUSC`) and values data producers already write (`not applicable`). Renaming one to satisfy snake_case
+    # would be a breaking schema change. Class, slot and enum names are still checked.
+    exclude_type:
+      - permissible_value

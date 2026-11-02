@@ -71,8 +71,9 @@ slots:
     range: string
     required: false
     multivalued: false
-    comments: >-
-      Space for author intuition of batch effects in their dataset
+    comments:
+      - >-
+        Space for author intuition of batch effects in their dataset
 
   age_range:
     is_a: deprecated_slot
@@ -91,8 +92,9 @@ slots:
     range: integer
     required: false
     multivalued: false
-    comments: >-
-      Can explain the number of doublets found in samples
+    comments:
+      - >-
+        Can explain the number of doublets found in samples
 
   cell_viability_percentage:
     title: Cell Viability Percentage
@@ -109,8 +111,9 @@ slots:
       - range: string
     required: false
     multivalued: false
-    comments: >-
-      Is a measure of sample quality that could be used to explain outlier samples
+    comments:
+      - >-
+        Is a measure of sample quality that could be used to explain outlier samples
 
   cell_enrichment:
     title: Cell Enrichment
@@ -123,7 +126,8 @@ slots:
     range: string
     required: true
     multivalued: false
-    notes: "This must be a Cell Ontology (CL) term (http://www.ebi.ac.uk/ols4/ontologies/cl). For cells that are enriched, list the CL code followed by a '+'. For cells that were depleted, list the CL code followed by a '-'. If no enrichment or depletion occurred, please use 'na' (not applicable)"
+    notes:
+      - "This must be a Cell Ontology (CL) term (http://www.ebi.ac.uk/ols4/ontologies/cl). For cells that are enriched, list the CL code followed by a '+'. For cells that were depleted, list the CL code followed by a '-'. If no enrichment or depletion occurred, please use 'na' (not applicable)"
 
   institute:
     title: Institute
@@ -137,8 +141,9 @@ slots:
     range: string
     required: true
     multivalued: false
-    comments: >-
-      To be able to link to other studies from the same institution as sometimes samples from different labs in the same institute are processed via similar core facilities. Thus batch effects may be smaller for datasets from the same institute even if other factors differ.
+    comments:
+      - >-
+        To be able to link to other studies from the same institution as sometimes samples from different labs in the same institute are processed via similar core facilities. Thus batch effects may be smaller for datasets from the same institute even if other factors differ.
 
   is_primary_data:
     is_a: deprecated_slot
@@ -181,8 +186,9 @@ slots:
     range: string
     required: true
     multivalued: false
-    comments: >-
-      A way to track the unit of data generation. This should include sample pooling
+    comments:
+      - >-
+        A way to track the unit of data generation. This should include sample pooling
 
   library_id_repository:
     title: Library ID Repository
@@ -196,8 +202,9 @@ slots:
     range: string
     required: false
     multivalued: false
-    comments: >-
-      Links a dataset back to the source from which it was ingested, optional only if this is the same as the library_id.
+    comments:
+      - >-
+        Links a dataset back to the source from which it was ingested, optional only if this is the same as the library_id.
 
   library_preparation_batch:
     title: Library Preparation Batch
@@ -211,8 +218,9 @@ slots:
     range: string
     required: true
     multivalued: false
-    comments: >-
-      Sample preparation is a major source of batch effects.
+    comments:
+      - >-
+        Sample preparation is a major source of batch effects.
 
   library_sequencing_run:
     title: Library Sequencing Run
@@ -226,8 +234,9 @@ slots:
     range: string
     required: true
     multivalued: false
-    comments: >-
-      Library sequencing is a major source of batch effects
+    comments:
+      - >-
+        Library sequencing is a major source of batch effects
 
   sample_collection_year:
     title: Sample Collection Year
@@ -241,8 +250,9 @@ slots:
     range: string
     required: false
     multivalued: false
-    comments: >-
-      May explain whether a dataset was separated into smaller batches.
+    comments:
+      - >-
+        May explain whether a dataset was separated into smaller batches.
 
   sample_collection_site:
     title: Sample Collection Site
@@ -256,8 +266,9 @@ slots:
     range: string
     required: false
     multivalued: false
-    comments: >-
-      To understand whether the collection site contributes to batch effects. It is strongly recommended that this identifier be designed so that it is unique to a given site within the collection of datasets that includes this site (for example, the labels 'site1', 'site2' may appear in other datasets thus rendering them indistinguishable).
+    comments:
+      - >-
+        To understand whether the collection site contributes to batch effects. It is strongly recommended that this identifier be designed so that it is unique to a given site within the collection of datasets that includes this site (for example, the labels 'site1', 'site2' may appear in other datasets thus rendering them indistinguishable).
 
   sample_collection_relative_time_point:
     title: Sample Collection Relative Time Point
@@ -271,8 +282,9 @@ slots:
     range: string
     required: false
     multivalued: false
-    comments: >-
-      Explains variability in the data between samples from the same subject.
+    comments:
+      - >-
+        Explains variability in the data between samples from the same subject.
 
   tissue_free_text:
     title: Tissue Free Text
@@ -286,8 +298,9 @@ slots:
     range: string
     required: false
     multivalued: false
-    comments: >-
-      To help the integration team understand the anatomical location of the sample, specifically to solve the problem when the UBERON ontology terms are insufficiently precise.
+    comments:
+      - >-
+        To help the integration team understand the anatomical location of the sample, specifically to solve the problem when the UBERON ontology terms are insufficiently precise.
 
   tissue_type:
     title: Tissue Type
@@ -301,7 +314,8 @@ slots:
     range: TissueType
     required: true
     multivalued: false
-    notes: "tissue; organoid; cell culture"
+    notes:
+      - "tissue; organoid; cell culture"
 
   tissue_ontology_term_id:
     title: Tissue Ontology Term ID
@@ -311,8 +325,9 @@ slots:
     examples:
       - value: "UBERON:0001828"
       - value: "UBERON:0000966"
-    notes: |
-      If tissue_type is "tissue" or "organoid", this must be the most accurate child of UBERON:0001062 for anatomical entity. If tissue_type is "cell culture" this must follow the requirements for cell_type_ontology_term_id.
+    notes:
+      - |
+        If tissue_type is "tissue" or "organoid", this must be the most accurate child of UBERON:0001062 for anatomical entity. If tissue_type is "cell culture" this must follow the requirements for cell_type_ontology_term_id.
     annotations:
       annDataLocation: obs
       cxg: tissue_ontology_term_id
@@ -330,19 +345,20 @@ slots:
     range: SuspensionType
     required: true
     multivalued: false
-    notes: |
-      This must be "cell", "nucleus", or "na".
-      This must be the correct type for the corresponding assay:
-      * 10x transcription profiling [EFO:0030080] and its children = "cell" or "nucleus"
-      * ATAC-seq [EFO:0007045] and its children = "nucleus"
-      * BD Rhapsody Whole Transcriptome Analysis [EFO:0700003] = "cell"
-      * BD Rhapsody Targeted mRNA [EFO:0700004] = "cell"
-      * CEL-seq2 [EFO:0010010] = "cell" or "nucleus"
-      * CITE-seq [EFO:0009294] and its children = "cell"
-      * DroNc-seq [EFO:0008720] = "nucleus"
-      * Drop-seq [EFO:0008722] = "cell" or "nucleus"
-      * GEXSCOPE technology [EFO:0700011] = "cell" or "nucleus"
-      * inDrop [EFO:0008780] = "cell" or "nucleus"
+    notes:
+      - |
+        This must be "cell", "nucleus", or "na".
+        This must be the correct type for the corresponding assay:
+        * 10x transcription profiling [EFO:0030080] and its children = "cell" or "nucleus"
+        * ATAC-seq [EFO:0007045] and its children = "nucleus"
+        * BD Rhapsody Whole Transcriptome Analysis [EFO:0700003] = "cell"
+        * BD Rhapsody Targeted mRNA [EFO:0700004] = "cell"
+        * CEL-seq2 [EFO:0010010] = "cell" or "nucleus"
+        * CITE-seq [EFO:0009294] and its children = "cell"
+        * DroNc-seq [EFO:0008720] = "nucleus"
+        * Drop-seq [EFO:0008722] = "cell" or "nucleus"
+        * GEXSCOPE technology [EFO:0700011] = "cell" or "nucleus"
+        * inDrop [EFO:0008780] = "cell" or "nucleus"
 
   sampled_site_condition:
     title: Sampled Site Condition
@@ -355,7 +371,8 @@ slots:
     range: SampledSiteCondition
     required: true
     multivalued: false
-    notes: "healthy; diseased; adjacent"
+    notes:
+      - "healthy; diseased; adjacent"
 
   sample_preservation_method:
     title: Sample Preservation Method
@@ -368,7 +385,8 @@ slots:
     range: SamplePreservationMethod
     required: true
     multivalued: false
-    notes: "ambient temperature; cut slide; fresh; frozen at -70C; frozen at -80C; frozen at -150C; frozen in liquid nitrogen; frozen in vapor phase; paraffin block; RNAlater at 4C; RNAlater at 25C; RNAlater at -20C; other"
+    notes:
+      - "ambient temperature; cut slide; fresh; frozen at -70C; frozen at -80C; frozen at -150C; frozen in liquid nitrogen; frozen in vapor phase; paraffin block; RNAlater at 4C; RNAlater at 25C; RNAlater at -20C; other"
 
   sample_source:
     title: Sample Source
@@ -381,7 +399,8 @@ slots:
     range: SampleSource
     required: true
     multivalued: false
-    notes: "surgical donor; postmortem donor; living organ donor"
+    notes:
+      - "surgical donor; postmortem donor; living organ donor"
 
   development_stage_ontology_term_id:
     title: Development Stage Ontology Term ID
@@ -395,10 +414,11 @@ slots:
     range: DevelopmentStage
     required: true
     multivalued: false
-    notes: >-
-      If organism_ontolology_term_id is "NCBITaxon:9606" for Homo sapiens, this should be an HsapDv term.
-      If organism_ontolology_term_id is "NCBITaxon:10090" for Mus musculus, this should be an MmusDv term.
-      Refer to broader age bracket terms as needed.
+    notes:
+      - >-
+        If organism_ontolology_term_id is "NCBITaxon:9606" for Homo sapiens, this should be an HsapDv term.
+        If organism_ontolology_term_id is "NCBITaxon:10090" for Mus musculus, this should be an MmusDv term.
+        Refer to broader age bracket terms as needed.
 
   sample_collection_method:
     title: Sample Collection Method
@@ -410,7 +430,8 @@ slots:
       tier: Tier 1
     range: SampleCollectionMethod
     required: true
-    notes: "brush; scraping; biopsy; surgical resection; blood draw; body fluid; other"
+    notes:
+      - "brush; scraping; biopsy; surgical resection; blood draw; body fluid; other"
     comments:
       - Main contributor to batch effects
 
@@ -432,10 +453,11 @@ slots:
     examples:
       - value: "MONDO:0005385"
       - value: "PATO:0000461"
-    notes: |
-      This must be a MONDO term or "PATO:0000461" for normal or healthy.
+    notes:
+      - |
+        This must be a MONDO term or "PATO:0000461" for normal or healthy.
       
-      Requirements for data contributors adhering to GDPR or like standards: In the case of disease, HCA requests that you submit a higher order ontology term - this is especially important in the case of rare disease.
+        Requirements for data contributors adhering to GDPR or like standards: In the case of disease, HCA requests that you submit a higher order ontology term - this is especially important in the case of rare disease.
     annotations:
       annDataLocation: obs
       cxg: disease_ontology_term_id

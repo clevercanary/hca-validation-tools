@@ -59,5 +59,5 @@ test-integration:
 
 # Build target (validate + generate)
 .PHONY: build
-build: validate-schema gen-schema generate-data-dictionary
+build: validate-schema lint-schema-errors gen-schema generate-data-dictionary
 	@echo "✓ Shared library built successfully"
