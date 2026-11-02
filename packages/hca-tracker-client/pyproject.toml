@@ -48,4 +48,4 @@ branch = true
 [tool.coverage.report]
 # A fake tracker for tests: only tests run it, so counting it would lift the floor over shipped code.
 omit = ["*/hca_tracker_client/testing.py"]
-fail_under = 76
+fail_under = 89
