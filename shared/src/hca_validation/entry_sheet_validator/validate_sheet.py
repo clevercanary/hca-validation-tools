@@ -692,7 +692,7 @@ def validate_google_sheet(
     if not sheet_id:
         raise ValueError("sheet_id is required for validate_google_sheet()")
     if bionetwork is not None:
-        from hca_validation.schema.generated.core import BioNetwork
+        from hca_metadata_schema.generated.core import BioNetwork
 
         try:
             BioNetwork(bionetwork)
