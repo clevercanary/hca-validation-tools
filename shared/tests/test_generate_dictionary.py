@@ -85,6 +85,22 @@ def test_every_attribute_has_bionetworks(data_dictionary):
             assert attribute["annotations"]["bioNetworks"], f"{entity_class['name']}.{attribute['name']}"
 
 
+# Fields the dictionary may emit without an annDataLocation: dataset_id is Dataset's identifier
+# and Donor's and Sample's foreign key, and the tracker supplies it rather than the h5ad
+_UNLOCATED_ATTRIBUTES = {"dataset_id"}
+
+
+def test_every_attribute_has_anndata_location(data_dictionary):
+    missing = [
+        f"{entity_class['name']}.{attribute['name']}"
+        for entity_class in data_dictionary["classes"]
+        for attribute in entity_class["attributes"]
+        if attribute["name"] not in _UNLOCATED_ATTRIBUTES
+        and attribute["annotations"].get("annDataLocation") not in {"obs", "uns"}
+    ]
+    assert not missing, f"no annDataLocation of obs or uns: {', '.join(missing)}"
+
+
 def test_attributes_stay_sorted_by_name(data_dictionary):
     for entity_class in data_dictionary["classes"]:
         names = [attribute["name"] for attribute in entity_class["attributes"]]
