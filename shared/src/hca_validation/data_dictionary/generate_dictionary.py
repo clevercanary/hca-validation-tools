@@ -150,17 +150,11 @@ def slot_to_attribute(schemaview: SchemaView, slot_info, schema_enum_names: set[
 
     # Add rationale if available in comments - as a string, not an array
     if slot_info.comments:
-        if isinstance(slot_info.comments, list):
-            attribute["rationale"] = "\n".join(slot_info.comments)
-        else:
-            attribute["rationale"] = slot_info.comments
+        attribute["rationale"] = "\n".join(slot_info.comments)
 
     # Add values information if available in notes - as a string, not an array
     if slot_info.notes:
-        if isinstance(slot_info.notes, list):
-            attribute["values"] = "\n".join(slot_info.notes)
-        else:
-            attribute["values"] = slot_info.notes
+        attribute["values"] = "\n".join(slot_info.notes)
 
     # If this is an enum, add the values
     if slot_info.range in schema_enum_names:
