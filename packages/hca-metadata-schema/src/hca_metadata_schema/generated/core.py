@@ -309,6 +309,7 @@ class Dataset(ConfiguredBaseModel):
                    '- Smart-seq2 "EFO:0008931"\n'
                    '- Visium Spatial Gene Expression "EFO:0010961"\n']} })
     assay_ontology_term: Optional[str] = Field(default=None, title="Assay Ontology Term", description="""Deprecated placeholder for assay ontology term.""", json_schema_extra = { "linkml_meta": {'alias': 'assay_ontology_term',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'domain_of': ['Dataset'],
          'is_a': 'deprecated_slot'} })
     batch_condition: Optional[list[str]] = Field(default=None, title="Batch Condition", description="""Name of the covariate that confers the dominant batch effect in the data as judged by the data contributor.  The name provided here should be the label by which this covariate is stored in the AnnData object.""", json_schema_extra = { "linkml_meta": {'alias': 'batch_condition',
@@ -327,8 +328,13 @@ class Dataset(ConfiguredBaseModel):
 """, json_schema_extra = { "linkml_meta": {'alias': 'comments',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'uns'}},
          'domain_of': ['Dataset']} })
-    consortia: Optional[str] = Field(default=None, title="Consortia", description="""Deprecated placeholder for consortia information.""", json_schema_extra = { "linkml_meta": {'alias': 'consortia', 'domain_of': ['Dataset'], 'is_a': 'deprecated_slot'} })
-    contact_email: str = Field(default=..., title="Contact Email", description="""Contact name and email of the submitting person""", json_schema_extra = { "linkml_meta": {'alias': 'contact_email', 'domain_of': ['Dataset']} })
+    consortia: Optional[str] = Field(default=None, title="Consortia", description="""Deprecated placeholder for consortia information.""", json_schema_extra = { "linkml_meta": {'alias': 'consortia',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
+         'domain_of': ['Dataset'],
+         'is_a': 'deprecated_slot'} })
+    contact_email: str = Field(default=..., title="Contact Email", description="""Contact name and email of the submitting person""", json_schema_extra = { "linkml_meta": {'alias': 'contact_email',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
+         'domain_of': ['Dataset']} })
     default_embedding: Optional[str] = Field(default=None, title="Default Embedding", description="""The value must match a key to an embedding in obsm for the embedding to display by default in CELLxGENE Explorer.""", json_schema_extra = { "linkml_meta": {'alias': 'default_embedding',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'uns'},
                          'cxg': {'tag': 'cxg', 'value': 'default_embedding'}},
@@ -360,6 +366,7 @@ class Dataset(ConfiguredBaseModel):
          'examples': [{'value': 'https://www.biorxiv.org/content/early/2017/09/24/193219'}]} })
     publication_doi: Optional[str] = Field(default=None, title="Publication DOI", description="""The publication digital object identifier (doi) for the protocol. If no pre-print nor publication exists, please write 'not applicable'.
 """, json_schema_extra = { "linkml_meta": {'alias': 'publication_doi',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'domain_of': ['Dataset'],
          'examples': [{'value': '10.1016/j.cell.2016.07.054'}]} })
     reference_genome: ReferenceGenomeEnum = Field(default=..., title="Reference Genome", description="""Reference genome used for alignment.""", json_schema_extra = { "linkml_meta": {'alias': 'reference_genome',
@@ -453,6 +460,7 @@ class AdiposeDataset(Dataset):
                    '- Smart-seq2 "EFO:0008931"\n'
                    '- Visium Spatial Gene Expression "EFO:0010961"\n']} })
     assay_ontology_term: Optional[str] = Field(default=None, title="Assay Ontology Term", description="""Deprecated placeholder for assay ontology term.""", json_schema_extra = { "linkml_meta": {'alias': 'assay_ontology_term',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'domain_of': ['Dataset'],
          'is_a': 'deprecated_slot'} })
     batch_condition: Optional[list[str]] = Field(default=None, title="Batch Condition", description="""Name of the covariate that confers the dominant batch effect in the data as judged by the data contributor.  The name provided here should be the label by which this covariate is stored in the AnnData object.""", json_schema_extra = { "linkml_meta": {'alias': 'batch_condition',
@@ -471,8 +479,13 @@ class AdiposeDataset(Dataset):
 """, json_schema_extra = { "linkml_meta": {'alias': 'comments',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'uns'}},
          'domain_of': ['Dataset']} })
-    consortia: Optional[str] = Field(default=None, title="Consortia", description="""Deprecated placeholder for consortia information.""", json_schema_extra = { "linkml_meta": {'alias': 'consortia', 'domain_of': ['Dataset'], 'is_a': 'deprecated_slot'} })
-    contact_email: str = Field(default=..., title="Contact Email", description="""Contact name and email of the submitting person""", json_schema_extra = { "linkml_meta": {'alias': 'contact_email', 'domain_of': ['Dataset']} })
+    consortia: Optional[str] = Field(default=None, title="Consortia", description="""Deprecated placeholder for consortia information.""", json_schema_extra = { "linkml_meta": {'alias': 'consortia',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
+         'domain_of': ['Dataset'],
+         'is_a': 'deprecated_slot'} })
+    contact_email: str = Field(default=..., title="Contact Email", description="""Contact name and email of the submitting person""", json_schema_extra = { "linkml_meta": {'alias': 'contact_email',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
+         'domain_of': ['Dataset']} })
     default_embedding: Optional[str] = Field(default=None, title="Default Embedding", description="""The value must match a key to an embedding in obsm for the embedding to display by default in CELLxGENE Explorer.""", json_schema_extra = { "linkml_meta": {'alias': 'default_embedding',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'uns'},
                          'cxg': {'tag': 'cxg', 'value': 'default_embedding'}},
@@ -504,6 +517,7 @@ class AdiposeDataset(Dataset):
          'examples': [{'value': 'https://www.biorxiv.org/content/early/2017/09/24/193219'}]} })
     publication_doi: Optional[str] = Field(default=None, title="Publication DOI", description="""The publication digital object identifier (doi) for the protocol. If no pre-print nor publication exists, please write 'not applicable'.
 """, json_schema_extra = { "linkml_meta": {'alias': 'publication_doi',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'domain_of': ['Dataset'],
          'examples': [{'value': '10.1016/j.cell.2016.07.054'}]} })
     reference_genome: ReferenceGenomeEnum = Field(default=..., title="Reference Genome", description="""Reference genome used for alignment.""", json_schema_extra = { "linkml_meta": {'alias': 'reference_genome',
@@ -597,6 +611,7 @@ class GutDataset(Dataset):
                    '- Smart-seq2 "EFO:0008931"\n'
                    '- Visium Spatial Gene Expression "EFO:0010961"\n']} })
     assay_ontology_term: Optional[str] = Field(default=None, title="Assay Ontology Term", description="""Deprecated placeholder for assay ontology term.""", json_schema_extra = { "linkml_meta": {'alias': 'assay_ontology_term',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'domain_of': ['Dataset'],
          'is_a': 'deprecated_slot'} })
     batch_condition: Optional[list[str]] = Field(default=None, title="Batch Condition", description="""Name of the covariate that confers the dominant batch effect in the data as judged by the data contributor.  The name provided here should be the label by which this covariate is stored in the AnnData object.""", json_schema_extra = { "linkml_meta": {'alias': 'batch_condition',
@@ -615,8 +630,13 @@ class GutDataset(Dataset):
 """, json_schema_extra = { "linkml_meta": {'alias': 'comments',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'uns'}},
          'domain_of': ['Dataset']} })
-    consortia: Optional[str] = Field(default=None, title="Consortia", description="""Deprecated placeholder for consortia information.""", json_schema_extra = { "linkml_meta": {'alias': 'consortia', 'domain_of': ['Dataset'], 'is_a': 'deprecated_slot'} })
-    contact_email: str = Field(default=..., title="Contact Email", description="""Contact name and email of the submitting person""", json_schema_extra = { "linkml_meta": {'alias': 'contact_email', 'domain_of': ['Dataset']} })
+    consortia: Optional[str] = Field(default=None, title="Consortia", description="""Deprecated placeholder for consortia information.""", json_schema_extra = { "linkml_meta": {'alias': 'consortia',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
+         'domain_of': ['Dataset'],
+         'is_a': 'deprecated_slot'} })
+    contact_email: str = Field(default=..., title="Contact Email", description="""Contact name and email of the submitting person""", json_schema_extra = { "linkml_meta": {'alias': 'contact_email',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
+         'domain_of': ['Dataset']} })
     default_embedding: Optional[str] = Field(default=None, title="Default Embedding", description="""The value must match a key to an embedding in obsm for the embedding to display by default in CELLxGENE Explorer.""", json_schema_extra = { "linkml_meta": {'alias': 'default_embedding',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'uns'},
                          'cxg': {'tag': 'cxg', 'value': 'default_embedding'}},
@@ -648,6 +668,7 @@ class GutDataset(Dataset):
          'examples': [{'value': 'https://www.biorxiv.org/content/early/2017/09/24/193219'}]} })
     publication_doi: Optional[str] = Field(default=None, title="Publication DOI", description="""The publication digital object identifier (doi) for the protocol. If no pre-print nor publication exists, please write 'not applicable'.
 """, json_schema_extra = { "linkml_meta": {'alias': 'publication_doi',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'domain_of': ['Dataset'],
          'examples': [{'value': '10.1016/j.cell.2016.07.054'}]} })
     reference_genome: ReferenceGenomeEnum = Field(default=..., title="Reference Genome", description="""Reference genome used for alignment.""", json_schema_extra = { "linkml_meta": {'alias': 'reference_genome',
@@ -738,6 +759,7 @@ class Donor(ConfiguredBaseModel):
          'notes': ['This must be a child of PATO:0001894 for phenotypic sex or '
                    '"unknown" if unavailable.\n']} })
     sex_ontology_term: Optional[str] = Field(default=None, title="Sex Ontology Term", description="""Deprecated placeholder for sex ontology term.""", json_schema_extra = { "linkml_meta": {'alias': 'sex_ontology_term',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'domain_of': ['Donor'],
          'is_a': 'deprecated_slot'} })
     manner_of_death: MannerOfDeath = Field(default=..., title="Manner of Death", description="""Manner of death classification based on the Hardy Scale or \"unknown\" or \"not applicable\":
@@ -799,7 +821,10 @@ class Sample(ConfiguredBaseModel):
          'comments': ['Space for author intuition of batch effects in their dataset'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'Batch run by different personnel on different days'}]} })
-    age_range: Optional[str] = Field(default=None, title="Age Range", description="""Deprecated placeholder for age range metadata.""", json_schema_extra = { "linkml_meta": {'alias': 'age_range', 'domain_of': ['Sample'], 'is_a': 'deprecated_slot'} })
+    age_range: Optional[str] = Field(default=None, title="Age Range", description="""Deprecated placeholder for age range metadata.""", json_schema_extra = { "linkml_meta": {'alias': 'age_range',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
+         'domain_of': ['Sample'],
+         'is_a': 'deprecated_slot'} })
     cell_number_loaded: Optional[int] = Field(default=None, title="Cell Number Loaded", description="""Estimated number of cells loaded for library construction.""", json_schema_extra = { "linkml_meta": {'alias': 'cell_number_loaded',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
@@ -850,6 +875,7 @@ class Sample(ConfiguredBaseModel):
                    'higher order ontology term - this is especially important in the '
                    'case of rare disease.\n']} })
     disease_ontology_term: Optional[str] = Field(default=None, title="Disease Ontology Term", description="""Deprecated placeholder for disease ontology term.""", json_schema_extra = { "linkml_meta": {'alias': 'disease_ontology_term',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'domain_of': ['Sample'],
          'is_a': 'deprecated_slot'} })
     institute: str = Field(default=..., title="Institute", description="""Institution where the samples were processed.""", json_schema_extra = { "linkml_meta": {'alias': 'institute',
@@ -1014,6 +1040,7 @@ class Sample(ConfiguredBaseModel):
          'examples': [{'value': 'surgical donor'}],
          'notes': ['surgical donor; postmortem donor; living organ donor']} })
     tissue_ontology_term: Optional[str] = Field(default=None, title="Tissue Ontology Term", description="""Deprecated placeholder for tissue ontology term.""", json_schema_extra = { "linkml_meta": {'alias': 'tissue_ontology_term',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'domain_of': ['Sample'],
          'is_a': 'deprecated_slot'} })
 
@@ -1057,7 +1084,10 @@ class AdiposeSample(Sample):
          'comments': ['Space for author intuition of batch effects in their dataset'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'Batch run by different personnel on different days'}]} })
-    age_range: Optional[str] = Field(default=None, title="Age Range", description="""Deprecated placeholder for age range metadata.""", json_schema_extra = { "linkml_meta": {'alias': 'age_range', 'domain_of': ['Sample'], 'is_a': 'deprecated_slot'} })
+    age_range: Optional[str] = Field(default=None, title="Age Range", description="""Deprecated placeholder for age range metadata.""", json_schema_extra = { "linkml_meta": {'alias': 'age_range',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
+         'domain_of': ['Sample'],
+         'is_a': 'deprecated_slot'} })
     cell_number_loaded: Optional[int] = Field(default=None, title="Cell Number Loaded", description="""Estimated number of cells loaded for library construction.""", json_schema_extra = { "linkml_meta": {'alias': 'cell_number_loaded',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
@@ -1108,6 +1138,7 @@ class AdiposeSample(Sample):
                    'higher order ontology term - this is especially important in the '
                    'case of rare disease.\n']} })
     disease_ontology_term: Optional[str] = Field(default=None, title="Disease Ontology Term", description="""Deprecated placeholder for disease ontology term.""", json_schema_extra = { "linkml_meta": {'alias': 'disease_ontology_term',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'domain_of': ['Sample'],
          'is_a': 'deprecated_slot'} })
     institute: str = Field(default=..., title="Institute", description="""Institution where the samples were processed.""", json_schema_extra = { "linkml_meta": {'alias': 'institute',
@@ -1272,6 +1303,7 @@ class AdiposeSample(Sample):
          'examples': [{'value': 'surgical donor'}],
          'notes': ['surgical donor; postmortem donor; living organ donor']} })
     tissue_ontology_term: Optional[str] = Field(default=None, title="Tissue Ontology Term", description="""Deprecated placeholder for tissue ontology term.""", json_schema_extra = { "linkml_meta": {'alias': 'tissue_ontology_term',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'domain_of': ['Sample'],
          'is_a': 'deprecated_slot'} })
 
@@ -1316,7 +1348,10 @@ class GutSample(Sample):
          'comments': ['Space for author intuition of batch effects in their dataset'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'Batch run by different personnel on different days'}]} })
-    age_range: Optional[str] = Field(default=None, title="Age Range", description="""Deprecated placeholder for age range metadata.""", json_schema_extra = { "linkml_meta": {'alias': 'age_range', 'domain_of': ['Sample'], 'is_a': 'deprecated_slot'} })
+    age_range: Optional[str] = Field(default=None, title="Age Range", description="""Deprecated placeholder for age range metadata.""", json_schema_extra = { "linkml_meta": {'alias': 'age_range',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
+         'domain_of': ['Sample'],
+         'is_a': 'deprecated_slot'} })
     cell_number_loaded: Optional[int] = Field(default=None, title="Cell Number Loaded", description="""Estimated number of cells loaded for library construction.""", json_schema_extra = { "linkml_meta": {'alias': 'cell_number_loaded',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
@@ -1367,6 +1402,7 @@ class GutSample(Sample):
                    'higher order ontology term - this is especially important in the '
                    'case of rare disease.\n']} })
     disease_ontology_term: Optional[str] = Field(default=None, title="Disease Ontology Term", description="""Deprecated placeholder for disease ontology term.""", json_schema_extra = { "linkml_meta": {'alias': 'disease_ontology_term',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'domain_of': ['Sample'],
          'is_a': 'deprecated_slot'} })
     institute: str = Field(default=..., title="Institute", description="""Institution where the samples were processed.""", json_schema_extra = { "linkml_meta": {'alias': 'institute',
@@ -1531,6 +1567,7 @@ class GutSample(Sample):
          'examples': [{'value': 'surgical donor'}],
          'notes': ['surgical donor; postmortem donor; living organ donor']} })
     tissue_ontology_term: Optional[str] = Field(default=None, title="Tissue Ontology Term", description="""Deprecated placeholder for tissue ontology term.""", json_schema_extra = { "linkml_meta": {'alias': 'tissue_ontology_term',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'domain_of': ['Sample'],
          'is_a': 'deprecated_slot'} })
 
@@ -1587,6 +1624,7 @@ class MusculoskeletalDataset(Dataset):
                    '- Smart-seq2 "EFO:0008931"\n'
                    '- Visium Spatial Gene Expression "EFO:0010961"\n']} })
     assay_ontology_term: Optional[str] = Field(default=None, title="Assay Ontology Term", description="""Deprecated placeholder for assay ontology term.""", json_schema_extra = { "linkml_meta": {'alias': 'assay_ontology_term',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'domain_of': ['Dataset'],
          'is_a': 'deprecated_slot'} })
     batch_condition: Optional[list[str]] = Field(default=None, title="Batch Condition", description="""Name of the covariate that confers the dominant batch effect in the data as judged by the data contributor.  The name provided here should be the label by which this covariate is stored in the AnnData object.""", json_schema_extra = { "linkml_meta": {'alias': 'batch_condition',
@@ -1605,8 +1643,13 @@ class MusculoskeletalDataset(Dataset):
 """, json_schema_extra = { "linkml_meta": {'alias': 'comments',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'uns'}},
          'domain_of': ['Dataset']} })
-    consortia: Optional[str] = Field(default=None, title="Consortia", description="""Deprecated placeholder for consortia information.""", json_schema_extra = { "linkml_meta": {'alias': 'consortia', 'domain_of': ['Dataset'], 'is_a': 'deprecated_slot'} })
-    contact_email: str = Field(default=..., title="Contact Email", description="""Contact name and email of the submitting person""", json_schema_extra = { "linkml_meta": {'alias': 'contact_email', 'domain_of': ['Dataset']} })
+    consortia: Optional[str] = Field(default=None, title="Consortia", description="""Deprecated placeholder for consortia information.""", json_schema_extra = { "linkml_meta": {'alias': 'consortia',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
+         'domain_of': ['Dataset'],
+         'is_a': 'deprecated_slot'} })
+    contact_email: str = Field(default=..., title="Contact Email", description="""Contact name and email of the submitting person""", json_schema_extra = { "linkml_meta": {'alias': 'contact_email',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
+         'domain_of': ['Dataset']} })
     default_embedding: Optional[str] = Field(default=None, title="Default Embedding", description="""The value must match a key to an embedding in obsm for the embedding to display by default in CELLxGENE Explorer.""", json_schema_extra = { "linkml_meta": {'alias': 'default_embedding',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'uns'},
                          'cxg': {'tag': 'cxg', 'value': 'default_embedding'}},
@@ -1638,6 +1681,7 @@ class MusculoskeletalDataset(Dataset):
          'examples': [{'value': 'https://www.biorxiv.org/content/early/2017/09/24/193219'}]} })
     publication_doi: Optional[str] = Field(default=None, title="Publication DOI", description="""The publication digital object identifier (doi) for the protocol. If no pre-print nor publication exists, please write 'not applicable'.
 """, json_schema_extra = { "linkml_meta": {'alias': 'publication_doi',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'domain_of': ['Dataset'],
          'examples': [{'value': '10.1016/j.cell.2016.07.054'}]} })
     reference_genome: ReferenceGenomeEnum = Field(default=..., title="Reference Genome", description="""Reference genome used for alignment.""", json_schema_extra = { "linkml_meta": {'alias': 'reference_genome',

@@ -25,11 +25,11 @@ from ._errors import Refusal
 from ._io import check_duplicate_ids, gate_h5ad_paths, obs_index_name, read_index
 from .guards import require_obs_group
 from .qc import SAMPLE_ID_LIMIT, finding, run_read
-from .schema.helpers import obs_field_names
+from .schema.helpers import deprecated_field_names, obs_field_names
 from .sources import SourceMatch, match_sources, tracker_name
 
-# A CELLxGENE field with no HCA meaning, so a difference in it is no finding.
-EXCLUDED_FIELDS = frozenset({"is_primary_data"})
+# Deprecated fields are never compared. In obs: is_primary_data, with no HCA meaning, and entry-sheet free text (#604).
+EXCLUDED_FIELDS = deprecated_field_names()
 
 # An integrated object may re-annotate cell types on purpose, so these are
 # reported apart from the donor, sample and library fields and never as findings.
@@ -200,7 +200,7 @@ def check_source_obs(path: str) -> dict:
     Read-only; reads obs, no matrix. Each object cell is matched by ID to the
     source dataset that holds it, found as ``find_source_datasets`` finds them
     (the sibling ``source-datasets/tracker-source/`` under the tracker layout),
-    and every field the HCA schema stores in ``obs`` except ``is_primary_data``
+    and every field the HCA schema stores in ``obs``, except its deprecated ones,
     is compared between the two rows by exact value. One allowance: a whole
     number stored as an int, a float or ``.0`` text compares as its integer
     text, so ``"2021.0"`` agrees with 2021 and is reported as ``"2021"``.

@@ -59,6 +59,8 @@ slots:
     is_a: deprecated_slot
     title: Sex Ontology Term
     description: Deprecated placeholder for sex ontology term.
+    annotations:
+      annDataLocation: obs
   
   manner_of_death:
     title: Manner of Death

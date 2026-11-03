@@ -87,6 +87,15 @@ _OBS_ANNOTATED_SLOTS = [
     ("Cell", "cell_type_ontology_term_id"),
     ("Sample", "is_primary_data"),
     ("Sample", "sample_collection_method"),
+    # #604: in obs in the tracker's h5ad files, the six deprecated ones included.
+    ("Dataset", "publication_doi"),
+    ("Dataset", "contact_email"),
+    ("Dataset", "consortia"),
+    ("Dataset", "assay_ontology_term"),
+    ("Donor", "sex_ontology_term"),
+    ("Sample", "age_range"),
+    ("Sample", "tissue_ontology_term"),
+    ("Sample", "disease_ontology_term"),
 ]
 
 

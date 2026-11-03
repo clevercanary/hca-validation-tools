@@ -284,10 +284,24 @@ class TestFieldCoverageEnumeration:
         obs = pd.DataFrame({"donor_id": ["D1"], "sample_id": ["S1"]})
         result = compute_metadata_coverage(make_adata(obs), schemaview)
         all_fields = {(e["entity_class"], e["field"]) for e in result["field_coverage"]}
-        # `sex_ontology_term` and `assay_ontology_term` and `title` are deprecated.
+        # All deprecated. `title` is in uns; the rest are in obs (#604).
         assert ("donor", "sex_ontology_term") not in all_fields
         assert ("dataset", "assay_ontology_term") not in all_fields
+        assert ("dataset", "consortia") not in all_fields
+        assert ("sample", "age_range") not in all_fields
+        assert ("sample", "tissue_ontology_term") not in all_fields
+        assert ("sample", "disease_ontology_term") not in all_fields
         assert ("dataset", "title") not in all_fields
+
+    def test_publication_doi_and_contact_email_emit_at_dataset_grain(self, schemaview):
+        # #604 gave both an annDataLocation; before it, coverage never reported them.
+        obs = pd.DataFrame(
+            {"donor_id": ["D1", "D1"], "sample_id": ["S1", "S1"], "contact_email": ["a@example.org", "a@example.org"]}
+        )
+        result = compute_metadata_coverage(make_adata(obs), schemaview)
+        entries = {e["field"]: e for e in result["field_coverage"] if e["entity_class"] == "dataset"}
+        assert entries["contact_email"]["complete"] == 1
+        assert entries["publication_doi"]["missing"] == 1
 
     def test_foreign_key_slots_excluded(self, schemaview):
         obs = pd.DataFrame({"donor_id": ["D1"], "sample_id": ["S1"]})

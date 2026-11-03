@@ -79,6 +79,8 @@ slots:
     is_a: deprecated_slot
     title: Age Range
     description: Deprecated placeholder for age range metadata.
+    annotations:
+      annDataLocation: obs
 
   cell_number_loaded:
     title: Cell Number Loaded
@@ -439,11 +441,15 @@ slots:
     is_a: deprecated_slot
     title: Tissue Ontology Term
     description: Deprecated placeholder for tissue ontology term.
+    annotations:
+      annDataLocation: obs
 
   disease_ontology_term:
     is_a: deprecated_slot
     title: Disease Ontology Term
     description: Deprecated placeholder for disease ontology term.
+    annotations:
+      annDataLocation: obs
 
   disease_ontology_term_id:
     title: Disease Ontology Term ID
