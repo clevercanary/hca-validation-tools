@@ -191,6 +191,49 @@ def test_changed_base_slot_is_refused(tmp_path):
         transform_schema_to_data_dictionary(schemaview)
 
 
+# The dictionary doesn't show `pattern`, so these differences are invisible in its output and must still be refused
+def test_base_slot_pattern_change_is_refused(tmp_path):
+    schemaview = _schemaview(
+        tmp_path,
+        """
+        GutDataset:
+          is_a: Dataset
+          annotations:
+            bioNetwork: gut
+          slot_usage:
+            title:
+              pattern: "^G"
+        """,
+    )
+    with pytest.raises(ValueError, match="GutDataset changes Dataset's 'title'"):
+        transform_schema_to_data_dictionary(schemaview)
+
+
+def test_conflicting_patterns_are_refused(tmp_path):
+    schemaview = _schemaview(
+        tmp_path,
+        """
+        LungDataset:
+          is_a: Dataset
+          annotations:
+            bioNetwork: lung
+          slots:
+            - gut_field
+        GutDataset:
+          is_a: Dataset
+          annotations:
+            bioNetwork: gut
+          slots:
+            - gut_field
+          slot_usage:
+            gut_field:
+              pattern: "^G"
+        """,
+    )
+    with pytest.raises(ValueError, match="define 'gut_field' differently"):
+        transform_schema_to_data_dictionary(schemaview)
+
+
 @pytest.mark.parametrize(
     "classes",
     [

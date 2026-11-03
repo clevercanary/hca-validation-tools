@@ -15,6 +15,7 @@ from typing import Any
 import jsonasobj2
 from hca_metadata_schema import CORE_SCHEMA_PATH
 from linkml_runtime import SchemaView
+from linkml_runtime.dumpers import json_dumper
 
 from hca_validation.schema_utils import get_bionetwork_keys, get_bionetwork_subclasses, get_class_entity_type
 
@@ -87,29 +88,38 @@ def fold_bionetwork_slots(schemaview: SchemaView, base_class: str, schema_enum_n
     Raises ValueError if a subclass changes a base slot, or two subclasses define the same
     added slot differently: the data dictionary can show only one definition per slot.
     """
-    base_attributes = {
-        slot_info.name: slot_to_attribute(schemaview, slot_info, schema_enum_names)
-        for slot_info in schemaview.class_induced_slots(base_class)
+    base_definitions = {
+        slot_info.name: slot_definition(slot_info) for slot_info in schemaview.class_induced_slots(base_class)
     }
-    folded: dict[str, tuple[dict[str, Any], set[str]]] = {}
+    folded: dict[str, tuple[dict[str, Any], dict[str, Any], set[str]]] = {}
 
     for subclass_name, network in get_bionetwork_subclasses(schemaview, base_class).items():
         for slot_info in schemaview.class_induced_slots(subclass_name):
-            attribute = slot_to_attribute(schemaview, slot_info, schema_enum_names)
-            if slot_info.name in base_attributes:
-                if attribute != base_attributes[slot_info.name]:
+            definition = slot_definition(slot_info)
+            if slot_info.name in base_definitions:
+                if definition != base_definitions[slot_info.name]:
                     raise ValueError(f"{subclass_name} changes {base_class}'s {slot_info.name!r}")
             elif slot_info.name in folded:
-                existing_attribute, networks = folded[slot_info.name]
-                if attribute != existing_attribute:
+                existing_definition, _, networks = folded[slot_info.name]
+                if definition != existing_definition:
                     raise ValueError(f"Bionetwork subclasses of {base_class} define {slot_info.name!r} differently")
                 networks.add(network)
             else:
-                folded[slot_info.name] = (attribute, {network})
+                attribute = slot_to_attribute(schemaview, slot_info, schema_enum_names)
+                folded[slot_info.name] = (definition, attribute, {network})
 
-    for attribute, networks in folded.values():
+    for _, attribute, networks in folded.values():
         attribute.setdefault("annotations", {})["bioNetworks"] = sorted(networks)
-    return [attribute for attribute, _ in folded.values()]
+    return [attribute for _, attribute, _ in folded.values()]
+
+
+# Fields that record where an induced slot came from rather than what it allows
+_SLOT_PROVENANCE = {"owner", "domain_of", "from_schema", "is_usage_slot", "usage_slot_name"}
+
+
+def slot_definition(slot_info) -> dict[str, Any]:
+    """An induced slot minus provenance; unlike `slot_to_attribute`, keeps fields the dictionary hides (`pattern`)."""
+    return {key: value for key, value in json_dumper.to_dict(slot_info).items() if key not in _SLOT_PROVENANCE}
 
 
 def slot_to_attribute(schemaview: SchemaView, slot_info, schema_enum_names: set[str]) -> dict[str, Any]:
