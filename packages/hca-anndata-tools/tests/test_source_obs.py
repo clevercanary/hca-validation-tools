@@ -16,6 +16,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from hca_anndata_tools.schema.helpers import obs_field_names
 from hca_anndata_tools.source_obs import CELL_TYPE_FIELDS, COMPARED_FIELDS, PAIRS_LIMIT, check_source_obs
 from hca_anndata_tools.sources import INTEGRATED_DIR, SOURCE_SUBDIR
 from hca_anndata_tools.testing import make_nullable_string_array
@@ -65,6 +66,21 @@ def test_compared_fields_come_from_the_schema():
     assert {"library_id", "sex_ontology_term_id", "gene_annotation_version", "donor_id"} <= set(COMPARED_FIELDS)
     assert "is_primary_data" not in COMPARED_FIELDS
     assert {"cell_type_ontology_term_id", "author_cell_type"} == CELL_TYPE_FIELDS
+
+
+def test_deprecated_obs_fields_are_not_compared():
+    # All of these are in obs (#604), but only the two that are not deprecated are compared.
+    assert {"publication_doi", "contact_email"} <= set(COMPARED_FIELDS)
+    deprecated = {
+        "consortia",
+        "assay_ontology_term",
+        "sex_ontology_term",
+        "age_range",
+        "tissue_ontology_term",
+        "disease_ontology_term",
+    }
+    assert deprecated <= obs_field_names()
+    assert not deprecated & set(COMPARED_FIELDS)
 
 
 def test_matching_files_are_silent(tree):

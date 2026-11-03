@@ -144,9 +144,17 @@ def non_producer_uns_roots() -> frozenset[str]:
     return frozenset(uns_field_registry()) | {PROVENANCE_KEY}
 
 
+def _field_names(predicate) -> frozenset[str]:
+    """Every field of the base and bionetwork classes for which ``predicate(field_info)`` holds."""
+    models = [cls for cls in vars(core).values() if isinstance(cls, type) and issubclass(cls, core.ConfiguredBaseModel)]
+    return frozenset(name for cls in models for name, fi in cls.model_fields.items() if predicate(fi))
+
+
 def obs_field_names() -> frozenset[str]:
     """Every field the schema stores in ``obs``, across the base and bionetwork classes."""
-    models = [cls for cls in vars(core).values() if isinstance(cls, type) and issubclass(cls, core.ConfiguredBaseModel)]
-    return frozenset(
-        name for cls in models for name, fi in cls.model_fields.items() if _get_ann_data_location(fi) == "obs"
-    )
+    return _field_names(lambda fi: _get_ann_data_location(fi) == "obs")
+
+
+def deprecated_field_names() -> frozenset[str]:
+    """Every field the schema marks ``is_a: deprecated_slot``, across the base and bionetwork classes."""
+    return _field_names(lambda fi: (_get_linkml_meta(fi) or {}).get("is_a") == "deprecated_slot")

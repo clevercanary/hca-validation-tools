@@ -89,6 +89,8 @@ slots:
     is_a: deprecated_slot
     title: Assay Ontology Term
     description: Deprecated placeholder for assay ontology term.
+    annotations:
+      annDataLocation: obs
 
   batch_condition:
     title: Batch Condition
@@ -124,11 +126,15 @@ slots:
     description: Contact name and email of the submitting person
     range: Email
     required: true
+    annotations:
+      annDataLocation: obs
 
   consortia:
     is_a: deprecated_slot
     title: Consortia
     description: Deprecated placeholder for consortia information.
+    annotations:
+      annDataLocation: obs
 
   default_embedding:
     title: Default Embedding
@@ -198,6 +204,8 @@ slots:
     required: false
     examples:
       - value: "10.1016/j.cell.2016.07.054"
+    annotations:
+      annDataLocation: obs
 
   reference_genome:
     title: Reference Genome

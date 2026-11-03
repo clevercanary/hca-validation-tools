@@ -65,6 +65,7 @@
           "required": false,
           "multivalued": false,
           "annotations": {
+            "annDataLocation": "obs",
             "bioNetworks": [
               "adipose",
               "breast",
@@ -195,6 +196,7 @@
           "required": false,
           "multivalued": false,
           "annotations": {
+            "annDataLocation": "obs",
             "bioNetworks": [
               "adipose",
               "breast",
@@ -225,6 +227,7 @@
           "required": true,
           "multivalued": false,
           "annotations": {
+            "annDataLocation": "obs",
             "bioNetworks": [
               "adipose",
               "breast",
@@ -466,6 +469,7 @@
           "multivalued": false,
           "example": "10.1016/j.cell.2016.07.054",
           "annotations": {
+            "annDataLocation": "obs",
             "bioNetworks": [
               "adipose",
               "breast",
@@ -803,6 +807,7 @@
           "required": false,
           "multivalued": false,
           "annotations": {
+            "annDataLocation": "obs",
             "bioNetworks": [
               "adipose",
               "breast",
@@ -874,6 +879,7 @@
           "required": false,
           "multivalued": false,
           "annotations": {
+            "annDataLocation": "obs",
             "bioNetworks": [
               "adipose",
               "breast",
@@ -1105,6 +1111,7 @@
           "required": false,
           "multivalued": false,
           "annotations": {
+            "annDataLocation": "obs",
             "bioNetworks": [
               "adipose",
               "breast",
@@ -1779,6 +1786,7 @@
           "required": false,
           "multivalued": false,
           "annotations": {
+            "annDataLocation": "obs",
             "bioNetworks": [
               "adipose",
               "breast",
