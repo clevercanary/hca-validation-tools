@@ -19,37 +19,17 @@ from hca_validation.schema_utils.schema_utils import (
     get_class_identifier_name,
 )
 
-# Map schema types and bionetworks to their corresponding class names
-schema_classes = {
-    "dataset": {"DEFAULT": "Dataset", "adipose": "AdiposeDataset", "gut": "GutDataset"},
-    "donor": {"DEFAULT": "Donor"},
-    "sample": {"DEFAULT": "Sample", "adipose": "AdiposeSample", "gut": "GutSample"},
-    "cell": {"DEFAULT": "Cell"},
-}
-
 
 def validate(data: dict[str, Any], *, class_name: str) -> ValidationError | None:
-    """
-    Validate HCA data against a schema using Pydantic models.
+    """Validate data against the generated Pydantic class `class_name`; return the ValidationError, or None.
 
-    Args:
-        data: The data to validate as a dictionary
-        schema_type: Type of schema to validate against ('dataset', 'donor', 'sample', 'cell')
-
-    Returns:
-        Returns a Pydantic ValidationError if validation fails, or None if validation succeeds
-
-    Raises:
-        ValueError: If an unsupported schema type is provided
-    """
+    An unknown `class_name` raises AttributeError."""
 
     try:
-        # Validate using the appropriate Pydantic model
         model = getattr(schema, class_name)
         model.model_validate(data)
         return None
     except ValidationError as e:
-        # Return validation error
         return e
 
 
