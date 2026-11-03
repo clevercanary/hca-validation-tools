@@ -44,7 +44,7 @@ hca-anndata-tools = { path = "../hca-anndata-tools", editable = true }
 hca-schema-validator = { path = "../hca-schema-validator", editable = true }
 
 [dependency-groups]
-dev = ["pytest>=8.0,<9", "pytest-asyncio>=0.23", "pyright>=1.1.408,<2"]
+dev = ["pytest>=8.0,<9", "pytest-cov>=7,<8", "pytest-asyncio>=0.23", "pyright>=1.1.408,<2"]
 
 [build-system]
 requires = ["hatchling"]
@@ -52,3 +52,13 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/hca_anndata_mcp"]
+
+# Coverage floor, enforced by CI's test matrix; how to measure and when to raise it: CLAUDE.md, Coverage (#548).
+[tool.coverage.run]
+source = ["hca_anndata_mcp"]
+# Also measure code the tests run in a child Python process (`python -m`, a script by path).
+patch = ["subprocess"]
+branch = true
+
+[tool.coverage.report]
+fail_under = 90

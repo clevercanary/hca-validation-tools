@@ -9,6 +9,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest>=8.4.2,<9",
+    "pytest-cov>=7,<8",
     "pyright>=1.1.408,<2",
 ]
 
@@ -17,3 +18,13 @@ dev = [
 # never a path dep. No exclude-newer (see #475 / cellxgene note).
 [tool.uv]
 package = false
+
+# Coverage floor, enforced by CI's test matrix; how to measure and when to raise it: CLAUDE.md, Coverage (#548).
+[tool.coverage.run]
+source = ["src/hca_schema_validator_service"]
+# Also measure code the tests run in a child Python process (`python -m`, a script by path).
+patch = ["subprocess"]
+branch = true
+
+[tool.coverage.report]
+fail_under = 92

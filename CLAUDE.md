@@ -58,6 +58,18 @@ cd services/cellxgene-validator && uv run pytest tests/ -v
 cd services/hca-schema-validator && uv run pytest tests/ -v
 ```
 
+### Coverage
+
+CI's test matrix measures coverage for every project it tests and fails a project below its floor (#548). Each floor is `fail_under` in that project's `pyproject.toml`, beside `[tool.coverage.run] source`. The numbers are in each test job's section of the CI run's Summary page. Coverage counts branches as well as lines (`branch = true`), so the side of an `if` that no test takes counts as missed. The services (`package = false`) name their source by path (`src/<package>`): a child Python process can't import them by name, so a name source would count nothing that tests run in a subprocess.
+
+```bash
+cd packages/hca-anndata-tools && uv run pytest tests/ --cov --cov-report=term-missing   # coverage per file, checked against the floor
+```
+
+To reproduce CI's figure, pass the project's `pytest-args` from the test matrix in `.github/workflows/ci.yml` (`shared` passes `-m "not integration"`) and install what the matrix's `apt` installs (the tracker packages skip their download tests without `aria2c`). Set a floor from CI's figure, not from a run that skipped tests.
+
+A plain `uv run pytest` does not measure coverage. When a change raises a project's coverage, raise its floor in the same PR, to the new figure rounded down, minus 1. A PR that lowers a floor says why. `hca-schema-validator`'s floor leaves out its vendored cellxgene-schema copy, which CI reports separately with no floor.
+
 ## Type Checking
 
 Pyright covers `packages/hca-metadata-schema`, `packages/hca-anndata-tools`, `packages/hca-anndata-mcp`, `packages/hca-schema-validator`, `packages/hca-tracker-client`, `packages/hca-tracker-mcp`, `services/dataset-validator`, and `services/hca-schema-validator`. Config is `pyrightconfig.json` at repo root. Runs one pass per venv since each has a disjoint dep set.
