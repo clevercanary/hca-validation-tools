@@ -1,14 +1,15 @@
 """
-Tests for data dictionary generation, in particular the folding of bionetwork subclass slots
-into their base class with a `bioNetworks` annotation.
+Tests for data dictionary generation: the folding of bionetwork subclass slots into their base class with a
+`bioNetworks` annotation, and (#548) how a slot maps to an attribute, pinned against a small fixed schema.
 """
 
+import json
 import textwrap
 
 import pytest
 from linkml_runtime import SchemaView
 
-from hca_validation.data_dictionary.generate_dictionary import transform_schema_to_data_dictionary
+from hca_validation.data_dictionary.generate_dictionary import generate_dictionary, transform_schema_to_data_dictionary
 
 
 @pytest.fixture(scope="module")
@@ -272,3 +273,157 @@ def test_indirect_subclass_is_refused(tmp_path, classes):
     schemaview = _schemaview(tmp_path, classes)
     with pytest.raises(ValueError, match="is not a direct, concrete subclass of Dataset"):
         transform_schema_to_data_dictionary(schemaview)
+
+
+# Slot-to-attribute mapping (#548). These run against a small schema written to a temporary directory rather
+# than core.yaml, so they pin the generator's behaviour and do not move when the real schema changes. That the
+# committed dictionary matches core.yaml is CI's generated-schema job.
+
+_MAPPING_SCHEMA = """
+id: https://example.org/dictionary-test
+name: dictionary_test
+prefixes:
+  linkml: https://w3id.org/linkml/
+imports:
+  - linkml:types
+
+enums:
+  BioNetwork:
+    permissible_values:
+      gut:
+      heart:
+  Colour:
+    permissible_values:
+      red:
+      blue:
+
+slots:
+  title:
+    title: Title
+    description: The dataset title.
+    required: true
+    examples:
+      - value: first example
+      - value: second example
+    annotations:
+      annDataLocation: uns
+      cxg: title
+  rationale_slot:
+    comments:
+      - First comment.
+      - Second comment.
+    notes:
+      - First note.
+      - Second note.
+  bare:
+  colour:
+    range: Colour
+    notes:
+      - Replaced by the enum values.
+  donor_id:
+    multivalued: true
+
+classes:
+  Dataset:
+    description: A dataset.
+    slots:
+      - title
+      - rationale_slot
+      - bare
+      - colour
+  Donor:
+    slots:
+      - donor_id
+  Base:
+    abstract: true
+    slots:
+      - bare
+  # Sample and Cell are included classes, so an abstract one must still be skipped.
+  Sample:
+    abstract: true
+    slots:
+      - bare
+  Unlisted:
+    slots:
+      - bare
+"""
+
+_ALL_NETWORKS = ["gut", "heart"]
+
+
+@pytest.fixture(scope="module")
+def mapping_schema_path(tmp_path_factory):
+    path = tmp_path_factory.mktemp("schema") / "dictionary_test.yaml"
+    path.write_text(_MAPPING_SCHEMA)
+    return path
+
+
+@pytest.fixture(scope="module")
+def mapping_dictionary(mapping_schema_path):
+    return transform_schema_to_data_dictionary(SchemaView(str(mapping_schema_path), merge_imports=True))
+
+
+def _class_entry(dictionary, class_name):
+    [entry] = [c for c in dictionary["classes"] if c["title"] == class_name]
+    return entry
+
+
+def _attributes(dictionary, class_name):
+    return {a["name"]: a for a in _class_entry(dictionary, class_name)["attributes"]}
+
+
+def test_only_included_concrete_classes_are_emitted(mapping_dictionary):
+    # Base and Unlisted are not in the included set; Sample is, but is abstract.
+    assert [c["title"] for c in mapping_dictionary["classes"]] == ["Dataset", "Donor"]
+
+
+def test_class_entry(mapping_dictionary):
+    dataset = _class_entry(mapping_dictionary, "Dataset")
+    assert dataset["name"] == "dataset"
+    assert dataset["description"] == "A dataset."
+    assert _class_entry(mapping_dictionary, "Donor")["description"] == ""
+
+
+def test_list_comments_and_notes_are_joined_with_newlines(mapping_dictionary):
+    slot = _attributes(mapping_dictionary, "Dataset")["rationale_slot"]
+    assert slot["rationale"] == "First comment.\nSecond comment."
+    assert slot["values"] == "First note.\nSecond note."
+
+
+def test_enum_values_are_flattened_and_replace_notes(mapping_dictionary):
+    assert _attributes(mapping_dictionary, "Dataset")["colour"]["values"] == "red; blue"
+
+
+def test_populated_slot(mapping_dictionary):
+    assert _attributes(mapping_dictionary, "Dataset")["title"] == {
+        "name": "title",
+        "title": "Title",
+        "description": "The dataset title.",
+        "range": "string",
+        "required": True,
+        "multivalued": False,
+        "example": "first example",
+        "annotations": {"annDataLocation": "uns", "cxg": "title", "bioNetworks": _ALL_NETWORKS},
+    }
+
+
+def test_bare_slot_gets_defaults_and_only_bionetworks(mapping_dictionary):
+    assert _attributes(mapping_dictionary, "Dataset")["bare"] == {
+        "name": "bare",
+        "title": "bare",
+        "description": "",
+        "range": "string",
+        "required": False,
+        "multivalued": False,
+        "annotations": {"bioNetworks": _ALL_NETWORKS},
+    }
+
+
+def test_multivalued(mapping_dictionary):
+    assert _attributes(mapping_dictionary, "Donor")["donor_id"]["multivalued"] is True
+
+
+def test_generate_dictionary_writes_json(mapping_schema_path, mapping_dictionary, tmp_path):
+    output = tmp_path / "out.json"
+    generate_dictionary(mapping_schema_path, output)
+    assert json.loads(output.read_text()) == mapping_dictionary
