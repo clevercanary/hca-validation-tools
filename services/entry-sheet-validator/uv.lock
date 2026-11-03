@@ -597,6 +597,7 @@ codegen = [
 ]
 dev = [
     { name = "pytest", specifier = ">=8.0,<9" },
+    { name = "pytest-cov", specifier = ">=7,<8" },
     { name = "pyyaml", specifier = ">=6.0,<7" },
 ]
 
@@ -645,6 +646,7 @@ provides-extras = ["h5ad"]
 dev = [
     { name = "h5py", specifier = ">=3.8,<4" },
     { name = "pytest", specifier = ">=8.3.5,<9" },
+    { name = "pytest-cov", specifier = ">=7,<8" },
     { name = "pytest-mock", specifier = ">=3.14.0,<4" },
 ]
 
