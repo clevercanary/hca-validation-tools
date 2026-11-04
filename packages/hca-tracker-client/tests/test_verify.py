@@ -223,6 +223,14 @@ def test_an_edit_of_a_published_download_is_edited():
     assert (local[1]["status"], local[1]["current_name"]) == ("stale", "x-r1.h5ad")
 
 
+def test_an_older_edit_of_a_duplicated_tracker_name_is_ambiguous_not_stale():
+    twin = {**MYELOID["hgca-v1-myeloid-r1.h5ad"][0]["entry"], "kind": "source", "id": "s"}
+    listed = {"hgca-v1-myeloid-r1.h5ad": [*MYELOID["hgca-v1-myeloid-r1.h5ad"], {"entry": twin}]}
+    local = [{"name": "hgca-v1-myeloid-r1-wip-17-edit-2026-10-18-23-48-10.h5ad", "folder_kind": None}]
+    classify(local, listed)
+    assert local[0]["status"] == "ambiguous" and len(local[0]["matches"]) == 2
+
+
 def test_two_uploaded_snapshots_of_one_lineage_are_reported_not_guessed():
     listed = {
         **MYELOID,

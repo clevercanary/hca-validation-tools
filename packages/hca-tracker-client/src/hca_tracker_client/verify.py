@@ -265,7 +265,7 @@ def classify(local: list[dict], listed: dict[str, list[dict]]) -> list[dict]:
         if base is not None:  # our edit: of the tracker's file itself, or of a snapshot we uploaded as it
             uploads = uploaded_edits.get(base, {})
             names = listed_as(base) | set(uploads)
-            current = next(iter(names)) if len(names) == 1 else None
+            current = next(iter(names)) if sum(len(listed[name]) for name in names) == 1 else None
             if current in uploads and edit_stamp(entry["name"]) < uploads[current]:  # predates our upload
                 entry.update({"status": STALE, "current_name": current, "kind": listed[current][0]["entry"]["kind"]})
                 continue
