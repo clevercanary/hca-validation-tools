@@ -1,10 +1,8 @@
 name: CI
 
-# Phase 1 of #461: verify every PR with typecheck + tests. This is a local
-# workflow, not a caller of the shared clevercanary/.github reusable workflows
-# (those don't exist yet — see #461); migrating to them is deferred. Lint (Ruff,
-# conformance A9) is also deferred: the tree isn't Ruff-clean yet and needs a
-# mechanical sweep first.
+# Phase 1 of #461: verify every PR with lint, typecheck and tests. This is a
+# local workflow, not a caller of the shared clevercanary/.github reusable
+# workflows (those don't exist yet — see #461); migrating to them is deferred.
 #
 # The entry-sheet-validator suite is intentionally excluded: its only test boots
 # a built Docker image (`hca-entry-sheet-validator:latest`) and needs AWS creds
@@ -41,6 +39,19 @@ jobs:
         run: uvx ruff@0.11.8 check .
       - name: Ruff format check
         run: uvx ruff@0.11.8 format --check .
+      # Each service commits its uv.lock (#483), and the test matrix's `uv sync --frozen`
+      # installs it without checking it against pyproject.toml, so fail on a stale one
+      # here (#823). uv's error doesn't name the lock, so the step does.
+      - name: Service locks are current
+        run: |
+          failed=0
+          for lock in services/*/uv.lock; do
+            if ! uv lock --check --directory "$(dirname "$lock")"; then
+              echo "::error file=$lock::uv lock --check failed for $lock; if it is stale, run 'uv lock' in its directory and commit it."
+              failed=1
+            fi
+          done
+          exit $failed
 
   typecheck:
     name: typecheck
@@ -107,9 +118,10 @@ jobs:
       matrix:
         include:
           # `sync-args` is `--frozen` only where a uv.lock is committed. The
-          # services commit their lock, so CI installs exactly what's locked and
-          # fails loudly on a stale lock. shared/ and packages/* gitignore their
-          # lock (#483), so there's nothing to freeze — plain `uv sync` re-resolves.
+          # services commit their lock, so CI installs exactly what's locked;
+          # `--frozen` doesn't check it, so the lint job does. shared/ and
+          # packages/* gitignore their lock (#483), so there's nothing to
+          # freeze — plain `uv sync` re-resolves.
           #
           # shared has an `integration` marker for tests needing live creds;
           # PR CI runs only the hermetic subset.
