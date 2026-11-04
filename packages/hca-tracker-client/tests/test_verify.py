@@ -137,6 +137,23 @@ def test_an_edited_copy_carries_the_entry_it_was_made_from_and_is_not_hashed():
     assert [m["name"] for m in missing] == ["x-r2-wip-3.h5ad"]  # an edited copy is not the tracker's file
 
 
+def test_a_tracker_file_with_an_edit_name_matches_exactly():
+    listed = {
+        **LISTED,
+        "x-edit-2026-11-03-21-04-55-r1-wip-1.h5ad": [
+            {"entry": {"kind": "source", "fileId": "g", "fileName": "x-edit-2026-11-03-21-04-55.h5ad", "id": "h"}}
+        ],
+    }
+    local = [{"name": "x-edit-2026-11-03-21-04-55.h5ad", "folder_kind": None}]
+    classify(local, listed)
+    assert (local[0]["tracker_name"], local[0]["entry_id"], local[0]["file_id"]) == (
+        "x-edit-2026-11-03-21-04-55-r1-wip-1.h5ad",
+        "h",
+        "g",
+    )
+    assert "status" not in local[0]  # matched as the tracker's file, so check_sizes decides whether it is hashed
+
+
 def test_an_unversioned_name_is_never_stale():
     listed = {"all-r1-wip-2.h5ad": [{"entry": {"kind": "integrated", "fileId": "a", "fileName": "all_v2.h5ad"}}]}
     local = [{"name": "all.h5ad", "folder_kind": None}]
@@ -231,6 +248,14 @@ def test_one_edited_file_is_answered_at_once(verifier, atlas, tmp_path):
     assert result["state"] == "done" and result["files_to_hash"] == 0
     (row,) = result["files"]
     assert (row["status"], row["entry_id"]) == ("edited", entry_id_of(verifier, atlas, "all.h5ad"))
+
+
+def test_a_linked_file_is_checked_under_its_own_name(verifier, atlas, tmp_path):
+    target = copy(atlas, "myeloid.h5ad", tmp_path)  # the current wip
+    link = tmp_path / "myeloid-r1-wip-0.h5ad"
+    link.symlink_to(target)
+    (row,) = verifier.start("gut", "gut", str(link))["files"]
+    assert (row["name"], row["status"], row["current_name"]) == ("myeloid-r1-wip-0.h5ad", "stale", target.name)
 
 
 def test_a_file_that_is_not_h5ad_is_refused(verifier, tmp_path):

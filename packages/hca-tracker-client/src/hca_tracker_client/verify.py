@@ -223,8 +223,9 @@ def classify(local: list[dict], listed: dict[str, list[dict]]) -> list[dict]:
     is how a copy that never went through ``start_download`` is usually named. A matched file gets
     ``tracker_name``, ``kind``, ``file_id`` and its list row's ``ROW_FIELDS``, and
     ``misplaced`` when it was found in a folder of one kind; ``check_sizes`` then decides whether it is hashed.
-    An ``-edit-<timestamp>`` copy is matched by the name it was made from and, when that is a listed file, is
-    ``edited``, with the same fields but no ``file_id``: it is never hashed and does not make its file present.
+    A name that matches no listed file and ends in ``-edit-<timestamp>`` is matched by the name it was made
+    from and, when that is a listed file, is ``edited``, with the same fields but no ``file_id``: it is never
+    hashed and does not make its file present.
     Only a versioned name can be ``stale``. A name that could be more than one file is reported ``ambiguous``,
     never guessed at, and counts none of them as present.
     """
@@ -238,10 +239,16 @@ def classify(local: list[dict], listed: dict[str, list[dict]]) -> list[dict]:
             if item["entry"].get("fileName"):
                 uploaded_as.setdefault(item["entry"]["fileName"], set()).add(name)
     present = set()
+
+    def listed_as(name: str) -> set[str]:
+        return ({name} & listed.keys()) | uploaded_as.get(name, set())
+
     for entry in local:
-        base = edited_base(entry["name"])
+        names, base = listed_as(entry["name"]), None
+        if not names:  # the exact name first: a tracker file may itself carry an -edit- name
+            base = edited_base(entry["name"])
+            names = listed_as(base) if base is not None else set()
         local_name = base or entry["name"]
-        names = ({local_name} & listed.keys()) | uploaded_as.get(local_name, set())
         if not names:
             stem = file_stem(local_name)
             others = stems.get(stem, set()) if stem is not None else set()
@@ -319,7 +326,10 @@ class Verifier:
         self, network: str, atlas: str, path: str, generation: int | None = None, published: bool = False
     ) -> dict:
         """Classify the folder's files, or the one file, then hash the matches in a detached worker; returns at once."""
-        root = Path(path).expanduser().resolve()
+        given = Path(path).expanduser()
+        root = given.resolve()
+        if given.is_symlink() and root.is_file():  # a linked file is checked under its own name, as in a folder
+            root = given.parent.resolve() / given.name
         # before any tracker call, so an unreadable folder is refused at once
         layout, files = files_to_check(root)
         record = select_atlas(self.tracker.list_atlases(), network, atlas, generation, published)
