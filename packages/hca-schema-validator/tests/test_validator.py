@@ -238,6 +238,9 @@ def test_valid_adata_passes():
 
     is_valid, validator = _validate_from_fixture(adata)
     assert is_valid is True, f"Validation failed with errors: {validator.errors}"
+    # #837: is_primary_data is a CELLxGENE field with no HCA meaning; the fixture omits it and nothing asks for it.
+    assert "is_primary_data" not in adata.obs.columns
+    assert not [m for m in validator.errors + validator.warnings if "is_primary_data" in m]
 
 
 def _cosmetic_check_messages(validator):
@@ -585,6 +588,45 @@ def test_missing_required_obs_column():
     assert is_valid is False
     error_messages = " ".join(validator.errors)
     assert "sample_id" in error_messages
+
+
+def test_is_primary_data_is_an_unchecked_extra_column():
+    """#837: a file that still carries is_primary_data passes, and its values are no longer type-checked."""
+    from .fixtures.hca_fixtures import adata
+
+    test_adata = adata.copy()
+    test_adata.obs["is_primary_data"] = ["yes", "no"]
+    is_valid, validator = _validate_from_fixture(test_adata)
+    assert is_valid is True, f"Validation failed with errors: {validator.errors}"
+
+
+@pytest.mark.parametrize("values", [[True, True], pd.Categorical(["no", "no"])])
+def test_spatial_is_primary_data_rule_is_skipped(values):
+    """#837: CELLxGENE's is_single=False rule must not fail, or crash on, a column HCA does not define."""
+    from .fixtures.hca_fixtures import adata_spatial_is_single_false
+
+    _, baseline = _validate_from_fixture(adata_spatial_is_single_false.copy())
+    test_adata = adata_spatial_is_single_false.copy()
+    test_adata.obs["is_primary_data"] = values
+    _, validator = _validate_from_fixture(test_adata)
+    assert validator.errors == baseline.errors
+
+
+def test_atac_fragment_checks_are_unreachable():
+    """#837: the vendored ATAC check reads obs['is_primary_data'] unguarded, so HCA must never call it.
+
+    Only the vendored cli.py imports atac_seq, and nothing outside _vendored imports either module.
+    """
+    import re
+    from pathlib import Path
+
+    imports_them = re.compile(r"^\s*(from|import)\s.*\b(atac_seq|cli)\b", re.MULTILINE)
+    package_root = Path(__file__).parent.parent
+    for path in (package_root / "src" / "hca_schema_validator").rglob("*.py"):
+        if "_vendored" not in path.parts:
+            assert not imports_them.search(path.read_text()), path
+    pyproject = (package_root / "pyproject.toml").read_text()
+    assert "[project.scripts]" not in pyproject and "console_scripts" not in pyproject
 
 
 def test_enum_invalid_value():

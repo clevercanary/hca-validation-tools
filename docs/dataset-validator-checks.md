@@ -284,7 +284,7 @@ Reads `var.index` and `raw.var.index`, nothing else — no `obs`, no network. Co
 - `obs.array_row`, `obs.array_col`: int, in range per platform, non-null — required for Visium `is_single=True`, forbidden otherwise.
 - `obs.in_tissue`: 0 or 1 only; special raw-matrix rules when zeros are present.
 - `obs.cell_type_ontology_term_id == "unknown"` where `in_tissue==0`.
-- `obs.is_primary_data == False` when `is_single=False`.
+- `obs.is_primary_data == False` when `is_single=False`. CELLxGENE only: `HCAValidator` skips it, because `is_primary_data` is not in the HCA schema (#837).
 
 ### Duplicates (`validation_internals/check_duplicates.py`)
 
@@ -293,7 +293,7 @@ Reads `var.index` and `raw.var.index`, nothing else — no `obs`, no network. Co
 ### ATAC-seq (`atac_seq.py`, when fragment file validated)
 
 - Organism is human or mouse (`NCBITaxon:9606` / `NCBITaxon:10090`).
-- All `obs.is_primary_data == True`.
+- All `obs.is_primary_data == True`. Reachable only through the vendored `cli.py`, never from HCA validation (#837).
 - Fragments: chromosomes valid for organism; `start > 0`; `stop > start`; `stop ≤ chromosome length`; `read_support > 0`; no duplicate fragments; barcodes are a subset of `obs.index`.
 
 ---

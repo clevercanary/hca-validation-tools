@@ -198,6 +198,9 @@ class HCAValidator(Validator):
                 return True
         return False
 
+    def _validate_spatial_is_primary_data(self):
+        """Skips CELLxGENE's spatial rule: is_primary_data has no HCA meaning (#837)."""
+
     def _validate_list(self, list_name, current_list, element_type):
         """
         Extends base list validation with support for element_type: string.
