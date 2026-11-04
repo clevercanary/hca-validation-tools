@@ -5,6 +5,7 @@ import pytest
 
 from hca_anndata_mcp.tools.validate import validate_cell_annotation, validate_schema
 from hca_anndata_tools.testing import create_sample_h5ad
+from hca_schema_validator import __version__ as validator_version
 from hca_schema_validator.cell_annotation_validator import NO_SETS_ERROR
 from hca_schema_validator.testing import create_cap_annotated_h5ad, create_labelable_h5ad
 
@@ -14,6 +15,7 @@ def test_validate_schema_shape(sample_h5ad):
     assert set(result.keys()) == {
         "filename",
         "object_kind",
+        "validator_version",
         "is_valid",
         "error_count",
         "warning_count",
@@ -21,6 +23,7 @@ def test_validate_schema_shape(sample_h5ad):
         "warnings",
     }
     assert result["object_kind"] == "source"
+    assert result["validator_version"] == validator_version
     assert isinstance(result["is_valid"], bool)
     assert result["error_count"] == len(result["errors"])
     assert result["warning_count"] == len(result["warnings"])
@@ -132,12 +135,14 @@ def test_validate_cell_annotation_shape(tmp_path):
     result = validate_cell_annotation(str(path))
     assert set(result.keys()) == {
         "filename",
+        "validator_version",
         "is_valid",
         "error_count",
         "warning_count",
         "errors",
         "warnings",
     }
+    assert result["validator_version"] == validator_version
     assert isinstance(result["is_valid"], bool)
     assert result["error_count"] == len(result["errors"])
     assert result["warning_count"] == len(result["warnings"])

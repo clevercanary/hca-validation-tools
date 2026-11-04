@@ -35,8 +35,10 @@ A version is only useful if a consumer can tell from it whether a file that pass
 1.4 The bionetwork schemas have no version of their own. Nothing loads one on its own, and all of them feed the one
     published data dictionary. Revisit if Tier 2 (#790) makes networks change much faster than core.
 
-1.5 `hca-schema-validator`'s `__schema_version__` ("HCA anndata schema version 1.0.0") is a different number for a
-    different rule set: that validator does not load the LinkML schema. How the two relate is #802.
+1.5 `hca-schema-validator` does not load the LinkML schema; it checks files against its own rule set, which each
+    package release pins. Its reports name that release as `validator_version` (#802). Its `__schema_version__`
+    ("HCA anndata schema version 1.0.0") is deprecated: it was never bumped, so it identifies no rule set. Once
+    #795 generates part of the validator's rules from LinkML, its reports will also name the LinkML version.
 
 ## 2. How the version moves
 

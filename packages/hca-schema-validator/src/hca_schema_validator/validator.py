@@ -26,7 +26,7 @@ from hca_schema_validator._vendored.cellxgene_schema.ontology_parser import ONTO
 from hca_schema_validator._vendored.cellxgene_schema.utils import getattr_anndata
 from hca_schema_validator._vendored.cellxgene_schema.validate import Validator
 
-from . import __schema_version__ as HCA_SCHEMA_VERSION
+from . import __version__
 from .labeler import HCA_DERIVED_OBS_LABELS
 
 # GENCODE version info (loaded once at module level)
@@ -107,8 +107,8 @@ class HCAValidator(Validator):
         the default CELLxGENE schema.
         """
         if not self.schema_version:
-            # Use HCA schema version
-            self.schema_version = HCA_SCHEMA_VERSION
+            # The package release pins this schema definition (#802)
+            self.schema_version = __version__
 
         if not self.schema_def:
             # Load HCA-specific schema

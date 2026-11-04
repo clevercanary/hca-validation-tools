@@ -9,6 +9,7 @@ import shutil
 from pathlib import Path
 
 import anndata as ad
+import hca_metadata_schema
 import pandas as pd
 import pytest
 
@@ -21,6 +22,7 @@ from hca_anndata_tools.write import (
     _copy_with_sha256,
     forward_encodings_normalized,
     generate_output_path,
+    make_edit_entry,
     resolve_latest,
     snapshot_copy,
     snapshot_copy_hashed,
@@ -123,6 +125,12 @@ def test_write_h5ad_edit_log_populated(sample_h5ad_for_write):
     assert log[0]["description"] == "fix tissue values"
     assert "source_file" in log[0]
     assert "source_sha256" in log[0]
+
+
+def test_make_edit_entry_records_the_schema_version():
+    """Every entry names the LinkML schema version the tool was built against (#802)."""
+    entry = make_edit_entry(operation="test_op", description="test edit")
+    assert entry["hca_metadata_schema_version"] == hca_metadata_schema.__version__
 
 
 def test_write_h5ad_preserves_existing_log(sample_h5ad_for_write):

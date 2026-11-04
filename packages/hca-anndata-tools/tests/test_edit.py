@@ -4,6 +4,7 @@ import json
 
 import anndata as ad
 import h5py
+import hca_metadata_schema
 import numpy as np
 import pandas as pd
 import scipy.sparse as sp
@@ -14,7 +15,7 @@ from hca_anndata_tools.edit import (
     set_uns,
     view_edit_log,
 )
-from hca_anndata_tools.testing import assert_no_snapshot_written, make_nullable_string_array
+from hca_anndata_tools.testing import assert_no_snapshot_written, create_hca_h5ad, make_nullable_string_array
 from hca_anndata_tools.write import EDIT_LOG_KEY
 
 # --- list_uns_fields ---
@@ -173,6 +174,17 @@ def test_set_uns_edit_log(sample_h5ad_for_write):
     assert log[0]["operation"] == "set_uns"
     assert log[0]["details"]["field"] == "comments"
     assert log[0]["details"]["new_value"] == "Logged edit"
+    # A full rewrite stamps the schema version on its entry and leaves uns['schema_version'] as it was (#802)
+    assert log[0]["hca_metadata_schema_version"] == hca_metadata_schema.__version__
+    assert written.uns.get("schema_version") == ad.read_h5ad(sample_h5ad_for_write).uns.get("schema_version")
+
+
+def test_set_uns_does_not_create_schema_version(tmp_path):
+    """On an HCA-layout file, which has no uns['schema_version'], a write leaves it absent (#802)."""
+    path = create_hca_h5ad(tmp_path / "hca.h5ad")
+    result = set_uns(str(path), "comments", "Logged edit")
+    assert "error" not in result
+    assert "schema_version" not in ad.read_h5ad(result["output_path"]).uns
 
 
 def test_set_uns_previous_value_in_details(sample_h5ad_for_write):
@@ -375,6 +387,9 @@ def test_replace_placeholder_edit_log(tmp_path):
     log = json.loads(written.uns["provenance"][EDIT_LOG_KEY])
     assert len(log) >= 1
     assert log[-1]["operation"] == "replace_placeholder_values"
+    # So does a copy-and-patch write (#802)
+    assert log[-1]["hca_metadata_schema_version"] == hca_metadata_schema.__version__
+    assert written.uns.get("schema_version") == ad.read_h5ad(path).uns.get("schema_version")
 
 
 # --- view_edit_log ---

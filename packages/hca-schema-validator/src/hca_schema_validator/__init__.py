@@ -2,7 +2,8 @@
 
 # Define constants first (before importing validator to avoid circular import)
 __version__ = "0.15.2"
-__schema_version__ = "1.0.0"  # HCA schema version (independent from CELLxGENE)
+# Deprecated (#802): never bumped and never reported, so it does not identify which rules ran; use __version__
+__schema_version__ = "1.0.0"
 __schema_reference_url__ = "https://data.humancellatlas.org/metadata"  # Static URL, no version in path
 
 # Import after constants are defined
