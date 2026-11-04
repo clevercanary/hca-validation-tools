@@ -126,14 +126,13 @@ def test_an_edited_copy_carries_the_entry_it_was_made_from_and_is_not_hashed():
         {"name": "y-edit-2026-11-03-21-04-55.h5ad", "folder_kind": None},
     ]
     missing = classify(local, LISTED)
-    for entry in local[:2]:
+    for entry in local[:3]:  # an edit is never stale: whether it is current is its own validation's question
         assert entry["status"] == "edited"
         assert (entry["tracker_name"], entry["kind"]) == ("x-r2-wip-3.h5ad", "integrated")
         assert (entry["entry_id"], entry["revision"], entry["wip_number"]) == ("e", 2, 3)
         assert "file_id" not in entry  # so check_sizes never probes it and it is never hashed
     assert local[0]["misplaced"] is False
-    assert (local[2]["status"], local[2]["current_name"]) == ("stale", "x-r2-wip-3.h5ad")
-    assert local[3]["status"] == "unknown"
+    assert local[3]["status"] == "unknown" and "entry_id" not in local[3]
     assert [m["name"] for m in missing] == ["x-r2-wip-3.h5ad"]  # an edited copy is not the tracker's file
 
 
@@ -190,11 +189,30 @@ def test_the_uploaded_snapshot_itself_is_matched_exactly():
     assert "status" not in local[0] and local[0]["file_id"] == "f"  # hashed, as the tracker's own file
 
 
-def test_an_edit_older_than_the_uploaded_snapshot_is_stale():
+def test_an_edit_older_than_the_uploaded_snapshot_is_still_edited():
+    """Names cannot order an edit against the upload; the tracker's file of the lineage is still its row."""
     local = [{"name": "hgca-v1-myeloid-r1-wip-17-edit-2026-10-18-23-48-10.h5ad", "folder_kind": None}]
     classify(local, MYELOID)
-    assert (local[0]["status"], local[0]["current_name"]) == ("stale", "hgca-v1-myeloid-r1.h5ad")
-    assert "entry_id" not in local[0]
+    assert (local[0]["status"], local[0]["entry_id"]) == ("edited", "e")
+
+
+def test_an_edit_of_a_published_download_is_edited():
+    """Root x-r1.h5ad is the download name, while the tracker holds a later snapshot uploaded from it."""
+    listed = {
+        "x-r1.h5ad": [
+            {
+                "entry": {
+                    "kind": "integrated",
+                    "fileId": "f",
+                    "fileName": "x-r1-edit-2026-10-19-00-00-00.h5ad",
+                    "id": "e",
+                }
+            }
+        ]
+    }
+    local = [{"name": "x-r1-edit-2026-10-18-00-00-00.h5ad", "folder_kind": None}]
+    classify(local, listed)
+    assert (local[0]["status"], local[0]["tracker_name"], local[0]["entry_id"]) == ("edited", "x-r1.h5ad", "e")
 
 
 def test_two_uploaded_snapshots_of_one_lineage_are_reported_not_guessed():
