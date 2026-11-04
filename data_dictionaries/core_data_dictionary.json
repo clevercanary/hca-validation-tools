@@ -1176,13 +1176,15 @@
           "range": "string",
           "required": true,
           "multivalued": false,
-          "values": "trypsin; trypLE; collagenase",
           "annotations": {
+            "annDataLocation": "obs",
+            "tier": "Tier 1",
             "bioNetworks": [
               "adipose",
               "gut"
             ]
-          }
+          },
+          "values": "trypsin; trypLE; collagenase"
         },
         {
           "name": "donor_id",
@@ -1430,12 +1432,14 @@
           "range": "RadialTissueTerm",
           "required": true,
           "multivalued": false,
-          "values": "EPI; LP; MUSC; EPI_LP; LP_MUSC; EPI_LP_MUSC; MLN; SUB; Peyers patch; Mucosal ILF; Submucosal ILF; WM",
           "annotations": {
+            "annDataLocation": "obs",
+            "tier": "Tier 1",
             "bioNetworks": [
               "gut"
             ]
-          }
+          },
+          "values": "EPI; LP; MUSC; EPI_LP; LP_MUSC; EPI_LP_MUSC; MLN; SUB; Peyers patch; Mucosal ILF; Submucosal ILF; WM"
         },
         {
           "name": "sample_collection_method",

@@ -65,6 +65,8 @@ def _codes(result: dict) -> dict[tuple[str, str], dict]:
 def test_compared_fields_come_from_the_schema():
     assert {"library_id", "sex_ontology_term_id", "gene_annotation_version", "donor_id"} <= set(COMPARED_FIELDS)
     assert "is_primary_data" not in COMPARED_FIELDS
+    # Only bionetwork Sample subclasses have these (#824)
+    assert {"dissociation_protocol", "radial_tissue_term"} <= set(COMPARED_FIELDS)
     assert {"cell_type_ontology_term_id", "author_cell_type"} == CELL_TYPE_FIELDS
 
 

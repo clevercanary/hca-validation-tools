@@ -89,12 +89,18 @@ slots:
   radial_tissue_term:
     title: Radial Tissue Term
     description: Radial compartment/location of the tissue sample.
+    annotations:
+      annDataLocation: obs
+      tier: Tier 1
     range: RadialTissueTerm
     required: true
 
   dissociation_protocol:
     title: Dissociation Protocol
     description: Dissociation chemicals used during sample preparation
+    annotations:
+      annDataLocation: obs
+      tier: Tier 1
     range: string
     required: true
     notes:

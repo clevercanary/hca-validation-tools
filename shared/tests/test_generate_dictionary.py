@@ -57,18 +57,22 @@ def _schemaview(tmp_path, classes):
 
 
 # The four slots only bionetwork subclasses add, as the HCA Data Portal's tier-1.json scopes them.
+# The two Dataset slots have no tier yet (#760), so their tier is not checked.
 @pytest.mark.parametrize(
-    ("class_name", "attribute_name", "networks"),
+    ("class_name", "attribute_name", "networks", "tier"),
     [
-        ("dataset", "ambient_count_correction", ["adipose", "gut", "musculoskeletal"]),
-        ("dataset", "doublet_detection", ["adipose", "gut", "musculoskeletal"]),
-        ("sample", "radial_tissue_term", ["gut"]),
-        ("sample", "dissociation_protocol", ["adipose", "gut"]),
+        ("dataset", "ambient_count_correction", ["adipose", "gut", "musculoskeletal"], None),
+        ("dataset", "doublet_detection", ["adipose", "gut", "musculoskeletal"], None),
+        ("sample", "radial_tissue_term", ["gut"], "Tier 1"),
+        ("sample", "dissociation_protocol", ["adipose", "gut"], "Tier 1"),
     ],
 )
-def test_bionetwork_slots_are_folded(data_dictionary, class_name, attribute_name, networks):
+def test_bionetwork_slots_are_folded(data_dictionary, class_name, attribute_name, networks, tier):
     attribute = _attribute(data_dictionary, class_name, attribute_name)
     assert attribute["annotations"]["bioNetworks"] == networks
+    assert attribute["annotations"]["annDataLocation"] == "obs"
+    if tier is not None:
+        assert attribute["annotations"]["tier"] == tier
     assert attribute["required"] is True
 
 
@@ -83,6 +87,22 @@ def test_every_attribute_has_bionetworks(data_dictionary):
     for entity_class in data_dictionary["classes"]:
         for attribute in entity_class["attributes"]:
             assert attribute["annotations"]["bioNetworks"], f"{entity_class['name']}.{attribute['name']}"
+
+
+# Fields the dictionary may emit without an annDataLocation: dataset_id is Dataset's identifier
+# and Donor's and Sample's foreign key, and the tracker supplies it rather than the h5ad
+_UNLOCATED_ATTRIBUTES = {"dataset_id"}
+
+
+def test_every_attribute_has_anndata_location(data_dictionary):
+    missing = [
+        f"{entity_class['name']}.{attribute['name']}"
+        for entity_class in data_dictionary["classes"]
+        for attribute in entity_class["attributes"]
+        if attribute["name"] not in _UNLOCATED_ATTRIBUTES
+        and attribute["annotations"].get("annDataLocation") not in {"obs", "uns"}
+    ]
+    assert not missing, f"no annDataLocation of obs or uns: {', '.join(missing)}"
 
 
 def test_attributes_stay_sorted_by_name(data_dictionary):

@@ -1053,6 +1053,8 @@ class AdiposeSample(Sample):
          'from_schema': 'https://github.com/clevercanary/hca-validation-tools/schema/bionetwork/adipose'})
 
     dissociation_protocol: str = Field(default=..., title="Dissociation Protocol", description="""Dissociation chemicals used during sample preparation""", json_schema_extra = { "linkml_meta": {'alias': 'dissociation_protocol',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
+                         'tier': {'tag': 'tier', 'value': 'Tier 1'}},
          'domain_of': ['AdiposeSample', 'GutSample'],
          'notes': ['trypsin; trypLE; collagenase']} })
     sample_id: str = Field(default=..., title="Sample ID", description="""Identification number of the sample. This is the fundamental unit of sampling the tissue (the specimen taken from the subject), which can be the same as the 'subject_ID', but is often different if multiple samples are taken from the same subject. Note: this is NOT a unit of multiplexing of donor samples, which should be stored in \"library\".""", json_schema_extra = { "linkml_meta": {'alias': 'sample_id',
@@ -1315,8 +1317,13 @@ class GutSample(Sample):
     linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'annotations': {'bioNetwork': {'tag': 'bioNetwork', 'value': 'gut'}},
          'from_schema': 'https://github.com/clevercanary/hca-validation-tools/schema/bionetwork/gut'})
 
-    radial_tissue_term: RadialTissueTerm = Field(default=..., title="Radial Tissue Term", description="""Radial compartment/location of the tissue sample.""", json_schema_extra = { "linkml_meta": {'alias': 'radial_tissue_term', 'domain_of': ['GutSample']} })
+    radial_tissue_term: RadialTissueTerm = Field(default=..., title="Radial Tissue Term", description="""Radial compartment/location of the tissue sample.""", json_schema_extra = { "linkml_meta": {'alias': 'radial_tissue_term',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
+                         'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'domain_of': ['GutSample']} })
     dissociation_protocol: str = Field(default=..., title="Dissociation Protocol", description="""Dissociation chemicals used during sample preparation""", json_schema_extra = { "linkml_meta": {'alias': 'dissociation_protocol',
+         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
+                         'tier': {'tag': 'tier', 'value': 'Tier 1'}},
          'domain_of': ['AdiposeSample', 'GutSample'],
          'notes': ['trypsin; trypLE; collagenase']} })
     sample_id: str = Field(default=..., title="Sample ID", description="""Identification number of the sample. This is the fundamental unit of sampling the tissue (the specimen taken from the subject), which can be the same as the 'subject_ID', but is often different if multiple samples are taken from the same subject. Note: this is NOT a unit of multiplexing of donor samples, which should be stored in \"library\".""", json_schema_extra = { "linkml_meta": {'alias': 'sample_id',
