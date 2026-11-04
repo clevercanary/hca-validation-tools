@@ -288,10 +288,10 @@ def verify_local(
     """Check a folder's .h5ad files, or one file, against the tracker; returns job_id at once. Read-only.
 
     A file matches by download or upload name (tracker_name is the download name). Per file, with its kind:
-    stale (another revision or wip; current_name is listed), unknown, ambiguous (matches lists them),
-    edited (an -edit- copy; not hashed), size_mismatch, no_checksum, or hashed into verified, mismatch, changed
-    or unreadable. One matched tracker file gives entry_id, revision, wip_number, cap_url, cap_status.
-    Atlas folders add misplaced and missing (tracker files with no local copy). Poll verify_status.
+    stale (another revision or wip; current_name is listed), unknown, ambiguous (matches lists them), edited
+    (an -edit- copy of a listed file or our upload of it, else stale/unknown; not hashed), size_mismatch,
+    no_checksum, or hashed into verified, mismatch, changed or unreadable. One matched tracker file gives
+    entry_id, revision, wip_number, cap_url, cap_status. Atlas folders add misplaced and missing. Poll verify_status.
     """
     return Verifier(load_config()).start(network, atlas, path, generation, published)
 

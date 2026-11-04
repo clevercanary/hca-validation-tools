@@ -183,7 +183,7 @@ tracker's S3 bucket with the AWS profile above; the tracker ingests from there.
   `current_name` is the listed one), `unknown`, `size_mismatch`, `no_checksum`,
   `ambiguous` (it could be more than one tracker file; `matches` lists them,
   and `duplicate_names` lists download names the tracker gives to several
-  files), `edited` (our `-edit-<timestamp>` copy of a listed file; not hashed),
+  files), `edited` (our `-edit-<timestamp>` copy of a listed file, or of a snapshot we uploaded as it; not hashed; an edit whose lineage the tracker no longer holds is `stale` or `unknown`),
   or hashed by a detached worker into `verified`, `mismatch`, `changed`
   or `unreadable`. For an atlas folder, `misplaced` marks a file matched by
   name in the other kind's folder, and `missing` lists tracker files with no local copy,
