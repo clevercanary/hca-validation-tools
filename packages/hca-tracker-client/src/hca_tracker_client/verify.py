@@ -233,12 +233,12 @@ def classify(local: list[dict], listed: dict[str, list[dict]]) -> list[dict]:
     ``tracker_name``, ``kind``, ``file_id`` and its list row's ``ROW_FIELDS``, and
     ``misplaced`` when it was found in a folder of one kind; ``check_sizes`` then decides whether it is hashed.
     A name that matches no listed file and ends in ``-edit-<timestamp>`` is our edited copy, matched by its root
-    (the name without the suffix). It is ``edited`` when the root is a listed file's download or upload name, or
-    the listed file was uploaded as one of our snapshots of that root, with the same fields but no ``file_id``:
-    it is never hashed and does not make its file present. It is ``stale`` when the tracker holds a file it was
-    not made from: only the root's stem matches, or its timestamp predates the snapshot we uploaded. Only a
-    versioned name can be ``stale``. A name that could be more than one file is reported ``ambiguous``, never
-    guessed at, and counts none of them as present.
+    (the name without the suffix). It is ``edited`` when the root is a listed file's download name (or upload
+    name, for an unversioned root), or the listed file was uploaded as one of our snapshots of that root, with
+    the same fields but no ``file_id``: it is never hashed and does not make its file present. It is ``stale``
+    when the tracker holds a file it was not made from: only the root's stem matches, or its timestamp predates
+    the snapshot we uploaded. Only a versioned name can be ``stale``. A name that could be more than one file is
+    reported ``ambiguous``, never guessed at, and counts none of them as present.
     """
     stems: dict[str, set[str]] = {}
     uploaded_as: dict[str, set[str]] = {}
@@ -264,7 +264,8 @@ def classify(local: list[dict], listed: dict[str, list[dict]]) -> list[dict]:
         base = None if names else edited_base(entry["name"])  # the exact name first: it may carry -edit-
         if base is not None:  # our edit: of the tracker's file itself, or of a snapshot we uploaded as it
             uploads = uploaded_edits.get(base, {})
-            names = listed_as(base) | set(uploads)
+            # a versioned root is a download we made; as someone's upload name it is a later wip, not this one
+            names = (listed_as(base) if file_stem(base) is None else {base} & listed.keys()) | set(uploads)
             current = next(iter(names)) if sum(len(listed[name]) for name in names) == 1 else None
             if current in uploads and edit_stamp(entry["name"]) < uploads[current]:  # predates our upload
                 entry.update({"status": STALE, "current_name": current, "kind": listed[current][0]["entry"]["kind"]})

@@ -231,6 +231,15 @@ def test_an_older_edit_of_a_duplicated_tracker_name_is_ambiguous_not_stale():
     assert local[0]["status"] == "ambiguous" and len(local[0]["matches"]) == 2
 
 
+def test_an_edit_of_a_download_whose_name_a_later_upload_reuses_is_stale():
+    """The team re-uploads a fixed file as x-r1-wip-2.h5ad, which the tracker lists as wip 3."""
+    listed = {"x-r1-wip-3.h5ad": [{"entry": {"kind": "integrated", "fileId": "f", "fileName": "x-r1-wip-2.h5ad"}}]}
+    local = [{"name": "x-r1-wip-2-edit-2026-11-05-09-00-00.h5ad", "folder_kind": None}]
+    classify(local, listed)
+    assert (local[0]["status"], local[0]["current_name"]) == ("stale", "x-r1-wip-3.h5ad")
+    assert "entry_id" not in local[0]
+
+
 def test_two_uploaded_snapshots_of_one_lineage_are_reported_not_guessed():
     listed = {
         **MYELOID,
