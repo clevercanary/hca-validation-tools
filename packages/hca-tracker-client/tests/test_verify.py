@@ -10,8 +10,10 @@ import pytest
 from hca_tracker_client import CheckError, Verifier, verify_worker
 from hca_tracker_client import verify as verify_module
 from hca_tracker_client.api import Probe
+from hca_tracker_client.catalog import atlas_files
+from hca_tracker_client.selection import find_file
 from hca_tracker_client.store import INTERRUPTED
-from hca_tracker_client.verify import check_sizes, classify, file_stem
+from hca_tracker_client.verify import ROW_FIELDS, check_sizes, classify, edited_base, file_stem
 from hca_tracker_client.verify_worker import hash_entry
 
 from .conftest import make_config, make_file, wait_for
@@ -58,6 +60,11 @@ def by_name(result: dict) -> dict[str, dict]:
     return {row["name"]: row for row in result["files"]}
 
 
+def entry_id_of(verifier, atlas, upload_name: str) -> str:
+    """The tracker's entry id for the file uploaded as ``upload_name``: what get_validation_report takes."""
+    return find_file(atlas_files(verifier.tracker, atlas.ids["gut"]), upload_name, "gut")["id"]
+
+
 def test_file_stem():
     assert file_stem("hgca-v1-kong-2023-v3-r1-wip-6.h5ad") == "hgca-v1-kong-2023-v3"
     assert file_stem("gut-r1-wip-1.h5ad") == "gut"
@@ -73,6 +80,203 @@ def test_a_wip_of_a_published_file_is_stale():
     assert classify(local, listed) == []
     assert (local[0]["status"], local[0]["current_name"]) == ("stale", "gray-r1.h5ad")
     assert local[1]["tracker_name"] == "gray-r1.h5ad"
+
+
+def test_edited_base():
+    assert edited_base("x-r1-wip-3-edit-2026-11-03-21-04-55.h5ad") == "x-r1-wip-3.h5ad"
+    assert edited_base("x-edit-2026-11-03-21-04-55.h5ad") == "x.h5ad"
+    assert edited_base("x-r1-wip-3.h5ad") is None
+    assert edited_base("x-r1-wip-3-edit-2026-11-03.h5ad") is None  # not the timestamp hca-anndata-tools writes
+
+
+LISTED = {
+    "x-r2-wip-3.h5ad": [
+        {
+            "entry": {
+                "kind": "integrated",
+                "fileId": "f",
+                "fileName": "x.h5ad",
+                "id": "e",
+                "revision": 2,
+                "wipNumber": 3,
+                "capUrl": "https://celltype.info/project/1/dataset/2",
+            }
+        }
+    ]
+}
+
+
+def test_a_matched_file_carries_its_tracker_entry():
+    local = [{"name": name, "folder_kind": None} for name in ("x-r2-wip-3.h5ad", "x-r2-wip-2.h5ad", "y.h5ad")]
+    classify(local, LISTED)
+    current, stale, unknown = local
+    assert (current["entry_id"], current["revision"], current["wip_number"]) == ("e", 2, 3)
+    assert current["cap_url"] == "https://celltype.info/project/1/dataset/2" and "cap_status" in current
+    assert (stale["status"], stale["current_name"]) == ("stale", "x-r2-wip-3.h5ad")
+    assert unknown["status"] == "unknown"
+    for entry in (stale, unknown):  # no single tracker file is this one, so there is no entry to report
+        assert not set(ROW_FIELDS) & entry.keys(), entry
+
+
+def test_an_edited_copy_carries_the_entry_it_was_made_from_and_is_not_hashed():
+    local = [
+        {"name": "x-r2-wip-3-edit-2026-11-03-21-04-55.h5ad", "folder_kind": "integrated"},
+        {"name": "x-edit-2026-11-03-21-04-55.h5ad", "folder_kind": None},  # an edit of the upload name
+        {"name": "x-r2-wip-2-edit-2026-11-03-21-04-55.h5ad", "folder_kind": None},  # an edit of an older wip
+        {"name": "y-edit-2026-11-03-21-04-55.h5ad", "folder_kind": None},
+    ]
+    missing = classify(local, LISTED)
+    for entry in local[:2]:
+        assert entry["status"] == "edited"
+        assert (entry["tracker_name"], entry["kind"]) == ("x-r2-wip-3.h5ad", "integrated")
+        assert (entry["entry_id"], entry["revision"], entry["wip_number"]) == ("e", 2, 3)
+        assert "file_id" not in entry  # so check_sizes never probes it and it is never hashed
+    assert local[0]["misplaced"] is False
+    # wip 3 was not made from this copy (it was not uploaded as one of its snapshots), so the copy is behind
+    assert (local[2]["status"], local[2]["current_name"]) == ("stale", "x-r2-wip-3.h5ad")
+    assert "entry_id" not in local[2]
+    assert local[3]["status"] == "unknown" and "entry_id" not in local[3]
+    assert [m["name"] for m in missing] == ["x-r2-wip-3.h5ad"]  # an edited copy is not the tracker's file
+
+
+def test_a_tracker_file_with_an_edit_name_matches_exactly():
+    listed = {
+        **LISTED,
+        "x-edit-2026-11-03-21-04-55-r1-wip-1.h5ad": [
+            {"entry": {"kind": "source", "fileId": "g", "fileName": "x-edit-2026-11-03-21-04-55.h5ad", "id": "h"}}
+        ],
+    }
+    local = [{"name": "x-edit-2026-11-03-21-04-55.h5ad", "folder_kind": None}]
+    classify(local, listed)
+    assert (local[0]["tracker_name"], local[0]["entry_id"], local[0]["file_id"]) == (
+        "x-edit-2026-11-03-21-04-55-r1-wip-1.h5ad",
+        "h",
+        "g",
+    )
+    assert "status" not in local[0]  # matched as the tracker's file, so check_sizes decides whether it is hashed
+
+
+# Gut v1 myeloid on prod: the tracker's wip 18 was uploaded as our 10-19 snapshot of wip 17.
+MYELOID = {
+    "hgca-v1-myeloid-r1.h5ad": [
+        {
+            "entry": {
+                "kind": "integrated",
+                "fileId": "f",
+                "fileName": "hgca-v1-myeloid-r1-wip-17-edit-2026-10-19-23-03-17.h5ad",
+                "id": "e",
+                "revision": 1,
+                "wipNumber": 18,
+            }
+        }
+    ]
+}
+
+
+def test_a_later_edit_of_an_uploaded_snapshot_is_edited():
+    """A CAP re-import of the uploaded snapshot is named after the lineage root, not after that snapshot."""
+    local = [{"name": "hgca-v1-myeloid-r1-wip-17-edit-2026-11-05-09-00-00.h5ad", "folder_kind": None}]
+    missing = classify(local, MYELOID)
+    assert local[0]["status"] == "edited"
+    assert (local[0]["tracker_name"], local[0]["entry_id"], local[0]["wip_number"]) == (
+        "hgca-v1-myeloid-r1.h5ad",
+        "e",
+        18,
+    )
+    assert [m["name"] for m in missing] == ["hgca-v1-myeloid-r1.h5ad"]
+
+
+def test_the_uploaded_snapshot_itself_is_matched_exactly():
+    local = [{"name": "hgca-v1-myeloid-r1-wip-17-edit-2026-10-19-23-03-17.h5ad", "folder_kind": None}]
+    assert classify(local, MYELOID) == []
+    assert "status" not in local[0] and local[0]["file_id"] == "f"  # hashed, as the tracker's own file
+
+
+def test_an_edit_older_than_the_uploaded_snapshot_is_stale():
+    """Every edit of the uploaded snapshot is named later than it, so an earlier one cannot hold its changes."""
+    local = [{"name": "hgca-v1-myeloid-r1-wip-17-edit-2026-10-18-23-48-10.h5ad", "folder_kind": None}]
+    classify(local, MYELOID)
+    assert (local[0]["status"], local[0]["current_name"]) == ("stale", "hgca-v1-myeloid-r1.h5ad")
+    assert "entry_id" not in local[0]
+
+
+def test_an_edit_of_a_published_download_is_edited():
+    """Root x-r1.h5ad is the download name, while the tracker holds a later snapshot uploaded from it."""
+    listed = {
+        "x-r1.h5ad": [
+            {
+                "entry": {
+                    "kind": "integrated",
+                    "fileId": "f",
+                    "fileName": "x-r1-edit-2026-10-19-00-00-00.h5ad",
+                    "id": "e",
+                }
+            }
+        ]
+    }
+    local = [
+        {"name": "x-r1-edit-2026-10-20-00-00-00.h5ad", "folder_kind": None},  # an edit of the upload
+        {"name": "x-r1-edit-2026-10-18-00-00-00.h5ad", "folder_kind": None},  # made before it
+    ]
+    classify(local, listed)
+    assert (local[0]["status"], local[0]["tracker_name"], local[0]["entry_id"]) == ("edited", "x-r1.h5ad", "e")
+    assert (local[1]["status"], local[1]["current_name"]) == ("stale", "x-r1.h5ad")
+
+
+def test_an_older_edit_of_a_duplicated_tracker_name_is_ambiguous_not_stale():
+    twin = {**MYELOID["hgca-v1-myeloid-r1.h5ad"][0]["entry"], "kind": "source", "id": "s"}
+    listed = {"hgca-v1-myeloid-r1.h5ad": [*MYELOID["hgca-v1-myeloid-r1.h5ad"], {"entry": twin}]}
+    local = [{"name": "hgca-v1-myeloid-r1-wip-17-edit-2026-10-18-23-48-10.h5ad", "folder_kind": None}]
+    classify(local, listed)
+    assert local[0]["status"] == "ambiguous" and len(local[0]["matches"]) == 2
+
+
+def test_an_edit_of_a_download_whose_name_a_later_upload_reuses_is_stale():
+    """The team re-uploads a fixed file as x-r1-wip-2.h5ad, which the tracker lists as wip 3."""
+    listed = {"x-r1-wip-3.h5ad": [{"entry": {"kind": "integrated", "fileId": "f", "fileName": "x-r1-wip-2.h5ad"}}]}
+    local = [{"name": "x-r1-wip-2-edit-2026-11-05-09-00-00.h5ad", "folder_kind": None}]
+    classify(local, listed)
+    assert (local[0]["status"], local[0]["current_name"]) == ("stale", "x-r1-wip-3.h5ad")
+    assert "entry_id" not in local[0]
+
+
+def test_two_uploaded_snapshots_of_one_lineage_are_reported_not_guessed():
+    listed = {
+        **MYELOID,
+        "hgca-v1-myeloid-copy-r1.h5ad": [
+            {
+                "entry": {
+                    "kind": "source",
+                    "fileId": "g",
+                    "fileName": "hgca-v1-myeloid-r1-wip-17-edit-2026-10-20-00-00-00.h5ad",
+                }
+            }
+        ],
+    }
+    local = [{"name": "hgca-v1-myeloid-r1-wip-17-edit-2026-11-05-09-00-00.h5ad", "folder_kind": None}]
+    classify(local, listed)
+    assert local[0]["status"] == "ambiguous" and len(local[0]["matches"]) == 2
+
+
+def test_an_edit_is_stale_once_someone_else_uploads_a_newer_wip():
+    """The team uploads wip 19 under its own name: our edit of wip 17 must not be uploaded over it."""
+    listed = {
+        "hgca-v1-myeloid-r1.h5ad": [
+            {
+                "entry": {
+                    "kind": "integrated",
+                    "fileId": "f",
+                    "fileName": "myeloid_fixed.h5ad",
+                    "id": "e",
+                    "wipNumber": 19,
+                }
+            }
+        ]
+    }
+    local = [{"name": "hgca-v1-myeloid-r1-wip-17-edit-2026-11-05-09-00-00.h5ad", "folder_kind": None}]
+    classify(local, listed)
+    assert (local[0]["status"], local[0]["current_name"]) == ("stale", "hgca-v1-myeloid-r1.h5ad")
+    assert "entry_id" not in local[0]
 
 
 def test_an_unversioned_name_is_never_stale():
@@ -109,6 +313,10 @@ def test_mixed_folder_is_classified(verifier, atlas, tmp_path):
         "stroma-r1-wip-1.h5ad",
     }
     assert rows["all-r1-wip-1.h5ad"]["status"] == "verified" and rows["all-r1-wip-1.h5ad"]["misplaced"] is False
+    assert rows["all-r1-wip-1.h5ad"]["entry_id"] == entry_id_of(verifier, atlas, "all.h5ad")
+    assert (rows["all-r1-wip-1.h5ad"]["revision"], rows["all-r1-wip-1.h5ad"]["wip_number"]) == (1, 1)
+    # a mismatched copy still names its row
+    assert rows["wells-r1-wip-1.h5ad"]["entry_id"] == entry_id_of(verifier, atlas, "wells.h5ad")
     assert rows["kong-r1-wip-1.h5ad"]["status"] == "verified" and rows["kong-r1-wip-1.h5ad"]["misplaced"] is True
     assert (rows["myeloid-r1-wip-0.h5ad"]["status"], rows["myeloid-r1-wip-0.h5ad"]["current_name"]) == (
         "stale",
@@ -147,8 +355,42 @@ def test_a_plain_folder_is_its_own_files_of_either_kind(verifier, atlas, tmp_pat
     assert "missing" not in result and "missing" not in result["counts"]
 
 
+def test_one_file_is_checked_alone(verifier, atlas, tmp_path):
+    root = tmp_path / "gut-v1"
+    target = copy(atlas, "all.h5ad", folder(root, "integrated-objects"))
+    copy(atlas, "kong.h5ad", folder(root, "integrated-objects"))  # beside it, not asked about: not read
+    result = wait_for(verifier, verifier.start("gut", "gut", str(target))["job_id"], ("done",))
+    assert result["layout"] == "file" and "missing" not in result and result["files_to_hash"] == 1
+    (row,) = result["files"]
+    assert (row["name"], row["status"], row["kind"]) == ("all-r1-wip-1.h5ad", "verified", "integrated")
+    assert (row["entry_id"], row["revision"], row["wip_number"]) == (entry_id_of(verifier, atlas, "all.h5ad"), 1, 1)
+    assert "misplaced" not in row
+
+
+def test_one_edited_file_is_answered_at_once(verifier, atlas, tmp_path):
+    target = copy(atlas, "all.h5ad", tmp_path, "all-r1-wip-1-edit-2026-11-03-21-04-55.h5ad")
+    result = verifier.start("gut", "gut", str(target))
+    assert result["state"] == "done" and result["files_to_hash"] == 0
+    (row,) = result["files"]
+    assert (row["status"], row["entry_id"]) == ("edited", entry_id_of(verifier, atlas, "all.h5ad"))
+
+
+def test_a_linked_file_is_checked_under_its_own_name(verifier, atlas, tmp_path):
+    target = copy(atlas, "myeloid.h5ad", tmp_path)  # the current wip
+    link = tmp_path / "myeloid-r1-wip-0.h5ad"
+    link.symlink_to(target)
+    (row,) = verifier.start("gut", "gut", str(link))["files"]
+    assert (row["name"], row["status"], row["current_name"]) == ("myeloid-r1-wip-0.h5ad", "stale", target.name)
+
+
+def test_a_file_that_is_not_h5ad_is_refused(verifier, tmp_path):
+    (tmp_path / "notes.txt").write_text("x")
+    with pytest.raises(CheckError, match="is not an .h5ad file"):
+        verifier.start("gut", "gut", str(tmp_path / "notes.txt"))
+
+
 def test_no_such_folder_is_refused(verifier, tmp_path):
-    with pytest.raises(CheckError, match="No folder at"):
+    with pytest.raises(CheckError, match="No folder or .h5ad file at"):
         verifier.start("gut", "gut", str(tmp_path / "absent"))
 
 
@@ -274,6 +516,7 @@ def test_two_tracker_files_with_one_stem_are_reported_not_guessed():
         local = [{"name": name, "folder_kind": None}]
         classify(local, listed)
         assert local[0]["status"] == "ambiguous", name
+        assert not set(ROW_FIELDS) & local[0].keys(), name
         assert [m["name"] for m in local[0]["matches"]] == ["x-r1-wip-1.h5ad", "x-r1-wip-3.h5ad"]
 
 

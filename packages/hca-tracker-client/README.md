@@ -30,7 +30,7 @@ MCP server is a thin wrapper over it.
   the terminal front end is replaced. Uploads run in a detached worker and
   outlive the caller too. See [How an upload works](#how-an-upload-works).
 - **Files already on disk can be checked.** `Verifier` matches a folder's
-  files to the tracker and hashes them in a detached worker, to say which are
+  files, or one file, to the tracker and hashes them in a detached worker, to say which are
   current copies. See
   [Checking files already on disk](#checking-files-already-on-disk).
 
@@ -254,15 +254,20 @@ tracker's.
 
 `start(network, atlas, path)` takes an **atlas folder**, one holding
 `integrated-objects/tracker-source/` and/or `source-datasets/tracker-source/`
-(only those two are read), or **any other folder**, such as a download folder,
-whose own files are read. Only `.h5ad` files directly in a folder count
+(only those two are read), **any other folder**, such as a download folder,
+whose own files are read, or **one `.h5ad` file**, checked alone under the name
+it was given (`layout` is `file`). Only `.h5ad` files directly in a folder count
 (`.part` files are skipped). Each file is matched to a tracker file by the name
 `start_download` would save it under or by the name it was uploaded under
 (how a copy from elsewhere is usually named; `tracker_name` gives the download
-name), and reported with its kind:
+name), and reported with its kind. A file matched to exactly one tracker file
+also carries that file's list-row `entry_id`, `revision`, `wip_number`,
+`cap_url` and `cap_status` (what `validation_report` and a CAP check take);
+`stale`, `ambiguous` and `unknown` files carry none of them.
 
 | Status | Meaning |
 |---|---|
+| `edited` | our `-edit-<timestamp>` copy of a listed file: its name without the suffix is that file's download name (or its upload name, when the name carries no `-r<N>-wip-<N>`), or the file was uploaded as one of our snapshots of that name. Carries that file's row, is never hashed, and does not make that file present. When the tracker holds a file the copy was not made from (only the stem matches, or the copy's timestamp predates the snapshot we uploaded), the copy is `stale` |
 | `ambiguous` | it could be more than one tracker file (`matches` lists them; `duplicate_names` lists download names the tracker gives to several files); not hashed |
 | `stale` | another revision or wip of a listed file, by a name ending `-r<n>-wip-<n>` or, once published, `-r<n>` (`current_name` is the listed one) |
 | `unknown` | not a listed file |

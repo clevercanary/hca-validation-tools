@@ -1,6 +1,6 @@
 [project]
 name = "hca-tracker-client"
-version = "0.4.0"
+version = "0.5.0"
 description = "Find, download and report on atlas files from the HCA Atlas Tracker"
 authors = [{ name = "Clever Canary", email = "dave@clevercanary.com" }]
 license = "MIT"
@@ -48,4 +48,4 @@ branch = true
 [tool.coverage.report]
 # A fake tracker for tests: only tests run it, so counting it would lift the floor over shipped code.
 omit = ["*/hca_tracker_client/testing.py"]
-fail_under = 89
+fail_under = 90

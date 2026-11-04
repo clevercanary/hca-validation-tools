@@ -341,6 +341,12 @@ async def test_verify_flow(client, tracker, tmp_path):
         "notes.h5ad": "unknown",
     }
     assert sorted(m["name"] for m in status["missing"]) == ["broken-r1-wip-1.h5ad", "src-r1-wip-1.h5ad"]
+    verified = next(row for row in status["files"] if row["status"] == "verified")
+    assert verified["entry_id"] and (verified["revision"], verified["wip_number"]) == (1, 1)
+
+    one = await _call(client, "verify_local", {**args, "path": str(integrated / "gut-r1-wip-1.h5ad")})
+    one = await _wait(client, "verify_status", one["job_id"], ("done", "failed", "interrupted"))
+    assert (one["layout"], [row["entry_id"] for row in one["files"]]) == ("file", [verified["entry_id"]])
 
 
 def test_module_version_matches_the_distribution():

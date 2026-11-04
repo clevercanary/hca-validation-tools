@@ -41,8 +41,8 @@ mcp = FastMCP(
         "then ingests it from the bucket and lists it with a new wip_number, and get_validation_report gives "
         "its verdict. environment defaults to dev and must match the configured tracker; the AWS profile comes "
         "from hca-smart-sync's own settings. "
-        "verify_local checks a folder's files (or an atlas folder's tracker-source/) against the tracker "
-        "(SHA-256 in a background job; verify_status). "
+        "verify_local checks a folder's files (or an atlas folder's tracker-source/, or one file) against the "
+        "tracker (SHA-256 in a background job; verify_status), and gives each matched file's entry_id. "
         "check_environment diagnoses setup problems (aria2c, cache folder, token, s5cmd/aws, AWS profile, bucket)."
     ),
 )
