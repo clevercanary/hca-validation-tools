@@ -192,11 +192,12 @@ def test_the_uploaded_snapshot_itself_is_matched_exactly():
     assert "status" not in local[0] and local[0]["file_id"] == "f"  # hashed, as the tracker's own file
 
 
-def test_an_edit_older_than_the_uploaded_snapshot_is_still_edited():
-    """Names cannot order an edit against the upload; the tracker's file of the lineage is still its row."""
+def test_an_edit_older_than_the_uploaded_snapshot_is_stale():
+    """Every edit of the uploaded snapshot is named later than it, so an earlier one cannot hold its changes."""
     local = [{"name": "hgca-v1-myeloid-r1-wip-17-edit-2026-10-18-23-48-10.h5ad", "folder_kind": None}]
     classify(local, MYELOID)
-    assert (local[0]["status"], local[0]["entry_id"]) == ("edited", "e")
+    assert (local[0]["status"], local[0]["current_name"]) == ("stale", "hgca-v1-myeloid-r1.h5ad")
+    assert "entry_id" not in local[0]
 
 
 def test_an_edit_of_a_published_download_is_edited():
@@ -213,9 +214,13 @@ def test_an_edit_of_a_published_download_is_edited():
             }
         ]
     }
-    local = [{"name": "x-r1-edit-2026-10-18-00-00-00.h5ad", "folder_kind": None}]
+    local = [
+        {"name": "x-r1-edit-2026-10-20-00-00-00.h5ad", "folder_kind": None},  # an edit of the upload
+        {"name": "x-r1-edit-2026-10-18-00-00-00.h5ad", "folder_kind": None},  # made before it
+    ]
     classify(local, listed)
     assert (local[0]["status"], local[0]["tracker_name"], local[0]["entry_id"]) == ("edited", "x-r1.h5ad", "e")
+    assert (local[1]["status"], local[1]["current_name"]) == ("stale", "x-r1.h5ad")
 
 
 def test_two_uploaded_snapshots_of_one_lineage_are_reported_not_guessed():

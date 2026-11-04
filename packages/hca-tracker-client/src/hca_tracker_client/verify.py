@@ -57,7 +57,7 @@ UNREADABLE = "unreadable"
 _VERSIONED = re.compile(r"^(?P<stem>.+)-r\d+(?:-wip-\d+)?\.h5ad$")
 # The suffix hca-anndata-tools gives an edited copy (its write.py, which names this copy); removing it gives the
 # name of the copy edited.
-_EDITED = re.compile(r"-edit-\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}(?=\.h5ad$)")
+_EDITED = re.compile(r"-edit-(?P<stamp>\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2})(?=\.h5ad$)")
 
 
 def file_stem(name: str) -> str | None:
@@ -78,6 +78,12 @@ def edited_base(name: str) -> str | None:
     """
     base = _EDITED.sub("", name)
     return base if base != name else None
+
+
+def edit_stamp(name: str) -> str:
+    """An ``-edit-`` copy's timestamp, which sorts as text; empty for any other name."""
+    match = _EDITED.search(name)
+    return match.group("stamp") if match else ""
 
 
 @dataclass
@@ -229,15 +235,15 @@ def classify(local: list[dict], listed: dict[str, list[dict]]) -> list[dict]:
     A name that matches no listed file and ends in ``-edit-<timestamp>`` is our edited copy, matched by its root
     (the name without the suffix). It is ``edited`` when the root is a listed file's download or upload name, or
     the listed file was uploaded as one of our snapshots of that root, with the same fields but no ``file_id``:
-    it is never hashed and does not make its file present. When only the root's stem matches, the tracker
-    holds a file the copy was not made from, so it is ``stale``. Only a versioned name can be ``stale``. A name
-    that could be more than one file is reported ``ambiguous``, never guessed at, and counts none of them as
-    present.
+    it is never hashed and does not make its file present. It is ``stale`` when the tracker holds a file it was
+    not made from: only the root's stem matches, or its timestamp predates the snapshot we uploaded. Only a
+    versioned name can be ``stale``. A name that could be more than one file is reported ``ambiguous``, never
+    guessed at, and counts none of them as present.
     """
     stems: dict[str, set[str]] = {}
     uploaded_as: dict[str, set[str]] = {}
-    # Listed files uploaded as one of our edit snapshots, by that snapshot's lineage root.
-    uploaded_edits: dict[str, set[str]] = {}
+    # Listed files uploaded as one of our edit snapshots, by that snapshot's lineage root: {root: {name: stamp}}.
+    uploaded_edits: dict[str, dict[str, str]] = {}
     for name, items in listed.items():
         stem = file_stem(name)
         if stem is not None:
@@ -247,7 +253,7 @@ def classify(local: list[dict], listed: dict[str, list[dict]]) -> list[dict]:
                 uploaded_as.setdefault(item["entry"]["fileName"], set()).add(name)
                 root = edited_base(item["entry"]["fileName"])
                 if root is not None:
-                    uploaded_edits.setdefault(root, set()).add(name)
+                    uploaded_edits.setdefault(root, {})[name] = edit_stamp(item["entry"]["fileName"])
     present = set()
 
     def listed_as(name: str) -> set[str]:
@@ -257,7 +263,12 @@ def classify(local: list[dict], listed: dict[str, list[dict]]) -> list[dict]:
         names = listed_as(entry["name"])
         base = None if names else edited_base(entry["name"])  # the exact name first: it may carry -edit-
         if base is not None:  # our edit: of the tracker's file itself, or of a snapshot we uploaded as it
-            names = listed_as(base) | uploaded_edits.get(base, set())
+            uploads = uploaded_edits.get(base, {})
+            names = listed_as(base) | set(uploads)
+            current = next(iter(names)) if len(names) == 1 else None
+            if current in uploads and edit_stamp(entry["name"]) < uploads[current]:  # predates our upload
+                entry.update({"status": STALE, "current_name": current, "kind": listed[current][0]["entry"]["kind"]})
+                continue
         if not names:  # a stem match alone: the tracker holds a file this one was not made from
             stem = file_stem(base or entry["name"])
             others = stems.get(stem, set()) if stem is not None else set()
