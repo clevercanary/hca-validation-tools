@@ -226,12 +226,13 @@ def classify(local: list[dict], listed: dict[str, list[dict]]) -> list[dict]:
     is how a copy that never went through ``start_download`` is usually named. A matched file gets
     ``tracker_name``, ``kind``, ``file_id`` and its list row's ``ROW_FIELDS``, and
     ``misplaced`` when it was found in a folder of one kind; ``check_sizes`` then decides whether it is hashed.
-    A name that matches no listed file and ends in ``-edit-<timestamp>`` is our edited copy: it is ``edited``
-    against the one listed file of its lineage, the file whose download name, upload name, uploaded snapshot's
-    root or stem is its root, with the same fields but no ``file_id``. It is never hashed, never ``stale``
-    (whether an edit is current is its own validation's question, not a name's) and does not make its file
-    present. Only a versioned name that is not an edit can be ``stale``. A name that could be more than one
-    file is reported ``ambiguous``, never guessed at, and counts none of them as present.
+    A name that matches no listed file and ends in ``-edit-<timestamp>`` is our edited copy, matched by its root
+    (the name without the suffix). It is ``edited`` when the root is a listed file's download or upload name, or
+    the listed file was uploaded as one of our snapshots of that root, with the same fields but no ``file_id``:
+    it is never hashed and does not make its file present. When only the root's stem matches, the tracker
+    holds a file the copy was not made from, so it is ``stale``. Only a versioned name can be ``stale``. A name
+    that could be more than one file is reported ``ambiguous``, never guessed at, and counts none of them as
+    present.
     """
     stems: dict[str, set[str]] = {}
     uploaded_as: dict[str, set[str]] = {}
@@ -255,14 +256,10 @@ def classify(local: list[dict], listed: dict[str, list[dict]]) -> list[dict]:
     for entry in local:
         names = listed_as(entry["name"])
         base = None if names else edited_base(entry["name"])  # the exact name first: it may carry -edit-
-        if base is not None:  # our edit: the one listed file of its lineage, however the tracker names it
-            stem = file_stem(base)
-            names = listed_as(base) | uploaded_edits.get(base, set()) | stems.get(stem or "", set())
-            if not names:
-                entry["status"] = UNKNOWN
-                continue
-        if not names:
-            stem = file_stem(entry["name"])
+        if base is not None:  # our edit: of the tracker's file itself, or of a snapshot we uploaded as it
+            names = listed_as(base) | uploaded_edits.get(base, set())
+        if not names:  # a stem match alone: the tracker holds a file this one was not made from
+            stem = file_stem(base or entry["name"])
             others = stems.get(stem, set()) if stem is not None else set()
             if sum(len(listed[name]) for name in others) == 1:
                 current = next(iter(others))

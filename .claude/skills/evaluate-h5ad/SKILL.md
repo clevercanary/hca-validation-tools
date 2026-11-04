@@ -129,7 +129,7 @@ If nothing is missing, say so in a single line instead of an empty table.
 
 ### Validator verdict on the tracker
 
-First one **Tracker** line: the `verify_local` status, the `tracker_name` (or `current_name`, or the `matches`) and, when there is an `entry_id`, `r<revision>-wip-<wip_number>` from `verify_local`. What follows depends on the status:
+When the tracker steps were skipped, or `verify_local` returned an error or a failed job, render that one line from the tracker step here and stop. Otherwise, first one **Tracker** line: the `verify_local` status, the `tracker_name` (or `current_name`, or the `matches`) and, when there is an `entry_id`, `r<revision>-wip-<wip_number>` from `verify_local`. What follows depends on the status:
 
 | `verify_local` status | Verdict | Line to add |
 |---|---|---|

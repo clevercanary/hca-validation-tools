@@ -267,7 +267,7 @@ also carries that file's list-row `entry_id`, `revision`, `wip_number`,
 
 | Status | Meaning |
 |---|---|
-| `edited` | our `-edit-<timestamp>` copy, attached to the one listed file of its lineage: the file whose download name, upload name, uploaded snapshot's root or stem is the copy's name without the suffix. Carries that file's row, is never hashed or `stale`, and does not make that file present |
+| `edited` | our `-edit-<timestamp>` copy of a listed file: its name without the suffix is that file's download or upload name, or the file was uploaded as one of our snapshots of that name. Carries that file's row, is never hashed, and does not make that file present. When only the stem matches, the tracker holds a file the copy was not made from, and the copy is `stale` |
 | `ambiguous` | it could be more than one tracker file (`matches` lists them; `duplicate_names` lists download names the tracker gives to several files); not hashed |
 | `stale` | another revision or wip of a listed file, by a name ending `-r<n>-wip-<n>` or, once published, `-r<n>` (`current_name` is the listed one) |
 | `unknown` | not a listed file |
