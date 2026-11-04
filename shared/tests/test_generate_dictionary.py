@@ -57,18 +57,22 @@ def _schemaview(tmp_path, classes):
 
 
 # The four slots only bionetwork subclasses add, as the HCA Data Portal's tier-1.json scopes them.
+# The two Dataset slots have no tier yet (#760), so their tier is not checked.
 @pytest.mark.parametrize(
-    ("class_name", "attribute_name", "networks"),
+    ("class_name", "attribute_name", "networks", "tier"),
     [
-        ("dataset", "ambient_count_correction", ["adipose", "gut", "musculoskeletal"]),
-        ("dataset", "doublet_detection", ["adipose", "gut", "musculoskeletal"]),
-        ("sample", "radial_tissue_term", ["gut"]),
-        ("sample", "dissociation_protocol", ["adipose", "gut"]),
+        ("dataset", "ambient_count_correction", ["adipose", "gut", "musculoskeletal"], None),
+        ("dataset", "doublet_detection", ["adipose", "gut", "musculoskeletal"], None),
+        ("sample", "radial_tissue_term", ["gut"], "Tier 1"),
+        ("sample", "dissociation_protocol", ["adipose", "gut"], "Tier 1"),
     ],
 )
-def test_bionetwork_slots_are_folded(data_dictionary, class_name, attribute_name, networks):
+def test_bionetwork_slots_are_folded(data_dictionary, class_name, attribute_name, networks, tier):
     attribute = _attribute(data_dictionary, class_name, attribute_name)
     assert attribute["annotations"]["bioNetworks"] == networks
+    assert attribute["annotations"]["annDataLocation"] == "obs"
+    if tier is not None:
+        assert attribute["annotations"]["tier"] == tier
     assert attribute["required"] is True
 
 
