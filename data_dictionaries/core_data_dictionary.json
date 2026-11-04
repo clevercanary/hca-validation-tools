@@ -1362,7 +1362,7 @@
           "title": "Library Preparation Batch",
           "description": "Indicating which samples' libraries were prepared in the same chip/plate/etc., e.g. batch1, batch2.",
           "range": "string",
-          "required": true,
+          "required": "strongly recommended",
           "multivalued": false,
           "example": "batch01; batch02",
           "annotations": {
@@ -1396,7 +1396,7 @@
           "title": "Library Sequencing Run",
           "description": "The identifier (or accession number) that indicates which samples' libraries were sequenced in the same run.",
           "range": "string",
-          "required": true,
+          "required": "strongly recommended",
           "multivalued": false,
           "example": "run1; NV0087",
           "annotations": {

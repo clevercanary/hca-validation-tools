@@ -109,8 +109,6 @@ _MINIMAL_SAMPLE = {
     "institute": "X",
     "cell_enrichment": "na",
     "library_id": "L1",
-    "library_preparation_batch": "b1",
-    "library_sequencing_run": "r1",
     "sample_collection_method": "biopsy",
     "sample_preservation_method": "fresh",
     "sample_source": "surgical donor",
@@ -143,6 +141,15 @@ def test_cell_class_excluded_from_coverage(schemaview):
     """
     assert schemaview.class_induced_slots("Cell"), "Cell should have slots after #538"
     assert "Cell" not in coverage_classes(schemaview)
+
+
+@pytest.mark.parametrize("model", [schema.Sample, schema.AdiposeSample, schema.GutSample])
+@pytest.mark.parametrize("slot_name", ["library_preparation_batch", "library_sequencing_run"])
+def test_library_slots_are_optional_on_sheets(model, slot_name):
+    """#761: `recommended: true` has no Pydantic warning level, so on entry sheets these are simply optional."""
+    assert not model.model_fields[slot_name].is_required()
+    assert schema.Sample.model_validate(_MINIMAL_SAMPLE)
+    assert schema.Sample.model_validate({**_MINIMAL_SAMPLE, slot_name: "b1"})
 
 
 def test_is_primary_data_stays_sheet_inert():

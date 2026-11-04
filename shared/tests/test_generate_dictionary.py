@@ -76,6 +76,12 @@ def test_bionetwork_slots_are_folded(data_dictionary, class_name, attribute_name
     assert attribute["required"] is True
 
 
+@pytest.mark.parametrize("attribute_name", ["library_preparation_batch", "library_sequencing_run"])
+def test_library_slots_are_strongly_recommended(data_dictionary, attribute_name):
+    # The only two fields the portal's tier-1.json marks strongly recommended, as the h5ad validator does (#761).
+    assert _attribute(data_dictionary, "sample", attribute_name)["required"] == "strongly recommended"
+
+
 def test_core_slots_have_every_network(data_dictionary):
     networks = _attribute(data_dictionary, "dataset", "title")["annotations"]["bioNetworks"]
     assert len(networks) == 18
@@ -342,6 +348,11 @@ slots:
       - Replaced by the enum values.
   donor_id:
     multivalued: true
+  recommended_slot:
+    recommended: true
+  required_and_recommended:
+    required: true
+    recommended: true
 
 classes:
   Dataset:
@@ -351,6 +362,8 @@ classes:
       - rationale_slot
       - bare
       - colour
+      - recommended_slot
+      - required_and_recommended
   Donor:
     slots:
       - donor_id
@@ -437,6 +450,15 @@ def test_bare_slot_gets_defaults_and_only_bionetworks(mapping_dictionary):
         "multivalued": False,
         "annotations": {"bioNetworks": _ALL_NETWORKS},
     }
+
+
+@pytest.mark.parametrize(
+    ("attribute_name", "required"),
+    [("recommended_slot", "strongly recommended"), ("required_and_recommended", True)],
+)
+def test_requirement_levels(mapping_dictionary, attribute_name, required):
+    # The portal's three levels (#761): LinkML's `recommended` metaslot is "strongly recommended", and `required` wins.
+    assert _attributes(mapping_dictionary, "Dataset")[attribute_name]["required"] == required
 
 
 def test_multivalued(mapping_dictionary):
