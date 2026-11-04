@@ -17,7 +17,7 @@ from .status import cap_status, tier1_status
 from .uploads import DEV, INTEGRATED_OBJECTS, PROD, SOURCE_DATASETS, Uploads
 from .verify import Verifier
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 
 __all__ = [
     "DEV",

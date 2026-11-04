@@ -86,11 +86,12 @@ Environment = Annotated[
     ),
 ]
 Force = Annotated[bool, Field(description="Upload every file, even one the bucket already holds unchanged.")]
-VerifyFolder = Annotated[
+VerifyPath = Annotated[
     str,
     Field(
         description="An atlas folder (holding integrated-objects/tracker-source/ and/or "
-        "source-datasets/tracker-source/; only those are read), or any other folder, whose own .h5ad files are read."
+        "source-datasets/tracker-source/; only those are read), any other folder, whose own .h5ad files are read, "
+        "or one .h5ad file, checked alone."
     ),
 ]
 
@@ -282,15 +283,15 @@ def upload_status(
 
 @_tool
 def verify_local(
-    network: Network, atlas: Atlas, path: VerifyFolder, generation: Generation = None, published: Published = False
+    network: Network, atlas: Atlas, path: VerifyPath, generation: Generation = None, published: Published = False
 ) -> dict:
-    """Check a folder's .h5ad files against the tracker; returns job_id at once.
+    """Check a folder's .h5ad files, or one file, against the tracker; returns job_id at once. Read-only.
 
-    A file matches by its download name or its upload name (tracker_name gives the download name). Per file,
-    with its kind: stale (another revision or wip; current_name is the listed one), unknown, size_mismatch,
-    no_checksum, ambiguous (could be more than one tracker file; matches lists them), or hashed in the
-    background into verified, mismatch, changed or unreadable. For an atlas folder, misplaced (matched, in the
-    other kind's folder) and missing (tracker files with no local copy, of both kinds). Read-only. Poll verify_status.
+    A file matches by download or upload name (tracker_name is the download name). Per file, with its kind:
+    stale (another revision or wip; current_name is listed), unknown, ambiguous (matches lists them),
+    edited (an -edit- copy; not hashed), size_mismatch, no_checksum, or hashed into verified, mismatch, changed
+    or unreadable. One matched tracker file gives entry_id, revision, wip_number, cap_url, cap_status.
+    Atlas folders add misplaced and missing (tracker files with no local copy). Poll verify_status.
     """
     return Verifier(load_config()).start(network, atlas, path, generation, published)
 

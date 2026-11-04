@@ -23,6 +23,7 @@ from ._keys import EDIT_LOG_KEY, MASKED_STRING_REMEDY, PROVENANCE_KEY
 if TYPE_CHECKING:
     from anndata import AnnData
 
+# hca_tracker_client.verify._EDITED copies this pattern (that package cannot import this one); change both together.
 _TIMESTAMP_PATTERN = re.compile(r"-edit-\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}(?=\.h5ad$)")
 _TIMESTAMP_FORMAT = "%Y-%m-%d-%H-%M-%S"
 

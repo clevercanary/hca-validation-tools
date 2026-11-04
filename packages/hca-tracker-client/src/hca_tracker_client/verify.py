@@ -2,7 +2,7 @@
 
 ``Verifier.start`` answers that for a folder: an atlas folder's two
 ``tracker-source/`` folders, or any other folder's own ``.h5ad`` files (a
-browser download, a copy from another machine). It matches each to the
+browser download, a copy from another machine), or for one ``.h5ad`` file. It matches each to the
 tracker's download names and hashes the matches in a detached worker against
 the SHA-256 the tracker stores with each file.
 
@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .api import TrackerClient, probe
-from .catalog import atlas_files
+from .catalog import atlas_files, file_row
 from .checks import human_duration, human_size
 from .config import Config
 from .daemon import process_matches
@@ -41,6 +41,7 @@ TRACKER_THREADS = 8
 # A local file's status. The first group is decided from names and sizes, the
 # second by hashing; PENDING is a file still waiting for the worker.
 AMBIGUOUS = "ambiguous"  # its name could be more than one tracker file's; matches lists them
+EDITED = "edited"  # our -edit-<timestamp> copy of a file the tracker lists; never hashed, it differs by design
 STALE = "stale"  # another revision or wip of a file the tracker lists; current_name is the one it lists
 UNKNOWN = "unknown"  # not a file the tracker lists
 SIZE_MISMATCH = "size_mismatch"  # the tracker's name, a different size
@@ -54,12 +55,26 @@ UNREADABLE = "unreadable"
 # The tracker's download names end in -r<revision>-wip-<n>, or -r<revision> once published; the part
 # before is the file's stem.
 _VERSIONED = re.compile(r"^(?P<stem>.+)-r\d+(?:-wip-\d+)?\.h5ad$")
+# The suffix hca-anndata-tools gives an edited copy (its write.py, which names this copy); removing it gives the
+# name of the copy edited.
+_EDITED = re.compile(r"-edit-\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}(?=\.h5ad$)")
 
 
 def file_stem(name: str) -> str | None:
     """The part of a download name shared by every revision and wip of one file; None for an unversioned name."""
     match = _VERSIONED.match(name)
     return match.group("stem") if match else None
+
+
+# The keys of the tracker's list row a file matched to one tracker file carries: get_validation_report takes
+# entry_id with kind, and check_cap_currency takes cap_url.
+ROW_FIELDS = ("entry_id", "revision", "wip_number", "cap_url", "cap_status")
+
+
+def edited_base(name: str) -> str | None:
+    """The name of the file an ``-edit-<timestamp>`` copy was made from; None for any other name."""
+    base = _EDITED.sub("", name)
+    return base if base != name else None
 
 
 @dataclass
@@ -81,7 +96,8 @@ class VerifyJob:
     log_path: str
     # Download names the tracker gives to more than one file: {"name", "kinds"}.
     duplicate_names: list[dict] = field(default_factory=list)
-    # "atlas" (its tracker-source/ folders, missing files listed) or "folder" (its own files, no missing list).
+    # "atlas" (its tracker-source/ folders, missing files listed), "folder" (its own files) or "file" (one file);
+    # only "atlas" lists missing files.
     layout: str = "atlas"
     state: str = QUEUED
     message: str | None = None
@@ -128,8 +144,6 @@ def folders_to_scan(root: Path) -> tuple[str, dict[str | None, Path]]:
     An atlas folder is read through its ``tracker-source`` folders; any other
     folder (a download folder, say) is read itself, its files of either kind.
     """
-    if not root.is_dir():
-        raise CheckError(f"No folder at {root}")
     folders: dict[str | None, Path] = {
         kind: root / folder / TRACKER_SOURCE
         for folder, kind in FOLDER_KINDS.items()
@@ -149,17 +163,35 @@ def local_files(folders: dict[str | None, Path]) -> list[dict]:
         for path in paths:
             if path.suffix != ".h5ad" or path.name.startswith(".") or not path.is_file():
                 continue
-            stat = path.stat()
-            found.append(
-                {
-                    "name": path.name,
-                    "path": str(path),
-                    "folder_kind": kind,
-                    "size_bytes": stat.st_size,
-                    "mtime_ns": stat.st_mtime_ns,
-                }
-            )
+            found.append(local_file(path, kind))
     return found
+
+
+def local_file(path: Path, folder_kind: str | None) -> dict:
+    """One local file as ``classify`` reads it: its name, path, size and modification time."""
+    stat = path.stat()
+    return {
+        "name": path.name,
+        "path": str(path),
+        "folder_kind": folder_kind,
+        "size_bytes": stat.st_size,
+        "mtime_ns": stat.st_mtime_ns,
+    }
+
+
+def files_to_check(root: Path) -> tuple[str, list[dict]]:
+    """The layout and the local files to check, for a folder or one ``.h5ad`` file.
+
+    One file is checked alone, as found anywhere (``folder_kind`` None), with no list of missing files.
+    """
+    if root.is_file():
+        if root.suffix != ".h5ad":
+            raise CheckError(f"{root} is not an .h5ad file")
+        return "file", [local_file(root, None)]
+    if not root.is_dir():
+        raise CheckError(f"No folder or .h5ad file at {root}")
+    layout, folders = folders_to_scan(root)
+    return layout, local_files(folders)
 
 
 def tracker_names(tracker: TrackerClient, atlas_id: str) -> dict[str, list[dict]]:
@@ -189,9 +221,12 @@ def classify(local: list[dict], listed: dict[str, list[dict]]) -> list[dict]:
 
     A local file matches a listed one by its download name, or by the name it was uploaded under, which
     is how a copy that never went through ``start_download`` is usually named. A matched file gets
-    ``tracker_name``, ``kind`` and ``file_id``, and ``misplaced`` when it was found in a folder of one kind;
-    ``check_sizes`` then decides whether it is hashed. Only a versioned name can be ``stale``. A name that could
-    be more than one file is reported ``ambiguous``, never guessed at, and counts none of them as present.
+    ``tracker_name``, ``kind``, ``file_id`` and its list row's ``ROW_FIELDS``, and
+    ``misplaced`` when it was found in a folder of one kind; ``check_sizes`` then decides whether it is hashed.
+    An ``-edit-<timestamp>`` copy is matched by the name it was made from and, when that is a listed file, is
+    ``edited``, with the same fields but no ``file_id``: it is never hashed and does not make its file present.
+    Only a versioned name can be ``stale``. A name that could be more than one file is reported ``ambiguous``,
+    never guessed at, and counts none of them as present.
     """
     stems: dict[str, set[str]] = {}
     uploaded_as: dict[str, set[str]] = {}
@@ -204,9 +239,11 @@ def classify(local: list[dict], listed: dict[str, list[dict]]) -> list[dict]:
                 uploaded_as.setdefault(item["entry"]["fileName"], set()).add(name)
     present = set()
     for entry in local:
-        names = ({entry["name"]} & listed.keys()) | uploaded_as.get(entry["name"], set())
+        base = edited_base(entry["name"])
+        local_name = base or entry["name"]
+        names = ({local_name} & listed.keys()) | uploaded_as.get(local_name, set())
         if not names:
-            stem = file_stem(entry["name"])
+            stem = file_stem(local_name)
             others = stems.get(stem, set()) if stem is not None else set()
             if sum(len(listed[name]) for name in others) == 1:
                 current = next(iter(others))
@@ -220,11 +257,16 @@ def classify(local: list[dict], listed: dict[str, list[dict]]) -> list[dict]:
             entry.update({"status": AMBIGUOUS, "matches": _matches(names, listed)})
             continue
         name = next(iter(names))
-        present.add(name)
         match = listed[name][0]["entry"]
-        entry.update({"tracker_name": name, "kind": match["kind"], "file_id": match["fileId"]})
+        row = file_row(match, match["kind"])
+        entry.update({"tracker_name": name, "kind": match["kind"], **{key: row[key] for key in ROW_FIELDS}})
         if entry["folder_kind"] is not None:
             entry["misplaced"] = match["kind"] != entry["folder_kind"]
+        if base is not None:
+            entry["status"] = EDITED
+            continue
+        present.add(name)
+        entry["file_id"] = match["fileId"]
     missing = []
     for name, items in sorted(listed.items()):
         if name in present:
@@ -276,10 +318,10 @@ class Verifier:
     def start(
         self, network: str, atlas: str, path: str, generation: int | None = None, published: bool = False
     ) -> dict:
-        """Classify the folder's files, then hash the matches in a detached worker; returns at once."""
+        """Classify the folder's files, or the one file, then hash the matches in a detached worker; returns at once."""
         root = Path(path).expanduser().resolve()
-        layout, folders = folders_to_scan(root)
-        files = local_files(folders)  # before any tracker call, so an unreadable folder is refused at once
+        # before any tracker call, so an unreadable folder is refused at once
+        layout, files = files_to_check(root)
         record = select_atlas(self.tracker.list_atlases(), network, atlas, generation, published)
         scope = (str(root), network, atlas, atlas_version(record))
         running = self._active_job_for(scope)
@@ -287,7 +329,7 @@ class Verifier:
             return {**self._describe(running), "message": f"Already verifying {root}"}
         listed = tracker_names(self.tracker, record["id"])
         missing = classify(files, listed)
-        if layout == "folder":  # a folder of downloads is not expected to hold the whole atlas
+        if layout != "atlas":  # a folder of downloads, or one file, is not expected to hold the whole atlas
             missing = []
         check_sizes(files, listed)
 
@@ -307,9 +349,10 @@ class Verifier:
         if not job.to_hash:  # nothing to hash: the answer is complete now
             job.state, job.finished_at = DONE, time.time()
             if not files:
-                job.message = f"No .h5ad files in {', '.join(str(folder) for folder in folders.values())}"
+                where = f"the tracker-source folders of {root}" if layout == "atlas" else str(root)
+                job.message = f"No .h5ad files in {where}"
             else:
-                job.message = "No file matched a tracker file of the same size and checksum to hash"
+                job.message = "Nothing to hash; each file's status says why"
             self.store.create(job)
             return self._describe(job)
 
@@ -411,6 +454,7 @@ def _row(entry: dict) -> dict:
     for key in (
         "tracker_name",
         "kind",
+        *ROW_FIELDS,
         "matches",
         "misplaced",
         "current_name",
