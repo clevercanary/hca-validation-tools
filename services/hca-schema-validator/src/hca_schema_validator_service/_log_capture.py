@@ -4,7 +4,8 @@ Each entry script (``main.py``, ``cell_annotation.py``) runs a validator that
 emits warnings/errors via a module logger. This helper attaches a handler to
 that logger, invokes the validator, and returns the standard subprocess
 response shape (``{valid, warnings, errors}``) that the dataset-validator
-service expects, plus ``validator_version`` (#802), which it does not yet read.
+service expects, plus ``validator_version`` (#802), which it does not yet read
+(#834).
 """
 
 from __future__ import annotations
