@@ -154,6 +154,67 @@ def test_a_tracker_file_with_an_edit_name_matches_exactly():
     assert "status" not in local[0]  # matched as the tracker's file, so check_sizes decides whether it is hashed
 
 
+# Gut v1 myeloid on prod: the tracker's wip 18 was uploaded as our 10-19 snapshot of wip 17.
+MYELOID = {
+    "hgca-v1-myeloid-r1.h5ad": [
+        {
+            "entry": {
+                "kind": "integrated",
+                "fileId": "f",
+                "fileName": "hgca-v1-myeloid-r1-wip-17-edit-2026-10-19-23-03-17.h5ad",
+                "id": "e",
+                "revision": 1,
+                "wipNumber": 18,
+            }
+        }
+    ]
+}
+
+
+def test_a_later_edit_of_an_uploaded_snapshot_is_edited():
+    """A CAP re-import of the uploaded snapshot is named after the lineage root, not after that snapshot."""
+    local = [{"name": "hgca-v1-myeloid-r1-wip-17-edit-2026-11-05-09-00-00.h5ad", "folder_kind": None}]
+    missing = classify(local, MYELOID)
+    assert local[0]["status"] == "edited"
+    assert (local[0]["tracker_name"], local[0]["entry_id"], local[0]["wip_number"]) == (
+        "hgca-v1-myeloid-r1.h5ad",
+        "e",
+        18,
+    )
+    assert [m["name"] for m in missing] == ["hgca-v1-myeloid-r1.h5ad"]
+
+
+def test_the_uploaded_snapshot_itself_is_matched_exactly():
+    local = [{"name": "hgca-v1-myeloid-r1-wip-17-edit-2026-10-19-23-03-17.h5ad", "folder_kind": None}]
+    assert classify(local, MYELOID) == []
+    assert "status" not in local[0] and local[0]["file_id"] == "f"  # hashed, as the tracker's own file
+
+
+def test_an_edit_older_than_the_uploaded_snapshot_is_stale():
+    local = [{"name": "hgca-v1-myeloid-r1-wip-17-edit-2026-10-18-23-48-10.h5ad", "folder_kind": None}]
+    classify(local, MYELOID)
+    assert (local[0]["status"], local[0]["current_name"]) == ("stale", "hgca-v1-myeloid-r1.h5ad")
+    assert "entry_id" not in local[0]
+
+
+def test_two_uploaded_snapshots_of_one_lineage_are_reported_not_guessed():
+    listed = {
+        **MYELOID,
+        "hgca-v1-myeloid-copy-r1.h5ad": [
+            {
+                "entry": {
+                    "kind": "source",
+                    "fileId": "g",
+                    "fileName": "hgca-v1-myeloid-r1-wip-17-edit-2026-10-20-00-00-00.h5ad",
+                }
+            }
+        ],
+    }
+    local = [{"name": "hgca-v1-myeloid-r1-wip-17-edit-2026-11-05-09-00-00.h5ad", "folder_kind": None}]
+    classify(local, listed)
+    assert local[0]["status"] == "ambiguous" and len(local[0]["matches"]) == 2
+
+
 def test_an_unversioned_name_is_never_stale():
     listed = {"all-r1-wip-2.h5ad": [{"entry": {"kind": "integrated", "fileId": "a", "fileName": "all_v2.h5ad"}}]}
     local = [{"name": "all.h5ad", "folder_kind": None}]

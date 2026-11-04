@@ -174,20 +174,24 @@ tracker's S3 bucket with the AWS profile above; the tracker ingests from there.
   `current_file` and the transfer tool's latest `progress` line for it, then
   `manifest_path` when done. Without `job_id`, every job.
 - **verify_local** `(network, atlas, path, generation?, published?)` —
-  checks a folder's `.h5ad` files against the tracker: an atlas folder's
+  checks `.h5ad` files against the tracker: an atlas folder's
   `integrated-objects/tracker-source/` and `source-datasets/tracker-source/`
-  (only those are read), or any other folder's own files, such as a download
-  folder. A file matches a tracker file by its download name or by the name
+  (only those are read), any other folder's own files, such as a download
+  folder, or one `.h5ad` file, checked alone. A file matches a tracker file by its download name or by the name
   it was uploaded under (`tracker_name` gives the download name). Each file,
   with its kind, is `stale` (another revision or wip of a listed file;
   `current_name` is the listed one), `unknown`, `size_mismatch`, `no_checksum`,
   `ambiguous` (it could be more than one tracker file; `matches` lists them,
   and `duplicate_names` lists download names the tracker gives to several
-  files), or hashed by a detached worker into `verified`, `mismatch`, `changed`
+  files), `edited` (our `-edit-<timestamp>` copy of a listed file; not hashed),
+  or hashed by a detached worker into `verified`, `mismatch`, `changed`
   or `unreadable`. For an atlas folder, `misplaced` marks a file matched by
   name in the other kind's folder, and `missing` lists tracker files with no local copy,
   of both kinds, so a folder with only one `tracker-source/` lists every file
-  of the other kind. Read-only. Returns `job_id` at once.
+  of the other kind. A file matched to one tracker file, `edited` included,
+  carries its `entry_id`, `revision`, `wip_number`, `cap_url` and
+  `cap_status` (`entry_id` and kind are what `get_validation_report` takes).
+  Read-only. Returns `job_id` at once.
 - **verify_status** `(job_id?)` — state (`queued`, `hashing`, `done`,
   `failed`, `interrupted`), files and bytes hashed, per-file results. Without
   `job_id`, every job.

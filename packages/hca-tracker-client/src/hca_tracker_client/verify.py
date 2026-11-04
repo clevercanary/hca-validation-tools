@@ -57,7 +57,7 @@ UNREADABLE = "unreadable"
 _VERSIONED = re.compile(r"^(?P<stem>.+)-r\d+(?:-wip-\d+)?\.h5ad$")
 # The suffix hca-anndata-tools gives an edited copy (its write.py, which names this copy); removing it gives the
 # name of the copy edited.
-_EDITED = re.compile(r"-edit-\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}(?=\.h5ad$)")
+_EDITED = re.compile(r"-edit-(?P<stamp>\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2})(?=\.h5ad$)")
 
 
 def file_stem(name: str) -> str | None:
@@ -71,10 +71,20 @@ def file_stem(name: str) -> str | None:
 ROW_FIELDS = ("entry_id", "revision", "wip_number", "cap_url", "cap_status")
 
 
+def edit_lineage(name: str) -> tuple[str, str] | None:
+    """An ``-edit-<timestamp>`` copy's lineage root (the name with the suffix removed) and its timestamp.
+
+    hca-anndata-tools names every edit after the root, whichever snapshot it edited, so the timestamps, which
+    sort as text, order a lineage's copies. None for any other name.
+    """
+    match = _EDITED.search(name)
+    return (name[: match.start()] + name[match.end() :], match.group("stamp")) if match else None
+
+
 def edited_base(name: str) -> str | None:
-    """The name of the file an ``-edit-<timestamp>`` copy was made from; None for any other name."""
-    base = _EDITED.sub("", name)
-    return base if base != name else None
+    """The lineage root of an ``-edit-<timestamp>`` copy; None for any other name."""
+    lineage = edit_lineage(name)
+    return lineage[0] if lineage else None
 
 
 @dataclass
@@ -223,14 +233,17 @@ def classify(local: list[dict], listed: dict[str, list[dict]]) -> list[dict]:
     is how a copy that never went through ``start_download`` is usually named. A matched file gets
     ``tracker_name``, ``kind``, ``file_id`` and its list row's ``ROW_FIELDS``, and
     ``misplaced`` when it was found in a folder of one kind; ``check_sizes`` then decides whether it is hashed.
-    A name that matches no listed file and ends in ``-edit-<timestamp>`` is matched by the name it was made
-    from and, when that is a listed file, is ``edited``, with the same fields but no ``file_id``: it is never
-    hashed and does not make its file present.
+    A name that matches no listed file and ends in ``-edit-<timestamp>`` is matched by its lineage root or, when
+    the tracker's file was uploaded as an earlier snapshot of the same lineage, by that snapshot; either way it
+    is ``edited``, with the same fields but no ``file_id``: it is never hashed and does not make its file
+    present. An edit older than the uploaded snapshot is ``stale``.
     Only a versioned name can be ``stale``. A name that could be more than one file is reported ``ambiguous``,
     never guessed at, and counts none of them as present.
     """
     stems: dict[str, set[str]] = {}
     uploaded_as: dict[str, set[str]] = {}
+    # Listed files uploaded as one of our edit snapshots, by lineage root: {root: {(timestamp, listed name)}}.
+    uploaded_edits: dict[str, set[tuple[str, str]]] = {}
     for name, items in listed.items():
         stem = file_stem(name)
         if stem is not None:
@@ -238,6 +251,9 @@ def classify(local: list[dict], listed: dict[str, list[dict]]) -> list[dict]:
         for item in items:
             if item["entry"].get("fileName"):
                 uploaded_as.setdefault(item["entry"]["fileName"], set()).add(name)
+                lineage = edit_lineage(item["entry"]["fileName"])
+                if lineage is not None:
+                    uploaded_edits.setdefault(lineage[0], set()).add((lineage[1], name))
     present = set()
 
     def listed_as(name: str) -> set[str]:
@@ -245,9 +261,22 @@ def classify(local: list[dict], listed: dict[str, list[dict]]) -> list[dict]:
 
     for entry in local:
         names, base = listed_as(entry["name"]), None
-        if not names:  # the exact name first: a tracker file may itself carry an -edit- name
-            base = edited_base(entry["name"])
-            names = listed_as(base) if base is not None else set()
+        lineage = edit_lineage(entry["name"])
+        if not names and lineage is not None:  # the exact name first: a tracker file may carry an -edit- name
+            base, stamp = lineage
+            names = listed_as(base)
+            uploads = uploaded_edits.get(base, set()) if not names else set()
+            if sum(len(listed[name]) for _, name in uploads) == 1:  # an edit of a snapshot we uploaded
+                ((uploaded_stamp, uploaded),) = uploads
+                if uploaded_stamp > stamp:  # made before the snapshot the tracker holds
+                    entry.update(
+                        {"status": STALE, "current_name": uploaded, "kind": listed[uploaded][0]["entry"]["kind"]}
+                    )
+                    continue
+                names = {uploaded}
+            elif uploads:
+                entry.update({"status": AMBIGUOUS, "matches": _matches({name for _, name in uploads}, listed)})
+                continue
         local_name = base or entry["name"]
         if not names:
             stem = file_stem(local_name)
