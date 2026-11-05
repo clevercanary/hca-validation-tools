@@ -724,6 +724,19 @@ class TestValidateGoogleSheet:
         # but not by the default model
         assert any(error.column == "doublet_detection" for error in result.errors)
 
+    @patch("hca_validation.schema_utils.get_entry_sheet_optional_slots")
+    @patch("hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account")
+    def test_entry_sheet_optional_slots_reach_validation(self, mock_read_service_account, mock_optional_slots):
+        """#850: the sheet passes each class's tagged slots to validate(), so a tagged required field may be blank."""
+        mock_optional_slots.side_effect = lambda schemaview, class_name: (
+            frozenset({"doublet_detection"}) if class_name == "GutDataset" else frozenset()
+        )
+        result = _test_validation_with_mock_sheets_response(
+            validate_google_sheet, mock_read_service_account, bionetwork="gut"
+        )
+        # Without the tag, the Gut model reports doublet_detection missing (see the test above).
+        assert not any(error.column == "doublet_detection" for error in result.errors)
+
     @patch("hca_validation.validator.validate")
     @patch("hca_validation.entry_sheet_validator.validate_sheet.read_sheet_with_service_account")
     def test_row_normalization_before_validation(self, mock_read_service_account, mock_validate):

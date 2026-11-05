@@ -118,14 +118,10 @@ _SLOT_PROVENANCE = {"owner", "domain_of", "from_schema", "is_usage_slot", "usage
 
 
 def slot_definition(slot_info) -> dict[str, Any]:
-    """An induced slot minus provenance; unlike `slot_to_attribute`, keeps fields the dictionary hides (`pattern`).
-
-    `entrySheetRequired` is left out (#850): it only relaxes entry sheets, so a subclass may add it without folding.
-    """
+    """An induced slot minus provenance and `entrySheetRequired` (#850); unlike `slot_to_attribute`, keeps `pattern`."""
     definition = {key: value for key, value in json_dumper.to_dict(slot_info).items() if key not in _SLOT_PROVENANCE}
-    annotations = {k: v for k, v in definition.pop("annotations", {}).items() if k != "entrySheetRequired"}
-    if annotations:
-        definition["annotations"] = annotations
+    annotations = definition.get("annotations", {})
+    definition["annotations"] = {key: value for key, value in annotations.items() if key != "entrySheetRequired"}
     return definition
 
 

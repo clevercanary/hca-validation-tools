@@ -69,7 +69,7 @@ _ENTRY_SHEET_REQUIRED = "entrySheetRequired"
 
 
 def get_entry_sheet_optional_slots(schemaview: SchemaView, class_name: str) -> frozenset[str]:
-    """Slots of `class_name` annotated `entrySheetRequired: false` (#850); any other value raises.
+    """Slots of `class_name` annotated `entrySheetRequired: false` (#850); another value, or an optional slot, raises.
 
     A `slot_usage` that sets annotations replaces the inherited ones (linkml#2805), so when the induced slot lacks the
     tag, the class's and its ancestors' `slot_usage` are searched in order, then the slot itself.
@@ -88,6 +88,8 @@ def get_entry_sheet_optional_slots(schemaview: SchemaView, class_name: str) -> f
             continue
         if value is not False:
             raise ValueError(f"{class_name}.{slot.name}: {_ENTRY_SHEET_REQUIRED} must be false, got {value!r}")
+        if not slot.required:
+            raise ValueError(f"{class_name}.{slot.name}: {_ENTRY_SHEET_REQUIRED} is only for required slots")
         optional.add(slot.name)
     return frozenset(optional)
 

@@ -268,6 +268,17 @@ def test_entry_sheet_optional_slots_keeps_an_ancestor_slot_usage_tag(tmp_path):
     assert get_entry_sheet_optional_slots(view, "GutDataset") == {"title"}
 
 
+def test_entry_sheet_optional_slots_rejects_an_optional_slot(tmp_path):
+    schema_text = textwrap.dedent(_ENTRY_SHEET_SCHEMA).replace(
+        "  relaxed:\n    required: true\n", "  relaxed:\n    required: false\n"
+    )
+    assert "  relaxed:\n    required: false\n" in schema_text
+    path = tmp_path / "schema.yaml"
+    path.write_text(schema_text)
+    with pytest.raises(ValueError, match="only for required slots"):
+        get_entry_sheet_optional_slots(SchemaView(str(path)), "Dataset")
+
+
 @pytest.mark.parametrize("value", ["true", '"false"', "0"])
 def test_entry_sheet_optional_slots_rejects_other_values(tmp_path, value):
     schema_text = textwrap.dedent(_ENTRY_SHEET_SCHEMA).replace(

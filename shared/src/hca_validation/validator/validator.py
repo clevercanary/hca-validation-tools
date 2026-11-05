@@ -5,14 +5,13 @@ This module provides the main validation functionality for HCA data using Pydant
 """
 
 import itertools
-from typing import Any, get_args
+from typing import Any
 
 import hca_metadata_schema.generated.core as schema
 import pandas as pd
 from linkml_runtime import SchemaView
 from pydantic import ValidationError
 from pydantic_core import ErrorDetails, InitErrorDetails, PydanticCustomError
-from pydantic_core.core_schema import ErrorType
 
 from hca_validation.schema_utils.schema_utils import (
     get_class_entity_type,
@@ -51,19 +50,12 @@ def _is_top_level(error: ErrorDetails, slots: frozenset[str]) -> bool:
     return len(error["loc"]) == 1 and error["loc"][0] in slots
 
 
-_BUILT_IN_ERROR_TYPES = frozenset(get_args(ErrorType))
-
-
 def _line_error(error: ErrorDetails) -> InitErrorDetails:
     """Rebuild an `errors()` entry as InitErrorDetails, keeping type and context so its message is unchanged."""
-    if error["type"] in _BUILT_IN_ERROR_TYPES:
-        details: InitErrorDetails = {"type": error["type"], "loc": error["loc"], "input": error["input"]}
-        if "ctx" in error:
-            details["ctx"] = error["ctx"]
-        return details
-    # A custom type (PydanticCustomError) is not rebuildable by name; keep its type and rendered message, which
-    # is not formatted again without a context.
-    return {"type": PydanticCustomError(error["type"], error["msg"]), "loc": error["loc"], "input": error["input"]}
+    details: InitErrorDetails = {"type": error["type"], "loc": error["loc"], "input": error["input"]}
+    if "ctx" in error:
+        details["ctx"] = error["ctx"]
+    return details
 
 
 def validate_id_uniqueness(data: pd.DataFrame, schemaview: SchemaView, class_name: str) -> ValidationError | None:

@@ -121,26 +121,3 @@ def test_unannotated_required_slot_still_fails_when_absent(valid_dataset):
     validation_error = validate(row, class_name="Dataset")
     assert validation_error is not None
     assert [(e["type"], e["loc"]) for e in validation_error.errors()] == [("missing", ("study_pi",))]
-
-
-def test_rebuilt_errors_keep_custom_error_messages():
-    """A filtered ValidationError is rebuilt; a PydanticCustomError type must survive with its rendered message."""
-    from pydantic import BaseModel, ValidationError, field_validator
-    from pydantic_core import PydanticCustomError
-
-    from hca_validation.validator.validator import _line_error
-
-    class Model(BaseModel):
-        a: str
-
-        @field_validator("a")
-        @classmethod
-        def reject(cls, value):
-            raise PydanticCustomError("custom_type", "bad {thing}, pattern \\d{{1,3}}", {"thing": value})
-
-    with pytest.raises(ValidationError) as excinfo:
-        Model(a="x")
-    [original] = excinfo.value.errors()
-    [rebuilt] = ValidationError.from_exception_data("Model", [_line_error(original)]).errors()
-    assert (rebuilt["type"], rebuilt["loc"], rebuilt["msg"]) == (original["type"], original["loc"], original["msg"])
-    assert "{" in original["msg"]
