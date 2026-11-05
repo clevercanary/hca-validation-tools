@@ -314,10 +314,11 @@ HCA replaces some CELLxGENE rules with its own.
     text.
 - **Reserved and label columns.** CELLxGENE rejects files that already carry
   columns the portal fills in itself: reserved columns such as `citation` and
-  `observation_joinid`, and label columns such as `cell_type` and `tissue`. HCA
-  does not reject these columns, and checks each label against its ontology
-  term instead
+  `observation_joinid`, and label columns such as `cell_type` and `tissue`. With
+  `HCAValidator`'s default `ignore_labels=True`, HCA does not reject these
+  columns, and checks each label against its ontology term instead
   ([Cell metadata labels](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/README.md#cell-metadata-labels)).
+  Passing `ignore_labels=False` rejects them as CELLxGENE does.
 - **Gene ID warnings.** CELLxGENE reports a gene ID missing from its gene list
   as an error. HCA reports it as a warning, so that outdated gene IDs, which
   are common in HCA files, do not stop validation from reporting the file's
@@ -363,7 +364,8 @@ Why these three:
   step has settings and is often random, so it cannot be repeated exactly.
   Without the layer, nobody can check how `X` was made. The validator looks for
   this exact name, whichever tool removed the ambient RNA (SoupX, CellBender,
-  DecontX or another).
+  DecontX or another). A file does not say whether ambient RNA was removed, so
+  the validator reports a missing layer only when `X` shows it (check 8).
 - The total each cell is normalized to is not fixed. The checks compare each
   cell's profile, where the total cancels out, so any target works.
 
