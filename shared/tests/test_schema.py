@@ -231,6 +231,43 @@ def test_entry_sheet_optional_slots_reads_the_annotation(tmp_path):
     assert get_entry_sheet_optional_slots(view, "GutDataset") == {"relaxed", "relaxed_by_subclass", "relaxed_with_tier"}
 
 
+def test_entry_sheet_optional_slots_keeps_an_ancestor_slot_usage_tag(tmp_path):
+    # Dataset's slot_usage tags title; GutDataset's slot_usage sets another annotation, which drops it (linkml#2805).
+    path = tmp_path / "schema.yaml"
+    path.write_text(
+        textwrap.dedent(
+            """
+            id: https://example.org/ancestor-test
+            name: ancestor_test
+            prefixes:
+              linkml: https://w3id.org/linkml/
+            imports:
+              - linkml:types
+            default_range: string
+            slots:
+              title:
+                required: true
+            classes:
+              Dataset:
+                slots: [title]
+                slot_usage:
+                  title:
+                    annotations:
+                      entrySheetRequired: false
+              GutDataset:
+                is_a: Dataset
+                slot_usage:
+                  title:
+                    annotations:
+                      tier: Tier 1
+            """
+        )
+    )
+    view = SchemaView(str(path))
+    assert get_entry_sheet_optional_slots(view, "Dataset") == {"title"}
+    assert get_entry_sheet_optional_slots(view, "GutDataset") == {"title"}
+
+
 @pytest.mark.parametrize("value", ["true", '"false"', "0"])
 def test_entry_sheet_optional_slots_rejects_other_values(tmp_path, value):
     schema_text = textwrap.dedent(_ENTRY_SHEET_SCHEMA).replace(

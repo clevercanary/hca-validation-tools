@@ -86,7 +86,9 @@ A version is only useful if a consumer can tell from it whether a file that pass
 3.4 **`required` describes what an h5ad file must contain.** Entry sheets follow it too, unless the slot carries the
     annotation `entrySheetRequired: false` (#850): then an entry sheet may leave the slot blank or omit its column,
     while a value that is present is still checked. Only the entry-sheet validator reads the annotation. The data
-    dictionary never publishes it: the portal's dictionary reports the slot's `required` level only. Making an
+    dictionary never publishes it: the portal's dictionary reports the slot's `required` level only. A
+    `slot_usage` that adds the annotation must repeat the slot's other annotations, because LinkML replaces rather
+    than merges them (linkml#2805); otherwise the dictionary refuses the subclass as a changed slot. Making an
     optional slot required stays breaking (§3.2) even with the annotation: the generated models, and the tools
     built on them, require it.
 

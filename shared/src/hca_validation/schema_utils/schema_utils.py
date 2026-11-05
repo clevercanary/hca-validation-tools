@@ -65,20 +65,29 @@ def get_slot_anndata_location(slot: SlotDefinition) -> str | None:
     return _annotation_value(slot, "annDataLocation")
 
 
+_ENTRY_SHEET_REQUIRED = "entrySheetRequired"
+
+
 def get_entry_sheet_optional_slots(schemaview: SchemaView, class_name: str) -> frozenset[str]:
     """Slots of `class_name` annotated `entrySheetRequired: false` (#850); any other value raises.
 
-    Induced, so `slot_usage` counts; the base slot is the fallback, as slot_usage annotations replace it (linkml#2805).
+    A `slot_usage` that sets annotations replaces the inherited ones (linkml#2805), so when the induced slot lacks the
+    tag, the class's and its ancestors' `slot_usage` are searched in order, then the slot itself.
     """
     optional = set()
+    ancestors = [schemaview.get_class(c) for c in schemaview.class_ancestors(class_name)]
     for slot in schemaview.class_induced_slots(class_name):
-        value = _annotation_value(slot, "entrySheetRequired")
-        if value is None:
-            value = _annotation_value(schemaview.get_slot(slot.name), "entrySheetRequired")
+        usages = [(ancestor.slot_usage or {}).get(slot.name) for ancestor in ancestors]
+        value = None
+        for source in [slot, *usages, schemaview.get_slot(slot.name)]:
+            if source is not None:
+                value = _annotation_value(source, _ENTRY_SHEET_REQUIRED)
+                if value is not None:
+                    break
         if value is None:
             continue
         if value is not False:
-            raise ValueError(f"{class_name}.{slot.name}: entrySheetRequired must be false, got {value!r}")
+            raise ValueError(f"{class_name}.{slot.name}: {_ENTRY_SHEET_REQUIRED} must be false, got {value!r}")
         optional.add(slot.name)
     return frozenset(optional)
 
