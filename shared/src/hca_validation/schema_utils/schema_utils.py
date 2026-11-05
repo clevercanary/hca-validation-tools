@@ -54,13 +54,33 @@ def get_class_identifier_name(schemaview: SchemaView, class_name: str) -> str:
     raise ValueError(f"No identifier slot found for class {class_name}")
 
 
-def get_slot_anndata_location(slot: SlotDefinition) -> str | None:
-    if not slot.annotations:
-        return None
-    for name, info in jsonasobj2.items(slot.annotations):
-        if name == "annDataLocation":
+def _annotation_value(element: SlotDefinition | ClassDefinition, key: str):
+    for name, info in jsonasobj2.items(element.annotations or {}):
+        if name == key:
             return info.value
     return None
+
+
+def get_slot_anndata_location(slot: SlotDefinition) -> str | None:
+    return _annotation_value(slot, "annDataLocation")
+
+
+def get_entry_sheet_optional_slots(schemaview: SchemaView, class_name: str) -> frozenset[str]:
+    """Slots of `class_name` annotated `entrySheetRequired: false` (#850); any other value raises.
+
+    Induced, so `slot_usage` counts; the base slot is the fallback, as slot_usage annotations replace it (linkml#2805).
+    """
+    optional = set()
+    for slot in schemaview.class_induced_slots(class_name):
+        value = _annotation_value(slot, "entrySheetRequired")
+        if value is None:
+            value = _annotation_value(schemaview.get_slot(slot.name), "entrySheetRequired")
+        if value is None:
+            continue
+        if value is not False:
+            raise ValueError(f"{class_name}.{slot.name}: entrySheetRequired must be false, got {value!r}")
+        optional.add(slot.name)
+    return frozenset(optional)
 
 
 def get_bionetwork_keys(schemaview: SchemaView) -> list[str]:
@@ -73,12 +93,7 @@ def get_bionetwork_keys(schemaview: SchemaView) -> list[str]:
 
 def get_class_bionetwork(class_info: ClassDefinition) -> str | None:
     """Return the network a class names in its `bioNetwork` annotation, if any."""
-    if not class_info.annotations:
-        return None
-    for name, info in jsonasobj2.items(class_info.annotations):
-        if name == "bioNetwork":
-            return info.value
-    return None
+    return _annotation_value(class_info, "bioNetwork")
 
 
 def get_bionetwork_subclasses(schemaview: SchemaView, base_class: str) -> dict[str, str]:

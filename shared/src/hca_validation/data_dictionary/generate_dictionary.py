@@ -154,7 +154,8 @@ def slot_to_attribute(schemaview: SchemaView, slot_info, schema_enum_names: set[
     if slot_info.annotations:
         formatted_annotations = {}
         for annot_name, annot_info in jsonasobj2.items(slot_info.annotations):
-            formatted_annotations[annot_name] = annot_info.value
+            if annot_name != "entrySheetRequired":  # #850: the dictionary reports `required` alone
+                formatted_annotations[annot_name] = annot_info.value
         attribute["annotations"] = formatted_annotations
 
     # Add rationale if available in comments - as a string, not an array

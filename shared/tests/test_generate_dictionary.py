@@ -348,6 +348,11 @@ slots:
       - Replaced by the enum values.
   donor_id:
     multivalued: true
+  sheet_optional:
+    required: true
+    annotations:
+      tier: Tier 1
+      entrySheetRequired: false
   recommended_slot:
     recommended: true
   required_and_recommended:
@@ -364,6 +369,7 @@ classes:
       - colour
       - recommended_slot
       - required_and_recommended
+      - sheet_optional
   Donor:
     slots:
       - donor_id
@@ -459,6 +465,13 @@ def test_bare_slot_gets_defaults_and_only_bionetworks(mapping_dictionary):
 def test_requirement_levels(mapping_dictionary, attribute_name, required):
     # The portal's three levels (#761): LinkML's `recommended` metaslot is "strongly recommended", and `required` wins.
     assert _attributes(mapping_dictionary, "Dataset")[attribute_name]["required"] == required
+
+
+def test_entry_sheet_required_stays_out_of_the_dictionary(mapping_dictionary):
+    # #850: the portal's dictionary reports the `required` level only, never the entry-sheet relaxation.
+    attribute = _attributes(mapping_dictionary, "Dataset")["sheet_optional"]
+    assert attribute["required"] is True
+    assert attribute["annotations"] == {"tier": "Tier 1", "bioNetworks": _ALL_NETWORKS}
 
 
 def test_multivalued(mapping_dictionary):

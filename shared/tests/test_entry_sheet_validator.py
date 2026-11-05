@@ -731,7 +731,7 @@ class TestValidateGoogleSheet:
         # Store dicts that the validation function is called with
         validated_dicts = []
 
-        def save_data(data, class_name):
+        def save_data(data, class_name, entry_sheet_optional=frozenset()):
             validated_dicts.append(data)
             return DEFAULT
 
@@ -750,7 +750,7 @@ class TestValidateGoogleSheet:
         # Store dicts that the validation function is called with
         validated_dicts = []
 
-        def save_data(data, class_name):
+        def save_data(data, class_name, entry_sheet_optional=frozenset()):
             if class_name.endswith("Sample"):
                 validated_dicts.append(data)
             return DEFAULT
@@ -773,7 +773,7 @@ class TestValidateGoogleSheet:
         # Store dicts that the validation function is called with
         validated_dicts = []
 
-        def save_data(data, class_name):
+        def save_data(data, class_name, entry_sheet_optional=frozenset()):
             if class_name.endswith("Sample"):
                 validated_dicts.append(data)
             return DEFAULT
@@ -795,7 +795,7 @@ class TestValidateGoogleSheet:
         # Store class name that the validation function was last called with
         last_class_name_info = {}
 
-        def save_class_name(data, class_name):
+        def save_class_name(data, class_name, entry_sheet_optional=frozenset()):
             last_class_name_info["value"] = class_name
             return DEFAULT
 
