@@ -55,6 +55,7 @@ Runs the full vendored schema validator against the unmodified CELLxGENE schema 
 - **Donor-level consistency** — see §4.2.
 - **Declared gene annotation vs. the file's genes** — see §4.3.
 - **Retired feature identifiers** — see §4.4. Classifies the per-identifier feature-ID warnings into one `Details:` row each and drops the warnings it classified; warnings for features it cannot classify stay.
+- **Spatial `is_primary_data` rule skipped** — `is_primary_data` is not in the HCA schema (#837), so the `is_single=False` rule in §5 doesn't apply.
 
 All other rules come from the vendored base class (§5).
 
@@ -284,7 +285,7 @@ Reads `var.index` and `raw.var.index`, nothing else — no `obs`, no network. Co
 - `obs.array_row`, `obs.array_col`: int, in range per platform, non-null — required for Visium `is_single=True`, forbidden otherwise.
 - `obs.in_tissue`: 0 or 1 only; special raw-matrix rules when zeros are present.
 - `obs.cell_type_ontology_term_id == "unknown"` where `in_tissue==0`.
-- `obs.is_primary_data == False` when `is_single=False`.
+- `obs.is_primary_data == False` when `is_single=False`. CELLxGENE only: `HCAValidator` skips it, because `is_primary_data` is not in the HCA schema (#837).
 
 ### Duplicates (`validation_internals/check_duplicates.py`)
 
@@ -293,7 +294,7 @@ Reads `var.index` and `raw.var.index`, nothing else — no `obs`, no network. Co
 ### ATAC-seq (`atac_seq.py`, when fragment file validated)
 
 - Organism is human or mouse (`NCBITaxon:9606` / `NCBITaxon:10090`).
-- All `obs.is_primary_data == True`.
+- All `obs.is_primary_data == True`. Reachable only through the vendored `cli.py`, never from HCA validation (#837).
 - Fragments: chromosomes valid for organism; `start > 0`; `stop > start`; `stop ≤ chromosome length`; `read_support > 0`; no duplicate fragments; barcodes are a subset of `obs.index`.
 
 ---

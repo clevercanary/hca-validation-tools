@@ -43,7 +43,6 @@ good_obs = pd.DataFrame(
             "PATO:0000383",
             "UBERON:0002048",
             "tissue",
-            True,
             "HsapDv:0000003",
             "donor_1",
             "nucleus",
@@ -71,7 +70,6 @@ good_obs = pd.DataFrame(
             "PATO:0000383",
             "UBERON:0002048",
             "tissue",
-            True,
             "HsapDv:0000003",
             "donor_1",
             "nucleus",
@@ -101,7 +99,6 @@ good_obs = pd.DataFrame(
         "sex_ontology_term_id",
         "tissue_ontology_term_id",
         "tissue_type",
-        "is_primary_data",
         "development_stage_ontology_term_id",
         "donor_id",
         "suspension_type",
@@ -193,7 +190,6 @@ good_obs_visium = pd.DataFrame(
             "PATO:0000383",
             "UBERON:0002048",
             "tissue",
-            True,
             "HsapDv:0000003",
             "donor_1",
             "na",
@@ -223,7 +219,6 @@ good_obs_visium = pd.DataFrame(
             "PATO:0000383",
             "UBERON:0002048",
             "tissue",
-            True,
             "HsapDv:0000003",
             "donor_1",
             "na",
@@ -255,7 +250,6 @@ good_obs_visium = pd.DataFrame(
         "sex_ontology_term_id",
         "tissue_ontology_term_id",
         "tissue_type",
-        "is_primary_data",
         "development_stage_ontology_term_id",
         "donor_id",
         "suspension_type",
@@ -313,7 +307,6 @@ good_obs_slide_seqv2 = pd.DataFrame(
             "PATO:0000383",
             "UBERON:0002048",
             "tissue",
-            True,
             "HsapDv:0000003",
             "donor_1",
             "na",
@@ -340,7 +333,6 @@ good_obs_slide_seqv2 = pd.DataFrame(
             "PATO:0000383",
             "UBERON:0002048",
             "tissue",
-            True,
             "HsapDv:0000003",
             "donor_1",
             "na",
@@ -369,7 +361,6 @@ good_obs_slide_seqv2 = pd.DataFrame(
         "sex_ontology_term_id",
         "tissue_ontology_term_id",
         "tissue_type",
-        "is_primary_data",
         "development_stage_ontology_term_id",
         "donor_id",
         "suspension_type",
@@ -425,7 +416,6 @@ good_obs_visium_is_single_false = pd.DataFrame(
             "PATO:0000383",
             "UBERON:0002048",
             "tissue",
-            False,
             "HsapDv:0000003",
             "donor_1",
             "na",
@@ -452,7 +442,6 @@ good_obs_visium_is_single_false = pd.DataFrame(
             "PATO:0000383",
             "UBERON:0002048",
             "tissue",
-            False,
             "HsapDv:0000003",
             "donor_1",
             "na",
@@ -481,7 +470,6 @@ good_obs_visium_is_single_false = pd.DataFrame(
         "sex_ontology_term_id",
         "tissue_ontology_term_id",
         "tissue_type",
-        "is_primary_data",
         "development_stage_ontology_term_id",
         "donor_id",
         "suspension_type",
@@ -503,6 +491,7 @@ good_obs_visium_is_single_false = pd.DataFrame(
     ],
 )
 
+good_obs_visium_is_single_false["organism_ontology_term_id"] = "NCBITaxon:9606"  # HCA: organism in obs
 good_obs_visium_is_single_false["donor_id"] = good_obs_visium_is_single_false["donor_id"].astype("category")
 good_obs_visium_is_single_false["suspension_type"] = good_obs_visium_is_single_false["suspension_type"].astype(
     "category"
@@ -539,7 +528,6 @@ good_obs_mouse = pd.DataFrame(
             "unknown",
             "CL:0000192",
             "primary cell culture",
-            False,
             "MmusDv:0000003",
             "donor_2",
             "na",
@@ -567,7 +555,6 @@ good_obs_mouse = pd.DataFrame(
             "unknown",
             "CL:0000192",
             "primary cell culture",
-            False,
             "MmusDv:0000003",
             "donor_2",
             "na",
@@ -597,7 +584,6 @@ good_obs_mouse = pd.DataFrame(
         "sex_ontology_term_id",
         "tissue_ontology_term_id",
         "tissue_type",
-        "is_primary_data",
         "development_stage_ontology_term_id",
         "donor_id",
         "suspension_type",
@@ -723,7 +709,7 @@ good_uns = {
     "title": "A title",
     "default_embedding": "X_umap",
     "X_approximate_distribution": "normal",
-    "batch_condition": ["is_primary_data"],
+    "batch_condition": ["donor_id"],
     "study_pi": ["Smith, Jane"],
 }
 
@@ -732,7 +718,7 @@ good_uns_mouse = {
     "title": "A title",
     "default_embedding": "X_umap",
     "X_approximate_distribution": "normal",
-    "batch_condition": ["is_primary_data"],
+    "batch_condition": ["donor_id"],
     "study_pi": ["Smith, Jane"],
 }
 
@@ -745,7 +731,7 @@ good_uns_with_labels = {
     "title": "A title",
     "default_embedding": "X_umap",
     "X_approximate_distribution": "normal",
-    "batch_condition": ["is_primary_data"],
+    "batch_condition": ["donor_id"],
     "study_pi": ["Smith, Jane"],
 }
 
@@ -753,7 +739,7 @@ good_uns_with_colors = {
     "title": "A title",
     "default_embedding": "X_umap",
     "X_approximate_distribution": "normal",
-    "batch_condition": ["is_primary_data"],
+    "batch_condition": ["donor_id"],
     "study_pi": ["Smith, Jane"],
     "suspension_type_colors": numpy.array(["red", "blue"]),
     "donor_id_colors": numpy.array(["#000000", "#ffffff"]),
@@ -766,7 +752,7 @@ good_uns_with_visium_spatial = {
     "title": "A title",
     "default_embedding": "X_umap",
     "X_approximate_distribution": "normal",
-    "batch_condition": ["is_primary_data"],
+    "batch_condition": ["donor_id"],
     "study_pi": ["Smith, Jane"],
     "spatial": {
         "is_single": numpy.bool_(True),
@@ -787,7 +773,7 @@ good_uns_with_is_single_false = {
     "title": "A title",
     "default_embedding": "X_umap",
     "X_approximate_distribution": "normal",
-    "batch_condition": ["is_primary_data"],
+    "batch_condition": ["donor_id"],
     "study_pi": ["Smith, Jane"],
     "spatial": {"is_single": False},
 }
@@ -796,7 +782,7 @@ good_uns_with_slide_seqV2_spatial = {
     "title": "A title",
     "default_embedding": "X_umap",
     "X_approximate_distribution": "normal",
-    "batch_condition": ["is_primary_data"],
+    "batch_condition": ["donor_id"],
     "study_pi": ["Smith, Jane"],
     "spatial": {"is_single": True},
 }
