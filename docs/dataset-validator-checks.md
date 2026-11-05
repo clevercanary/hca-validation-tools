@@ -34,7 +34,7 @@ Runs the external `cap_upload_validator` package against the file. Validates CAP
 
 ## 3. CELLxGENE validator (not run)
 
-`main.py` does not run the standalone CELLxGENE validator. The Tracker UI hides the CELLxGENE tab, so its results were never seen and crowded out visible warnings under SNS truncation. The job sends an empty, passing stub under `tool_reports.cellxgene` so the SNS payload schema stays satisfied (#382). The core CELLxGENE checks still run inside the HCA schema validator.
+`main.py` does not run the standalone CELLxGENE validator. The Tracker UI hides the CELLxGENE tab, so its results were never seen, and when results still travelled in the SNS message body they crowded out visible warnings once that message was truncated (#382). Results now go to S3 in full, and the SNS message only points to them (`write_validation_results_to_s3`). The job still sends an empty, passing stub under `tool_reports.cellxgene`, because the result message's schema requires that field. The core CELLxGENE checks still run inside the HCA schema validator.
 
 ---
 
