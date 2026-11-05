@@ -12,6 +12,12 @@ The checks fall into three groups:
 - **HCA overrides.** HCA replaces some CELLxGENE rules with its own.
 - **HCA extensions.** HCA adds checks that CELLxGENE does not have.
 
+The validator is also told whether the file is a source dataset or an
+integrated object (`object_kind`). A source dataset is one study aligned to one
+reference, while an integrated object combines several and can hold a
+different reference for each source. Today the kind changes only how some gene
+annotation warnings read.
+
 The validator reports two kinds of finding:
 
 - **Errors**: the file does not meet the schema.
