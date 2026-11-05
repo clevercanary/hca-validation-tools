@@ -55,6 +55,7 @@ Runs the full vendored schema validator against the unmodified CELLxGENE schema 
 - **Donor-level consistency** — see §4.2.
 - **Declared gene annotation vs. the file's genes** — see §4.3.
 - **Retired feature identifiers** — see §4.4. Classifies the per-identifier feature-ID warnings into one `Details:` row each and drops the warnings it classified; warnings for features it cannot classify stay.
+- **Spatial `is_primary_data` rule skipped** — `is_primary_data` is not in the HCA schema (#837), so the `is_single=False` rule in §5 doesn't apply.
 
 All other rules come from the vendored base class (§5).
 

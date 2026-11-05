@@ -605,11 +605,10 @@ def test_spatial_is_primary_data_rule_is_skipped(values):
     """#837: CELLxGENE's is_single=False rule must not fail, or crash on, a column HCA does not define."""
     from .fixtures.hca_fixtures import adata_spatial_is_single_false
 
-    _, baseline = _validate_from_fixture(adata_spatial_is_single_false.copy())
     test_adata = adata_spatial_is_single_false.copy()
     test_adata.obs["is_primary_data"] = values
-    _, validator = _validate_from_fixture(test_adata)
-    assert validator.errors == baseline.errors
+    is_valid, validator = _validate_from_fixture(test_adata)
+    assert is_valid is True, f"Validation failed with errors: {validator.errors}"
 
 
 def test_atac_fragment_checks_are_unreachable():

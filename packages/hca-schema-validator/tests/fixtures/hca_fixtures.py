@@ -491,6 +491,7 @@ good_obs_visium_is_single_false = pd.DataFrame(
     ],
 )
 
+good_obs_visium_is_single_false["organism_ontology_term_id"] = "NCBITaxon:9606"  # HCA: organism in obs
 good_obs_visium_is_single_false["donor_id"] = good_obs_visium_is_single_false["donor_id"].astype("category")
 good_obs_visium_is_single_false["suspension_type"] = good_obs_visium_is_single_false["suspension_type"].astype(
     "category"
