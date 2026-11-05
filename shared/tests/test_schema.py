@@ -148,6 +148,10 @@ def test_cell_class_excluded_from_coverage(schemaview):
 def test_library_slots_are_optional_on_sheets(model, slot_name):
     """#761: `recommended: true` has no Pydantic warning level, so on entry sheets these are simply optional."""
     assert not model.model_fields[slot_name].is_required()
+
+
+@pytest.mark.parametrize("slot_name", ["library_preparation_batch", "library_sequencing_run"])
+def test_sample_validates_with_or_without_library_slots(slot_name):
     assert schema.Sample.model_validate(_MINIMAL_SAMPLE)
     assert schema.Sample.model_validate({**_MINIMAL_SAMPLE, slot_name: "b1"})
 
