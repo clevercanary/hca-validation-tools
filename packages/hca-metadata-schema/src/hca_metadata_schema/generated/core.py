@@ -394,18 +394,17 @@ class Dataset(ConfiguredBaseModel):
          'examples': [{'description': 'Principal Investigator in Last '
                                       'Name,MiddleInitial, FirstName format',
                        'value': '["Teichmann,Sarah,A."]'}]} })
-    title: Optional[str] = Field(default=None, title="Title", description="""This text describes and differentiates the dataset from other datasets in the same collection.  It is strongly recommended that each dataset title in a collection is unique and does not depend on other metadata  such as a different assay to disambiguate it from other datasets in the collection.
+    title: str = Field(default=..., title="Title", description="""This text describes and differentiates the dataset from other datasets in the same collection.  It is strongly recommended that each dataset title in a collection is unique and does not depend on other metadata  such as a different assay to disambiguate it from other datasets in the collection.
 """, json_schema_extra = { "linkml_meta": {'alias': 'title',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'uns'},
-                         'cxg': {'tag': 'cxg', 'value': 'title'}},
-         'comments': ['Useful to look up protocol data that can provide insight on '
-                      'batch effects. As protocols can sometimes apply to a subset of '
-                      'the study, we capture this at a sample level. This information '
-                      'may not always be available.'],
+                         'cxg': {'tag': 'cxg', 'value': 'title'},
+                         'entrySheetRequired': {'tag': 'entrySheetRequired',
+                                                'value': False},
+                         'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'comments': ['Distinguishes this dataset from others in the same collection.'],
          'domain_of': ['Dataset'],
          'examples': [{'value': "Cells of the adult human heart collection is 'All — "
-                                "Cells of the adult human heart'"}],
-         'is_a': 'deprecated_slot'} })
+                                "Cells of the adult human heart'"}]} })
     dataset_id: str = Field(default=..., title="Dataset ID", description="""A unique identifier for each dataset in the study. This should be unique to the study.""", json_schema_extra = { "linkml_meta": {'alias': 'dataset_id', 'domain_of': ['Dataset', 'Donor', 'Sample']} })
 
 
@@ -545,18 +544,17 @@ class AdiposeDataset(Dataset):
          'examples': [{'description': 'Principal Investigator in Last '
                                       'Name,MiddleInitial, FirstName format',
                        'value': '["Teichmann,Sarah,A."]'}]} })
-    title: Optional[str] = Field(default=None, title="Title", description="""This text describes and differentiates the dataset from other datasets in the same collection.  It is strongly recommended that each dataset title in a collection is unique and does not depend on other metadata  such as a different assay to disambiguate it from other datasets in the collection.
+    title: str = Field(default=..., title="Title", description="""This text describes and differentiates the dataset from other datasets in the same collection.  It is strongly recommended that each dataset title in a collection is unique and does not depend on other metadata  such as a different assay to disambiguate it from other datasets in the collection.
 """, json_schema_extra = { "linkml_meta": {'alias': 'title',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'uns'},
-                         'cxg': {'tag': 'cxg', 'value': 'title'}},
-         'comments': ['Useful to look up protocol data that can provide insight on '
-                      'batch effects. As protocols can sometimes apply to a subset of '
-                      'the study, we capture this at a sample level. This information '
-                      'may not always be available.'],
+                         'cxg': {'tag': 'cxg', 'value': 'title'},
+                         'entrySheetRequired': {'tag': 'entrySheetRequired',
+                                                'value': False},
+                         'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'comments': ['Distinguishes this dataset from others in the same collection.'],
          'domain_of': ['Dataset'],
          'examples': [{'value': "Cells of the adult human heart collection is 'All — "
-                                "Cells of the adult human heart'"}],
-         'is_a': 'deprecated_slot'} })
+                                "Cells of the adult human heart'"}]} })
     dataset_id: str = Field(default=..., title="Dataset ID", description="""A unique identifier for each dataset in the study. This should be unique to the study.""", json_schema_extra = { "linkml_meta": {'alias': 'dataset_id', 'domain_of': ['Dataset', 'Donor', 'Sample']} })
 
 
@@ -696,18 +694,17 @@ class GutDataset(Dataset):
          'examples': [{'description': 'Principal Investigator in Last '
                                       'Name,MiddleInitial, FirstName format',
                        'value': '["Teichmann,Sarah,A."]'}]} })
-    title: Optional[str] = Field(default=None, title="Title", description="""This text describes and differentiates the dataset from other datasets in the same collection.  It is strongly recommended that each dataset title in a collection is unique and does not depend on other metadata  such as a different assay to disambiguate it from other datasets in the collection.
+    title: str = Field(default=..., title="Title", description="""This text describes and differentiates the dataset from other datasets in the same collection.  It is strongly recommended that each dataset title in a collection is unique and does not depend on other metadata  such as a different assay to disambiguate it from other datasets in the collection.
 """, json_schema_extra = { "linkml_meta": {'alias': 'title',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'uns'},
-                         'cxg': {'tag': 'cxg', 'value': 'title'}},
-         'comments': ['Useful to look up protocol data that can provide insight on '
-                      'batch effects. As protocols can sometimes apply to a subset of '
-                      'the study, we capture this at a sample level. This information '
-                      'may not always be available.'],
+                         'cxg': {'tag': 'cxg', 'value': 'title'},
+                         'entrySheetRequired': {'tag': 'entrySheetRequired',
+                                                'value': False},
+                         'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'comments': ['Distinguishes this dataset from others in the same collection.'],
          'domain_of': ['Dataset'],
          'examples': [{'value': "Cells of the adult human heart collection is 'All — "
-                                "Cells of the adult human heart'"}],
-         'is_a': 'deprecated_slot'} })
+                                "Cells of the adult human heart'"}]} })
     dataset_id: str = Field(default=..., title="Dataset ID", description="""A unique identifier for each dataset in the study. This should be unique to the study.""", json_schema_extra = { "linkml_meta": {'alias': 'dataset_id', 'domain_of': ['Dataset', 'Donor', 'Sample']} })
 
 
@@ -1722,18 +1719,17 @@ class MusculoskeletalDataset(Dataset):
          'examples': [{'description': 'Principal Investigator in Last '
                                       'Name,MiddleInitial, FirstName format',
                        'value': '["Teichmann,Sarah,A."]'}]} })
-    title: Optional[str] = Field(default=None, title="Title", description="""This text describes and differentiates the dataset from other datasets in the same collection.  It is strongly recommended that each dataset title in a collection is unique and does not depend on other metadata  such as a different assay to disambiguate it from other datasets in the collection.
+    title: str = Field(default=..., title="Title", description="""This text describes and differentiates the dataset from other datasets in the same collection.  It is strongly recommended that each dataset title in a collection is unique and does not depend on other metadata  such as a different assay to disambiguate it from other datasets in the collection.
 """, json_schema_extra = { "linkml_meta": {'alias': 'title',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'uns'},
-                         'cxg': {'tag': 'cxg', 'value': 'title'}},
-         'comments': ['Useful to look up protocol data that can provide insight on '
-                      'batch effects. As protocols can sometimes apply to a subset of '
-                      'the study, we capture this at a sample level. This information '
-                      'may not always be available.'],
+                         'cxg': {'tag': 'cxg', 'value': 'title'},
+                         'entrySheetRequired': {'tag': 'entrySheetRequired',
+                                                'value': False},
+                         'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'comments': ['Distinguishes this dataset from others in the same collection.'],
          'domain_of': ['Dataset'],
          'examples': [{'value': "Cells of the adult human heart collection is 'All — "
-                                "Cells of the adult human heart'"}],
-         'is_a': 'deprecated_slot'} })
+                                "Cells of the adult human heart'"}]} })
     dataset_id: str = Field(default=..., title="Dataset ID", description="""A unique identifier for each dataset in the study. This should be unique to the study.""", json_schema_extra = { "linkml_meta": {'alias': 'dataset_id', 'domain_of': ['Dataset', 'Donor', 'Sample']} })
 
 

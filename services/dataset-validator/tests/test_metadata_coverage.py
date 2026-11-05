@@ -284,14 +284,22 @@ class TestFieldCoverageEnumeration:
         obs = pd.DataFrame({"donor_id": ["D1"], "sample_id": ["S1"]})
         result = compute_metadata_coverage(make_adata(obs), schemaview)
         all_fields = {(e["entity_class"], e["field"]) for e in result["field_coverage"]}
-        # All deprecated. `title` is in uns; the rest are in obs (#604).
+        # All deprecated, and all in obs (#604).
         assert ("donor", "sex_ontology_term") not in all_fields
         assert ("dataset", "assay_ontology_term") not in all_fields
         assert ("dataset", "consortia") not in all_fields
         assert ("sample", "age_range") not in all_fields
         assert ("sample", "tissue_ontology_term") not in all_fields
         assert ("sample", "disease_ontology_term") not in all_fields
-        assert ("dataset", "title") not in all_fields
+
+    def test_title_emits_at_dataset_grain(self, schemaview):
+        # #836 made `title` a real, required slot, so coverage reports it like study_pi.
+        # Net wire-format change is ONE new dataset-grain row, which shifts the dataset
+        # denominator for anyone computing percentages. "dataset" is already in the
+        # tracker's allowlist, and new fields need no coordination (schema_utils).
+        obs = pd.DataFrame({"donor_id": ["D1"], "sample_id": ["S1"]})
+        result = compute_metadata_coverage(make_adata(obs, {"title": "A title"}), schemaview)
+        assert field_entry(result, "dataset", "title")["complete"] == 1
 
     def test_publication_doi_and_contact_email_emit_at_dataset_grain(self, schemaview):
         # #604 gave both an annDataLocation; before it, coverage never reported them.

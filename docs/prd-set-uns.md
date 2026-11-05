@@ -28,7 +28,7 @@ Source: `hca_metadata_schema/slots.yaml`, `hca_metadata_schema/dataset.yaml` (in
 
 | Field | Required | Type | Validation |
 |-------|----------|------|------------|
-| `title` | No* | string | Non-empty |
+| `title` | Yes* | string | Non-empty |
 | `description` | Yes | string | Non-empty |
 | `study_pi` | Yes | list[string] | Non-empty list, each element non-empty |
 | `batch_condition` | No | list[string] | Each value must be a column in `obs` |
@@ -37,7 +37,7 @@ Source: `hca_metadata_schema/slots.yaml`, `hca_metadata_schema/dataset.yaml` (in
 | `ambient_count_correction` | Yes | string | Free text (common: none, soupx, cellbender) |
 | `doublet_detection` | Yes | string | Free text (common: none, doublet_finder, manual) |
 
-*`title` is required by cellxgene schema but marked optional in the HCA data dictionary.
+*`title` is required in h5ad files, as in the cellxgene schema (#836). Entry sheets may still leave it blank (`entrySheetRequired: false`).
 
 **Not settable via this tool** (reserved, set by cellxgene post-upload):
 - `schema_version`, `schema_reference`, `citation`

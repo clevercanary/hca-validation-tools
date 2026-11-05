@@ -631,12 +631,13 @@
           "title": "Title",
           "description": "This text describes and differentiates the dataset from other datasets in the same collection.  It is strongly recommended that each dataset title in a collection is unique and does not depend on other metadata  such as a different assay to disambiguate it from other datasets in the collection.\n",
           "range": "string",
-          "required": false,
+          "required": true,
           "multivalued": false,
           "example": "Cells of the adult human heart collection is 'All \u2014 Cells of the adult human heart'",
           "annotations": {
             "cxg": "title",
             "annDataLocation": "uns",
+            "tier": "Tier 1",
             "bioNetworks": [
               "adipose",
               "breast",
@@ -658,7 +659,7 @@
               "skin"
             ]
           },
-          "rationale": "Useful to look up protocol data that can provide insight on batch effects. As protocols can sometimes apply to a subset of the study, we capture this at a sample level. This information may not always be available."
+          "rationale": "Distinguishes this dataset from others in the same collection."
         }
       ]
     },

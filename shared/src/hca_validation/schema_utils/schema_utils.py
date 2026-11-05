@@ -65,7 +65,7 @@ def get_slot_anndata_location(slot: SlotDefinition) -> str | None:
     return _annotation_value(slot, "annDataLocation")
 
 
-_ENTRY_SHEET_REQUIRED = "entrySheetRequired"
+ENTRY_SHEET_REQUIRED = "entrySheetRequired"
 
 
 def get_entry_sheet_optional_slots(schemaview: SchemaView, class_name: str) -> frozenset[str]:
@@ -81,15 +81,15 @@ def get_entry_sheet_optional_slots(schemaview: SchemaView, class_name: str) -> f
         value = None
         for source in [slot, *usages, schemaview.get_slot(slot.name)]:
             if source is not None:
-                value = _annotation_value(source, _ENTRY_SHEET_REQUIRED)
+                value = _annotation_value(source, ENTRY_SHEET_REQUIRED)
                 if value is not None:
                     break
         if value is None:
             continue
         if value is not False:
-            raise ValueError(f"{class_name}.{slot.name}: {_ENTRY_SHEET_REQUIRED} must be false, got {value!r}")
+            raise ValueError(f"{class_name}.{slot.name}: {ENTRY_SHEET_REQUIRED} must be false, got {value!r}")
         if not slot.required:
-            raise ValueError(f"{class_name}.{slot.name}: {_ENTRY_SHEET_REQUIRED} is only for required slots")
+            raise ValueError(f"{class_name}.{slot.name}: {ENTRY_SHEET_REQUIRED} is only for required slots")
         optional.add(slot.name)
     return frozenset(optional)
 
