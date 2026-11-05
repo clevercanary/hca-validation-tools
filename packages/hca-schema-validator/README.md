@@ -180,7 +180,11 @@ some columns must sit below a given parent term. Every problem here is an error.
 
 - **Cell type**: the Cell Ontology (CL), or the zebrafish, fruit fly or worm
   equivalent for those organisms. Cell lines have their own rules.
-- **Tissue**: UBERON (the Uber-anatomy Ontology), or the organism's equivalent.
+- **Tissue**: depends on `obs['tissue_type']`:
+  - `tissue` or `organoid`: UBERON (the Uber-anatomy Ontology), or the
+    zebrafish, fruit fly or worm equivalent for those organisms
+  - `primary cell culture`: a cell type term, following the cell type rules
+  - `cell line`: a Cellosaurus (CVCL) term
 - **Assay**: EFO (the Experimental Factor Ontology).
 - **Disease**: MONDO (the Mondo Disease Ontology), or `PATO:0000461` (normal)
   for healthy samples.
