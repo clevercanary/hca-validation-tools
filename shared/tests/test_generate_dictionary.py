@@ -201,6 +201,26 @@ def test_conflicting_definitions_are_refused(tmp_path):
         transform_schema_to_data_dictionary(schemaview)
 
 
+def test_subclass_adding_only_entry_sheet_required_folds(tmp_path):
+    # #850: the annotation relaxes entry sheets only, so it is not a definition change the dictionary must refuse.
+    schemaview = _schemaview(
+        tmp_path,
+        """
+        GutDataset:
+          is_a: Dataset
+          annotations:
+            bioNetwork: gut
+          slot_usage:
+            title:
+              annotations:
+                entrySheetRequired: false
+        """,
+    )
+    title = _attribute(transform_schema_to_data_dictionary(schemaview), "dataset", "title")
+    assert title["required"] is True
+    assert "entrySheetRequired" not in title.get("annotations", {})
+
+
 def test_changed_base_slot_is_refused(tmp_path):
     schemaview = _schemaview(
         tmp_path,
