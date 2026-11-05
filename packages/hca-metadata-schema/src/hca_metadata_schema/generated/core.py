@@ -394,18 +394,14 @@ class Dataset(ConfiguredBaseModel):
          'examples': [{'description': 'Principal Investigator in Last '
                                       'Name,MiddleInitial, FirstName format',
                        'value': '["Teichmann,Sarah,A."]'}]} })
-    title: Optional[str] = Field(default=None, title="Title", description="""This text describes and differentiates the dataset from other datasets in the same collection.  It is strongly recommended that each dataset title in a collection is unique and does not depend on other metadata  such as a different assay to disambiguate it from other datasets in the collection.
+    title: str = Field(default=..., title="Title", description="""This text describes and differentiates the dataset from other datasets in the same collection.  It is strongly recommended that each dataset title in a collection is unique and does not depend on other metadata  such as a different assay to disambiguate it from other datasets in the collection.
 """, json_schema_extra = { "linkml_meta": {'alias': 'title',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'uns'},
-                         'cxg': {'tag': 'cxg', 'value': 'title'}},
-         'comments': ['Useful to look up protocol data that can provide insight on '
-                      'batch effects. As protocols can sometimes apply to a subset of '
-                      'the study, we capture this at a sample level. This information '
-                      'may not always be available.'],
+                         'cxg': {'tag': 'cxg', 'value': 'title'},
+                         'tier': {'tag': 'tier', 'value': 'Tier 1'}},
          'domain_of': ['Dataset'],
          'examples': [{'value': "Cells of the adult human heart collection is 'All — "
-                                "Cells of the adult human heart'"}],
-         'is_a': 'deprecated_slot'} })
+                                "Cells of the adult human heart'"}]} })
     dataset_id: str = Field(default=..., title="Dataset ID", description="""A unique identifier for each dataset in the study. This should be unique to the study.""", json_schema_extra = { "linkml_meta": {'alias': 'dataset_id', 'domain_of': ['Dataset', 'Donor', 'Sample']} })
 
 
@@ -545,18 +541,14 @@ class AdiposeDataset(Dataset):
          'examples': [{'description': 'Principal Investigator in Last '
                                       'Name,MiddleInitial, FirstName format',
                        'value': '["Teichmann,Sarah,A."]'}]} })
-    title: Optional[str] = Field(default=None, title="Title", description="""This text describes and differentiates the dataset from other datasets in the same collection.  It is strongly recommended that each dataset title in a collection is unique and does not depend on other metadata  such as a different assay to disambiguate it from other datasets in the collection.
+    title: str = Field(default=..., title="Title", description="""This text describes and differentiates the dataset from other datasets in the same collection.  It is strongly recommended that each dataset title in a collection is unique and does not depend on other metadata  such as a different assay to disambiguate it from other datasets in the collection.
 """, json_schema_extra = { "linkml_meta": {'alias': 'title',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'uns'},
-                         'cxg': {'tag': 'cxg', 'value': 'title'}},
-         'comments': ['Useful to look up protocol data that can provide insight on '
-                      'batch effects. As protocols can sometimes apply to a subset of '
-                      'the study, we capture this at a sample level. This information '
-                      'may not always be available.'],
+                         'cxg': {'tag': 'cxg', 'value': 'title'},
+                         'tier': {'tag': 'tier', 'value': 'Tier 1'}},
          'domain_of': ['Dataset'],
          'examples': [{'value': "Cells of the adult human heart collection is 'All — "
-                                "Cells of the adult human heart'"}],
-         'is_a': 'deprecated_slot'} })
+                                "Cells of the adult human heart'"}]} })
     dataset_id: str = Field(default=..., title="Dataset ID", description="""A unique identifier for each dataset in the study. This should be unique to the study.""", json_schema_extra = { "linkml_meta": {'alias': 'dataset_id', 'domain_of': ['Dataset', 'Donor', 'Sample']} })
 
 
@@ -696,18 +688,14 @@ class GutDataset(Dataset):
          'examples': [{'description': 'Principal Investigator in Last '
                                       'Name,MiddleInitial, FirstName format',
                        'value': '["Teichmann,Sarah,A."]'}]} })
-    title: Optional[str] = Field(default=None, title="Title", description="""This text describes and differentiates the dataset from other datasets in the same collection.  It is strongly recommended that each dataset title in a collection is unique and does not depend on other metadata  such as a different assay to disambiguate it from other datasets in the collection.
+    title: str = Field(default=..., title="Title", description="""This text describes and differentiates the dataset from other datasets in the same collection.  It is strongly recommended that each dataset title in a collection is unique and does not depend on other metadata  such as a different assay to disambiguate it from other datasets in the collection.
 """, json_schema_extra = { "linkml_meta": {'alias': 'title',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'uns'},
-                         'cxg': {'tag': 'cxg', 'value': 'title'}},
-         'comments': ['Useful to look up protocol data that can provide insight on '
-                      'batch effects. As protocols can sometimes apply to a subset of '
-                      'the study, we capture this at a sample level. This information '
-                      'may not always be available.'],
+                         'cxg': {'tag': 'cxg', 'value': 'title'},
+                         'tier': {'tag': 'tier', 'value': 'Tier 1'}},
          'domain_of': ['Dataset'],
          'examples': [{'value': "Cells of the adult human heart collection is 'All — "
-                                "Cells of the adult human heart'"}],
-         'is_a': 'deprecated_slot'} })
+                                "Cells of the adult human heart'"}]} })
     dataset_id: str = Field(default=..., title="Dataset ID", description="""A unique identifier for each dataset in the study. This should be unique to the study.""", json_schema_extra = { "linkml_meta": {'alias': 'dataset_id', 'domain_of': ['Dataset', 'Donor', 'Sample']} })
 
 
@@ -888,33 +876,6 @@ class Sample(ConfiguredBaseModel):
                       'other factors differ.'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'EMBL-EBI; Genome Institute of Singapore'}]} })
-    is_primary_data: Optional[str] = Field(default=None, title="Is Primary Data", description="""Deprecated placeholder indicating whether sample represents primary data.""", json_schema_extra = { "linkml_meta": {'alias': 'is_primary_data',
-         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
-                         'cxg': {'tag': 'cxg', 'value': 'is_primary_data'},
-                         'tier': {'tag': 'tier', 'value': 'Tier 1'}},
-         'comments': ['Kept as a deprecated placeholder on purpose. The annotation is '
-                      'the only thing added here, because annotations are inert for '
-                      'validation: they tell annDataLocation-walking consumers such as '
-                      'drop_obs_columns that this obs column exists and must not be '
-                      'deleted, without altering what the entry sheet validator '
-                      'accepts. Restoring it to a real `range: boolean` slot would '
-                      'start type-checking the column on entry sheets, where it is '
-                      'currently an unconstrained string that tolerates any value '
-                      'including "na" — sheets that validate today would begin '
-                      'failing. See #544.',
-                      'The real modelling question is deferred, not answered. '
-                      'CELLxGENE defines this in obs as a per-cell bool, and the '
-                      'published Tier 1 dictionary describes it as "the canonical '
-                      'instance of this cellular observation" — per-observation '
-                      "semantics — while filing it under `sample`. A sample's cells "
-                      'can legitimately disagree, so Sample is the wrong grain for it '
-                      'and this placeholder deliberately makes no semantic claim. '
-                      'Moving it to Cell is its own change: slots are global by name '
-                      'in LinkML, so it needs a slot_usage override rather than a '
-                      'move, and removing it from Sample outright would make sheets '
-                      'carrying the column fail with extra_forbidden.'],
-         'domain_of': ['Sample'],
-         'is_a': 'deprecated_slot'} })
     library_id: str = Field(default=..., title="Library ID", description="""The unique ID that is used to track libraries in the investigator's institution (should align with the publication).""", json_schema_extra = { "linkml_meta": {'alias': 'library_id',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
@@ -1155,33 +1116,6 @@ class AdiposeSample(Sample):
                       'other factors differ.'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'EMBL-EBI; Genome Institute of Singapore'}]} })
-    is_primary_data: Optional[str] = Field(default=None, title="Is Primary Data", description="""Deprecated placeholder indicating whether sample represents primary data.""", json_schema_extra = { "linkml_meta": {'alias': 'is_primary_data',
-         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
-                         'cxg': {'tag': 'cxg', 'value': 'is_primary_data'},
-                         'tier': {'tag': 'tier', 'value': 'Tier 1'}},
-         'comments': ['Kept as a deprecated placeholder on purpose. The annotation is '
-                      'the only thing added here, because annotations are inert for '
-                      'validation: they tell annDataLocation-walking consumers such as '
-                      'drop_obs_columns that this obs column exists and must not be '
-                      'deleted, without altering what the entry sheet validator '
-                      'accepts. Restoring it to a real `range: boolean` slot would '
-                      'start type-checking the column on entry sheets, where it is '
-                      'currently an unconstrained string that tolerates any value '
-                      'including "na" — sheets that validate today would begin '
-                      'failing. See #544.',
-                      'The real modelling question is deferred, not answered. '
-                      'CELLxGENE defines this in obs as a per-cell bool, and the '
-                      'published Tier 1 dictionary describes it as "the canonical '
-                      'instance of this cellular observation" — per-observation '
-                      "semantics — while filing it under `sample`. A sample's cells "
-                      'can legitimately disagree, so Sample is the wrong grain for it '
-                      'and this placeholder deliberately makes no semantic claim. '
-                      'Moving it to Cell is its own change: slots are global by name '
-                      'in LinkML, so it needs a slot_usage override rather than a '
-                      'move, and removing it from Sample outright would make sheets '
-                      'carrying the column fail with extra_forbidden.'],
-         'domain_of': ['Sample'],
-         'is_a': 'deprecated_slot'} })
     library_id: str = Field(default=..., title="Library ID", description="""The unique ID that is used to track libraries in the investigator's institution (should align with the publication).""", json_schema_extra = { "linkml_meta": {'alias': 'library_id',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
@@ -1426,33 +1360,6 @@ class GutSample(Sample):
                       'other factors differ.'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'EMBL-EBI; Genome Institute of Singapore'}]} })
-    is_primary_data: Optional[str] = Field(default=None, title="Is Primary Data", description="""Deprecated placeholder indicating whether sample represents primary data.""", json_schema_extra = { "linkml_meta": {'alias': 'is_primary_data',
-         'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
-                         'cxg': {'tag': 'cxg', 'value': 'is_primary_data'},
-                         'tier': {'tag': 'tier', 'value': 'Tier 1'}},
-         'comments': ['Kept as a deprecated placeholder on purpose. The annotation is '
-                      'the only thing added here, because annotations are inert for '
-                      'validation: they tell annDataLocation-walking consumers such as '
-                      'drop_obs_columns that this obs column exists and must not be '
-                      'deleted, without altering what the entry sheet validator '
-                      'accepts. Restoring it to a real `range: boolean` slot would '
-                      'start type-checking the column on entry sheets, where it is '
-                      'currently an unconstrained string that tolerates any value '
-                      'including "na" — sheets that validate today would begin '
-                      'failing. See #544.',
-                      'The real modelling question is deferred, not answered. '
-                      'CELLxGENE defines this in obs as a per-cell bool, and the '
-                      'published Tier 1 dictionary describes it as "the canonical '
-                      'instance of this cellular observation" — per-observation '
-                      "semantics — while filing it under `sample`. A sample's cells "
-                      'can legitimately disagree, so Sample is the wrong grain for it '
-                      'and this placeholder deliberately makes no semantic claim. '
-                      'Moving it to Cell is its own change: slots are global by name '
-                      'in LinkML, so it needs a slot_usage override rather than a '
-                      'move, and removing it from Sample outright would make sheets '
-                      'carrying the column fail with extra_forbidden.'],
-         'domain_of': ['Sample'],
-         'is_a': 'deprecated_slot'} })
     library_id: str = Field(default=..., title="Library ID", description="""The unique ID that is used to track libraries in the investigator's institution (should align with the publication).""", json_schema_extra = { "linkml_meta": {'alias': 'library_id',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
@@ -1722,18 +1629,14 @@ class MusculoskeletalDataset(Dataset):
          'examples': [{'description': 'Principal Investigator in Last '
                                       'Name,MiddleInitial, FirstName format',
                        'value': '["Teichmann,Sarah,A."]'}]} })
-    title: Optional[str] = Field(default=None, title="Title", description="""This text describes and differentiates the dataset from other datasets in the same collection.  It is strongly recommended that each dataset title in a collection is unique and does not depend on other metadata  such as a different assay to disambiguate it from other datasets in the collection.
+    title: str = Field(default=..., title="Title", description="""This text describes and differentiates the dataset from other datasets in the same collection.  It is strongly recommended that each dataset title in a collection is unique and does not depend on other metadata  such as a different assay to disambiguate it from other datasets in the collection.
 """, json_schema_extra = { "linkml_meta": {'alias': 'title',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'uns'},
-                         'cxg': {'tag': 'cxg', 'value': 'title'}},
-         'comments': ['Useful to look up protocol data that can provide insight on '
-                      'batch effects. As protocols can sometimes apply to a subset of '
-                      'the study, we capture this at a sample level. This information '
-                      'may not always be available.'],
+                         'cxg': {'tag': 'cxg', 'value': 'title'},
+                         'tier': {'tag': 'tier', 'value': 'Tier 1'}},
          'domain_of': ['Dataset'],
          'examples': [{'value': "Cells of the adult human heart collection is 'All — "
-                                "Cells of the adult human heart'"}],
-         'is_a': 'deprecated_slot'} })
+                                "Cells of the adult human heart'"}]} })
     dataset_id: str = Field(default=..., title="Dataset ID", description="""A unique identifier for each dataset in the study. This should be unique to the study.""", json_schema_extra = { "linkml_meta": {'alias': 'dataset_id', 'domain_of': ['Dataset', 'Donor', 'Sample']} })
 
 

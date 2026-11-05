@@ -82,6 +82,11 @@ def test_library_slots_are_strongly_recommended(data_dictionary, attribute_name)
     assert _attribute(data_dictionary, "sample", attribute_name)["required"] == "strongly recommended"
 
 
+def test_title_is_required(data_dictionary):
+    # #836: title matches the h5ad validator, the portal and CELLxGENE.
+    assert _attribute(data_dictionary, "dataset", "title")["required"] is True
+
+
 def test_core_slots_have_every_network(data_dictionary):
     networks = _attribute(data_dictionary, "dataset", "title")["annotations"]["bioNetworks"]
     assert len(networks) == 18

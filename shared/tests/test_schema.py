@@ -4,6 +4,7 @@ Test script for schema functionality.
 
 import hca_metadata_schema.generated.core as schema
 import pytest
+from pydantic import ValidationError
 
 from hca_validation.schema_utils.schema_utils import (
     coverage_classes,
@@ -85,7 +86,6 @@ def test_bionetwork_annotations_match_schema_classes(schemaview):
 _OBS_ANNOTATED_SLOTS = [
     ("Cell", "author_cell_type"),
     ("Cell", "cell_type_ontology_term_id"),
-    ("Sample", "is_primary_data"),
     ("Sample", "sample_collection_method"),
     # #604: in obs in the tracker's h5ad files, the six deprecated ones included.
     ("Dataset", "publication_doi"),
@@ -156,26 +156,8 @@ def test_sample_validates_with_or_without_library_slots(slot_name):
     assert schema.Sample.model_validate({**_MINIMAL_SAMPLE, slot_name: "b1"})
 
 
-def test_is_primary_data_stays_sheet_inert():
-    """#538 annotated `is_primary_data` but deliberately left it a deprecated_slot.
-
-    This is the load-bearing property: entry sheet validation runs
-    `Sample.model_validate(row_dict)` on data taken straight from sheet columns, so the
-    slot's `range` decides what curators may type. As an unconstrained string it accepts
-    anything, including the "na" convention this schema documents elsewhere
-    (`cell_enrichment`, `suspension_type`). Giving it `range: boolean` would start
-    rejecting those values, so sheets that validate today would begin failing.
-
-    Annotations are inert for validation, which is what lets the obs annotation coexist
-    with the placeholder — see the slot's comments and #544.
-    """
-    assert not schema.Sample.model_fields["is_primary_data"].is_required()
-
-    # The behavioural check, and the one that matters: these are the values a sheet
-    # might plausibly carry, and all of them must still pass. This also subsumes an
-    # annotation-equality assertion — if the slot regained `range: boolean`, "na",
-    # "unknown" and "primary" would each raise here.
-    for value in ("TRUE", "true", "na", "unknown", "primary", None):
-        assert schema.Sample.model_validate({**_MINIMAL_SAMPLE, "is_primary_data": value}), (
-            f"{value!r} should be accepted"
-        )
+def test_sample_rejects_is_primary_data():
+    """#836 removed the slot: it is a CELLxGENE field with no HCA meaning, so a sheet column of that name is unknown."""
+    with pytest.raises(ValidationError) as excinfo:
+        schema.Sample.model_validate({**_MINIMAL_SAMPLE, "is_primary_data": "TRUE"})
+    assert [(e["type"], e["loc"]) for e in excinfo.value.errors()] == [("extra_forbidden", ("is_primary_data",))]

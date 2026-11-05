@@ -48,6 +48,15 @@ def test_validate_valid_dataset(valid_dataset):
     assert not validation_error, "Valid dataset should have no validation errors"
 
 
+@pytest.mark.parametrize("class_name", ["Dataset", "AdiposeDataset", "GutDataset", "MusculoskeletalDataset"])
+def test_dataset_requires_title(valid_dataset, class_name):
+    """#836: title is required, as the h5ad validator, the portal and CELLxGENE already require it."""
+    without_title = {key: value for key, value in valid_dataset.items() if key != "title"}
+    validation_error = validate(without_title, class_name=class_name)
+    assert validation_error is not None
+    assert ("missing", ("title",)) in [(e["type"], e["loc"]) for e in validation_error.errors()]
+
+
 def test_validate_invalid_dataset(invalid_dataset):
     """Test validation of an invalid dataset."""
     # Validate the dataset
