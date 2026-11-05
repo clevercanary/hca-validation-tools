@@ -422,6 +422,8 @@ a label that disagrees with its term ID misleads anyone reading the file.
 
 - A populated label column (`sex`, `tissue`, `cell_type` and so on) without its
   term ID column (such as `tissue_ontology_term_id`) is a warning.
+- A label on a row whose term ID is missing is an error: add the term ID, or
+  remove the label.
 - A label that does not match the official name of the term on the same row is
   an error.
 
@@ -472,7 +474,9 @@ Two comparisons:
    cells, the validator checks that both name the same genome assembly, such as
    GRCh38. An integrated atlas can hold cells aligned to different assemblies,
    so each combination is checked on its own. The message names the cells that
-   disagree. A combination where either value names no assembly is skipped.
+   disagree. The comparison runs only when every cell's organism is human. A
+   combination where either value is missing, or names no assembly, is
+   skipped, as is every cell when `obs` has no `reference_genome` column.
 2. **Declared release against the genes.** For each Ensembl release, the
    validator counts the file's genes that release does not have. The releases
    that have every gene are the file's compatible releases. Human IDs the gene
