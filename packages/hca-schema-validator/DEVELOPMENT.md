@@ -11,7 +11,17 @@ From the repository root:
 ```bash
 cd packages/hca-schema-validator
 uv run pytest tests/
+uv run pytest tests/ --cov --cov-report=term-missing   # coverage per file, checked against the floor
 ```
+
+- CI fails the package when coverage drops below its floor, `fail_under` in
+  `pyproject.toml`. The floor leaves out the vendored copy of `cellxgene-schema`,
+  which CI reports separately. When and how to raise a floor is in the
+  repository's `CLAUDE.md`, under Coverage.
+- One test checks the donor columns against the LinkML Donor schema, read from
+  `hca-metadata-schema`. That package is a development-only dependency, resolved
+  from `packages/hca-metadata-schema` in the checkout; the test is skipped where
+  it is not installed.
 
 ## Project Structure
 
