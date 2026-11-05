@@ -122,6 +122,15 @@ def slot_definition(slot_info) -> dict[str, Any]:
     return {key: value for key, value in json_dumper.to_dict(slot_info).items() if key not in _SLOT_PROVENANCE}
 
 
+def requirement_level(slot_info) -> bool | str:
+    """The portal's three requirement levels: `required` wins over LinkML's `recommended` metaslot."""
+    if slot_info.required:
+        return True
+    if slot_info.recommended:
+        return "strongly recommended"
+    return False
+
+
 def slot_to_attribute(schemaview: SchemaView, slot_info, schema_enum_names: set[str]) -> dict[str, Any]:
     """Convert an induced slot into a data dictionary attribute."""
     # Create the attribute entry with the exact structure requested
@@ -131,7 +140,7 @@ def slot_to_attribute(schemaview: SchemaView, slot_info, schema_enum_names: set[
         "title": slot_info.title if slot_info.title is not None else slot_info.name,
         "description": slot_info.description or "",
         "range": slot_info.range if slot_info.range is not None else "string",
-        "required": slot_info.required if slot_info.required is not None else False,
+        "required": requirement_level(slot_info),
         "multivalued": slot_info.multivalued if slot_info.multivalued is not None else False,
     }
 

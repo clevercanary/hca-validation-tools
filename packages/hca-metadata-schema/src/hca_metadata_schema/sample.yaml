@@ -218,7 +218,8 @@ slots:
       annDataLocation: obs
       tier: Tier 1
     range: string
-    required: true
+    required: false
+    recommended: true
     multivalued: false
     comments:
       - >-
@@ -234,7 +235,8 @@ slots:
       annDataLocation: obs
       tier: Tier 1
     range: string
-    required: true
+    required: false
+    recommended: true
     multivalued: false
     comments:
       - >-
