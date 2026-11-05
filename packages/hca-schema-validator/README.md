@@ -192,8 +192,9 @@ some columns must sit below a given parent term. Every problem here is an error.
 
 ### Genes (`var`, `raw.var`)
 
-*[HCA override](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/README.md#hca-overrides): gene ID warnings name the gene set
-version, and human Ensembl gene IDs are listed in one gene ID report instead.*
+*[HCA override](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/README.md#hca-overrides): a gene ID missing from the gene list
+is a warning, not an error. The warning names the gene set version, and human
+Ensembl gene IDs are listed in one gene ID report instead.*
 
 - `var` exists, and every gene ID is unique.
 - No column mixes value types.
@@ -201,7 +202,8 @@ version, and human Ensembl gene IDs are listed in one gene ID report instead.*
   to fewer genes.
 - Every gene ID belongs to a supported organism (human, mouse, SARS-CoV-2, ERCC
   spike-ins, and several model organisms and primates) and appears in that
-  organism's gene list. An ID missing from the list is a warning.
+  organism's gene list. CELLxGENE reports an ID missing from the list as an
+  error.
 - A gene ID from a different organism than the file's is a warning.
 - `var['feature_is_filtered']` is true/false, and is all false when the file has
   no raw matrix. `raw.var` must not have this column.
@@ -260,18 +262,21 @@ the file has other errors.*
 
 - Spatial metadata is allowed only for Visium (a specific Visium assay term, not
   the general one) and Slide-seqV2, with one assay per file.
-- `uns['spatial']` holds an `is_single` true/false flag, plus at most one
-  library entry, which holds the section's images and scale factors.
+- `uns['spatial']` holds an `is_single` true/false flag.
 - For a single-section Visium file:
+  - `uns['spatial']` holds exactly one library entry, with the section's images
+    and scale factors
   - the high-resolution image is required: 8-bit, height × width × 3 or 4, with
     a longest side of 2,000 pixels (4,000 for the 11 mm slide)
   - the full-resolution image is optional, and its absence is a warning
   - spot diameter and image scale factors are required
-  - `obs['array_row']` and `obs['array_col']` are whole numbers within the
-    slide's range
+  - `obs['array_row']`, `obs['array_col']` and `obs['in_tissue']` are
+    required: the row and column are whole numbers within the slide's range,
+    and `in_tissue` is 0 or 1
+  - spots outside the tissue (`in_tissue` is 0) have cell type `unknown`
   - the raw matrix has exactly 4,992 spots (14,336 for the 11 mm slide)
-- `obs['in_tissue']` is 0 or 1, and spots outside the tissue have cell type
-  `unknown`.
+- Any other file, including Slide-seqV2 and multi-section Visium, must not have
+  a library entry or the `array_row`, `array_col` and `in_tissue` columns.
 - A file that is not a single section has `is_primary_data` set to false.
 
 ### Duplicate cells
@@ -309,8 +314,11 @@ HCA replaces some CELLxGENE rules with its own.
   does not reject these columns, and checks each label against its ontology
   term instead
   ([Cell metadata labels](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/README.md#cell-metadata-labels)).
-- **Gene ID warnings.** Each `Feature ID '…' not found` warning names the gene
-  set version, for example "not found in GENCODE v48 (Ensembl 114)", and these
+- **Gene ID warnings.** CELLxGENE reports a gene ID missing from its gene list
+  as an error. HCA reports it as a warning, so that outdated gene IDs, which
+  are common in HCA files, do not stop validation from reporting the file's
+  other problems. Each ID is then explained in the gene ID report. Each `Feature ID '…' not found`
+  warning names the gene set version, for example "not found in GENCODE v48 (Ensembl 114)", and these
   warnings are listed after all other warnings. Human Ensembl gene IDs do not
   get this warning. They are listed in one gene ID report instead
   ([Gene IDs outside the allowed gene set](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/README.md#gene-ids-outside-the-allowed-gene-set)).
