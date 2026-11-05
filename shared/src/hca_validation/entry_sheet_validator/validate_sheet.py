@@ -701,7 +701,7 @@ def validate_google_sheet(
 
     import logging
 
-    from hca_validation.schema_utils import get_entity_class_name, load_schemaview
+    from hca_validation.schema_utils import get_entity_class_name, get_entry_sheet_optional_slots, load_schemaview
     from hca_validation.validator import validate, validate_id_uniqueness, validate_referential_integrity
 
     logger = logging.getLogger()
@@ -822,6 +822,7 @@ def validate_google_sheet(
     for entity_type, sheet_info in zip(entity_types, sheet_read_result.worksheets, strict=True):
         # Determine schema class name to use for validation
         class_name = get_entity_class_name(entity_type, bionetwork)
+        entry_sheet_optional = get_entry_sheet_optional_slots(schemaview, class_name)
         # Get normalized dataframe of rows to validate
         rows_to_validate = rows_to_validate_by_entity_type[entity_type]
         all_valid_in_worksheet = True
@@ -861,7 +862,7 @@ def validate_google_sheet(
 
             # Validate the data
             try:
-                validation_error = validate(row_dict, class_name=class_name)
+                validation_error = validate(row_dict, class_name=class_name, entry_sheet_optional=entry_sheet_optional)
                 # Report results
                 if validation_error:
                     all_valid_in_worksheet = False

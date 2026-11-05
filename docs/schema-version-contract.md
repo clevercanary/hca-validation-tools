@@ -77,10 +77,20 @@ A version is only useful if a consumer can tell from it whether a file that pass
 - changing a slot's `range` or `annDataLocation`
 - a stricter `pattern`
 - changing identifiers or foreign keys, which drive the ID-uniqueness and referential checks
+- removing `entrySheetRequired: false` from a required slot, which makes entry sheets require it (§3.4)
 
 3.3 **A change that affects only some networks is still breaking** if it breaks those networks' files, for example
     a new required slot on `GutSample`. There is one version, so it bumps that version; the commit and changelog
     name the network.
+
+3.4 **`required` describes what an h5ad file must contain.** Entry sheets follow it too, unless the slot carries the
+    annotation `entrySheetRequired: false` (#850): then an entry sheet may leave the slot blank or omit its column,
+    while a value that is present is still checked. Only the entry-sheet validator reads the annotation. The data
+    dictionary never publishes it: the portal's dictionary reports the slot's `required` level only. A
+    `slot_usage` that adds the annotation must repeat the slot's other annotations, because LinkML replaces rather
+    than merges them (linkml#2805); otherwise the dictionary refuses the subclass as a changed slot. Making an
+    optional slot required stays breaking (§3.2) even with the annotation: the generated models, and the tools
+    built on them, require it.
 
 ## 4. Additions: nothing that passed can fail, but consumers see something new
 
@@ -89,6 +99,7 @@ A version is only useful if a consumer can tell from it whether a file that pass
 - loosening a `pattern` or widening a `range`
 - annotations that change only the published data dictionary or coverage reporting, such as `bioNetwork`, `tier`,
   or `annDataLocation` on a slot that had none
+- adding `entrySheetRequired: false` to a required slot, which relaxes entry sheets only (§3.4)
 
 4.2 Dictionary-only changes are additions, not text fixes: the portal and the tracker consume the dictionary, and a
     consumer pinned to a release tag (DataBiosphere/data-portal#3263) must see from the changelog that it changed.

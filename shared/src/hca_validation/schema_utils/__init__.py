@@ -13,6 +13,7 @@ from .schema_utils import (
     get_class_foreign_keys,
     get_class_identifier_name,
     get_entity_class_name,
+    get_entry_sheet_optional_slots,
     get_slot_anndata_location,
     is_deprecated_slot,
     iter_coverage_slots,

@@ -11,7 +11,7 @@ import hca_metadata_schema.generated.core as schema
 import pandas as pd
 from linkml_runtime import SchemaView
 from pydantic import ValidationError
-from pydantic_core import InitErrorDetails, PydanticCustomError
+from pydantic_core import ErrorDetails, InitErrorDetails, PydanticCustomError
 
 from hca_validation.schema_utils.schema_utils import (
     get_class_entity_type,
@@ -20,17 +20,42 @@ from hca_validation.schema_utils.schema_utils import (
 )
 
 
-def validate(data: dict[str, Any], *, class_name: str) -> ValidationError | None:
-    """Validate data against the generated Pydantic class `class_name`; return the ValidationError, or None.
+def validate(
+    data: dict[str, Any], *, class_name: str, entry_sheet_optional: frozenset[str] = frozenset()
+) -> ValidationError | None:
+    """Validate an entry-sheet row against the Pydantic class `class_name`; return the ValidationError, or None.
+
+    `entry_sheet_optional` names slots that may be blank or absent (#850, from `get_entry_sheet_optional_slots`): a
+    blank value is treated as absent, and only the resulting `missing` error is dropped, so a present but invalid
+    value still fails.
 
     An unknown `class_name` raises AttributeError."""
 
+    model = getattr(schema, class_name)
+    data = {key: value for key, value in data.items() if not (key in entry_sheet_optional and value is None)}
     try:
-        model = getattr(schema, class_name)
         model.model_validate(data)
         return None
     except ValidationError as e:
-        return e
+        errors = e.errors()
+        kept = [err for err in errors if not (err["type"] == "missing" and _is_top_level(err, entry_sheet_optional))]
+        if len(kept) == len(errors):
+            return e
+        if not kept:
+            return None
+        return ValidationError.from_exception_data(title=e.title, line_errors=[_line_error(err) for err in kept])
+
+
+def _is_top_level(error: ErrorDetails, slots: frozenset[str]) -> bool:
+    return len(error["loc"]) == 1 and error["loc"][0] in slots
+
+
+def _line_error(error: ErrorDetails) -> InitErrorDetails:
+    """Rebuild an `errors()` entry as InitErrorDetails, keeping type and context so its message is unchanged."""
+    details: InitErrorDetails = {"type": error["type"], "loc": error["loc"], "input": error["input"]}
+    if "ctx" in error:
+        details["ctx"] = error["ctx"]
+    return details
 
 
 def validate_id_uniqueness(data: pd.DataFrame, schemaview: SchemaView, class_name: str) -> ValidationError | None:

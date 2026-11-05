@@ -54,13 +54,44 @@ def get_class_identifier_name(schemaview: SchemaView, class_name: str) -> str:
     raise ValueError(f"No identifier slot found for class {class_name}")
 
 
-def get_slot_anndata_location(slot: SlotDefinition) -> str | None:
-    if not slot.annotations:
-        return None
-    for name, info in jsonasobj2.items(slot.annotations):
-        if name == "annDataLocation":
+def _annotation_value(element: SlotDefinition | ClassDefinition, key: str):
+    for name, info in jsonasobj2.items(element.annotations or {}):
+        if name == key:
             return info.value
     return None
+
+
+def get_slot_anndata_location(slot: SlotDefinition) -> str | None:
+    return _annotation_value(slot, "annDataLocation")
+
+
+_ENTRY_SHEET_REQUIRED = "entrySheetRequired"
+
+
+def get_entry_sheet_optional_slots(schemaview: SchemaView, class_name: str) -> frozenset[str]:
+    """Slots of `class_name` annotated `entrySheetRequired: false` (#850); another value, or an optional slot, raises.
+
+    A `slot_usage` that sets annotations replaces the inherited ones (linkml#2805), so when the induced slot lacks the
+    tag, the class's and its ancestors' `slot_usage` are searched in order, then the slot itself.
+    """
+    optional = set()
+    ancestors = [schemaview.get_class(c) for c in schemaview.class_ancestors(class_name)]
+    for slot in schemaview.class_induced_slots(class_name):
+        usages = [(ancestor.slot_usage or {}).get(slot.name) for ancestor in ancestors]
+        value = None
+        for source in [slot, *usages, schemaview.get_slot(slot.name)]:
+            if source is not None:
+                value = _annotation_value(source, _ENTRY_SHEET_REQUIRED)
+                if value is not None:
+                    break
+        if value is None:
+            continue
+        if value is not False:
+            raise ValueError(f"{class_name}.{slot.name}: {_ENTRY_SHEET_REQUIRED} must be false, got {value!r}")
+        if not slot.required:
+            raise ValueError(f"{class_name}.{slot.name}: {_ENTRY_SHEET_REQUIRED} is only for required slots")
+        optional.add(slot.name)
+    return frozenset(optional)
 
 
 def get_bionetwork_keys(schemaview: SchemaView) -> list[str]:
@@ -73,12 +104,7 @@ def get_bionetwork_keys(schemaview: SchemaView) -> list[str]:
 
 def get_class_bionetwork(class_info: ClassDefinition) -> str | None:
     """Return the network a class names in its `bioNetwork` annotation, if any."""
-    if not class_info.annotations:
-        return None
-    for name, info in jsonasobj2.items(class_info.annotations):
-        if name == "bioNetwork":
-            return info.value
-    return None
+    return _annotation_value(class_info, "bioNetwork")
 
 
 def get_bionetwork_subclasses(schemaview: SchemaView, base_class: str) -> dict[str, str]:

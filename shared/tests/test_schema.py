@@ -2,13 +2,17 @@
 Test script for schema functionality.
 """
 
+import textwrap
+
 import hca_metadata_schema.generated.core as schema
 import pytest
+from linkml_runtime import SchemaView
 
 from hca_validation.schema_utils.schema_utils import (
     coverage_classes,
     get_bionetwork_keys,
     get_class_bionetwork,
+    get_entry_sheet_optional_slots,
     get_slot_anndata_location,
     schema_classes,
 )
@@ -179,3 +183,116 @@ def test_is_primary_data_stays_sheet_inert():
         assert schema.Sample.model_validate({**_MINIMAL_SAMPLE, "is_primary_data": value}), (
             f"{value!r} should be accepted"
         )
+
+
+_ENTRY_SHEET_SCHEMA = """
+id: https://example.org/entry-sheet-test
+name: entry_sheet_test
+prefixes:
+  linkml: https://w3id.org/linkml/
+imports:
+  - linkml:types
+default_range: string
+slots:
+  relaxed:
+    required: true
+    annotations:
+      entrySheetRequired: false
+  strict:
+    required: true
+  relaxed_by_subclass:
+    required: true
+  relaxed_with_tier:
+    required: true
+    annotations:
+      entrySheetRequired: false
+classes:
+  Dataset:
+    slots: [relaxed, strict, relaxed_by_subclass, relaxed_with_tier]
+  GutDataset:
+    is_a: Dataset
+    slot_usage:
+      relaxed_by_subclass:
+        annotations:
+          entrySheetRequired: false
+      # Setting another annotation here drops the base slot's (linkml#2805); the tag must survive.
+      relaxed_with_tier:
+        annotations:
+          tier: Tier 1
+"""
+
+
+def test_entry_sheet_optional_slots_reads_the_annotation(tmp_path):
+    path = tmp_path / "schema.yaml"
+    path.write_text(textwrap.dedent(_ENTRY_SHEET_SCHEMA))
+    view = SchemaView(str(path))
+    assert get_entry_sheet_optional_slots(view, "Dataset") == {"relaxed", "relaxed_with_tier"}
+    # slot_usage on a subclass adds the annotation for that subclass only.
+    assert get_entry_sheet_optional_slots(view, "GutDataset") == {"relaxed", "relaxed_by_subclass", "relaxed_with_tier"}
+
+
+def test_entry_sheet_optional_slots_keeps_an_ancestor_slot_usage_tag(tmp_path):
+    # Dataset's slot_usage tags title; GutDataset's slot_usage sets another annotation, which drops it (linkml#2805).
+    path = tmp_path / "schema.yaml"
+    path.write_text(
+        textwrap.dedent(
+            """
+            id: https://example.org/ancestor-test
+            name: ancestor_test
+            prefixes:
+              linkml: https://w3id.org/linkml/
+            imports:
+              - linkml:types
+            default_range: string
+            slots:
+              title:
+                required: true
+            classes:
+              Dataset:
+                slots: [title]
+                slot_usage:
+                  title:
+                    annotations:
+                      entrySheetRequired: false
+              GutDataset:
+                is_a: Dataset
+                slot_usage:
+                  title:
+                    annotations:
+                      tier: Tier 1
+            """
+        )
+    )
+    view = SchemaView(str(path))
+    assert get_entry_sheet_optional_slots(view, "Dataset") == {"title"}
+    assert get_entry_sheet_optional_slots(view, "GutDataset") == {"title"}
+
+
+def test_entry_sheet_optional_slots_rejects_an_optional_slot(tmp_path):
+    schema_text = textwrap.dedent(_ENTRY_SHEET_SCHEMA).replace(
+        "  relaxed:\n    required: true\n", "  relaxed:\n    required: false\n"
+    )
+    assert "  relaxed:\n    required: false\n" in schema_text
+    path = tmp_path / "schema.yaml"
+    path.write_text(schema_text)
+    with pytest.raises(ValueError, match="only for required slots"):
+        get_entry_sheet_optional_slots(SchemaView(str(path)), "Dataset")
+
+
+@pytest.mark.parametrize("value", ["true", '"false"', "0"])
+def test_entry_sheet_optional_slots_rejects_other_values(tmp_path, value):
+    schema_text = textwrap.dedent(_ENTRY_SHEET_SCHEMA).replace(
+        "  relaxed:\n    required: true\n    annotations:\n      entrySheetRequired: false",
+        f"  relaxed:\n    required: true\n    annotations:\n      entrySheetRequired: {value}",
+    )
+    assert f"entrySheetRequired: {value}" in schema_text
+    path = tmp_path / "schema.yaml"
+    path.write_text(schema_text)
+    with pytest.raises(ValueError, match="entrySheetRequired must be false"):
+        get_entry_sheet_optional_slots(SchemaView(str(path)), "Dataset")
+
+
+def test_no_slot_is_entry_sheet_optional_yet(schemaview):
+    """#850 adds the mechanism only, so no entry-sheet result changes; #836 tags the first slot."""
+    for class_name in schemaview.all_classes():
+        assert get_entry_sheet_optional_slots(schemaview, class_name) == set(), class_name

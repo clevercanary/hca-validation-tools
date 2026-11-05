@@ -118,8 +118,11 @@ _SLOT_PROVENANCE = {"owner", "domain_of", "from_schema", "is_usage_slot", "usage
 
 
 def slot_definition(slot_info) -> dict[str, Any]:
-    """An induced slot minus provenance; unlike `slot_to_attribute`, keeps fields the dictionary hides (`pattern`)."""
-    return {key: value for key, value in json_dumper.to_dict(slot_info).items() if key not in _SLOT_PROVENANCE}
+    """An induced slot minus provenance and `entrySheetRequired` (#850); unlike `slot_to_attribute`, keeps `pattern`."""
+    definition = {key: value for key, value in json_dumper.to_dict(slot_info).items() if key not in _SLOT_PROVENANCE}
+    annotations = definition.get("annotations", {})
+    definition["annotations"] = {key: value for key, value in annotations.items() if key != "entrySheetRequired"}
+    return definition
 
 
 def requirement_level(slot_info) -> bool | str:
@@ -154,7 +157,8 @@ def slot_to_attribute(schemaview: SchemaView, slot_info, schema_enum_names: set[
     if slot_info.annotations:
         formatted_annotations = {}
         for annot_name, annot_info in jsonasobj2.items(slot_info.annotations):
-            formatted_annotations[annot_name] = annot_info.value
+            if annot_name != "entrySheetRequired":  # #850: the dictionary reports `required` alone
+                formatted_annotations[annot_name] = annot_info.value
         attribute["annotations"] = formatted_annotations
 
     # Add rationale if available in comments - as a string, not an array
