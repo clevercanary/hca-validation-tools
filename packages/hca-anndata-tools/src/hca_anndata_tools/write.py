@@ -16,6 +16,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
+import hca_metadata_schema
+
 from . import __version__
 from ._errors import Refusal
 from ._keys import EDIT_LOG_KEY, MASKED_STRING_REMEDY, PROVENANCE_KEY
@@ -368,7 +370,7 @@ def make_edit_entry(
     description: str,
     details: dict | None = None,
 ) -> dict:
-    """Build an edit-log entry with timestamp, tool, and tool_version populated.
+    """Build an edit-log entry with timestamp, tool, tool_version and hca_metadata_schema_version populated.
 
     Args:
         operation: Short machine-readable operation name (e.g. 'set_uns').
@@ -383,6 +385,8 @@ def make_edit_entry(
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "tool": "hca-anndata-tools",
         "tool_version": __version__,
+        # The installed LinkML schema the tool used, not one the file is claimed to satisfy (#802)
+        "hca_metadata_schema_version": hca_metadata_schema.__version__,
         "operation": operation,
         "description": description,
         "details": details if details is not None else {},

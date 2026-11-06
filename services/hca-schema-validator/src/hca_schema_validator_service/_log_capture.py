@@ -4,13 +4,16 @@ Each entry script (``main.py``, ``cell_annotation.py``) runs a validator that
 emits warnings/errors via a module logger. This helper attaches a handler to
 that logger, invokes the validator, and returns the standard subprocess
 response shape (``{valid, warnings, errors}``) that the dataset-validator
-service expects.
+service expects, plus ``validator_version`` (#802), which it does not yet read
+(#834).
 """
 
 from __future__ import annotations
 
 import logging
 from collections.abc import Callable
+
+import hca_schema_validator
 
 
 class ListHandler(logging.Handler):
@@ -70,4 +73,5 @@ def run_with_captured_logs(
         "valid": is_valid,
         "warnings": warning_messages,
         "errors": error_messages,
+        "validator_version": hca_schema_validator.__version__,
     }

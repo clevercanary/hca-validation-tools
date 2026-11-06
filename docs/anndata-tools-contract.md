@@ -484,6 +484,18 @@ accumulated three data-loss hazards before adopting the claim (the #642
 review rounds). The edit log is written into the output as part of the same
 operation, so a snapshot and its provenance can never disagree.
 
+Each edit-log entry the tools write in `uns['provenance']['edit_history']` is
+built by `make_edit_entry` and records `timestamp`, `tool`, `tool_version`,
+`hca_metadata_schema_version`, `operation`, `description` and `details`;
+the write adds `source_file` and `source_sha256`.
+`hca_metadata_schema_version` (#802) is the version of the `hca-metadata-schema`
+package installed when the tool ran, so the log shows the schema behind every
+edit. It does not claim the file satisfies that schema; only a validator says
+that. `build_edit_log` requires only the five original keys, so an entry a
+caller builds by hand can omit it. Entries written
+before #802 lack it. Nothing is written to `uns['schema_version']`, which marks
+a file that has been through CELLxGENE's `add-labels`.
+
 ## The two spellings of "missing"
 
 The schema layer defines how a missing value is spelled, and the answer is

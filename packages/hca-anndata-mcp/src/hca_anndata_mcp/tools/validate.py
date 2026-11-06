@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+import hca_schema_validator
 from hca_anndata_tools.write import resolve_latest
 from hca_schema_validator import HCACellAnnotationValidator, HCAValidator, ObjectKind
 
@@ -23,9 +24,10 @@ def validate_schema(path: str, object_kind: ObjectKind) -> dict:
         object_kind: ``"source"`` or ``"integrated"``.
 
     Returns:
-        Dict with ``filename``, ``object_kind``, ``is_valid``,
-        ``error_count``, ``warning_count``, ``errors`` (list of str), and
-        ``warnings`` (list of str, with feature-ID warnings ordered last).
+        Dict with ``filename``, ``object_kind``, ``validator_version`` (the
+        hca-schema-validator release, which pins the rules that ran),
+        ``is_valid``, ``error_count``, ``warning_count``, ``errors`` (list of
+        str), and ``warnings`` (list of str, with feature-ID warnings ordered last).
         On failure, ``error`` is returned instead.
     """
     try:
@@ -43,6 +45,7 @@ def validate_schema(path: str, object_kind: ObjectKind) -> dict:
         return {
             "filename": Path(path).name,
             "object_kind": v.object_kind,
+            "validator_version": hca_schema_validator.__version__,
             "is_valid": v.is_valid,
             "error_count": len(v.errors),
             "warning_count": len(v.warnings),
@@ -74,9 +77,9 @@ def validate_cell_annotation(path: str) -> dict:
         path: Path to an .h5ad file.
 
     Returns:
-        Dict with ``filename``, ``is_valid``, ``error_count``,
-        ``warning_count``, ``errors`` (list of str), and ``warnings``
-        (list of str). On failure, ``error`` is returned instead.
+        Dict with ``filename``, ``validator_version`` (the hca-schema-validator
+        release), ``is_valid``, ``error_count``, ``warning_count``, ``errors``
+        (list of str), and ``warnings`` (list of str). On failure, ``error`` is returned instead.
     """
     try:
         path = resolve_latest(path)
@@ -86,6 +89,7 @@ def validate_cell_annotation(path: str) -> dict:
         is_valid = v.validate_adata(path)
         return {
             "filename": Path(path).name,
+            "validator_version": hca_schema_validator.__version__,
             "is_valid": is_valid,
             "error_count": len(v.errors),
             "warning_count": len(v.warnings),

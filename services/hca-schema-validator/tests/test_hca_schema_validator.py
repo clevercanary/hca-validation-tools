@@ -5,6 +5,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from hca_schema_validator import __version__
+
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from hca_schema_validator_service.main import (
     run_validator,
@@ -97,4 +99,5 @@ def test_hca_schema_validator_cases(mock_hca_validator, test_case):
 
     mock_hca_validator.assert_called_once_with(ignore_labels=True)
     mock_validate_adata.assert_called_once_with(test_case["file_path"])
-    assert result == test_case["expected_output"]
+    # Every response also names the validator release that ran (#802)
+    assert result == {**test_case["expected_output"], "validator_version": __version__}

@@ -7,6 +7,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from hca_schema_validator import __version__
+
 SRC_DIR = Path(__file__).parent.parent / "src"
 CELL_ANNOTATION_SCRIPT = SRC_DIR / "hca_schema_validator_service" / "cell_annotation.py"
 MAIN_SCRIPT = SRC_DIR / "hca_schema_validator_service" / "main.py"
@@ -107,7 +109,8 @@ def test_hca_cell_annotation_validator_cases(mock_validator_class, test_case):
 
     mock_validator_class.assert_called_once_with()
     mock_validate_adata.assert_called_once_with(test_case["file_path"])
-    assert result == test_case["expected_output"]
+    # Every response also names the validator release that ran (#802)
+    assert result == {**test_case["expected_output"], "validator_version": __version__}
 
 
 @pytest.mark.parametrize(
