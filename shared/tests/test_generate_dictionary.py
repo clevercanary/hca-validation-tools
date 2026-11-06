@@ -385,7 +385,9 @@ slots:
   colour:
     range: Colour
     notes:
-      - Pick a colour.
+      # A block scalar ends in a newline, which must not reach the joined values (#762).
+      - |
+        Pick a colour.
   restated_colour:
     range: Colour
     notes:

@@ -144,7 +144,7 @@ def display_range(schemaview: SchemaView, slot_info, schema_enum_names: set[str]
     name = (slot_info.any_of[0].range if slot_info.any_of else slot_info.range) or "string"
     if name in schema_enum_names or schemaview.get_class(name) is not None:
         return "string"
-    return schemaview.type_ancestors(name)[-1] if schemaview.get_type(name) is not None else name
+    return schemaview.type_ancestors(name)[-1]
 
 
 def slot_to_attribute(schemaview: SchemaView, slot_info, schema_enum_names: set[str]) -> dict[str, Any]:
