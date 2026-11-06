@@ -47,7 +47,7 @@
           "range": "string",
           "required": true,
           "multivalued": false,
-          "example": "none",
+          "example": "none; soupx; cellbender",
           "annotations": {
             "annDataLocation": "obs",
             "bioNetworks": [
@@ -121,7 +121,7 @@
             ]
           },
           "rationale": "Major source of batch effect and dataset filtering criterion",
-          "values": "This must be an EFO term and either:\n- \"EFO:0002772\" for assay by molecule or preferably its most accurate child\n- \"EFO:0010183\" for single cell library construction or preferably its most accurate child\n- An assay based on 10X Genomics products should either be \"EFO:0008995\" for 10x technology or preferably its most accurate child.\n- An assay based on SMART (Switching Mechanism at the 5' end of the RNA Template) or SMARTer technology SHOULD either be \"EFO:0010184\" for Smart-like or preferably its most accurate child.\nRecommended:\n- 10x 3' v2 \"EFO:0009899\"\n- 10x 3' v3 \"EFO:0009922\"\n- 10x 5' v1 \"EFO:0011025\"\n- 10x 5' v2 \"EFO:0009900\"\n- Smart-seq2 \"EFO:0008931\"\n- Visium Spatial Gene Expression \"EFO:0010961\"\n"
+          "values": "This must be an EFO term and either:\n- \"EFO:0002772\" for assay by molecule or preferably its most accurate child\n- \"EFO:0010183\" for single cell library construction or preferably its most accurate child\n- An assay based on 10X Genomics products should either be \"EFO:0008995\" for 10x technology or preferably its most accurate child.\n- An assay based on SMART (Switching Mechanism at the 5' end of the RNA Template) or SMARTer technology SHOULD either be \"EFO:0010184\" for Smart-like or preferably its most accurate child.\nRecommended:\n- 10x 3' v2 \"EFO:0009899\"\n- 10x 3' v3 \"EFO:0009922\"\n- 10x 5' v1 \"EFO:0011025\"\n- 10x 5' v2 \"EFO:0009900\"\n- Smart-seq2 \"EFO:0008931\"\n- Visium Spatial Gene Expression \"EFO:0010961\""
         },
         {
           "name": "batch_condition",
@@ -223,7 +223,7 @@
           "name": "contact_email",
           "title": "Contact Email",
           "description": "Contact name and email of the submitting person",
-          "range": "Email",
+          "range": "string",
           "required": true,
           "multivalued": false,
           "annotations": {
@@ -350,7 +350,7 @@
           "range": "string",
           "required": true,
           "multivalued": false,
-          "example": "none",
+          "example": "none; doublet_finder; manual; doublet_finder;manual",
           "annotations": {
             "annDataLocation": "obs",
             "bioNetworks": [
@@ -398,10 +398,10 @@
           "name": "intron_inclusion",
           "title": "Intron Inclusion",
           "description": "Were introns included during read counting in the alignment process?",
-          "range": "YesNoEnum",
+          "range": "string",
           "required": false,
           "multivalued": false,
-          "example": "yes",
+          "example": "yes; no",
           "annotations": {
             "annDataLocation": "obs",
             "bioNetworks": [
@@ -496,10 +496,10 @@
           "name": "reference_genome",
           "title": "Reference Genome",
           "description": "Reference genome used for alignment.",
-          "range": "ReferenceGenomeEnum",
+          "range": "string",
           "required": true,
           "multivalued": false,
-          "example": "GRCm37",
+          "example": "GRCm37; GRCh37",
           "annotations": {
             "annDataLocation": "obs",
             "bioNetworks": [
@@ -530,10 +530,10 @@
           "name": "sequenced_fragment",
           "title": "Sequenced Fragment",
           "description": "Which part of the RNA transcript was targeted for sequencing.",
-          "range": "SequencedFragmentEnum",
+          "range": "string",
           "required": true,
           "multivalued": false,
-          "example": "3 prime tag",
+          "example": "3 prime tag; full length",
           "annotations": {
             "annDataLocation": "obs",
             "bioNetworks": [
@@ -672,7 +672,7 @@
           "name": "dataset_id",
           "title": "Dataset ID",
           "description": "A unique identifier for each dataset in the study. This should be unique to the study.",
-          "range": "Dataset",
+          "range": "string",
           "required": true,
           "multivalued": false,
           "annotations": {
@@ -737,7 +737,7 @@
           "name": "manner_of_death",
           "title": "Manner of Death",
           "description": "Manner of death classification based on the Hardy Scale or \"unknown\" or \"not applicable\":\n* Category 1 = Violent and fast death \u2014 deaths due to accident, blunt force trauma or suicide, terminal phase < 10 min.\n* Category 2 = Fast death of natural causes \u2014 sudden unexpected deaths of reasonably healthy people, terminal phase < 1 h.\n* Category 3 = Intermediate death \u2014 terminal phase 1\u201324 h, patients ill but death unexpected.\n* Category 4 = Slow death \u2014 terminal phase > 1 day (e.g. cancer, chronic pulmonary disease).\n* Category 0 = Ventilator case \u2014 on a ventilator immediately before death.\n* Unknown = The cause of death is unknown.\n* Not applicable = Subject is alive.\n[Leave blank for embryonic/fetal tissue.]\n",
-          "range": "MannerOfDeath",
+          "range": "string",
           "required": true,
           "multivalued": false,
           "example": "1",
@@ -770,7 +770,7 @@
           "name": "organism_ontology_term_id",
           "title": "Organism Ontology Term ID",
           "description": "The name given to the type of organism, collected in NCBITaxon:0000 format.",
-          "range": "Organism",
+          "range": "string",
           "required": true,
           "multivalued": false,
           "annotations": {
@@ -798,7 +798,7 @@
               "skin"
             ]
           },
-          "values": "NCBITaxon:9606; NCBITaxon:10090"
+          "values": "\"NCBITaxon:9606\" for Homo sapiens or \"NCBITaxon:10090\" for Mus musculus.\n\nNCBITaxon:9606; NCBITaxon:10090"
         },
         {
           "name": "sex_ontology_term",
@@ -838,7 +838,7 @@
           "range": "string",
           "required": true,
           "multivalued": false,
-          "example": "PATO:0000383",
+          "example": "PATO:0000383; PATO:0000384",
           "annotations": {
             "annDataLocation": "obs",
             "cxg": "sex_ontology_term_id",
@@ -863,7 +863,7 @@
               "skin"
             ]
           },
-          "values": "This must be a child of PATO:0001894 for phenotypic sex or \"unknown\" if unavailable.\n"
+          "values": "This must be a child of PATO:0001894 for phenotypic sex or \"unknown\" if unavailable."
         }
       ]
     },
@@ -1009,10 +1009,10 @@
           "name": "cell_viability_percentage",
           "title": "Cell Viability Percentage",
           "description": "If measured, per sample cell viability before library preparation (as a percentage).",
-          "range": "string",
+          "range": "decimal",
           "required": false,
           "multivalued": false,
-          "example": "88; 95; 93.5",
+          "example": "88; 95; 93.5; unknown",
           "annotations": {
             "annDataLocation": "obs",
             "tier": "Tier 1",
@@ -1043,7 +1043,7 @@
           "name": "dataset_id",
           "title": "Dataset ID",
           "description": "A unique identifier for each dataset in the study. This should be unique to the study.",
-          "range": "Dataset",
+          "range": "string",
           "required": true,
           "multivalued": false,
           "annotations": {
@@ -1073,7 +1073,7 @@
           "name": "development_stage_ontology_term_id",
           "title": "Development Stage Ontology Term ID",
           "description": "Age of the subject.",
-          "range": "DevelopmentStage",
+          "range": "string",
           "required": true,
           "multivalued": false,
           "example": "HsapDv:0000237",
@@ -1102,7 +1102,7 @@
               "skin"
             ]
           },
-          "values": "HsapDv:0000003; HsapDv:0000046; HsapDv:0000264; HsapDv:0000268; HsapDv:0000237; HsapDv:0000238; HsapDv:0000239; HsapDv:0000240; HsapDv:0000241; HsapDv:0000242; HsapDv:0000243; HsapDv:0000244; HsapDv:0000245; MmusDv:0000001; MmusDv:0000002; unknown"
+          "values": "If organism_ontolology_term_id is \"NCBITaxon:9606\" for Homo sapiens, this should be an HsapDv term. If organism_ontolology_term_id is \"NCBITaxon:10090\" for Mus musculus, this should be an MmusDv term. Refer to broader age bracket terms as needed.\n\nHsapDv:0000003; HsapDv:0000046; HsapDv:0000264; HsapDv:0000268; HsapDv:0000237; HsapDv:0000238; HsapDv:0000239; HsapDv:0000240; HsapDv:0000241; HsapDv:0000242; HsapDv:0000243; HsapDv:0000244; HsapDv:0000245; MmusDv:0000001; MmusDv:0000002; unknown"
         },
         {
           "name": "disease_ontology_term",
@@ -1142,7 +1142,7 @@
           "range": "string",
           "required": true,
           "multivalued": false,
-          "example": "MONDO:0005385",
+          "example": "MONDO:0005385; PATO:0000461",
           "annotations": {
             "annDataLocation": "obs",
             "cxg": "disease_ontology_term_id",
@@ -1168,7 +1168,7 @@
               "skin"
             ]
           },
-          "values": "This must be a MONDO term or \"PATO:0000461\" for normal or healthy.\n\nRequirements for data contributors adhering to GDPR or like standards: In the case of disease, HCA requests that you submit a higher order ontology term - this is especially important in the case of rare disease.\n"
+          "values": "This must be a MONDO term or \"PATO:0000461\" for normal or healthy.\n\nRequirements for data contributors adhering to GDPR or like standards: In the case of disease, HCA requests that you submit a higher order ontology term - this is especially important in the case of rare disease."
         },
         {
           "name": "dissociation_protocol",
@@ -1191,7 +1191,7 @@
           "name": "donor_id",
           "title": "Donor ID",
           "description": "This must be free-text that identifies a unique individual that data were derived from.",
-          "range": "Donor",
+          "range": "string",
           "required": true,
           "multivalued": false,
           "example": "CR_donor_1; MM_donor_1; LR_donor_2",
@@ -1430,7 +1430,7 @@
           "name": "radial_tissue_term",
           "title": "Radial Tissue Term",
           "description": "Radial compartment/location of the tissue sample.",
-          "range": "RadialTissueTerm",
+          "range": "string",
           "required": true,
           "multivalued": false,
           "annotations": {
@@ -1446,7 +1446,7 @@
           "name": "sample_collection_method",
           "title": "Sample Collection Method",
           "description": "The method the sample was physically obtained from the donor.",
-          "range": "SampleCollectionMethod",
+          "range": "string",
           "required": true,
           "multivalued": false,
           "example": "biopsy; brush; surgical resection",
@@ -1616,7 +1616,7 @@
           "name": "sample_preservation_method",
           "title": "Sample Preservation Method",
           "description": "Indicating if tissue was frozen, or not, at any point before library preparation.",
-          "range": "SamplePreservationMethod",
+          "range": "string",
           "required": true,
           "multivalued": false,
           "example": "fresh",
@@ -1650,7 +1650,7 @@
           "name": "sample_source",
           "title": "Sample Source",
           "description": "The study subgroup that the participant belongs to, indicating whether the participant was a surgical donor, a postmortem donor, or an organ donor.",
-          "range": "SampleSource",
+          "range": "string",
           "required": true,
           "multivalued": false,
           "example": "surgical donor",
@@ -1684,7 +1684,7 @@
           "name": "sampled_site_condition",
           "title": "Sampled Site Condition",
           "description": "Whether the site is considered healthy, diseased or adjacent to disease.",
-          "range": "SampledSiteCondition",
+          "range": "string",
           "required": true,
           "multivalued": false,
           "example": "healthy",
@@ -1718,7 +1718,7 @@
           "name": "suspension_type",
           "title": "Suspension Type",
           "description": "Specifies whether the sample contains single cells or single nuclei data.",
-          "range": "SuspensionType",
+          "range": "string",
           "required": true,
           "multivalued": false,
           "example": "cell",
@@ -1747,7 +1747,7 @@
               "skin"
             ]
           },
-          "values": "cell; nucleus; na"
+          "values": "This must be \"cell\", \"nucleus\", or \"na\".\nThis must be the correct type for the corresponding assay:\n* 10x transcription profiling [EFO:0030080] and its children = \"cell\" or \"nucleus\"\n* ATAC-seq [EFO:0007045] and its children = \"nucleus\"\n* BD Rhapsody Whole Transcriptome Analysis [EFO:0700003] = \"cell\"\n* BD Rhapsody Targeted mRNA [EFO:0700004] = \"cell\"\n* CEL-seq2 [EFO:0010010] = \"cell\" or \"nucleus\"\n* CITE-seq [EFO:0009294] and its children = \"cell\"\n* DroNc-seq [EFO:0008720] = \"nucleus\"\n* Drop-seq [EFO:0008722] = \"cell\" or \"nucleus\"\n* GEXSCOPE technology [EFO:0700011] = \"cell\" or \"nucleus\"\n* inDrop [EFO:0008780] = \"cell\" or \"nucleus\"\n\ncell; nucleus; na"
         },
         {
           "name": "tissue_free_text",
@@ -1821,7 +1821,7 @@
           "range": "string",
           "required": true,
           "multivalued": false,
-          "example": "UBERON:0001828",
+          "example": "UBERON:0001828; UBERON:0000966",
           "annotations": {
             "annDataLocation": "obs",
             "cxg": "tissue_ontology_term_id",
@@ -1847,13 +1847,13 @@
               "skin"
             ]
           },
-          "values": "If tissue_type is \"tissue\" or \"organoid\", this must be the most accurate child of UBERON:0001062 for anatomical entity. If tissue_type is \"cell culture\" this must follow the requirements for cell_type_ontology_term_id.\n"
+          "values": "If tissue_type is \"tissue\" or \"organoid\", this must be the most accurate child of UBERON:0001062 for anatomical entity. If tissue_type is \"cell culture\" this must follow the requirements for cell_type_ontology_term_id."
         },
         {
           "name": "tissue_type",
           "title": "Tissue Type",
           "description": "Whether the tissue is \"tissue\", \"organoid\", or \"cell culture\".",
-          "range": "TissueType",
+          "range": "string",
           "required": true,
           "multivalued": false,
           "example": "tissue",

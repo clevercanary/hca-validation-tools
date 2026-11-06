@@ -90,6 +90,14 @@ def test_title_is_required_without_entry_sheet_relaxation(data_dictionary):
     assert "entrySheetRequired" not in title["annotations"]
 
 
+def test_real_schema_shows_display_ranges(schemaview, data_dictionary):
+    # #762: the portal shows `string` for enums and classes, and `decimal` for cell_viability_percentage.
+    assert _attribute(data_dictionary, "sample", "cell_viability_percentage")["range"] == "decimal"
+    assert _attribute(data_dictionary, "dataset", "contact_email")["range"] == "string"
+    named = set(schemaview.all_enums()) | set(schemaview.all_classes())
+    assert not [a["name"] for c in data_dictionary["classes"] for a in c["attributes"] if a["range"] in named]
+
+
 def test_core_slots_have_every_network(data_dictionary):
     networks = _attribute(data_dictionary, "dataset", "title")["annotations"]["bioNetworks"]
     assert len(networks) == 18
@@ -351,6 +359,10 @@ enums:
       red:
       blue:
 
+types:
+  Email:
+    typeof: string
+
 slots:
   title:
     title: Title
@@ -373,7 +385,23 @@ slots:
   colour:
     range: Colour
     notes:
-      - Replaced by the enum values.
+      # A block scalar ends in a newline, which must not reach the joined values (#762).
+      - |
+        Pick a colour.
+  restated_colour:
+    range: Colour
+    notes:
+      - blue; red
+  email:
+    range: Email
+  owner:
+    range: Donor
+  count:
+    range: integer
+  decimal_or_text:
+    any_of:
+      - range: decimal
+      - range: string
   donor_id:
     multivalued: true
   sheet_optional:
@@ -395,6 +423,11 @@ classes:
       - rationale_slot
       - bare
       - colour
+      - restated_colour
+      - email
+      - owner
+      - count
+      - decimal_or_text
       - recommended_slot
       - required_and_recommended
       - sheet_optional
@@ -457,8 +490,28 @@ def test_list_comments_and_notes_are_joined_with_newlines(mapping_dictionary):
     assert slot["values"] == "First note.\nSecond note."
 
 
-def test_enum_values_are_flattened_and_replace_notes(mapping_dictionary):
-    assert _attributes(mapping_dictionary, "Dataset")["colour"]["values"] == "red; blue"
+def test_enum_values_follow_the_notes(mapping_dictionary):
+    # #762: a slot with an enum range and notes keeps both, the notes first.
+    assert _attributes(mapping_dictionary, "Dataset")["colour"]["values"] == "Pick a colour.\n\nred; blue"
+
+
+def test_notes_that_restate_the_enum_values_are_not_repeated(mapping_dictionary):
+    assert _attributes(mapping_dictionary, "Dataset")["restated_colour"]["values"] == "red; blue"
+
+
+@pytest.mark.parametrize(
+    ("attribute_name", "expected"),
+    [
+        ("colour", "string"),  # enum
+        ("owner", "string"),  # class
+        ("email", "string"),  # custom type, shown as its built-in type
+        ("count", "integer"),  # built-in type, unchanged
+        ("decimal_or_text", "decimal"),  # any_of shows its first member
+        ("bare", "string"),  # no range
+    ],
+)
+def test_display_ranges(mapping_dictionary, attribute_name, expected):
+    assert _attributes(mapping_dictionary, "Dataset")[attribute_name]["range"] == expected
 
 
 def test_populated_slot(mapping_dictionary):
@@ -469,7 +522,7 @@ def test_populated_slot(mapping_dictionary):
         "range": "string",
         "required": True,
         "multivalued": False,
-        "example": "first example",
+        "example": "first example; second example",
         "annotations": {"annDataLocation": "uns", "cxg": "title", "bioNetworks": _ALL_NETWORKS},
     }
 

@@ -139,6 +139,14 @@ def requirement_level(slot_info) -> bool | str:
     return False
 
 
+def display_range(schemaview: SchemaView, slot_info, schema_enum_names: set[str]) -> str:
+    """The portal's range (#762): enums and classes are `string`, a type its built-in, `any_of` its first member."""
+    name = (slot_info.any_of[0].range if slot_info.any_of else slot_info.range) or "string"
+    if name in schema_enum_names or schemaview.get_class(name) is not None:
+        return "string"
+    return schemaview.type_ancestors(name)[-1]
+
+
 def slot_to_attribute(schemaview: SchemaView, slot_info, schema_enum_names: set[str]) -> dict[str, Any]:
     """Convert an induced slot into a data dictionary attribute."""
     # Create the attribute entry with the exact structure requested
@@ -147,16 +155,14 @@ def slot_to_attribute(schemaview: SchemaView, slot_info, schema_enum_names: set[
         # Use title from schema if available
         "title": slot_info.title if slot_info.title is not None else slot_info.name,
         "description": slot_info.description or "",
-        "range": slot_info.range if slot_info.range is not None else "string",
+        "range": display_range(schemaview, slot_info, schema_enum_names),
         "required": requirement_level(slot_info),
         "multivalued": slot_info.multivalued if slot_info.multivalued is not None else False,
     }
 
-    # Add examples if available
+    # Add examples if available, joined as the portal lists them
     if slot_info.examples:
-        # Get the first example value
-        example = slot_info.examples[0]
-        attribute["example"] = example.value
+        attribute["example"] = "; ".join(example.value for example in slot_info.examples)
 
     # Add annotations if available - format as requested
     if slot_info.annotations:
@@ -171,17 +177,18 @@ def slot_to_attribute(schemaview: SchemaView, slot_info, schema_enum_names: set[
         attribute["rationale"] = "\n".join(slot_info.comments)
 
     # Add values information if available in notes - as a string, not an array
-    if slot_info.notes:
-        attribute["values"] = "\n".join(slot_info.notes)
+    notes = "\n".join(slot_info.notes).rstrip() if slot_info.notes else None
+    if notes:
+        attribute["values"] = notes
 
-    # If this is an enum, add the values
+    # If this is an enum, append its permissible values after any notes rather than replacing them (#762); notes
+    # that only restate the value list are not repeated
     if slot_info.range in schema_enum_names:
-        enum_info = schemaview.induced_enum(slot_info.range)
-        values_list = []
-        for pv_name in enum_info.permissible_values or {}:
-            values_list.append(pv_name)
-        if values_list:
-            attribute["values"] = "; ".join(values_list)
+        permissible_values = list(schemaview.induced_enum(slot_info.range).permissible_values or {})
+        if permissible_values:
+            listed = "; ".join(permissible_values)
+            restated = notes is not None and {v.strip() for v in notes.split(";")} == set(permissible_values)
+            attribute["values"] = f"{notes}\n\n{listed}" if notes and not restated else listed
 
     return attribute
 
