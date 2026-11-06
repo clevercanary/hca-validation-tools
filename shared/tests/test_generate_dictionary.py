@@ -82,6 +82,14 @@ def test_library_slots_are_strongly_recommended(data_dictionary, attribute_name)
     assert _attribute(data_dictionary, "sample", attribute_name)["required"] == "strongly recommended"
 
 
+def test_title_is_required_without_entry_sheet_relaxation(data_dictionary):
+    # #836: h5ad files require title; the entry-sheet tag never reaches the dictionary (#850).
+    title = _attribute(data_dictionary, "dataset", "title")
+    assert title["required"] is True
+    assert title["annotations"]["tier"] == "Tier 1"
+    assert "entrySheetRequired" not in title["annotations"]
+
+
 def test_core_slots_have_every_network(data_dictionary):
     networks = _attribute(data_dictionary, "dataset", "title")["annotations"]["bioNetworks"]
     assert len(networks) == 18

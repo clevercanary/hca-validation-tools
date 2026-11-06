@@ -292,7 +292,9 @@ def test_entry_sheet_optional_slots_rejects_other_values(tmp_path, value):
         get_entry_sheet_optional_slots(SchemaView(str(path)), "Dataset")
 
 
-def test_no_slot_is_entry_sheet_optional_yet(schemaview):
-    """#850 adds the mechanism only, so no entry-sheet result changes; #836 tags the first slot."""
+def test_only_title_is_entry_sheet_optional(schemaview):
+    """#836: h5ad files need `title`, entry sheets don't collect it; no other slot is relaxed."""
     for class_name in schemaview.all_classes():
-        assert get_entry_sheet_optional_slots(schemaview, class_name) == set(), class_name
+        has_title = any(slot.name == "title" for slot in schemaview.class_induced_slots(class_name))
+        expected = {"title"} if has_title else set()
+        assert get_entry_sheet_optional_slots(schemaview, class_name) == expected, class_name

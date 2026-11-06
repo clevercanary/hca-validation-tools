@@ -7,8 +7,12 @@ This script demonstrates how to use the validator to validate HCA data.
 import json
 from pathlib import Path
 
+import hca_metadata_schema.generated.core as schema
 import pytest
+from pydantic import ValidationError
 
+from hca_validation.schema_utils import get_entry_sheet_optional_slots
+from hca_validation.schema_utils.schema_utils import schema_classes
 from hca_validation.validator import validate
 
 # Get the path to the test data directory
@@ -87,7 +91,7 @@ def test_validate_valid_or_invalid_by_model_dataset(voibm_dataset):
     assert "doublet_detection" in gut_error_fields, "Should have an error for doublet_detection"
 
 
-# `study_pi`, a required Dataset slot, stands in for one tagged `entrySheetRequired: false`; no real slot is tagged yet.
+# `study_pi`, a required Dataset slot, stands in for a tagged one, keeping these mechanism tests off the real schema.
 RELAXED = frozenset({"study_pi"})
 
 
@@ -121,3 +125,31 @@ def test_unannotated_required_slot_still_fails_when_absent(valid_dataset):
     validation_error = validate(row, class_name="Dataset")
     assert validation_error is not None
     assert [(e["type"], e["loc"]) for e in validation_error.errors()] == [("missing", ("study_pi",))]
+
+
+DATASET_CLASSES = sorted(schema_classes["dataset"].values())
+
+
+@pytest.mark.parametrize("class_name", DATASET_CLASSES)
+@pytest.mark.parametrize("blank", ["absent", "None"])
+def test_entry_sheet_dataset_row_may_omit_title(schemaview, valid_dataset, class_name, blank):
+    """#836: `title` is required for h5ad files but tagged `entrySheetRequired: false`, so a sheet row may omit it."""
+    row = {key: value for key, value in valid_dataset.items() if key != "title"}
+    if blank == "None":
+        row["title"] = None
+    optional = get_entry_sheet_optional_slots(schemaview, class_name)
+    errors = validate(row, class_name=class_name, entry_sheet_optional=optional)
+    if class_name == "Dataset":
+        assert errors is None
+    else:
+        # Network classes also fail on their own required slots, which the fixture leaves out; only title matters here.
+        assert errors is None or all(e["loc"] != ("title",) for e in errors.errors())
+
+
+@pytest.mark.parametrize("class_name", DATASET_CLASSES)
+def test_dataset_model_requires_title(valid_dataset, class_name):
+    """#836: outside entry sheets, building a Dataset model without `title` fails."""
+    row = {key: value for key, value in valid_dataset.items() if key != "title"}
+    with pytest.raises(ValidationError) as excinfo:
+        getattr(schema, class_name).model_validate(row)
+    assert ("missing", ("title",)) in [(e["type"], e["loc"]) for e in excinfo.value.errors()]

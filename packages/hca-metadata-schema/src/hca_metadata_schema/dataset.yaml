@@ -260,20 +260,24 @@ slots:
       annDataLocation: uns
 
   title:
-    is_a: deprecated_slot
     title: Title
     description: >
       This text describes and differentiates the dataset from other datasets in the same collection. 
       It is strongly recommended that each dataset title in a collection is unique and does not depend on other metadata 
       such as a different assay to disambiguate it from other datasets in the collection.
     range: string
+    required: true
     examples:
       - value: "Cells of the adult human heart collection is 'All — Cells of the adult human heart'"
     comments:
-      - Useful to look up protocol data that can provide insight on batch effects. As protocols can sometimes apply to a subset of the study, we capture this at a sample level. This information may not always be available.
+      - Distinguishes this dataset from others in the same collection.
     annotations:
       cxg: title
       annDataLocation: uns
+      tier: Tier 1
+      # h5ad files must carry a title (CELLxGENE and the HCA validator require uns['title']); entry sheets don't
+      # collect one, so they may leave it blank (#836; see docs/schema-version-contract.md §3.4).
+      entrySheetRequired: false
 
 enums:
   ReferenceGenomeEnum:

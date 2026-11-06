@@ -17,7 +17,12 @@ from hca_metadata_schema import CORE_SCHEMA_PATH
 from linkml_runtime import SchemaView
 from linkml_runtime.dumpers import json_dumper
 
-from hca_validation.schema_utils import get_bionetwork_keys, get_bionetwork_subclasses, get_class_entity_type
+from hca_validation.schema_utils import (
+    ENTRY_SHEET_REQUIRED,
+    get_bionetwork_keys,
+    get_bionetwork_subclasses,
+    get_class_entity_type,
+)
 
 
 def transform_schema_to_data_dictionary(schemaview: SchemaView) -> dict[str, Any]:
@@ -121,7 +126,7 @@ def slot_definition(slot_info) -> dict[str, Any]:
     """An induced slot minus provenance and `entrySheetRequired` (#850); unlike `slot_to_attribute`, keeps `pattern`."""
     definition = {key: value for key, value in json_dumper.to_dict(slot_info).items() if key not in _SLOT_PROVENANCE}
     annotations = definition.get("annotations", {})
-    definition["annotations"] = {key: value for key, value in annotations.items() if key != "entrySheetRequired"}
+    definition["annotations"] = {key: value for key, value in annotations.items() if key != ENTRY_SHEET_REQUIRED}
     return definition
 
 
@@ -157,7 +162,7 @@ def slot_to_attribute(schemaview: SchemaView, slot_info, schema_enum_names: set[
     if slot_info.annotations:
         formatted_annotations = {}
         for annot_name, annot_info in jsonasobj2.items(slot_info.annotations):
-            if annot_name != "entrySheetRequired":  # #850: the dictionary reports `required` alone
+            if annot_name != ENTRY_SHEET_REQUIRED:  # #850: the dictionary reports `required` alone
                 formatted_annotations[annot_name] = annot_info.value
         attribute["annotations"] = formatted_annotations
 
