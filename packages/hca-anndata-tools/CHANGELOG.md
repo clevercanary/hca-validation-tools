@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.7.2](https://github.com/clevercanary/hca-validation-tools/compare/hca-anndata-tools-v0.7.1...hca-anndata-tools-v0.7.2) (2026-11-06)
+
+
+### Features
+
+* **hca-anndata-tools:** check an integrated object's obs metadata against its source datasets, cell by cell ([#793](https://github.com/clevercanary/hca-validation-tools/issues/793)) ([#794](https://github.com/clevercanary/hca-validation-tools/issues/794)) ([e7b2670](https://github.com/clevercanary/hca-validation-tools/commit/e7b2670d8daeaca2a1308543c8aa6aa23964f122))
+* **hca-anndata-tools:** depend on hca-metadata-schema and drop the bundled core.py ([#350](https://github.com/clevercanary/hca-validation-tools/issues/350)) ([#814](https://github.com/clevercanary/hca-validation-tools/issues/814)) ([2fe80cd](https://github.com/clevercanary/hca-validation-tools/commit/2fe80cd1fd0a0071b69e78bc9ea45595eb79063d))
+* **hca-anndata-tools:** report whether an integrated object's CAP annotations are current with CAP ([#781](https://github.com/clevercanary/hca-validation-tools/issues/781)) ([#783](https://github.com/clevercanary/hca-validation-tools/issues/783)) ([4553103](https://github.com/clevercanary/hca-validation-tools/commit/4553103eb549ef65cfd31a2be6e9fb45dc137cfc))
+* **hca-anndata-tools:** set obs['source_dataset'] on an integrated object from its tracker source datasets ([#776](https://github.com/clevercanary/hca-validation-tools/issues/776)) ([#777](https://github.com/clevercanary/hca-validation-tools/issues/777)) ([9495d12](https://github.com/clevercanary/hca-validation-tools/commit/9495d124519bfe6f922008de620c8bf62386170f))
+* **hca-metadata-schema:** give dissociation_protocol (AdiposeSample, GutSample) and radial_tissue_term (GutSample) annDataLocation obs and tier Tier 1 ([#824](https://github.com/clevercanary/hca-validation-tools/issues/824)) ([#825](https://github.com/clevercanary/hca-validation-tools/issues/825)) ([1f95db6](https://github.com/clevercanary/hca-validation-tools/commit/1f95db635a1ad2858459e66b612281c186c34137))
+* **hca-metadata-schema:** give the eight unlocated slots annDataLocation obs ([#604](https://github.com/clevercanary/hca-validation-tools/issues/604)) ([#819](https://github.com/clevercanary/hca-validation-tools/issues/819)) ([3b353ba](https://github.com/clevercanary/hca-validation-tools/commit/3b353ba4a95b8b2d3d50fc77b726f36aba482a20))
+* **hca-tracker-mcp:** verify_local gives each matched file its tracker row, and evaluate-h5ad uses it ([#828](https://github.com/clevercanary/hca-validation-tools/issues/828)) ([#832](https://github.com/clevercanary/hca-validation-tools/issues/832)) ([6eb0cb7](https://github.com/clevercanary/hca-validation-tools/commit/6eb0cb7ed085fb0b950211786de42031799f12a2))
+* report the validator version and stamp the schema version on every edit-log entry ([#802](https://github.com/clevercanary/hca-validation-tools/issues/802)) ([#833](https://github.com/clevercanary/hca-validation-tools/issues/833)) ([f682944](https://github.com/clevercanary/hca-validation-tools/commit/f68294442dda461ae7ccb5b14affcc26bb2cd18f))
+
+
+### Documentation
+
+* **hca-anndata-tools:** say what check_source_obs reads and reports, and render its empty cases ([#793](https://github.com/clevercanary/hca-validation-tools/issues/793)) ([#796](https://github.com/clevercanary/hca-validation-tools/issues/796)) ([039942f](https://github.com/clevercanary/hca-validation-tools/commit/039942f8d7395446f88e0557b8465a8e72c6a8ca))
+
+
+### Continuous Integration
+
+* measure test coverage in CI with a floor per project, and test generate_dictionary ([#548](https://github.com/clevercanary/hca-validation-tools/issues/548)) ([#817](https://github.com/clevercanary/hca-validation-tools/issues/817)) ([bf8d382](https://github.com/clevercanary/hca-validation-tools/commit/bf8d3829ee85d70b46d3ca17ca92d7c73b42e645))
+
 ## [0.7.1](https://github.com/clevercanary/hca-validation-tools/compare/hca-anndata-tools-v0.7.0...hca-anndata-tools-v0.7.1) (2026-09-30)
 
 
