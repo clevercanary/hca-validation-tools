@@ -1,8 +1,24 @@
 # Developing hca-schema-validator
 
-Notes for maintainers: running the tests, how the package is laid out, the
-ontology overlay, and how to regenerate the two gene tables the validator ships
-with. What the validator checks, and why, is in the [README](README.md).
+Notes for maintainers: installing from source, running the tests, how the
+package is laid out, the ontology overlay, and how to regenerate the two gene
+tables the validator ships with. What the validator checks, and why, is in the
+[README](README.md).
+
+## Installing from source
+
+Install uv by following the
+[official installation guide](https://docs.astral.sh/uv/getting-started/installation/).
+On macOS, `brew install uv` also works.
+
+```bash
+# Clone the repository
+git clone https://github.com/clevercanary/hca-validation-tools.git
+cd hca-validation-tools/packages/hca-schema-validator
+
+# Install dependencies and package
+uv sync
+```
 
 ## Testing
 
