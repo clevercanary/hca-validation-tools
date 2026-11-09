@@ -251,14 +251,44 @@ Ensembl says what changed. The allowed gene set says what is nameable. We only r
 5.8 5.6 and 5.7 are invariants of **prose**, held by tests, because the ordering rule is a substring match on
     output the validator itself wrote. Replacing that mechanism is #729.
 
-## 6. Out of scope
+## 6. Matching the declared release
 
-6.1 **Remediation.** Renaming, merging and dropping columns are `check_feature_ids` / `remap_feature_ids`
+What `check_gene_annotation_version` does with `obs['gene_annotation_version']` once the gene list is known.
+
+6.1 **Compatible releases.** For each release the gene release table covers (r76-r116), count the file's human
+    Ensembl gene IDs (3.10) that the release does not contain. The releases that contain all of them are the
+    file's compatible releases. A declared release outside them is a warning.
+
+6.2 **Both directions.** Genes are retired as well as issued, so a declared release can fall after the
+    compatible releases as well as before them. A finding splits the genes that rule out the declaration into
+    those issued after it, those retired before it, and those retired before it and issued again later.
+
+6.3 **Runs, not one range.** Compatible releases are reported as runs ("r100 to r104 and r109 to r116"),
+    because a gene retired and later restored leaves a gap.
+
+6.4 **Older releases.** A gene first present after r76 did not exist at any earlier release, so it rules out a
+    declared GRCh37 release (r55-r75) without GRCh37 data being shipped. With no such gene, the finding says
+    the table does not cover the declaration rather than refuting it. A number GENCODE has issued is reported
+    as ambiguous between Ensembl and GENCODE instead; below r55 nothing is checked.
+
+6.5 **Newer releases.** A declared release after the table's last release is not checked, and the finding says
+    so.
+
+6.6 **Ranges come out too wide, never too narrow.** Files usually keep only the genes that were detected, and
+    every gene removed is evidence removed. For a source dataset, a declaration outside the compatible
+    releases is still ruled out; pinning down the exact release is what is weaker.
+
+6.7 **`object_kind` changes one sentence.** It chooses the closing sentence of a finding that rules out the
+    declared release, or that no single release fits, and never which findings fire.
+
+## 7. Out of scope
+
+7.1 **Remediation.** Renaming, merging and dropping columns are `check_feature_ids` / `remap_feature_ids`
     (#708). This is the data layer those assume.
 
-6.2 **Cross-file consistency** between an integrated object and its sources is #530. Which merge pairs are
+7.2 **Cross-file consistency** between an integrated object and its sources is #530. Which merge pairs are
     safe to sum is a cross-file question and cannot be answered from one file.
 
-6.3 **Mixed-annotation atlases.** An atlas unioning studies aligned against different releases produces the
+7.3 **Mixed-annotation atlases.** An atlas unioning studies aligned against different releases produces the
     duplicate columns this check reports. Harmonising sources to one annotation first means the union has one
     column per gene and the problem never arises. Source datasets first, then rebuild.

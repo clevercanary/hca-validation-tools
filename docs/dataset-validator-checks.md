@@ -40,7 +40,7 @@ Runs the external `cap_upload_validator` package against the file. Validates CAP
 
 ## 4. HCA schema validator (`HCAValidator`)
 
-Runs `HCAValidator` from the `hca-schema-validator` package. Every check it makes — the core CELLxGENE checks, the HCA overrides and the HCA extensions — is listed, with the reason for each, in the [package README](../packages/hca-schema-validator/README.md#core-cellxgene-checks). This document does not repeat them.
+Runs `HCAValidator` from the `hca-schema-validator` package. Every check it makes — the core CELLxGENE checks, the HCA overrides and the HCA extensions — is listed in the [package README](../packages/hca-schema-validator/README.md#core-cellxgene-checks). This document does not repeat them.
 
 ---
 

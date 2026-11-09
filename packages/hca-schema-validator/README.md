@@ -134,7 +134,6 @@ is an error.
   spike-ins, and several model organisms and primates) and appears in that
   organism's gene list. CELLxGENE reports an ID missing from the list as an
   error.
-- A gene ID from a different organism than the file's is a warning.
 - `var['feature_is_filtered']` is true/false, and is all false when the file has
   no raw matrix. `raw.var` must not have this column.
 
@@ -161,8 +160,9 @@ is an error.
 - RNA-seq files have a raw matrix. If `X` holds raw counts and there is no
   `raw.X`, the file gets a warning that normalized data is strongly
   recommended.
-- A gene marked filtered (`feature_is_filtered`) is all zeros in `X`. A gene
-  that is all zeros in `X` is either marked filtered or all zeros in `raw.X` too.
+- A gene marked filtered (`feature_is_filtered`) should be all zeros in `X`,
+  and a gene that is all zeros in `X` should be marked filtered or be all zeros
+  in `raw.X` too. Both are warnings.
 - `X` and `raw.X` hold the same cells and genes, in the same order.
 - No two cells have identical raw counts.
 
@@ -189,14 +189,14 @@ is an error.
   - `uns['study_pi']` is required: a list naming the study's principal
     investigators, each a non-empty string.
   - Each field has a level:
-    - **required** (the default): an error when missing
+    - **required**: an error when missing
     - **optional**: checked only when present
     - **strongly recommended**: a warning when the column is absent or has
       missing values, for fields a data producer may genuinely not have
     - **forbidden**: an error when present. Self-reported ethnicity is
       forbidden, because HCA does not collect it, to protect donor privacy.
-  - **One value per cell.** A field the schema does not define as a list holds
-    one value per cell, not several packed together with `,`, `;` or `|`.
+  - **One value per cell.** Some fields hold one value per cell, not several
+    packed together with `,`, `;` or `|`.
   - **No placeholders.** Some fields reject placeholders such as `unknown`, `na`
     or `tbd`. Leave the value missing instead, because a placeholder looks like
     real data.
@@ -209,10 +209,10 @@ is an error.
   columns, and checks each label against its ontology term instead
   ([Cell metadata labels](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/README.md#cell-metadata-labels)).
   Passing `ignore_labels=False` rejects them as CELLxGENE does.
-- **Gene ID warnings.** CELLxGENE reports a gene ID missing from its gene list
-  as an error. HCA reports it as a warning, so that outdated gene IDs, which
-  are common in HCA files, do not stop validation from reporting the file's
-  other problems. Each `Feature ID '…' not found` warning names the gene set
+- **Gene ID warnings.** CELLxGENE reports a gene ID missing from its gene list,
+  or from a different organism than the file's, as an error. HCA reports both
+  as warnings, so that outdated gene IDs, which are common in HCA files, do not
+  stop validation from reporting the file's other problems. Each `Feature ID '…' not found` warning names the gene set
   version, for example "not found in GENCODE v48 (Ensembl 114)", and these
   warnings are listed after all other warnings. Human Ensembl gene IDs do not
   get this warning. They are listed in one gene ID report instead
@@ -377,8 +377,8 @@ Two comparisons:
    every cell's organism is human.
 2. **Declared release against the genes.** The validator works out which Ensembl
    releases are compatible with the file's human Ensembl gene IDs, and warns
-   when the declared release is not one of them. Only releases 76 to 116 can be
-   checked. The rules are in
+   when the declared release is not one of them. The gene release table stops at
+   release 116, so a newer declared release is not checked. The rules are in
    [docs/gene-id-contract.md](https://github.com/clevercanary/hca-validation-tools/blob/main/docs/gene-id-contract.md).
 
 #### When no version is declared
@@ -460,7 +460,7 @@ Details:
 | `[drop or re-align]` | Ensembl split the gene into several genes | Remove the gene, or re-run alignment against a newer annotation to get counts for the new genes. |
 | `[strip suffix]` | The ID has a version suffix, such as `.17` | Remove the suffix, then check the ID's Details line: removing the suffix alone may not make the ID valid. |
 | `[none]` | The gene is newer than the allowed gene set | Nothing to fix. |
-| `[ask]` | The gene history table (Ensembl releases 76 to 116) has no record of the ID, for example because the gene was removed before release 76 | Ask the data producer which gene annotation the file was built with. |
+| `[ask]` | Neither gene table (Ensembl releases 76 to 116) has a record of the ID, for example because the gene was removed before release 76 | Ask the data producer which gene annotation the file was built with. |
 
 #### Location notes
 
