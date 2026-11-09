@@ -259,11 +259,13 @@ What `check_gene_annotation_version` does with `obs['gene_annotation_version']` 
     Ensembl gene IDs (3.10) that the table knows and the release does not contain. The releases that contain
     all of them are the file's compatible releases. A declared release outside them is a warning. IDs the
     table has never seen are left out and named in a finding of their own; a file with no ID the table knows
-    has no compatible releases.
+    has no compatible releases. When no release contains them all, one finding says so, and a declared release
+    is named only when it leaves more genes unexplained than the closest release.
 
 6.2 **Both directions.** Genes are retired as well as issued, so a declared release can fall after the
-    compatible releases as well as before them. A finding splits the genes that rule out the declaration into
-    those issued after it, those retired before it, and those retired before it and issued again later.
+    compatible releases as well as before them. When compatible releases exist, a finding splits the genes
+    that rule out the declaration into those issued after it, those retired before it, and those retired
+    before it and issued again later.
 
 6.3 **Runs, not one range.** Compatible releases are reported as runs ("r100 to r104 and r109 to r116"),
     because a gene retired and later restored leaves a gap.
@@ -271,7 +273,8 @@ What `check_gene_annotation_version` does with `obs['gene_annotation_version']` 
 6.4 **Older releases.** A gene first present after r76 did not exist at any earlier release, so it rules out a
     declared GRCh37 release (r55-r75) without GRCh37 data being shipped. With no such gene, the finding says
     the table does not cover the declaration rather than refuting it. A number GENCODE has issued is reported
-    as ambiguous between Ensembl and GENCODE instead; below r55 nothing is checked.
+    as ambiguous between Ensembl and GENCODE instead. Below r55, a file whose cells are all human is not
+    checked; otherwise a gene first present after r76 can still rule the declaration out.
 
 6.5 **Newer releases.** A declared release after the table's last release is not checked, and the finding says
     so.

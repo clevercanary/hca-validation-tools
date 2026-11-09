@@ -203,10 +203,10 @@ is an error.
   - Some fields must match a set format, and list fields must hold non-empty
     text.
 - **Reserved and label columns.** CELLxGENE rejects files that already carry
-  columns the portal fills in itself: reserved columns such as `citation` and
-  `observation_joinid`, and label columns such as `cell_type` and `tissue`. With
-  `HCAValidator`'s default `ignore_labels=True`, HCA does not reject these
-  columns, and checks each label against its ontology term instead
+  names the portal fills in itself: reserved names such as `citation` in `uns`
+  and `observation_joinid` in `obs`, and label columns such as `cell_type` and
+  `tissue`. With `HCAValidator`'s default `ignore_labels=True`, HCA does not
+  reject these names, and checks each label against its ontology term instead
   ([Cell metadata labels](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/README.md#cell-metadata-labels)).
   Passing `ignore_labels=False` rejects them as CELLxGENE does.
 - **Gene ID warnings.** CELLxGENE reports a gene ID missing from its gene list,
@@ -241,7 +241,7 @@ agree with each other.
 |---|---|---|
 | `raw.X` | Yes | Raw counts as 32-bit floats, with only empty droplets removed |
 | `layers['desouped_counts']` | When ambient RNA was removed | The counts left after ambient RNA removal |
-| `X` | Yes | Normalized per cell and log-transformed, made from `desouped_counts` if the file has that layer, otherwise from `raw.X` |
+| `X` | Yes | Normalized per cell, then transformed with `log1p` (the natural log of 1 plus the value), made from `desouped_counts` if the file has that layer, otherwise from `raw.X` |
 
 Why these three:
 
@@ -261,8 +261,8 @@ What is checked:
 
 1. **`X` is identical to `raw.X`.** Normalization never ran.
 2. **`X` has missing (NaN) or infinite values.**
-3. **`X` has values above about 20.** That is too high for log-transformed
-   data, so `X` holds raw counts or was never log-transformed.
+3. **`X` has values above about 20.** That is too high for `log1p` data, so
+   `X` holds raw counts or was never log-transformed.
 4. **`X` has no positive values.** The matrix was emptied.
 5. **`layers['desouped_counts']` has missing, infinite or negative values, or no
    counts.** The layer cannot serve as the reference.
