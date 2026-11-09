@@ -97,8 +97,9 @@ reason for each.
   [HCA schema](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/src/hca_schema_validator/schema_definitions/hca_schema_definition.yaml)
   lists them).
 - Category columns are stored as categories, and true/false columns as
-  booleans. A category column holds one kind of value and no empty strings.
-  Unused categories are a warning.
+  booleans. A category column holds one kind of value and no empty text
+  (`""`), except `manner_of_death`, which may be empty text. Unused categories
+  are a warning.
 - Values are only missing where the schema allows.
 - Columns marked unique hold no repeated values.
 - Columns with a fixed list of allowed values hold only those values.
@@ -151,12 +152,14 @@ is an error.
 
 ### Matrix validations (`X`, `raw.X`, `layers`)
 
-- Non-zero values in the raw matrix (`raw.X`, or `X` when there is no
-  `raw.X`) are 32-bit floats.
 - Every matrix, including each layer, is dense or CSR (compressed sparse row).
   CSR is required when more than half the values are zero.
-- Non-zero raw counts are whole positive numbers.
-- Every cell has at least one raw count.
+- The raw matrix (`raw.X`, or `X` when there is no `raw.X`) holds raw counts.
+  These checks are skipped for ATAC-seq and methylation assays
+  ([Raw count checks](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/README.md#hca-overrides)):
+  - Non-zero values are 32-bit floats.
+  - Non-zero values are whole positive numbers.
+  - Every cell has at least one raw count.
 - RNA-seq files have a raw matrix. If `X` holds raw counts and there is no
   `raw.X`, the file gets a warning that normalized data is strongly
   recommended.
@@ -175,8 +178,10 @@ is an error.
 - An embedding not named `X_…` gets a warning, because the
   CELLxGENE Explorer will not show it.
 - Every embedding is a numeric array with one row per cell, at least two
-  dimensions and no infinite values. `X_…` embeddings have at least two
-  columns, and no embedding is entirely missing.
+  dimensions and no infinite values, and is not entirely missing. `X_…`
+  embeddings have at least two columns. For an embedding not named `X_…`, a
+  non-numeric type, infinite values or an entirely missing embedding is a
+  warning, not an error.
 
 ## HCA overrides
 
