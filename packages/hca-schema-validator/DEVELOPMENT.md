@@ -57,6 +57,23 @@ packages/hca-schema-validator/
 └── DEVELOPMENT.md        # This file
 ```
 
+## How counts are recovered from `X`
+
+The README's expression matrix check 8
+([Expression matrices](README.md#expression-matrices)) recovers each cell's
+counts from `X` to explain a mismatch with `raw.X`. That needs the cell's scale
+factor, which the validator reads from `X` alone:
+
+- `X` holds `log1p(scale × count)`, so the validator first undoes the log
+  transform with `expm1`. After that, a cell's smallest non-zero value is its
+  scale times a count of 1, and nearly every cell has a gene with a count of 1.
+- Cells with fewer than 30 genes are left out of this explanation, because
+  ambient RNA removal can take all of their count-1 genes. The comparison
+  itself, and check 9, still cover those cells.
+- On about half a million cells with known answers, this estimate was exact
+  every time, and it raised no false finding on 2.2 million correctly
+  normalized cells.
+
 ## Ontology Data Overlay
 
 The validator depends on `cellxgene-ontology-guide` for ontology term lookups. When that
