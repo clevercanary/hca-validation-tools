@@ -5,7 +5,7 @@ The dataset validator runs as an AWS Batch job. It makes its own integrity check
 Source files:
 - Orchestrator: `services/dataset-validator/src/dataset_validator/main.py`
 - CAP wrapper: `services/dataset-validator/src/dataset_validator/cap_validator_script.py`
-- CELLxGENE wrapper: `services/cellxgene-validator/src/cellxgene_validator/main.py`
+- CELLxGENE wrapper (not run; `main.py` sends a stub report in its place, #382): `services/cellxgene-validator/src/cellxgene_validator/main.py`
 - HCA wrapper: `services/hca-schema-validator/src/hca_schema_validator_service/main.py`
 - HCA cell annotation validator: `packages/hca-schema-validator/src/hca_schema_validator/cell_annotation_validator.py`
 - HCA validator: `packages/hca-schema-validator/src/hca_schema_validator/validator.py`
