@@ -288,7 +288,7 @@ What is checked:
 
 9. **`X` was log-transformed but never normalized per cell.**
 
-None of these checks run when there is no `raw.X`.
+Each of these is an error. None of these checks run when there is no `raw.X`.
 
 ### Cell metadata labels
 
@@ -462,7 +462,7 @@ Details:
 | Tag | When you see it | What to do |
 |---|---|---|
 | `[rename]` | Ensembl replaced the gene with one new gene, which is in the allowed gene set and not yet in the file | Replace the old ID with the new one. |
-| `[review]` | The new gene is already in the file; or several IDs in the file lead to the same new gene; or the file spells one gene more than one way (with and without a version suffix, or with two different suffixes) | Decide whether to combine the columns. Adding their counts double-counts if the file was aligned against an annotation that treated the IDs as separate genes. |
+| `[review]` | The new gene is already in the file; or several IDs in the file lead to the same new gene; or the file spells one gene more than one way (with and without a version suffix, or with two different suffixes), unless Ensembl retired the gene with no single replacement in the allowed gene set | Decide whether to combine the columns. Adding their counts double-counts if the file was aligned against an annotation that treated the IDs as separate genes. |
 | `[drop]` | The gene was removed with no replacement; or the replacement was itself removed later; or no replacement is in the allowed gene set; or the gene is on an alternate locus or a patch | Remove the gene. There is no replacement in the allowed gene set to move its counts to. |
 | `[drop or re-align]` | Ensembl split the gene into several genes, and at least one of them is in the allowed gene set | Remove the gene, or re-run alignment against a newer annotation to get counts for the new genes. |
 | `[strip suffix]` | The ID has a version suffix, such as `.17`, and without the suffix it is in the allowed gene set or newer than it. Any other suffixed ID gets the tag it would get without the suffix, and its Details line says "version suffix" | Remove the suffix. |
