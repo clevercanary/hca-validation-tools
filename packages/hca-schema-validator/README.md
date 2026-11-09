@@ -157,7 +157,7 @@ is an error.
 - The raw matrix (`raw.X`, or `X` when there is no `raw.X`) holds raw counts.
   These checks are skipped for ATAC-seq and methylation assays
   ([Raw count checks](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/README.md#hca-overrides)):
-  - Non-zero values are 32-bit floats.
+  - The raw matrix is stored as 32-bit floats.
   - Non-zero values are whole positive numbers.
   - Every cell has at least one raw count.
 - RNA-seq files have a raw matrix. If `X` holds raw counts and there is no
@@ -211,9 +211,9 @@ is an error.
   names the portal fills in itself: reserved names such as `citation` in `uns`
   and `observation_joinid` in `obs`, and label columns such as `cell_type` and
   `tissue`. With `HCAValidator`'s default `ignore_labels=True`, HCA does not
-  reject these names, and checks each label against its ontology term instead
+  reject these names. Passing `ignore_labels=False` rejects them as CELLxGENE
+  does. Either way, HCA checks each label against its ontology term
   ([Cell metadata labels](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/README.md#cell-metadata-labels)).
-  Passing `ignore_labels=False` rejects them as CELLxGENE does.
 - **Gene ID warnings.** CELLxGENE reports a gene ID missing from its gene list,
   or from a different organism than the file's, as an error. HCA reports both
   as warnings, so that outdated gene IDs, which are common in HCA files, do not
@@ -462,7 +462,7 @@ Details:
 | Tag | When you see it | What to do |
 |---|---|---|
 | `[rename]` | Ensembl replaced the gene with one new gene, which is in the allowed gene set and not yet in the file | Replace the old ID with the new one. |
-| `[review]` | The new gene is already in the file; or several IDs in the file lead to the same new gene; or the file spells one gene more than one way (with and without a version suffix, or with two different suffixes), unless Ensembl retired the gene with no single replacement in the allowed gene set | Decide whether to combine the columns. Adding their counts double-counts if the file was aligned against an annotation that treated the IDs as separate genes. |
+| `[review]` | The new gene is already in the file; or several IDs in the file lead to the same new gene; or the file spells one gene more than one way. When a file lists the same gene with and without a version suffix, the suffixed ID is `[review]`. The bare ID keeps the tag it would have on its own, unless Ensembl retired the gene with one replacement: then both IDs lead to that gene, and both are `[review]`. Two different suffixes of one gene are both `[review]`. A gene Ensembl retired with no single replacement in the allowed gene set keeps its own tag on every spelling | Decide whether to combine the columns. Adding their counts double-counts if the file was aligned against an annotation that treated the IDs as separate genes. |
 | `[drop]` | The gene was removed with no replacement; or the replacement was itself removed later; or no replacement is in the allowed gene set; or the gene is on an alternate locus or a patch | Remove the gene. There is no replacement in the allowed gene set to move its counts to. |
 | `[drop or re-align]` | Ensembl split the gene into several genes, and at least one of them is in the allowed gene set | Remove the gene, or re-run alignment against a newer annotation to get counts for the new genes. |
 | `[strip suffix]` | The ID has a version suffix, such as `.17`, and without the suffix it is in the allowed gene set or newer than it. Any other suffixed ID gets the tag it would get without the suffix, and its Details line says "version suffix" | Remove the suffix. |
