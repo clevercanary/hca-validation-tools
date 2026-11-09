@@ -52,21 +52,23 @@ slots:
     range: string
     required: true
     examples:
-      - value: "cellranger_8.0.0"
+      - value: cell ranger 3.0.1
+      - value: kallisto bustools
+      - value: GSNAP
     comments:
       - Affects which cells are filtered per dataset, and which reads (introns and exons or only exons) are counted as part of the reported transcriptome. This can convey batch effects.
     annotations:
       annDataLocation: obs
 
   assay_ontology_term_id:
-    title: Assay Ontology Term Id
+    title: Assay Ontology Term ID
     description: Platform used for single cell library construction.
     range: string
     required: true
     examples:
       - value: "EFO:0009922"
     notes:
-      - |
+      - |-
         This must be an EFO term and either:
         - "EFO:0002772" for assay by molecule or preferably its most accurate child
         - "EFO:0010183" for single cell library construction or preferably its most accurate child
@@ -95,8 +97,8 @@ slots:
   batch_condition:
     title: Batch Condition
     description: >-
-      Name of the covariate that confers the dominant batch effect in the data as judged by the data contributor. 
-      The name provided here should be the label by which this covariate is stored in the AnnData object.
+      *Note: Name of the covariate that confers the dominant batch effect in the data as judged by the data contributor.
+      The name provided here should be the label by which this covariate is stored in the AnnData object.*
     range: string
     multivalued: true
     required: false
@@ -113,8 +115,8 @@ slots:
 
   comments:
     title: Comments
-    description: >
-      Other technical or experimental covariates that could affect the quality or batch of the sample. 
+    description: >-
+      Other technical or experimental covariates that could affect the quality or batch of the sample.
       Must not contain identifiers. This field is designed to capture potential challenges for data integration not captured elsewhere.
     range: string
     required: false
@@ -155,7 +157,7 @@ slots:
 
   gene_annotation_version:
     title: Gene Annotation Version
-    description: >
+    description: >-
       Ensembl release version accession number. Some common codes include:
       GRCh38.p12 = GCF_000001405.38
       GRCh38.p13 = GCF_000001405.39
@@ -163,6 +165,7 @@ slots:
     range: string
     required: true
     examples:
+      - value: "v110"
       - value: "GCF_000001405.40"
     notes:
       - http://www.ensembl.org/info/website/archives/index.html or NCBI/RefSeq
@@ -179,13 +182,15 @@ slots:
     examples:
       - value: "yes"
       - value: "no"
+    comments:
+      - Affects the number of reads per cell called in a sample.
     annotations:
       annDataLocation: obs
 
   protocol_url:
     title: Protocol URL
-    description: >
-      The protocols.io URL (if none exists, please use the BioRxiv URL) for the full experimental protocol; 
+    description: >-
+      The protocols.io URL (if none exists, please use the BioRxiv URL) for the full experimental protocol;
       or if multiple protocols exist please list them e.g. sample preparation protocol / sequencing protocol.
     range: string
     required: false
@@ -198,7 +203,7 @@ slots:
 
   publication_doi:
     title: Publication DOI
-    description: >
+    description: >-
       The publication digital object identifier (doi) for the protocol. If no pre-print nor publication exists, please write 'not applicable'.
     range: string
     required: false
@@ -213,7 +218,7 @@ slots:
     range: ReferenceGenomeEnum
     required: true
     examples:
-      - value: "GRCm37"
+      - value: "GRCh38"
       - value: "GRCh37"
     comments:
       - Possible source of batch effect and confounder for some biological analysis
@@ -248,27 +253,27 @@ slots:
       annDataLocation: obs
 
   study_pi:
-    title: Study Pi
+    title: Study PI
     description: Principal Investigator(s) leading the study where the data is/was used.
     range: string
     multivalued: true
     required: true
     examples:
-      - value: '["Teichmann,Sarah,A."]'
-        description: "Principal Investigator in Last Name,MiddleInitial, FirstName format"
+      - value: "Teichmann,Sarah,A."
+        description: "Principal Investigator in Last name,First name,Middle initial format"
     annotations:
       annDataLocation: uns
 
   title:
     title: Title
-    description: >
-      This text describes and differentiates the dataset from other datasets in the same collection. 
-      It is strongly recommended that each dataset title in a collection is unique and does not depend on other metadata 
+    description: >-
+      This text describes and differentiates the dataset from other datasets in the same collection.
+      It is strongly recommended that each dataset title in a collection is unique and does not depend on other metadata
       such as a different assay to disambiguate it from other datasets in the collection.
     range: string
     required: true
     examples:
-      - value: "Cells of the adult human heart collection is 'All — Cells of the adult human heart'"
+      - value: 'Cells of the adult human heart collection is "All — Cells of the adult human heart"'
     comments:
       - Distinguishes this dataset from others in the same collection.
     annotations:

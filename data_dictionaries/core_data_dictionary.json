@@ -14,7 +14,7 @@
           "range": "string",
           "required": true,
           "multivalued": false,
-          "example": "cellranger_8.0.0",
+          "example": "cell ranger 3.0.1; kallisto bustools; GSNAP",
           "annotations": {
             "annDataLocation": "obs",
             "bioNetworks": [
@@ -43,7 +43,7 @@
         {
           "name": "ambient_count_correction",
           "title": "Ambient Count Correction",
-          "description": "Method used to correct ambient RNA contamination in single-cell data.",
+          "description": "Was ambient count correction software used during cellxgene processing? If so, which software?",
           "range": "string",
           "required": true,
           "multivalued": false,
@@ -90,7 +90,7 @@
         },
         {
           "name": "assay_ontology_term_id",
-          "title": "Assay Ontology Term Id",
+          "title": "Assay Ontology Term ID",
           "description": "Platform used for single cell library construction.",
           "range": "string",
           "required": true,
@@ -126,7 +126,7 @@
         {
           "name": "batch_condition",
           "title": "Batch Condition",
-          "description": "Name of the covariate that confers the dominant batch effect in the data as judged by the data contributor.  The name provided here should be the label by which this covariate is stored in the AnnData object.",
+          "description": "*Note: Name of the covariate that confers the dominant batch effect in the data as judged by the data contributor. The name provided here should be the label by which this covariate is stored in the AnnData object.*",
           "range": "string",
           "required": false,
           "multivalued": true,
@@ -160,7 +160,7 @@
         {
           "name": "comments",
           "title": "Comments",
-          "description": "Other technical or experimental covariates that could affect the quality or batch of the sample.  Must not contain identifiers. This field is designed to capture potential challenges for data integration not captured elsewhere.\n",
+          "description": "Other technical or experimental covariates that could affect the quality or batch of the sample. Must not contain identifiers. This field is designed to capture potential challenges for data integration not captured elsewhere.",
           "range": "string",
           "required": false,
           "multivalued": false,
@@ -350,7 +350,7 @@
           "range": "string",
           "required": true,
           "multivalued": false,
-          "example": "none; doublet_finder; manual; doublet_finder;manual",
+          "example": "none; doublet_finder; manual",
           "annotations": {
             "annDataLocation": "obs",
             "bioNetworks": [
@@ -363,11 +363,11 @@
         {
           "name": "gene_annotation_version",
           "title": "Gene Annotation Version",
-          "description": "Ensembl release version accession number. Some common codes include: GRCh38.p12 = GCF_000001405.38 GRCh38.p13 = GCF_000001405.39 GRCh38.p14 = GCF_000001405.40\n",
+          "description": "Ensembl release version accession number. Some common codes include: GRCh38.p12 = GCF_000001405.38 GRCh38.p13 = GCF_000001405.39 GRCh38.p14 = GCF_000001405.40",
           "range": "string",
           "required": true,
           "multivalued": false,
-          "example": "GCF_000001405.40",
+          "example": "v110; GCF_000001405.40",
           "annotations": {
             "annDataLocation": "obs",
             "bioNetworks": [
@@ -425,12 +425,13 @@
               "skin"
             ]
           },
+          "rationale": "Affects the number of reads per cell called in a sample.",
           "values": "no; yes"
         },
         {
           "name": "protocol_url",
           "title": "Protocol URL",
-          "description": "The protocols.io URL (if none exists, please use the BioRxiv URL) for the full experimental protocol;  or if multiple protocols exist please list them e.g. sample preparation protocol / sequencing protocol.\n",
+          "description": "The protocols.io URL (if none exists, please use the BioRxiv URL) for the full experimental protocol; or if multiple protocols exist please list them e.g. sample preparation protocol / sequencing protocol.",
           "range": "string",
           "required": false,
           "multivalued": false,
@@ -463,7 +464,7 @@
         {
           "name": "publication_doi",
           "title": "Publication DOI",
-          "description": "The publication digital object identifier (doi) for the protocol. If no pre-print nor publication exists, please write 'not applicable'.\n",
+          "description": "The publication digital object identifier (doi) for the protocol. If no pre-print nor publication exists, please write 'not applicable'.",
           "range": "string",
           "required": false,
           "multivalued": false,
@@ -499,7 +500,7 @@
           "range": "string",
           "required": true,
           "multivalued": false,
-          "example": "GRCm37; GRCh37",
+          "example": "GRCh38; GRCh37",
           "annotations": {
             "annDataLocation": "obs",
             "bioNetworks": [
@@ -596,12 +597,12 @@
         },
         {
           "name": "study_pi",
-          "title": "Study Pi",
+          "title": "Study PI",
           "description": "Principal Investigator(s) leading the study where the data is/was used.",
           "range": "string",
           "required": true,
           "multivalued": true,
-          "example": "[\"Teichmann,Sarah,A.\"]",
+          "example": "Teichmann,Sarah,A.",
           "annotations": {
             "annDataLocation": "uns",
             "bioNetworks": [
@@ -629,11 +630,11 @@
         {
           "name": "title",
           "title": "Title",
-          "description": "This text describes and differentiates the dataset from other datasets in the same collection.  It is strongly recommended that each dataset title in a collection is unique and does not depend on other metadata  such as a different assay to disambiguate it from other datasets in the collection.\n",
+          "description": "This text describes and differentiates the dataset from other datasets in the same collection. It is strongly recommended that each dataset title in a collection is unique and does not depend on other metadata such as a different assay to disambiguate it from other datasets in the collection.",
           "range": "string",
           "required": true,
           "multivalued": false,
-          "example": "Cells of the adult human heart collection is 'All \u2014 Cells of the adult human heart'",
+          "example": "Cells of the adult human heart collection is \"All \u2014 Cells of the adult human heart\"",
           "annotations": {
             "cxg": "title",
             "annDataLocation": "uns",
@@ -731,16 +732,17 @@
               "skin"
             ]
           },
-          "rationale": "Fundamental unit of biological variation of the data. It is strongly recommended that this identifier be designed so that it is unique to: a given individual within the collection of datasets that includes this dataset, and a given individual across all collections in CELLxGENE Discover. It is strongly recommended that \"pooled\" be used for observations from a sample of multiple individuals that were not confidently assigned to a single individual through demultiplexing. It is strongly recommended that \"unknown\" ONLY be used for observations in a dataset when it is not known which observations are from the same individual."
+          "rationale": "Fundamental unit of biological variation of the data.",
+          "values": "It is strongly recommended that this identifier be designed so that it is unique to: a given individual within the collection of datasets that includes this dataset, and a given individual across all collections in CELLxGENE Discover. It is strongly recommended that \"pooled\" be used for observations from a sample of multiple individuals that were not confidently assigned to a single individual through demultiplexing. It is strongly recommended that \"unknown\" ONLY be used for observations in a dataset when it is not known which observations are from the same individual."
         },
         {
           "name": "manner_of_death",
           "title": "Manner of Death",
-          "description": "Manner of death classification based on the Hardy Scale or \"unknown\" or \"not applicable\":\n* Category 1 = Violent and fast death \u2014 deaths due to accident, blunt force trauma or suicide, terminal phase < 10 min.\n* Category 2 = Fast death of natural causes \u2014 sudden unexpected deaths of reasonably healthy people, terminal phase < 1 h.\n* Category 3 = Intermediate death \u2014 terminal phase 1\u201324 h, patients ill but death unexpected.\n* Category 4 = Slow death \u2014 terminal phase > 1 day (e.g. cancer, chronic pulmonary disease).\n* Category 0 = Ventilator case \u2014 on a ventilator immediately before death.\n* Unknown = The cause of death is unknown.\n* Not applicable = Subject is alive.\n[Leave blank for embryonic/fetal tissue.]\n",
+          "description": "Manner of death classification based on the Hardy Scale or 'unknown' or 'not applicable':\n* Category 1 = Violent and fast death - Deaths due to accident, blunt force trauma or suicide, terminal phase estimated at < 10 min.\n* Category 2 = Fast death of natural causes - Sudden unexpected deaths of people who had been reasonably healthy, after a terminal phase estimated at < 1 hr (with sudden death from a myocardial infarction as a model cause of death for this category)\n* Category 3 = Intermediate death - Death after a terminal phase of 1 to 24 hrs (not classifiable as 2 or 4); patients who were ill but death was unexpected\n* Category 4 = Slow death - Death after a long illness, with a terminal phase longer than 1 day (commonly cancer or chronic pulmonary disease); deaths that are not unexpected\n* Category 0 = Ventilator Case - All cases on a ventilator immediately before death\n* Unknown = The cause of death is unknown\n* Not applicable = Subject is alive\n\n[Please leave this field as blank for embryonic/fetal tissue]",
           "range": "string",
           "required": true,
           "multivalued": false,
-          "example": "1",
+          "example": "1; 2; 3; 4; 0; unknown; not applicable",
           "annotations": {
             "annDataLocation": "obs",
             "bioNetworks": [
@@ -764,6 +766,7 @@
               "skin"
             ]
           },
+          "rationale": "Manner of death can affect cellular profiles.",
           "values": "1; 2; 3; 4; 0; unknown; not applicable"
         },
         {
@@ -773,6 +776,7 @@
           "range": "string",
           "required": true,
           "multivalued": false,
+          "example": "NCBITaxon:9606; NCBITaxon:10090",
           "annotations": {
             "annDataLocation": "obs",
             "cxg": "organism_ontology_term_id",
@@ -798,6 +802,7 @@
               "skin"
             ]
           },
+          "rationale": "Strong biological effect that needs to be considered for batch covariate selection.",
           "values": "\"NCBITaxon:9606\" for Homo sapiens or \"NCBITaxon:10090\" for Mus musculus.\n\nNCBITaxon:9606; NCBITaxon:10090"
         },
         {
@@ -863,6 +868,7 @@
               "skin"
             ]
           },
+          "rationale": "Likely biological effect. Need to know if we have a balanced dataset or if sex is collinear with the dataset.",
           "values": "This must be a child of PATO:0001894 for phenotypic sex or \"unknown\" if unavailable."
         }
       ]
@@ -944,7 +950,7 @@
           "range": "string",
           "required": true,
           "multivalued": false,
-          "example": "CL:0000057+",
+          "example": "CL:0000057+; na",
           "annotations": {
             "annDataLocation": "obs",
             "tier": "Tier 1",
@@ -969,7 +975,8 @@
               "skin"
             ]
           },
-          "values": "This must be a Cell Ontology (CL) term (http://www.ebi.ac.uk/ols4/ontologies/cl). For cells that are enriched, list the CL code followed by a '+'. For cells that were depleted, list the CL code followed by a '-'. If no enrichment or depletion occurred, please use 'na' (not applicable)"
+          "rationale": "If cell lineages were filtered, this may be a dataset exclusion criterion",
+          "values": "This must be a Cell Ontology (CL) term (http://www.ebi.ac.uk/ols4/ontologies/cl). For cells that are enriched, list the CL code followed by a \"+\". For cells that were depleted, list the CL code followed by a \"-\". If no enrichment or depletion occurred, please use 'na' (not applicable)"
         },
         {
           "name": "cell_number_loaded",
@@ -1012,7 +1019,7 @@
           "range": "decimal",
           "required": false,
           "multivalued": false,
-          "example": "88; 95; 93.5; unknown",
+          "example": "88; 95; 93.5",
           "annotations": {
             "annDataLocation": "obs",
             "tier": "Tier 1",
@@ -1076,7 +1083,7 @@
           "range": "string",
           "required": true,
           "multivalued": false,
-          "example": "HsapDv:0000237",
+          "example": "HsapDv:0000237; unknown",
           "annotations": {
             "annDataLocation": "obs",
             "cxg": "development_stage_ontology_term_id",
@@ -1102,7 +1109,8 @@
               "skin"
             ]
           },
-          "values": "If organism_ontolology_term_id is \"NCBITaxon:9606\" for Homo sapiens, this should be an HsapDv term. If organism_ontolology_term_id is \"NCBITaxon:10090\" for Mus musculus, this should be an MmusDv term. Refer to broader age bracket terms as needed.\n\nHsapDv:0000003; HsapDv:0000046; HsapDv:0000264; HsapDv:0000268; HsapDv:0000237; HsapDv:0000238; HsapDv:0000239; HsapDv:0000240; HsapDv:0000241; HsapDv:0000242; HsapDv:0000243; HsapDv:0000244; HsapDv:0000245; MmusDv:0000001; MmusDv:0000002; unknown"
+          "rationale": "Developmental stage is a key biological covariate for interpreting cell state and comparing samples across donors.",
+          "values": "If organism_ontology_term_id is \"NCBITaxon:9606\" for *Homo sapiens*, this should be an HsapDv term. If organism_ontology_term_id is \"NCBITaxon:10090\" for *Mus musculus*, this should be an MmusDv term.\n\n**Requirements for data contributors adhering to GDPR or like standards**: HCA requests that you do not submit year-specific terms. Refer to broader age bracket terms as needed.\n\nHsapDv:0000003; HsapDv:0000046; HsapDv:0000264; HsapDv:0000268; HsapDv:0000237; HsapDv:0000238; HsapDv:0000239; HsapDv:0000240; HsapDv:0000241; HsapDv:0000242; HsapDv:0000243; HsapDv:0000244; HsapDv:0000245; MmusDv:0000001; MmusDv:0000002; unknown"
         },
         {
           "name": "disease_ontology_term",
@@ -1168,15 +1176,17 @@
               "skin"
             ]
           },
-          "values": "This must be a MONDO term or \"PATO:0000461\" for normal or healthy.\n\nRequirements for data contributors adhering to GDPR or like standards: In the case of disease, HCA requests that you submit a higher order ontology term - this is especially important in the case of rare disease."
+          "rationale": "CELLxGENE core schema",
+          "values": "This must be a MONDO term or \"PATO:0000461\" for normal or healthy.\n\n**Requirements for data contributors adhering to GDPR or like standards**: In the case of disease, HCA requests that you submit a higher order ontology term - this is especially important in the case of rare disease."
         },
         {
           "name": "dissociation_protocol",
           "title": "Dissociation Protocol",
-          "description": "Dissociation chemicals used during sample preparation",
+          "description": "Dissociation chemicals used during sample preparation.",
           "range": "string",
           "required": true,
           "multivalued": false,
+          "example": "trypsin; trypLE; collagenase",
           "annotations": {
             "annDataLocation": "obs",
             "tier": "Tier 1",
@@ -1184,8 +1194,7 @@
               "adipose",
               "gut"
             ]
-          },
-          "values": "trypsin; trypLE; collagenase"
+          }
         },
         {
           "name": "donor_id",
@@ -1220,7 +1229,8 @@
               "skin"
             ]
           },
-          "rationale": "Fundamental unit of biological variation of the data. It is strongly recommended that this identifier be designed so that it is unique to: a given individual within the collection of datasets that includes this dataset, and a given individual across all collections in CELLxGENE Discover. It is strongly recommended that \"pooled\" be used for observations from a sample of multiple individuals that were not confidently assigned to a single individual through demultiplexing. It is strongly recommended that \"unknown\" ONLY be used for observations in a dataset when it is not known which observations are from the same individual."
+          "rationale": "Fundamental unit of biological variation of the data.",
+          "values": "It is strongly recommended that this identifier be designed so that it is unique to: a given individual within the collection of datasets that includes this dataset, and a given individual across all collections in CELLxGENE Discover. It is strongly recommended that \"pooled\" be used for observations from a sample of multiple individuals that were not confidently assigned to a single individual through demultiplexing. It is strongly recommended that \"unknown\" ONLY be used for observations in a dataset when it is not known which observations are from the same individual."
         },
         {
           "name": "institute",
@@ -1259,10 +1269,11 @@
         {
           "name": "is_primary_data",
           "title": "Is Primary Data",
-          "description": "Deprecated placeholder indicating whether sample represents primary data.",
+          "description": "This must be True if this is the canonical instance of this cellular observation and False if not. This is commonly False for meta-analyses reusing data or for secondary views of data.",
           "range": "string",
           "required": false,
           "multivalued": false,
+          "example": "true; false",
           "annotations": {
             "annDataLocation": "obs",
             "tier": "Tier 1",
@@ -1288,7 +1299,8 @@
               "skin"
             ]
           },
-          "rationale": "Kept as a deprecated placeholder on purpose. The annotation is the only thing added here, because annotations are inert for validation: they tell annDataLocation-walking consumers such as drop_obs_columns that this obs column exists and must not be deleted, without altering what the entry sheet validator accepts. Restoring it to a real `range: boolean` slot would start type-checking the column on entry sheets, where it is currently an unconstrained string that tolerates any value including \"na\" \u2014 sheets that validate today would begin failing. See #544.\nThe real modelling question is deferred, not answered. CELLxGENE defines this in obs as a per-cell bool, and the published Tier 1 dictionary describes it as \"the canonical instance of this cellular observation\" \u2014 per-observation semantics \u2014 while filing it under `sample`. A sample's cells can legitimately disagree, so Sample is the wrong grain for it and this placeholder deliberately makes no semantic claim. Moving it to Cell is its own change: slots are global by name in LinkML, so it needs a slot_usage override rather than a move, and removing it from Sample outright would make sheets carrying the column fail with extra_forbidden."
+          "rationale": "This helps to ensure samples are not used twice.",
+          "values": "true; false"
         },
         {
           "name": "library_id",
@@ -1429,10 +1441,11 @@
         {
           "name": "radial_tissue_term",
           "title": "Radial Tissue Term",
-          "description": "Radial compartment/location of the tissue sample.",
+          "description": "The layer of the gut that was sequenced. This depends on the chemical digestion used.",
           "range": "string",
           "required": true,
           "multivalued": false,
+          "example": "EPI; LP; MUSC; SUB; MLN; Peyers patch",
           "annotations": {
             "annDataLocation": "obs",
             "tier": "Tier 1",
@@ -1543,7 +1556,8 @@
               "skin"
             ]
           },
-          "rationale": "To understand whether the collection site contributes to batch effects. It is strongly recommended that this identifier be designed so that it is unique to a given site within the collection of datasets that includes this site (for example, the labels 'site1', 'site2' may appear in other datasets thus rendering them indistinguishable)."
+          "rationale": "To understand whether the collection site contributes to batch effects",
+          "values": "It is strongly recommended that this identifier be designed so that it is unique to a given site within the collection of datasets that includes this site (for example, the labels 'site1', 'site2' may appear in other datasets thus rendering them indistinguishable)."
         },
         {
           "name": "sample_collection_year",
@@ -1610,7 +1624,8 @@
               "reproduction",
               "skin"
             ]
-          }
+          },
+          "rationale": "Fundamental unit of sampling of the tissue."
         },
         {
           "name": "sample_preservation_method",
@@ -1619,7 +1634,7 @@
           "range": "string",
           "required": true,
           "multivalued": false,
-          "example": "fresh",
+          "example": "fresh; frozen at -70C",
           "annotations": {
             "annDataLocation": "obs",
             "tier": "Tier 1",
@@ -1644,16 +1659,17 @@
               "skin"
             ]
           },
+          "rationale": "Main contributor to batch effects",
           "values": "ambient temperature; cut slide; fresh; frozen at -70C; frozen at -80C; frozen at -150C; frozen in liquid nitrogen; frozen in vapor phase; paraffin block; RNAlater at 4C; RNAlater at 25C; RNAlater at -20C; other"
         },
         {
           "name": "sample_source",
           "title": "Sample Source",
-          "description": "The study subgroup that the participant belongs to, indicating whether the participant was a surgical donor, a postmortem donor, or an organ donor.",
+          "description": "The study subgroup that the participant belongs to. This indicates whether the participant was a surgical donor (this includes patients providing blood samples or biopsies), a postmortem donor, or a living organ donor.",
           "range": "string",
           "required": true,
           "multivalued": false,
-          "example": "surgical donor",
+          "example": "surgical donor; postmortem donor",
           "annotations": {
             "annDataLocation": "obs",
             "tier": "Tier 1",
@@ -1678,6 +1694,7 @@
               "skin"
             ]
           },
+          "rationale": "The source of the sample (whether the sample comes from alive subject; an organ donor; or deceased subject) can result in different cellular profiles and hence batch effects.",
           "values": "surgical donor; postmortem donor; living organ donor"
         },
         {
@@ -1687,7 +1704,7 @@
           "range": "string",
           "required": true,
           "multivalued": false,
-          "example": "healthy",
+          "example": "healthy; diseased; adjacent",
           "annotations": {
             "annDataLocation": "obs",
             "tier": "Tier 1",
@@ -1712,6 +1729,7 @@
               "skin"
             ]
           },
+          "rationale": "Main contributor to batch effects",
           "values": "healthy; diseased; adjacent"
         },
         {
@@ -1721,7 +1739,7 @@
           "range": "string",
           "required": true,
           "multivalued": false,
-          "example": "cell",
+          "example": "cell; nucleus; na",
           "annotations": {
             "annDataLocation": "obs",
             "cxg": "suspension_type",
@@ -1747,6 +1765,7 @@
               "skin"
             ]
           },
+          "rationale": "Major source of batch effect & dataset exclusion criteria",
           "values": "This must be \"cell\", \"nucleus\", or \"na\".\nThis must be the correct type for the corresponding assay:\n* 10x transcription profiling [EFO:0030080] and its children = \"cell\" or \"nucleus\"\n* ATAC-seq [EFO:0007045] and its children = \"nucleus\"\n* BD Rhapsody Whole Transcriptome Analysis [EFO:0700003] = \"cell\"\n* BD Rhapsody Targeted mRNA [EFO:0700004] = \"cell\"\n* CEL-seq2 [EFO:0010010] = \"cell\" or \"nucleus\"\n* CITE-seq [EFO:0009294] and its children = \"cell\"\n* DroNc-seq [EFO:0008720] = \"nucleus\"\n* Drop-seq [EFO:0008722] = \"cell\" or \"nucleus\"\n* GEXSCOPE technology [EFO:0700011] = \"cell\" or \"nucleus\"\n* inDrop [EFO:0008780] = \"cell\" or \"nucleus\"\n\ncell; nucleus; na"
         },
         {
@@ -1847,6 +1866,7 @@
               "skin"
             ]
           },
+          "rationale": "Major biological effect that needs to be assessed for sufficient coverage in the atlas datasets.",
           "values": "If tissue_type is \"tissue\" or \"organoid\", this must be the most accurate child of UBERON:0001062 for anatomical entity. If tissue_type is \"cell culture\" this must follow the requirements for cell_type_ontology_term_id."
         },
         {
@@ -1856,7 +1876,7 @@
           "range": "string",
           "required": true,
           "multivalued": false,
-          "example": "tissue",
+          "example": "tissue; organoid; cell culture",
           "annotations": {
             "annDataLocation": "obs",
             "cxg": "tissue_type",
@@ -1882,6 +1902,7 @@
               "skin"
             ]
           },
+          "rationale": "Source of batch effect & dataset exclusion criteria",
           "values": "tissue; organoid; cell culture"
         }
       ]
@@ -1894,7 +1915,7 @@
         {
           "name": "author_cell_type",
           "title": "Author Cell Type",
-          "description": "Encoding of author intuition of cellular annotation in the dataset.",
+          "description": "Encoding of author intuition of cellular annotation in the dataset.\n\nUse `author_cell_type` for original source datasets where [`cell_type_ontology_term_id`](#cell_type_ontology_term_id) is not available.",
           "range": "string",
           "required": false,
           "multivalued": false,
@@ -1923,12 +1944,12 @@
               "skin"
             ]
           },
-          "rationale": "Encoding of author intuition of cellular annotation in their dataset.\nRetained alongside the ontology term so the author's original naming is not lost when terms are mapped to CL."
+          "rationale": "Encoding of author intuition of cellular annotation in their dataset."
         },
         {
           "name": "cell_type_ontology_term_id",
           "title": "Cell Type Ontology Term ID",
-          "description": "Cell Ontology (CL) term.",
+          "description": "Cell Ontology (CL) term.\n\nUse `cell_type_ontology_term_id` for integrated objects. `cell_type_ontology_term_id` will be required for submission to CELLxGENE.",
           "range": "string",
           "required": false,
           "multivalued": false,
@@ -1958,8 +1979,8 @@
               "skin"
             ]
           },
-          "rationale": "Encoding of cell type to help alignment with other datasets.\nUnrecoverable once dropped \u2014 populate_labels derives cell_type from this column, not the reverse. Optional here to match the h5ad validator's requirement_level.",
-          "values": "This must be a Cell Ontology (CL) term (http://www.ebi.ac.uk/ols4/ontologies/cl).\n\nIf no appropriate high-level term can be found or the cell type is unknown, then it is strongly recommended to use 'unknown'.\n\nThe following terms must not be used: \"CL:0000255\" for eukaryotic cell; \"CL:0000257\" for Eumycetozoan cell; \"CL:0000548\" for animal cell.\n\nZFA, FBbt, and WBbt terms are allowed depending on the organism, and \"na\" is allowed if tissue_type is \"cell line\" \u2014 per the h5ad validator's curie_constraints."
+          "rationale": "Encoding of cell type to help alignment with other datasets.",
+          "values": "This must be a Cell Ontology (CL) term (http://www.ebi.ac.uk/ols4/ontologies/cl).\n\nIf no appropriate high-level term can be found or the cell type is unknown, then it is strongly recommended to use 'unknown'.\n\nThe following terms must not be used: \"CL:0000255\" for eukaryotic cell; \"CL:0000257\" for Eumycetozoan cell; \"CL:0000548\" for animal cell."
         }
       ]
     }
