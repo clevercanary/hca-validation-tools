@@ -302,8 +302,8 @@ ontology name for its term ID:
 - A label that does not match is an error.
 - A label on a row with no term ID is an error.
 - A label column whose term ID column is absent from the file, such as `tissue`
-  without `tissue_ontology_term_id`, is a warning, because its labels cannot be
-  checked.
+  without `tissue_ontology_term_id`, is a warning if it holds any labels,
+  because its labels cannot be checked.
 
 ### Donor metadata
 
@@ -330,8 +330,8 @@ These are the terms Ensembl, GENCODE and the Genome Reference Consortium use.
   counts are made against one gene annotation.
 - **Ensembl**: the genome database run by EMBL-EBI (the European Bioinformatics
   Institute). Ensembl publishes a gene annotation in numbered **Ensembl
-  releases**, a few times a year. Validator messages write release 114 as
-  `r114`.
+  releases**, a few times a year. Messages about the declared release write
+  release 114 as `r114`.
 - **Ensembl stable ID**: the identifier Ensembl gives a gene, transcript or
   protein. A human **Ensembl gene ID** has the form `ENSG00000141510`, and can
   carry a version after a dot (`ENSG00000141510.18`). Stable IDs are meant to
@@ -417,8 +417,8 @@ are grouped by what happened to each gene
 
 #### Reading the gene ID report
 
-All human gene IDs outside the allowed gene set are reported together in one
-block with four parts:
+All human gene IDs outside the allowed gene set are reported together, as four
+warnings in a row:
 
 - **Headline**: how many IDs are missing from the allowed gene set
 - **`Summary:`**: one line per group, with the count, what happened, and a tag
@@ -458,8 +458,8 @@ Details:
 |---|---|---|
 | `[rename]` | Ensembl replaced the gene with one new gene, which is in the allowed gene set and not yet in the file | Replace the old ID with the new one. |
 | `[review]` | The new gene is already in the file; or several IDs in the file lead to the same new gene; or the file spells one gene more than one way (with and without a version suffix, or with two different suffixes) | Decide whether to combine the columns. Adding their counts double-counts if the file was aligned against an annotation that treated the IDs as separate genes. |
-| `[drop]` | The gene was removed with no replacement; or the replacement was itself removed later; or the replacement is not in the allowed gene set; or the gene is on an alternate locus or a patch | Remove the gene. There is no replacement in the allowed gene set to move its counts to. |
-| `[drop or re-align]` | Ensembl split the gene into several genes | Remove the gene, or re-run alignment against a newer annotation to get counts for the new genes. |
+| `[drop]` | The gene was removed with no replacement; or the replacement was itself removed later; or no replacement is in the allowed gene set; or the gene is on an alternate locus or a patch | Remove the gene. There is no replacement in the allowed gene set to move its counts to. |
+| `[drop or re-align]` | Ensembl split the gene into several genes, and at least one of them is in the allowed gene set | Remove the gene, or re-run alignment against a newer annotation to get counts for the new genes. |
 | `[strip suffix]` | The ID has a version suffix, such as `.17`, and without the suffix it is in the allowed gene set or newer than it. Any other suffixed ID gets the tag it would get without the suffix, and its Details line says "version suffix" | Remove the suffix. |
 | `[none]` | The gene is newer than the allowed gene set | Nothing to fix. |
 | `[ask]` | Neither gene table (Ensembl releases 76 to 116) has a record of the ID, for example because the gene was removed before release 76 | Ask the data producer which gene annotation the file was built with. |
