@@ -256,8 +256,10 @@ Ensembl says what changed. The allowed gene set says what is nameable. We only r
 What `check_gene_annotation_version` does with `obs['gene_annotation_version']` once the gene list is known.
 
 6.1 **Compatible releases.** For each release the gene release table covers (r76-r116), count the file's human
-    Ensembl gene IDs (3.10) that the release does not contain. The releases that contain all of them are the
-    file's compatible releases. A declared release outside them is a warning.
+    Ensembl gene IDs (3.10) that the table knows and the release does not contain. The releases that contain
+    all of them are the file's compatible releases. A declared release outside them is a warning. IDs the
+    table has never seen are left out and named in a finding of their own; a file with no ID the table knows
+    has no compatible releases.
 
 6.2 **Both directions.** Genes are retired as well as issued, so a declared release can fall after the
     compatible releases as well as before them. A finding splits the genes that rule out the declaration into
