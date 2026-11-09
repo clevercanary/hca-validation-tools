@@ -127,7 +127,7 @@ def test_intervals_folds_a_contiguous_run_into_one_pair():
 
 def test_intervals_keeps_a_resurrection_as_separate_runs():
     # ENSG00000288593 is retired at r105 and returns at r109; a single pair would
-    # claim it existed at r106-r108. The second argument is every release the
+    # claim it existed at r105-r108. The second argument is every release the
     # archive serves, not the gene's own -- adjacency is judged against that.
     served = list(range(100, 111))
     assert gen.intervals([100, 101, 109, 110], served) == [(100, 101), (109, 110)]

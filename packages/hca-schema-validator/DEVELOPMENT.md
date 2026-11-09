@@ -208,7 +208,7 @@ ENSG00000000003,76,116
 
 Intervals rather than a single `(first, last)` pair because genes are
 occasionally **resurrected** — `ENSG00000288593` is retired at r105 and returns
-at r109, and a flat pair would claim it existed at r106–r108. Two genes in the
+at r109, and a flat pair would claim it existed at r105–r108. Two genes in the
 shipped range have more than one interval.
 
 The table is sized by genes, not releases, so covering the whole GRCh38 history
