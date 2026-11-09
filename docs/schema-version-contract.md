@@ -29,8 +29,8 @@ A version is only useful if a consumer can tell from it whether a file that pass
       widened in a tools release. While a minor schema release pull request is open, the bound may already admit
       that coming minor (e.g. `>=0.2,<0.4` while 0.3.0 is pending), so tools can release before or after it, but
       only when tools needs nothing from the new minor. Once a tools release admits the pending minor, any later
-      schema change bound for that minor must keep working with that released tools version. If it doesn't, widen
-      tools again before the schema release, or hold the change for the following minor.
+      schema change bound for that minor must keep working with every released tools version that admits it; if it
+      can't, hold the change for the following minor.
     - The data portal by bumping the tag it syncs from (DataBiosphere/data-portal#3263); the tracker by refreshing
       its dictionary.
 
