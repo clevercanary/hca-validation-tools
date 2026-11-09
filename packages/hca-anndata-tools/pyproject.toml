@@ -28,9 +28,10 @@ dependencies = [
     "matplotlib>=3.7",
     "pydantic>=2,<3",
     # The HCA schema's Pydantic models, which set_uns, list_uns_fields and check_source_obs read.
-    # Until #350 this package carried a hand-made copy of them. Capped at the next minor: at 0.x
-    # a schema minor bump is a breaking change.
-    "hca-metadata-schema>=0.2,<0.3",
+    # Until #350 this package carried a hand-made copy of them. Spans 0.2 and 0.3: tools needs nothing
+    # from 0.3, whose change (title required, #836) is read from the installed schema. Cap at the next
+    # minor after that: at 0.x a schema minor bump is a breaking change.
+    "hca-metadata-schema>=0.2,<0.4",
 ]
 
 [project.urls]

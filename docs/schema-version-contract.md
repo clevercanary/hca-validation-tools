@@ -26,7 +26,11 @@ A version is only useful if a consumer can tell from it whether a file that pass
       when its image is rebuilt and redeployed.
     - `hca-anndata-tools`, installed from PyPI, resolves the package by its bound, capped at the next minor: a patch
       release reaches installs as soon as it is published; a minor (breaking) release only once the bound is
-      widened in a tools release.
+      widened in a tools release. While a minor schema release pull request is open, the bound may already admit
+      that coming minor (e.g. `>=0.2,<0.4` while 0.3.0 is pending), so tools can release before or after it, but
+      only when tools needs nothing from the new minor. Once a tools release admits the pending minor, any later
+      schema change bound for that minor must keep working with every released tools version that admits it; if it
+      can't, hold the change for the following minor.
     - The data portal by bumping the tag it syncs from (DataBiosphere/data-portal#3263); the tracker by refreshing
       its dictionary.
 
