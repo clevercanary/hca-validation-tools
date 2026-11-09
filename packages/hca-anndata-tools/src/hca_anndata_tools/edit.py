@@ -190,11 +190,8 @@ def set_uns(
         except ValidationError as e:
             return {"error": f"Invalid value for '{field}': {e}"}
 
-        # Reject empty values for required fields. The str branch currently has
-        # no active caller — the registry contains no required uns field typed
-        # as plain str. Required list-typed fields (e.g. study_pi) are exercised
-        # by the list branch below. Keep the str check for a future required
-        # plain-str uns field.
+        # Reject empty values for required fields: the str branch catches title
+        # (required from hca-metadata-schema 0.3, #836), the list branch study_pi.
         if info.required:
             if isinstance(validated_value, str) and not validated_value.strip():
                 return {"error": f"Invalid value for '{field}': must be non-empty"}

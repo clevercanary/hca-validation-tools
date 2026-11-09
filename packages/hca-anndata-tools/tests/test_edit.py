@@ -7,6 +7,7 @@ import h5py
 import hca_metadata_schema
 import numpy as np
 import pandas as pd
+import pytest
 import scipy.sparse as sp
 
 from hca_anndata_tools.edit import (
@@ -233,6 +234,15 @@ def test_set_uns_empty_list_rejected(sample_h5ad_for_write):
     result = set_uns(str(sample_h5ad_for_write), "study_pi", [])
     assert "error" in result
     assert "non-empty" in result["error"]
+
+
+@pytest.mark.parametrize("value", ["", "   "])
+def test_set_uns_empty_title_rejected(sample_h5ad_for_write, value):
+    # title is required (#836), so an empty or whitespace-only string is refused and nothing is written.
+    result = set_uns(str(sample_h5ad_for_write), "title", value)
+    assert "error" in result
+    assert "non-empty" in result["error"]
+    assert_no_snapshot_written(sample_h5ad_for_write)
 
 
 def test_set_uns_list_with_empty_element_rejected(sample_h5ad_for_write):

@@ -23,9 +23,9 @@ dependencies = [
     "pydantic-core>=2.33.2,<3",
     "google-api-python-client>=2.171.0,<3",
     "urllib3>=2.5.0,<3",
-    # The LinkML schema and its generated models (#350). Bounded at the next minor like any
-    # sibling: at 0.x a minor bump is a breaking schema change.
-    "hca-metadata-schema>=0.2,<0.3",
+    # The LinkML schema and its generated models (#350). shared always resolves it from the checkout
+    # (path source below), so this bound is informational; it spans 0.2 and 0.3 like hca-anndata-tools.
+    "hca-metadata-schema>=0.2,<0.4",
 ]
 
 # Optional: only needed by the `h5ad_storage` module (HDF5 introspection).
