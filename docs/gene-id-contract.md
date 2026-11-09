@@ -158,10 +158,10 @@ Ensembl says what changed. The allowed gene set says what is nameable. We only r
     nothing carrying one is ever told `[none]`. When a file lists the same gene with and without a version
     suffix, the suffixed ID is `[review]`: stripping would leave two columns under one name, the same
     collision rule as 3.5 by another route. The bare ID keeps the tag it would have on its own, except a
-    retired gene with one successor: every spelling shares that successor, so 3.5 makes them all `[review]`.
-    Two different suffixes of one gene are both `[review]`. A gene retired with no single successor in the
-    allowed gene set (no successor, a split, or a successor outside the set) keeps its own tag on every
-    spelling.
+    retired gene with one successor in the allowed gene set: every spelling shares that successor, so 3.5
+    makes them all `[review]`. Two different suffixes of one gene are both `[review]`. A gene retired with
+    no single successor in the allowed gene set (no successor, a split, or a successor outside the set) keeps
+    its own tag on every spelling.
     No prod file carries a versioned identifier today; Cell Ranger strips them.
 
 3.10 Human identifiers only, matched exactly. Gorilla is `ENSGGOG...`; a prefix test would treat it as human.
