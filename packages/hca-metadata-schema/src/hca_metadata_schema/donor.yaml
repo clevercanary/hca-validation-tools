@@ -69,14 +69,14 @@ slots:
     description: |-
       Manner of death classification based on the Hardy Scale or 'unknown' or 'not applicable':
       * Category 1 = Violent and fast death - Deaths due to accident, blunt force trauma or suicide, terminal phase estimated at < 10 min.
-      * Category 2 = Fast death of natural causes - Sudden unexpected deaths of people who had been reasonably healthy, after a terminal phase estimated at < 1 hr (with sudden death from a myocardial infarction as a model cause of death for this category)
-      * Category 3 = Intermediate death - Death after a terminal phase of 1 to 24 hrs (not classifiable as 2 or 4); patients who were ill but death was unexpected
-      * Category 4 = Slow death - Death after a long illness, with a terminal phase longer than 1 day (commonly cancer or chronic pulmonary disease); deaths that are not unexpected
-      * Category 0 = Ventilator Case - All cases on a ventilator immediately before death
-      * Unknown = The cause of death is unknown
-      * Not applicable = Subject is alive
+      * Category 2 = Fast death of natural causes - Sudden unexpected deaths of people who had been reasonably healthy, after a terminal phase estimated at < 1 hr (with sudden death from a myocardial infarction as a model cause of death for this category).
+      * Category 3 = Intermediate death - Death after a terminal phase of 1 to 24 hrs (not classifiable as 2 or 4); patients who were ill but death was unexpected.
+      * Category 4 = Slow death - Death after a long illness, with a terminal phase longer than 1 day (commonly cancer or chronic pulmonary disease); deaths that are not unexpected.
+      * Category 0 = Ventilator Case - All cases on a ventilator immediately before death.
+      * Unknown = The cause of death is unknown.
+      * Not applicable = Subject is alive.
 
-      [Please leave this field as blank for embryonic/fetal tissue]
+      [Please leave this field as blank for embryonic/fetal tissue.]
     range: MannerOfDeath
     required: true
     examples:

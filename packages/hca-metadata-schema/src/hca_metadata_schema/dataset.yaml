@@ -82,7 +82,7 @@ slots:
         - Smart-seq2 "EFO:0008931"
         - Visium Spatial Gene Expression "EFO:0010961"
     comments:
-      - Major source of batch effect and dataset filtering criterion
+      - Major source of batch effect and dataset filtering criterion.
     annotations:
       cxg: assay_ontology_term_id
       annDataLocation: obs
@@ -97,8 +97,8 @@ slots:
   batch_condition:
     title: Batch Condition
     description: >-
-      *Note: Name of the covariate that confers the dominant batch effect in the data as judged by the data contributor.
-      The name provided here should be the label by which this covariate is stored in the AnnData object.*
+      Name of the covariate that confers the dominant batch effect in the data as judged by the data contributor.
+      The name provided here should be the label by which this covariate is stored in the AnnData object.
     range: string
     multivalued: true
     required: false
@@ -170,7 +170,7 @@ slots:
     notes:
       - http://www.ensembl.org/info/website/archives/index.html or NCBI/RefSeq
     comments:
-      - Possible source of batch effect and confounder for some biological analysis
+      - Possible source of batch effect and confounder for some biological analysis.
     annotations:
       annDataLocation: obs
 
@@ -221,7 +221,7 @@ slots:
       - value: "GRCh38"
       - value: "GRCh37"
     comments:
-      - Possible source of batch effect and confounder for some biological analysis
+      - Possible source of batch effect and confounder for some biological analysis.
     annotations:
       annDataLocation: obs
 

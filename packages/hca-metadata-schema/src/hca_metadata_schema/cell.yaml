@@ -28,7 +28,7 @@ slots:
     description: |-
       Encoding of author intuition of cellular annotation in the dataset.
 
-      Use `author_cell_type` for original source datasets where [`cell_type_ontology_term_id`](#cell_type_ontology_term_id) is not available.
+      Use `author_cell_type` for original source datasets where `cell_type_ontology_term_id` is not available.
     examples:
       - value: Goblet cell
       - value: microglia

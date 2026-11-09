@@ -73,7 +73,7 @@ slots:
     multivalued: false
     comments:
       - >-
-        Space for author intuition of batch effects in their dataset
+        Space for author intuition of batch effects in their dataset.
 
   age_range:
     is_a: deprecated_slot
@@ -97,7 +97,7 @@ slots:
     multivalued: false
     comments:
       - >-
-        Can explain the number of doublets found in samples
+        Can explain the number of doublets found in samples.
 
   cell_viability_percentage:
     title: Cell Viability Percentage
@@ -107,6 +107,7 @@ slots:
       - value: "88"
       - value: "95"
       - value: "93.5"
+      - value: unknown
     annotations:
       annDataLocation: obs
       tier: Tier 1
@@ -117,7 +118,7 @@ slots:
     multivalued: false
     comments:
       - >-
-        Is a measure of sample quality that could be used to explain outlier samples
+        Is a measure of sample quality that could be used to explain outlier samples.
 
   cell_enrichment:
     title: Cell Enrichment
@@ -134,7 +135,7 @@ slots:
     notes:
       - "This must be a Cell Ontology (CL) term (http://www.ebi.ac.uk/ols4/ontologies/cl). For cells that are enriched, list the CL code followed by a \"+\". For cells that were depleted, list the CL code followed by a \"-\". If no enrichment or depletion occurred, please use 'na' (not applicable)"
     comments:
-      - If cell lineages were filtered, this may be a dataset exclusion criterion
+      - If cell lineages were filtered, this may be a dataset exclusion criterion.
 
   institute:
     title: Institute
@@ -157,8 +158,8 @@ slots:
     is_a: deprecated_slot
     title: Is Primary Data
     description: >-
-      This must be True if this is the canonical instance of this cellular observation and False if not. This is
-      commonly False for meta-analyses reusing data or for secondary views of data.
+      This must be "true" if this is the canonical instance of this cellular observation and "false" if not. This
+      is commonly "false" for meta-analyses reusing data or for secondary views of data.
     examples:
       - value: "true"
       - value: "false"
@@ -172,13 +173,12 @@ slots:
     # accepts. Restoring it to a real `range: boolean` slot would start type-checking the column on entry
     # sheets, where it is currently an unconstrained string that tolerates any value including "na" — sheets
     # that validate today would begin failing. See #544.
-    # The real modelling question is deferred, not answered. CELLxGENE defines this in obs as a per-cell bool,
-    # and the published Tier 1 dictionary describes it as "the canonical instance of this cellular observation"
-    # — per-observation semantics — while filing it under `sample`. A sample's cells can legitimately disagree,
-    # so Sample is the wrong grain for it and this placeholder deliberately makes no semantic claim. Moving it
-    # to Cell is its own change: slots are global by name in LinkML, so it needs a slot_usage override rather
-    # than a move, and removing it from Sample outright would make sheets carrying the column fail with
-    # extra_forbidden.
+    # The description is CELLxGENE's per-observation definition, published for submitters; the slot itself stays an
+    # unconstrained string. The real modelling question is deferred, not answered: CELLxGENE defines this in obs as
+    # a per-cell bool, while Tier 1 files it under `sample`. A sample's cells can legitimately disagree, so Sample
+    # is the wrong grain for it. Moving it to Cell is its own change: slots are global by name in LinkML, so it
+    # needs a slot_usage override rather than a move, and removing it from Sample outright would make sheets
+    # carrying the column fail with extra_forbidden.
     comments:
       - This helps to ensure samples are not used twice.
     notes:
@@ -199,7 +199,7 @@ slots:
     multivalued: false
     comments:
       - >-
-        A way to track the unit of data generation. This should include sample pooling
+        A way to track the unit of data generation. This should include sample pooling.
 
   library_id_repository:
     title: Library ID Repository
@@ -251,7 +251,7 @@ slots:
     multivalued: false
     comments:
       - >-
-        Library sequencing is a major source of batch effects
+        Library sequencing is a major source of batch effects.
 
   sample_collection_year:
     title: Sample Collection Year
@@ -283,7 +283,7 @@ slots:
     required: false
     multivalued: false
     comments:
-      - To understand whether the collection site contributes to batch effects
+      - To understand whether the collection site contributes to batch effects.
     notes:
       - >-
         It is strongly recommended that this identifier be designed so that it is unique to a given site within the collection of datasets that includes this site (for example, the labels 'site1', 'site2' may appear in other datasets thus rendering them indistinguishable).
@@ -335,7 +335,7 @@ slots:
     required: true
     multivalued: false
     comments:
-      - Source of batch effect & dataset exclusion criteria
+      - Source of batch effect & dataset exclusion criteria.
 
   tissue_ontology_term_id:
     title: Tissue Ontology Term ID
@@ -384,7 +384,7 @@ slots:
         * GEXSCOPE technology [EFO:0700011] = "cell" or "nucleus"
         * inDrop [EFO:0008780] = "cell" or "nucleus"
     comments:
-      - Major source of batch effect & dataset exclusion criteria
+      - Major source of batch effect & dataset exclusion criteria.
 
   sampled_site_condition:
     title: Sampled Site Condition
@@ -400,7 +400,7 @@ slots:
     required: true
     multivalued: false
     comments:
-      - Main contributor to batch effects
+      - Main contributor to batch effects.
 
   sample_preservation_method:
     title: Sample Preservation Method
@@ -415,7 +415,7 @@ slots:
     required: true
     multivalued: false
     comments:
-      - Main contributor to batch effects
+      - Main contributor to batch effects.
 
   sample_source:
     title: Sample Source
@@ -433,7 +433,7 @@ slots:
     multivalued: false
     comments:
       - >-
-        The source of the sample (whether the sample comes from alive subject; an organ donor; or deceased subject)
+        The source of the sample (whether the sample comes from a living donor, an organ donor or a deceased donor)
         can result in different cellular profiles and hence batch effects.
 
   development_stage_ontology_term_id:
@@ -470,7 +470,7 @@ slots:
     range: SampleCollectionMethod
     required: true
     comments:
-      - Main contributor to batch effects
+      - Main contributor to batch effects.
 
   tissue_ontology_term:
     is_a: deprecated_slot
@@ -500,7 +500,7 @@ slots:
 
         **Requirements for data contributors adhering to GDPR or like standards**: In the case of disease, HCA requests that you submit a higher order ontology term - this is especially important in the case of rare disease.
     comments:
-      - CELLxGENE core schema
+      - Disease is a major biological effect on cell state, and determines which samples can serve as healthy reference.
     annotations:
       annDataLocation: obs
       cxg: disease_ontology_term_id

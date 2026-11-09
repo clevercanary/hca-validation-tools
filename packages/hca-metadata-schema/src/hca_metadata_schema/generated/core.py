@@ -288,7 +288,7 @@ class Dataset(ConfiguredBaseModel):
     assay_ontology_term_id: str = Field(default=..., title="Assay Ontology Term ID", description="""Platform used for single cell library construction.""", json_schema_extra = { "linkml_meta": {'alias': 'assay_ontology_term_id',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'cxg': {'tag': 'cxg', 'value': 'assay_ontology_term_id'}},
-         'comments': ['Major source of batch effect and dataset filtering criterion'],
+         'comments': ['Major source of batch effect and dataset filtering criterion.'],
          'domain_of': ['Dataset'],
          'examples': [{'value': 'EFO:0009922'}],
          'notes': ['This must be an EFO term and either:\n'
@@ -314,7 +314,7 @@ class Dataset(ConfiguredBaseModel):
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'domain_of': ['Dataset'],
          'is_a': 'deprecated_slot'} })
-    batch_condition: Optional[list[str]] = Field(default=None, title="Batch Condition", description="""*Note: Name of the covariate that confers the dominant batch effect in the data as judged by the data contributor. The name provided here should be the label by which this covariate is stored in the AnnData object.*""", json_schema_extra = { "linkml_meta": {'alias': 'batch_condition',
+    batch_condition: Optional[list[str]] = Field(default=None, title="Batch Condition", description="""Name of the covariate that confers the dominant batch effect in the data as judged by the data contributor. The name provided here should be the label by which this covariate is stored in the AnnData object.""", json_schema_extra = { "linkml_meta": {'alias': 'batch_condition',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'uns'},
                          'cxg': {'tag': 'cxg', 'value': 'batch_condition'}},
          'domain_of': ['Dataset'],
@@ -346,7 +346,7 @@ class Dataset(ConfiguredBaseModel):
     gene_annotation_version: str = Field(default=..., title="Gene Annotation Version", description="""Ensembl release version accession number. Some common codes include: GRCh38.p12 = GCF_000001405.38 GRCh38.p13 = GCF_000001405.39 GRCh38.p14 = GCF_000001405.40""", json_schema_extra = { "linkml_meta": {'alias': 'gene_annotation_version',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'comments': ['Possible source of batch effect and confounder for some '
-                      'biological analysis'],
+                      'biological analysis.'],
          'domain_of': ['Dataset'],
          'examples': [{'value': 'v110'}, {'value': 'GCF_000001405.40'}],
          'notes': ['http://www.ensembl.org/info/website/archives/index.html or '
@@ -371,7 +371,7 @@ class Dataset(ConfiguredBaseModel):
     reference_genome: ReferenceGenomeEnum = Field(default=..., title="Reference Genome", description="""Reference genome used for alignment.""", json_schema_extra = { "linkml_meta": {'alias': 'reference_genome',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'comments': ['Possible source of batch effect and confounder for some '
-                      'biological analysis'],
+                      'biological analysis.'],
          'domain_of': ['Dataset'],
          'examples': [{'value': 'GRCh38'}, {'value': 'GRCh37'}]} })
     sequenced_fragment: SequencedFragmentEnum = Field(default=..., title="Sequenced Fragment", description="""Which part of the RNA transcript was targeted for sequencing.""", json_schema_extra = { "linkml_meta": {'alias': 'sequenced_fragment',
@@ -413,7 +413,7 @@ class AdiposeDataset(Dataset):
     linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'annotations': {'bioNetwork': {'tag': 'bioNetwork', 'value': 'adipose'}},
          'from_schema': 'https://github.com/clevercanary/hca-validation-tools/schema/bionetwork/adipose'})
 
-    ambient_count_correction: str = Field(default=..., title="Ambient Count Correction", description="""Was ambient count correction software used during cellxgene processing? If so, which software?""", json_schema_extra = { "linkml_meta": {'alias': 'ambient_count_correction',
+    ambient_count_correction: str = Field(default=..., title="Ambient Count Correction", description="""Software used to correct ambient RNA counts, or 'none'.""", json_schema_extra = { "linkml_meta": {'alias': 'ambient_count_correction',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'domain_of': ['AdiposeDataset', 'GutDataset', 'MusculoskeletalDataset'],
          'examples': [{'value': 'none'}, {'value': 'soupx'}, {'value': 'cellbender'}]} })
@@ -435,7 +435,7 @@ class AdiposeDataset(Dataset):
     assay_ontology_term_id: str = Field(default=..., title="Assay Ontology Term ID", description="""Platform used for single cell library construction.""", json_schema_extra = { "linkml_meta": {'alias': 'assay_ontology_term_id',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'cxg': {'tag': 'cxg', 'value': 'assay_ontology_term_id'}},
-         'comments': ['Major source of batch effect and dataset filtering criterion'],
+         'comments': ['Major source of batch effect and dataset filtering criterion.'],
          'domain_of': ['Dataset'],
          'examples': [{'value': 'EFO:0009922'}],
          'notes': ['This must be an EFO term and either:\n'
@@ -461,7 +461,7 @@ class AdiposeDataset(Dataset):
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'domain_of': ['Dataset'],
          'is_a': 'deprecated_slot'} })
-    batch_condition: Optional[list[str]] = Field(default=None, title="Batch Condition", description="""*Note: Name of the covariate that confers the dominant batch effect in the data as judged by the data contributor. The name provided here should be the label by which this covariate is stored in the AnnData object.*""", json_schema_extra = { "linkml_meta": {'alias': 'batch_condition',
+    batch_condition: Optional[list[str]] = Field(default=None, title="Batch Condition", description="""Name of the covariate that confers the dominant batch effect in the data as judged by the data contributor. The name provided here should be the label by which this covariate is stored in the AnnData object.""", json_schema_extra = { "linkml_meta": {'alias': 'batch_condition',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'uns'},
                          'cxg': {'tag': 'cxg', 'value': 'batch_condition'}},
          'domain_of': ['Dataset'],
@@ -493,7 +493,7 @@ class AdiposeDataset(Dataset):
     gene_annotation_version: str = Field(default=..., title="Gene Annotation Version", description="""Ensembl release version accession number. Some common codes include: GRCh38.p12 = GCF_000001405.38 GRCh38.p13 = GCF_000001405.39 GRCh38.p14 = GCF_000001405.40""", json_schema_extra = { "linkml_meta": {'alias': 'gene_annotation_version',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'comments': ['Possible source of batch effect and confounder for some '
-                      'biological analysis'],
+                      'biological analysis.'],
          'domain_of': ['Dataset'],
          'examples': [{'value': 'v110'}, {'value': 'GCF_000001405.40'}],
          'notes': ['http://www.ensembl.org/info/website/archives/index.html or '
@@ -518,7 +518,7 @@ class AdiposeDataset(Dataset):
     reference_genome: ReferenceGenomeEnum = Field(default=..., title="Reference Genome", description="""Reference genome used for alignment.""", json_schema_extra = { "linkml_meta": {'alias': 'reference_genome',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'comments': ['Possible source of batch effect and confounder for some '
-                      'biological analysis'],
+                      'biological analysis.'],
          'domain_of': ['Dataset'],
          'examples': [{'value': 'GRCh38'}, {'value': 'GRCh37'}]} })
     sequenced_fragment: SequencedFragmentEnum = Field(default=..., title="Sequenced Fragment", description="""Which part of the RNA transcript was targeted for sequencing.""", json_schema_extra = { "linkml_meta": {'alias': 'sequenced_fragment',
@@ -560,7 +560,7 @@ class GutDataset(Dataset):
     linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'annotations': {'bioNetwork': {'tag': 'bioNetwork', 'value': 'gut'}},
          'from_schema': 'https://github.com/clevercanary/hca-validation-tools/schema/bionetwork/gut'})
 
-    ambient_count_correction: str = Field(default=..., title="Ambient Count Correction", description="""Was ambient count correction software used during cellxgene processing? If so, which software?""", json_schema_extra = { "linkml_meta": {'alias': 'ambient_count_correction',
+    ambient_count_correction: str = Field(default=..., title="Ambient Count Correction", description="""Software used to correct ambient RNA counts, or 'none'.""", json_schema_extra = { "linkml_meta": {'alias': 'ambient_count_correction',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'domain_of': ['AdiposeDataset', 'GutDataset', 'MusculoskeletalDataset'],
          'examples': [{'value': 'none'}, {'value': 'soupx'}, {'value': 'cellbender'}]} })
@@ -582,7 +582,7 @@ class GutDataset(Dataset):
     assay_ontology_term_id: str = Field(default=..., title="Assay Ontology Term ID", description="""Platform used for single cell library construction.""", json_schema_extra = { "linkml_meta": {'alias': 'assay_ontology_term_id',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'cxg': {'tag': 'cxg', 'value': 'assay_ontology_term_id'}},
-         'comments': ['Major source of batch effect and dataset filtering criterion'],
+         'comments': ['Major source of batch effect and dataset filtering criterion.'],
          'domain_of': ['Dataset'],
          'examples': [{'value': 'EFO:0009922'}],
          'notes': ['This must be an EFO term and either:\n'
@@ -608,7 +608,7 @@ class GutDataset(Dataset):
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'domain_of': ['Dataset'],
          'is_a': 'deprecated_slot'} })
-    batch_condition: Optional[list[str]] = Field(default=None, title="Batch Condition", description="""*Note: Name of the covariate that confers the dominant batch effect in the data as judged by the data contributor. The name provided here should be the label by which this covariate is stored in the AnnData object.*""", json_schema_extra = { "linkml_meta": {'alias': 'batch_condition',
+    batch_condition: Optional[list[str]] = Field(default=None, title="Batch Condition", description="""Name of the covariate that confers the dominant batch effect in the data as judged by the data contributor. The name provided here should be the label by which this covariate is stored in the AnnData object.""", json_schema_extra = { "linkml_meta": {'alias': 'batch_condition',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'uns'},
                          'cxg': {'tag': 'cxg', 'value': 'batch_condition'}},
          'domain_of': ['Dataset'],
@@ -640,7 +640,7 @@ class GutDataset(Dataset):
     gene_annotation_version: str = Field(default=..., title="Gene Annotation Version", description="""Ensembl release version accession number. Some common codes include: GRCh38.p12 = GCF_000001405.38 GRCh38.p13 = GCF_000001405.39 GRCh38.p14 = GCF_000001405.40""", json_schema_extra = { "linkml_meta": {'alias': 'gene_annotation_version',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'comments': ['Possible source of batch effect and confounder for some '
-                      'biological analysis'],
+                      'biological analysis.'],
          'domain_of': ['Dataset'],
          'examples': [{'value': 'v110'}, {'value': 'GCF_000001405.40'}],
          'notes': ['http://www.ensembl.org/info/website/archives/index.html or '
@@ -665,7 +665,7 @@ class GutDataset(Dataset):
     reference_genome: ReferenceGenomeEnum = Field(default=..., title="Reference Genome", description="""Reference genome used for alignment.""", json_schema_extra = { "linkml_meta": {'alias': 'reference_genome',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'comments': ['Possible source of batch effect and confounder for some '
-                      'biological analysis'],
+                      'biological analysis.'],
          'domain_of': ['Dataset'],
          'examples': [{'value': 'GRCh38'}, {'value': 'GRCh37'}]} })
     sequenced_fragment: SequencedFragmentEnum = Field(default=..., title="Sequenced Fragment", description="""Which part of the RNA transcript was targeted for sequencing.""", json_schema_extra = { "linkml_meta": {'alias': 'sequenced_fragment',
@@ -759,14 +759,14 @@ class Donor(ConfiguredBaseModel):
          'is_a': 'deprecated_slot'} })
     manner_of_death: MannerOfDeath = Field(default=..., title="Manner of Death", description="""Manner of death classification based on the Hardy Scale or 'unknown' or 'not applicable':
 * Category 1 = Violent and fast death - Deaths due to accident, blunt force trauma or suicide, terminal phase estimated at < 10 min.
-* Category 2 = Fast death of natural causes - Sudden unexpected deaths of people who had been reasonably healthy, after a terminal phase estimated at < 1 hr (with sudden death from a myocardial infarction as a model cause of death for this category)
-* Category 3 = Intermediate death - Death after a terminal phase of 1 to 24 hrs (not classifiable as 2 or 4); patients who were ill but death was unexpected
-* Category 4 = Slow death - Death after a long illness, with a terminal phase longer than 1 day (commonly cancer or chronic pulmonary disease); deaths that are not unexpected
-* Category 0 = Ventilator Case - All cases on a ventilator immediately before death
-* Unknown = The cause of death is unknown
-* Not applicable = Subject is alive
+* Category 2 = Fast death of natural causes - Sudden unexpected deaths of people who had been reasonably healthy, after a terminal phase estimated at < 1 hr (with sudden death from a myocardial infarction as a model cause of death for this category).
+* Category 3 = Intermediate death - Death after a terminal phase of 1 to 24 hrs (not classifiable as 2 or 4); patients who were ill but death was unexpected.
+* Category 4 = Slow death - Death after a long illness, with a terminal phase longer than 1 day (commonly cancer or chronic pulmonary disease); deaths that are not unexpected.
+* Category 0 = Ventilator Case - All cases on a ventilator immediately before death.
+* Unknown = The cause of death is unknown.
+* Not applicable = Subject is alive.
 
-[Please leave this field as blank for embryonic/fetal tissue]""", json_schema_extra = { "linkml_meta": {'alias': 'manner_of_death',
+[Please leave this field as blank for embryonic/fetal tissue.]""", json_schema_extra = { "linkml_meta": {'alias': 'manner_of_death',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'comments': ['Manner of death can affect cellular profiles.'],
          'domain_of': ['Donor'],
@@ -821,7 +821,7 @@ class Sample(ConfiguredBaseModel):
     author_batch_notes: Optional[str] = Field(default=None, title="Author Batch Notes", description="""Encoding of author knowledge on any further information related to likely batch effects.""", json_schema_extra = { "linkml_meta": {'alias': 'author_batch_notes',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
-         'comments': ['Space for author intuition of batch effects in their dataset'],
+         'comments': ['Space for author intuition of batch effects in their dataset.'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'Batch run by different personnel on different days'}]} })
     age_range: Optional[str] = Field(default=None, title="Age Range", description="""Deprecated placeholder for age range metadata.""", json_schema_extra = { "linkml_meta": {'alias': 'age_range',
@@ -831,7 +831,7 @@ class Sample(ConfiguredBaseModel):
     cell_number_loaded: Optional[int] = Field(default=None, title="Cell Number Loaded", description="""Estimated number of cells loaded for library construction.""", json_schema_extra = { "linkml_meta": {'alias': 'cell_number_loaded',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
-         'comments': ['Can explain the number of doublets found in samples'],
+         'comments': ['Can explain the number of doublets found in samples.'],
          'domain_of': ['Sample'],
          'examples': [{'value': '5000'}, {'value': '4000'}]} })
     cell_viability_percentage: Optional[Union[Decimal, str]] = Field(default=None, title="Cell Viability Percentage", description="""If measured, per sample cell viability before library preparation (as a percentage).""", json_schema_extra = { "linkml_meta": {'alias': 'cell_viability_percentage',
@@ -839,14 +839,17 @@ class Sample(ConfiguredBaseModel):
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
          'any_of': [{'range': 'decimal'}, {'range': 'string'}],
          'comments': ['Is a measure of sample quality that could be used to explain '
-                      'outlier samples'],
+                      'outlier samples.'],
          'domain_of': ['Sample'],
-         'examples': [{'value': '88'}, {'value': '95'}, {'value': '93.5'}]} })
+         'examples': [{'value': '88'},
+                      {'value': '95'},
+                      {'value': '93.5'},
+                      {'value': 'unknown'}]} })
     cell_enrichment: str = Field(default=..., title="Cell Enrichment", description="""Specifies the cell types targeted for enrichment or depletion beyond the selection of live cells.""", json_schema_extra = { "linkml_meta": {'alias': 'cell_enrichment',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
          'comments': ['If cell lineages were filtered, this may be a dataset exclusion '
-                      'criterion'],
+                      'criterion.'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'CL:0000057+'}, {'value': 'na'}],
          'notes': ['This must be a Cell Ontology (CL) term '
@@ -875,7 +878,8 @@ class Sample(ConfiguredBaseModel):
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'cxg': {'tag': 'cxg', 'value': 'disease_ontology_term_id'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
-         'comments': ['CELLxGENE core schema'],
+         'comments': ['Disease is a major biological effect on cell state, and '
+                      'determines which samples can serve as healthy reference.'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'MONDO:0005385'}, {'value': 'PATO:0000461'}],
          'notes': ['This must be a MONDO term or "PATO:0000461" for normal or '
@@ -900,7 +904,7 @@ class Sample(ConfiguredBaseModel):
          'domain_of': ['Sample'],
          'examples': [{'value': 'EMBL-EBI'},
                       {'value': 'Genome Institute of Singapore'}]} })
-    is_primary_data: Optional[str] = Field(default=None, title="Is Primary Data", description="""This must be True if this is the canonical instance of this cellular observation and False if not. This is commonly False for meta-analyses reusing data or for secondary views of data.""", json_schema_extra = { "linkml_meta": {'alias': 'is_primary_data',
+    is_primary_data: Optional[str] = Field(default=None, title="Is Primary Data", description="""This must be \"true\" if this is the canonical instance of this cellular observation and \"false\" if not. This is commonly \"false\" for meta-analyses reusing data or for secondary views of data.""", json_schema_extra = { "linkml_meta": {'alias': 'is_primary_data',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'cxg': {'tag': 'cxg', 'value': 'is_primary_data'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
@@ -913,7 +917,7 @@ class Sample(ConfiguredBaseModel):
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
          'comments': ['A way to track the unit of data generation. This should include '
-                      'sample pooling'],
+                      'sample pooling.'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'A24'}, {'value': 'NK_healthy_001'}]} })
     library_id_repository: Optional[str] = Field(default=None, title="Library ID Repository", description="""The unique ID used to track libraries from one of the following public data repositories: EGAX*, GSM*, SRX*, ERX*, DRX, HRX, CRX.""", json_schema_extra = { "linkml_meta": {'alias': 'library_id_repository',
@@ -933,14 +937,14 @@ class Sample(ConfiguredBaseModel):
     library_sequencing_run: Optional[str] = Field(default=None, title="Library Sequencing Run", description="""The identifier (or accession number) that indicates which samples' libraries were sequenced in the same run.""", json_schema_extra = { "linkml_meta": {'alias': 'library_sequencing_run',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
-         'comments': ['Library sequencing is a major source of batch effects'],
+         'comments': ['Library sequencing is a major source of batch effects.'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'run1'}, {'value': 'NV0087'}],
          'recommended': True} })
     sample_collection_method: SampleCollectionMethod = Field(default=..., title="Sample Collection Method", description="""The method the sample was physically obtained from the donor.""", json_schema_extra = { "linkml_meta": {'alias': 'sample_collection_method',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
-         'comments': ['Main contributor to batch effects'],
+         'comments': ['Main contributor to batch effects.'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'biopsy'},
                       {'value': 'brush'},
@@ -956,7 +960,7 @@ class Sample(ConfiguredBaseModel):
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
          'comments': ['To understand whether the collection site contributes to batch '
-                      'effects'],
+                      'effects.'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'AIDA_site_1'}, {'value': 'AIDA_site_2'}],
          'notes': ['It is strongly recommended that this identifier be designed so '
@@ -983,7 +987,7 @@ class Sample(ConfiguredBaseModel):
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'cxg': {'tag': 'cxg', 'value': 'tissue_type'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
-         'comments': ['Source of batch effect & dataset exclusion criteria'],
+         'comments': ['Source of batch effect & dataset exclusion criteria.'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'tissue'},
                       {'value': 'organoid'},
@@ -1004,7 +1008,7 @@ class Sample(ConfiguredBaseModel):
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'cxg': {'tag': 'cxg', 'value': 'suspension_type'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
-         'comments': ['Major source of batch effect & dataset exclusion criteria'],
+         'comments': ['Major source of batch effect & dataset exclusion criteria.'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'cell'}, {'value': 'nucleus'}, {'value': 'na'}],
          'notes': ['This must be "cell", "nucleus", or "na".\n'
@@ -1023,7 +1027,7 @@ class Sample(ConfiguredBaseModel):
     sampled_site_condition: SampledSiteCondition = Field(default=..., title="Sampled Site Condition", description="""Whether the site is considered healthy, diseased or adjacent to disease.""", json_schema_extra = { "linkml_meta": {'alias': 'sampled_site_condition',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
-         'comments': ['Main contributor to batch effects'],
+         'comments': ['Main contributor to batch effects.'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'healthy'},
                       {'value': 'diseased'},
@@ -1031,14 +1035,14 @@ class Sample(ConfiguredBaseModel):
     sample_preservation_method: SamplePreservationMethod = Field(default=..., title="Sample Preservation Method", description="""Indicating if tissue was frozen, or not, at any point before library preparation.""", json_schema_extra = { "linkml_meta": {'alias': 'sample_preservation_method',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
-         'comments': ['Main contributor to batch effects'],
+         'comments': ['Main contributor to batch effects.'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'fresh'}, {'value': 'frozen at -70C'}]} })
     sample_source: SampleSource = Field(default=..., title="Sample Source", description="""The study subgroup that the participant belongs to. This indicates whether the participant was a surgical donor (this includes patients providing blood samples or biopsies), a postmortem donor, or a living organ donor.""", json_schema_extra = { "linkml_meta": {'alias': 'sample_source',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
-         'comments': ['The source of the sample (whether the sample comes from alive '
-                      'subject; an organ donor; or deceased subject) can result in '
+         'comments': ['The source of the sample (whether the sample comes from a '
+                      'living donor, an organ donor or a deceased donor) can result in '
                       'different cellular profiles and hence batch effects.'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'surgical donor'}, {'value': 'postmortem donor'}]} })
@@ -1090,7 +1094,7 @@ class AdiposeSample(Sample):
     author_batch_notes: Optional[str] = Field(default=None, title="Author Batch Notes", description="""Encoding of author knowledge on any further information related to likely batch effects.""", json_schema_extra = { "linkml_meta": {'alias': 'author_batch_notes',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
-         'comments': ['Space for author intuition of batch effects in their dataset'],
+         'comments': ['Space for author intuition of batch effects in their dataset.'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'Batch run by different personnel on different days'}]} })
     age_range: Optional[str] = Field(default=None, title="Age Range", description="""Deprecated placeholder for age range metadata.""", json_schema_extra = { "linkml_meta": {'alias': 'age_range',
@@ -1100,7 +1104,7 @@ class AdiposeSample(Sample):
     cell_number_loaded: Optional[int] = Field(default=None, title="Cell Number Loaded", description="""Estimated number of cells loaded for library construction.""", json_schema_extra = { "linkml_meta": {'alias': 'cell_number_loaded',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
-         'comments': ['Can explain the number of doublets found in samples'],
+         'comments': ['Can explain the number of doublets found in samples.'],
          'domain_of': ['Sample'],
          'examples': [{'value': '5000'}, {'value': '4000'}]} })
     cell_viability_percentage: Optional[Union[Decimal, str]] = Field(default=None, title="Cell Viability Percentage", description="""If measured, per sample cell viability before library preparation (as a percentage).""", json_schema_extra = { "linkml_meta": {'alias': 'cell_viability_percentage',
@@ -1108,14 +1112,17 @@ class AdiposeSample(Sample):
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
          'any_of': [{'range': 'decimal'}, {'range': 'string'}],
          'comments': ['Is a measure of sample quality that could be used to explain '
-                      'outlier samples'],
+                      'outlier samples.'],
          'domain_of': ['Sample'],
-         'examples': [{'value': '88'}, {'value': '95'}, {'value': '93.5'}]} })
+         'examples': [{'value': '88'},
+                      {'value': '95'},
+                      {'value': '93.5'},
+                      {'value': 'unknown'}]} })
     cell_enrichment: str = Field(default=..., title="Cell Enrichment", description="""Specifies the cell types targeted for enrichment or depletion beyond the selection of live cells.""", json_schema_extra = { "linkml_meta": {'alias': 'cell_enrichment',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
          'comments': ['If cell lineages were filtered, this may be a dataset exclusion '
-                      'criterion'],
+                      'criterion.'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'CL:0000057+'}, {'value': 'na'}],
          'notes': ['This must be a Cell Ontology (CL) term '
@@ -1144,7 +1151,8 @@ class AdiposeSample(Sample):
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'cxg': {'tag': 'cxg', 'value': 'disease_ontology_term_id'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
-         'comments': ['CELLxGENE core schema'],
+         'comments': ['Disease is a major biological effect on cell state, and '
+                      'determines which samples can serve as healthy reference.'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'MONDO:0005385'}, {'value': 'PATO:0000461'}],
          'notes': ['This must be a MONDO term or "PATO:0000461" for normal or '
@@ -1169,7 +1177,7 @@ class AdiposeSample(Sample):
          'domain_of': ['Sample'],
          'examples': [{'value': 'EMBL-EBI'},
                       {'value': 'Genome Institute of Singapore'}]} })
-    is_primary_data: Optional[str] = Field(default=None, title="Is Primary Data", description="""This must be True if this is the canonical instance of this cellular observation and False if not. This is commonly False for meta-analyses reusing data or for secondary views of data.""", json_schema_extra = { "linkml_meta": {'alias': 'is_primary_data',
+    is_primary_data: Optional[str] = Field(default=None, title="Is Primary Data", description="""This must be \"true\" if this is the canonical instance of this cellular observation and \"false\" if not. This is commonly \"false\" for meta-analyses reusing data or for secondary views of data.""", json_schema_extra = { "linkml_meta": {'alias': 'is_primary_data',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'cxg': {'tag': 'cxg', 'value': 'is_primary_data'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
@@ -1182,7 +1190,7 @@ class AdiposeSample(Sample):
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
          'comments': ['A way to track the unit of data generation. This should include '
-                      'sample pooling'],
+                      'sample pooling.'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'A24'}, {'value': 'NK_healthy_001'}]} })
     library_id_repository: Optional[str] = Field(default=None, title="Library ID Repository", description="""The unique ID used to track libraries from one of the following public data repositories: EGAX*, GSM*, SRX*, ERX*, DRX, HRX, CRX.""", json_schema_extra = { "linkml_meta": {'alias': 'library_id_repository',
@@ -1202,14 +1210,14 @@ class AdiposeSample(Sample):
     library_sequencing_run: Optional[str] = Field(default=None, title="Library Sequencing Run", description="""The identifier (or accession number) that indicates which samples' libraries were sequenced in the same run.""", json_schema_extra = { "linkml_meta": {'alias': 'library_sequencing_run',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
-         'comments': ['Library sequencing is a major source of batch effects'],
+         'comments': ['Library sequencing is a major source of batch effects.'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'run1'}, {'value': 'NV0087'}],
          'recommended': True} })
     sample_collection_method: SampleCollectionMethod = Field(default=..., title="Sample Collection Method", description="""The method the sample was physically obtained from the donor.""", json_schema_extra = { "linkml_meta": {'alias': 'sample_collection_method',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
-         'comments': ['Main contributor to batch effects'],
+         'comments': ['Main contributor to batch effects.'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'biopsy'},
                       {'value': 'brush'},
@@ -1225,7 +1233,7 @@ class AdiposeSample(Sample):
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
          'comments': ['To understand whether the collection site contributes to batch '
-                      'effects'],
+                      'effects.'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'AIDA_site_1'}, {'value': 'AIDA_site_2'}],
          'notes': ['It is strongly recommended that this identifier be designed so '
@@ -1252,7 +1260,7 @@ class AdiposeSample(Sample):
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'cxg': {'tag': 'cxg', 'value': 'tissue_type'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
-         'comments': ['Source of batch effect & dataset exclusion criteria'],
+         'comments': ['Source of batch effect & dataset exclusion criteria.'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'tissue'},
                       {'value': 'organoid'},
@@ -1273,7 +1281,7 @@ class AdiposeSample(Sample):
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'cxg': {'tag': 'cxg', 'value': 'suspension_type'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
-         'comments': ['Major source of batch effect & dataset exclusion criteria'],
+         'comments': ['Major source of batch effect & dataset exclusion criteria.'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'cell'}, {'value': 'nucleus'}, {'value': 'na'}],
          'notes': ['This must be "cell", "nucleus", or "na".\n'
@@ -1292,7 +1300,7 @@ class AdiposeSample(Sample):
     sampled_site_condition: SampledSiteCondition = Field(default=..., title="Sampled Site Condition", description="""Whether the site is considered healthy, diseased or adjacent to disease.""", json_schema_extra = { "linkml_meta": {'alias': 'sampled_site_condition',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
-         'comments': ['Main contributor to batch effects'],
+         'comments': ['Main contributor to batch effects.'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'healthy'},
                       {'value': 'diseased'},
@@ -1300,14 +1308,14 @@ class AdiposeSample(Sample):
     sample_preservation_method: SamplePreservationMethod = Field(default=..., title="Sample Preservation Method", description="""Indicating if tissue was frozen, or not, at any point before library preparation.""", json_schema_extra = { "linkml_meta": {'alias': 'sample_preservation_method',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
-         'comments': ['Main contributor to batch effects'],
+         'comments': ['Main contributor to batch effects.'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'fresh'}, {'value': 'frozen at -70C'}]} })
     sample_source: SampleSource = Field(default=..., title="Sample Source", description="""The study subgroup that the participant belongs to. This indicates whether the participant was a surgical donor (this includes patients providing blood samples or biopsies), a postmortem donor, or a living organ donor.""", json_schema_extra = { "linkml_meta": {'alias': 'sample_source',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
-         'comments': ['The source of the sample (whether the sample comes from alive '
-                      'subject; an organ donor; or deceased subject) can result in '
+         'comments': ['The source of the sample (whether the sample comes from a '
+                      'living donor, an organ donor or a deceased donor) can result in '
                       'different cellular profiles and hence batch effects.'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'surgical donor'}, {'value': 'postmortem donor'}]} })
@@ -1369,7 +1377,7 @@ class GutSample(Sample):
     author_batch_notes: Optional[str] = Field(default=None, title="Author Batch Notes", description="""Encoding of author knowledge on any further information related to likely batch effects.""", json_schema_extra = { "linkml_meta": {'alias': 'author_batch_notes',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
-         'comments': ['Space for author intuition of batch effects in their dataset'],
+         'comments': ['Space for author intuition of batch effects in their dataset.'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'Batch run by different personnel on different days'}]} })
     age_range: Optional[str] = Field(default=None, title="Age Range", description="""Deprecated placeholder for age range metadata.""", json_schema_extra = { "linkml_meta": {'alias': 'age_range',
@@ -1379,7 +1387,7 @@ class GutSample(Sample):
     cell_number_loaded: Optional[int] = Field(default=None, title="Cell Number Loaded", description="""Estimated number of cells loaded for library construction.""", json_schema_extra = { "linkml_meta": {'alias': 'cell_number_loaded',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
-         'comments': ['Can explain the number of doublets found in samples'],
+         'comments': ['Can explain the number of doublets found in samples.'],
          'domain_of': ['Sample'],
          'examples': [{'value': '5000'}, {'value': '4000'}]} })
     cell_viability_percentage: Optional[Union[Decimal, str]] = Field(default=None, title="Cell Viability Percentage", description="""If measured, per sample cell viability before library preparation (as a percentage).""", json_schema_extra = { "linkml_meta": {'alias': 'cell_viability_percentage',
@@ -1387,14 +1395,17 @@ class GutSample(Sample):
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
          'any_of': [{'range': 'decimal'}, {'range': 'string'}],
          'comments': ['Is a measure of sample quality that could be used to explain '
-                      'outlier samples'],
+                      'outlier samples.'],
          'domain_of': ['Sample'],
-         'examples': [{'value': '88'}, {'value': '95'}, {'value': '93.5'}]} })
+         'examples': [{'value': '88'},
+                      {'value': '95'},
+                      {'value': '93.5'},
+                      {'value': 'unknown'}]} })
     cell_enrichment: str = Field(default=..., title="Cell Enrichment", description="""Specifies the cell types targeted for enrichment or depletion beyond the selection of live cells.""", json_schema_extra = { "linkml_meta": {'alias': 'cell_enrichment',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
          'comments': ['If cell lineages were filtered, this may be a dataset exclusion '
-                      'criterion'],
+                      'criterion.'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'CL:0000057+'}, {'value': 'na'}],
          'notes': ['This must be a Cell Ontology (CL) term '
@@ -1423,7 +1434,8 @@ class GutSample(Sample):
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'cxg': {'tag': 'cxg', 'value': 'disease_ontology_term_id'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
-         'comments': ['CELLxGENE core schema'],
+         'comments': ['Disease is a major biological effect on cell state, and '
+                      'determines which samples can serve as healthy reference.'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'MONDO:0005385'}, {'value': 'PATO:0000461'}],
          'notes': ['This must be a MONDO term or "PATO:0000461" for normal or '
@@ -1448,7 +1460,7 @@ class GutSample(Sample):
          'domain_of': ['Sample'],
          'examples': [{'value': 'EMBL-EBI'},
                       {'value': 'Genome Institute of Singapore'}]} })
-    is_primary_data: Optional[str] = Field(default=None, title="Is Primary Data", description="""This must be True if this is the canonical instance of this cellular observation and False if not. This is commonly False for meta-analyses reusing data or for secondary views of data.""", json_schema_extra = { "linkml_meta": {'alias': 'is_primary_data',
+    is_primary_data: Optional[str] = Field(default=None, title="Is Primary Data", description="""This must be \"true\" if this is the canonical instance of this cellular observation and \"false\" if not. This is commonly \"false\" for meta-analyses reusing data or for secondary views of data.""", json_schema_extra = { "linkml_meta": {'alias': 'is_primary_data',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'cxg': {'tag': 'cxg', 'value': 'is_primary_data'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
@@ -1461,7 +1473,7 @@ class GutSample(Sample):
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
          'comments': ['A way to track the unit of data generation. This should include '
-                      'sample pooling'],
+                      'sample pooling.'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'A24'}, {'value': 'NK_healthy_001'}]} })
     library_id_repository: Optional[str] = Field(default=None, title="Library ID Repository", description="""The unique ID used to track libraries from one of the following public data repositories: EGAX*, GSM*, SRX*, ERX*, DRX, HRX, CRX.""", json_schema_extra = { "linkml_meta": {'alias': 'library_id_repository',
@@ -1481,14 +1493,14 @@ class GutSample(Sample):
     library_sequencing_run: Optional[str] = Field(default=None, title="Library Sequencing Run", description="""The identifier (or accession number) that indicates which samples' libraries were sequenced in the same run.""", json_schema_extra = { "linkml_meta": {'alias': 'library_sequencing_run',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
-         'comments': ['Library sequencing is a major source of batch effects'],
+         'comments': ['Library sequencing is a major source of batch effects.'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'run1'}, {'value': 'NV0087'}],
          'recommended': True} })
     sample_collection_method: SampleCollectionMethod = Field(default=..., title="Sample Collection Method", description="""The method the sample was physically obtained from the donor.""", json_schema_extra = { "linkml_meta": {'alias': 'sample_collection_method',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
-         'comments': ['Main contributor to batch effects'],
+         'comments': ['Main contributor to batch effects.'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'biopsy'},
                       {'value': 'brush'},
@@ -1504,7 +1516,7 @@ class GutSample(Sample):
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
          'comments': ['To understand whether the collection site contributes to batch '
-                      'effects'],
+                      'effects.'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'AIDA_site_1'}, {'value': 'AIDA_site_2'}],
          'notes': ['It is strongly recommended that this identifier be designed so '
@@ -1531,7 +1543,7 @@ class GutSample(Sample):
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'cxg': {'tag': 'cxg', 'value': 'tissue_type'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
-         'comments': ['Source of batch effect & dataset exclusion criteria'],
+         'comments': ['Source of batch effect & dataset exclusion criteria.'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'tissue'},
                       {'value': 'organoid'},
@@ -1552,7 +1564,7 @@ class GutSample(Sample):
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'cxg': {'tag': 'cxg', 'value': 'suspension_type'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
-         'comments': ['Major source of batch effect & dataset exclusion criteria'],
+         'comments': ['Major source of batch effect & dataset exclusion criteria.'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'cell'}, {'value': 'nucleus'}, {'value': 'na'}],
          'notes': ['This must be "cell", "nucleus", or "na".\n'
@@ -1571,7 +1583,7 @@ class GutSample(Sample):
     sampled_site_condition: SampledSiteCondition = Field(default=..., title="Sampled Site Condition", description="""Whether the site is considered healthy, diseased or adjacent to disease.""", json_schema_extra = { "linkml_meta": {'alias': 'sampled_site_condition',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
-         'comments': ['Main contributor to batch effects'],
+         'comments': ['Main contributor to batch effects.'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'healthy'},
                       {'value': 'diseased'},
@@ -1579,14 +1591,14 @@ class GutSample(Sample):
     sample_preservation_method: SamplePreservationMethod = Field(default=..., title="Sample Preservation Method", description="""Indicating if tissue was frozen, or not, at any point before library preparation.""", json_schema_extra = { "linkml_meta": {'alias': 'sample_preservation_method',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
-         'comments': ['Main contributor to batch effects'],
+         'comments': ['Main contributor to batch effects.'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'fresh'}, {'value': 'frozen at -70C'}]} })
     sample_source: SampleSource = Field(default=..., title="Sample Source", description="""The study subgroup that the participant belongs to. This indicates whether the participant was a surgical donor (this includes patients providing blood samples or biopsies), a postmortem donor, or a living organ donor.""", json_schema_extra = { "linkml_meta": {'alias': 'sample_source',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
-         'comments': ['The source of the sample (whether the sample comes from alive '
-                      'subject; an organ donor; or deceased subject) can result in '
+         'comments': ['The source of the sample (whether the sample comes from a '
+                      'living donor, an organ donor or a deceased donor) can result in '
                       'different cellular profiles and hence batch effects.'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'surgical donor'}, {'value': 'postmortem donor'}]} })
@@ -1604,7 +1616,7 @@ class MusculoskeletalDataset(Dataset):
                                         'value': 'musculoskeletal'}},
          'from_schema': 'https://github.com/clevercanary/hca-validation-tools/schema/bionetwork/musculoskeletal'})
 
-    ambient_count_correction: str = Field(default=..., title="Ambient Count Correction", description="""Was ambient count correction software used during cellxgene processing? If so, which software?""", json_schema_extra = { "linkml_meta": {'alias': 'ambient_count_correction',
+    ambient_count_correction: str = Field(default=..., title="Ambient Count Correction", description="""Software used to correct ambient RNA counts, or 'none'.""", json_schema_extra = { "linkml_meta": {'alias': 'ambient_count_correction',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'domain_of': ['AdiposeDataset', 'GutDataset', 'MusculoskeletalDataset'],
          'examples': [{'value': 'none'}, {'value': 'soupx'}, {'value': 'cellbender'}]} })
@@ -1626,7 +1638,7 @@ class MusculoskeletalDataset(Dataset):
     assay_ontology_term_id: str = Field(default=..., title="Assay Ontology Term ID", description="""Platform used for single cell library construction.""", json_schema_extra = { "linkml_meta": {'alias': 'assay_ontology_term_id',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'cxg': {'tag': 'cxg', 'value': 'assay_ontology_term_id'}},
-         'comments': ['Major source of batch effect and dataset filtering criterion'],
+         'comments': ['Major source of batch effect and dataset filtering criterion.'],
          'domain_of': ['Dataset'],
          'examples': [{'value': 'EFO:0009922'}],
          'notes': ['This must be an EFO term and either:\n'
@@ -1652,7 +1664,7 @@ class MusculoskeletalDataset(Dataset):
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'domain_of': ['Dataset'],
          'is_a': 'deprecated_slot'} })
-    batch_condition: Optional[list[str]] = Field(default=None, title="Batch Condition", description="""*Note: Name of the covariate that confers the dominant batch effect in the data as judged by the data contributor. The name provided here should be the label by which this covariate is stored in the AnnData object.*""", json_schema_extra = { "linkml_meta": {'alias': 'batch_condition',
+    batch_condition: Optional[list[str]] = Field(default=None, title="Batch Condition", description="""Name of the covariate that confers the dominant batch effect in the data as judged by the data contributor. The name provided here should be the label by which this covariate is stored in the AnnData object.""", json_schema_extra = { "linkml_meta": {'alias': 'batch_condition',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'uns'},
                          'cxg': {'tag': 'cxg', 'value': 'batch_condition'}},
          'domain_of': ['Dataset'],
@@ -1684,7 +1696,7 @@ class MusculoskeletalDataset(Dataset):
     gene_annotation_version: str = Field(default=..., title="Gene Annotation Version", description="""Ensembl release version accession number. Some common codes include: GRCh38.p12 = GCF_000001405.38 GRCh38.p13 = GCF_000001405.39 GRCh38.p14 = GCF_000001405.40""", json_schema_extra = { "linkml_meta": {'alias': 'gene_annotation_version',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'comments': ['Possible source of batch effect and confounder for some '
-                      'biological analysis'],
+                      'biological analysis.'],
          'domain_of': ['Dataset'],
          'examples': [{'value': 'v110'}, {'value': 'GCF_000001405.40'}],
          'notes': ['http://www.ensembl.org/info/website/archives/index.html or '
@@ -1709,7 +1721,7 @@ class MusculoskeletalDataset(Dataset):
     reference_genome: ReferenceGenomeEnum = Field(default=..., title="Reference Genome", description="""Reference genome used for alignment.""", json_schema_extra = { "linkml_meta": {'alias': 'reference_genome',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'comments': ['Possible source of batch effect and confounder for some '
-                      'biological analysis'],
+                      'biological analysis.'],
          'domain_of': ['Dataset'],
          'examples': [{'value': 'GRCh38'}, {'value': 'GRCh37'}]} })
     sequenced_fragment: SequencedFragmentEnum = Field(default=..., title="Sequenced Fragment", description="""Which part of the RNA transcript was targeted for sequencing.""", json_schema_extra = { "linkml_meta": {'alias': 'sequenced_fragment',
@@ -1752,7 +1764,7 @@ class Cell(ConfiguredBaseModel):
 
     author_cell_type: Optional[str] = Field(default=None, title="Author Cell Type", description="""Encoding of author intuition of cellular annotation in the dataset.
 
-Use `author_cell_type` for original source datasets where [`cell_type_ontology_term_id`](#cell_type_ontology_term_id) is not available.""", json_schema_extra = { "linkml_meta": {'alias': 'author_cell_type',
+Use `author_cell_type` for original source datasets where `cell_type_ontology_term_id` is not available.""", json_schema_extra = { "linkml_meta": {'alias': 'author_cell_type',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
          'comments': ['Encoding of author intuition of cellular annotation in their '

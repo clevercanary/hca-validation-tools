@@ -26,7 +26,7 @@ types:
 slots:
   ambient_count_correction:
     title: Ambient Count Correction
-    description: Was ambient count correction software used during cellxgene processing? If so, which software?
+    description: Software used to correct ambient RNA counts, or 'none'.
     range: string
     required: true
     examples:
