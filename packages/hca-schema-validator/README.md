@@ -294,8 +294,9 @@ are `assay`, `cell_type`, `development_stage`, `disease`, `organism`, `sex` and
 
 The HCA curation team adds the labels from the term IDs as a final step in
 pre-publication curation, so atlas integration teams can leave the label columns
-out or blank. Any label a
-team does fill in must match the official ontology name for its term ID:
+out, or leave their values missing. Empty text (`""`) counts as a label and is
+checked like any other. Any label a team does fill in must match the official
+ontology name for its term ID:
 
 - A label that matches the name of the term on the same row passes.
 - A label that does not match is an error.
@@ -384,9 +385,10 @@ Two comparisons:
 #### When no version is declared
 
 A file with no `obs['gene_annotation_version']` column, or only missing values
-such as `nan` or `unknown`, still has its genes matched against each release. A
-warning says the version is missing and names the releases the genes fit, for
-example `This file's gene set is consistent with r105 to r110.`
+such as `nan` or `unknown`, fails validation, because the schema requires the
+field. The genes are still matched against each release, and a warning names the
+releases they fit, for example
+`This file's gene set is consistent with r105 to r110.`
 
 ### Gene IDs outside the allowed gene set
 
@@ -458,7 +460,7 @@ Details:
 | `[review]` | The new gene is already in the file; or several IDs in the file lead to the same new gene; or the file spells one gene more than one way (with and without a version suffix, or with two different suffixes) | Decide whether to combine the columns. Adding their counts double-counts if the file was aligned against an annotation that treated the IDs as separate genes. |
 | `[drop]` | The gene was removed with no replacement; or the replacement was itself removed later; or the replacement is not in the allowed gene set; or the gene is on an alternate locus or a patch | Remove the gene. There is no replacement in the allowed gene set to move its counts to. |
 | `[drop or re-align]` | Ensembl split the gene into several genes | Remove the gene, or re-run alignment against a newer annotation to get counts for the new genes. |
-| `[strip suffix]` | The ID has a version suffix, such as `.17` | Remove the suffix, then check the ID's Details line: removing the suffix alone may not make the ID valid. |
+| `[strip suffix]` | The ID has a version suffix, such as `.17`, and without the suffix it is in the allowed gene set or newer than it. Any other suffixed ID gets the tag it would get without the suffix, and its Details line says "version suffix" | Remove the suffix. |
 | `[none]` | The gene is newer than the allowed gene set | Nothing to fix. |
 | `[ask]` | Neither gene table (Ensembl releases 76 to 116) has a record of the ID, for example because the gene was removed before release 76 | Ask the data producer which gene annotation the file was built with. |
 

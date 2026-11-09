@@ -259,8 +259,9 @@ What `check_gene_annotation_version` does with `obs['gene_annotation_version']` 
     Ensembl gene IDs (3.10) that the table knows and the release does not contain. The releases that contain
     all of them are the file's compatible releases. A declared release outside them is a warning. IDs the
     table has never seen are left out and named in a finding of their own; a file with no ID the table knows
-    has no compatible releases and gets only that finding. When no release contains them all, one finding says
-    so, and a declared release is named only when it leaves more genes unexplained than the closest release.
+    has no compatible releases, so its declared release is not ruled out. When no release contains them all, one
+    finding says so, and a declared release is named only when it leaves more genes unexplained than the closest
+    release.
 
 6.2 **Both directions.** Genes are retired as well as issued, so a declared release can fall after the
     compatible releases as well as before them. When compatible releases exist, a finding splits the genes
@@ -290,8 +291,8 @@ What `check_gene_annotation_version` does with `obs['gene_annotation_version']` 
 
 ## 7. Out of scope
 
-7.1 **Remediation.** Renaming, merging and dropping columns are `check_feature_ids` / `remap_feature_ids`
-    (#708). This is the data layer those assume.
+7.1 **Remediation.** Renaming, merging and dropping columns are planned as `check_feature_ids` /
+    `remap_feature_ids` (#708). This is the data layer those will use.
 
 7.2 **Cross-file consistency** between an integrated object and its sources is #530. Which merge pairs are
     safe to sum is a cross-file question and cannot be answered from one file.

@@ -20,7 +20,7 @@ Run before any schema validator:
 - **Required env vars present** — `S3_BUCKET`, `S3_KEY`, `FILE_ID`, `SNS_TOPIC_ARN`, `AWS_BATCH_JOB_ID` (bypassed when `LOCAL_FILE` is set).
 - **S3 object has `source-sha256` metadata** — hard-fail if missing.
 - **File integrity** — SHA256 computed on the downloaded file must match the S3 metadata hash.
-- **Metadata summary readable** — opens the h5ad in backed mode and extracts `uns.title`, `obs.assay`, `obs.suspension_type`, `obs.tissue`, `obs.disease`, `n_obs`, `n_vars`.
+- **Metadata summary readable** — reads `obs`, `uns` and the shape of `X` from the h5ad, without loading the matrices, and extracts `uns.title`, `obs.assay`, `obs.suspension_type`, `obs.tissue`, `obs.disease`, `n_obs`, `n_vars`.
 
 Each validator that runs is a subprocess (memory isolation), and its result is aggregated under `tool_reports.{cap, hcaSchema, hcaCellAnnotation}`. `tool_reports.cellxgene` holds an empty stub (§3).
 
@@ -63,7 +63,7 @@ The per-set required fields, marker-gene coverage and Cell Ontology term validit
 | Stage | Source | Fail mode |
 |---|---|---|
 | Env & S3 integrity | `main.py` | Hard fail, no tool reports |
-| Metadata summary | `main.py:read_metadata` | Exception → failure message |
+| Metadata summary | `main.py:read_file_metadata` | Exception → failure message |
 | CAP | `cap_validator_script.py` | `tool_reports.cap.errors` |
 | CELLxGENE | Not run; empty passing stub | `tool_reports.cellxgene` |
 | HCA | `services/hca-schema-validator` → `HCAValidator` | `tool_reports.hcaSchema` |
