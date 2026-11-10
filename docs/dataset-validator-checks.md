@@ -1,6 +1,6 @@
 # Dataset Validator — Batch Service Checks
 
-The dataset validator runs as an AWS Batch job. It makes its own integrity checks, then runs three validators on the file: CAP, HCA schema and HCA cell annotation. The standalone CELLxGENE validator is not run. This document covers what the Batch service adds; what the CELLxGENE and HCA schema validators check is in the [`hca-schema-validator` README](../packages/hca-schema-validator/README.md#core-cellxgene-checks).
+The dataset validator runs as an AWS Batch job. It makes its own integrity checks, then runs three validators on the file: CAP, HCA schema and HCA cell annotation. The standalone CELLxGENE validator is not run. This document covers what the Batch service adds; what the CELLxGENE and HCA schema validators check is in the [`hca-schema-validator` list of checks](../packages/hca-schema-validator/CHECKS.md).
 
 Source files:
 - Orchestrator: `services/dataset-validator/src/dataset_validator/main.py`
@@ -40,7 +40,7 @@ Runs the external `cap_upload_validator` package against the file. Validates CAP
 
 ## 4. HCA schema validator (`HCAValidator`)
 
-Runs `HCAValidator` from the `hca-schema-validator` package. The checks it makes — the core CELLxGENE checks, the HCA overrides and the HCA extensions — are listed in the [package README](../packages/hca-schema-validator/README.md#core-cellxgene-checks). This document does not repeat them.
+Runs `HCAValidator` from the `hca-schema-validator` package. The checks it makes — the core CELLxGENE checks, the HCA overrides and the HCA extensions — are listed in the [package's list of checks](../packages/hca-schema-validator/CHECKS.md). This document does not repeat them.
 
 ---
 

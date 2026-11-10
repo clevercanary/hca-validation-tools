@@ -2,8 +2,8 @@
 
 Notes for maintainers: installing from source, running the tests, how the
 package is laid out, the ontology overlay, and how to regenerate the two gene
-tables the validator ships with. What the validator checks, and why, is in the
-[README](README.md).
+tables the validator ships with. What the validator checks, and why, is in
+[CHECKS.md](CHECKS.md).
 
 ## Installing from source
 
@@ -53,14 +53,15 @@ packages/hca-schema-validator/
 ├── tests/
 │   └── test_validator.py # Unit tests
 ├── pyproject.toml        # uv/PEP 621 configuration & dependencies
-├── README.md             # What the validator checks, for users
+├── README.md             # Overview and usage, for users
+├── CHECKS.md             # What the validator checks, for users
 └── DEVELOPMENT.md        # This file
 ```
 
 ## How counts are recovered from `X`
 
-The README's expression matrix check 8
-([Expression matrices](README.md#expression-matrices)) recovers each cell's
+Expression matrix check 7
+([Expression matrices](CHECKS.md#expression-matrices)) recovers each cell's
 counts from `X` to explain a mismatch with `raw.X`. That needs the cell's scale
 factor, which the validator reads from `X` alone:
 
@@ -278,7 +279,7 @@ MySQL to `ensembldb.ensembl.org:3306` (user `anonymous`, no password).
    ```
 
 4. Commit the regenerated file, and update the **Current table** above and the
-   [data versions table](README.md#data-versions) in the README.
+   [data versions table](CHECKS.md#data-versions) in CHECKS.md.
 
 ### Why not `stable_id_event`
 
@@ -299,7 +300,7 @@ explains.
 ## Gene ID Event Table
 
 `check_retired_feature_ids` produces the gene ID report described in
-[the README](README.md#gene-ids-outside-the-allowed-gene-set). `src/hca_schema_validator/gene_id_events.csv.gz` records
+[CHECKS.md](CHECKS.md#gene-ids-outside-the-allowed-gene-set). `src/hca_schema_validator/gene_id_events.csv.gz` records
 what Ensembl says became of each retired ID, and the gene ID report is
 built from that table.
 
@@ -403,7 +404,7 @@ password). About four minutes, mostly the per-release coordinate queries.
    ```
 
 5. Commit the regenerated file, and update the **Current table** above and the
-   [data versions table](README.md#data-versions) in the README.
+   [data versions table](CHECKS.md#data-versions) in CHECKS.md.
 
 ### The session chain is not contiguous, and that is correct
 

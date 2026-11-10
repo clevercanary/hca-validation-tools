@@ -3082,7 +3082,7 @@ _CLASS_ROWS = (
     ("unclassified", "no event recorded"),
 )
 _CLASS_TEXT = dict(_CLASS_ROWS)
-# What each action means is documented in the package README and in
+# What each action means is documented in the package's CHECKS.md and in
 # docs/gene-id-contract.md, not printed on every run: a log says what is true of
 # this file, and the same paragraph of guidance repeated on every validation is
 # editorial rather than finding.
@@ -3118,7 +3118,7 @@ def _retired_summary_table(found: dict, suffixed: set[str]) -> list[str]:
     A table rather than a paragraph per class: the counts are what a reader scans
     for, and prose between them turns that scan into a read. What an action means
     is not explained here -- that is the same guidance on every run, and it lives
-    in the package README and docs/gene-id-contract.md.
+    in the package's CHECKS.md and docs/gene-id-contract.md.
 
     Identifiers are not listed either. Every one is in the detail block below.
     """
