@@ -59,6 +59,7 @@ slots:
       - Affects which cells are filtered per dataset, and which reads (introns and exons or only exons) are counted as part of the reported transcriptome. This can convey batch effects.
     annotations:
       annDataLocation: obs
+      tier: Tier 1
 
   assay_ontology_term_id:
     title: Assay Ontology Term ID
@@ -86,6 +87,7 @@ slots:
     annotations:
       cxg: assay_ontology_term_id
       annDataLocation: obs
+      tier: Tier 1
 
   assay_ontology_term:
     is_a: deprecated_slot
@@ -112,6 +114,7 @@ slots:
     annotations:
       cxg: batch_condition
       annDataLocation: uns
+      tier: Tier 1
 
   comments:
     title: Comments
@@ -122,6 +125,7 @@ slots:
     required: false
     annotations:
       annDataLocation: uns
+      tier: Tier 1
 
   contact_email:
     title: Contact Email
@@ -146,6 +150,7 @@ slots:
     annotations:
       cxg: default_embedding
       annDataLocation: uns
+      tier: Tier 1
 
   description:
     title: Description
@@ -173,6 +178,7 @@ slots:
       - Possible source of batch effect and confounder for some biological analysis.
     annotations:
       annDataLocation: obs
+      tier: Tier 1
 
   intron_inclusion:
     title: Intron Inclusion
@@ -186,6 +192,7 @@ slots:
       - Affects the number of reads per cell called in a sample.
     annotations:
       annDataLocation: obs
+      tier: Tier 1
 
   protocol_url:
     title: Protocol URL
@@ -200,6 +207,7 @@ slots:
       - Useful to look up protocol data that can provide insight on batch effects. As protocols can sometimes apply to a subset of the study, we capture this at a sample level. This information may not always be available.
     annotations:
       annDataLocation: obs
+      tier: Tier 1
 
   publication_doi:
     title: Publication DOI
@@ -224,6 +232,7 @@ slots:
       - Possible source of batch effect and confounder for some biological analysis.
     annotations:
       annDataLocation: obs
+      tier: Tier 1
 
   sequenced_fragment:
     title: Sequenced Fragment
@@ -237,6 +246,7 @@ slots:
       - May be a source of batch effect that has to be tested.
     annotations:
       annDataLocation: obs
+      tier: Tier 1
 
   sequencing_platform:
     title: Sequencing Platform
@@ -251,6 +261,7 @@ slots:
       - This captures potential strand hopping which may cause data quality issues.
     annotations:
       annDataLocation: obs
+      tier: Tier 1
 
   study_pi:
     title: Study PI
@@ -263,6 +274,7 @@ slots:
         description: "Principal Investigator in Last name,First name,Middle initial format"
     annotations:
       annDataLocation: uns
+      tier: Tier 1
 
   title:
     title: Title

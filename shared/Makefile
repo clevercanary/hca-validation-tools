@@ -13,7 +13,7 @@ help:
 	@echo "  lint-schema           - Lint schema files"
 	@echo "  lint-schema-errors    - Lint schema files (errors only)"
 	@echo "  gen-schema            - Generate Python models from LinkML schemas"
-	@echo "  generate-data-dictionary - Generate data dictionary from core schema"
+	@echo "  generate-data-dictionary - Generate the data dictionaries from core schema"
 	@echo "  test                  - Run shared library tests"
 	@echo "  test-validator        - Run validator tests only"
 	@echo "  test-entry-sheet      - Run entry sheet validator tests only"
@@ -28,8 +28,9 @@ validate-schema lint-schema lint-schema-errors gen-schema:
 # Generate data dictionary
 .PHONY: generate-data-dictionary
 generate-data-dictionary:
-	@echo "Generating data dictionary from core schema..."
+	@echo "Generating data dictionaries from core schema..."
 	@$(UV) python -c "from hca_validation.data_dictionary.generate_dictionary import generate_dictionary; generate_dictionary(output_path='../data_dictionaries/core_data_dictionary.json')"
+	@$(UV) python -c "from hca_validation.data_dictionary.generate_dictionary import generate_tier_1_dictionary; generate_tier_1_dictionary(output_path='../data_dictionaries/tier_1_data_dictionary.json')"
 	@echo "✓ Data dictionary generated"
 
 # Run validator tests (in shared library)

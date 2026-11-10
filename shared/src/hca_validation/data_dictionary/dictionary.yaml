@@ -1,0 +1,194 @@
+# The HCA Data Portal's Tier 1 data dictionary: its header, its sections, and the rows that document AnnData
+# structure rather than a schema slot. generate_dictionary.py merges this into the core schema; validation never
+# loads it. A section lists its fields in display order, and a field no section lists is not shown; a section mixes
+# in the core class whose slots it lists.
+id: https://github.com/clevercanary/hca-validation-tools/schema/data-dictionary
+name: tier_1
+title: Tier 1 Metadata
+description: |-
+  ## Introduction
+
+  Tier 1 metadata extends the [CELLxGENE AnnData schema](https://chanzuckerberg.github.io/single-cell-curation/latest-schema.html) with the batch, sample, and sequencing details needed for atlas‑level batch correction, QC, and cross‑dataset integration.
+license: MIT
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  cxg: https://github.com/chanzuckerberg/single-cell-curation/blob/main/schema/7.0.0/schema.md
+
+annotations:
+  cxg: CELLxGENE Schema
+
+imports:
+  - linkml:types
+
+classes:
+  DatasetSection:
+    title: Dataset
+    description: A collection of data from a single experiment or study in the Human Cell Atlas
+    mixins:
+      - Dataset
+    slots:
+      - study_pi
+      - batch_condition
+      - default_embedding
+      - sequencing_platform
+      - assay_ontology_term_id
+      - reference_genome
+      - alignment_software
+      - intron_inclusion
+      - sequenced_fragment
+      - gene_annotation_version
+      - comments
+      - protocol_url
+      - title
+      - ambient_count_correction
+      - doublet_detection
+      - x_suffix
+  DonorSection:
+    title: Donor
+    description: An individual organism from which biological samples have been derived
+    mixins:
+      - Donor
+    slots:
+      - donor_id
+      - organism_ontology_term_id
+      - manner_of_death
+      - sex_ontology_term_id
+  SampleSection:
+    title: Sample
+    description: A biological sample derived from a donor or another sample
+    mixins:
+      - Sample
+    slots:
+      - sample_id
+      - tissue_ontology_term_id
+      - tissue_free_text
+      - sample_source
+      - sample_collection_method
+      - tissue_type
+      - sampled_site_condition
+      - disease_ontology_term_id
+      - sample_preservation_method
+      - suspension_type
+      - is_primary_data
+      - development_stage_ontology_term_id
+      - radial_tissue_term
+      - dissociation_protocol
+      - cell_enrichment
+      - sample_collection_year
+      - sample_collection_site
+      - sample_collection_relative_time_point
+      - cell_number_loaded
+      - cell_viability_percentage
+      - institute
+      - author_batch_notes
+  LibrarySection:
+    title: Library
+    mixins:
+      - Sample
+    slots:
+      - library_id
+      - library_id_repository
+      - library_preparation_batch
+      - library_sequencing_run
+  CellSection:
+    title: Cell
+    description: A single cell derived from a sample
+    mixins:
+      - Cell
+    slots:
+      - author_cell_type
+      - cell_type_ontology_term_id
+  FeatureSection:
+    title: Feature
+    slots:
+      - feature_id
+      - feature_is_filtered
+  MatrixLayersSection:
+    title: Matrix Layers
+    slots:
+      - matrix_layers
+
+slots:
+  x_suffix:
+    alias: "X_{suffix}"
+    title: Embedding
+    description: "AnnData stores embeddings under keys in `obsm` that start with `X_`. Each such key (e.g. `X_umap`) contains a `(n_obs × k)` float32 matrix. These are referred to here using a placeholder `X_{suffix}`."
+    examples:
+      - value: X_tSNE
+      - value: X_UMAP
+    required: true
+    multivalued: false
+    notes:
+      - |-
+        X_{suffix} with the following requirements:
+
+        - {suffix} MUST be at least one character in length.
+
+        - The first character of {suffix} MUST be a letter of the alphabet and the remaining characters MUST be alphanumeric characters, `'_'`, `'-'`, or `'.'` (This is equivalent to the regular expression pattern `"^[a-zA-Z][a-zA-Z0-9_.-]*$"`.)
+
+        - {suffix} MUST NOT be `"spatial"`.
+
+        {suffix} is presented as text to users in the **Embedding Choice** selector in CELLxGENE Explorer so it is STRONGLY RECOMMENDED that it be descriptive.
+
+        See also `default_embedding` in `uns`.
+    annotations:
+      annDataLocation: "obsm"
+      tier: Tier 1
+      cxg: x_suffix
+      displayRange: "numpy.ndarray"
+
+  feature_id:
+    alias: "index of pandas.DataFrame"
+    title: Feature ID
+    description: |-
+      If the feature is a gene then this MUST be an ENSEMBL term. If the feature is a RNA Spike-In Control Mix then this MUST be an ERCC Spike-In identifier (e.g. `"ERCC-0003"`).
+
+      The index of the `pandas.DataFrame` MUST contain unique identifiers for features. If present, the index of raw.var MUST be identical to the index of var.
+    required: true
+    multivalued: false
+    annotations:
+      annDataLocation: "var; raw.var"
+      tier: Tier 1
+      cxg: index-of-pandasdataframe-1
+
+  feature_is_filtered:
+    title: Feature is Filtered
+    description: "When both a raw and normalized matrix are present, this MUST be `True` if the feature was filtered out in the normalized matrix (`X`) but is present in the raw matrix (`raw.X`). The value for all cells of the given feature in the normalized matrix MUST be `0`. If a feature contains all zeroes in the normalized matrix, then either the corresponding feature in the raw matrix MUST be all zeroes or the value MUST be `True`."
+    range: boolean
+    required: true
+    multivalued: false
+    annotations:
+      annDataLocation: "var; raw.var"
+      tier: Tier 1
+      cxg: feature_is_filtered
+
+  matrix_layers:
+    alias: "X; raw.X"
+    title: Matrix Layer
+    description: "The data stored in the X data matrix is the data that is viewable in CELLxGENE Explorer."
+    required: true
+    multivalued: false
+    notes:
+      - |-
+        In any layer, if a matrix has 50% or more values that are zeros, it is STRONGLY RECOMMENDED that the matrix be encoded as a [`scipy.sparse.csr_matrix`](https://docs.scipy.org/doc/scipy/reference/generated/scipy.sparse.csr_matrix.html).
+
+        CELLxGENE's matrix layer requirements are tailored to optimize data reuse. Because each assay has different characteristics, the requirements differ by assay type. In general, CELLxGENE requires submission of "raw" data suitable for computational reuse when a standard raw matrix format exists for an assay. It is STRONGLY RECOMMENDED to also include a "normalized" matrix with processed values ready for data analysis and suitable for visualization in CELLxGENE Explorer. So that CELLxGENE's data can be provided in download formats suitable for both R and Python, the schema imposes the following requirements:
+
+        * All matrix layers MUST have the same shape, and have the same cell labels and gene labels.
+        * Because it is impractical to retain all barcodes in raw and normalized matrices, any cell filtering MUST be applied to both. By contrast, those wishing to reuse datasets require access to raw gene expression values, so genes SHOULD NOT be filtered from either dataset. Summarizing, any cell barcodes that are removed from the data MUST be filtered from both raw and normalized matrices and genes SHOULD NOT be filtered from the raw matrix.
+        * Any genes that publishers wish to filter from the normalized matrix MAY have their values replaced by zeros and MUST be flagged in the column [feature_is_filtered](https://github.com/chanzuckerberg/single-cell-curation/blob/main/schema/4.0.0/schema.md#feature_is_filtered) of [var](https://github.com/chanzuckerberg/single-cell-curation/blob/main/schema/4.0.0/schema.md#var-and-rawvar-gene-metadata), which will mask them from exploration.
+        * Additional layers provided at author discretion MAY be stored using author-selected keys, but MUST have the same cells and genes as other layers. It is STRONGLY RECOMMENDED that these layers have names that accurately summarize what the numbers in the layer represent (e.g. "counts_per_million", "SCTransform_normalized", or "RNA_velocity_unspliced").
+
+        The following table describes the matrix data and layers requirements that are assay-specific. If an entry in the table is empty, the schema does not have any other requirements on data in those layers beyond the ones listed above.
+
+        | Assay | "raw" required? | "raw" location | "normalized" required? | "normalized" location |
+        |-|-|-|-|-|
+        | scRNA-seq (UMI, e.g. 10x v3) | REQUIRED. Values MUST be de-duplicated molecule counts. Each cell MUST contain at least one non-zero value. All non-zero values MUST be positive integers stored as `numpy.float32`.| `AnnData.raw.X` unless no "normalized" is provided, then `AnnData.X` | STRONGLY RECOMMENDED | `AnnData.X` |
+        | scRNA-seq (non-UMI, e.g. SS2) | REQUIRED. Values MUST be one of read counts (e.g. FeatureCounts) or  estimated fragments (e.g. output of RSEM). Each cell MUST contain at least one non-zero value. All non-zero values MUST be positive integers stored as `numpy.float32`. | `AnnData.raw.X` unless no "normalized" is provided, then `AnnData.X` | STRONGLY RECOMMENDED | `AnnData.X` |
+        | Accessibility (e.g. ATAC-seq, mC-seq) | NOT REQUIRED | | REQUIRED | `AnnData.X` | STRONGLY RECOMMENDED |
+    annotations:
+      annDataLocation: "X; raw.X"
+      tier: Tier 1
+      cxg: x-matrix-layers
+      displayRange: "oneOf(numpy.ndarray, scipy.sparse.csr_matrix)"
