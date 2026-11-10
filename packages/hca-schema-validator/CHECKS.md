@@ -217,8 +217,8 @@ About these matrices:
 - The total each cell is normalized to is not fixed. The checks compare each
   cell's profile, where the total cancels out, so any target works.
 
-Checks 1 to 4 look at the whole of `X`. Checks 5 to 9 look only at the first 200
-cells (the checked cells) and validate that:
+Checks 1 to 4 look at the whole of `X`, and checks 5 to 9 look only at the first
+200 cells (the checked cells). The validator validates that:
 
 1. **Normalization ran.** `X` is not identical to `raw.X`.
 2. **`X` holds expression values.** It has no missing (NaN) or infinite values.
@@ -252,7 +252,8 @@ cells (the checked cells) and validate that:
    than half of the checked cells, the sum equals the cell's own total count in
    the source instead, `X` was log-transformed without being normalized.
 
-   The check asserts that, for at most half of the checked cells,
+   The check asserts that, for at most half of the checked cells that can be
+   compared,
 
    ```
    sum(expm1(X[cell])) / sum(source[cell]) = 1   (within 0.1%)
@@ -273,7 +274,8 @@ To do this, it undoes the normalization: it reverses the `log1p`, then divides
 each cell by its scale factor, which it reads from the cell's smallest non-zero
 value (almost always a gene with a count of 1). For an `X` made from
 whole-number counts, this gives back those counts: the recovered counts listed
-in the table below.
+in the table below. Checked cells with fewer than 30 non-zero genes in `X` are
+skipped, because their smallest value is not reliably a count of 1.
 
 No processing step adds counts: filtering, quality control and ambient RNA
 removal only take them away. So how the recovered counts compare with `raw.X`

@@ -217,9 +217,9 @@ Where the version constraint actually lives matters for maintenance:
   pin moves. (0.12 already serializes some encodings differently — its
   first CI run failed the encoding-matrix tests on exactly that.)
 - `hca-schema-validator` declares `anndata==0.11.4`, and its pyproject says
-  why: these are **cellxgene-schema 7.0.1's pins, not ours** — the vendored
-  validator must reproduce that environment to behave identically, so they
-  must not be relaxed to suit another package.
+  why: these are **cellxgene-schema 7.0.0's pins (unchanged in 7.0.1), not
+  ours** — the vendored validator must reproduce that environment to behave
+  identically, so they must not be relaxed to suit another package.
 - `hca-anndata-mcp` depends on both siblings, so the environment every MCP
   tool actually runs in resolves anndata to **0.11.4** via the validator.
   `hca-anndata-tools`' own lock resolves 0.11.4 today as well.
