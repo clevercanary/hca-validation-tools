@@ -878,8 +878,8 @@ class Sample(ConfiguredBaseModel):
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'cxg': {'tag': 'cxg', 'value': 'disease_ontology_term_id'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
-         'comments': ['Disease is a major biological effect on cell state, and '
-                      'determines which samples can serve as healthy reference.'],
+         'comments': ['Disease has a major effect on cell state, and determines which '
+                      'samples can serve as a healthy reference.'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'MONDO:0005385'}, {'value': 'PATO:0000461'}],
          'notes': ['This must be a MONDO term or "PATO:0000461" for normal or '
@@ -1042,8 +1042,8 @@ class Sample(ConfiguredBaseModel):
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
          'comments': ['The source of the sample (whether the sample comes from a '
-                      'living donor, an organ donor or a deceased donor) can result in '
-                      'different cellular profiles and hence batch effects.'],
+                      'surgical donor, a postmortem donor or a living organ donor) can '
+                      'result in different cellular profiles and hence batch effects.'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'surgical donor'}, {'value': 'postmortem donor'}]} })
     tissue_ontology_term: Optional[str] = Field(default=None, title="Tissue Ontology Term", description="""Deprecated placeholder for tissue ontology term.""", json_schema_extra = { "linkml_meta": {'alias': 'tissue_ontology_term',
@@ -1151,8 +1151,8 @@ class AdiposeSample(Sample):
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'cxg': {'tag': 'cxg', 'value': 'disease_ontology_term_id'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
-         'comments': ['Disease is a major biological effect on cell state, and '
-                      'determines which samples can serve as healthy reference.'],
+         'comments': ['Disease has a major effect on cell state, and determines which '
+                      'samples can serve as a healthy reference.'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'MONDO:0005385'}, {'value': 'PATO:0000461'}],
          'notes': ['This must be a MONDO term or "PATO:0000461" for normal or '
@@ -1315,8 +1315,8 @@ class AdiposeSample(Sample):
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
          'comments': ['The source of the sample (whether the sample comes from a '
-                      'living donor, an organ donor or a deceased donor) can result in '
-                      'different cellular profiles and hence batch effects.'],
+                      'surgical donor, a postmortem donor or a living organ donor) can '
+                      'result in different cellular profiles and hence batch effects.'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'surgical donor'}, {'value': 'postmortem donor'}]} })
     tissue_ontology_term: Optional[str] = Field(default=None, title="Tissue Ontology Term", description="""Deprecated placeholder for tissue ontology term.""", json_schema_extra = { "linkml_meta": {'alias': 'tissue_ontology_term',
@@ -1434,8 +1434,8 @@ class GutSample(Sample):
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'cxg': {'tag': 'cxg', 'value': 'disease_ontology_term_id'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
-         'comments': ['Disease is a major biological effect on cell state, and '
-                      'determines which samples can serve as healthy reference.'],
+         'comments': ['Disease has a major effect on cell state, and determines which '
+                      'samples can serve as a healthy reference.'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'MONDO:0005385'}, {'value': 'PATO:0000461'}],
          'notes': ['This must be a MONDO term or "PATO:0000461" for normal or '
@@ -1598,8 +1598,8 @@ class GutSample(Sample):
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
          'comments': ['The source of the sample (whether the sample comes from a '
-                      'living donor, an organ donor or a deceased donor) can result in '
-                      'different cellular profiles and hence batch effects.'],
+                      'surgical donor, a postmortem donor or a living organ donor) can '
+                      'result in different cellular profiles and hence batch effects.'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'surgical donor'}, {'value': 'postmortem donor'}]} })
     tissue_ontology_term: Optional[str] = Field(default=None, title="Tissue Ontology Term", description="""Deprecated placeholder for tissue ontology term.""", json_schema_extra = { "linkml_meta": {'alias': 'tissue_ontology_term',

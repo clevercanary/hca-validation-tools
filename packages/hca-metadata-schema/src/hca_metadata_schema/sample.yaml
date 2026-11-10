@@ -433,7 +433,7 @@ slots:
     multivalued: false
     comments:
       - >-
-        The source of the sample (whether the sample comes from a living donor, an organ donor or a deceased donor)
+        The source of the sample (whether the sample comes from a surgical donor, a postmortem donor or a living organ donor)
         can result in different cellular profiles and hence batch effects.
 
   development_stage_ontology_term_id:
@@ -500,7 +500,7 @@ slots:
 
         **Requirements for data contributors adhering to GDPR or like standards**: In the case of disease, HCA requests that you submit a higher order ontology term - this is especially important in the case of rare disease.
     comments:
-      - Disease is a major biological effect on cell state, and determines which samples can serve as healthy reference.
+      - Disease has a major effect on cell state, and determines which samples can serve as a healthy reference.
     annotations:
       annDataLocation: obs
       cxg: disease_ontology_term_id
