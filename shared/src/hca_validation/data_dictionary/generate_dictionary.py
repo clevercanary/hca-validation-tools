@@ -154,7 +154,7 @@ def slot_to_attribute(schemaview: SchemaView, slot_info, schema_enum_names: set[
         "name": slot_info.name,
         # Use title from schema if available
         "title": slot_info.title if slot_info.title is not None else slot_info.name,
-        "description": slot_info.description or "",
+        "description": (slot_info.description or "").rstrip(),
         "range": display_range(schemaview, slot_info, schema_enum_names),
         "required": requirement_level(slot_info),
         "multivalued": slot_info.multivalued if slot_info.multivalued is not None else False,
@@ -174,21 +174,19 @@ def slot_to_attribute(schemaview: SchemaView, slot_info, schema_enum_names: set[
 
     # Add rationale if available in comments - as a string, not an array
     if slot_info.comments:
-        attribute["rationale"] = "\n".join(slot_info.comments)
+        attribute["rationale"] = "\n".join(slot_info.comments).rstrip()
 
     # Add values information if available in notes - as a string, not an array
     notes = "\n".join(slot_info.notes).rstrip() if slot_info.notes else None
     if notes:
         attribute["values"] = notes
 
-    # If this is an enum, append its permissible values after any notes rather than replacing them (#762); notes
-    # that only restate the value list are not repeated
+    # If this is an enum, append its permissible values after any notes rather than replacing them (#762)
     if slot_info.range in schema_enum_names:
         permissible_values = list(schemaview.induced_enum(slot_info.range).permissible_values or {})
         if permissible_values:
             listed = "; ".join(permissible_values)
-            restated = notes is not None and {v.strip() for v in notes.split(";")} == set(permissible_values)
-            attribute["values"] = f"{notes}\n\n{listed}" if notes and not restated else listed
+            attribute["values"] = f"{notes}\n\n{listed}" if notes else listed
 
     return attribute
 
@@ -208,7 +206,6 @@ def generate_dictionary(schema_path=None, output_path=None):
     if schema_path is None:
         schema_path = CORE_SCHEMA_PATH
 
-    # Load the schema
     schemaview = SchemaView(str(schema_path), merge_imports=True)
 
     # Transform the schema into the requested format
@@ -224,7 +221,6 @@ def generate_dictionary(schema_path=None, output_path=None):
         schema_name = Path(schema_path).stem
         output_path = data_dict_dir / f"{schema_name}_data_dictionary.json"
 
-    # Write to file
     with Path(output_path).open("w", encoding="utf-8") as fh:
         json.dump(data_dict, fh, indent=2)
     print(f"Data dictionary written to {output_path}")

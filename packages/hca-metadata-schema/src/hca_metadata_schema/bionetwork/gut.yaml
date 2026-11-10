@@ -25,7 +25,7 @@ classes:
     slots:
       - ambient_count_correction
       - doublet_detection
-    
+
   GutSample:
     is_a: Sample
     description: Sample with Gut BioNetwork–specific metadata requirements.
@@ -34,6 +34,5 @@ classes:
     slots:
       - radial_tissue_term
       - dissociation_protocol
-    
 
-  
+

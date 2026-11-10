@@ -26,7 +26,7 @@ classes:
     slots:
       - ambient_count_correction
       - doublet_detection
-    
+
   AdiposeSample:
     is_a: Sample
     description: Sample with Adipose BioNetwork–specific metadata requirements.

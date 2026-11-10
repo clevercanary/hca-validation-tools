@@ -98,6 +98,18 @@ def test_real_schema_shows_display_ranges(schemaview, data_dictionary):
     assert not [a["name"] for c in data_dictionary["classes"] for a in c["attributes"] if a["range"] in named]
 
 
+def test_no_schema_text_ends_in_whitespace(schemaview):
+    # Checks the YAML rather than the dictionary, whose generator strips it; a block scalar written `|` or `>` keeps
+    # a trailing newline that the generated models carry too (#762).
+    padded = []
+    for class_name in schemaview.all_classes():
+        for slot in schemaview.class_induced_slots(class_name):
+            texts = [slot.title, slot.description, *slot.comments, *slot.notes, *(e.value for e in slot.examples)]
+            if any(text is not None and text != text.rstrip() for text in texts):
+                padded.append(f"{class_name}.{slot.name}")
+    assert not padded, f"trailing whitespace: {', '.join(padded)}"
+
+
 def test_core_slots_have_every_network(data_dictionary):
     networks = _attribute(data_dictionary, "dataset", "title")["annotations"]["bioNetworks"]
     assert len(networks) == 18
@@ -382,16 +394,18 @@ slots:
       - First note.
       - Second note.
   bare:
+  # Block scalars end in a newline, which must not reach any joined text (#762).
   colour:
     range: Colour
     notes:
-      # A block scalar ends in a newline, which must not reach the joined values (#762).
       - |
         Pick a colour.
-  restated_colour:
-    range: Colour
-    notes:
-      - blue; red
+  padded:
+    description: |
+      A padded description.
+    comments:
+      - |
+        A padded comment.
   email:
     range: Email
   owner:
@@ -423,7 +437,7 @@ classes:
       - rationale_slot
       - bare
       - colour
-      - restated_colour
+      - padded
       - email
       - owner
       - count
@@ -495,8 +509,9 @@ def test_enum_values_follow_the_notes(mapping_dictionary):
     assert _attributes(mapping_dictionary, "Dataset")["colour"]["values"] == "Pick a colour.\n\nred; blue"
 
 
-def test_notes_that_restate_the_enum_values_are_not_repeated(mapping_dictionary):
-    assert _attributes(mapping_dictionary, "Dataset")["restated_colour"]["values"] == "red; blue"
+def test_description_and_rationale_drop_trailing_whitespace(mapping_dictionary):
+    padded = _attributes(mapping_dictionary, "Dataset")["padded"]
+    assert (padded["description"], padded["rationale"]) == ("A padded description.", "A padded comment.")
 
 
 @pytest.mark.parametrize(

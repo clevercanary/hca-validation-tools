@@ -26,7 +26,7 @@ types:
 slots:
   ambient_count_correction:
     title: Ambient Count Correction
-    description: Method used to correct ambient RNA contamination in single-cell data.
+    description: Software used to correct ambient RNA counts, or 'none'.
     range: string
     required: true
     examples:
@@ -45,7 +45,6 @@ slots:
       - value: "none"
       - value: "doublet_finder"
       - value: "manual"
-      - value: "doublet_finder;manual"
     annotations:
       annDataLocation: obs
 
@@ -61,20 +60,26 @@ slots:
     description: >-
       Identification number of the sample. This is the fundamental unit of sampling the tissue (the specimen taken from the subject), which can be the same as the 'subject_ID', but is often different if multiple samples are taken from the same subject. Note: this is NOT a unit of multiplexing of donor samples, which should be stored in "library".
     examples:
-      - value: SC24; SC25; SC28
+      - value: SC24
+      - value: SC25
+      - value: SC28
     annotations:
       annDataLocation: obs
       tier: Tier 1
     range: Sample
     inlined: false
     required: true
+    comments:
+      - Fundamental unit of sampling of the tissue.
 
   donor_id:
     title: Donor ID
     description: >-
       This must be free-text that identifies a unique individual that data were derived from.
     examples:
-      - value: CR_donor_1; MM_donor_1; LR_donor_2
+      - value: CR_donor_1
+      - value: MM_donor_1
+      - value: LR_donor_2
     annotations:
       annDataLocation: obs
       tier: Tier 1
@@ -83,12 +88,21 @@ slots:
     inlined: false
     required: true
     comments:
+      - Fundamental unit of biological variation of the data.
+    notes:
       - >-
-        Fundamental unit of biological variation of the data. It is strongly recommended that this identifier be designed so that it is unique to: a given individual within the collection of datasets that includes this dataset, and a given individual across all collections in CELLxGENE Discover. It is strongly recommended that "pooled" be used for observations from a sample of multiple individuals that were not confidently assigned to a single individual through demultiplexing. It is strongly recommended that "unknown" ONLY be used for observations in a dataset when it is not known which observations are from the same individual.
+        It is strongly recommended that this identifier be designed so that it is unique to: a given individual within the collection of datasets that includes this dataset, and a given individual across all collections in CELLxGENE Discover. It is strongly recommended that "pooled" be used for observations from a sample of multiple individuals that were not confidently assigned to a single individual through demultiplexing. It is strongly recommended that "unknown" ONLY be used for observations in a dataset when it is not known which observations are from the same individual.
 
   radial_tissue_term:
     title: Radial Tissue Term
-    description: Radial compartment/location of the tissue sample.
+    description: The layer of the gut that was sequenced. This depends on the chemical digestion used.
+    examples:
+      - value: EPI
+      - value: LP
+      - value: MUSC
+      - value: SUB
+      - value: MLN
+      - value: Peyers patch
     annotations:
       annDataLocation: obs
       tier: Tier 1
@@ -97,14 +111,16 @@ slots:
 
   dissociation_protocol:
     title: Dissociation Protocol
-    description: Dissociation chemicals used during sample preparation
+    description: Dissociation chemicals used during sample preparation.
     annotations:
       annDataLocation: obs
       tier: Tier 1
     range: string
     required: true
-    notes:
-      - "trypsin; trypLE; collagenase"
+    examples:
+      - value: trypsin
+      - value: trypLE
+      - value: collagenase
 
   deprecated_slot:
     title: Deprecated Slot

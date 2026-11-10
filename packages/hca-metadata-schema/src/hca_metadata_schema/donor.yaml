@@ -43,7 +43,7 @@ slots:
     range: string
     required: true
     notes:
-      - >
+      - >-
         This must be a child of PATO:0001894 for phenotypic sex
         or "unknown" if unavailable.
     examples:
@@ -51,35 +51,44 @@ slots:
         description: female
       - value: "PATO:0000384"
         description: male
+    comments:
+      - Likely biological effect. Need to know if we have a balanced dataset or if sex is collinear with the dataset.
     annotations:
       annDataLocation: obs
       cxg: sex_ontology_term_id
-  
+
   sex_ontology_term:
     is_a: deprecated_slot
     title: Sex Ontology Term
     description: Deprecated placeholder for sex ontology term.
     annotations:
       annDataLocation: obs
-  
+
   manner_of_death:
     title: Manner of Death
-    description: |
-      Manner of death classification based on the Hardy Scale or "unknown" or "not applicable":
-      * Category 1 = Violent and fast death — deaths due to accident, blunt force trauma or suicide, terminal phase < 10 min.
-      * Category 2 = Fast death of natural causes — sudden unexpected deaths of reasonably healthy people, terminal phase < 1 h.
-      * Category 3 = Intermediate death — terminal phase 1–24 h, patients ill but death unexpected.
-      * Category 4 = Slow death — terminal phase > 1 day (e.g. cancer, chronic pulmonary disease).
-      * Category 0 = Ventilator case — on a ventilator immediately before death.
+    description: |-
+      Manner of death classification based on the Hardy Scale or 'unknown' or 'not applicable':
+      * Category 1 = Violent and fast death - Deaths due to accident, blunt force trauma or suicide, terminal phase estimated at < 10 min.
+      * Category 2 = Fast death of natural causes - Sudden unexpected deaths of people who had been reasonably healthy, after a terminal phase estimated at < 1 hr (with sudden death from a myocardial infarction as a model cause of death for this category).
+      * Category 3 = Intermediate death - Death after a terminal phase of 1 to 24 hrs (not classifiable as 2 or 4); patients who were ill but death was unexpected.
+      * Category 4 = Slow death - Death after a long illness, with a terminal phase longer than 1 day (commonly cancer or chronic pulmonary disease); deaths that are not unexpected.
+      * Category 0 = Ventilator Case - All cases on a ventilator immediately before death.
       * Unknown = The cause of death is unknown.
       * Not applicable = Subject is alive.
-      [Leave blank for embryonic/fetal tissue.]
+
+      [Please leave this field as blank for embryonic/fetal tissue.]
     range: MannerOfDeath
     required: true
     examples:
       - value: "1"
-    notes:
-      - "1; 2; 3; 4; 0; unknown; not applicable"
+      - value: "2"
+      - value: "3"
+      - value: "4"
+      - value: "0"
+      - value: "unknown"
+      - value: "not applicable"
+    comments:
+      - Manner of death can affect cellular profiles.
     annotations:
       annDataLocation: obs
 
@@ -88,8 +97,13 @@ slots:
     description: The name given to the type of organism, collected in NCBITaxon:0000 format.
     range: Organism
     required: true
+    examples:
+      - value: "NCBITaxon:9606"
+      - value: "NCBITaxon:10090"
     notes:
       - "\"NCBITaxon:9606\" for Homo sapiens or \"NCBITaxon:10090\" for Mus musculus."
+    comments:
+      - Strong biological effect that needs to be considered for batch covariate selection.
     annotations:
       annDataLocation: obs
       cxg: organism_ontology_term_id

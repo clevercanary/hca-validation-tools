@@ -282,11 +282,13 @@ class Dataset(ConfiguredBaseModel):
                       '(introns and exons or only exons) are counted as part of the '
                       'reported transcriptome. This can convey batch effects.'],
          'domain_of': ['Dataset'],
-         'examples': [{'value': 'cellranger_8.0.0'}]} })
-    assay_ontology_term_id: str = Field(default=..., title="Assay Ontology Term Id", description="""Platform used for single cell library construction.""", json_schema_extra = { "linkml_meta": {'alias': 'assay_ontology_term_id',
+         'examples': [{'value': 'cell ranger 3.0.1'},
+                      {'value': 'kallisto bustools'},
+                      {'value': 'GSNAP'}]} })
+    assay_ontology_term_id: str = Field(default=..., title="Assay Ontology Term ID", description="""Platform used for single cell library construction.""", json_schema_extra = { "linkml_meta": {'alias': 'assay_ontology_term_id',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'cxg': {'tag': 'cxg', 'value': 'assay_ontology_term_id'}},
-         'comments': ['Major source of batch effect and dataset filtering criterion'],
+         'comments': ['Major source of batch effect and dataset filtering criterion.'],
          'domain_of': ['Dataset'],
          'examples': [{'value': 'EFO:0009922'}],
          'notes': ['This must be an EFO term and either:\n'
@@ -307,12 +309,12 @@ class Dataset(ConfiguredBaseModel):
                    '- 10x 5\' v1 "EFO:0011025"\n'
                    '- 10x 5\' v2 "EFO:0009900"\n'
                    '- Smart-seq2 "EFO:0008931"\n'
-                   '- Visium Spatial Gene Expression "EFO:0010961"\n']} })
+                   '- Visium Spatial Gene Expression "EFO:0010961"']} })
     assay_ontology_term: Optional[str] = Field(default=None, title="Assay Ontology Term", description="""Deprecated placeholder for assay ontology term.""", json_schema_extra = { "linkml_meta": {'alias': 'assay_ontology_term',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'domain_of': ['Dataset'],
          'is_a': 'deprecated_slot'} })
-    batch_condition: Optional[list[str]] = Field(default=None, title="Batch Condition", description="""Name of the covariate that confers the dominant batch effect in the data as judged by the data contributor.  The name provided here should be the label by which this covariate is stored in the AnnData object.""", json_schema_extra = { "linkml_meta": {'alias': 'batch_condition',
+    batch_condition: Optional[list[str]] = Field(default=None, title="Batch Condition", description="""Name of the covariate that confers the dominant batch effect in the data as judged by the data contributor. The name provided here should be the label by which this covariate is stored in the AnnData object.""", json_schema_extra = { "linkml_meta": {'alias': 'batch_condition',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'uns'},
                          'cxg': {'tag': 'cxg', 'value': 'batch_condition'}},
          'domain_of': ['Dataset'],
@@ -324,8 +326,7 @@ class Dataset(ConfiguredBaseModel):
                    '"seqBatch" are keys of vectors of cell metadata, either '
                    '["patient"], ["seqBatch"], or ["patient", "seqBatch"] are valid '
                    'values.']} })
-    comments: Optional[str] = Field(default=None, title="Comments", description="""Other technical or experimental covariates that could affect the quality or batch of the sample.  Must not contain identifiers. This field is designed to capture potential challenges for data integration not captured elsewhere.
-""", json_schema_extra = { "linkml_meta": {'alias': 'comments',
+    comments: Optional[str] = Field(default=None, title="Comments", description="""Other technical or experimental covariates that could affect the quality or batch of the sample. Must not contain identifiers. This field is designed to capture potential challenges for data integration not captured elsewhere.""", json_schema_extra = { "linkml_meta": {'alias': 'comments',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'uns'}},
          'domain_of': ['Dataset']} })
     consortia: Optional[str] = Field(default=None, title="Consortia", description="""Deprecated placeholder for consortia information.""", json_schema_extra = { "linkml_meta": {'alias': 'consortia',
@@ -342,21 +343,20 @@ class Dataset(ConfiguredBaseModel):
     description: str = Field(default=..., title="Description", description="""Short description of the dataset""", json_schema_extra = { "linkml_meta": {'alias': 'description',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'uns'}},
          'domain_of': ['Dataset']} })
-    gene_annotation_version: str = Field(default=..., title="Gene Annotation Version", description="""Ensembl release version accession number. Some common codes include: GRCh38.p12 = GCF_000001405.38 GRCh38.p13 = GCF_000001405.39 GRCh38.p14 = GCF_000001405.40
-""", json_schema_extra = { "linkml_meta": {'alias': 'gene_annotation_version',
+    gene_annotation_version: str = Field(default=..., title="Gene Annotation Version", description="""Ensembl release version accession number. Some common codes include: GRCh38.p12 = GCF_000001405.38 GRCh38.p13 = GCF_000001405.39 GRCh38.p14 = GCF_000001405.40""", json_schema_extra = { "linkml_meta": {'alias': 'gene_annotation_version',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'comments': ['Possible source of batch effect and confounder for some '
-                      'biological analysis'],
+                      'biological analysis.'],
          'domain_of': ['Dataset'],
-         'examples': [{'value': 'GCF_000001405.40'}],
+         'examples': [{'value': 'v110'}, {'value': 'GCF_000001405.40'}],
          'notes': ['http://www.ensembl.org/info/website/archives/index.html or '
                    'NCBI/RefSeq']} })
     intron_inclusion: Optional[YesNoEnum] = Field(default=None, title="Intron Inclusion", description="""Were introns included during read counting in the alignment process?""", json_schema_extra = { "linkml_meta": {'alias': 'intron_inclusion',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
+         'comments': ['Affects the number of reads per cell called in a sample.'],
          'domain_of': ['Dataset'],
          'examples': [{'value': 'yes'}, {'value': 'no'}]} })
-    protocol_url: Optional[str] = Field(default=None, title="Protocol URL", description="""The protocols.io URL (if none exists, please use the BioRxiv URL) for the full experimental protocol;  or if multiple protocols exist please list them e.g. sample preparation protocol / sequencing protocol.
-""", json_schema_extra = { "linkml_meta": {'alias': 'protocol_url',
+    protocol_url: Optional[str] = Field(default=None, title="Protocol URL", description="""The protocols.io URL (if none exists, please use the BioRxiv URL) for the full experimental protocol; or if multiple protocols exist please list them e.g. sample preparation protocol / sequencing protocol.""", json_schema_extra = { "linkml_meta": {'alias': 'protocol_url',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'comments': ['Useful to look up protocol data that can provide insight on '
                       'batch effects. As protocols can sometimes apply to a subset of '
@@ -364,17 +364,16 @@ class Dataset(ConfiguredBaseModel):
                       'may not always be available.'],
          'domain_of': ['Dataset'],
          'examples': [{'value': 'https://www.biorxiv.org/content/early/2017/09/24/193219'}]} })
-    publication_doi: Optional[str] = Field(default=None, title="Publication DOI", description="""The publication digital object identifier (doi) for the protocol. If no pre-print nor publication exists, please write 'not applicable'.
-""", json_schema_extra = { "linkml_meta": {'alias': 'publication_doi',
+    publication_doi: Optional[str] = Field(default=None, title="Publication DOI", description="""The publication digital object identifier (doi) for the protocol. If no pre-print nor publication exists, please write 'not applicable'.""", json_schema_extra = { "linkml_meta": {'alias': 'publication_doi',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'domain_of': ['Dataset'],
          'examples': [{'value': '10.1016/j.cell.2016.07.054'}]} })
     reference_genome: ReferenceGenomeEnum = Field(default=..., title="Reference Genome", description="""Reference genome used for alignment.""", json_schema_extra = { "linkml_meta": {'alias': 'reference_genome',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'comments': ['Possible source of batch effect and confounder for some '
-                      'biological analysis'],
+                      'biological analysis.'],
          'domain_of': ['Dataset'],
-         'examples': [{'value': 'GRCm37'}, {'value': 'GRCh37'}]} })
+         'examples': [{'value': 'GRCh38'}, {'value': 'GRCh37'}]} })
     sequenced_fragment: SequencedFragmentEnum = Field(default=..., title="Sequenced Fragment", description="""Which part of the RNA transcript was targeted for sequencing.""", json_schema_extra = { "linkml_meta": {'alias': 'sequenced_fragment',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'comments': ['May be a source of batch effect that has to be tested.'],
@@ -388,14 +387,13 @@ class Dataset(ConfiguredBaseModel):
          'examples': [{'value': 'EFO:0008563'}],
          'notes': ['Values should be "subClassOf" ["EFO:0002699"] - '
                    'https://www.ebi.ac.uk/ols/ontologies/efo/terms?iri=http%3A%2F%2Fwww.ebi.ac.uk%2Fefo%2FEFO_0002699']} })
-    study_pi: list[str] = Field(default=..., title="Study Pi", description="""Principal Investigator(s) leading the study where the data is/was used.""", json_schema_extra = { "linkml_meta": {'alias': 'study_pi',
+    study_pi: list[str] = Field(default=..., title="Study PI", description="""Principal Investigator(s) leading the study where the data is/was used.""", json_schema_extra = { "linkml_meta": {'alias': 'study_pi',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'uns'}},
          'domain_of': ['Dataset'],
-         'examples': [{'description': 'Principal Investigator in Last '
-                                      'Name,MiddleInitial, FirstName format',
-                       'value': '["Teichmann,Sarah,A."]'}]} })
-    title: str = Field(default=..., title="Title", description="""This text describes and differentiates the dataset from other datasets in the same collection.  It is strongly recommended that each dataset title in a collection is unique and does not depend on other metadata  such as a different assay to disambiguate it from other datasets in the collection.
-""", json_schema_extra = { "linkml_meta": {'alias': 'title',
+         'examples': [{'description': 'Principal Investigator in Last name,First '
+                                      'name,Middle initial format',
+                       'value': 'Teichmann,Sarah,A.'}]} })
+    title: str = Field(default=..., title="Title", description="""This text describes and differentiates the dataset from other datasets in the same collection. It is strongly recommended that each dataset title in a collection is unique and does not depend on other metadata such as a different assay to disambiguate it from other datasets in the collection.""", json_schema_extra = { "linkml_meta": {'alias': 'title',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'uns'},
                          'cxg': {'tag': 'cxg', 'value': 'title'},
                          'entrySheetRequired': {'tag': 'entrySheetRequired',
@@ -403,8 +401,8 @@ class Dataset(ConfiguredBaseModel):
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
          'comments': ['Distinguishes this dataset from others in the same collection.'],
          'domain_of': ['Dataset'],
-         'examples': [{'value': "Cells of the adult human heart collection is 'All — "
-                                "Cells of the adult human heart'"}]} })
+         'examples': [{'value': 'Cells of the adult human heart collection is "All — '
+                                'Cells of the adult human heart"'}]} })
     dataset_id: str = Field(default=..., title="Dataset ID", description="""A unique identifier for each dataset in the study. This should be unique to the study.""", json_schema_extra = { "linkml_meta": {'alias': 'dataset_id', 'domain_of': ['Dataset', 'Donor', 'Sample']} })
 
 
@@ -415,7 +413,7 @@ class AdiposeDataset(Dataset):
     linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'annotations': {'bioNetwork': {'tag': 'bioNetwork', 'value': 'adipose'}},
          'from_schema': 'https://github.com/clevercanary/hca-validation-tools/schema/bionetwork/adipose'})
 
-    ambient_count_correction: str = Field(default=..., title="Ambient Count Correction", description="""Method used to correct ambient RNA contamination in single-cell data.""", json_schema_extra = { "linkml_meta": {'alias': 'ambient_count_correction',
+    ambient_count_correction: str = Field(default=..., title="Ambient Count Correction", description="""Software used to correct ambient RNA counts, or 'none'.""", json_schema_extra = { "linkml_meta": {'alias': 'ambient_count_correction',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'domain_of': ['AdiposeDataset', 'GutDataset', 'MusculoskeletalDataset'],
          'examples': [{'value': 'none'}, {'value': 'soupx'}, {'value': 'cellbender'}]} })
@@ -424,19 +422,20 @@ class AdiposeDataset(Dataset):
          'domain_of': ['AdiposeDataset', 'GutDataset', 'MusculoskeletalDataset'],
          'examples': [{'value': 'none'},
                       {'value': 'doublet_finder'},
-                      {'value': 'manual'},
-                      {'value': 'doublet_finder;manual'}]} })
+                      {'value': 'manual'}]} })
     alignment_software: str = Field(default=..., title="Alignment Software", description="""Protocol used for alignment analysis, please specify which version was used e.g. cell ranger 2.0, 2.1.1 etc.""", json_schema_extra = { "linkml_meta": {'alias': 'alignment_software',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'comments': ['Affects which cells are filtered per dataset, and which reads '
                       '(introns and exons or only exons) are counted as part of the '
                       'reported transcriptome. This can convey batch effects.'],
          'domain_of': ['Dataset'],
-         'examples': [{'value': 'cellranger_8.0.0'}]} })
-    assay_ontology_term_id: str = Field(default=..., title="Assay Ontology Term Id", description="""Platform used for single cell library construction.""", json_schema_extra = { "linkml_meta": {'alias': 'assay_ontology_term_id',
+         'examples': [{'value': 'cell ranger 3.0.1'},
+                      {'value': 'kallisto bustools'},
+                      {'value': 'GSNAP'}]} })
+    assay_ontology_term_id: str = Field(default=..., title="Assay Ontology Term ID", description="""Platform used for single cell library construction.""", json_schema_extra = { "linkml_meta": {'alias': 'assay_ontology_term_id',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'cxg': {'tag': 'cxg', 'value': 'assay_ontology_term_id'}},
-         'comments': ['Major source of batch effect and dataset filtering criterion'],
+         'comments': ['Major source of batch effect and dataset filtering criterion.'],
          'domain_of': ['Dataset'],
          'examples': [{'value': 'EFO:0009922'}],
          'notes': ['This must be an EFO term and either:\n'
@@ -457,12 +456,12 @@ class AdiposeDataset(Dataset):
                    '- 10x 5\' v1 "EFO:0011025"\n'
                    '- 10x 5\' v2 "EFO:0009900"\n'
                    '- Smart-seq2 "EFO:0008931"\n'
-                   '- Visium Spatial Gene Expression "EFO:0010961"\n']} })
+                   '- Visium Spatial Gene Expression "EFO:0010961"']} })
     assay_ontology_term: Optional[str] = Field(default=None, title="Assay Ontology Term", description="""Deprecated placeholder for assay ontology term.""", json_schema_extra = { "linkml_meta": {'alias': 'assay_ontology_term',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'domain_of': ['Dataset'],
          'is_a': 'deprecated_slot'} })
-    batch_condition: Optional[list[str]] = Field(default=None, title="Batch Condition", description="""Name of the covariate that confers the dominant batch effect in the data as judged by the data contributor.  The name provided here should be the label by which this covariate is stored in the AnnData object.""", json_schema_extra = { "linkml_meta": {'alias': 'batch_condition',
+    batch_condition: Optional[list[str]] = Field(default=None, title="Batch Condition", description="""Name of the covariate that confers the dominant batch effect in the data as judged by the data contributor. The name provided here should be the label by which this covariate is stored in the AnnData object.""", json_schema_extra = { "linkml_meta": {'alias': 'batch_condition',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'uns'},
                          'cxg': {'tag': 'cxg', 'value': 'batch_condition'}},
          'domain_of': ['Dataset'],
@@ -474,8 +473,7 @@ class AdiposeDataset(Dataset):
                    '"seqBatch" are keys of vectors of cell metadata, either '
                    '["patient"], ["seqBatch"], or ["patient", "seqBatch"] are valid '
                    'values.']} })
-    comments: Optional[str] = Field(default=None, title="Comments", description="""Other technical or experimental covariates that could affect the quality or batch of the sample.  Must not contain identifiers. This field is designed to capture potential challenges for data integration not captured elsewhere.
-""", json_schema_extra = { "linkml_meta": {'alias': 'comments',
+    comments: Optional[str] = Field(default=None, title="Comments", description="""Other technical or experimental covariates that could affect the quality or batch of the sample. Must not contain identifiers. This field is designed to capture potential challenges for data integration not captured elsewhere.""", json_schema_extra = { "linkml_meta": {'alias': 'comments',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'uns'}},
          'domain_of': ['Dataset']} })
     consortia: Optional[str] = Field(default=None, title="Consortia", description="""Deprecated placeholder for consortia information.""", json_schema_extra = { "linkml_meta": {'alias': 'consortia',
@@ -492,21 +490,20 @@ class AdiposeDataset(Dataset):
     description: str = Field(default=..., title="Description", description="""Short description of the dataset""", json_schema_extra = { "linkml_meta": {'alias': 'description',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'uns'}},
          'domain_of': ['Dataset']} })
-    gene_annotation_version: str = Field(default=..., title="Gene Annotation Version", description="""Ensembl release version accession number. Some common codes include: GRCh38.p12 = GCF_000001405.38 GRCh38.p13 = GCF_000001405.39 GRCh38.p14 = GCF_000001405.40
-""", json_schema_extra = { "linkml_meta": {'alias': 'gene_annotation_version',
+    gene_annotation_version: str = Field(default=..., title="Gene Annotation Version", description="""Ensembl release version accession number. Some common codes include: GRCh38.p12 = GCF_000001405.38 GRCh38.p13 = GCF_000001405.39 GRCh38.p14 = GCF_000001405.40""", json_schema_extra = { "linkml_meta": {'alias': 'gene_annotation_version',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'comments': ['Possible source of batch effect and confounder for some '
-                      'biological analysis'],
+                      'biological analysis.'],
          'domain_of': ['Dataset'],
-         'examples': [{'value': 'GCF_000001405.40'}],
+         'examples': [{'value': 'v110'}, {'value': 'GCF_000001405.40'}],
          'notes': ['http://www.ensembl.org/info/website/archives/index.html or '
                    'NCBI/RefSeq']} })
     intron_inclusion: Optional[YesNoEnum] = Field(default=None, title="Intron Inclusion", description="""Were introns included during read counting in the alignment process?""", json_schema_extra = { "linkml_meta": {'alias': 'intron_inclusion',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
+         'comments': ['Affects the number of reads per cell called in a sample.'],
          'domain_of': ['Dataset'],
          'examples': [{'value': 'yes'}, {'value': 'no'}]} })
-    protocol_url: Optional[str] = Field(default=None, title="Protocol URL", description="""The protocols.io URL (if none exists, please use the BioRxiv URL) for the full experimental protocol;  or if multiple protocols exist please list them e.g. sample preparation protocol / sequencing protocol.
-""", json_schema_extra = { "linkml_meta": {'alias': 'protocol_url',
+    protocol_url: Optional[str] = Field(default=None, title="Protocol URL", description="""The protocols.io URL (if none exists, please use the BioRxiv URL) for the full experimental protocol; or if multiple protocols exist please list them e.g. sample preparation protocol / sequencing protocol.""", json_schema_extra = { "linkml_meta": {'alias': 'protocol_url',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'comments': ['Useful to look up protocol data that can provide insight on '
                       'batch effects. As protocols can sometimes apply to a subset of '
@@ -514,17 +511,16 @@ class AdiposeDataset(Dataset):
                       'may not always be available.'],
          'domain_of': ['Dataset'],
          'examples': [{'value': 'https://www.biorxiv.org/content/early/2017/09/24/193219'}]} })
-    publication_doi: Optional[str] = Field(default=None, title="Publication DOI", description="""The publication digital object identifier (doi) for the protocol. If no pre-print nor publication exists, please write 'not applicable'.
-""", json_schema_extra = { "linkml_meta": {'alias': 'publication_doi',
+    publication_doi: Optional[str] = Field(default=None, title="Publication DOI", description="""The publication digital object identifier (doi) for the protocol. If no pre-print nor publication exists, please write 'not applicable'.""", json_schema_extra = { "linkml_meta": {'alias': 'publication_doi',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'domain_of': ['Dataset'],
          'examples': [{'value': '10.1016/j.cell.2016.07.054'}]} })
     reference_genome: ReferenceGenomeEnum = Field(default=..., title="Reference Genome", description="""Reference genome used for alignment.""", json_schema_extra = { "linkml_meta": {'alias': 'reference_genome',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'comments': ['Possible source of batch effect and confounder for some '
-                      'biological analysis'],
+                      'biological analysis.'],
          'domain_of': ['Dataset'],
-         'examples': [{'value': 'GRCm37'}, {'value': 'GRCh37'}]} })
+         'examples': [{'value': 'GRCh38'}, {'value': 'GRCh37'}]} })
     sequenced_fragment: SequencedFragmentEnum = Field(default=..., title="Sequenced Fragment", description="""Which part of the RNA transcript was targeted for sequencing.""", json_schema_extra = { "linkml_meta": {'alias': 'sequenced_fragment',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'comments': ['May be a source of batch effect that has to be tested.'],
@@ -538,14 +534,13 @@ class AdiposeDataset(Dataset):
          'examples': [{'value': 'EFO:0008563'}],
          'notes': ['Values should be "subClassOf" ["EFO:0002699"] - '
                    'https://www.ebi.ac.uk/ols/ontologies/efo/terms?iri=http%3A%2F%2Fwww.ebi.ac.uk%2Fefo%2FEFO_0002699']} })
-    study_pi: list[str] = Field(default=..., title="Study Pi", description="""Principal Investigator(s) leading the study where the data is/was used.""", json_schema_extra = { "linkml_meta": {'alias': 'study_pi',
+    study_pi: list[str] = Field(default=..., title="Study PI", description="""Principal Investigator(s) leading the study where the data is/was used.""", json_schema_extra = { "linkml_meta": {'alias': 'study_pi',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'uns'}},
          'domain_of': ['Dataset'],
-         'examples': [{'description': 'Principal Investigator in Last '
-                                      'Name,MiddleInitial, FirstName format',
-                       'value': '["Teichmann,Sarah,A."]'}]} })
-    title: str = Field(default=..., title="Title", description="""This text describes and differentiates the dataset from other datasets in the same collection.  It is strongly recommended that each dataset title in a collection is unique and does not depend on other metadata  such as a different assay to disambiguate it from other datasets in the collection.
-""", json_schema_extra = { "linkml_meta": {'alias': 'title',
+         'examples': [{'description': 'Principal Investigator in Last name,First '
+                                      'name,Middle initial format',
+                       'value': 'Teichmann,Sarah,A.'}]} })
+    title: str = Field(default=..., title="Title", description="""This text describes and differentiates the dataset from other datasets in the same collection. It is strongly recommended that each dataset title in a collection is unique and does not depend on other metadata such as a different assay to disambiguate it from other datasets in the collection.""", json_schema_extra = { "linkml_meta": {'alias': 'title',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'uns'},
                          'cxg': {'tag': 'cxg', 'value': 'title'},
                          'entrySheetRequired': {'tag': 'entrySheetRequired',
@@ -553,8 +548,8 @@ class AdiposeDataset(Dataset):
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
          'comments': ['Distinguishes this dataset from others in the same collection.'],
          'domain_of': ['Dataset'],
-         'examples': [{'value': "Cells of the adult human heart collection is 'All — "
-                                "Cells of the adult human heart'"}]} })
+         'examples': [{'value': 'Cells of the adult human heart collection is "All — '
+                                'Cells of the adult human heart"'}]} })
     dataset_id: str = Field(default=..., title="Dataset ID", description="""A unique identifier for each dataset in the study. This should be unique to the study.""", json_schema_extra = { "linkml_meta": {'alias': 'dataset_id', 'domain_of': ['Dataset', 'Donor', 'Sample']} })
 
 
@@ -565,7 +560,7 @@ class GutDataset(Dataset):
     linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'annotations': {'bioNetwork': {'tag': 'bioNetwork', 'value': 'gut'}},
          'from_schema': 'https://github.com/clevercanary/hca-validation-tools/schema/bionetwork/gut'})
 
-    ambient_count_correction: str = Field(default=..., title="Ambient Count Correction", description="""Method used to correct ambient RNA contamination in single-cell data.""", json_schema_extra = { "linkml_meta": {'alias': 'ambient_count_correction',
+    ambient_count_correction: str = Field(default=..., title="Ambient Count Correction", description="""Software used to correct ambient RNA counts, or 'none'.""", json_schema_extra = { "linkml_meta": {'alias': 'ambient_count_correction',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'domain_of': ['AdiposeDataset', 'GutDataset', 'MusculoskeletalDataset'],
          'examples': [{'value': 'none'}, {'value': 'soupx'}, {'value': 'cellbender'}]} })
@@ -574,19 +569,20 @@ class GutDataset(Dataset):
          'domain_of': ['AdiposeDataset', 'GutDataset', 'MusculoskeletalDataset'],
          'examples': [{'value': 'none'},
                       {'value': 'doublet_finder'},
-                      {'value': 'manual'},
-                      {'value': 'doublet_finder;manual'}]} })
+                      {'value': 'manual'}]} })
     alignment_software: str = Field(default=..., title="Alignment Software", description="""Protocol used for alignment analysis, please specify which version was used e.g. cell ranger 2.0, 2.1.1 etc.""", json_schema_extra = { "linkml_meta": {'alias': 'alignment_software',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'comments': ['Affects which cells are filtered per dataset, and which reads '
                       '(introns and exons or only exons) are counted as part of the '
                       'reported transcriptome. This can convey batch effects.'],
          'domain_of': ['Dataset'],
-         'examples': [{'value': 'cellranger_8.0.0'}]} })
-    assay_ontology_term_id: str = Field(default=..., title="Assay Ontology Term Id", description="""Platform used for single cell library construction.""", json_schema_extra = { "linkml_meta": {'alias': 'assay_ontology_term_id',
+         'examples': [{'value': 'cell ranger 3.0.1'},
+                      {'value': 'kallisto bustools'},
+                      {'value': 'GSNAP'}]} })
+    assay_ontology_term_id: str = Field(default=..., title="Assay Ontology Term ID", description="""Platform used for single cell library construction.""", json_schema_extra = { "linkml_meta": {'alias': 'assay_ontology_term_id',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'cxg': {'tag': 'cxg', 'value': 'assay_ontology_term_id'}},
-         'comments': ['Major source of batch effect and dataset filtering criterion'],
+         'comments': ['Major source of batch effect and dataset filtering criterion.'],
          'domain_of': ['Dataset'],
          'examples': [{'value': 'EFO:0009922'}],
          'notes': ['This must be an EFO term and either:\n'
@@ -607,12 +603,12 @@ class GutDataset(Dataset):
                    '- 10x 5\' v1 "EFO:0011025"\n'
                    '- 10x 5\' v2 "EFO:0009900"\n'
                    '- Smart-seq2 "EFO:0008931"\n'
-                   '- Visium Spatial Gene Expression "EFO:0010961"\n']} })
+                   '- Visium Spatial Gene Expression "EFO:0010961"']} })
     assay_ontology_term: Optional[str] = Field(default=None, title="Assay Ontology Term", description="""Deprecated placeholder for assay ontology term.""", json_schema_extra = { "linkml_meta": {'alias': 'assay_ontology_term',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'domain_of': ['Dataset'],
          'is_a': 'deprecated_slot'} })
-    batch_condition: Optional[list[str]] = Field(default=None, title="Batch Condition", description="""Name of the covariate that confers the dominant batch effect in the data as judged by the data contributor.  The name provided here should be the label by which this covariate is stored in the AnnData object.""", json_schema_extra = { "linkml_meta": {'alias': 'batch_condition',
+    batch_condition: Optional[list[str]] = Field(default=None, title="Batch Condition", description="""Name of the covariate that confers the dominant batch effect in the data as judged by the data contributor. The name provided here should be the label by which this covariate is stored in the AnnData object.""", json_schema_extra = { "linkml_meta": {'alias': 'batch_condition',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'uns'},
                          'cxg': {'tag': 'cxg', 'value': 'batch_condition'}},
          'domain_of': ['Dataset'],
@@ -624,8 +620,7 @@ class GutDataset(Dataset):
                    '"seqBatch" are keys of vectors of cell metadata, either '
                    '["patient"], ["seqBatch"], or ["patient", "seqBatch"] are valid '
                    'values.']} })
-    comments: Optional[str] = Field(default=None, title="Comments", description="""Other technical or experimental covariates that could affect the quality or batch of the sample.  Must not contain identifiers. This field is designed to capture potential challenges for data integration not captured elsewhere.
-""", json_schema_extra = { "linkml_meta": {'alias': 'comments',
+    comments: Optional[str] = Field(default=None, title="Comments", description="""Other technical or experimental covariates that could affect the quality or batch of the sample. Must not contain identifiers. This field is designed to capture potential challenges for data integration not captured elsewhere.""", json_schema_extra = { "linkml_meta": {'alias': 'comments',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'uns'}},
          'domain_of': ['Dataset']} })
     consortia: Optional[str] = Field(default=None, title="Consortia", description="""Deprecated placeholder for consortia information.""", json_schema_extra = { "linkml_meta": {'alias': 'consortia',
@@ -642,21 +637,20 @@ class GutDataset(Dataset):
     description: str = Field(default=..., title="Description", description="""Short description of the dataset""", json_schema_extra = { "linkml_meta": {'alias': 'description',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'uns'}},
          'domain_of': ['Dataset']} })
-    gene_annotation_version: str = Field(default=..., title="Gene Annotation Version", description="""Ensembl release version accession number. Some common codes include: GRCh38.p12 = GCF_000001405.38 GRCh38.p13 = GCF_000001405.39 GRCh38.p14 = GCF_000001405.40
-""", json_schema_extra = { "linkml_meta": {'alias': 'gene_annotation_version',
+    gene_annotation_version: str = Field(default=..., title="Gene Annotation Version", description="""Ensembl release version accession number. Some common codes include: GRCh38.p12 = GCF_000001405.38 GRCh38.p13 = GCF_000001405.39 GRCh38.p14 = GCF_000001405.40""", json_schema_extra = { "linkml_meta": {'alias': 'gene_annotation_version',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'comments': ['Possible source of batch effect and confounder for some '
-                      'biological analysis'],
+                      'biological analysis.'],
          'domain_of': ['Dataset'],
-         'examples': [{'value': 'GCF_000001405.40'}],
+         'examples': [{'value': 'v110'}, {'value': 'GCF_000001405.40'}],
          'notes': ['http://www.ensembl.org/info/website/archives/index.html or '
                    'NCBI/RefSeq']} })
     intron_inclusion: Optional[YesNoEnum] = Field(default=None, title="Intron Inclusion", description="""Were introns included during read counting in the alignment process?""", json_schema_extra = { "linkml_meta": {'alias': 'intron_inclusion',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
+         'comments': ['Affects the number of reads per cell called in a sample.'],
          'domain_of': ['Dataset'],
          'examples': [{'value': 'yes'}, {'value': 'no'}]} })
-    protocol_url: Optional[str] = Field(default=None, title="Protocol URL", description="""The protocols.io URL (if none exists, please use the BioRxiv URL) for the full experimental protocol;  or if multiple protocols exist please list them e.g. sample preparation protocol / sequencing protocol.
-""", json_schema_extra = { "linkml_meta": {'alias': 'protocol_url',
+    protocol_url: Optional[str] = Field(default=None, title="Protocol URL", description="""The protocols.io URL (if none exists, please use the BioRxiv URL) for the full experimental protocol; or if multiple protocols exist please list them e.g. sample preparation protocol / sequencing protocol.""", json_schema_extra = { "linkml_meta": {'alias': 'protocol_url',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'comments': ['Useful to look up protocol data that can provide insight on '
                       'batch effects. As protocols can sometimes apply to a subset of '
@@ -664,17 +658,16 @@ class GutDataset(Dataset):
                       'may not always be available.'],
          'domain_of': ['Dataset'],
          'examples': [{'value': 'https://www.biorxiv.org/content/early/2017/09/24/193219'}]} })
-    publication_doi: Optional[str] = Field(default=None, title="Publication DOI", description="""The publication digital object identifier (doi) for the protocol. If no pre-print nor publication exists, please write 'not applicable'.
-""", json_schema_extra = { "linkml_meta": {'alias': 'publication_doi',
+    publication_doi: Optional[str] = Field(default=None, title="Publication DOI", description="""The publication digital object identifier (doi) for the protocol. If no pre-print nor publication exists, please write 'not applicable'.""", json_schema_extra = { "linkml_meta": {'alias': 'publication_doi',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'domain_of': ['Dataset'],
          'examples': [{'value': '10.1016/j.cell.2016.07.054'}]} })
     reference_genome: ReferenceGenomeEnum = Field(default=..., title="Reference Genome", description="""Reference genome used for alignment.""", json_schema_extra = { "linkml_meta": {'alias': 'reference_genome',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'comments': ['Possible source of batch effect and confounder for some '
-                      'biological analysis'],
+                      'biological analysis.'],
          'domain_of': ['Dataset'],
-         'examples': [{'value': 'GRCm37'}, {'value': 'GRCh37'}]} })
+         'examples': [{'value': 'GRCh38'}, {'value': 'GRCh37'}]} })
     sequenced_fragment: SequencedFragmentEnum = Field(default=..., title="Sequenced Fragment", description="""Which part of the RNA transcript was targeted for sequencing.""", json_schema_extra = { "linkml_meta": {'alias': 'sequenced_fragment',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'comments': ['May be a source of batch effect that has to be tested.'],
@@ -688,14 +681,13 @@ class GutDataset(Dataset):
          'examples': [{'value': 'EFO:0008563'}],
          'notes': ['Values should be "subClassOf" ["EFO:0002699"] - '
                    'https://www.ebi.ac.uk/ols/ontologies/efo/terms?iri=http%3A%2F%2Fwww.ebi.ac.uk%2Fefo%2FEFO_0002699']} })
-    study_pi: list[str] = Field(default=..., title="Study Pi", description="""Principal Investigator(s) leading the study where the data is/was used.""", json_schema_extra = { "linkml_meta": {'alias': 'study_pi',
+    study_pi: list[str] = Field(default=..., title="Study PI", description="""Principal Investigator(s) leading the study where the data is/was used.""", json_schema_extra = { "linkml_meta": {'alias': 'study_pi',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'uns'}},
          'domain_of': ['Dataset'],
-         'examples': [{'description': 'Principal Investigator in Last '
-                                      'Name,MiddleInitial, FirstName format',
-                       'value': '["Teichmann,Sarah,A."]'}]} })
-    title: str = Field(default=..., title="Title", description="""This text describes and differentiates the dataset from other datasets in the same collection.  It is strongly recommended that each dataset title in a collection is unique and does not depend on other metadata  such as a different assay to disambiguate it from other datasets in the collection.
-""", json_schema_extra = { "linkml_meta": {'alias': 'title',
+         'examples': [{'description': 'Principal Investigator in Last name,First '
+                                      'name,Middle initial format',
+                       'value': 'Teichmann,Sarah,A.'}]} })
+    title: str = Field(default=..., title="Title", description="""This text describes and differentiates the dataset from other datasets in the same collection. It is strongly recommended that each dataset title in a collection is unique and does not depend on other metadata such as a different assay to disambiguate it from other datasets in the collection.""", json_schema_extra = { "linkml_meta": {'alias': 'title',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'uns'},
                          'cxg': {'tag': 'cxg', 'value': 'title'},
                          'entrySheetRequired': {'tag': 'entrySheetRequired',
@@ -703,8 +695,8 @@ class GutDataset(Dataset):
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
          'comments': ['Distinguishes this dataset from others in the same collection.'],
          'domain_of': ['Dataset'],
-         'examples': [{'value': "Cells of the adult human heart collection is 'All — "
-                                "Cells of the adult human heart'"}]} })
+         'examples': [{'value': 'Cells of the adult human heart collection is "All — '
+                                'Cells of the adult human heart"'}]} })
     dataset_id: str = Field(default=..., title="Dataset ID", description="""A unique identifier for each dataset in the study. This should be unique to the study.""", json_schema_extra = { "linkml_meta": {'alias': 'dataset_id', 'domain_of': ['Dataset', 'Donor', 'Sample']} })
 
 
@@ -727,52 +719,64 @@ class Donor(ConfiguredBaseModel):
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'cxg': {'tag': 'cxg', 'value': 'donor_id'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
-         'comments': ['Fundamental unit of biological variation of the data. It is '
-                      'strongly recommended that this identifier be designed so that '
-                      'it is unique to: a given individual within the collection of '
-                      'datasets that includes this dataset, and a given individual '
-                      'across all collections in CELLxGENE Discover. It is strongly '
-                      'recommended that "pooled" be used for observations from a '
-                      'sample of multiple individuals that were not confidently '
-                      'assigned to a single individual through demultiplexing. It is '
-                      'strongly recommended that "unknown" ONLY be used for '
-                      'observations in a dataset when it is not known which '
-                      'observations are from the same individual.'],
+         'comments': ['Fundamental unit of biological variation of the data.'],
          'domain_of': ['Donor', 'Sample'],
-         'examples': [{'value': 'CR_donor_1; MM_donor_1; LR_donor_2'}]} })
+         'examples': [{'value': 'CR_donor_1'},
+                      {'value': 'MM_donor_1'},
+                      {'value': 'LR_donor_2'}],
+         'notes': ['It is strongly recommended that this identifier be designed so '
+                   'that it is unique to: a given individual within the collection of '
+                   'datasets that includes this dataset, and a given individual across '
+                   'all collections in CELLxGENE Discover. It is strongly recommended '
+                   'that "pooled" be used for observations from a sample of multiple '
+                   'individuals that were not confidently assigned to a single '
+                   'individual through demultiplexing. It is strongly recommended that '
+                   '"unknown" ONLY be used for observations in a dataset when it is '
+                   'not known which observations are from the same individual.']} })
     organism_ontology_term_id: Organism = Field(default=..., title="Organism Ontology Term ID", description="""The name given to the type of organism, collected in NCBITaxon:0000 format.""", json_schema_extra = { "linkml_meta": {'alias': 'organism_ontology_term_id',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'cxg': {'tag': 'cxg', 'value': 'organism_ontology_term_id'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'comments': ['Strong biological effect that needs to be considered for batch '
+                      'covariate selection.'],
          'domain_of': ['Donor'],
+         'examples': [{'value': 'NCBITaxon:9606'}, {'value': 'NCBITaxon:10090'}],
          'notes': ['"NCBITaxon:9606" for Homo sapiens or "NCBITaxon:10090" for Mus '
                    'musculus.']} })
     sex_ontology_term_id: str = Field(default=..., title="Sex Ontology Term ID", description="""Reported sex of the donor.""", json_schema_extra = { "linkml_meta": {'alias': 'sex_ontology_term_id',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'cxg': {'tag': 'cxg', 'value': 'sex_ontology_term_id'}},
+         'comments': ['Likely biological effect. Need to know if we have a balanced '
+                      'dataset or if sex is collinear with the dataset.'],
          'domain_of': ['Donor'],
          'examples': [{'description': 'female', 'value': 'PATO:0000383'},
                       {'description': 'male', 'value': 'PATO:0000384'}],
          'notes': ['This must be a child of PATO:0001894 for phenotypic sex or '
-                   '"unknown" if unavailable.\n']} })
+                   '"unknown" if unavailable.']} })
     sex_ontology_term: Optional[str] = Field(default=None, title="Sex Ontology Term", description="""Deprecated placeholder for sex ontology term.""", json_schema_extra = { "linkml_meta": {'alias': 'sex_ontology_term',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'domain_of': ['Donor'],
          'is_a': 'deprecated_slot'} })
-    manner_of_death: MannerOfDeath = Field(default=..., title="Manner of Death", description="""Manner of death classification based on the Hardy Scale or \"unknown\" or \"not applicable\":
-* Category 1 = Violent and fast death — deaths due to accident, blunt force trauma or suicide, terminal phase < 10 min.
-* Category 2 = Fast death of natural causes — sudden unexpected deaths of reasonably healthy people, terminal phase < 1 h.
-* Category 3 = Intermediate death — terminal phase 1–24 h, patients ill but death unexpected.
-* Category 4 = Slow death — terminal phase > 1 day (e.g. cancer, chronic pulmonary disease).
-* Category 0 = Ventilator case — on a ventilator immediately before death.
+    manner_of_death: MannerOfDeath = Field(default=..., title="Manner of Death", description="""Manner of death classification based on the Hardy Scale or 'unknown' or 'not applicable':
+* Category 1 = Violent and fast death - Deaths due to accident, blunt force trauma or suicide, terminal phase estimated at < 10 min.
+* Category 2 = Fast death of natural causes - Sudden unexpected deaths of people who had been reasonably healthy, after a terminal phase estimated at < 1 hr (with sudden death from a myocardial infarction as a model cause of death for this category).
+* Category 3 = Intermediate death - Death after a terminal phase of 1 to 24 hrs (not classifiable as 2 or 4); patients who were ill but death was unexpected.
+* Category 4 = Slow death - Death after a long illness, with a terminal phase longer than 1 day (commonly cancer or chronic pulmonary disease); deaths that are not unexpected.
+* Category 0 = Ventilator Case - All cases on a ventilator immediately before death.
 * Unknown = The cause of death is unknown.
 * Not applicable = Subject is alive.
-[Leave blank for embryonic/fetal tissue.]
-""", json_schema_extra = { "linkml_meta": {'alias': 'manner_of_death',
+
+[Please leave this field as blank for embryonic/fetal tissue.]""", json_schema_extra = { "linkml_meta": {'alias': 'manner_of_death',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
+         'comments': ['Manner of death can affect cellular profiles.'],
          'domain_of': ['Donor'],
-         'examples': [{'value': '1'}],
-         'notes': ['1; 2; 3; 4; 0; unknown; not applicable']} })
+         'examples': [{'value': '1'},
+                      {'value': '2'},
+                      {'value': '3'},
+                      {'value': '4'},
+                      {'value': '0'},
+                      {'value': 'unknown'},
+                      {'value': 'not applicable'}]} })
     dataset_id: str = Field(default=..., title="Dataset ID", description="""A unique identifier for each dataset in the study. This should be unique to the study.""", json_schema_extra = { "linkml_meta": {'alias': 'dataset_id', 'domain_of': ['Dataset', 'Donor', 'Sample']} })
 
 
@@ -792,30 +796,32 @@ class Sample(ConfiguredBaseModel):
     sample_id: str = Field(default=..., title="Sample ID", description="""Identification number of the sample. This is the fundamental unit of sampling the tissue (the specimen taken from the subject), which can be the same as the 'subject_ID', but is often different if multiple samples are taken from the same subject. Note: this is NOT a unit of multiplexing of donor samples, which should be stored in \"library\".""", json_schema_extra = { "linkml_meta": {'alias': 'sample_id',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'comments': ['Fundamental unit of sampling of the tissue.'],
          'domain_of': ['Sample'],
-         'examples': [{'value': 'SC24; SC25; SC28'}]} })
+         'examples': [{'value': 'SC24'}, {'value': 'SC25'}, {'value': 'SC28'}]} })
     donor_id: str = Field(default=..., title="Donor ID", description="""This must be free-text that identifies a unique individual that data were derived from.""", json_schema_extra = { "linkml_meta": {'alias': 'donor_id',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'cxg': {'tag': 'cxg', 'value': 'donor_id'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
-         'comments': ['Fundamental unit of biological variation of the data. It is '
-                      'strongly recommended that this identifier be designed so that '
-                      'it is unique to: a given individual within the collection of '
-                      'datasets that includes this dataset, and a given individual '
-                      'across all collections in CELLxGENE Discover. It is strongly '
-                      'recommended that "pooled" be used for observations from a '
-                      'sample of multiple individuals that were not confidently '
-                      'assigned to a single individual through demultiplexing. It is '
-                      'strongly recommended that "unknown" ONLY be used for '
-                      'observations in a dataset when it is not known which '
-                      'observations are from the same individual.'],
+         'comments': ['Fundamental unit of biological variation of the data.'],
          'domain_of': ['Donor', 'Sample'],
-         'examples': [{'value': 'CR_donor_1; MM_donor_1; LR_donor_2'}]} })
+         'examples': [{'value': 'CR_donor_1'},
+                      {'value': 'MM_donor_1'},
+                      {'value': 'LR_donor_2'}],
+         'notes': ['It is strongly recommended that this identifier be designed so '
+                   'that it is unique to: a given individual within the collection of '
+                   'datasets that includes this dataset, and a given individual across '
+                   'all collections in CELLxGENE Discover. It is strongly recommended '
+                   'that "pooled" be used for observations from a sample of multiple '
+                   'individuals that were not confidently assigned to a single '
+                   'individual through demultiplexing. It is strongly recommended that '
+                   '"unknown" ONLY be used for observations in a dataset when it is '
+                   'not known which observations are from the same individual.']} })
     dataset_id: str = Field(default=..., title="Dataset ID", description="""A unique identifier for each dataset in the study. This should be unique to the study.""", json_schema_extra = { "linkml_meta": {'alias': 'dataset_id', 'domain_of': ['Dataset', 'Donor', 'Sample']} })
     author_batch_notes: Optional[str] = Field(default=None, title="Author Batch Notes", description="""Encoding of author knowledge on any further information related to likely batch effects.""", json_schema_extra = { "linkml_meta": {'alias': 'author_batch_notes',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
-         'comments': ['Space for author intuition of batch effects in their dataset'],
+         'comments': ['Space for author intuition of batch effects in their dataset.'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'Batch run by different personnel on different days'}]} })
     age_range: Optional[str] = Field(default=None, title="Age Range", description="""Deprecated placeholder for age range metadata.""", json_schema_extra = { "linkml_meta": {'alias': 'age_range',
@@ -825,52 +831,64 @@ class Sample(ConfiguredBaseModel):
     cell_number_loaded: Optional[int] = Field(default=None, title="Cell Number Loaded", description="""Estimated number of cells loaded for library construction.""", json_schema_extra = { "linkml_meta": {'alias': 'cell_number_loaded',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
-         'comments': ['Can explain the number of doublets found in samples'],
+         'comments': ['Can explain the number of doublets found in samples.'],
          'domain_of': ['Sample'],
-         'examples': [{'value': '5000; 4000'}]} })
+         'examples': [{'value': '5000'}, {'value': '4000'}]} })
     cell_viability_percentage: Optional[Union[Decimal, str]] = Field(default=None, title="Cell Viability Percentage", description="""If measured, per sample cell viability before library preparation (as a percentage).""", json_schema_extra = { "linkml_meta": {'alias': 'cell_viability_percentage',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
          'any_of': [{'range': 'decimal'}, {'range': 'string'}],
          'comments': ['Is a measure of sample quality that could be used to explain '
-                      'outlier samples'],
+                      'outlier samples.'],
          'domain_of': ['Sample'],
-         'examples': [{'value': '88; 95; 93.5'}, {'value': 'unknown'}]} })
+         'examples': [{'value': '88'},
+                      {'value': '95'},
+                      {'value': '93.5'},
+                      {'value': 'unknown'}]} })
     cell_enrichment: str = Field(default=..., title="Cell Enrichment", description="""Specifies the cell types targeted for enrichment or depletion beyond the selection of live cells.""", json_schema_extra = { "linkml_meta": {'alias': 'cell_enrichment',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'comments': ['If cell lineages were filtered, this may be a dataset exclusion '
+                      'criterion.'],
          'domain_of': ['Sample'],
-         'examples': [{'value': 'CL:0000057+'}],
+         'examples': [{'value': 'CL:0000057+'}, {'value': 'na'}],
          'notes': ['This must be a Cell Ontology (CL) term '
                    '(http://www.ebi.ac.uk/ols4/ontologies/cl). For cells that are '
-                   "enriched, list the CL code followed by a '+'. For cells that were "
-                   "depleted, list the CL code followed by a '-'. If no enrichment or "
+                   'enriched, list the CL code followed by a "+". For cells that were '
+                   'depleted, list the CL code followed by a "-". If no enrichment or '
                    "depletion occurred, please use 'na' (not applicable)"]} })
     development_stage_ontology_term_id: DevelopmentStage = Field(default=..., title="Development Stage Ontology Term ID", description="""Age of the subject.""", json_schema_extra = { "linkml_meta": {'alias': 'development_stage_ontology_term_id',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'cxg': {'tag': 'cxg',
                                  'value': 'development_stage_ontology_term_id'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'comments': ['Developmental stage is a key biological covariate for '
+                      'interpreting cell state and comparing samples across donors.'],
          'domain_of': ['Sample'],
-         'examples': [{'value': 'HsapDv:0000237'}],
-         'notes': ['If organism_ontolology_term_id is "NCBITaxon:9606" for Homo '
-                   'sapiens, this should be an HsapDv term. If '
-                   'organism_ontolology_term_id is "NCBITaxon:10090" for Mus musculus, '
-                   'this should be an MmusDv term. Refer to broader age bracket terms '
-                   'as needed.']} })
+         'examples': [{'value': 'HsapDv:0000237'}, {'value': 'unknown'}],
+         'notes': ['If organism_ontology_term_id is "NCBITaxon:9606" for *Homo '
+                   'sapiens*, this should be an HsapDv term. If '
+                   'organism_ontology_term_id is "NCBITaxon:10090" for *Mus musculus*, '
+                   'this should be an MmusDv term.\n'
+                   '\n'
+                   '**Requirements for data contributors adhering to GDPR or like '
+                   'standards**: HCA requests that you do not submit year-specific '
+                   'terms. Refer to broader age bracket terms as needed.']} })
     disease_ontology_term_id: str = Field(default=..., title="Disease Ontology Term ID", description="""Disease, if expected to impact the sample.""", json_schema_extra = { "linkml_meta": {'alias': 'disease_ontology_term_id',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'cxg': {'tag': 'cxg', 'value': 'disease_ontology_term_id'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'comments': ['Disease has a major effect on cell state, and determines which '
+                      'samples can serve as a healthy reference.'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'MONDO:0005385'}, {'value': 'PATO:0000461'}],
          'notes': ['This must be a MONDO term or "PATO:0000461" for normal or '
                    'healthy.\n'
                    '\n'
-                   'Requirements for data contributors adhering to GDPR or like '
-                   'standards: In the case of disease, HCA requests that you submit a '
-                   'higher order ontology term - this is especially important in the '
-                   'case of rare disease.\n']} })
+                   '**Requirements for data contributors adhering to GDPR or like '
+                   'standards**: In the case of disease, HCA requests that you submit '
+                   'a higher order ontology term - this is especially important in the '
+                   'case of rare disease.']} })
     disease_ontology_term: Optional[str] = Field(default=None, title="Disease Ontology Term", description="""Deprecated placeholder for disease ontology term.""", json_schema_extra = { "linkml_meta": {'alias': 'disease_ontology_term',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'domain_of': ['Sample'],
@@ -884,41 +902,24 @@ class Sample(ConfiguredBaseModel):
                       'may be smaller for datasets from the same institute even if '
                       'other factors differ.'],
          'domain_of': ['Sample'],
-         'examples': [{'value': 'EMBL-EBI; Genome Institute of Singapore'}]} })
-    is_primary_data: Optional[str] = Field(default=None, title="Is Primary Data", description="""Deprecated placeholder indicating whether sample represents primary data.""", json_schema_extra = { "linkml_meta": {'alias': 'is_primary_data',
+         'examples': [{'value': 'EMBL-EBI'},
+                      {'value': 'Genome Institute of Singapore'}]} })
+    is_primary_data: Optional[str] = Field(default=None, title="Is Primary Data", description="""This must be \"true\" if this is the canonical instance of this cellular observation and \"false\" if not. This is commonly \"false\" for meta-analyses reusing data or for secondary views of data.""", json_schema_extra = { "linkml_meta": {'alias': 'is_primary_data',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'cxg': {'tag': 'cxg', 'value': 'is_primary_data'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
-         'comments': ['Kept as a deprecated placeholder on purpose. The annotation is '
-                      'the only thing added here, because annotations are inert for '
-                      'validation: they tell annDataLocation-walking consumers such as '
-                      'drop_obs_columns that this obs column exists and must not be '
-                      'deleted, without altering what the entry sheet validator '
-                      'accepts. Restoring it to a real `range: boolean` slot would '
-                      'start type-checking the column on entry sheets, where it is '
-                      'currently an unconstrained string that tolerates any value '
-                      'including "na" — sheets that validate today would begin '
-                      'failing. See #544.',
-                      'The real modelling question is deferred, not answered. '
-                      'CELLxGENE defines this in obs as a per-cell bool, and the '
-                      'published Tier 1 dictionary describes it as "the canonical '
-                      'instance of this cellular observation" — per-observation '
-                      "semantics — while filing it under `sample`. A sample's cells "
-                      'can legitimately disagree, so Sample is the wrong grain for it '
-                      'and this placeholder deliberately makes no semantic claim. '
-                      'Moving it to Cell is its own change: slots are global by name '
-                      'in LinkML, so it needs a slot_usage override rather than a '
-                      'move, and removing it from Sample outright would make sheets '
-                      'carrying the column fail with extra_forbidden.'],
+         'comments': ['This helps to ensure samples are not used twice.'],
          'domain_of': ['Sample'],
-         'is_a': 'deprecated_slot'} })
+         'examples': [{'value': 'true'}, {'value': 'false'}],
+         'is_a': 'deprecated_slot',
+         'notes': ['true; false']} })
     library_id: str = Field(default=..., title="Library ID", description="""The unique ID that is used to track libraries in the investigator's institution (should align with the publication).""", json_schema_extra = { "linkml_meta": {'alias': 'library_id',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
          'comments': ['A way to track the unit of data generation. This should include '
-                      'sample pooling'],
+                      'sample pooling.'],
          'domain_of': ['Sample'],
-         'examples': [{'value': 'A24; NK_healthy_001'}]} })
+         'examples': [{'value': 'A24'}, {'value': 'NK_healthy_001'}]} })
     library_id_repository: Optional[str] = Field(default=None, title="Library ID Repository", description="""The unique ID used to track libraries from one of the following public data repositories: EGAX*, GSM*, SRX*, ERX*, DRX, HRX, CRX.""", json_schema_extra = { "linkml_meta": {'alias': 'library_id_repository',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
@@ -931,23 +932,23 @@ class Sample(ConfiguredBaseModel):
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
          'comments': ['Sample preparation is a major source of batch effects.'],
          'domain_of': ['Sample'],
-         'examples': [{'value': 'batch01; batch02'}],
+         'examples': [{'value': 'batch01'}, {'value': 'batch02'}],
          'recommended': True} })
     library_sequencing_run: Optional[str] = Field(default=None, title="Library Sequencing Run", description="""The identifier (or accession number) that indicates which samples' libraries were sequenced in the same run.""", json_schema_extra = { "linkml_meta": {'alias': 'library_sequencing_run',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
-         'comments': ['Library sequencing is a major source of batch effects'],
+         'comments': ['Library sequencing is a major source of batch effects.'],
          'domain_of': ['Sample'],
-         'examples': [{'value': 'run1; NV0087'}],
+         'examples': [{'value': 'run1'}, {'value': 'NV0087'}],
          'recommended': True} })
     sample_collection_method: SampleCollectionMethod = Field(default=..., title="Sample Collection Method", description="""The method the sample was physically obtained from the donor.""", json_schema_extra = { "linkml_meta": {'alias': 'sample_collection_method',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
-         'comments': ['Main contributor to batch effects'],
+         'comments': ['Main contributor to batch effects.'],
          'domain_of': ['Sample'],
-         'examples': [{'value': 'biopsy; brush; surgical resection'}],
-         'notes': ['brush; scraping; biopsy; surgical resection; blood draw; body '
-                   'fluid; other']} })
+         'examples': [{'value': 'biopsy'},
+                      {'value': 'brush'},
+                      {'value': 'surgical resection'}]} })
     sample_collection_year: Optional[str] = Field(default=None, title="Sample Collection Year", description="""Year of sample collection. Should not be detailed further (to exact month and day), to prevent identifiability.""", json_schema_extra = { "linkml_meta": {'alias': 'sample_collection_year',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
@@ -959,13 +960,14 @@ class Sample(ConfiguredBaseModel):
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
          'comments': ['To understand whether the collection site contributes to batch '
-                      'effects. It is strongly recommended that this identifier be '
-                      'designed so that it is unique to a given site within the '
-                      'collection of datasets that includes this site (for example, '
-                      "the labels 'site1', 'site2' may appear in other datasets thus "
-                      'rendering them indistinguishable).'],
+                      'effects.'],
          'domain_of': ['Sample'],
-         'examples': [{'value': 'AIDA_site_1; AIDA_site_2'}]} })
+         'examples': [{'value': 'AIDA_site_1'}, {'value': 'AIDA_site_2'}],
+         'notes': ['It is strongly recommended that this identifier be designed so '
+                   'that it is unique to a given site within the collection of '
+                   "datasets that includes this site (for example, the labels 'site1', "
+                   "'site2' may appear in other datasets thus rendering them "
+                   'indistinguishable).']} })
     sample_collection_relative_time_point: Optional[str] = Field(default=None, title="Sample Collection Relative Time Point", description="""Time point when the sample was collected. This field is only needed if multiple samples from the same subject are available and collected at different time points. Sample collection dates (e.g. 23/09/22) cannot be used due to patient data protection, only relative time points should be used here (e.g. day3).""", json_schema_extra = { "linkml_meta": {'alias': 'sample_collection_relative_time_point',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
@@ -985,25 +987,30 @@ class Sample(ConfiguredBaseModel):
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'cxg': {'tag': 'cxg', 'value': 'tissue_type'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'comments': ['Source of batch effect & dataset exclusion criteria.'],
          'domain_of': ['Sample'],
-         'examples': [{'value': 'tissue'}],
-         'notes': ['tissue; organoid; cell culture']} })
+         'examples': [{'value': 'tissue'},
+                      {'value': 'organoid'},
+                      {'value': 'cell culture'}]} })
     tissue_ontology_term_id: str = Field(default=..., title="Tissue Ontology Term ID", description="""The detailed anatomical location of the sample, please provide a specific UBERON term.""", json_schema_extra = { "linkml_meta": {'alias': 'tissue_ontology_term_id',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'cxg': {'tag': 'cxg', 'value': 'tissue_ontology_term_id'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'comments': ['Major biological effect that needs to be assessed for '
+                      'sufficient coverage in the atlas datasets.'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'UBERON:0001828'}, {'value': 'UBERON:0000966'}],
          'notes': ['If tissue_type is "tissue" or "organoid", this must be the most '
                    'accurate child of UBERON:0001062 for anatomical entity. If '
                    'tissue_type is "cell culture" this must follow the requirements '
-                   'for cell_type_ontology_term_id.\n']} })
+                   'for cell_type_ontology_term_id.']} })
     suspension_type: SuspensionType = Field(default=..., title="Suspension Type", description="""Specifies whether the sample contains single cells or single nuclei data.""", json_schema_extra = { "linkml_meta": {'alias': 'suspension_type',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'cxg': {'tag': 'cxg', 'value': 'suspension_type'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'comments': ['Major source of batch effect & dataset exclusion criteria.'],
          'domain_of': ['Sample'],
-         'examples': [{'value': 'cell'}],
+         'examples': [{'value': 'cell'}, {'value': 'nucleus'}, {'value': 'na'}],
          'notes': ['This must be "cell", "nucleus", or "na".\n'
                    'This must be the correct type for the corresponding assay:\n'
                    '* 10x transcription profiling [EFO:0030080] and its children = '
@@ -1016,28 +1023,29 @@ class Sample(ConfiguredBaseModel):
                    '* DroNc-seq [EFO:0008720] = "nucleus"\n'
                    '* Drop-seq [EFO:0008722] = "cell" or "nucleus"\n'
                    '* GEXSCOPE technology [EFO:0700011] = "cell" or "nucleus"\n'
-                   '* inDrop [EFO:0008780] = "cell" or "nucleus"\n']} })
+                   '* inDrop [EFO:0008780] = "cell" or "nucleus"']} })
     sampled_site_condition: SampledSiteCondition = Field(default=..., title="Sampled Site Condition", description="""Whether the site is considered healthy, diseased or adjacent to disease.""", json_schema_extra = { "linkml_meta": {'alias': 'sampled_site_condition',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'comments': ['Main contributor to batch effects.'],
          'domain_of': ['Sample'],
-         'examples': [{'value': 'healthy'}],
-         'notes': ['healthy; diseased; adjacent']} })
+         'examples': [{'value': 'healthy'},
+                      {'value': 'diseased'},
+                      {'value': 'adjacent'}]} })
     sample_preservation_method: SamplePreservationMethod = Field(default=..., title="Sample Preservation Method", description="""Indicating if tissue was frozen, or not, at any point before library preparation.""", json_schema_extra = { "linkml_meta": {'alias': 'sample_preservation_method',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'comments': ['Main contributor to batch effects.'],
          'domain_of': ['Sample'],
-         'examples': [{'value': 'fresh'}],
-         'notes': ['ambient temperature; cut slide; fresh; frozen at -70C; frozen at '
-                   '-80C; frozen at -150C; frozen in liquid nitrogen; frozen in vapor '
-                   'phase; paraffin block; RNAlater at 4C; RNAlater at 25C; RNAlater '
-                   'at -20C; other']} })
-    sample_source: SampleSource = Field(default=..., title="Sample Source", description="""The study subgroup that the participant belongs to, indicating whether the participant was a surgical donor, a postmortem donor, or an organ donor.""", json_schema_extra = { "linkml_meta": {'alias': 'sample_source',
+         'examples': [{'value': 'fresh'}, {'value': 'frozen at -70C'}]} })
+    sample_source: SampleSource = Field(default=..., title="Sample Source", description="""The study subgroup that the participant belongs to. This indicates whether the participant was a surgical donor (this includes patients providing blood samples or biopsies), a postmortem donor, or a living organ donor.""", json_schema_extra = { "linkml_meta": {'alias': 'sample_source',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'comments': ['The source of the sample (whether the sample comes from a '
+                      'surgical donor, a postmortem donor or a living organ donor) can '
+                      'result in different cellular profiles and hence batch effects.'],
          'domain_of': ['Sample'],
-         'examples': [{'value': 'surgical donor'}],
-         'notes': ['surgical donor; postmortem donor; living organ donor']} })
+         'examples': [{'value': 'surgical donor'}, {'value': 'postmortem donor'}]} })
     tissue_ontology_term: Optional[str] = Field(default=None, title="Tissue Ontology Term", description="""Deprecated placeholder for tissue ontology term.""", json_schema_extra = { "linkml_meta": {'alias': 'tissue_ontology_term',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'domain_of': ['Sample'],
@@ -1051,38 +1059,42 @@ class AdiposeSample(Sample):
     linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'annotations': {'bioNetwork': {'tag': 'bioNetwork', 'value': 'adipose'}},
          'from_schema': 'https://github.com/clevercanary/hca-validation-tools/schema/bionetwork/adipose'})
 
-    dissociation_protocol: str = Field(default=..., title="Dissociation Protocol", description="""Dissociation chemicals used during sample preparation""", json_schema_extra = { "linkml_meta": {'alias': 'dissociation_protocol',
+    dissociation_protocol: str = Field(default=..., title="Dissociation Protocol", description="""Dissociation chemicals used during sample preparation.""", json_schema_extra = { "linkml_meta": {'alias': 'dissociation_protocol',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
          'domain_of': ['AdiposeSample', 'GutSample'],
-         'notes': ['trypsin; trypLE; collagenase']} })
+         'examples': [{'value': 'trypsin'},
+                      {'value': 'trypLE'},
+                      {'value': 'collagenase'}]} })
     sample_id: str = Field(default=..., title="Sample ID", description="""Identification number of the sample. This is the fundamental unit of sampling the tissue (the specimen taken from the subject), which can be the same as the 'subject_ID', but is often different if multiple samples are taken from the same subject. Note: this is NOT a unit of multiplexing of donor samples, which should be stored in \"library\".""", json_schema_extra = { "linkml_meta": {'alias': 'sample_id',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'comments': ['Fundamental unit of sampling of the tissue.'],
          'domain_of': ['Sample'],
-         'examples': [{'value': 'SC24; SC25; SC28'}]} })
+         'examples': [{'value': 'SC24'}, {'value': 'SC25'}, {'value': 'SC28'}]} })
     donor_id: str = Field(default=..., title="Donor ID", description="""This must be free-text that identifies a unique individual that data were derived from.""", json_schema_extra = { "linkml_meta": {'alias': 'donor_id',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'cxg': {'tag': 'cxg', 'value': 'donor_id'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
-         'comments': ['Fundamental unit of biological variation of the data. It is '
-                      'strongly recommended that this identifier be designed so that '
-                      'it is unique to: a given individual within the collection of '
-                      'datasets that includes this dataset, and a given individual '
-                      'across all collections in CELLxGENE Discover. It is strongly '
-                      'recommended that "pooled" be used for observations from a '
-                      'sample of multiple individuals that were not confidently '
-                      'assigned to a single individual through demultiplexing. It is '
-                      'strongly recommended that "unknown" ONLY be used for '
-                      'observations in a dataset when it is not known which '
-                      'observations are from the same individual.'],
+         'comments': ['Fundamental unit of biological variation of the data.'],
          'domain_of': ['Donor', 'Sample'],
-         'examples': [{'value': 'CR_donor_1; MM_donor_1; LR_donor_2'}]} })
+         'examples': [{'value': 'CR_donor_1'},
+                      {'value': 'MM_donor_1'},
+                      {'value': 'LR_donor_2'}],
+         'notes': ['It is strongly recommended that this identifier be designed so '
+                   'that it is unique to: a given individual within the collection of '
+                   'datasets that includes this dataset, and a given individual across '
+                   'all collections in CELLxGENE Discover. It is strongly recommended '
+                   'that "pooled" be used for observations from a sample of multiple '
+                   'individuals that were not confidently assigned to a single '
+                   'individual through demultiplexing. It is strongly recommended that '
+                   '"unknown" ONLY be used for observations in a dataset when it is '
+                   'not known which observations are from the same individual.']} })
     dataset_id: str = Field(default=..., title="Dataset ID", description="""A unique identifier for each dataset in the study. This should be unique to the study.""", json_schema_extra = { "linkml_meta": {'alias': 'dataset_id', 'domain_of': ['Dataset', 'Donor', 'Sample']} })
     author_batch_notes: Optional[str] = Field(default=None, title="Author Batch Notes", description="""Encoding of author knowledge on any further information related to likely batch effects.""", json_schema_extra = { "linkml_meta": {'alias': 'author_batch_notes',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
-         'comments': ['Space for author intuition of batch effects in their dataset'],
+         'comments': ['Space for author intuition of batch effects in their dataset.'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'Batch run by different personnel on different days'}]} })
     age_range: Optional[str] = Field(default=None, title="Age Range", description="""Deprecated placeholder for age range metadata.""", json_schema_extra = { "linkml_meta": {'alias': 'age_range',
@@ -1092,52 +1104,64 @@ class AdiposeSample(Sample):
     cell_number_loaded: Optional[int] = Field(default=None, title="Cell Number Loaded", description="""Estimated number of cells loaded for library construction.""", json_schema_extra = { "linkml_meta": {'alias': 'cell_number_loaded',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
-         'comments': ['Can explain the number of doublets found in samples'],
+         'comments': ['Can explain the number of doublets found in samples.'],
          'domain_of': ['Sample'],
-         'examples': [{'value': '5000; 4000'}]} })
+         'examples': [{'value': '5000'}, {'value': '4000'}]} })
     cell_viability_percentage: Optional[Union[Decimal, str]] = Field(default=None, title="Cell Viability Percentage", description="""If measured, per sample cell viability before library preparation (as a percentage).""", json_schema_extra = { "linkml_meta": {'alias': 'cell_viability_percentage',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
          'any_of': [{'range': 'decimal'}, {'range': 'string'}],
          'comments': ['Is a measure of sample quality that could be used to explain '
-                      'outlier samples'],
+                      'outlier samples.'],
          'domain_of': ['Sample'],
-         'examples': [{'value': '88; 95; 93.5'}, {'value': 'unknown'}]} })
+         'examples': [{'value': '88'},
+                      {'value': '95'},
+                      {'value': '93.5'},
+                      {'value': 'unknown'}]} })
     cell_enrichment: str = Field(default=..., title="Cell Enrichment", description="""Specifies the cell types targeted for enrichment or depletion beyond the selection of live cells.""", json_schema_extra = { "linkml_meta": {'alias': 'cell_enrichment',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'comments': ['If cell lineages were filtered, this may be a dataset exclusion '
+                      'criterion.'],
          'domain_of': ['Sample'],
-         'examples': [{'value': 'CL:0000057+'}],
+         'examples': [{'value': 'CL:0000057+'}, {'value': 'na'}],
          'notes': ['This must be a Cell Ontology (CL) term '
                    '(http://www.ebi.ac.uk/ols4/ontologies/cl). For cells that are '
-                   "enriched, list the CL code followed by a '+'. For cells that were "
-                   "depleted, list the CL code followed by a '-'. If no enrichment or "
+                   'enriched, list the CL code followed by a "+". For cells that were '
+                   'depleted, list the CL code followed by a "-". If no enrichment or '
                    "depletion occurred, please use 'na' (not applicable)"]} })
     development_stage_ontology_term_id: DevelopmentStage = Field(default=..., title="Development Stage Ontology Term ID", description="""Age of the subject.""", json_schema_extra = { "linkml_meta": {'alias': 'development_stage_ontology_term_id',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'cxg': {'tag': 'cxg',
                                  'value': 'development_stage_ontology_term_id'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'comments': ['Developmental stage is a key biological covariate for '
+                      'interpreting cell state and comparing samples across donors.'],
          'domain_of': ['Sample'],
-         'examples': [{'value': 'HsapDv:0000237'}],
-         'notes': ['If organism_ontolology_term_id is "NCBITaxon:9606" for Homo '
-                   'sapiens, this should be an HsapDv term. If '
-                   'organism_ontolology_term_id is "NCBITaxon:10090" for Mus musculus, '
-                   'this should be an MmusDv term. Refer to broader age bracket terms '
-                   'as needed.']} })
+         'examples': [{'value': 'HsapDv:0000237'}, {'value': 'unknown'}],
+         'notes': ['If organism_ontology_term_id is "NCBITaxon:9606" for *Homo '
+                   'sapiens*, this should be an HsapDv term. If '
+                   'organism_ontology_term_id is "NCBITaxon:10090" for *Mus musculus*, '
+                   'this should be an MmusDv term.\n'
+                   '\n'
+                   '**Requirements for data contributors adhering to GDPR or like '
+                   'standards**: HCA requests that you do not submit year-specific '
+                   'terms. Refer to broader age bracket terms as needed.']} })
     disease_ontology_term_id: str = Field(default=..., title="Disease Ontology Term ID", description="""Disease, if expected to impact the sample.""", json_schema_extra = { "linkml_meta": {'alias': 'disease_ontology_term_id',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'cxg': {'tag': 'cxg', 'value': 'disease_ontology_term_id'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'comments': ['Disease has a major effect on cell state, and determines which '
+                      'samples can serve as a healthy reference.'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'MONDO:0005385'}, {'value': 'PATO:0000461'}],
          'notes': ['This must be a MONDO term or "PATO:0000461" for normal or '
                    'healthy.\n'
                    '\n'
-                   'Requirements for data contributors adhering to GDPR or like '
-                   'standards: In the case of disease, HCA requests that you submit a '
-                   'higher order ontology term - this is especially important in the '
-                   'case of rare disease.\n']} })
+                   '**Requirements for data contributors adhering to GDPR or like '
+                   'standards**: In the case of disease, HCA requests that you submit '
+                   'a higher order ontology term - this is especially important in the '
+                   'case of rare disease.']} })
     disease_ontology_term: Optional[str] = Field(default=None, title="Disease Ontology Term", description="""Deprecated placeholder for disease ontology term.""", json_schema_extra = { "linkml_meta": {'alias': 'disease_ontology_term',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'domain_of': ['Sample'],
@@ -1151,41 +1175,24 @@ class AdiposeSample(Sample):
                       'may be smaller for datasets from the same institute even if '
                       'other factors differ.'],
          'domain_of': ['Sample'],
-         'examples': [{'value': 'EMBL-EBI; Genome Institute of Singapore'}]} })
-    is_primary_data: Optional[str] = Field(default=None, title="Is Primary Data", description="""Deprecated placeholder indicating whether sample represents primary data.""", json_schema_extra = { "linkml_meta": {'alias': 'is_primary_data',
+         'examples': [{'value': 'EMBL-EBI'},
+                      {'value': 'Genome Institute of Singapore'}]} })
+    is_primary_data: Optional[str] = Field(default=None, title="Is Primary Data", description="""This must be \"true\" if this is the canonical instance of this cellular observation and \"false\" if not. This is commonly \"false\" for meta-analyses reusing data or for secondary views of data.""", json_schema_extra = { "linkml_meta": {'alias': 'is_primary_data',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'cxg': {'tag': 'cxg', 'value': 'is_primary_data'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
-         'comments': ['Kept as a deprecated placeholder on purpose. The annotation is '
-                      'the only thing added here, because annotations are inert for '
-                      'validation: they tell annDataLocation-walking consumers such as '
-                      'drop_obs_columns that this obs column exists and must not be '
-                      'deleted, without altering what the entry sheet validator '
-                      'accepts. Restoring it to a real `range: boolean` slot would '
-                      'start type-checking the column on entry sheets, where it is '
-                      'currently an unconstrained string that tolerates any value '
-                      'including "na" — sheets that validate today would begin '
-                      'failing. See #544.',
-                      'The real modelling question is deferred, not answered. '
-                      'CELLxGENE defines this in obs as a per-cell bool, and the '
-                      'published Tier 1 dictionary describes it as "the canonical '
-                      'instance of this cellular observation" — per-observation '
-                      "semantics — while filing it under `sample`. A sample's cells "
-                      'can legitimately disagree, so Sample is the wrong grain for it '
-                      'and this placeholder deliberately makes no semantic claim. '
-                      'Moving it to Cell is its own change: slots are global by name '
-                      'in LinkML, so it needs a slot_usage override rather than a '
-                      'move, and removing it from Sample outright would make sheets '
-                      'carrying the column fail with extra_forbidden.'],
+         'comments': ['This helps to ensure samples are not used twice.'],
          'domain_of': ['Sample'],
-         'is_a': 'deprecated_slot'} })
+         'examples': [{'value': 'true'}, {'value': 'false'}],
+         'is_a': 'deprecated_slot',
+         'notes': ['true; false']} })
     library_id: str = Field(default=..., title="Library ID", description="""The unique ID that is used to track libraries in the investigator's institution (should align with the publication).""", json_schema_extra = { "linkml_meta": {'alias': 'library_id',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
          'comments': ['A way to track the unit of data generation. This should include '
-                      'sample pooling'],
+                      'sample pooling.'],
          'domain_of': ['Sample'],
-         'examples': [{'value': 'A24; NK_healthy_001'}]} })
+         'examples': [{'value': 'A24'}, {'value': 'NK_healthy_001'}]} })
     library_id_repository: Optional[str] = Field(default=None, title="Library ID Repository", description="""The unique ID used to track libraries from one of the following public data repositories: EGAX*, GSM*, SRX*, ERX*, DRX, HRX, CRX.""", json_schema_extra = { "linkml_meta": {'alias': 'library_id_repository',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
@@ -1198,23 +1205,23 @@ class AdiposeSample(Sample):
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
          'comments': ['Sample preparation is a major source of batch effects.'],
          'domain_of': ['Sample'],
-         'examples': [{'value': 'batch01; batch02'}],
+         'examples': [{'value': 'batch01'}, {'value': 'batch02'}],
          'recommended': True} })
     library_sequencing_run: Optional[str] = Field(default=None, title="Library Sequencing Run", description="""The identifier (or accession number) that indicates which samples' libraries were sequenced in the same run.""", json_schema_extra = { "linkml_meta": {'alias': 'library_sequencing_run',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
-         'comments': ['Library sequencing is a major source of batch effects'],
+         'comments': ['Library sequencing is a major source of batch effects.'],
          'domain_of': ['Sample'],
-         'examples': [{'value': 'run1; NV0087'}],
+         'examples': [{'value': 'run1'}, {'value': 'NV0087'}],
          'recommended': True} })
     sample_collection_method: SampleCollectionMethod = Field(default=..., title="Sample Collection Method", description="""The method the sample was physically obtained from the donor.""", json_schema_extra = { "linkml_meta": {'alias': 'sample_collection_method',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
-         'comments': ['Main contributor to batch effects'],
+         'comments': ['Main contributor to batch effects.'],
          'domain_of': ['Sample'],
-         'examples': [{'value': 'biopsy; brush; surgical resection'}],
-         'notes': ['brush; scraping; biopsy; surgical resection; blood draw; body '
-                   'fluid; other']} })
+         'examples': [{'value': 'biopsy'},
+                      {'value': 'brush'},
+                      {'value': 'surgical resection'}]} })
     sample_collection_year: Optional[str] = Field(default=None, title="Sample Collection Year", description="""Year of sample collection. Should not be detailed further (to exact month and day), to prevent identifiability.""", json_schema_extra = { "linkml_meta": {'alias': 'sample_collection_year',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
@@ -1226,13 +1233,14 @@ class AdiposeSample(Sample):
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
          'comments': ['To understand whether the collection site contributes to batch '
-                      'effects. It is strongly recommended that this identifier be '
-                      'designed so that it is unique to a given site within the '
-                      'collection of datasets that includes this site (for example, '
-                      "the labels 'site1', 'site2' may appear in other datasets thus "
-                      'rendering them indistinguishable).'],
+                      'effects.'],
          'domain_of': ['Sample'],
-         'examples': [{'value': 'AIDA_site_1; AIDA_site_2'}]} })
+         'examples': [{'value': 'AIDA_site_1'}, {'value': 'AIDA_site_2'}],
+         'notes': ['It is strongly recommended that this identifier be designed so '
+                   'that it is unique to a given site within the collection of '
+                   "datasets that includes this site (for example, the labels 'site1', "
+                   "'site2' may appear in other datasets thus rendering them "
+                   'indistinguishable).']} })
     sample_collection_relative_time_point: Optional[str] = Field(default=None, title="Sample Collection Relative Time Point", description="""Time point when the sample was collected. This field is only needed if multiple samples from the same subject are available and collected at different time points. Sample collection dates (e.g. 23/09/22) cannot be used due to patient data protection, only relative time points should be used here (e.g. day3).""", json_schema_extra = { "linkml_meta": {'alias': 'sample_collection_relative_time_point',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
@@ -1252,25 +1260,30 @@ class AdiposeSample(Sample):
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'cxg': {'tag': 'cxg', 'value': 'tissue_type'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'comments': ['Source of batch effect & dataset exclusion criteria.'],
          'domain_of': ['Sample'],
-         'examples': [{'value': 'tissue'}],
-         'notes': ['tissue; organoid; cell culture']} })
+         'examples': [{'value': 'tissue'},
+                      {'value': 'organoid'},
+                      {'value': 'cell culture'}]} })
     tissue_ontology_term_id: str = Field(default=..., title="Tissue Ontology Term ID", description="""The detailed anatomical location of the sample, please provide a specific UBERON term.""", json_schema_extra = { "linkml_meta": {'alias': 'tissue_ontology_term_id',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'cxg': {'tag': 'cxg', 'value': 'tissue_ontology_term_id'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'comments': ['Major biological effect that needs to be assessed for '
+                      'sufficient coverage in the atlas datasets.'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'UBERON:0001828'}, {'value': 'UBERON:0000966'}],
          'notes': ['If tissue_type is "tissue" or "organoid", this must be the most '
                    'accurate child of UBERON:0001062 for anatomical entity. If '
                    'tissue_type is "cell culture" this must follow the requirements '
-                   'for cell_type_ontology_term_id.\n']} })
+                   'for cell_type_ontology_term_id.']} })
     suspension_type: SuspensionType = Field(default=..., title="Suspension Type", description="""Specifies whether the sample contains single cells or single nuclei data.""", json_schema_extra = { "linkml_meta": {'alias': 'suspension_type',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'cxg': {'tag': 'cxg', 'value': 'suspension_type'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'comments': ['Major source of batch effect & dataset exclusion criteria.'],
          'domain_of': ['Sample'],
-         'examples': [{'value': 'cell'}],
+         'examples': [{'value': 'cell'}, {'value': 'nucleus'}, {'value': 'na'}],
          'notes': ['This must be "cell", "nucleus", or "na".\n'
                    'This must be the correct type for the corresponding assay:\n'
                    '* 10x transcription profiling [EFO:0030080] and its children = '
@@ -1283,28 +1296,29 @@ class AdiposeSample(Sample):
                    '* DroNc-seq [EFO:0008720] = "nucleus"\n'
                    '* Drop-seq [EFO:0008722] = "cell" or "nucleus"\n'
                    '* GEXSCOPE technology [EFO:0700011] = "cell" or "nucleus"\n'
-                   '* inDrop [EFO:0008780] = "cell" or "nucleus"\n']} })
+                   '* inDrop [EFO:0008780] = "cell" or "nucleus"']} })
     sampled_site_condition: SampledSiteCondition = Field(default=..., title="Sampled Site Condition", description="""Whether the site is considered healthy, diseased or adjacent to disease.""", json_schema_extra = { "linkml_meta": {'alias': 'sampled_site_condition',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'comments': ['Main contributor to batch effects.'],
          'domain_of': ['Sample'],
-         'examples': [{'value': 'healthy'}],
-         'notes': ['healthy; diseased; adjacent']} })
+         'examples': [{'value': 'healthy'},
+                      {'value': 'diseased'},
+                      {'value': 'adjacent'}]} })
     sample_preservation_method: SamplePreservationMethod = Field(default=..., title="Sample Preservation Method", description="""Indicating if tissue was frozen, or not, at any point before library preparation.""", json_schema_extra = { "linkml_meta": {'alias': 'sample_preservation_method',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'comments': ['Main contributor to batch effects.'],
          'domain_of': ['Sample'],
-         'examples': [{'value': 'fresh'}],
-         'notes': ['ambient temperature; cut slide; fresh; frozen at -70C; frozen at '
-                   '-80C; frozen at -150C; frozen in liquid nitrogen; frozen in vapor '
-                   'phase; paraffin block; RNAlater at 4C; RNAlater at 25C; RNAlater '
-                   'at -20C; other']} })
-    sample_source: SampleSource = Field(default=..., title="Sample Source", description="""The study subgroup that the participant belongs to, indicating whether the participant was a surgical donor, a postmortem donor, or an organ donor.""", json_schema_extra = { "linkml_meta": {'alias': 'sample_source',
+         'examples': [{'value': 'fresh'}, {'value': 'frozen at -70C'}]} })
+    sample_source: SampleSource = Field(default=..., title="Sample Source", description="""The study subgroup that the participant belongs to. This indicates whether the participant was a surgical donor (this includes patients providing blood samples or biopsies), a postmortem donor, or a living organ donor.""", json_schema_extra = { "linkml_meta": {'alias': 'sample_source',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'comments': ['The source of the sample (whether the sample comes from a '
+                      'surgical donor, a postmortem donor or a living organ donor) can '
+                      'result in different cellular profiles and hence batch effects.'],
          'domain_of': ['Sample'],
-         'examples': [{'value': 'surgical donor'}],
-         'notes': ['surgical donor; postmortem donor; living organ donor']} })
+         'examples': [{'value': 'surgical donor'}, {'value': 'postmortem donor'}]} })
     tissue_ontology_term: Optional[str] = Field(default=None, title="Tissue Ontology Term", description="""Deprecated placeholder for tissue ontology term.""", json_schema_extra = { "linkml_meta": {'alias': 'tissue_ontology_term',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'domain_of': ['Sample'],
@@ -1318,42 +1332,52 @@ class GutSample(Sample):
     linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'annotations': {'bioNetwork': {'tag': 'bioNetwork', 'value': 'gut'}},
          'from_schema': 'https://github.com/clevercanary/hca-validation-tools/schema/bionetwork/gut'})
 
-    radial_tissue_term: RadialTissueTerm = Field(default=..., title="Radial Tissue Term", description="""Radial compartment/location of the tissue sample.""", json_schema_extra = { "linkml_meta": {'alias': 'radial_tissue_term',
+    radial_tissue_term: RadialTissueTerm = Field(default=..., title="Radial Tissue Term", description="""The layer of the gut that was sequenced. This depends on the chemical digestion used.""", json_schema_extra = { "linkml_meta": {'alias': 'radial_tissue_term',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
-         'domain_of': ['GutSample']} })
-    dissociation_protocol: str = Field(default=..., title="Dissociation Protocol", description="""Dissociation chemicals used during sample preparation""", json_schema_extra = { "linkml_meta": {'alias': 'dissociation_protocol',
+         'domain_of': ['GutSample'],
+         'examples': [{'value': 'EPI'},
+                      {'value': 'LP'},
+                      {'value': 'MUSC'},
+                      {'value': 'SUB'},
+                      {'value': 'MLN'},
+                      {'value': 'Peyers patch'}]} })
+    dissociation_protocol: str = Field(default=..., title="Dissociation Protocol", description="""Dissociation chemicals used during sample preparation.""", json_schema_extra = { "linkml_meta": {'alias': 'dissociation_protocol',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
          'domain_of': ['AdiposeSample', 'GutSample'],
-         'notes': ['trypsin; trypLE; collagenase']} })
+         'examples': [{'value': 'trypsin'},
+                      {'value': 'trypLE'},
+                      {'value': 'collagenase'}]} })
     sample_id: str = Field(default=..., title="Sample ID", description="""Identification number of the sample. This is the fundamental unit of sampling the tissue (the specimen taken from the subject), which can be the same as the 'subject_ID', but is often different if multiple samples are taken from the same subject. Note: this is NOT a unit of multiplexing of donor samples, which should be stored in \"library\".""", json_schema_extra = { "linkml_meta": {'alias': 'sample_id',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'comments': ['Fundamental unit of sampling of the tissue.'],
          'domain_of': ['Sample'],
-         'examples': [{'value': 'SC24; SC25; SC28'}]} })
+         'examples': [{'value': 'SC24'}, {'value': 'SC25'}, {'value': 'SC28'}]} })
     donor_id: str = Field(default=..., title="Donor ID", description="""This must be free-text that identifies a unique individual that data were derived from.""", json_schema_extra = { "linkml_meta": {'alias': 'donor_id',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'cxg': {'tag': 'cxg', 'value': 'donor_id'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
-         'comments': ['Fundamental unit of biological variation of the data. It is '
-                      'strongly recommended that this identifier be designed so that '
-                      'it is unique to: a given individual within the collection of '
-                      'datasets that includes this dataset, and a given individual '
-                      'across all collections in CELLxGENE Discover. It is strongly '
-                      'recommended that "pooled" be used for observations from a '
-                      'sample of multiple individuals that were not confidently '
-                      'assigned to a single individual through demultiplexing. It is '
-                      'strongly recommended that "unknown" ONLY be used for '
-                      'observations in a dataset when it is not known which '
-                      'observations are from the same individual.'],
+         'comments': ['Fundamental unit of biological variation of the data.'],
          'domain_of': ['Donor', 'Sample'],
-         'examples': [{'value': 'CR_donor_1; MM_donor_1; LR_donor_2'}]} })
+         'examples': [{'value': 'CR_donor_1'},
+                      {'value': 'MM_donor_1'},
+                      {'value': 'LR_donor_2'}],
+         'notes': ['It is strongly recommended that this identifier be designed so '
+                   'that it is unique to: a given individual within the collection of '
+                   'datasets that includes this dataset, and a given individual across '
+                   'all collections in CELLxGENE Discover. It is strongly recommended '
+                   'that "pooled" be used for observations from a sample of multiple '
+                   'individuals that were not confidently assigned to a single '
+                   'individual through demultiplexing. It is strongly recommended that '
+                   '"unknown" ONLY be used for observations in a dataset when it is '
+                   'not known which observations are from the same individual.']} })
     dataset_id: str = Field(default=..., title="Dataset ID", description="""A unique identifier for each dataset in the study. This should be unique to the study.""", json_schema_extra = { "linkml_meta": {'alias': 'dataset_id', 'domain_of': ['Dataset', 'Donor', 'Sample']} })
     author_batch_notes: Optional[str] = Field(default=None, title="Author Batch Notes", description="""Encoding of author knowledge on any further information related to likely batch effects.""", json_schema_extra = { "linkml_meta": {'alias': 'author_batch_notes',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
-         'comments': ['Space for author intuition of batch effects in their dataset'],
+         'comments': ['Space for author intuition of batch effects in their dataset.'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'Batch run by different personnel on different days'}]} })
     age_range: Optional[str] = Field(default=None, title="Age Range", description="""Deprecated placeholder for age range metadata.""", json_schema_extra = { "linkml_meta": {'alias': 'age_range',
@@ -1363,52 +1387,64 @@ class GutSample(Sample):
     cell_number_loaded: Optional[int] = Field(default=None, title="Cell Number Loaded", description="""Estimated number of cells loaded for library construction.""", json_schema_extra = { "linkml_meta": {'alias': 'cell_number_loaded',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
-         'comments': ['Can explain the number of doublets found in samples'],
+         'comments': ['Can explain the number of doublets found in samples.'],
          'domain_of': ['Sample'],
-         'examples': [{'value': '5000; 4000'}]} })
+         'examples': [{'value': '5000'}, {'value': '4000'}]} })
     cell_viability_percentage: Optional[Union[Decimal, str]] = Field(default=None, title="Cell Viability Percentage", description="""If measured, per sample cell viability before library preparation (as a percentage).""", json_schema_extra = { "linkml_meta": {'alias': 'cell_viability_percentage',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
          'any_of': [{'range': 'decimal'}, {'range': 'string'}],
          'comments': ['Is a measure of sample quality that could be used to explain '
-                      'outlier samples'],
+                      'outlier samples.'],
          'domain_of': ['Sample'],
-         'examples': [{'value': '88; 95; 93.5'}, {'value': 'unknown'}]} })
+         'examples': [{'value': '88'},
+                      {'value': '95'},
+                      {'value': '93.5'},
+                      {'value': 'unknown'}]} })
     cell_enrichment: str = Field(default=..., title="Cell Enrichment", description="""Specifies the cell types targeted for enrichment or depletion beyond the selection of live cells.""", json_schema_extra = { "linkml_meta": {'alias': 'cell_enrichment',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'comments': ['If cell lineages were filtered, this may be a dataset exclusion '
+                      'criterion.'],
          'domain_of': ['Sample'],
-         'examples': [{'value': 'CL:0000057+'}],
+         'examples': [{'value': 'CL:0000057+'}, {'value': 'na'}],
          'notes': ['This must be a Cell Ontology (CL) term '
                    '(http://www.ebi.ac.uk/ols4/ontologies/cl). For cells that are '
-                   "enriched, list the CL code followed by a '+'. For cells that were "
-                   "depleted, list the CL code followed by a '-'. If no enrichment or "
+                   'enriched, list the CL code followed by a "+". For cells that were '
+                   'depleted, list the CL code followed by a "-". If no enrichment or '
                    "depletion occurred, please use 'na' (not applicable)"]} })
     development_stage_ontology_term_id: DevelopmentStage = Field(default=..., title="Development Stage Ontology Term ID", description="""Age of the subject.""", json_schema_extra = { "linkml_meta": {'alias': 'development_stage_ontology_term_id',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'cxg': {'tag': 'cxg',
                                  'value': 'development_stage_ontology_term_id'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'comments': ['Developmental stage is a key biological covariate for '
+                      'interpreting cell state and comparing samples across donors.'],
          'domain_of': ['Sample'],
-         'examples': [{'value': 'HsapDv:0000237'}],
-         'notes': ['If organism_ontolology_term_id is "NCBITaxon:9606" for Homo '
-                   'sapiens, this should be an HsapDv term. If '
-                   'organism_ontolology_term_id is "NCBITaxon:10090" for Mus musculus, '
-                   'this should be an MmusDv term. Refer to broader age bracket terms '
-                   'as needed.']} })
+         'examples': [{'value': 'HsapDv:0000237'}, {'value': 'unknown'}],
+         'notes': ['If organism_ontology_term_id is "NCBITaxon:9606" for *Homo '
+                   'sapiens*, this should be an HsapDv term. If '
+                   'organism_ontology_term_id is "NCBITaxon:10090" for *Mus musculus*, '
+                   'this should be an MmusDv term.\n'
+                   '\n'
+                   '**Requirements for data contributors adhering to GDPR or like '
+                   'standards**: HCA requests that you do not submit year-specific '
+                   'terms. Refer to broader age bracket terms as needed.']} })
     disease_ontology_term_id: str = Field(default=..., title="Disease Ontology Term ID", description="""Disease, if expected to impact the sample.""", json_schema_extra = { "linkml_meta": {'alias': 'disease_ontology_term_id',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'cxg': {'tag': 'cxg', 'value': 'disease_ontology_term_id'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'comments': ['Disease has a major effect on cell state, and determines which '
+                      'samples can serve as a healthy reference.'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'MONDO:0005385'}, {'value': 'PATO:0000461'}],
          'notes': ['This must be a MONDO term or "PATO:0000461" for normal or '
                    'healthy.\n'
                    '\n'
-                   'Requirements for data contributors adhering to GDPR or like '
-                   'standards: In the case of disease, HCA requests that you submit a '
-                   'higher order ontology term - this is especially important in the '
-                   'case of rare disease.\n']} })
+                   '**Requirements for data contributors adhering to GDPR or like '
+                   'standards**: In the case of disease, HCA requests that you submit '
+                   'a higher order ontology term - this is especially important in the '
+                   'case of rare disease.']} })
     disease_ontology_term: Optional[str] = Field(default=None, title="Disease Ontology Term", description="""Deprecated placeholder for disease ontology term.""", json_schema_extra = { "linkml_meta": {'alias': 'disease_ontology_term',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'domain_of': ['Sample'],
@@ -1422,41 +1458,24 @@ class GutSample(Sample):
                       'may be smaller for datasets from the same institute even if '
                       'other factors differ.'],
          'domain_of': ['Sample'],
-         'examples': [{'value': 'EMBL-EBI; Genome Institute of Singapore'}]} })
-    is_primary_data: Optional[str] = Field(default=None, title="Is Primary Data", description="""Deprecated placeholder indicating whether sample represents primary data.""", json_schema_extra = { "linkml_meta": {'alias': 'is_primary_data',
+         'examples': [{'value': 'EMBL-EBI'},
+                      {'value': 'Genome Institute of Singapore'}]} })
+    is_primary_data: Optional[str] = Field(default=None, title="Is Primary Data", description="""This must be \"true\" if this is the canonical instance of this cellular observation and \"false\" if not. This is commonly \"false\" for meta-analyses reusing data or for secondary views of data.""", json_schema_extra = { "linkml_meta": {'alias': 'is_primary_data',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'cxg': {'tag': 'cxg', 'value': 'is_primary_data'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
-         'comments': ['Kept as a deprecated placeholder on purpose. The annotation is '
-                      'the only thing added here, because annotations are inert for '
-                      'validation: they tell annDataLocation-walking consumers such as '
-                      'drop_obs_columns that this obs column exists and must not be '
-                      'deleted, without altering what the entry sheet validator '
-                      'accepts. Restoring it to a real `range: boolean` slot would '
-                      'start type-checking the column on entry sheets, where it is '
-                      'currently an unconstrained string that tolerates any value '
-                      'including "na" — sheets that validate today would begin '
-                      'failing. See #544.',
-                      'The real modelling question is deferred, not answered. '
-                      'CELLxGENE defines this in obs as a per-cell bool, and the '
-                      'published Tier 1 dictionary describes it as "the canonical '
-                      'instance of this cellular observation" — per-observation '
-                      "semantics — while filing it under `sample`. A sample's cells "
-                      'can legitimately disagree, so Sample is the wrong grain for it '
-                      'and this placeholder deliberately makes no semantic claim. '
-                      'Moving it to Cell is its own change: slots are global by name '
-                      'in LinkML, so it needs a slot_usage override rather than a '
-                      'move, and removing it from Sample outright would make sheets '
-                      'carrying the column fail with extra_forbidden.'],
+         'comments': ['This helps to ensure samples are not used twice.'],
          'domain_of': ['Sample'],
-         'is_a': 'deprecated_slot'} })
+         'examples': [{'value': 'true'}, {'value': 'false'}],
+         'is_a': 'deprecated_slot',
+         'notes': ['true; false']} })
     library_id: str = Field(default=..., title="Library ID", description="""The unique ID that is used to track libraries in the investigator's institution (should align with the publication).""", json_schema_extra = { "linkml_meta": {'alias': 'library_id',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
          'comments': ['A way to track the unit of data generation. This should include '
-                      'sample pooling'],
+                      'sample pooling.'],
          'domain_of': ['Sample'],
-         'examples': [{'value': 'A24; NK_healthy_001'}]} })
+         'examples': [{'value': 'A24'}, {'value': 'NK_healthy_001'}]} })
     library_id_repository: Optional[str] = Field(default=None, title="Library ID Repository", description="""The unique ID used to track libraries from one of the following public data repositories: EGAX*, GSM*, SRX*, ERX*, DRX, HRX, CRX.""", json_schema_extra = { "linkml_meta": {'alias': 'library_id_repository',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
@@ -1469,23 +1488,23 @@ class GutSample(Sample):
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
          'comments': ['Sample preparation is a major source of batch effects.'],
          'domain_of': ['Sample'],
-         'examples': [{'value': 'batch01; batch02'}],
+         'examples': [{'value': 'batch01'}, {'value': 'batch02'}],
          'recommended': True} })
     library_sequencing_run: Optional[str] = Field(default=None, title="Library Sequencing Run", description="""The identifier (or accession number) that indicates which samples' libraries were sequenced in the same run.""", json_schema_extra = { "linkml_meta": {'alias': 'library_sequencing_run',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
-         'comments': ['Library sequencing is a major source of batch effects'],
+         'comments': ['Library sequencing is a major source of batch effects.'],
          'domain_of': ['Sample'],
-         'examples': [{'value': 'run1; NV0087'}],
+         'examples': [{'value': 'run1'}, {'value': 'NV0087'}],
          'recommended': True} })
     sample_collection_method: SampleCollectionMethod = Field(default=..., title="Sample Collection Method", description="""The method the sample was physically obtained from the donor.""", json_schema_extra = { "linkml_meta": {'alias': 'sample_collection_method',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
-         'comments': ['Main contributor to batch effects'],
+         'comments': ['Main contributor to batch effects.'],
          'domain_of': ['Sample'],
-         'examples': [{'value': 'biopsy; brush; surgical resection'}],
-         'notes': ['brush; scraping; biopsy; surgical resection; blood draw; body '
-                   'fluid; other']} })
+         'examples': [{'value': 'biopsy'},
+                      {'value': 'brush'},
+                      {'value': 'surgical resection'}]} })
     sample_collection_year: Optional[str] = Field(default=None, title="Sample Collection Year", description="""Year of sample collection. Should not be detailed further (to exact month and day), to prevent identifiability.""", json_schema_extra = { "linkml_meta": {'alias': 'sample_collection_year',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
@@ -1497,13 +1516,14 @@ class GutSample(Sample):
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
          'comments': ['To understand whether the collection site contributes to batch '
-                      'effects. It is strongly recommended that this identifier be '
-                      'designed so that it is unique to a given site within the '
-                      'collection of datasets that includes this site (for example, '
-                      "the labels 'site1', 'site2' may appear in other datasets thus "
-                      'rendering them indistinguishable).'],
+                      'effects.'],
          'domain_of': ['Sample'],
-         'examples': [{'value': 'AIDA_site_1; AIDA_site_2'}]} })
+         'examples': [{'value': 'AIDA_site_1'}, {'value': 'AIDA_site_2'}],
+         'notes': ['It is strongly recommended that this identifier be designed so '
+                   'that it is unique to a given site within the collection of '
+                   "datasets that includes this site (for example, the labels 'site1', "
+                   "'site2' may appear in other datasets thus rendering them "
+                   'indistinguishable).']} })
     sample_collection_relative_time_point: Optional[str] = Field(default=None, title="Sample Collection Relative Time Point", description="""Time point when the sample was collected. This field is only needed if multiple samples from the same subject are available and collected at different time points. Sample collection dates (e.g. 23/09/22) cannot be used due to patient data protection, only relative time points should be used here (e.g. day3).""", json_schema_extra = { "linkml_meta": {'alias': 'sample_collection_relative_time_point',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
@@ -1523,25 +1543,30 @@ class GutSample(Sample):
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'cxg': {'tag': 'cxg', 'value': 'tissue_type'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'comments': ['Source of batch effect & dataset exclusion criteria.'],
          'domain_of': ['Sample'],
-         'examples': [{'value': 'tissue'}],
-         'notes': ['tissue; organoid; cell culture']} })
+         'examples': [{'value': 'tissue'},
+                      {'value': 'organoid'},
+                      {'value': 'cell culture'}]} })
     tissue_ontology_term_id: str = Field(default=..., title="Tissue Ontology Term ID", description="""The detailed anatomical location of the sample, please provide a specific UBERON term.""", json_schema_extra = { "linkml_meta": {'alias': 'tissue_ontology_term_id',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'cxg': {'tag': 'cxg', 'value': 'tissue_ontology_term_id'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'comments': ['Major biological effect that needs to be assessed for '
+                      'sufficient coverage in the atlas datasets.'],
          'domain_of': ['Sample'],
          'examples': [{'value': 'UBERON:0001828'}, {'value': 'UBERON:0000966'}],
          'notes': ['If tissue_type is "tissue" or "organoid", this must be the most '
                    'accurate child of UBERON:0001062 for anatomical entity. If '
                    'tissue_type is "cell culture" this must follow the requirements '
-                   'for cell_type_ontology_term_id.\n']} })
+                   'for cell_type_ontology_term_id.']} })
     suspension_type: SuspensionType = Field(default=..., title="Suspension Type", description="""Specifies whether the sample contains single cells or single nuclei data.""", json_schema_extra = { "linkml_meta": {'alias': 'suspension_type',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'cxg': {'tag': 'cxg', 'value': 'suspension_type'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'comments': ['Major source of batch effect & dataset exclusion criteria.'],
          'domain_of': ['Sample'],
-         'examples': [{'value': 'cell'}],
+         'examples': [{'value': 'cell'}, {'value': 'nucleus'}, {'value': 'na'}],
          'notes': ['This must be "cell", "nucleus", or "na".\n'
                    'This must be the correct type for the corresponding assay:\n'
                    '* 10x transcription profiling [EFO:0030080] and its children = '
@@ -1554,28 +1579,29 @@ class GutSample(Sample):
                    '* DroNc-seq [EFO:0008720] = "nucleus"\n'
                    '* Drop-seq [EFO:0008722] = "cell" or "nucleus"\n'
                    '* GEXSCOPE technology [EFO:0700011] = "cell" or "nucleus"\n'
-                   '* inDrop [EFO:0008780] = "cell" or "nucleus"\n']} })
+                   '* inDrop [EFO:0008780] = "cell" or "nucleus"']} })
     sampled_site_condition: SampledSiteCondition = Field(default=..., title="Sampled Site Condition", description="""Whether the site is considered healthy, diseased or adjacent to disease.""", json_schema_extra = { "linkml_meta": {'alias': 'sampled_site_condition',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'comments': ['Main contributor to batch effects.'],
          'domain_of': ['Sample'],
-         'examples': [{'value': 'healthy'}],
-         'notes': ['healthy; diseased; adjacent']} })
+         'examples': [{'value': 'healthy'},
+                      {'value': 'diseased'},
+                      {'value': 'adjacent'}]} })
     sample_preservation_method: SamplePreservationMethod = Field(default=..., title="Sample Preservation Method", description="""Indicating if tissue was frozen, or not, at any point before library preparation.""", json_schema_extra = { "linkml_meta": {'alias': 'sample_preservation_method',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'comments': ['Main contributor to batch effects.'],
          'domain_of': ['Sample'],
-         'examples': [{'value': 'fresh'}],
-         'notes': ['ambient temperature; cut slide; fresh; frozen at -70C; frozen at '
-                   '-80C; frozen at -150C; frozen in liquid nitrogen; frozen in vapor '
-                   'phase; paraffin block; RNAlater at 4C; RNAlater at 25C; RNAlater '
-                   'at -20C; other']} })
-    sample_source: SampleSource = Field(default=..., title="Sample Source", description="""The study subgroup that the participant belongs to, indicating whether the participant was a surgical donor, a postmortem donor, or an organ donor.""", json_schema_extra = { "linkml_meta": {'alias': 'sample_source',
+         'examples': [{'value': 'fresh'}, {'value': 'frozen at -70C'}]} })
+    sample_source: SampleSource = Field(default=..., title="Sample Source", description="""The study subgroup that the participant belongs to. This indicates whether the participant was a surgical donor (this includes patients providing blood samples or biopsies), a postmortem donor, or a living organ donor.""", json_schema_extra = { "linkml_meta": {'alias': 'sample_source',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
+         'comments': ['The source of the sample (whether the sample comes from a '
+                      'surgical donor, a postmortem donor or a living organ donor) can '
+                      'result in different cellular profiles and hence batch effects.'],
          'domain_of': ['Sample'],
-         'examples': [{'value': 'surgical donor'}],
-         'notes': ['surgical donor; postmortem donor; living organ donor']} })
+         'examples': [{'value': 'surgical donor'}, {'value': 'postmortem donor'}]} })
     tissue_ontology_term: Optional[str] = Field(default=None, title="Tissue Ontology Term", description="""Deprecated placeholder for tissue ontology term.""", json_schema_extra = { "linkml_meta": {'alias': 'tissue_ontology_term',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'domain_of': ['Sample'],
@@ -1590,7 +1616,7 @@ class MusculoskeletalDataset(Dataset):
                                         'value': 'musculoskeletal'}},
          'from_schema': 'https://github.com/clevercanary/hca-validation-tools/schema/bionetwork/musculoskeletal'})
 
-    ambient_count_correction: str = Field(default=..., title="Ambient Count Correction", description="""Method used to correct ambient RNA contamination in single-cell data.""", json_schema_extra = { "linkml_meta": {'alias': 'ambient_count_correction',
+    ambient_count_correction: str = Field(default=..., title="Ambient Count Correction", description="""Software used to correct ambient RNA counts, or 'none'.""", json_schema_extra = { "linkml_meta": {'alias': 'ambient_count_correction',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'domain_of': ['AdiposeDataset', 'GutDataset', 'MusculoskeletalDataset'],
          'examples': [{'value': 'none'}, {'value': 'soupx'}, {'value': 'cellbender'}]} })
@@ -1599,19 +1625,20 @@ class MusculoskeletalDataset(Dataset):
          'domain_of': ['AdiposeDataset', 'GutDataset', 'MusculoskeletalDataset'],
          'examples': [{'value': 'none'},
                       {'value': 'doublet_finder'},
-                      {'value': 'manual'},
-                      {'value': 'doublet_finder;manual'}]} })
+                      {'value': 'manual'}]} })
     alignment_software: str = Field(default=..., title="Alignment Software", description="""Protocol used for alignment analysis, please specify which version was used e.g. cell ranger 2.0, 2.1.1 etc.""", json_schema_extra = { "linkml_meta": {'alias': 'alignment_software',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'comments': ['Affects which cells are filtered per dataset, and which reads '
                       '(introns and exons or only exons) are counted as part of the '
                       'reported transcriptome. This can convey batch effects.'],
          'domain_of': ['Dataset'],
-         'examples': [{'value': 'cellranger_8.0.0'}]} })
-    assay_ontology_term_id: str = Field(default=..., title="Assay Ontology Term Id", description="""Platform used for single cell library construction.""", json_schema_extra = { "linkml_meta": {'alias': 'assay_ontology_term_id',
+         'examples': [{'value': 'cell ranger 3.0.1'},
+                      {'value': 'kallisto bustools'},
+                      {'value': 'GSNAP'}]} })
+    assay_ontology_term_id: str = Field(default=..., title="Assay Ontology Term ID", description="""Platform used for single cell library construction.""", json_schema_extra = { "linkml_meta": {'alias': 'assay_ontology_term_id',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'cxg': {'tag': 'cxg', 'value': 'assay_ontology_term_id'}},
-         'comments': ['Major source of batch effect and dataset filtering criterion'],
+         'comments': ['Major source of batch effect and dataset filtering criterion.'],
          'domain_of': ['Dataset'],
          'examples': [{'value': 'EFO:0009922'}],
          'notes': ['This must be an EFO term and either:\n'
@@ -1632,12 +1659,12 @@ class MusculoskeletalDataset(Dataset):
                    '- 10x 5\' v1 "EFO:0011025"\n'
                    '- 10x 5\' v2 "EFO:0009900"\n'
                    '- Smart-seq2 "EFO:0008931"\n'
-                   '- Visium Spatial Gene Expression "EFO:0010961"\n']} })
+                   '- Visium Spatial Gene Expression "EFO:0010961"']} })
     assay_ontology_term: Optional[str] = Field(default=None, title="Assay Ontology Term", description="""Deprecated placeholder for assay ontology term.""", json_schema_extra = { "linkml_meta": {'alias': 'assay_ontology_term',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'domain_of': ['Dataset'],
          'is_a': 'deprecated_slot'} })
-    batch_condition: Optional[list[str]] = Field(default=None, title="Batch Condition", description="""Name of the covariate that confers the dominant batch effect in the data as judged by the data contributor.  The name provided here should be the label by which this covariate is stored in the AnnData object.""", json_schema_extra = { "linkml_meta": {'alias': 'batch_condition',
+    batch_condition: Optional[list[str]] = Field(default=None, title="Batch Condition", description="""Name of the covariate that confers the dominant batch effect in the data as judged by the data contributor. The name provided here should be the label by which this covariate is stored in the AnnData object.""", json_schema_extra = { "linkml_meta": {'alias': 'batch_condition',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'uns'},
                          'cxg': {'tag': 'cxg', 'value': 'batch_condition'}},
          'domain_of': ['Dataset'],
@@ -1649,8 +1676,7 @@ class MusculoskeletalDataset(Dataset):
                    '"seqBatch" are keys of vectors of cell metadata, either '
                    '["patient"], ["seqBatch"], or ["patient", "seqBatch"] are valid '
                    'values.']} })
-    comments: Optional[str] = Field(default=None, title="Comments", description="""Other technical or experimental covariates that could affect the quality or batch of the sample.  Must not contain identifiers. This field is designed to capture potential challenges for data integration not captured elsewhere.
-""", json_schema_extra = { "linkml_meta": {'alias': 'comments',
+    comments: Optional[str] = Field(default=None, title="Comments", description="""Other technical or experimental covariates that could affect the quality or batch of the sample. Must not contain identifiers. This field is designed to capture potential challenges for data integration not captured elsewhere.""", json_schema_extra = { "linkml_meta": {'alias': 'comments',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'uns'}},
          'domain_of': ['Dataset']} })
     consortia: Optional[str] = Field(default=None, title="Consortia", description="""Deprecated placeholder for consortia information.""", json_schema_extra = { "linkml_meta": {'alias': 'consortia',
@@ -1667,21 +1693,20 @@ class MusculoskeletalDataset(Dataset):
     description: str = Field(default=..., title="Description", description="""Short description of the dataset""", json_schema_extra = { "linkml_meta": {'alias': 'description',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'uns'}},
          'domain_of': ['Dataset']} })
-    gene_annotation_version: str = Field(default=..., title="Gene Annotation Version", description="""Ensembl release version accession number. Some common codes include: GRCh38.p12 = GCF_000001405.38 GRCh38.p13 = GCF_000001405.39 GRCh38.p14 = GCF_000001405.40
-""", json_schema_extra = { "linkml_meta": {'alias': 'gene_annotation_version',
+    gene_annotation_version: str = Field(default=..., title="Gene Annotation Version", description="""Ensembl release version accession number. Some common codes include: GRCh38.p12 = GCF_000001405.38 GRCh38.p13 = GCF_000001405.39 GRCh38.p14 = GCF_000001405.40""", json_schema_extra = { "linkml_meta": {'alias': 'gene_annotation_version',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'comments': ['Possible source of batch effect and confounder for some '
-                      'biological analysis'],
+                      'biological analysis.'],
          'domain_of': ['Dataset'],
-         'examples': [{'value': 'GCF_000001405.40'}],
+         'examples': [{'value': 'v110'}, {'value': 'GCF_000001405.40'}],
          'notes': ['http://www.ensembl.org/info/website/archives/index.html or '
                    'NCBI/RefSeq']} })
     intron_inclusion: Optional[YesNoEnum] = Field(default=None, title="Intron Inclusion", description="""Were introns included during read counting in the alignment process?""", json_schema_extra = { "linkml_meta": {'alias': 'intron_inclusion',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
+         'comments': ['Affects the number of reads per cell called in a sample.'],
          'domain_of': ['Dataset'],
          'examples': [{'value': 'yes'}, {'value': 'no'}]} })
-    protocol_url: Optional[str] = Field(default=None, title="Protocol URL", description="""The protocols.io URL (if none exists, please use the BioRxiv URL) for the full experimental protocol;  or if multiple protocols exist please list them e.g. sample preparation protocol / sequencing protocol.
-""", json_schema_extra = { "linkml_meta": {'alias': 'protocol_url',
+    protocol_url: Optional[str] = Field(default=None, title="Protocol URL", description="""The protocols.io URL (if none exists, please use the BioRxiv URL) for the full experimental protocol; or if multiple protocols exist please list them e.g. sample preparation protocol / sequencing protocol.""", json_schema_extra = { "linkml_meta": {'alias': 'protocol_url',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'comments': ['Useful to look up protocol data that can provide insight on '
                       'batch effects. As protocols can sometimes apply to a subset of '
@@ -1689,17 +1714,16 @@ class MusculoskeletalDataset(Dataset):
                       'may not always be available.'],
          'domain_of': ['Dataset'],
          'examples': [{'value': 'https://www.biorxiv.org/content/early/2017/09/24/193219'}]} })
-    publication_doi: Optional[str] = Field(default=None, title="Publication DOI", description="""The publication digital object identifier (doi) for the protocol. If no pre-print nor publication exists, please write 'not applicable'.
-""", json_schema_extra = { "linkml_meta": {'alias': 'publication_doi',
+    publication_doi: Optional[str] = Field(default=None, title="Publication DOI", description="""The publication digital object identifier (doi) for the protocol. If no pre-print nor publication exists, please write 'not applicable'.""", json_schema_extra = { "linkml_meta": {'alias': 'publication_doi',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'domain_of': ['Dataset'],
          'examples': [{'value': '10.1016/j.cell.2016.07.054'}]} })
     reference_genome: ReferenceGenomeEnum = Field(default=..., title="Reference Genome", description="""Reference genome used for alignment.""", json_schema_extra = { "linkml_meta": {'alias': 'reference_genome',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'comments': ['Possible source of batch effect and confounder for some '
-                      'biological analysis'],
+                      'biological analysis.'],
          'domain_of': ['Dataset'],
-         'examples': [{'value': 'GRCm37'}, {'value': 'GRCh37'}]} })
+         'examples': [{'value': 'GRCh38'}, {'value': 'GRCh37'}]} })
     sequenced_fragment: SequencedFragmentEnum = Field(default=..., title="Sequenced Fragment", description="""Which part of the RNA transcript was targeted for sequencing.""", json_schema_extra = { "linkml_meta": {'alias': 'sequenced_fragment',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'}},
          'comments': ['May be a source of batch effect that has to be tested.'],
@@ -1713,14 +1737,13 @@ class MusculoskeletalDataset(Dataset):
          'examples': [{'value': 'EFO:0008563'}],
          'notes': ['Values should be "subClassOf" ["EFO:0002699"] - '
                    'https://www.ebi.ac.uk/ols/ontologies/efo/terms?iri=http%3A%2F%2Fwww.ebi.ac.uk%2Fefo%2FEFO_0002699']} })
-    study_pi: list[str] = Field(default=..., title="Study Pi", description="""Principal Investigator(s) leading the study where the data is/was used.""", json_schema_extra = { "linkml_meta": {'alias': 'study_pi',
+    study_pi: list[str] = Field(default=..., title="Study PI", description="""Principal Investigator(s) leading the study where the data is/was used.""", json_schema_extra = { "linkml_meta": {'alias': 'study_pi',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'uns'}},
          'domain_of': ['Dataset'],
-         'examples': [{'description': 'Principal Investigator in Last '
-                                      'Name,MiddleInitial, FirstName format',
-                       'value': '["Teichmann,Sarah,A."]'}]} })
-    title: str = Field(default=..., title="Title", description="""This text describes and differentiates the dataset from other datasets in the same collection.  It is strongly recommended that each dataset title in a collection is unique and does not depend on other metadata  such as a different assay to disambiguate it from other datasets in the collection.
-""", json_schema_extra = { "linkml_meta": {'alias': 'title',
+         'examples': [{'description': 'Principal Investigator in Last name,First '
+                                      'name,Middle initial format',
+                       'value': 'Teichmann,Sarah,A.'}]} })
+    title: str = Field(default=..., title="Title", description="""This text describes and differentiates the dataset from other datasets in the same collection. It is strongly recommended that each dataset title in a collection is unique and does not depend on other metadata such as a different assay to disambiguate it from other datasets in the collection.""", json_schema_extra = { "linkml_meta": {'alias': 'title',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'uns'},
                          'cxg': {'tag': 'cxg', 'value': 'title'},
                          'entrySheetRequired': {'tag': 'entrySheetRequired',
@@ -1728,8 +1751,8 @@ class MusculoskeletalDataset(Dataset):
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
          'comments': ['Distinguishes this dataset from others in the same collection.'],
          'domain_of': ['Dataset'],
-         'examples': [{'value': "Cells of the adult human heart collection is 'All — "
-                                "Cells of the adult human heart'"}]} })
+         'examples': [{'value': 'Cells of the adult human heart collection is "All — '
+                                'Cells of the adult human heart"'}]} })
     dataset_id: str = Field(default=..., title="Dataset ID", description="""A unique identifier for each dataset in the study. This should be unique to the study.""", json_schema_extra = { "linkml_meta": {'alias': 'dataset_id', 'domain_of': ['Dataset', 'Donor', 'Sample']} })
 
 
@@ -1739,23 +1762,22 @@ class Cell(ConfiguredBaseModel):
     """
     linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'https://github.com/clevercanary/hca-validation-tools/schema/cell'})
 
-    author_cell_type: Optional[str] = Field(default=None, title="Author Cell Type", description="""Encoding of author intuition of cellular annotation in the dataset.""", json_schema_extra = { "linkml_meta": {'alias': 'author_cell_type',
+    author_cell_type: Optional[str] = Field(default=None, title="Author Cell Type", description="""Encoding of author intuition of cellular annotation in the dataset.
+
+Use `author_cell_type` for original source datasets where `cell_type_ontology_term_id` is not available.""", json_schema_extra = { "linkml_meta": {'alias': 'author_cell_type',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
          'comments': ['Encoding of author intuition of cellular annotation in their '
-                      'dataset.',
-                      "Retained alongside the ontology term so the author's original "
-                      'naming is not lost when terms are mapped to CL.'],
+                      'dataset.'],
          'domain_of': ['Cell'],
-         'examples': [{'value': 'Goblet cell; microglia'}]} })
-    cell_type_ontology_term_id: Optional[str] = Field(default=None, title="Cell Type Ontology Term ID", description="""Cell Ontology (CL) term.""", json_schema_extra = { "linkml_meta": {'alias': 'cell_type_ontology_term_id',
+         'examples': [{'value': 'Goblet cell'}, {'value': 'microglia'}]} })
+    cell_type_ontology_term_id: Optional[str] = Field(default=None, title="Cell Type Ontology Term ID", description="""Cell Ontology (CL) term.
+
+Use `cell_type_ontology_term_id` for integrated objects. `cell_type_ontology_term_id` will be required for submission to CELLxGENE.""", json_schema_extra = { "linkml_meta": {'alias': 'cell_type_ontology_term_id',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'obs'},
                          'cxg': {'tag': 'cxg', 'value': 'cell_type_ontology_term_id'},
                          'tier': {'tag': 'tier', 'value': 'Tier 1'}},
-         'comments': ['Encoding of cell type to help alignment with other datasets.',
-                      'Unrecoverable once dropped — populate_labels derives cell_type '
-                      'from this column, not the reverse. Optional here to match the '
-                      "h5ad validator's requirement_level."],
+         'comments': ['Encoding of cell type to help alignment with other datasets.'],
          'domain_of': ['Cell'],
          'examples': [{'value': 'CL:0001204'}],
          'notes': ['This must be a Cell Ontology (CL) term '
@@ -1766,10 +1788,7 @@ class Cell(ConfiguredBaseModel):
                    '\n'
                    'The following terms must not be used: "CL:0000255" for eukaryotic '
                    'cell; "CL:0000257" for Eumycetozoan cell; "CL:0000548" for animal '
-                   'cell.\n',
-                   'ZFA, FBbt, and WBbt terms are allowed depending on the organism, '
-                   'and "na" is allowed if tissue_type is "cell line" — per the h5ad '
-                   "validator's curie_constraints."]} })
+                   'cell.']} })
 
 
 # Model rebuild
