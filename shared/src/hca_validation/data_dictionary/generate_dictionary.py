@@ -4,11 +4,10 @@
 Two dictionaries are generated: the full export of every slot under its schema class, which the HCA Atlas Tracker
 reads, and the HCA Data Portal's Tier 1 dictionary, laid out by `dictionary.yaml`.
 
-By default, both are saved to the 'data_dictionaries' directory in the project root.
+`make generate-data-dictionary` writes both to the 'data_dictionaries' directory in the project root.
 """
 
 import json
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -28,8 +27,6 @@ from hca_validation.schema_utils import (
 
 # The portal's header, sections and AnnData structure rows (#760)
 LAYOUT_PATH = Path(__file__).with_name("dictionary.yaml")
-
-_DATA_DICTIONARIES_DIR = Path(__file__).parents[4] / "data_dictionaries"
 
 _SECTION_SUFFIX = "Section"
 
@@ -112,7 +109,7 @@ def transform_layout_to_data_dictionary(schemaview: SchemaView, layout: SchemaDe
     return {
         "name": layout.name,
         "title": layout.title,
-        "description": (layout.description or "").rstrip(),
+        "description": layout.description or "",
         "classes": [
             section_entry(schemaview, section_name, layout_slots, schema_enum_names, all_networks)
             for section_name in layout.classes
@@ -161,7 +158,7 @@ def section_entry(
     name = section_name.removesuffix(_SECTION_SUFFIX)
     return {
         "title": section.title,
-        "description": (section.description or "").rstrip(),
+        "description": section.description or "",
         "name": name[0].lower() + name[1:],
         "attributes": attributes,
     }
@@ -304,40 +301,11 @@ def _write(data_dict: dict[str, Any], output_path) -> None:
     print(f"Data dictionary written to {output_path}")
 
 
-def generate_dictionary(schema_path=CORE_SCHEMA_PATH, output_path=None):
-    """
-    Generate the full data dictionary JSON from the specified schema file.
-
-    Args:
-        schema_path: Path to the schema file (default: hca-metadata-schema's core.yaml)
-        output_path: Path to write the output JSON (default: `<schema name>_data_dictionary.json` in data_dictionaries)
-    """
-    if output_path is None:
-        _DATA_DICTIONARIES_DIR.mkdir(exist_ok=True)
-        output_path = _DATA_DICTIONARIES_DIR / f"{Path(schema_path).stem}_data_dictionary.json"
+def generate_dictionary(output_path, schema_path=CORE_SCHEMA_PATH):
+    """Generate the full data dictionary JSON from the specified schema file."""
     _write(transform_schema_to_data_dictionary(SchemaView(str(schema_path), merge_imports=True)), output_path)
 
 
-def generate_tier_1_dictionary(schema_path=CORE_SCHEMA_PATH, output_path=None, layout_path=LAYOUT_PATH):
-    """
-    Generate the HCA Data Portal's Tier 1 data dictionary JSON from the schema and the layout.
-
-    Args:
-        schema_path: Path to the schema file (default: hca-metadata-schema's core.yaml)
-        output_path: Path to write the output JSON (default: `tier_1_data_dictionary.json` in data_dictionaries)
-        layout_path: Path to the layout (default: `dictionary.yaml` beside this module)
-    """
-    if output_path is None:
-        _DATA_DICTIONARIES_DIR.mkdir(exist_ok=True)
-        output_path = _DATA_DICTIONARIES_DIR / "tier_1_data_dictionary.json"
+def generate_tier_1_dictionary(output_path, schema_path=CORE_SCHEMA_PATH, layout_path=LAYOUT_PATH):
+    """Generate the HCA Data Portal's Tier 1 data dictionary JSON from the schema and the layout."""
     _write(transform_layout_to_data_dictionary(*load_schemas(schema_path, layout_path)), output_path)
-
-
-def main():
-    """Command-line entry point."""
-    # Optional arguments: the schema path, then the output path
-    generate_dictionary(*sys.argv[1:3])
-
-
-if __name__ == "__main__":
-    main()

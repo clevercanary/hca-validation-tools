@@ -73,8 +73,9 @@ def _schemaview(tmp_path, classes):
         ("sample", "dissociation_protocol", ["adipose", "gut"]),
     ],
 )
-def test_bionetwork_slots_are_folded(data_dictionary, class_name, attribute_name, networks):
-    attribute = _attribute(data_dictionary, class_name, attribute_name)
+@pytest.mark.parametrize("dictionary", ["data_dictionary", "tier_1_dictionary"])
+def test_bionetwork_slots_are_folded(request, dictionary, class_name, attribute_name, networks):
+    attribute = _attribute(request.getfixturevalue(dictionary), class_name, attribute_name)
     assert attribute["annotations"]["bioNetworks"] == networks
     assert attribute["annotations"]["annDataLocation"] == "obs"
     assert attribute["annotations"]["tier"] == "Tier 1"
@@ -586,7 +587,7 @@ def test_multivalued(mapping_dictionary):
 
 def test_generate_dictionary_writes_json(mapping_schema_path, mapping_dictionary, tmp_path):
     output = tmp_path / "out.json"
-    generate_dictionary(mapping_schema_path, output)
+    generate_dictionary(output, mapping_schema_path)
     assert json.loads(output.read_text()) == mapping_dictionary
 
 
@@ -776,5 +777,5 @@ def test_bad_layouts_are_refused(tmp_path, mapping_schema_path, sections, slots,
 
 def test_generate_tier_1_dictionary_writes_json(mapping_schema_path, mapping_layout, mapping_tier_1, tmp_path):
     output = tmp_path / "out.json"
-    generate_tier_1_dictionary(mapping_schema_path, output, mapping_layout)
+    generate_tier_1_dictionary(output, mapping_schema_path, mapping_layout)
     assert json.loads(output.read_text()) == mapping_tier_1

@@ -29,8 +29,8 @@ validate-schema lint-schema lint-schema-errors gen-schema:
 .PHONY: generate-data-dictionary
 generate-data-dictionary:
 	@echo "Generating data dictionaries from core schema..."
-	@$(UV) python -c "from hca_validation.data_dictionary.generate_dictionary import generate_dictionary; generate_dictionary(output_path='../data_dictionaries/core_data_dictionary.json')"
-	@$(UV) python -c "from hca_validation.data_dictionary.generate_dictionary import generate_tier_1_dictionary; generate_tier_1_dictionary(output_path='../data_dictionaries/tier_1_data_dictionary.json')"
+	@$(UV) python -c "from hca_validation.data_dictionary.generate_dictionary import generate_dictionary; generate_dictionary('../data_dictionaries/core_data_dictionary.json')"
+	@$(UV) python -c "from hca_validation.data_dictionary.generate_dictionary import generate_tier_1_dictionary; generate_tier_1_dictionary('../data_dictionaries/tier_1_data_dictionary.json')"
 	@echo "✓ Data dictionary generated"
 
 # Run validator tests (in shared library)
