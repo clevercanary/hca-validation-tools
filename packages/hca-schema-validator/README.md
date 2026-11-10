@@ -15,7 +15,7 @@ pip install hca-schema-validator
 ## What it checks
 
 - **Inherited CELLxGENE checks.** Checks inherited from the CELLxGENE
-  validator (`cellxgene-schema` 7.0.1) on the file's structure, cell and dataset
+  validator (`cellxgene-schema` 7.0.1) on the h5ad file's structure, cell and shared
   metadata, ontology terms, gene IDs, matrices and embeddings
   ([Core CELLxGENE checks](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/CHECKS.md#core-cellxgene-checks)).
 - **HCA Tier 1 schema.** Required fields are present, strongly recommended fields are
@@ -29,7 +29,7 @@ pip install hca-schema-validator
 - **Donors.** One `donor_id` names one person, with one organism, sex and
   manner of death
   ([Donor metadata](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/CHECKS.md#donor-metadata)).
-- **Declared gene annotation.** `gene_annotation_version` fits the file's genes
+- **Declared gene annotation.** `gene_annotation_version` fits the genes in `var`
   and `reference_genome`
   ([Declared gene annotation](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/CHECKS.md#declared-gene-annotation)).
 - **Gene IDs.** Human gene IDs missing from the allowed gene set (GENCODE v48,
@@ -39,13 +39,13 @@ pip install hca-schema-validator
 
 The validator reports two kinds of finding:
 
-- **Errors**: the file does not meet the schema.
+- **Errors**: the h5ad file does not meet the schema.
 - **Warnings**: something to review or fix. A missing **strongly recommended**
   field is a warning, not an error.
 
 ## Usage
 
-The validator runs from Python. It validates two kinds of file, and the two
+The validator runs from Python. It validates two kinds of h5ad file, and the two
 kinds have different validation requirements:
 
 - **Source dataset** (`object_kind="source"`): holds data from a single study.
@@ -67,13 +67,13 @@ print("✅ No errors" if is_valid else "❌ Errors:")
 for error in validator.errors:
     print(f"  - {error}")
 
-# A file with no errors can still have warnings to review or fix,
+# An h5ad file with no errors can still have warnings to review or fix,
 # including the gene ID report.
 for warning in validator.warnings:
     print(f"  ! {warning}")
 ```
 
-Pass the `object_kind` that matches the file.
+Pass the `object_kind` that matches the h5ad file.
 
 Validate a source dataset:
 
