@@ -228,10 +228,12 @@ only at the first 200 cells, the checked cells:
    infinite or negative values, and is not all zero.
 6. **`layers['desouped_counts']` is a corrected version of `raw.X`.** In the
    checked cells, no value is larger than the matching value in `raw.X`.
-7. **`X` was made from its required source.** In each checked cell, every
-   gene's share of the cell's total in `X` matches its share in the source:
-   - **If the file has `layers['desouped_counts']`**, the source is that layer.
-   - **If it does not**, the source is `raw.X`.
+7. **`X` was made from its required source.** In each checked cell, once the
+   `log1p` is undone, every gene's share of the cell's total matches its share
+   in the source. Only genes with a non-zero value in `X` are compared, so genes
+   marked filtered do not count against the file. The source is:
+   - **If the file has `layers['desouped_counts']`**, that layer.
+   - **If it does not**, `raw.X`.
 
    When `X` does not match its source, the check fails. If the source is
    `raw.X`, the error also names the likely cause
@@ -283,7 +285,7 @@ out, or leave their values missing. Empty text (`""`) counts as a label and is
 checked like any other. Any label a team does fill in must match the official
 ontology name for its term ID:
 
-1. A label that matches the name of the term on the same row passes.
+1. A label that matches the name of the term ID on the same row passes.
 2. A label that does not match is an error.
 3. A label on a row with no term ID is an error.
 4. A label column whose term ID column is absent from the file, such as `tissue`
@@ -365,15 +367,16 @@ These are the terms Ensembl, GENCODE and the Genome Reference Consortium use.
 The validator checks the declared `obs['gene_annotation_version']` against the
 file's genes and `obs['reference_genome']`. Every finding here is a warning.
 Only the data producer (the lab or team that made the file) can correct the
-value, and some values the schema allows, such as assembly accession numbers
-(`GCF_000001405.40`), cannot be checked against the genes.
+value.
 
 Two comparisons:
 
-1. **Declared assembly against `obs['reference_genome']`.** For each
-   combination of `gene_annotation_version` and `reference_genome` found in the
-   cells, the validator checks that both name the same genome assembly, such as
-   GRCh38. An integrated atlas can hold cells aligned to different assemblies,
+1. **Declared release against `obs['reference_genome']`.** Each Ensembl
+   release is built on one genome assembly: releases 55 to 75 on GRCh37, and
+   release 76 and later on GRCh38. For each combination of
+   `gene_annotation_version` and `reference_genome` found in the cells, the
+   validator checks that `reference_genome` names the declared release's
+   assembly. An integrated atlas can hold cells aligned to different assemblies,
    so each combination is checked on its own. The comparison runs only when
    every cell's organism is human.
 2. **Declared release against the genes.** The validator works out which Ensembl
@@ -456,31 +459,41 @@ Details:
 
 | Tag | When you see it | What to do |
 |---|---|---|
-| `[rename]` | Ensembl replaced the gene with one new gene, which is in the allowed gene set and not yet in the file | Replace the old ID with the new one. |
-| `[review]` | The new gene is already in the file; or several IDs in the file lead to the same new gene; or the file spells one gene more than one way. When a file lists the same gene with and without a version suffix, the suffixed ID is `[review]`. The bare ID keeps the tag it would have on its own, unless Ensembl retired the gene with one replacement in the allowed gene set: then both IDs lead to that gene, and both are `[review]`. Two different suffixes of one gene are both `[review]`. A gene Ensembl retired with no single replacement in the allowed gene set keeps its own tag on every spelling | Decide whether to combine the columns. Adding their counts double-counts if the file was aligned against an annotation that treated the IDs as separate genes. |
-| `[drop]` | The gene was removed with no replacement; or the replacement was itself removed later; or no replacement is in the allowed gene set; or the gene is on an alternate locus or a patch | Remove the gene. There is no replacement in the allowed gene set to move its counts to. |
+| `[rename]` | Ensembl replaced the gene with one new gene, which is in the allowed gene set and not yet in the dataset | Replace the old ID with the new one. |
+| `[review]` | <ul><li>Ensembl replaced the gene with a new gene that is already in the dataset.</li><li>Ensembl replaced several gene IDs in the dataset with the same new gene, for example because it merged them, or because the dataset lists one replaced gene both with and without a version suffix.</li><li>The dataset lists a gene both with and without a version suffix. The suffixed ID is `[review]`, and the bare ID keeps the tag it would have on its own.</li><li>The dataset lists a gene with two different version suffixes. Both are `[review]`.</li></ul>Exception: the version suffix rules do not apply to a gene Ensembl retired with no single replacement in the allowed gene set, such as a gene removed with no replacement or split into several genes. Each spelling of that gene keeps its own tag, for example `[drop]` for both. | Decide whether to combine the columns. Adding their counts double-counts if the file was aligned against an annotation that treated the IDs as separate genes. |
+| `[drop]` | <ul><li>Ensembl removed the gene with no replacement.</li><li>Ensembl replaced the gene, and later removed the replacement too.</li><li>Ensembl replaced the gene, but no replacement is in the allowed gene set.</li><li>The gene is on an alternate locus or a patch.</li></ul> | Remove the gene. There is no replacement in the allowed gene set to move its counts to. |
 | `[drop or re-align]` | Ensembl split the gene into several genes, and at least one of them is in the allowed gene set | Remove the gene, or re-run alignment against a newer annotation to get counts for the new genes. |
-| `[strip suffix]` | The ID has a version suffix, such as `.17`, and without the suffix it is in the allowed gene set or newer than it. Any other suffixed ID gets the tag it would get without the suffix, and its Details line says "version suffix". When the file also lists the gene under another spelling, the `[review]` row applies instead | Remove the suffix. |
+| `[strip suffix]` | The ID has a version suffix, such as `.17`, and without the suffix it is in the allowed gene set or newer than it. Two more rules for IDs with a version suffix:<ul><li>Any other ID with a version suffix gets the tag it would get without the suffix, and its `Details:` line says "version suffix".</li><li>When the dataset also lists the gene under another spelling, the `[review]` row applies instead.</li></ul> | Remove the suffix. |
 | `[none]` | The gene is newer than the allowed gene set | Nothing to fix. |
 | `[ask]` | Neither gene table (Ensembl releases 76 to 116) has a record of the ID, for example because the gene was removed before release 76 | Ask the data producer which gene annotation the file was built with. |
 
-#### Location notes
+#### Gene location notes
 
-When Ensembl replaced a gene with one gene in the allowed gene set (the
-`[rename]` rows and most `[review]` rows), the validator compares where the old
-and new genes sit on the genome. Other rows get no comparison and no note.
+Gene location notes help decide how to treat `[rename]` and `[review]` IDs. When
+Ensembl replaced an old gene with one new gene in the allowed gene set, the
+validator compares where the two genes sit on the genome, to show whether the
+old gene's counts can be moved to the new gene. The note is added to the ID's
+`Details:` line, for example:
 
-- **No note**: the new gene covers the old one, which is the usual case.
-- **`old contains new`**: the new gene lies inside the old one.
-- **`overlap`**: the two genes share some positions, but neither covers the
-  other.
-- **`disjoint`**: the two genes share no positions, or sit on different
-  chromosomes or strands.
+```
+ENSG00000280867 -> ENSG00000283490  merged; old contains new  [rename]
+```
 
-A note marks a line to check before renaming. It does not mean the replacement
-is wrong.
+The possible notes:
 
-#### Data versions
+| Note | Meaning |
+|---|---|
+| None | The new gene covers the old one, which is the usual case |
+| `old contains new` | The new gene lies inside the old one |
+| `overlap` | The two genes share some positions, but neither covers the other |
+| `disjoint` | The two genes share no positions, or sit on different chromosomes or strands |
+
+`old contains new`, `overlap` and `disjoint` mean the new gene does not cover all
+of the old one, so some of the old gene's counts may come from positions the new
+gene does not include. Check the gene IDs with one of these notes before renaming
+or combining them.
+
+#### Gene data sources
 
 The gene ID checks use three data sources. Each is updated on its own schedule,
 so their versions can differ.

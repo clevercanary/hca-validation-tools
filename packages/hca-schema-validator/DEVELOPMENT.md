@@ -279,7 +279,7 @@ MySQL to `ensembldb.ensembl.org:3306` (user `anonymous`, no password).
    ```
 
 4. Commit the regenerated file, and update the **Current table** above and the
-   [data versions table](CHECKS.md#data-versions) in CHECKS.md.
+   [gene data sources table](CHECKS.md#gene-data-sources) in CHECKS.md.
 
 ### Why not `stable_id_event`
 
@@ -404,7 +404,7 @@ password). About four minutes, mostly the per-release coordinate queries.
    ```
 
 5. Commit the regenerated file, and update the **Current table** above and the
-   [data versions table](CHECKS.md#data-versions) in CHECKS.md.
+   [gene data sources table](CHECKS.md#gene-data-sources) in CHECKS.md.
 
 ### The session chain is not contiguous, and that is correct
 
