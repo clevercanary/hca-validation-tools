@@ -7,7 +7,7 @@ The checks fall into three groups:
 
 - **Core CELLxGENE checks.** This package extends the CELLxGENE schema validator
   from the Chan Zuckerberg Initiative (CZI). A copy of the CELLxGENE validator
-  (`cellxgene-schema` 7.0.1) ships with the package and runs on every h5ad file.
+  (`cellxgene-schema` 7.0.0) ships with the package and runs on every h5ad file.
 - **HCA overrides.** HCA replaces some CELLxGENE rules with its own.
 - **HCA extensions.** HCA adds checks that CELLxGENE does not have.
 
@@ -32,7 +32,7 @@ CELLxGENE is CZI's single-cell data portal, and the CELLxGENE schema defines
 what the portal accepts. The CELLxGENE validator runs every check in this
 section. CELLxGENE's reasoning for these rules is in the
 [CELLxGENE schema 7.0.0](https://github.com/chanzuckerberg/single-cell-curation/blob/main/schema/7.0.0/schema.md),
-the schema version that `cellxgene-schema` 7.0.1 checks. HCA changes some of
+the schema version that `cellxgene-schema` 7.0.0 checks. HCA changes some of
 these rules. [HCA overrides](#hca-overrides) lists the changes and the
 reason for each.
 
@@ -91,7 +91,7 @@ is an error.
 5. `var['feature_is_filtered']` is true/false, and is all false when there is
    no raw matrix. `raw.var` must not have this column.
 
-### Shared metadata validations (`uns`)
+### `uns` validations
 
 1. `uns` exists.
 2. `title` is not empty and has no leading, trailing or double spaces.
@@ -205,7 +205,7 @@ they agree with each other.
 | `layers['desouped_counts']` | When ambient RNA was removed | The counts left after ambient RNA removal |
 | `X` | Yes | Normalized per cell, then transformed with `log1p` (the natural log of 1 plus the value), made from `desouped_counts` if `layers` has it, otherwise from `raw.X` |
 
-Why these three:
+About these matrices:
 
 - `desouped_counts` is required whenever ambient RNA was removed, because that
   step has settings and is often random, so it cannot be repeated exactly.
@@ -217,8 +217,8 @@ Why these three:
 - The total each cell is normalized to is not fixed. The checks compare each
   cell's profile, where the total cancels out, so any target works.
 
-What is checked. Checks 1 to 4 look at the whole of `X`. Checks 5 to 9 look
-only at the first 200 cells, the checked cells:
+Checks 1 to 4 look at the whole of `X`. Checks 5 to 9 look only at the first 200
+cells (the checked cells) and validate that:
 
 1. **Normalization ran.** `X` is not identical to `raw.X`.
 2. **`X` holds expression values.** It has no missing (NaN) or infinite values.
@@ -244,11 +244,24 @@ only at the first 200 cells, the checked cells:
 8. **`X` and its source can be compared.** At least one checked cell has values
    in `X` and counts in its source for the same genes. Without one, checks 7 and 9
    would compare nothing and pass without checking anything.
-9. **`X` was normalized per cell.** For at most half of the checked cells, the
-   total recovered from `X` equals that cell's own count total in the source.
-   For more than half, `X` was log-transformed without being normalized.
+9. **`X` was normalized per cell.** To determine whether `X` is a normalized
+   version of its required source, the validator undoes the `log1p` and adds up
+   each checked cell's values. Normalizing divides each cell's counts by that
+   cell's total count and multiplies them by a target total that is the same for
+   every cell, so in a normalized `X` each sum is that shared target. If, for more
+   than half of the checked cells, the sum equals the cell's own total count in
+   the source instead, `X` was log-transformed without being normalized.
 
-Each of these is an error. None of these checks run when there is no `raw.X`.
+   The check asserts that, for at most half of the checked cells,
+
+   ```
+   sum(expm1(X[cell])) / sum(source[cell]) = 1   (within 0.1%)
+   ```
+
+   where both sums run over the genes with a non-zero value in `X`.
+
+Failure of any of these checks is reported as an error. None of these checks
+run when there is no `raw.X`.
 
 #### Why `X` does not match `raw.X`
 
@@ -268,11 +281,11 @@ points to the cause:
 
 | Recovered counts | Error message | Meaning | What to do |
 |---|---|---|---|
-| Not whole numbers | `X is not a normalization of any count matrix: …` | `X` was not made by scaling whole-number counts per cell and applying `log1p`. For example, it used a different transform such as SCTransform or TPM, it was rounded after normalization, or the counts it was made from were not whole numbers | Rebuild `X` by normalizing and log-transforming `raw.X` |
+| Not whole numbers | `X is not a normalization of any count matrix: …` | `X` was not made by scaling whole-number counts per cell and applying `log1p`. For example, it used a different transform such as SCTransform or TPM, or the counts it was made from were not whole numbers | Rebuild `X` by normalizing and log-transforming `raw.X` |
 | Whole numbers, some higher than `raw.X` and none lower | `X was normalized from a different matrix than raw.X: …` | `X` was made from a different matrix | Rebuild `X` from `raw.X`, or replace `raw.X` with the raw counts `X` was made from |
 | Whole numbers, some lower than `raw.X` and none higher | `X appears to be normalized from desouped counts, but layers['desouped_counts'] is missing. …` | Counts were removed before `X` was made, most likely by ambient RNA removal, and `layers['desouped_counts']` is missing | Add the counts left after ambient RNA removal as `layers['desouped_counts']` |
 | Whole numbers, some higher and some lower | `X was normalized from a different matrix than raw.X. …` | `X` was made from a different count matrix than `raw.X` | Store the counts `X` was made from in `raw.X`. If those were counts after ambient RNA removal, store them as `layers['desouped_counts']` instead, and keep the counts they were removed from in `raw.X` |
-| Whole numbers that match `raw.X`, or too few cells to tell | `X is not a normalization of raw.X: …` | The validator cannot name a cause. The error gives how far `X` is from `raw.X` | Rebuild `X` by normalizing and log-transforming `raw.X` |
+| Whole numbers that match `raw.X`, or no checked cell has at least 30 non-zero genes in `X` | `X is not a normalization of raw.X: …` | The validator cannot name a cause. The error gives how far `X` is from `raw.X` | Rebuild `X` by normalizing and log-transforming `raw.X` |
 
 ### Cell metadata labels
 
@@ -323,7 +336,7 @@ These checks compare the human Ensembl gene IDs in `var` with Ensembl's history:
    ([Declared gene annotation](#declared-gene-annotation)).
 2. **Which gene IDs are outdated.** The validator lists every gene ID that is
    not in GENCODE v48 (Ensembl release 114), the gene set `cellxgene-schema`
-   7.0.1 requires, and says what happened to each, for example renamed, merged
+   7.0.0 requires, and says what happened to each, for example renamed, merged
    with another gene, split into several genes or retired
    ([Gene IDs outside the allowed gene set](#gene-ids-outside-the-allowed-gene-set)).
 
@@ -464,7 +477,7 @@ Details:
 | Tag | When you see it | What to do |
 |---|---|---|
 | `[rename]` | Ensembl replaced the gene with one new gene, which is in the allowed gene set and not yet in `var`. | Replace the old ID with the new one. |
-| `[review]` | <ul><li>Ensembl replaced the gene with a new gene that is already in `var`.</li><li>Ensembl replaced several gene IDs in `var` with the same new gene, for example because it merged them, or because `var` lists one replaced gene both with and without a version suffix.</li><li>`var` lists a gene both with and without a version suffix. The suffixed ID is `[review]`, and the bare ID keeps the tag it would have on its own.</li><li>`var` lists a gene with two different version suffixes. Both are `[review]`.</li></ul>Exception: the version suffix rules do not apply to a gene Ensembl retired with no single replacement in the allowed gene set, such as a gene removed with no replacement or split into several genes. Each spelling of that gene keeps its own tag, for example `[drop]` for both. | Decide whether to combine the columns. Their counts may not be independent, so adding them can double-count. |
+| `[review]` | <ul><li>Ensembl replaced the gene with a new gene that is already in `var`.</li><li>Ensembl replaced several gene IDs in `var` with the same new gene, for example because it merged them, or because `var` lists one replaced gene both with and without a version suffix.</li><li>`var` lists a gene both with and without a version suffix. The suffixed ID is `[review]`, and so is the bare ID if Ensembl replaced the gene. Otherwise the bare ID keeps the tag it would have on its own.</li><li>`var` lists a gene with two different version suffixes. Both are `[review]`.</li></ul>Exception: the version suffix rules do not apply to a gene Ensembl retired with no single replacement in the allowed gene set, such as a gene removed with no replacement or split into several genes. Each spelling of that gene keeps its own tag, for example `[drop]` for both. | Decide whether to combine the columns. Their counts may not be independent, so adding them can double-count. |
 | `[drop]` | <ul><li>Ensembl removed the gene with no replacement.</li><li>Ensembl replaced the gene, and later removed the replacement too.</li><li>Ensembl replaced the gene, but no replacement is in the allowed gene set.</li><li>The gene is on an alternate locus or a patch.</li></ul> | Remove the gene. There is no replacement in the allowed gene set to move its counts to. |
 | `[drop or re-align]` | Ensembl split the gene into several genes, and at least one of them is in the allowed gene set. | Remove the gene, or re-run alignment against a newer annotation to get counts for the new genes. |
 | `[strip suffix]` | The ID has a version suffix, such as `.17`, and without the suffix it is in the allowed gene set or newer than it. Two more rules for IDs with a version suffix:<ul><li>Any other ID with a version suffix gets the tag it would get without the suffix, and its `Details:` line says "version suffix".</li><li>When `var` also lists the gene under another spelling, the `[review]` row applies instead.</li></ul> | Remove the suffix. |
@@ -509,6 +522,6 @@ so their versions can differ.
 | Gene release table ([how it is built](DEVELOPMENT.md#gene-release-interval-table)) | Ensembl releases 76 to 116 | Matching the declared gene annotation, and telling genes on alternate loci or patches apart from genes newer than the allowed gene set |
 
 <!-- Maintainers: these versions are typed by hand, here, elsewhere in this
-file and in README.md (search for "v48", "114", "116" and "7.0.1", including the example
+file and in README.md (search for "v48", "114", "116" and "7.0.0", including the example
 output). Update
 them when cellxgene-schema is upgraded or either table is regenerated. -->

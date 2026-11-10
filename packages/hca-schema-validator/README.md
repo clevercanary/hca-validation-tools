@@ -15,24 +15,25 @@ pip install hca-schema-validator
 ## What it checks
 
 - **Inherited CELLxGENE checks.** Checks inherited from the CELLxGENE
-  validator (`cellxgene-schema` 7.0.1) on the h5ad file's structure, cell and shared
+  validator (`cellxgene-schema` 7.0.0) on the h5ad file's structure, `obs` and `uns`
   metadata, ontology terms, gene IDs, matrices and embeddings
   ([Core CELLxGENE checks](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/CHECKS.md#core-cellxgene-checks)).
 - **HCA Tier 1 schema.** Required fields are present, strongly recommended fields are
   flagged when missing, and values have the right form. HCA replaces some
   CELLxGENE rules with its own ([HCA overrides](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/CHECKS.md#hca-overrides)).
 - **Expression matrices.** `X` is a normalized, log-transformed version of the
-  raw counts in `raw.X` ([Expression matrices](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/CHECKS.md#expression-matrices)).
+  counts it was made from: `layers['desouped_counts']` when ambient RNA was
+  removed, otherwise `raw.X` ([Expression matrices](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/CHECKS.md#expression-matrices)).
 - **Cell metadata labels.** Any label a team fills in, such as `tissue`, matches
   the ontology name of its term ID
   ([Cell metadata labels](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/CHECKS.md#cell-metadata-labels)).
 - **Donors.** One `donor_id` names one person, with one organism, sex and
   manner of death
   ([Donor metadata](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/CHECKS.md#donor-metadata)).
-- **Declared gene annotation.** `gene_annotation_version` fits the genes in `var`
+- **Declared gene annotation version.** `gene_annotation_version` fits the genes in `var`
   and `reference_genome`
   ([Declared gene annotation](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/CHECKS.md#declared-gene-annotation)).
-- **Gene IDs.** Human gene IDs missing from the allowed gene set (GENCODE v48,
+- **Gene ID report.** Human gene IDs missing from the allowed gene set (GENCODE v48,
   Ensembl 114, primary assembly only) are listed in one gene ID report, with a
   tag saying what to do about each
   ([Gene IDs outside the allowed gene set](https://github.com/clevercanary/hca-validation-tools/blob/main/packages/hca-schema-validator/CHECKS.md#gene-ids-outside-the-allowed-gene-set)).
