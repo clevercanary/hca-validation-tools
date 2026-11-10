@@ -161,7 +161,7 @@ Report these but don't attempt to fix:
   | "could be Ensembl rN or GENCODE N" | producer, as a question | ask which scheme they meant; do not guess |
   | "are in none of the releases this reference data covers" | producer | relay: the gene list points at a reference we do not have |
   | "No Ensembl release … contains every one of this file's known genes" | by its last sentence | "This file is an integrated object, so this is expected" — nothing to relay: a union of sources matches none of them, and what each value must match is the source dataset its cells came from. "This file is a source dataset, so its gene list spans releases" — producer; relay |
-  | "newer than this reference data covers" | **ours** | nothing to relay. Our gene table needs regenerating — see the package README |
+  | "newer than this reference data covers" | **ours** | nothing to relay. Our gene table needs regenerating — see *Gene Release Interval Table* in `packages/hca-schema-validator/DEVELOPMENT.md` |
 
   The findings that rule out a declared release (too early or too late) and the no-release findings end in one sentence chosen by the `object_kind` you passed to `validate_schema` — "This file is a source dataset …" or "This file is an integrated object …" (#774). It restates what you told the validator, not something read off the file. If it disagrees with how the tracker lists the file, the call was wrong: re-run with the right kind before routing anything.
 
