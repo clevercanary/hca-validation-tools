@@ -138,6 +138,9 @@ def test_subprocess_script_imports_cleanly(script_path, extra_args, tmp_path):
     assert "usage:" not in result.stderr, f"{script_path.name} refused its arguments: {result.stderr}"
 
 
+SCOPE_SENTENCES = {"source": "This file is a source dataset", "integrated": "This file is an integrated object"}
+
+
 @pytest.mark.parametrize("object_kind", ["source", "integrated"])
 def test_main_subprocess_runs_the_real_validator_with_the_kind(object_kind, tmp_path):
     import anndata as ad
@@ -146,21 +149,24 @@ def test_main_subprocess_runs_the_real_validator_with_the_kind(object_kind, tmp_
     import scipy.sparse as sp
 
     path = tmp_path / "tiny.h5ad"
+    # ENSG00000288686 first appears in Ensembl release 110, so the declared v90 is ruled out, and the
+    # validator ends that finding with a sentence that names the object kind it was given
     ad.AnnData(
         X=sp.csr_matrix(np.ones((3, 2), dtype=np.float32)),
-        obs=pd.DataFrame(index=["c1", "c2", "c3"]),
-        var=pd.DataFrame(index=["ENSG00000141510", "ENSG00000012048"]),
+        obs=pd.DataFrame({"gene_annotation_version": pd.Categorical(["v90"] * 3)}, index=["c1", "c2", "c3"]),
+        var=pd.DataFrame(index=["ENSG00000000003", "ENSG00000288686"]),
     ).write_h5ad(path)
 
     result = subprocess.run(
         [sys.executable, str(MAIN_SCRIPT), str(path), object_kind], capture_output=True, text=True, check=True
     )
     report = json.loads(result.stdout)
+    findings = report["errors"] + report["warnings"]
 
     assert report["validator_version"] == __version__
     assert not [error for error in report["errors"] if "object_kind" in error or "unexpected error" in error]
-    # A schema finding only the real validator reports, so it ran rather than failing to construct
-    assert "ERROR: 'title' in 'uns' is not present." in report["errors"]
+    for kind, sentence in SCOPE_SENTENCES.items():
+        assert any(sentence in finding for finding in findings) is (kind == object_kind)
 
 
 def test_cell_annotation_subprocess_returns_json(tmp_path):
