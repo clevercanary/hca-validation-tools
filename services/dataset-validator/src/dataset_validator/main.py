@@ -704,7 +704,7 @@ def object_kind_from_s3_key(key: str) -> ObjectKind:
             ``{bionetwork}/{atlas-folder}/integrated-objects/{file}``.
     """
     parts = key.split("/")
-    if len(parts) != 4 or not parts[3] or parts[2] not in OBJECT_KIND_BY_FILE_TYPE:
+    if len(parts) != 4 or not all(parts) or parts[2] not in OBJECT_KIND_BY_FILE_TYPE:
         layouts = " or ".join(
             f"{{bionetwork}}/{{atlas-folder}}/{folder}/{{file}}" for folder in OBJECT_KIND_BY_FILE_TYPE
         )

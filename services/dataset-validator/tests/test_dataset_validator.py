@@ -1500,6 +1500,8 @@ def test_object_kind_from_s3_key(key, expected):
         "gut/gut-v1/source-datasets",
         "gut/gut-v1/source-datasets/",
         "gut/gut-v1/integrated-objects/tracker-source/file.h5ad",
+        "/gut-v1/source-datasets/file.h5ad",
+        "gut//integrated-objects/file.h5ad",
         "gut/source-datasets/file.h5ad",
         "gut/gut-v1/manifests/file.h5ad",
         "gut/gut-v1/Source-Datasets/file.h5ad",
