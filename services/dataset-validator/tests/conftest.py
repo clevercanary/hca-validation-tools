@@ -19,17 +19,22 @@ FAKE_AWS_ENV = {
 GUARD_SITE = Path(__file__).parent / "aws_guard_site"
 
 
-def pytest_configure(config):
-    aws_guard.install()
-
-
 # Through a proxy, only the proxy's host is looked up, so aws_guard would never see the AWS host.
 PROXY_VARS = [name for base in ("http_proxy", "https_proxy", "all_proxy") for name in (base, base.upper())]
+REMOVED_VARS = ["AWS_PROFILE", "AWS_DEFAULT_PROFILE", *PROXY_VARS]
+
+
+def pytest_configure(config):
+    # Before collection too: importing moto already builds a boto3 session
+    for name in REMOVED_VARS:
+        os.environ.pop(name, None)
+    os.environ.update(FAKE_AWS_ENV)
+    aws_guard.install()
 
 
 @pytest.fixture(autouse=True)
 def fake_aws_credentials(monkeypatch):
-    for name in ["AWS_PROFILE", *PROXY_VARS]:
+    for name in REMOVED_VARS:
         monkeypatch.delenv(name, raising=False)
     for name, value in FAKE_AWS_ENV.items():
         monkeypatch.setenv(name, value)

@@ -13,6 +13,7 @@ from aws_guard import AwsHostRefused, is_aws_host
 from moto import mock_s3, mock_sns
 
 TESTS_DIR = Path(__file__).parent
+sys.path.insert(0, str(TESTS_DIR.parent / "src"))
 SNS_HOST = "sns.us-east-1.amazonaws.com"
 PUBLISH_UNMOCKED = (
     "import boto3; boto3.client('sns').publish(TopicArn='arn:aws:sns:us-east-1:123456789012:t', Message='m')"
