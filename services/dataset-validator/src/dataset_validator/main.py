@@ -609,7 +609,8 @@ def apply_external_validator(
         validator_output = json.loads(validator_result.stdout)
     except Exception as e:
         # A script that refuses its arguments or crashes says why on stderr
-        stderr = f" stderr: {e.stderr.strip()}" if isinstance(e, subprocess.CalledProcessError) else ""
+        stderr = e.stderr.strip() if isinstance(e, subprocess.CalledProcessError) else ""
+        stderr = f" stderr: {stderr}" if stderr else ""
         message = f"Encountered an unexpected error while calling {validator_name} script: {e}{stderr}"
         logger.error(message)
         validator_output = {"valid": False, "errors": [message], "warnings": []}

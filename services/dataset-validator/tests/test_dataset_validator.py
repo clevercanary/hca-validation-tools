@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+import socket
 import subprocess
 import sys
 from pathlib import Path
@@ -91,6 +92,15 @@ def mock_aws():
 
 
 @pytest.fixture
+def refused_endpoint():
+    """A local URL whose port was free a moment ago, so a connection to it is refused."""
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    return f"http://127.0.0.1:{port}"
+
+
+@pytest.fixture
 def base_env_vars():
     """Fixture that provides base environment variables for testing."""
     return {
@@ -167,7 +177,7 @@ class TestDatasetValidator:
                     "Dataset Validator starting",
                     "Work directory created:",
                     "Processing S3 file: s3://invalid-test-bucket/invalid/test-atlas/source-datasets/file.h5ad",
-                    "S3 download failed",
+                    "Unexpected error downloading s3://invalid-test-bucket/invalid/test-atlas/source-datasets/file.h5ad",
                     "Dataset Validator failed:",
                 ],
             },
@@ -190,10 +200,12 @@ class TestDatasetValidator:
         ],
         ids=lambda x: x["name"],
     )
-    def test_subprocess_validation_scenarios(self, test_case):
+    def test_subprocess_validation_scenarios(self, test_case, refused_endpoint):
         """Parameterized test for various subprocess validation scenarios."""
         # Prepare environment
         env = os.environ.copy()
+        # Every AWS call fails at once against a local port, instead of reaching AWS
+        env.update({"AWS_ENDPOINT_URL": refused_endpoint, "AWS_MAX_ATTEMPTS": "1"})
 
         # Add mock AWS credentials for subprocess tests
         env.update(
@@ -246,12 +258,13 @@ def test_missing_sns_topic_logs_error_and_exits(caplog, env_manager, base_env_va
     assert "SNS_TOPIC_ARN=None" in caplog.text
 
 
-def test_missing_bucket_skips_s3_claim_check(caplog, env_manager, base_env_vars):
+def test_missing_bucket_skips_s3_claim_check(caplog, mock_aws, env_manager, base_env_vars):
     """When env validation fails before resolving a bucket, no S3 write is attempted."""
     from dataset_validator.main import main
 
     test_env = base_env_vars.copy()
     del test_env["S3_BUCKET"]
+    test_env["SNS_TOPIC_ARN"] = mock_aws["topic_arn"]
     env_manager["set"](test_env)
     env_manager["clear"](["S3_BUCKET"])
 
@@ -262,6 +275,7 @@ def test_missing_bucket_skips_s3_claim_check(caplog, env_manager, base_env_vars)
     assert "Missing required environment variables" in caplog.text
     # The S3 claim-check write must be skipped — there's no actionable bucket.
     assert "S3 claim check write" not in caplog.text
+    assert _get_last_sns_message(_get_sns_backend(), mock_aws["topic_arn"])["status"] == "failure"
 
 
 @pytest.mark.parametrize(
@@ -1579,13 +1593,23 @@ def test_local_file_mode_requires_object_kind(monkeypatch, tmp_path, capsys):
     assert "LOCAL_FILE requires OBJECT_KIND set to one of source, integrated" in capsys.readouterr().out
 
 
-def test_apply_external_validator_reports_the_scripts_stderr_when_it_fails(monkeypatch):
+@pytest.mark.parametrize(
+    "stderr, suffix",
+    [
+        (
+            "usage: main.py [-h] file_path {source,integrated}\n",
+            " stderr: usage: main.py [-h] file_path {source,integrated}",
+        ),
+        ("", ""),
+        (" \n", ""),
+    ],
+    ids=["stderr", "no_stderr", "blank_stderr"],
+)
+def test_apply_external_validator_reports_the_scripts_stderr_when_it_fails(monkeypatch, stderr, suffix):
     from dataset_validator.main import apply_external_validator
 
     def refusing_run(cmd, **kwargs):
-        raise subprocess.CalledProcessError(
-            2, cmd, output="", stderr="usage: main.py [-h] file_path {source,integrated}\n"
-        )
+        raise subprocess.CalledProcessError(2, cmd, output="", stderr=stderr)
 
     monkeypatch.setattr("dataset_validator.main.subprocess.run", refusing_run)
     monkeypatch.setenv("TEST_VALIDATOR_SCRIPT", "/s/main.py")
@@ -1603,6 +1627,5 @@ def test_apply_external_validator_reports_the_scripts_stderr_when_it_fails(monke
     assert report.valid is False
     assert report.errors == [
         "Encountered an unexpected error while calling test validator script: "
-        "Command '['/venv/bin/python', '/s/main.py', '/data/file.h5ad']' returned non-zero exit status 2. "
-        "stderr: usage: main.py [-h] file_path {source,integrated}"
+        "Command '['/venv/bin/python', '/s/main.py', '/data/file.h5ad']' returned non-zero exit status 2." + suffix
     ]

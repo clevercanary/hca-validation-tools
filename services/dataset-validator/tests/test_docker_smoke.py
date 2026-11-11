@@ -33,7 +33,10 @@ def dataset_validator_container():
 def test_docker_container_help(dataset_validator_container):
     """Test that the Docker container can run and show help/usage."""
     result = subprocess.run(
-        ["docker", "run", "--rm", dataset_validator_container, "--help"], capture_output=True, text=True, timeout=30
+        ["docker", "run", "--rm", "--network", "none", dataset_validator_container, "--help"],
+        capture_output=True,
+        text=True,
+        timeout=30,
     )
 
     # Should exit with non-zero (missing required env vars) and show error message
@@ -45,7 +48,10 @@ def test_docker_container_help(dataset_validator_container):
 def test_docker_container_missing_env_vars(dataset_validator_container):
     """Test that the Docker container fails gracefully with missing environment variables."""
     result = subprocess.run(
-        ["docker", "run", "--rm", dataset_validator_container], capture_output=True, text=True, timeout=30
+        ["docker", "run", "--rm", "--network", "none", dataset_validator_container],
+        capture_output=True,
+        text=True,
+        timeout=30,
     )
 
     # Should exit with non-zero due to missing required environment variables
@@ -64,6 +70,8 @@ def test_docker_container_with_mock_env_vars(dataset_validator_container):
                 "docker",
                 "run",
                 "--rm",
+                "--network",
+                "none",
                 "-e",
                 "S3_BUCKET=test-bucket",
                 "-e",
@@ -80,6 +88,8 @@ def test_docker_container_with_mock_env_vars(dataset_validator_container):
                 "AWS_SECRET_ACCESS_KEY=fake",
                 "-e",
                 "AWS_DEFAULT_REGION=us-east-1",
+                "-e",
+                "AWS_MAX_ATTEMPTS=1",
                 dataset_validator_container,
             ],
             capture_output=True,
@@ -87,7 +97,7 @@ def test_docker_container_with_mock_env_vars(dataset_validator_container):
             timeout=30,
         )
 
-        # Should fail due to AWS credentials/S3 access, but should start properly
+        # With no network the S3 download fails at once, but the job should start properly
         # and show our expected log messages before failing
         assert "Dataset Validator starting" in result.stderr or "Dataset Validator starting" in result.stdout
 
@@ -99,7 +109,18 @@ def test_docker_container_with_mock_env_vars(dataset_validator_container):
 def test_docker_container_file_structure(dataset_validator_container):
     """Test that the application files are correctly placed in the container."""
     result = subprocess.run(
-        ["docker", "run", "--rm", "--entrypoint", "ls", dataset_validator_container, "-la", "/app/dataset_validator/"],
+        [
+            "docker",
+            "run",
+            "--rm",
+            "--network",
+            "none",
+            "--entrypoint",
+            "ls",
+            dataset_validator_container,
+            "-la",
+            "/app/dataset_validator/",
+        ],
         capture_output=True,
         text=True,
         timeout=30,
@@ -121,6 +142,8 @@ def test_docker_metadata_coverage_schema_loads(dataset_validator_container):
             "docker",
             "run",
             "--rm",
+            "--network",
+            "none",
             "--entrypoint",
             "python",
             dataset_validator_container,
@@ -166,6 +189,8 @@ def test_docker_subprocess_validator_imports_resolve(dataset_validator_container
             "docker",
             "run",
             "--rm",
+            "--network",
+            "none",
             "--entrypoint",
             "/opt/venvs/hca-schema-validator/bin/python",
             dataset_validator_container,
