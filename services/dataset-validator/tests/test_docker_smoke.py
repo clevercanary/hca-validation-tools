@@ -175,10 +175,9 @@ def test_docker_subprocess_validator_imports_resolve(dataset_validator_container
       1. PYTHONPATH=/app exposing /app/hca_schema_validator/ as the package.
       2. PYTHONPATH ending in `:` adding cwd (/app) to sys.path implicitly.
 
-    Invokes the validator as a script (mirrors production: `subprocess.run(
-    [venv/bin/python, /app/hca_schema_validator/main.py, file])`). Uses a
-    deliberately-invalid file so the validator's expected error path runs
-    quickly and the JSON output proves the imports resolved cleanly.
+    Invokes the validator as a script, as production does (`subprocess.run(
+    [venv/bin/python, /app/hca_schema_validator/main.py, file, object_kind])`),
+    but with no arguments, so argparse refuses them and exits quickly.
     """
     # Invoke with no args. The script's argparse usage error comes AFTER its
     # top-level imports complete, so its usage line in stderr proves the imports

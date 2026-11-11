@@ -1576,6 +1576,25 @@ def test_main_resolves_the_object_kind_before_downloading(caplog, key, expected_
     assert publish.call_args.args[0].status == "failure"
 
 
+@pytest.mark.parametrize("object_kind", ["source", "not-a-kind"])
+def test_s3_mode_ignores_object_kind(caplog, monkeypatch, object_kind):
+    from dataset_validator.main import main
+
+    monkeypatch.setenv("OBJECT_KIND", object_kind)
+    key = "gut/gut-v1/integrated-objects/file.h5ad"
+    with (
+        patch("dataset_validator.main.validate_environment", return_value=({**S3_ENV_VARS, "key": key}, [])),
+        patch("dataset_validator.main.download_s3_file", side_effect=Exception("Download failed")) as download,
+        patch("dataset_validator.main.publish_validation_result", return_value=True),
+        caplog.at_level(logging.INFO, logger="dataset_validator.main"),
+    ):
+        main()
+
+    assert "Object kind: integrated" in caplog.text
+    assert "OBJECT_KIND" not in caplog.text
+    assert download.called
+
+
 def test_local_file_mode_requires_object_kind(monkeypatch, tmp_path, capsys):
     from dataset_validator.main import main
 
