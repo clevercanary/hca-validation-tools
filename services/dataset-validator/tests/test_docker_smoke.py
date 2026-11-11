@@ -168,7 +168,7 @@ def test_docker_metadata_coverage_schema_loads(dataset_validator_container):
 def test_docker_subprocess_validator_imports_resolve(dataset_validator_container):
     """The HCA schema validator runs in a separate venv invoked as a script
     subprocess by the dataset-validator. Its top-level `from hca_schema_validator
-    import HCAValidator` must resolve to the installed PyPI package, NOT to a
+    import ...` must resolve to the installed PyPI package, NOT to a
     sibling /app/hca_schema_validator/ wrapper dir.
 
     Regression guard for two PYTHONPATH bugs we hit on dev:

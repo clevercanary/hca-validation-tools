@@ -138,6 +138,31 @@ def test_subprocess_script_imports_cleanly(script_path, extra_args, tmp_path):
     assert "usage:" not in result.stderr, f"{script_path.name} refused its arguments: {result.stderr}"
 
 
+@pytest.mark.parametrize("object_kind", ["source", "integrated"])
+def test_main_subprocess_runs_the_real_validator_with_the_kind(object_kind, tmp_path):
+    import anndata as ad
+    import numpy as np
+    import pandas as pd
+    import scipy.sparse as sp
+
+    path = tmp_path / "tiny.h5ad"
+    ad.AnnData(
+        X=sp.csr_matrix(np.ones((3, 2), dtype=np.float32)),
+        obs=pd.DataFrame(index=["c1", "c2", "c3"]),
+        var=pd.DataFrame(index=["ENSG00000141510", "ENSG00000012048"]),
+    ).write_h5ad(path)
+
+    result = subprocess.run(
+        [sys.executable, str(MAIN_SCRIPT), str(path), object_kind], capture_output=True, text=True, check=True
+    )
+    report = json.loads(result.stdout)
+
+    assert report["validator_version"] == __version__
+    assert not [error for error in report["errors"] if "object_kind" in error or "unexpected error" in error]
+    # A schema finding only the real validator reports, so it ran rather than failing to construct
+    assert "ERROR: 'title' in 'uns' is not present." in report["errors"]
+
+
 def test_cell_annotation_subprocess_returns_json(tmp_path):
     """End-to-end: cell_annotation.py invoked by path returns a well-formed
     failure report when the input file doesn't exist (HCACellAnnotationValidator

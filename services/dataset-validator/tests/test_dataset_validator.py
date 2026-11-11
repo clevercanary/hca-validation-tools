@@ -1524,8 +1524,9 @@ def test_object_kind_from_s3_key(key, expected):
 def test_object_kind_from_s3_key_rejects_other_layouts(key):
     from dataset_validator.main import object_kind_from_s3_key
 
-    with pytest.raises(ValueError, match="source-datasets.*integrated-objects"):
+    with pytest.raises(ValueError, match="source-datasets.*integrated-objects") as refusal:
         object_kind_from_s3_key(key)
+    assert repr(key) in str(refusal.value)
 
 
 @pytest.mark.parametrize("value", ["source", "integrated"])
@@ -1556,7 +1557,7 @@ S3_ENV_VARS = {
     ("key", "expected_log", "downloads"),
     [
         ("gut/gut-v1/integrated-objects/file.h5ad", "Object kind: integrated", True),
-        ("gut/gut-v1/file.h5ad", "so its object kind is unknown", False),
+        ("gut/gut-v1/file.h5ad", "S3 key 'gut/gut-v1/file.h5ad' is not", False),
     ],
     ids=["tracker_layout", "other_layout"],
 )
