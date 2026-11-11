@@ -45,4 +45,4 @@ patch = ["subprocess"]
 branch = true
 
 [tool.coverage.report]
-fail_under = 90
+fail_under = 91
