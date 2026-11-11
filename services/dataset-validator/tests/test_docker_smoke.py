@@ -3,32 +3,16 @@ import tempfile
 from pathlib import Path
 
 import pytest
+from docker_cleanup import IMAGE_NAME, remove_test_artifacts
 
 
 @pytest.fixture(scope="module", autouse=True)
 def dataset_validator_container():
     """Build and run the dataset-validator Docker container for testing."""
-    image_name = "hca-dataset-validator:test"
+    image_name = IMAGE_NAME
 
-    # Teardown logic to ensure container is stopped/removed and clean up test artifacts
-    def teardown():
-        # Stop and remove any test containers
-        subprocess.run(["docker", "stop", "dataset-validator-test"], capture_output=True)
-        subprocess.run(["docker", "rm", "dataset-validator-test"], capture_output=True)
-
-        # Remove any temporary containers that might have been created during tests
-        result = subprocess.run(
-            ["docker", "ps", "-a", "--filter", f"ancestor={image_name}", "-q"], capture_output=True, text=True
-        )
-        if result.stdout.strip():
-            container_ids = result.stdout.strip().split("\n")
-            for container_id in container_ids:
-                subprocess.run(["docker", "rm", "-f", container_id], capture_output=True)
-
-        # Clean up any dangling volumes or networks created during testing
-        subprocess.run(["docker", "system", "prune", "-f", "--volumes"], capture_output=True)
-
-    teardown()  # Clean up before starting (in case of leftovers)
+    # The tests create only this image and `--rm` containers started from it; remove those and nothing else
+    remove_test_artifacts(image_name)  # leftovers from an interrupted run
 
     # Build the container first - need to run from project root
     project_root = Path(__file__).parent.parent.parent.parent
@@ -43,7 +27,7 @@ def dataset_validator_container():
         pytest.fail(f"Docker build failed: {build_result.stderr}")
 
     yield image_name
-    teardown()
+    remove_test_artifacts(image_name)
 
 
 def test_docker_container_help(dataset_validator_container):
@@ -83,7 +67,7 @@ def test_docker_container_with_mock_env_vars(dataset_validator_container):
                 "-e",
                 "S3_BUCKET=test-bucket",
                 "-e",
-                "S3_KEY=test-key.h5ad",
+                "S3_KEY=test-network/test-atlas/source-datasets/test-key.h5ad",
                 "-e",
                 "FILE_ID=test-file-123",
                 "-e",
@@ -108,7 +92,7 @@ def test_docker_container_with_mock_env_vars(dataset_validator_container):
         assert "Dataset Validator starting" in result.stderr or "Dataset Validator starting" in result.stdout
 
         # Should attempt to process the S3 file
-        expected_s3_url = "s3://test-bucket/test-key.h5ad"
+        expected_s3_url = "s3://test-bucket/test-network/test-atlas/source-datasets/test-key.h5ad"
         assert expected_s3_url in result.stderr or expected_s3_url in result.stdout
 
 
@@ -173,12 +157,10 @@ def test_docker_subprocess_validator_imports_resolve(dataset_validator_container
     deliberately-invalid file so the validator's expected error path runs
     quickly and the JSON output proves the imports resolved cleanly.
     """
-    # Invoke with no args. The script raises `Exception("Missing command line
-    # argument for file path")` AFTER its top-level imports complete — so that
-    # specific error message in stderr proves the imports resolved correctly.
-    # If the imports were broken (the PYTHONPATH bug), stderr would contain
-    # `ImportError` from line 4 (`from hca_schema_validator import HCAValidator`)
-    # and the missing-arg check would never run.
+    # Invoke with no args. The script's argparse usage error comes AFTER its
+    # top-level imports complete, so its usage line in stderr proves the imports
+    # resolved. If they were broken (the PYTHONPATH bug), stderr would hold an
+    # `ImportError` from `from hca_schema_validator import ...` instead.
     result = subprocess.run(
         [
             "docker",
@@ -194,8 +176,8 @@ def test_docker_subprocess_validator_imports_resolve(dataset_validator_container
         timeout=30,
     )
 
-    assert result.returncode != 0  # script raises on missing argv
+    assert result.returncode != 0  # argparse refuses the missing arguments
     assert "ImportError" not in result.stderr, (
         f"schema validator subprocess could not import its own package: {result.stderr}"
     )
-    assert "Missing command line argument" in result.stderr, f"expected post-import argv check; got: {result.stderr}"
+    assert "{source,integrated}" in result.stderr, f"expected post-import argparse usage; got: {result.stderr}"

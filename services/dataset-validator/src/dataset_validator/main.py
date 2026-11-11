@@ -14,12 +14,12 @@ import resource
 import shutil
 import subprocess
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass, fields
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
-from typing import cast
+from typing import Literal, cast, get_args
 
 import boto3
 import h5py
@@ -50,6 +50,8 @@ AWS_BATCH_JOB_NAME = "AWS_BATCH_JOB_NAME"
 AWS_DEFAULT_REGION = "AWS_DEFAULT_REGION"
 # Local file mode — bypass S3 download and integrity checks
 LOCAL_FILE = "LOCAL_FILE"
+# The object kind of a LOCAL_FILE run; an S3 run takes the kind from S3_KEY and never reads this
+OBJECT_KIND = "OBJECT_KIND"
 # Validator path variables
 CELLXGENE_VALIDATOR_VENV = "CELLXGENE_VALIDATOR_VENV"
 CELLXGENE_VALIDATOR_SCRIPT = "CELLXGENE_VALIDATOR_SCRIPT"
@@ -66,6 +68,14 @@ STATUS_FAILURE = "failure"
 INTEGRITY_VALID = "valid"
 INTEGRITY_INVALID = "invalid"
 INTEGRITY_ERROR = "error"
+
+# Mirrors hca_schema_validator.ObjectKind, which this venv does not install
+ObjectKind = Literal["source", "integrated"]
+OBJECT_KINDS: tuple[str, ...] = get_args(ObjectKind)
+OBJECT_KIND_BY_FILE_TYPE: dict[str, ObjectKind] = {
+    "source-datasets": "source",
+    "integrated-objects": "integrated",
+}
 
 
 class JobContextFilter(logging.Filter):
@@ -542,6 +552,7 @@ def apply_external_validator(
     default_package_name: str,
     validator_name: str,
     default_script_name: str = "main.py",
+    extra_args: Sequence[str] = (),
 ) -> ValidationToolReport:
     """
     Apply an external validator to the given file by calling a Python script via command line,
@@ -559,6 +570,7 @@ def apply_external_validator(
         validator_name: Name of the validator to use in error messages
         default_script_name: Filename of the script inside the default package directory
             (defaults to "main.py"; override when one venv hosts multiple entry scripts)
+        extra_args: Command-line arguments passed to the script after the file path
 
     Returns:
         Validation report
@@ -589,14 +601,16 @@ def apply_external_validator(
     try:
         # Call validator and parse output
         validator_result = subprocess.run(
-            [f"{venv_path}/bin/python", str(validator_script_path), str(file_path)],
+            [f"{venv_path}/bin/python", str(validator_script_path), str(file_path), *extra_args],
             capture_output=True,
             text=True,
             check=True,
         )
         validator_output = json.loads(validator_result.stdout)
     except Exception as e:
-        message = f"Encountered an unexpected error while calling {validator_name} script: {e}"
+        # A script that refuses its arguments or crashes says why on stderr
+        stderr = f" stderr: {e.stderr.strip()}" if isinstance(e, subprocess.CalledProcessError) else ""
+        message = f"Encountered an unexpected error while calling {validator_name} script: {e}{stderr}"
         logger.error(message)
         validator_output = {"valid": False, "errors": [message], "warnings": []}
 
@@ -638,12 +652,13 @@ def apply_cellxgene_validator(file_path: Path) -> ValidationToolReport:
     )
 
 
-def apply_hca_schema_validator(file_path: Path) -> ValidationToolReport:
+def apply_hca_schema_validator(file_path: Path, object_kind: ObjectKind) -> ValidationToolReport:
     """
     Apply the HCA schema validator to the given file and create a validation report.
 
     Args:
         file_path: Path of the file to validate
+        object_kind: What the tracker lists the file as, passed to the validator script
 
     Returns:
         Validation report
@@ -656,6 +671,7 @@ def apply_hca_schema_validator(file_path: Path) -> ValidationToolReport:
         get_default_root_path=get_default_hcas_validator_root_path,
         default_package_name="hca_schema_validator_service",
         validator_name="HCA schema validator",
+        extra_args=(object_kind,),
     )
 
 
@@ -678,6 +694,33 @@ def apply_hca_cell_annotation_validator(file_path: Path) -> ValidationToolReport
         default_script_name="cell_annotation.py",
         validator_name="HCA cell annotation validator",
     )
+
+
+def object_kind_from_s3_key(key: str) -> ObjectKind:
+    """Return the object kind that the S3 key's third segment names.
+
+    Raises:
+        ValueError: when the key is not ``{bionetwork}/{atlas-folder}/source-datasets/{file}`` or
+            ``{bionetwork}/{atlas-folder}/integrated-objects/{file}``.
+    """
+    parts = key.split("/")
+    if len(parts) != 4 or not parts[3] or parts[2] not in OBJECT_KIND_BY_FILE_TYPE:
+        layouts = " or ".join(
+            f"{{bionetwork}}/{{atlas-folder}}/{folder}/{{file}}" for folder in OBJECT_KIND_BY_FILE_TYPE
+        )
+        raise ValueError(f"S3 key {key!r} is not {layouts}, so its object kind is unknown")
+    return OBJECT_KIND_BY_FILE_TYPE[parts[2]]
+
+
+def object_kind_from_env(value: str | None) -> ObjectKind:
+    """Return a LOCAL_FILE run's object kind from the OBJECT_KIND environment variable's value.
+
+    Raises:
+        ValueError: when the value is unset or not one of ``OBJECT_KINDS``.
+    """
+    if value not in OBJECT_KINDS:
+        raise ValueError(f"LOCAL_FILE requires OBJECT_KIND set to one of {', '.join(OBJECT_KINDS)}; got {value!r}")
+    return cast(ObjectKind, value)
 
 
 def download_s3_file(bucket: str, key: str, local_path: Path) -> str | None:
@@ -857,6 +900,10 @@ def main() -> int:
             batch_job_name=env_vars["batch_job_name"],
         )
 
+        # Resolved before the download, so a file of unknown kind fails the job without being fetched
+        object_kind = object_kind_from_env(os.environ.get(OBJECT_KIND)) if local_mode else object_kind_from_s3_key(key)
+        logger.info("Object kind: %s", object_kind)
+
         if local_mode:
             # Local file mode — skip S3 download and integrity checks
             local_file_path = env_vars["local_file"]
@@ -936,7 +983,7 @@ def main() -> int:
         )
 
         # Call HCA schema validator
-        hca_schema_validation_report = apply_hca_schema_validator(local_file)
+        hca_schema_validation_report = apply_hca_schema_validator(local_file, object_kind)
         log_memory_usage("after HCA schema validator")
         gc.collect()
 
