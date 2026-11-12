@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+import socket
 import subprocess
 import sys
 from pathlib import Path
@@ -91,11 +92,20 @@ def mock_aws():
 
 
 @pytest.fixture
+def refused_endpoint():
+    """A local URL whose port was free a moment ago, so a connection to it is refused."""
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    return f"http://127.0.0.1:{port}"
+
+
+@pytest.fixture
 def base_env_vars():
     """Fixture that provides base environment variables for testing."""
     return {
         "S3_BUCKET": "test-bucket",
-        "S3_KEY": "test/file.h5ad",
+        "S3_KEY": "test-network/test-atlas/integrated-objects/file.h5ad",
         "FILE_ID": "test-file-uuid",
         "SNS_TOPIC_ARN": "arn:aws:sns:us-east-1:123456789012:test-topic",
         "AWS_BATCH_JOB_ID": "test-job-id",
@@ -155,7 +165,7 @@ class TestDatasetValidator:
                 "description": "Test that validator fails when invalid S3 config is provided",
                 "env_vars": {
                     "S3_BUCKET": "invalid-test-bucket",
-                    "S3_KEY": "invalid/test/file.h5ad",
+                    "S3_KEY": "invalid/test-atlas/source-datasets/file.h5ad",
                     "FILE_ID": "test-file-uuid",
                     "SNS_TOPIC_ARN": "arn:aws:sns:us-east-1:123456789012:test-topic",
                     "AWS_BATCH_JOB_ID": "test-job-id",
@@ -166,8 +176,8 @@ class TestDatasetValidator:
                 "expected_logs": [
                     "Dataset Validator starting",
                     "Work directory created:",
-                    "Processing S3 file: s3://invalid-test-bucket/invalid/test/file.h5ad",
-                    "S3 download failed",
+                    "Processing S3 file: s3://invalid-test-bucket/invalid/test-atlas/source-datasets/file.h5ad",
+                    "Unexpected error downloading s3://invalid-test-bucket/invalid/test-atlas/source-datasets/file.h5ad",
                     "Dataset Validator failed:",
                 ],
             },
@@ -176,7 +186,7 @@ class TestDatasetValidator:
                 "description": "Test that work directory is created correctly with valid S3 config",
                 "env_vars": {
                     "S3_BUCKET": "test-bucket",
-                    "S3_KEY": "test/file.h5ad",
+                    "S3_KEY": "test-network/test-atlas/integrated-objects/file.h5ad",
                     "FILE_ID": "test-file-uuid",
                     "SNS_TOPIC_ARN": "arn:aws:sns:us-east-1:123456789012:test-topic",
                     "AWS_BATCH_JOB_ID": "test-job-id",
@@ -190,10 +200,12 @@ class TestDatasetValidator:
         ],
         ids=lambda x: x["name"],
     )
-    def test_subprocess_validation_scenarios(self, test_case):
+    def test_subprocess_validation_scenarios(self, test_case, refused_endpoint):
         """Parameterized test for various subprocess validation scenarios."""
         # Prepare environment
         env = os.environ.copy()
+        # Every AWS call fails at once against a local port, instead of reaching AWS
+        env.update({"AWS_ENDPOINT_URL": refused_endpoint, "AWS_MAX_ATTEMPTS": "1"})
 
         # Add mock AWS credentials for subprocess tests
         env.update(
@@ -246,12 +258,13 @@ def test_missing_sns_topic_logs_error_and_exits(caplog, env_manager, base_env_va
     assert "SNS_TOPIC_ARN=None" in caplog.text
 
 
-def test_missing_bucket_skips_s3_claim_check(caplog, env_manager, base_env_vars):
+def test_missing_bucket_skips_s3_claim_check(caplog, mock_aws, env_manager, base_env_vars):
     """When env validation fails before resolving a bucket, no S3 write is attempted."""
     from dataset_validator.main import main
 
     test_env = base_env_vars.copy()
     del test_env["S3_BUCKET"]
+    test_env["SNS_TOPIC_ARN"] = mock_aws["topic_arn"]
     env_manager["set"](test_env)
     env_manager["clear"](["S3_BUCKET"])
 
@@ -262,6 +275,7 @@ def test_missing_bucket_skips_s3_claim_check(caplog, env_manager, base_env_vars)
     assert "Missing required environment variables" in caplog.text
     # The S3 claim-check write must be skipped — there's no actionable bucket.
     assert "S3 claim check write" not in caplog.text
+    assert _get_last_sns_message(_get_sns_backend(), mock_aws["topic_arn"])["status"] == "failure"
 
 
 @pytest.mark.parametrize(
@@ -643,7 +657,7 @@ def test_cap_validator_script_scenarios(mock_upload_validator, test_case):
                 "status": "success",
                 "timestamp": "2024-01-01T12:00:00Z",
                 "bucket": "test-bucket",
-                "key": "test/file.h5ad",
+                "key": "test-network/test-atlas/integrated-objects/file.h5ad",
                 "batch_job_id": "job-123",
                 "batch_job_name": "test-job",
                 "downloaded_sha256": "abc123",
@@ -668,7 +682,7 @@ def test_cap_validator_script_scenarios(mock_upload_validator, test_case):
                 "status": "failure",
                 "timestamp": "2024-01-01T12:00:00Z",
                 "bucket": "test-bucket",
-                "key": "test/file.h5ad",
+                "key": "test-network/test-atlas/integrated-objects/file.h5ad",
                 "batch_job_id": "job-123",
                 "error_message": "Test error",
             },
@@ -731,7 +745,7 @@ def _build_message(**overrides) -> "object":
         "status": "success",
         "timestamp": "2024-01-01T12:00:00Z",
         "bucket": "test-bucket",
-        "key": "datasets/test.h5ad",
+        "key": "test-network/test-atlas/source-datasets/test.h5ad",
         "batch_job_id": "job-abc",
         "batch_job_name": "test-job",
         "downloaded_sha256": "abc123",
@@ -921,6 +935,7 @@ def test_local_file_mode(mock_read_inputs, mock_matrix_storage, caplog, env_mana
     env_manager["set"](
         {
             "LOCAL_FILE": local_file,
+            "OBJECT_KIND": "source",
             **external_validator_path_vars,
         }
     )
@@ -952,6 +967,7 @@ def test_local_file_mode(mock_read_inputs, mock_matrix_storage, caplog, env_mana
         assert "cap" in output["tool_reports"]
         assert "cellxgene" in output["tool_reports"]
         assert "hcaSchema" in output["tool_reports"]
+        assert output["tool_reports"]["hcaSchema"]["warnings"] == ["WARNING: test bar (source)"]
         assert "hcaCellAnnotation" in output["tool_reports"]
 
 
@@ -961,12 +977,12 @@ def test_local_file_mode(mock_read_inputs, mock_matrix_storage, caplog, env_mana
         {
             "name": "success",
             "description": "Test complete validation workflow with successful validation",
-            "s3_key": "datasets/test.h5ad",
+            "s3_key": "test-network/test-atlas/integrated-objects/test.h5ad",
             "file_id": "test-file-123",
             "batch_job_id": "job-456",
             "batch_job_name": "test-validation-job",
             "setup_s3": lambda s3_client, bucket_name: _setup_valid_s3_file(
-                s3_client, bucket_name, "datasets/test.h5ad"
+                s3_client, bucket_name, "test-network/test-atlas/integrated-objects/test.h5ad"
             ),
             "adata": {
                 "obs": {
@@ -987,7 +1003,7 @@ def test_local_file_mode(mock_read_inputs, mock_matrix_storage, caplog, env_mana
             "expected_exit_code": 0,
             "expected_logs": [
                 "Dataset Validator starting",
-                "Processing S3 file: s3://test-bucket/datasets/test.h5ad",
+                "Processing S3 file: s3://test-bucket/test-network/test-atlas/integrated-objects/test.h5ad",
                 "Work directory created:",
                 "File ready for validation:",
                 "Validation completed successfully",
@@ -1017,7 +1033,11 @@ def test_local_file_mode(mock_read_inputs, mock_matrix_storage, caplog, env_mana
                     # is no longer called) — see #382. Expected output reflects
                     # the empty stub, not the mock script's "ERROR: test" output.
                     "cellxgene": {"valid": True, "errors": [], "warnings": []},
-                    "hcaSchema": {"valid": False, "errors": ["ERROR: test bar"], "warnings": ["WARNING: test bar"]},
+                    "hcaSchema": {
+                        "valid": False,
+                        "errors": ["ERROR: test bar"],
+                        "warnings": ["WARNING: test bar (integrated)"],
+                    },
                     "hcaCellAnnotation": {
                         "valid": False,
                         "errors": ["ERROR: test baz"],
@@ -1029,7 +1049,7 @@ def test_local_file_mode(mock_read_inputs, mock_matrix_storage, caplog, env_mana
         {
             "name": "download_failure",
             "description": "Test complete validation workflow with S3 download failure",
-            "s3_key": "datasets/nonexistent.h5ad",
+            "s3_key": "test-network/test-atlas/source-datasets/nonexistent.h5ad",
             "file_id": "test-file-456",
             "batch_job_id": "job-789",
             "batch_job_name": None,
@@ -1038,7 +1058,7 @@ def test_local_file_mode(mock_read_inputs, mock_matrix_storage, caplog, env_mana
             "expected_exit_code": 1,
             "expected_logs": [
                 "Dataset Validator starting",
-                "Processing S3 file: s3://test-bucket/datasets/nonexistent.h5ad",
+                "Processing S3 file: s3://test-bucket/test-network/test-atlas/source-datasets/nonexistent.h5ad",
                 "S3 download failed",
                 "Dataset Validator failed:",
                 "Publishing validation result to SNS topic",
@@ -1057,12 +1077,12 @@ def test_local_file_mode(mock_read_inputs, mock_matrix_storage, caplog, env_mana
         {
             "name": "integrity_failure",
             "description": "Test complete validation workflow with file integrity failure",
-            "s3_key": "datasets/corrupt.h5ad",
+            "s3_key": "test-network/test-atlas/source-datasets/corrupt.h5ad",
             "file_id": "test-file-789",
             "batch_job_id": "job-101",
             "batch_job_name": None,
             "setup_s3": lambda s3_client, bucket_name: _setup_corrupt_s3_file(
-                s3_client, bucket_name, "datasets/corrupt.h5ad"
+                s3_client, bucket_name, "test-network/test-atlas/source-datasets/corrupt.h5ad"
             ),
             "adata": None,
             "expected_exit_code": 1,
@@ -1086,18 +1106,18 @@ def test_local_file_mode(mock_read_inputs, mock_matrix_storage, caplog, env_mana
         {
             "name": "metadata_failure",
             "description": "Test complete validation workflow with failure reading metadata",
-            "s3_key": "datasets/test.h5ad",
+            "s3_key": "test-network/test-atlas/source-datasets/test.h5ad",
             "file_id": "test-file-123",
             "batch_job_id": "job-456",
             "batch_job_name": "test-validation-job",
             "setup_s3": lambda s3_client, bucket_name: _setup_valid_s3_file(
-                s3_client, bucket_name, "datasets/test.h5ad"
+                s3_client, bucket_name, "test-network/test-atlas/source-datasets/test.h5ad"
             ),
             "adata": {"exception": Exception("Test metadata error")},
             "expected_exit_code": 1,
             "expected_logs": [
                 "Dataset Validator starting",
-                "Processing S3 file: s3://test-bucket/datasets/test.h5ad",
+                "Processing S3 file: s3://test-bucket/test-network/test-atlas/source-datasets/test.h5ad",
                 "Work directory created:",
                 "File ready for validation:",
                 "Error reading metadata:",
@@ -1119,12 +1139,12 @@ def test_local_file_mode(mock_read_inputs, mock_matrix_storage, caplog, env_mana
         {
             "name": "cap_failure",
             "description": "Test complete validation workflow with successful validation",
-            "s3_key": "datasets/test.h5ad",
+            "s3_key": "test-network/test-atlas/source-datasets/test.h5ad",
             "file_id": "test-file-123",
             "batch_job_id": "job-456",
             "batch_job_name": "test-validation-job",
             "setup_s3": lambda s3_client, bucket_name: _setup_valid_s3_file(
-                s3_client, bucket_name, "datasets/test.h5ad"
+                s3_client, bucket_name, "test-network/test-atlas/source-datasets/test.h5ad"
             ),
             "adata": {
                 "obs": {
@@ -1146,7 +1166,7 @@ def test_local_file_mode(mock_read_inputs, mock_matrix_storage, caplog, env_mana
             "expected_exit_code": 0,
             "expected_logs": [
                 "Dataset Validator starting",
-                "Processing S3 file: s3://test-bucket/datasets/test.h5ad",
+                "Processing S3 file: s3://test-bucket/test-network/test-atlas/source-datasets/test.h5ad",
                 "Work directory created:",
                 "File ready for validation:",
                 "Validation completed successfully",
@@ -1180,7 +1200,11 @@ def test_local_file_mode(mock_read_inputs, mock_matrix_storage, caplog, env_mana
                     },
                     # cellxgene stubbed in main.py — see #382.
                     "cellxgene": {"valid": True, "errors": [], "warnings": []},
-                    "hcaSchema": {"valid": False, "errors": ["ERROR: test bar"], "warnings": ["WARNING: test bar"]},
+                    "hcaSchema": {
+                        "valid": False,
+                        "errors": ["ERROR: test bar"],
+                        "warnings": ["WARNING: test bar (source)"],
+                    },
                     "hcaCellAnnotation": {
                         "valid": False,
                         "errors": ["ERROR: test baz"],
@@ -1256,7 +1280,7 @@ def test_unset_validation_results_bucket_skips_s3_claim_check(
     completes successfully but no S3 claim-check write is attempted."""
     from dataset_validator.main import main
 
-    s3_key = "datasets/test.h5ad"
+    s3_key = "test-network/test-atlas/source-datasets/test.h5ad"
     _setup_valid_s3_file(mock_aws["s3_client"], mock_aws["bucket_name"], s3_key)
 
     env_manager["set"](
@@ -1426,17 +1450,7 @@ def test_apply_external_validator_falls_back_to_uv_venv(monkeypatch):
     monkeypatch.delenv("TEST_VALIDATOR_SCRIPT", raising=False)
     monkeypatch.delenv("TEST_VALIDATOR_VENV", raising=False)
 
-    captured = {}
-
-    def fake_run(cmd, **kwargs):
-        captured["cmd"] = cmd
-        return SimpleNamespace(
-            stdout=json.dumps({"valid": True, "errors": [], "warnings": []}),
-            stderr="",
-            returncode=0,
-        )
-
-    monkeypatch.setattr("dataset_validator.main.subprocess.run", fake_run)
+    captured = _capture_validator_argv(monkeypatch)
 
     report = apply_external_validator(
         Path("/data/file.h5ad"),
@@ -1451,3 +1465,187 @@ def test_apply_external_validator_falls_back_to_uv_venv(monkeypatch):
     assert captured["cmd"][0] == f"{root}/.venv/bin/python"
     assert captured["cmd"][1] == str(root / "src" / "pkg" / "main.py")
     assert captured["cmd"][2] == "/data/file.h5ad"
+
+
+def _capture_validator_argv(monkeypatch):
+    captured = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        return SimpleNamespace(
+            stdout=json.dumps({"valid": True, "errors": [], "warnings": []}), stderr="", returncode=0
+        )
+
+    monkeypatch.setattr("dataset_validator.main.subprocess.run", fake_run)
+    return captured
+
+
+@pytest.mark.parametrize("object_kind", ["source", "integrated"])
+def test_apply_hca_schema_validator_passes_the_object_kind(monkeypatch, object_kind):
+    from dataset_validator.main import apply_hca_schema_validator
+
+    captured = _capture_validator_argv(monkeypatch)
+    monkeypatch.setenv("HCA_SCHEMA_VALIDATOR_SCRIPT", "/s/main.py")
+    monkeypatch.setenv("HCA_SCHEMA_VALIDATOR_VENV", "/venv")
+
+    apply_hca_schema_validator(Path("/data/file.h5ad"), object_kind)
+
+    assert captured["cmd"][2:] == ["/data/file.h5ad", object_kind]
+
+
+@pytest.mark.parametrize(
+    ("key", "expected"),
+    [
+        ("gut/gut-v1/source-datasets/file.h5ad", "source"),
+        ("gut/gut-v1/integrated-objects/file.h5ad", "integrated"),
+    ],
+)
+def test_object_kind_from_s3_key(key, expected):
+    from dataset_validator.main import object_kind_from_s3_key
+
+    assert object_kind_from_s3_key(key) == expected
+
+
+@pytest.mark.parametrize(
+    "key",
+    [
+        "file.h5ad",
+        "gut/gut-v1/file.h5ad",
+        "gut/gut-v1/source-datasets",
+        "gut/gut-v1/source-datasets/",
+        "gut/gut-v1/integrated-objects/tracker-source/file.h5ad",
+        "/gut-v1/source-datasets/file.h5ad",
+        "gut//integrated-objects/file.h5ad",
+        "gut/source-datasets/file.h5ad",
+        "gut/gut-v1/manifests/file.h5ad",
+        "gut/gut-v1/Source-Datasets/file.h5ad",
+    ],
+)
+def test_object_kind_from_s3_key_rejects_other_layouts(key):
+    from dataset_validator.main import object_kind_from_s3_key
+
+    with pytest.raises(ValueError, match="source-datasets.*integrated-objects") as refusal:
+        object_kind_from_s3_key(key)
+    assert repr(key) in str(refusal.value)
+
+
+@pytest.mark.parametrize("value", ["source", "integrated"])
+def test_object_kind_from_env(value):
+    from dataset_validator.main import object_kind_from_env
+
+    assert object_kind_from_env(value) == value
+
+
+@pytest.mark.parametrize("value", [None, "", "integrated-objects", "Source"])
+def test_object_kind_from_env_rejects_anything_else(value):
+    from dataset_validator.main import object_kind_from_env
+
+    with pytest.raises(ValueError, match="LOCAL_FILE requires OBJECT_KIND set to one of source, integrated"):
+        object_kind_from_env(value)
+
+
+S3_ENV_VARS = {
+    "bucket": "test-bucket",
+    "file_id": "test-file-123",
+    "sns_topic_arn": "arn:aws:sns:us-east-1:123456789012:test-topic",
+    "batch_job_id": "test-job-456",
+    "batch_job_name": "test-job-name",
+}
+
+
+@pytest.mark.parametrize(
+    ("key", "expected_log", "downloads"),
+    [
+        ("gut/gut-v1/integrated-objects/file.h5ad", "Object kind: integrated", True),
+        ("gut/gut-v1/file.h5ad", "S3 key 'gut/gut-v1/file.h5ad' is not", False),
+    ],
+    ids=["tracker_layout", "other_layout"],
+)
+def test_main_resolves_the_object_kind_before_downloading(caplog, key, expected_log, downloads):
+    from dataset_validator.main import main
+
+    with (
+        patch("dataset_validator.main.validate_environment", return_value=({**S3_ENV_VARS, "key": key}, [])),
+        patch("dataset_validator.main.download_s3_file", side_effect=Exception("Download failed")) as download,
+        patch("dataset_validator.main.publish_validation_result", return_value=True) as publish,
+        caplog.at_level(logging.INFO, logger="dataset_validator.main"),
+    ):
+        assert main() == 1
+
+    assert expected_log in caplog.text
+    assert download.called is downloads
+    assert publish.call_args.args[0].status == "failure"
+
+
+@pytest.mark.parametrize("object_kind", ["source", "not-a-kind"])
+def test_s3_mode_ignores_object_kind(caplog, monkeypatch, object_kind):
+    from dataset_validator.main import main
+
+    monkeypatch.setenv("OBJECT_KIND", object_kind)
+    key = "gut/gut-v1/integrated-objects/file.h5ad"
+    with (
+        patch("dataset_validator.main.validate_environment", return_value=({**S3_ENV_VARS, "key": key}, [])),
+        patch("dataset_validator.main.download_s3_file", side_effect=Exception("Download failed")) as download,
+        patch("dataset_validator.main.publish_validation_result", return_value=True),
+        caplog.at_level(logging.INFO, logger="dataset_validator.main"),
+    ):
+        main()
+
+    assert "Object kind: integrated" in caplog.text
+    assert "OBJECT_KIND" not in caplog.text
+    assert download.called
+
+
+def test_local_file_mode_requires_object_kind(monkeypatch, tmp_path, capsys):
+    from dataset_validator.main import main
+
+    local_file = tmp_path / "test.h5ad"
+    local_file.touch()
+    monkeypatch.setenv("LOCAL_FILE", str(local_file))
+    monkeypatch.delenv("OBJECT_KIND", raising=False)
+    for name in ["S3_BUCKET", "S3_KEY", "FILE_ID", "SNS_TOPIC_ARN", "AWS_BATCH_JOB_ID"]:
+        monkeypatch.delenv(name, raising=False)
+
+    with patch("dataset_validator.main.read_file_metadata") as read_metadata:
+        assert main() == 1
+
+    read_metadata.assert_not_called()
+    assert "LOCAL_FILE requires OBJECT_KIND set to one of source, integrated" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "stderr, suffix",
+    [
+        (
+            "usage: main.py [-h] file_path {source,integrated}\n",
+            " stderr: usage: main.py [-h] file_path {source,integrated}",
+        ),
+        ("", ""),
+        (" \n", ""),
+    ],
+    ids=["stderr", "no_stderr", "blank_stderr"],
+)
+def test_apply_external_validator_reports_the_scripts_stderr_when_it_fails(monkeypatch, stderr, suffix):
+    from dataset_validator.main import apply_external_validator
+
+    def refusing_run(cmd, **kwargs):
+        raise subprocess.CalledProcessError(2, cmd, output="", stderr=stderr)
+
+    monkeypatch.setattr("dataset_validator.main.subprocess.run", refusing_run)
+    monkeypatch.setenv("TEST_VALIDATOR_SCRIPT", "/s/main.py")
+    monkeypatch.setenv("TEST_VALIDATOR_VENV", "/venv")
+
+    report = apply_external_validator(
+        Path("/data/file.h5ad"),
+        script_path_var="TEST_VALIDATOR_SCRIPT",
+        venv_path_var="TEST_VALIDATOR_VENV",
+        get_default_root_path=lambda: Path("/unused"),
+        default_package_name="pkg",
+        validator_name="test validator",
+    )
+
+    assert report.valid is False
+    assert report.errors == [
+        "Encountered an unexpected error while calling test validator script: "
+        "Command '['/venv/bin/python', '/s/main.py', '/data/file.h5ad']' returned non-zero exit status 2." + suffix
+    ]

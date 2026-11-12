@@ -1,15 +1,15 @@
 [project]
 name = "hca-schema-validator"
-version = "0.15.2"
+version = "0.16.0"
 description = "HCA schema validation for single-cell datasets"
 authors = [{ name = "Clever Canary", email = "dave@clevercanary.com" }]
 license = "MIT"
 license-files = ["NOTICE"]
 readme = "README.md"
 requires-python = ">=3.10,<4.0"
-# These are cellxgene-schema 7.0.1's pins, not ours. The vendored validator has
-# to reproduce that environment to behave identically, so do not relax them to
-# suit another package.
+# These are cellxgene-schema 7.0.0's pins (unchanged in 7.0.1), not ours. The
+# vendored validator has to reproduce that environment to behave identically, so
+# do not relax them to suit another package.
 dependencies = [
     "anndata==0.11.4",
     "cellxgene-ontology-guide==1.9.0",

@@ -26,7 +26,7 @@ def test_end_to_end_validation_missing_sha256_metadata(caplog):
     test_content = b"mock dataset content"
     s3_client.put_object(
         Bucket="test-bucket",
-        Key="datasets/no-metadata.h5ad",
+        Key="test-network/test-atlas/source-datasets/no-metadata.h5ad",
         Body=test_content,
         # No Metadata parameter - missing source-sha256
     )
@@ -39,7 +39,7 @@ def test_end_to_end_validation_missing_sha256_metadata(caplog):
     # Set environment variables
     test_env = {
         "S3_BUCKET": "test-bucket",
-        "S3_KEY": "datasets/no-metadata.h5ad",
+        "S3_KEY": "test-network/test-atlas/source-datasets/no-metadata.h5ad",
         "FILE_ID": "test-file-999",
         "SNS_TOPIC_ARN": topic_arn,
         "AWS_BATCH_JOB_ID": "job-999",

@@ -9,6 +9,7 @@ from hca_schema_validator import __version__
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from hca_schema_validator_service.main import (
+    parse_args,
     run_validator,
     validator_logger_name,
 )
@@ -76,8 +77,9 @@ from hca_schema_validator_service.main import (
     ],
     ids=lambda x: x["name"],
 )
+@pytest.mark.parametrize("object_kind", ["source", "integrated"])
 @patch("hca_schema_validator_service.main.HCAValidator")
-def test_hca_schema_validator_cases(mock_hca_validator, test_case):
+def test_hca_schema_validator_cases(mock_hca_validator, object_kind, test_case):
     def do_mock_validate(_, **__):
         logger = logging.getLogger(validator_logger_name)
         for level, message in test_case["logs"]:
@@ -95,9 +97,33 @@ def test_hca_schema_validator_cases(mock_hca_validator, test_case):
     else:
         mock_validate_adata.side_effect = do_mock_validate
 
-    result = run_validator(test_case["file_path"])
+    result = run_validator(test_case["file_path"], object_kind)
 
-    mock_hca_validator.assert_called_once_with(ignore_labels=True)
+    mock_hca_validator.assert_called_once_with(ignore_labels=True, object_kind=object_kind)
     mock_validate_adata.assert_called_once_with(test_case["file_path"])
     # Every response also names the validator release that ran (#802)
     assert result == {**test_case["expected_output"], "validator_version": __version__}
+
+
+@pytest.mark.parametrize("object_kind", ["source", "integrated"])
+def test_parse_args_accepts_path_and_kind(object_kind):
+    assert parse_args(["test.h5ad", object_kind]) == ("test.h5ad", object_kind)
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        [],
+        ["test.h5ad"],
+        ["test.h5ad", "integrated-objects"],
+        ["test.h5ad", "Source"],
+        ["test.h5ad", "source", "extra"],
+    ],
+    ids=["no_args", "no_kind", "wrong_kind", "wrong_case", "extra_arg"],
+)
+def test_parse_args_rejects_anything_else(args, capsys):
+    with pytest.raises(SystemExit) as exit_info:
+        parse_args(args)
+
+    assert exit_info.value.code == 2
+    assert "usage: main.py [-h] file_path {source,integrated}" in capsys.readouterr().err
