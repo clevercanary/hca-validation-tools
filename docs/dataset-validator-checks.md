@@ -18,6 +18,7 @@ Source files:
 Run before any schema validator:
 
 - **Required env vars present** — `S3_BUCKET`, `S3_KEY`, `FILE_ID`, `SNS_TOPIC_ARN`, `AWS_BATCH_JOB_ID` (bypassed when `LOCAL_FILE` is set).
+- **Object kind known** — read from `S3_KEY`'s third segment, before the download: `{bionetwork}/{atlas-folder}/source-datasets/{file}` is a source dataset and `{bionetwork}/{atlas-folder}/integrated-objects/{file}` an integrated object. Any other key fails the job. A `LOCAL_FILE` run takes the kind from `OBJECT_KIND` (`source` or `integrated`), which it requires; an S3 run never reads `OBJECT_KIND`.
 - **S3 object has `source-sha256` metadata** — hard-fail if missing.
 - **File integrity** — SHA256 computed on the downloaded file must match the S3 metadata hash.
 - **Metadata summary readable** — reads `obs`, `uns` and the shape of `X` from the h5ad, without loading the matrices, and extracts `uns.title`, `obs.assay`, `obs.suspension_type`, `obs.tissue`, `obs.disease`, `n_obs`, `n_vars`.
@@ -40,7 +41,7 @@ Runs the external `cap_upload_validator` package against the file. Validates CAP
 
 ## 4. HCA schema validator (`HCAValidator`)
 
-Runs `HCAValidator` from the `hca-schema-validator` package. The checks it makes — the core CELLxGENE checks, the HCA overrides and the HCA extensions — are listed in the [package's list of checks](../packages/hca-schema-validator/CHECKS.md). This document does not repeat them.
+Runs `HCAValidator` from the `hca-schema-validator` package, with the object kind from §1. The checks it makes — the core CELLxGENE checks, the HCA overrides and the HCA extensions — are listed in the [package's list of checks](../packages/hca-schema-validator/CHECKS.md). This document does not repeat them.
 
 ---
 

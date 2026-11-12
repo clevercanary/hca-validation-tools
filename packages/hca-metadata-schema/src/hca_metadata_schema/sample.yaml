@@ -133,7 +133,7 @@ slots:
     required: true
     multivalued: false
     notes:
-      - "This must be a Cell Ontology (CL) term (http://www.ebi.ac.uk/ols4/ontologies/cl). For cells that are enriched, list the CL code followed by a \"+\". For cells that were depleted, list the CL code followed by a \"-\". If no enrichment or depletion occurred, please use 'na' (not applicable)"
+      - "This must be a Cell Ontology (CL) term (https://www.ebi.ac.uk/ols4/ontologies/cl). For cells that are enriched, list the CL code followed by a \"+\". For cells that were depleted, list the CL code followed by a \"-\". If no enrichment or depletion occurred, please use 'na' (not applicable)"
     comments:
       - If cell lineages were filtered, this may be a dataset exclusion criterion.
 
