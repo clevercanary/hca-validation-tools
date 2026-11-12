@@ -15,7 +15,7 @@ override AWS = aws --profile $(PROFILE)
 .PHONY: help
 help:
 	@echo "Entry Sheet Validator Service Tasks:"
-	@echo "  test                   - Run the tests that need no image (what CI runs)"
+	@echo "  test                   - Run the tests that need no image (CI runs these, with coverage)"
 	@echo "  test-lambda-container  - Test the Lambda container locally (loads root .env for credentials; needs a built image)"
 	@echo "  test-lambda            - Alias for test-lambda-container"
 	@echo "  build-lambda-container - Build the entry sheet validator Lambda container image"
