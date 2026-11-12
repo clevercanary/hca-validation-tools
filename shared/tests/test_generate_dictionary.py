@@ -119,7 +119,7 @@ def test_no_schema_example_contains_a_semicolon(schemaview):
         for class_name in schemaview.all_classes()
         for slot in schemaview.class_induced_slots(class_name)
         for example in slot.examples
-        if example.value and ";" in example.value
+        if ";" in example.value
     }
     assert not offending, f"examples containing ';': {sorted(offending)}"
 
