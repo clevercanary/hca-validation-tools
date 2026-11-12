@@ -9,12 +9,14 @@ import textwrap
 
 import pytest
 from linkml_runtime import SchemaView
+from linkml_runtime.linkml_model import Example, SlotDefinition
 
 from hca_validation.data_dictionary.generate_dictionary import (
     generate_dictionary,
     generate_tier_1_dictionary,
     load_layout,
     load_schemas,
+    slot_to_attribute,
     transform_layout_to_data_dictionary,
     transform_schema_to_data_dictionary,
 )
@@ -118,20 +120,6 @@ def test_no_schema_text_ends_in_whitespace(schemaview):
             if any(text is not None and text != text.rstrip() for text in texts):
                 padded.append(f"{class_name}.{slot.name}")
     assert not padded, f"trailing whitespace: {', '.join(padded)}"
-
-
-def test_no_schema_example_contains_a_semicolon(schemaview):
-    # The dictionary joins a slot's examples with "; ", and the portal splits `example` on ";" to show each as a
-    # separate alternative (data-portal's DetailCell `buildExample`), so a ";" inside one example would show as two
-    # (#854). A set of (slot, example) pairs, so a slot bionetwork subclasses inherit is reported once per example.
-    offending = {
-        (slot.name, example.value)
-        for class_name in schemaview.all_classes()
-        for slot in schemaview.class_induced_slots(class_name)
-        for example in slot.examples
-        if ";" in example.value
-    }
-    assert not offending, f"examples containing ';': {sorted(offending)}"
 
 
 def test_core_slots_have_every_network(data_dictionary):
@@ -406,7 +394,7 @@ slots:
     required: true
     examples:
       - value: first example
-      - value: second example
+      - value: "second; example"
     annotations:
       annDataLocation: uns
       cxg: title
@@ -566,9 +554,15 @@ def test_populated_slot(mapping_dictionary):
         "range": "string",
         "required": True,
         "multivalued": False,
-        "example": "first example; second example",
+        "examples": ["first example", "second; example"],
         "annotations": {"annDataLocation": "uns", "cxg": "title", "bioNetworks": _ALL_NETWORKS},
     }
+
+
+def test_example_without_a_value_is_refused(schemaview):
+    slot = SlotDefinition(name="title", examples=[Example(description="any free text")])
+    with pytest.raises(ValueError, match="'title' has an example with no value"):
+        slot_to_attribute(schemaview, slot, set())
 
 
 def test_bare_slot_gets_defaults_and_only_bionetworks(mapping_dictionary):

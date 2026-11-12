@@ -242,9 +242,10 @@ def slot_to_attribute(schemaview: SchemaView, slot_info, schema_enum_names: set[
         "multivalued": slot_info.multivalued if slot_info.multivalued is not None else False,
     }
 
-    # Add examples if available, joined as the portal lists them
     if slot_info.examples:
-        attribute["example"] = "; ".join(example.value for example in slot_info.examples)
+        if any(example.value is None for example in slot_info.examples):
+            raise ValueError(f"'{slot_info.name}' has an example with no value")
+        attribute["examples"] = [example.value for example in slot_info.examples]
 
     # Add annotations if available - format as requested
     if slot_info.annotations:
