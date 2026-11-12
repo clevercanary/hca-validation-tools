@@ -386,7 +386,7 @@ class Dataset(ConfiguredBaseModel):
          'domain_of': ['Dataset'],
          'examples': [{'value': 'EFO:0008563'}],
          'notes': ['Values should be "subClassOf" ["EFO:0002699"] - '
-                   'https://www.ebi.ac.uk/ols/ontologies/efo/terms?iri=http%3A%2F%2Fwww.ebi.ac.uk%2Fefo%2FEFO_0002699']} })
+                   'https://www.ebi.ac.uk/ols4/ontologies/efo/classes?iri=http%3A%2F%2Fwww.ebi.ac.uk%2Fefo%2FEFO_0002699']} })
     study_pi: list[str] = Field(default=..., title="Study PI", description="""Principal Investigator(s) leading the study where the data is/was used.""", json_schema_extra = { "linkml_meta": {'alias': 'study_pi',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'uns'}},
          'domain_of': ['Dataset'],
@@ -533,7 +533,7 @@ class AdiposeDataset(Dataset):
          'domain_of': ['Dataset'],
          'examples': [{'value': 'EFO:0008563'}],
          'notes': ['Values should be "subClassOf" ["EFO:0002699"] - '
-                   'https://www.ebi.ac.uk/ols/ontologies/efo/terms?iri=http%3A%2F%2Fwww.ebi.ac.uk%2Fefo%2FEFO_0002699']} })
+                   'https://www.ebi.ac.uk/ols4/ontologies/efo/classes?iri=http%3A%2F%2Fwww.ebi.ac.uk%2Fefo%2FEFO_0002699']} })
     study_pi: list[str] = Field(default=..., title="Study PI", description="""Principal Investigator(s) leading the study where the data is/was used.""", json_schema_extra = { "linkml_meta": {'alias': 'study_pi',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'uns'}},
          'domain_of': ['Dataset'],
@@ -680,7 +680,7 @@ class GutDataset(Dataset):
          'domain_of': ['Dataset'],
          'examples': [{'value': 'EFO:0008563'}],
          'notes': ['Values should be "subClassOf" ["EFO:0002699"] - '
-                   'https://www.ebi.ac.uk/ols/ontologies/efo/terms?iri=http%3A%2F%2Fwww.ebi.ac.uk%2Fefo%2FEFO_0002699']} })
+                   'https://www.ebi.ac.uk/ols4/ontologies/efo/classes?iri=http%3A%2F%2Fwww.ebi.ac.uk%2Fefo%2FEFO_0002699']} })
     study_pi: list[str] = Field(default=..., title="Study PI", description="""Principal Investigator(s) leading the study where the data is/was used.""", json_schema_extra = { "linkml_meta": {'alias': 'study_pi',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'uns'}},
          'domain_of': ['Dataset'],
@@ -853,7 +853,7 @@ class Sample(ConfiguredBaseModel):
          'domain_of': ['Sample'],
          'examples': [{'value': 'CL:0000057+'}, {'value': 'na'}],
          'notes': ['This must be a Cell Ontology (CL) term '
-                   '(http://www.ebi.ac.uk/ols4/ontologies/cl). For cells that are '
+                   '(https://www.ebi.ac.uk/ols4/ontologies/cl). For cells that are '
                    'enriched, list the CL code followed by a "+". For cells that were '
                    'depleted, list the CL code followed by a "-". If no enrichment or '
                    "depletion occurred, please use 'na' (not applicable)"]} })
@@ -1126,7 +1126,7 @@ class AdiposeSample(Sample):
          'domain_of': ['Sample'],
          'examples': [{'value': 'CL:0000057+'}, {'value': 'na'}],
          'notes': ['This must be a Cell Ontology (CL) term '
-                   '(http://www.ebi.ac.uk/ols4/ontologies/cl). For cells that are '
+                   '(https://www.ebi.ac.uk/ols4/ontologies/cl). For cells that are '
                    'enriched, list the CL code followed by a "+". For cells that were '
                    'depleted, list the CL code followed by a "-". If no enrichment or '
                    "depletion occurred, please use 'na' (not applicable)"]} })
@@ -1409,7 +1409,7 @@ class GutSample(Sample):
          'domain_of': ['Sample'],
          'examples': [{'value': 'CL:0000057+'}, {'value': 'na'}],
          'notes': ['This must be a Cell Ontology (CL) term '
-                   '(http://www.ebi.ac.uk/ols4/ontologies/cl). For cells that are '
+                   '(https://www.ebi.ac.uk/ols4/ontologies/cl). For cells that are '
                    'enriched, list the CL code followed by a "+". For cells that were '
                    'depleted, list the CL code followed by a "-". If no enrichment or '
                    "depletion occurred, please use 'na' (not applicable)"]} })
@@ -1736,7 +1736,7 @@ class MusculoskeletalDataset(Dataset):
          'domain_of': ['Dataset'],
          'examples': [{'value': 'EFO:0008563'}],
          'notes': ['Values should be "subClassOf" ["EFO:0002699"] - '
-                   'https://www.ebi.ac.uk/ols/ontologies/efo/terms?iri=http%3A%2F%2Fwww.ebi.ac.uk%2Fefo%2FEFO_0002699']} })
+                   'https://www.ebi.ac.uk/ols4/ontologies/efo/classes?iri=http%3A%2F%2Fwww.ebi.ac.uk%2Fefo%2FEFO_0002699']} })
     study_pi: list[str] = Field(default=..., title="Study PI", description="""Principal Investigator(s) leading the study where the data is/was used.""", json_schema_extra = { "linkml_meta": {'alias': 'study_pi',
          'annotations': {'annDataLocation': {'tag': 'annDataLocation', 'value': 'uns'}},
          'domain_of': ['Dataset'],
@@ -1781,7 +1781,7 @@ Use `cell_type_ontology_term_id` for integrated objects. `cell_type_ontology_ter
          'domain_of': ['Cell'],
          'examples': [{'value': 'CL:0001204'}],
          'notes': ['This must be a Cell Ontology (CL) term '
-                   '(http://www.ebi.ac.uk/ols4/ontologies/cl).\n'
+                   '(https://www.ebi.ac.uk/ols4/ontologies/cl).\n'
                    '\n'
                    'If no appropriate high-level term can be found or the cell type is '
                    "unknown, then it is strongly recommended to use 'unknown'.\n"

@@ -246,7 +246,7 @@ slots:
     examples:
       - value: "EFO:0008563"
     notes:
-      - Values should be "subClassOf" ["EFO:0002699"] - https://www.ebi.ac.uk/ols/ontologies/efo/terms?iri=http%3A%2F%2Fwww.ebi.ac.uk%2Fefo%2FEFO_0002699
+      - Values should be "subClassOf" ["EFO:0002699"] - https://www.ebi.ac.uk/ols4/ontologies/efo/classes?iri=http%3A%2F%2Fwww.ebi.ac.uk%2Fefo%2FEFO_0002699
     comments:
       - This captures potential strand hopping which may cause data quality issues.
     annotations:
