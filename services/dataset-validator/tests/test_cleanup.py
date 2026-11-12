@@ -112,6 +112,7 @@ def test_cleanup_preserves_exit_code(caplog):
     with (
         patch("dataset_validator.main.validate_environment") as mock_validate,
         patch("dataset_validator.main.download_s3_file", side_effect=Exception("Download failed")),
+        patch("dataset_validator.main.publish_validation_result", return_value=True),
         patch("shutil.rmtree", side_effect=OSError("Permission denied")),
         patch("pathlib.Path.exists", return_value=True),
         patch("tempfile.mkdtemp", return_value="/tmp/test_work_dir"),
@@ -120,7 +121,7 @@ def test_cleanup_preserves_exit_code(caplog):
         mock_validate.return_value = (
             {
                 "bucket": "test-bucket",
-                "key": "test-key.h5ad",
+                "key": "test-network/test-atlas/source-datasets/test-key.h5ad",
                 "file_id": "test-file-123",
                 "sns_topic_arn": "arn:aws:sns:us-east-1:123456789012:test-topic",
                 "batch_job_id": "test-job-456",

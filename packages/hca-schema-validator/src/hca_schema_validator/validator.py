@@ -2212,7 +2212,11 @@ def _no_release_explains_message(dated, ensg: set[str], n_non_ensembl: int, obje
     _, shortfall, unknown = dated
     closest = min(shortfall, key=lambda r: shortfall[r])
     skipped = n_non_ensembl
-    context = f" ({_plural(skipped, 'feature')} excluded from dating -- not plain Ensembl gene ids)" if skipped else ""
+    context = (
+        f" ({_plural(skipped, 'feature')} excluded from release matching -- not plain Ensembl gene ids)"
+        if skipped
+        else ""
+    )
     # Named, not just counted: #710 asks for the minimum *and* the unexplained
     # genes. On a file whose intervals are individually known but jointly
     # impossible, nothing else supplies an identifier to investigate -- the
@@ -2419,7 +2423,11 @@ def _release_against_genes(parsed, ensg: set[str], n_non_ensembl: int, dated, ob
     said = []
 
     skipped = n_non_ensembl
-    context = f" ({_plural(skipped, 'feature')} excluded from dating -- not plain Ensembl gene ids)" if skipped else ""
+    context = (
+        f" ({_plural(skipped, 'feature')} excluded from release matching -- not plain Ensembl gene ids)"
+        if skipped
+        else ""
+    )
     if earliest is None:
         # No release explains the whole gene list -- said once per file, from the
         # check itself. The declared value is still worth comparing against the
@@ -3074,7 +3082,7 @@ _CLASS_ROWS = (
     ("unclassified", "no event recorded"),
 )
 _CLASS_TEXT = dict(_CLASS_ROWS)
-# What each action means is documented in the package README and in
+# What each action means is documented in the package's CHECKS.md and in
 # docs/gene-id-contract.md, not printed on every run: a log says what is true of
 # this file, and the same paragraph of guidance repeated on every validation is
 # editorial rather than finding.
@@ -3110,7 +3118,7 @@ def _retired_summary_table(found: dict, suffixed: set[str]) -> list[str]:
     A table rather than a paragraph per class: the counts are what a reader scans
     for, and prose between them turns that scan into a read. What an action means
     is not explained here -- that is the same guidance on every run, and it lives
-    in the package README and docs/gene-id-contract.md.
+    in the package's CHECKS.md and docs/gene-id-contract.md.
 
     Identifiers are not listed either. Every one is in the detail block below.
     """

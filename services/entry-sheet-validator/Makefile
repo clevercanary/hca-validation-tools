@@ -9,6 +9,9 @@ UV := uv run
 SHA := $(shell git rev-parse --short HEAD)
 TAG ?= $(SHA)
 
+# Every aws call in deploy-lambda-container goes through this; override stops a command-line AWS=... dropping the profile.
+override AWS = aws --profile $(PROFILE)
+
 .PHONY: help
 help:
 	@echo "Entry Sheet Validator Service Tasks:"
@@ -49,6 +52,11 @@ include ../../make/check-clean.mk
 
 .PHONY: deploy-lambda-container
 deploy-lambda-container: check-clean
+	@if [ -z "$(PROFILE)" ]; then \
+		echo "Error: PROFILE is required"; \
+		echo "Example: set $(if $(filter prod,$(ENV)),PROD,DEV)_LAMBDA_DEPLOY_PROFILE in .env.make, then run make deploy-lambda-container ENV=$(ENV) from the repo root"; \
+		exit 1; \
+	fi
 	@if [ -z "$(AWS_ACCOUNT_ID)" ]; then \
 		echo "Error: AWS_ACCOUNT_ID is not set (check .env.make or your environment)"; \
 		exit 1; \
@@ -58,21 +66,23 @@ deploy-lambda-container: check-clean
 	else \
 		echo "******** DEPLOYING TO DEVELOPMENT ********"; \
 	fi
-	@echo "Validating required environment variables: AWS_REGION and LAMBDA_ROLE..."
 	@if [ -z "$(AWS_REGION)" ]; then \
 		echo "Error: AWS_REGION environment variable is not set and could not be derived from .env.make"; \
 		exit 1; \
 	fi
-	@if [ -z "$(LAMBDA_ROLE)" ]; then \
-		echo "Error: LAMBDA_ROLE is required (set in .env.make)"; \
+	@if [ -z "$(LAMBDA_FUNCTION)" ] || [ -z "$(REPO_NAME)" ]; then \
+		echo "Error: LAMBDA_FUNCTION and REPO_NAME are required (set in .env.make)"; \
 		exit 1; \
 	fi
 
+	@echo "Checking that Lambda function $(LAMBDA_FUNCTION) exists..."
+	@$(AWS) lambda get-function --function-name $(LAMBDA_FUNCTION) --region $(AWS_REGION) > /dev/null
+
 	@echo "Logging in to ECR..."
-	@aws ecr get-login-password --region $(AWS_REGION) | docker login --username AWS --password-stdin $(ECR_REGISTRY)
+	@$(AWS) ecr get-login-password --region $(AWS_REGION) | docker login --username AWS --password-stdin $(ECR_REGISTRY)
 
 	@echo "Checking that ECR repository $(REPO_NAME) exists..."
-	@aws ecr describe-repositories --repository-names $(REPO_NAME) --region $(AWS_REGION) > /dev/null 2>&1 || { \
+	@$(AWS) ecr describe-repositories --repository-names $(REPO_NAME) --region $(AWS_REGION) > /dev/null 2>&1 || { \
 		echo "Error: ECR repository $(REPO_NAME) not found in account $(AWS_ACCOUNT_ID). Please create it manually before deploying."; \
 		exit 1; \
 	}
@@ -84,21 +94,9 @@ deploy-lambda-container: check-clean
 	@docker push $(ECR_REPO):latest
 
 	@echo "Deploying Lambda function from the immutable :$(TAG) image..."
-	@if aws lambda get-function --function-name $(LAMBDA_FUNCTION) --region $(AWS_REGION) > /dev/null 2>&1; then \
-		echo "Updating existing Lambda function..."; \
-		aws lambda update-function-code \
-			--function-name $(LAMBDA_FUNCTION) \
-			--image-uri $(ECR_REPO):$(TAG) \
-			--region $(AWS_REGION); \
-	else \
-		echo "Creating new Lambda function..."; \
-		aws lambda create-function \
-			--function-name $(LAMBDA_FUNCTION) \
-			--package-type Image \
-			--code ImageUri=$(ECR_REPO):$(TAG) \
-			--role $(LAMBDA_ROLE) \
-			--timeout 30 \
-			--memory-size 256 \
-			--region $(AWS_REGION); \
-	fi
+	@echo "Updating existing Lambda function..."
+	@$(AWS) lambda update-function-code \
+		--function-name $(LAMBDA_FUNCTION) \
+		--image-uri $(ECR_REPO):$(TAG) \
+		--region $(AWS_REGION)
 	@echo "✓ Lambda function deployed successfully from image :$(TAG)"

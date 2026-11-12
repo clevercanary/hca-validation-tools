@@ -9,7 +9,14 @@ import textwrap
 import pytest
 from linkml_runtime import SchemaView
 
-from hca_validation.data_dictionary.generate_dictionary import generate_dictionary, transform_schema_to_data_dictionary
+from hca_validation.data_dictionary.generate_dictionary import (
+    generate_dictionary,
+    generate_tier_1_dictionary,
+    load_schemas,
+    transform_layout_to_data_dictionary,
+    transform_schema_to_data_dictionary,
+)
+from hca_validation.schema_utils.schema_utils import _annotation_value
 
 
 @pytest.fixture(scope="module")
@@ -57,22 +64,21 @@ def _schemaview(tmp_path, classes):
 
 
 # The four slots only bionetwork subclasses add, as the HCA Data Portal's tier-1.json scopes them.
-# The two Dataset slots have no tier yet (#760), so their tier is not checked.
 @pytest.mark.parametrize(
-    ("class_name", "attribute_name", "networks", "tier"),
+    ("class_name", "attribute_name", "networks"),
     [
-        ("dataset", "ambient_count_correction", ["adipose", "gut", "musculoskeletal"], None),
-        ("dataset", "doublet_detection", ["adipose", "gut", "musculoskeletal"], None),
-        ("sample", "radial_tissue_term", ["gut"], "Tier 1"),
-        ("sample", "dissociation_protocol", ["adipose", "gut"], "Tier 1"),
+        ("dataset", "ambient_count_correction", ["adipose", "gut", "musculoskeletal"]),
+        ("dataset", "doublet_detection", ["adipose", "gut", "musculoskeletal"]),
+        ("sample", "radial_tissue_term", ["gut"]),
+        ("sample", "dissociation_protocol", ["adipose", "gut"]),
     ],
 )
-def test_bionetwork_slots_are_folded(data_dictionary, class_name, attribute_name, networks, tier):
-    attribute = _attribute(data_dictionary, class_name, attribute_name)
+@pytest.mark.parametrize("dictionary", ["data_dictionary", "tier_1_dictionary"])
+def test_bionetwork_slots_are_folded(request, dictionary, class_name, attribute_name, networks):
+    attribute = _attribute(request.getfixturevalue(dictionary), class_name, attribute_name)
     assert attribute["annotations"]["bioNetworks"] == networks
     assert attribute["annotations"]["annDataLocation"] == "obs"
-    if tier is not None:
-        assert attribute["annotations"]["tier"] == tier
+    assert attribute["annotations"]["tier"] == "Tier 1"
     assert attribute["required"] is True
 
 
@@ -442,6 +448,7 @@ slots:
   required_and_recommended:
     required: true
     recommended: true
+  unlisted_slot:
 
 classes:
   Dataset:
@@ -459,9 +466,13 @@ classes:
       - recommended_slot
       - required_and_recommended
       - sheet_optional
+      - unlisted_slot
   Donor:
     slots:
       - donor_id
+    slot_usage:
+      donor_id:
+        required: true
   Base:
     abstract: true
     slots:
@@ -590,5 +601,195 @@ def test_multivalued(mapping_dictionary):
 
 def test_generate_dictionary_writes_json(mapping_schema_path, mapping_dictionary, tmp_path):
     output = tmp_path / "out.json"
-    generate_dictionary(mapping_schema_path, output)
+    generate_dictionary(output, mapping_schema_path)
     assert json.loads(output.read_text()) == mapping_dictionary
+
+
+# The HCA Data Portal's Tier 1 dictionary, laid out by dictionary.yaml (#760)
+
+
+@pytest.fixture(scope="module")
+def tier_1_dictionary():
+    return transform_layout_to_data_dictionary(*load_schemas())
+
+
+# The HCA Data Portal's tier-1.json, which shows fields in file order
+_PORTAL_LAYOUT = {
+    "dataset": [
+        "study_pi", "batch_condition", "default_embedding", "sequencing_platform", "assay_ontology_term_id",
+        "reference_genome", "alignment_software", "intron_inclusion", "sequenced_fragment", "gene_annotation_version",
+        "comments", "protocol_url", "title", "ambient_count_correction", "doublet_detection", "X_{suffix}",
+    ],
+    "donor": ["donor_id", "organism_ontology_term_id", "manner_of_death", "sex_ontology_term_id"],
+    "sample": [
+        "sample_id", "tissue_ontology_term_id", "tissue_free_text", "sample_source", "sample_collection_method",
+        "tissue_type", "sampled_site_condition", "disease_ontology_term_id", "sample_preservation_method",
+        "suspension_type", "is_primary_data", "development_stage_ontology_term_id", "radial_tissue_term",
+        "dissociation_protocol", "cell_enrichment", "sample_collection_year", "sample_collection_site",
+        "sample_collection_relative_time_point", "cell_number_loaded", "cell_viability_percentage", "institute",
+        "author_batch_notes",
+    ],
+    "library": ["library_id", "library_id_repository", "library_preparation_batch", "library_sequencing_run"],
+    "cell": ["author_cell_type", "cell_type_ontology_term_id"],
+    "feature": ["index of pandas.DataFrame", "feature_is_filtered"],
+    "matrixLayers": ["X; raw.X"],
+}  # fmt: skip
+
+
+def test_tier_1_sections_and_fields_match_the_portal(tier_1_dictionary):
+    layout = {c["name"]: [a["name"] for a in c["attributes"]] for c in tier_1_dictionary["classes"]}
+    assert list(layout.items()) == list(_PORTAL_LAYOUT.items())
+
+
+def test_tier_1_fields_are_the_tier_1_slots(schemaview, tier_1_dictionary):
+    # A field is shown only when a section lists it, so a new Tier 1 slot left out of dictionary.yaml fails here.
+    attributes = {a["name"]: a for c in tier_1_dictionary["classes"] for a in c["attributes"]}
+    untiered = [name for name, a in attributes.items() if a["annotations"].get("tier") != "Tier 1"]
+    assert not untiered, f"shown but not Tier 1: {', '.join(untiered)}"
+    tier_1 = {
+        slot.name
+        for class_name in schemaview.all_classes()
+        for slot in schemaview.class_induced_slots(class_name)
+        if _annotation_value(slot, "tier") == "Tier 1"
+    }
+    missing = tier_1 - set(attributes)
+    assert not missing, f"Tier 1 but in no section: {', '.join(sorted(missing))}"
+
+
+def test_tier_1_fields_have_anndata_locations_and_networks(tier_1_dictionary):
+    for entity_class in tier_1_dictionary["classes"]:
+        for attribute in entity_class["attributes"]:
+            assert attribute["annotations"]["annDataLocation"], f"{entity_class['name']}.{attribute['name']}"
+            assert attribute["annotations"]["bioNetworks"], f"{entity_class['name']}.{attribute['name']}"
+
+
+def test_tier_1_keeps_the_library_fields_strongly_recommended(tier_1_dictionary):
+    required = {a["name"]: a["required"] for a in _class_entry(tier_1_dictionary, "Library")["attributes"]}
+    assert required["library_preparation_batch"] == required["library_sequencing_run"] == "strongly recommended"
+
+
+def _layout(tmp_path, sections, slots=""):
+    """Write a dictionary layout with a minimal header, the given section classes and slots, and return its path."""
+    layout = (
+        textwrap.dedent(
+            """
+        id: https://example.org/layout
+        name: test_dictionary
+        title: Test Dictionary
+        prefixes:
+          linkml: https://w3id.org/linkml/
+          cxg: https://example.org/cxg
+        annotations:
+          cxg: CELLxGENE Schema
+        imports:
+          - linkml:types
+        classes:
+        """
+        )
+        + textwrap.indent(textwrap.dedent(sections), "  ")
+        + textwrap.dedent(slots)
+    )
+    path = tmp_path / "layout.yaml"
+    path.write_text(layout)
+    return path
+
+
+# Lists Dataset's slots in an order of their own, leaves out unlisted_slot, and adds a section of structure rows
+_MAPPING_SECTIONS = """
+DatasetSection:
+  title: Dataset
+  description: The dataset section.
+  mixins:
+    - Dataset
+  slots:
+    - sheet_optional
+    - title
+    - bare
+DonorSection:
+  title: Donor
+  mixins:
+    - Donor
+  slots:
+    - donor_id
+StructureSection:
+  title: Structure
+  slots:
+    - structure_row
+"""
+
+_STRUCTURE_SLOTS = """
+slots:
+  structure_row:
+    alias: "X; raw.X"
+    annotations:
+      displayRange: numpy.ndarray
+      tier: Tier 1
+"""
+
+
+@pytest.fixture(scope="module")
+def mapping_layout(tmp_path_factory):
+    return _layout(tmp_path_factory.mktemp("layout"), _MAPPING_SECTIONS, _STRUCTURE_SLOTS)
+
+
+@pytest.fixture(scope="module")
+def mapping_tier_1(mapping_schema_path, mapping_layout):
+    return transform_layout_to_data_dictionary(*load_schemas(mapping_schema_path, mapping_layout))
+
+
+def test_only_sections_are_emitted_in_layout_order(mapping_tier_1):
+    assert [(c["name"], c["title"], c["description"]) for c in mapping_tier_1["classes"]] == [
+        ("dataset", "Dataset", "The dataset section."),
+        ("donor", "Donor", ""),
+        ("structure", "Structure", ""),
+    ]
+
+
+def test_fields_follow_the_layout_order(mapping_tier_1):
+    assert list(_attributes(mapping_tier_1, "Dataset")) == ["sheet_optional", "title", "bare"]
+
+
+def test_mixin_supplies_slot_usage(mapping_tier_1):
+    assert _attributes(mapping_tier_1, "Donor")["donor_id"]["required"] is True
+
+
+def test_section_field_matches_the_full_export(mapping_tier_1, mapping_dictionary):
+    assert _attributes(mapping_tier_1, "Dataset")["title"] == _attributes(mapping_dictionary, "Dataset")["title"]
+
+
+def test_alias_names_the_field_and_display_range_overrides_the_range(mapping_tier_1):
+    row = _attributes(mapping_tier_1, "Structure")["X; raw.X"]
+    assert row["range"] == "numpy.ndarray"
+    assert row["annotations"] == {"tier": "Tier 1", "bioNetworks": _ALL_NETWORKS}
+
+
+def test_header_comes_from_the_layout(mapping_tier_1):
+    assert {k: v for k, v in mapping_tier_1.items() if k != "classes"} == {
+        "name": "test_dictionary",
+        "title": "Test Dictionary",
+        "description": "",
+        "prefixes": {"cxg": "https://example.org/cxg"},
+        "annotations": {"cxg": "CELLxGENE Schema"},
+    }
+
+
+@pytest.mark.parametrize(
+    ("sections", "slots", "match"),
+    [
+        ("Dataset2:\n  mixins: [Dataset]\n  slots: [title]\n", "", "'Dataset2' must end in 'Section'"),
+        ("BothSection:\n  mixins: [Dataset, Donor]\n  slots: [title]\n", "", "mixes in 2 classes"),
+        ("DatasetSection:\n  mixins: [Dataset]\n  slots: [donor_id]\n", "", "lists 'donor_id', which is not a slot"),
+        ("LooseSection:\n  slots: [title]\n", "", "lists 'title', which is not a slot"),
+        ("TitleSection:\n  slots: [title]\n", "slots:\n  title: {}\n", "redefines schema elements: title"),
+    ],
+    ids=["no-suffix", "two-mixins", "other-class-slot", "no-mixin", "collision"],
+)
+def test_bad_layouts_are_refused(tmp_path, mapping_schema_path, sections, slots, match):
+    with pytest.raises(ValueError, match=match):
+        transform_layout_to_data_dictionary(*load_schemas(mapping_schema_path, _layout(tmp_path, sections, slots)))
+
+
+def test_generate_tier_1_dictionary_writes_json(mapping_schema_path, mapping_layout, mapping_tier_1, tmp_path):
+    output = tmp_path / "out.json"
+    generate_tier_1_dictionary(output, mapping_schema_path, mapping_layout)
+    assert json.loads(output.read_text()) == mapping_tier_1

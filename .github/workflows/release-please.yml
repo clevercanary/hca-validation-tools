@@ -11,7 +11,12 @@ permissions:
   pull-requests: write
 
 jobs:
+  # Every job runs only on main (#812), so a workflow_dispatch run started on another branch publishes nothing. This
+  # stops an accidental dispatch, not a deliberate one: a dispatch runs the branch's own copy of this file, and PyPI's
+  # trusted publishers still accept any branch's run until they require a main-only environment. Each publish job
+  # checks the ref itself, because its !failure() or always() condition still evaluates when this job is skipped.
   release-please:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     outputs:
       hca_schema_validator_release: ${{ steps.release.outputs['packages/hca-schema-validator--release_created'] }}
@@ -25,7 +30,7 @@ jobs:
   publish-hca-schema-validator:
     needs: release-please
     if: |
-      !failure() && !cancelled() &&
+      github.ref == 'refs/heads/main' && !failure() && !cancelled() &&
       (needs['release-please'].outputs.hca_schema_validator_release == 'true' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     permissions:
@@ -74,7 +79,7 @@ jobs:
   publish-hca-metadata-schema:
     needs: release-please
     if: |
-      !failure() && !cancelled() &&
+      github.ref == 'refs/heads/main' && !failure() && !cancelled() &&
       (needs['release-please'].outputs.hca_metadata_schema_release == 'true' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     permissions:
@@ -128,7 +133,7 @@ jobs:
     # tools publish.
     needs: [release-please, publish-hca-metadata-schema]
     if: |
-      always() && !cancelled() && needs['release-please'].result == 'success' &&
+      github.ref == 'refs/heads/main' && always() && !cancelled() && needs['release-please'].result == 'success' &&
       (needs['release-please'].outputs.hca_anndata_tools_release == 'true' || github.event_name == 'workflow_dispatch') &&
       (needs['publish-hca-metadata-schema'].result == 'success' || needs['publish-hca-metadata-schema'].result == 'skipped')
     runs-on: ubuntu-latest
@@ -187,7 +192,7 @@ jobs:
     # The schema job is listed too: when its publish fails, the tools job is
     # skipped rather than failed, which the tools check below would accept.
     if: |
-      always() && !cancelled() &&
+      github.ref == 'refs/heads/main' && always() && !cancelled() && needs['release-please'].result == 'success' &&
       (needs['release-please'].outputs.hca_anndata_mcp_release == 'true' || github.event_name == 'workflow_dispatch') &&
       (needs['publish-hca-metadata-schema'].result == 'success' || needs['publish-hca-metadata-schema'].result == 'skipped') &&
       (needs['publish-hca-anndata-tools'].result == 'success' || needs['publish-hca-anndata-tools'].result == 'skipped') &&

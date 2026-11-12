@@ -55,6 +55,7 @@ slots:
       - Likely biological effect. Need to know if we have a balanced dataset or if sex is collinear with the dataset.
     annotations:
       annDataLocation: obs
+      tier: Tier 1
       cxg: sex_ontology_term_id
 
   sex_ontology_term:
@@ -91,6 +92,7 @@ slots:
       - Manner of death can affect cellular profiles.
     annotations:
       annDataLocation: obs
+      tier: Tier 1
 
   organism_ontology_term_id:
     title: Organism Ontology Term ID

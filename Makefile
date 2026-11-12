@@ -14,17 +14,19 @@ ENV ?= dev
 
 # ----- Environment-specific settings -----
 ifeq ($(ENV),prod)
+override ENV_PREFIX := PROD
 AWS_ACCOUNT_ID   ?= $(PROD_AWS_ACCOUNT_ID)
 REPO_NAME        ?= $(PROD_REPO_NAME)
 LAMBDA_FUNCTION  ?= $(PROD_LAMBDA_FUNCTION)
 AWS_REGION       ?= $(PROD_AWS_REGION)
-LAMBDA_ROLE      ?= $(PROD_LAMBDA_ROLE)
+LAMBDA_DEPLOY_PROFILE ?= $(PROD_LAMBDA_DEPLOY_PROFILE)
 else # dev
+override ENV_PREFIX := DEV
 AWS_ACCOUNT_ID   ?= $(DEV_AWS_ACCOUNT_ID)
 REPO_NAME        ?= $(DEV_REPO_NAME)
 LAMBDA_FUNCTION  ?= $(DEV_LAMBDA_FUNCTION)
 AWS_REGION       ?= $(DEV_AWS_REGION)
-LAMBDA_ROLE      ?= $(DEV_LAMBDA_ROLE)
+LAMBDA_DEPLOY_PROFILE ?= $(DEV_LAMBDA_DEPLOY_PROFILE)
 endif
 
 # AWS CLI profile for the entry-sheet Lambda build (fetches the Extension
@@ -61,6 +63,30 @@ BATCH_VCPU           ?= $(DEV_BATCH_VCPU)
 BATCH_MEMORY         ?= $(DEV_BATCH_MEMORY)
 BATCH_EPHEMERAL_STORAGE ?= $(DEV_BATCH_EPHEMERAL_STORAGE)
 endif
+
+# Arguments for the dataset-validator publish-batch and register-jd sub-makes.
+override BATCH_JD_ARGS = \
+    PROFILE=$(BATCH_PROFILE) \
+    AWS_REGION=$(BATCH_AWS_REGION) \
+    AWS_ACCOUNT_ID=$(BATCH_AWS_ACCOUNT_ID) \
+    ECR_REPO=$(BATCH_ECR_REPO) \
+    JOB_DEF_NAME=$(BATCH_JOB_DEF_NAME) \
+    LOG_GROUP=$(BATCH_LOG_GROUP) \
+    EXEC_ROLE_ARN=$(BATCH_EXEC_ROLE_ARN) \
+    TASK_ROLE_ARN=$(BATCH_TASK_ROLE_ARN) \
+    VCPU=$(BATCH_VCPU) \
+    MEMORY=$(BATCH_MEMORY) \
+    EPHEMERAL_STORAGE=$(BATCH_EPHEMERAL_STORAGE)
+
+# invoke-lambda's aws call goes through this; override stops a command-line
+# LAMBDA_AWS=... dropping the profile.
+override LAMBDA_AWS = aws --profile $(LAMBDA_DEPLOY_PROFILE)
+
+# Deploy, invoke and Batch profiles may only come from .env.make. Stops the
+# target when PROFILE, $(1) or $(ENV_PREFIX)_$(1) is set on the command line,
+# or in the environment and not in .env.make. Root targets only: the service
+# Makefiles receive PROFILE on their command line by design.
+override require_env_make_profile = $(foreach v,PROFILE $(1) $(ENV_PREFIX)_$(1),$(if $(filter command environment,$(firstword $(origin $(v)))),$(error $(v) comes from the $(origin $(v)); a deploy profile may only come from .env.make: set $(ENV_PREFIX)_$(1) there)))
 
 # ECR registry and repository path
 ECR_REGISTRY := $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_REGION).amazonaws.com
@@ -106,11 +132,12 @@ test-lambda-container:
 
 .PHONY: deploy-lambda-container
 deploy-lambda-container:
+	@$(call require_env_make_profile,LAMBDA_DEPLOY_PROFILE)
 	@$(MAKE) -C services/entry-sheet-validator deploy-lambda-container \
+		PROFILE=$(LAMBDA_DEPLOY_PROFILE) \
 		AWS_ACCOUNT_ID=$(AWS_ACCOUNT_ID) \
 		AWS_REGION=$(AWS_REGION) \
 		LAMBDA_FUNCTION=$(LAMBDA_FUNCTION) \
-		LAMBDA_ROLE=$(LAMBDA_ROLE) \
 		REPO_NAME=$(REPO_NAME) \
 		ECR_REGISTRY=$(ECR_REGISTRY) \
 		ECR_REPO=$(ECR_REPO) \
@@ -119,43 +146,20 @@ deploy-lambda-container:
 # ----- Batch orchestrator targets (delegate to dataset-validator service) -----
 .PHONY: batch-publish-container
 batch-publish-container:
-	@$(MAKE) -C services/dataset-validator publish-batch \
-		PROFILE=$(BATCH_PROFILE) \
-		AWS_REGION=$(BATCH_AWS_REGION) \
-		AWS_ACCOUNT_ID=$(BATCH_AWS_ACCOUNT_ID) \
-		ECR_REPO=$(BATCH_ECR_REPO) \
+	@$(call require_env_make_profile,BATCH_PROFILE)
+	@$(MAKE) -C services/dataset-validator publish-batch $(BATCH_JD_ARGS) \
 		$(if $(TAG),TAG=$(TAG))
-	@$(MAKE) -C services/dataset-validator register-jd \
-		PROFILE=$(BATCH_PROFILE) \
-		AWS_REGION=$(BATCH_AWS_REGION) \
-		AWS_ACCOUNT_ID=$(BATCH_AWS_ACCOUNT_ID) \
-		ECR_REPO=$(BATCH_ECR_REPO) \
-		JOB_DEF_NAME=$(BATCH_JOB_DEF_NAME) \
-		LOG_GROUP=$(BATCH_LOG_GROUP) \
-		EXEC_ROLE_ARN=$(BATCH_EXEC_ROLE_ARN) \
-		TASK_ROLE_ARN=$(BATCH_TASK_ROLE_ARN) \
-		VCPU=$(BATCH_VCPU) \
-		MEMORY=$(BATCH_MEMORY) \
-		EPHEMERAL_STORAGE=$(BATCH_EPHEMERAL_STORAGE) \
+	@$(MAKE) -C services/dataset-validator register-jd $(BATCH_JD_ARGS) \
 		$(if $(TAG),TAG=$(TAG))
 
 .PHONY: batch-register-jd
 batch-register-jd:
-	@$(MAKE) -C services/dataset-validator register-jd \
-		PROFILE=$(BATCH_PROFILE) \
-		AWS_REGION=$(BATCH_AWS_REGION) \
-		AWS_ACCOUNT_ID=$(BATCH_AWS_ACCOUNT_ID) \
-		ECR_REPO=$(BATCH_ECR_REPO) \
-		JOB_DEF_NAME=$(BATCH_JOB_DEF_NAME) \
-		LOG_GROUP=$(BATCH_LOG_GROUP) \
-		EXEC_ROLE_ARN=$(BATCH_EXEC_ROLE_ARN) \
-		TASK_ROLE_ARN=$(BATCH_TASK_ROLE_ARN) \
-		VCPU=$(BATCH_VCPU) \
-		MEMORY=$(BATCH_MEMORY) \
-		EPHEMERAL_STORAGE=$(BATCH_EPHEMERAL_STORAGE)
+	@$(call require_env_make_profile,BATCH_PROFILE)
+	@$(MAKE) -C services/dataset-validator register-jd $(BATCH_JD_ARGS)
 
 .PHONY: batch-submit-job
 batch-submit-job:
+	@$(call require_env_make_profile,BATCH_PROFILE)
 	@$(MAKE) -C services/dataset-validator submit-job \
 		PROFILE=$(BATCH_PROFILE) \
 		AWS_REGION=$(BATCH_AWS_REGION) \
@@ -169,26 +173,27 @@ test-lambda: test-lambda-container
 
 .PHONY: invoke-lambda
 invoke-lambda:
+	@$(call require_env_make_profile,LAMBDA_DEPLOY_PROFILE)
 	@echo "Invoking Lambda function..."
-	@if [ -z "$(AWS_REGION)" ]; then \
-		echo "Error: AWS_REGION environment variable is not set"; \
+	@if [ -z "$(LAMBDA_DEPLOY_PROFILE)" ] || [ -z "$(LAMBDA_FUNCTION)" ] || [ -z "$(AWS_REGION)" ]; then \
+		echo "Error: LAMBDA_DEPLOY_PROFILE, LAMBDA_FUNCTION and AWS_REGION are required"; \
+		echo "Set $(ENV_PREFIX)_LAMBDA_DEPLOY_PROFILE, $(ENV_PREFIX)_LAMBDA_FUNCTION and $(ENV_PREFIX)_AWS_REGION in .env.make"; \
 		exit 1; \
 	fi
-	@if [ -z "$(SHEET_ID)" ]; then \
-		aws lambda invoke \
-			--function-name $(LAMBDA_FUNCTION) \
-			--region $(AWS_REGION) \
-			--payload '{}' \
-			response.json; \
-	else \
-		aws lambda invoke \
-			--function-name $(LAMBDA_FUNCTION) \
-			--region $(AWS_REGION) \
-			--payload '{"sheet_id": "$(SHEET_ID)"}' \
-			response.json; \
+	@out=$$($(LAMBDA_AWS) lambda invoke \
+		--function-name $(LAMBDA_FUNCTION) \
+		--region $(AWS_REGION) \
+		--cli-binary-format raw-in-base64-out \
+		--payload '$(if $(SHEET_ID),{"sheet_id": "$(SHEET_ID)"},{})' \
+		--output json \
+		response.json) || exit $$?; \
+	echo "$$out"; \
+	echo "Response saved to response.json"; \
+	cat response.json; \
+	if printf '%s' "$$out" | grep -q '"FunctionError"'; then \
+		echo; echo "Error: the Lambda function raised an error; see response.json"; \
+		exit 1; \
 	fi
-	@echo "Response saved to response.json"
-	@cat response.json
 
 # Multi-service orchestration targets
 .PHONY: build-all
