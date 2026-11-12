@@ -79,14 +79,12 @@ The Lambda function accepts the following parameters:
 
 ## Local Testing
 
-You can test the Lambda function locally:
+From `services/entry-sheet-validator/`:
 
 ```bash
-cd /path/to/hca-validation-tools
-python -m hca_validation.lambda_functions.entry_sheet_validator_lambda.handler
+make test                   # read-only-HOME import test, no image needed
+make test-lambda-container  # boots the built image (`make build-lambda-container` from the repo root first)
 ```
-
-This will run the `handler` function with a sample event and print the results.
 
 ## API Gateway Integration
 

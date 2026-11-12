@@ -69,30 +69,18 @@ make build                     # All of the above in one step
 ### Test Commands
 
 Each package and service has its own uv environment, so tests are run per
-project with `uv run pytest`. Each line below is self-contained (run from the
-repo root):
-
-```bash
-(cd shared                        && uv run pytest tests/ -m "not integration")  # shared library (unit)
-(cd packages/hca-anndata-tools    && uv run pytest tests/)
-(cd packages/hca-anndata-mcp      && uv run pytest tests/)
-(cd packages/hca-schema-validator && uv run pytest tests/)
-(cd packages/hca-tracker-client   && uv run pytest tests/)  # download tests need aria2c
-(cd packages/hca-tracker-mcp      && uv run pytest tests/)
-(cd services/dataset-validator    && uv run pytest tests/)
-(cd services/cellxgene-validator  && uv run pytest tests/)
-(cd services/hca-schema-validator && uv run pytest tests/)
-```
-
-These nine suites are exactly what CI runs on every pull request. Type
-checking runs separately:
+project. CI's test matrix in `.github/workflows/ci.yml` is the list of suites it
+runs on every pull request: run each as `uv run pytest tests/ <pytest-args>` in
+the entry's `project` directory, with the entry's `pytest-args`, after installing
+what its `apt` names (the tracker packages' download tests need `aria2c`) and on
+its `python-version` where it sets one. Type checking runs separately:
 
 ```bash
 make typecheck   # pyright across every typed project (one pass per venv)
 ```
 
 Integration tests (which hit live Google Sheets and need credentials in `.env`)
-are marked `integration`. The unit-test command above excludes them with
+are marked `integration`. CI's matrix excludes them with
 `-m "not integration"`; a bare `pytest tests/` would run them. Run only the
 integration tests with:
 
@@ -100,13 +88,14 @@ integration tests with:
 cd shared && uv run pytest tests/ -m integration
 ```
 
-`make test-all` runs the shared and service suites in one go, **but note two
-gaps**: it invokes the entry-sheet container smoke test, so it **requires Docker
-and a built image** (and fails without them), and it **does not cover the
-`packages/` suites** — run those directly with the commands above.
+`make test-all` runs the shared and service suites in one go, but it is **not**
+what CI runs: it invokes the entry-sheet container smoke test, so it **requires
+Docker and a built image** (and fails without them); it runs `shared`'s
+integration tests, which need credentials; it **covers only
+`packages/hca-metadata-schema` of the `packages/` suites**; and it does not
+check coverage floors.
 
-The **entry-sheet-validator container smoke test** is not part of the commands
-above; it boots the built Lambda image in Docker (so it needs a built image),
+The **entry-sheet-validator container smoke test** is not in CI's matrix; it boots the built Lambda image in Docker (so it needs a built image),
 and its happy-path assertion additionally needs `GOOGLE_SERVICE_ACCOUNT` in the
 environment — without it that assertion skips. See
 [deployment/entry-sheet-validator/README.md](deployment/entry-sheet-validator/README.md).

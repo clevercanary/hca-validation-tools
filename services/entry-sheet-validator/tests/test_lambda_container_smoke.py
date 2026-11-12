@@ -47,7 +47,7 @@ def test_lambda_container_smoke(lambda_container):
     happy path is asserted in test_lambda_happy_path.
     """
     event = {"sheet_id": "1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY"}
-    response = requests.post("http://localhost:9000/2015-03-31/functions/function/invocations", json=event, timeout=10)
+    response = requests.post("http://localhost:9000/2015-03-31/functions/function/invocations", json=event, timeout=60)
     assert response.status_code in (200, 400, 401)
     data = response.json()
     # Accept both direct and API Gateway-style (body is a JSON string) responses.
@@ -65,7 +65,7 @@ def test_lambda_happy_path(lambda_container):
         pytest.skip("GOOGLE_SERVICE_ACCOUNT not set (load the root .env); happy path needs credentials")
 
     event = {"sheet_id": "1oPFb6qb0Y2HeoQqjSGRe_TlsZPRLwq-HUlVF0iqtVlY"}
-    response = requests.post("http://localhost:9000/2015-03-31/functions/function/invocations", json=event, timeout=10)
+    response = requests.post("http://localhost:9000/2015-03-31/functions/function/invocations", json=event, timeout=60)
     assert response.status_code == 200
     data = response.json()
     # Handle both direct and API Gateway-style (body is a JSON string) responses.

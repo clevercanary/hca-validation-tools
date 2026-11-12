@@ -15,10 +15,16 @@ override AWS = aws --profile $(PROFILE)
 .PHONY: help
 help:
 	@echo "Entry Sheet Validator Service Tasks:"
+	@echo "  test                   - Run the tests that need no image (CI runs these, with coverage)"
 	@echo "  test-lambda-container  - Test the Lambda container locally (loads root .env for credentials; needs a built image)"
 	@echo "  test-lambda            - Alias for test-lambda-container"
 	@echo "  build-lambda-container - Build the entry sheet validator Lambda container image"
 	@echo "  deploy-lambda-container - Deploy the Lambda container image to AWS"
+
+# The tests CI runs: everything except the container smoke test, which needs a built image.
+.PHONY: test
+test:
+	@$(UV) pytest tests/ --ignore=tests/test_lambda_container_smoke.py -v
 
 # Test Lambda function locally.
 # Requires the image (build it first: `make build-lambda-container` from repo root)
