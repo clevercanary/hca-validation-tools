@@ -35,8 +35,7 @@ RUN uv export --frozen --no-hashes --no-dev \
 
 # Download and unpack the AWS Parameters and Secrets Lambda Extension (v5) using a presigned URL
 ARG EXT_URL
-RUN yum install -y unzip file
-RUN echo "EXT_URL=$EXT_URL"
+RUN dnf install -y unzip file
 RUN curl -s "$EXT_URL" -o /tmp/ps-ext.zip && \
     file /tmp/ps-ext.zip && \
     unzip -q /tmp/ps-ext.zip -d /opt && \
