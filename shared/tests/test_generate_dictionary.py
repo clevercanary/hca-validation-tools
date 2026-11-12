@@ -762,6 +762,10 @@ def test_alias_names_the_field_and_display_range_overrides_the_range(mapping_tie
     assert row["annotations"] == {"tier": "Tier 1", "bioNetworks": _ALL_NETWORKS}
 
 
+def test_core_header_uses_the_given_cxg_reference(mapping_dictionary):
+    assert mapping_dictionary["prefixes"] == {"cxg": _CXG}
+
+
 def test_header_comes_from_the_layout(mapping_tier_1):
     assert {k: v for k, v in mapping_tier_1.items() if k != "classes"} == {
         "name": "test_dictionary",
