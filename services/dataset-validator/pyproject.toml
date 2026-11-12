@@ -22,7 +22,7 @@ dev = [
 
 # Not a distributable package — this is a Batch entrypoint, not a library.
 #
-# Deliberately NO `exclude-newer` (unlike the entry-sheet Lambda). The pre-uv
+# Deliberately NO `exclude-newer`. The pre-uv
 # poetry.lock was an incrementally-updated patchwork, not a point-in-time
 # snapshot — it pinned boto3 1.40.15 (Aug 2025) alongside cap-upload-validator
 # 1.7.0 (released later), so no single date reproduces it (`uv lock` fails to

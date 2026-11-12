@@ -1,5 +1,5 @@
 # Build stage
-FROM --platform=linux/amd64 public.ecr.aws/lambda/python:3.10 AS builder
+FROM --platform=linux/amd64 public.ecr.aws/lambda/python:3.11 AS builder
 
 # Bring in uv (pinned for reproducible builds — do not use :latest).
 COPY --from=ghcr.io/astral-sh/uv:0.10.9 /uv /bin/uv
@@ -24,7 +24,7 @@ WORKDIR /build/services/entry-sheet-validator
 #   --no-emit-project    entry-sheet is a virtual project — nothing to install
 #   --no-emit-package …  shared and hca-metadata-schema are served as source from /var/task
 #                        (final stage), so only their dependencies go into /opt/python
-# The build-image python (3.10) is pinned so environment markers resolve for the
+# The build-image python (3.11) is pinned so environment markers resolve for the
 # runtime interpreter, not the builder's default.
 RUN uv export --frozen --no-hashes --no-dev \
         --no-emit-project --no-emit-package hca-validation-shared \
@@ -43,7 +43,7 @@ RUN curl -s "$EXT_URL" -o /tmp/ps-ext.zip && \
     chmod +x /opt/extensions/*
 
 # Final stage
-FROM --platform=linux/amd64 public.ecr.aws/lambda/python:3.10
+FROM --platform=linux/amd64 public.ecr.aws/lambda/python:3.11
 
 # Copy dependencies from builder stage
 COPY --from=builder /opt/python /opt/python
