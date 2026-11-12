@@ -17,7 +17,7 @@ help:
 	@echo "  build-batch - Build AWS Batch container for linux/amd64 (uses deployment/Dockerfile)"
 	@echo "  tag-batch   - Tag local image for ECR (uses TAG, AWS_ACCOUNT_ID, AWS_REGION, ECR_REPO)"
 	@echo "  push-batch  - Push tagged image to ECR"
-	@echo "  publish-batch - Convenience: login, build-batch, tag-batch, push-batch"
+	@echo "  publish-batch - Convenience: check-jd-vars, login, build-batch, tag-batch, push-batch"
 	@echo "  register-jd - Register a new AWS Batch Job Definition revision (uses TAG)"
 	@echo "  submit-job  - Submit a job to the Batch queue using latest JD revision"
 	@echo "  clean       - Clean up artifacts"
@@ -53,6 +53,8 @@ build:
 SHA := $(shell git rev-parse --short HEAD)
 TAG ?= $(SHA)
 PROFILE ?=
+# Every aws call in this Makefile goes through this; override stops a command-line AWS=... dropping the profile.
+override AWS = aws --profile $(PROFILE)
 AWS_REGION ?=
 DOCKER_REGISTRY := $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_REGION).amazonaws.com
 LOCAL_IMAGE ?= validator-batch:$(TAG)
@@ -62,10 +64,10 @@ REMOTE_IMAGE := $(DOCKER_REGISTRY)/$(ECR_REPO):$(TAG)
 ecr-login:
 	@if [ -z "$(PROFILE)" ] || [ -z "$(AWS_REGION)" ] || [ -z "$(AWS_ACCOUNT_ID)" ]; then \
 		echo "Error: PROFILE, AWS_REGION, and AWS_ACCOUNT_ID are required"; \
-		echo "Example: make ecr-login PROFILE=excira AWS_REGION=us-east-1 AWS_ACCOUNT_ID=123456789012"; \
+		echo "Example: make ecr-login PROFILE=<profile> AWS_REGION=us-east-1 AWS_ACCOUNT_ID=<account-id>"; \
 		exit 1; \
 	fi
-	@aws ecr get-login-password --profile $(PROFILE) --region $(AWS_REGION) | docker login --username AWS --password-stdin $(DOCKER_REGISTRY)
+	@$(AWS) ecr get-login-password --region $(AWS_REGION) | docker login --username AWS --password-stdin $(DOCKER_REGISTRY)
 
 .PHONY: build-batch
 build-batch:
@@ -95,28 +97,30 @@ push-batch: check-clean
 	@docker push $(REMOTE_IMAGE)
 
 .PHONY: publish-batch
-publish-batch: check-clean ecr-login build-batch tag-batch push-batch
+publish-batch: check-clean check-jd-vars ecr-login build-batch tag-batch push-batch
  
 
 # ----- AWS Batch Job Definition and Submission -----
-# Variables must be provided by the root Makefile or CLI:
-#   JOB_DEF_NAME, JOB_QUEUE, LOG_GROUP, EXEC_ROLE_ARN, TASK_ROLE_ARN, VCPU, MEMORY
 JOB_NAME ?= validator-smoke
 
-.PHONY: register-jd
-register-jd:
-	@if [ -z "$(PROFILE)" ] || [ -z "$(AWS_REGION)" ] || [ -z "$(AWS_ACCOUNT_ID)" ] || [ -z "$(TAG)" ]; then \
-		echo "Error: PROFILE, AWS_REGION, AWS_ACCOUNT_ID, and TAG are required"; \
-		echo "Example: make register-jd PROFILE=excira AWS_REGION=us-east-1 AWS_ACCOUNT_ID=123456789012 TAG=dev-abcdef1"; \
-		exit 1; \
-	fi
+# publish-batch lists this before ecr-login, so in a serial make (no -j) a missing value
+# stops it before any AWS call.
+.PHONY: check-jd-vars
+check-jd-vars:
 	@if [ -z "$(ECR_REPO)" ] || [ -z "$(JOB_DEF_NAME)" ] || [ -z "$(LOG_GROUP)" ] || [ -z "$(EXEC_ROLE_ARN)" ] || [ -z "$(TASK_ROLE_ARN)" ] || [ -z "$(VCPU)" ] || [ -z "$(MEMORY)" ] || [ -z "$(EPHEMERAL_STORAGE)" ]; then \
 		echo "Error: ECR_REPO, JOB_DEF_NAME, LOG_GROUP, EXEC_ROLE_ARN, TASK_ROLE_ARN, VCPU, MEMORY, and EPHEMERAL_STORAGE are required"; \
 		exit 1; \
 	fi
+
+.PHONY: register-jd
+register-jd: check-jd-vars
+	@if [ -z "$(PROFILE)" ] || [ -z "$(AWS_REGION)" ] || [ -z "$(AWS_ACCOUNT_ID)" ] || [ -z "$(TAG)" ]; then \
+		echo "Error: PROFILE, AWS_REGION, AWS_ACCOUNT_ID, and TAG are required"; \
+		echo "Example: make register-jd PROFILE=<profile> AWS_REGION=us-east-1 AWS_ACCOUNT_ID=<account-id> TAG=dev-abcdef1"; \
+		exit 1; \
+	fi
 	@echo "Registering Job Definition $(JOB_DEF_NAME) with image $(DOCKER_REGISTRY)/$(ECR_REPO):$(TAG)"
-	@aws batch register-job-definition \
-		--profile $(PROFILE) \
+	@$(AWS) batch register-job-definition \
 		--region $(AWS_REGION) \
 		--job-definition-name $(JOB_DEF_NAME) \
 		--type container \
@@ -127,7 +131,7 @@ register-jd:
 submit-job:
 	@if [ -z "$(PROFILE)" ] || [ -z "$(AWS_REGION)" ]; then \
 		echo "Error: PROFILE and AWS_REGION are required"; \
-		echo "Example: make submit-job PROFILE=excira AWS_REGION=us-east-1"; \
+		echo "Example: make submit-job PROFILE=<profile> AWS_REGION=us-east-1"; \
 		exit 1; \
 	fi
 	@if [ -z "$(JOB_QUEUE)" ] || [ -z "$(JOB_DEF_NAME)" ]; then \
@@ -136,8 +140,7 @@ submit-job:
 	fi
 	@echo "Submitting job to $(JOB_QUEUE) using JD $(JOB_DEF_NAME)"
 	@job_name="$(JOB_NAME)-$$(date +%s)"; \
-	aws batch submit-job \
-		--profile $(PROFILE) \
+	$(AWS) batch submit-job \
 		--region $(AWS_REGION) \
 		--job-name "$$job_name" \
 		--job-queue $(JOB_QUEUE) \

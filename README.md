@@ -154,14 +154,19 @@ Both are **gitignored** — keep credentials and machine-specific values out of 
 
 - **`.env`** - Contains `GOOGLE_SERVICE_ACCOUNT` credentials for Google Sheets API
 - **`.env.make`** - AWS deployment variables (account IDs, regions, roles) and the
-  AWS CLI profile used to build the Lambda image
+  AWS CLI profiles: one to build the Lambda image, and one per environment to deploy
+  and invoke it (`DEV_LAMBDA_DEPLOY_PROFILE`, `PROD_LAMBDA_DEPLOY_PROFILE`). The
+  deploy, invoke and Batch targets take their profile only from this file. They stop
+  when `PROFILE`, `LAMBDA_DEPLOY_PROFILE`, `BATCH_PROFILE` or a `DEV_`/`PROD_`
+  profile variable is set on the command line, or in the shell environment and not in
+  this file. `AWS_PROFILE` is ignored.
 
 One-time AWS setup — copy the committed template and fill in your values:
 
 ```bash
 cp .env.make.example .env.make
 # then edit .env.make: set LAMBDA_PROFILE to an AWS CLI profile that can fetch
-# the Lambda Extension layer (and fill in the account/region/role vars for deploy)
+# the Lambda Extension layer, and fill in the remaining vars
 ```
 
 With `.env.make` in place, `make build-lambda-container` and `make build-all`

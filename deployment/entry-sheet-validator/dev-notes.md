@@ -53,7 +53,7 @@ This document summarizes the approach, technical decisions, and workflow for bui
 - The Makefile provides targets to:
   - Build the container image (`make build-lambda-container`)
   - Push to ECR and deploy/update the Lambda function (`make deploy-lambda-container`)
-- Environment variables (like `AWS_PROFILE`, `AWS_ACCOUNT_ID`, etc.) are used to control deployment and ensure flexibility.
+- Variables in `.env.make` (like `DEV_LAMBDA_DEPLOY_PROFILE`, `DEV_AWS_ACCOUNT_ID`, etc.) control deployment, selected by `ENV=dev|prod`.
 
 ---
 

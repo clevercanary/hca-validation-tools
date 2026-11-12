@@ -96,16 +96,22 @@ This generates test files and provides instructions for testing the Lambda conta
 
 ### Deploying to AWS
 
-The build profile comes from `LAMBDA_PROFILE` in `.env.make` (see the repo-root
-README), so the build needs no profile on the command line. The **deploy**
-profile is still supplied via the `AWS_PROFILE` env var — dev and prod use
-different profiles. Sourcing the deploy profile from `.env.make` too is tracked
-in #517.
+The AWS profiles come from `.env.make` (see the repo-root README), so no command
+needs one on the command line. The build uses `LAMBDA_PROFILE`. Deploy and invoke
+use `DEV_LAMBDA_DEPLOY_PROFILE` or `PROD_LAMBDA_DEPLOY_PROFILE`, chosen by `ENV`,
+and never fall back to the shell's AWS identity.
+The deploy only updates an existing function. It runs `get-function` first and,
+if the function is missing, stops with that error before anything is pushed;
+otherwise it pushes the image and runs `update-function-code`. Creating the
+function is a one-time setup step.
+`make invoke-lambda` prints the response and exits non-zero when the function
+raised an error (`FunctionError` in the invoke output).
 
 ```bash
-make build-lambda-container                                       # profile from .env.make
-AWS_PROFILE=<dev-profile>  make deploy-lambda-container ENV=dev
-AWS_PROFILE=<prod-profile> make deploy-lambda-container ENV=prod
+make build-lambda-container
+make deploy-lambda-container ENV=dev
+make deploy-lambda-container ENV=prod
+make invoke-lambda SHEET_ID=<sheet-id> ENV=dev
 ```
 
 ## API Request Format
