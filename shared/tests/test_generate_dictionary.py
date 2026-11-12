@@ -113,15 +113,15 @@ def test_no_schema_text_ends_in_whitespace(schemaview):
 def test_no_schema_example_contains_a_semicolon(schemaview):
     # The dictionary joins a slot's examples with "; ", and the portal splits `example` on ";" to show each as a
     # separate alternative (data-portal's DetailCell `buildExample`), so a ";" inside one example would show as two
-    # (#854). Keyed by slot, so a slot bionetwork subclasses inherit is reported once.
-    joined = {
-        slot.name: example.value
+    # (#854). A set of (slot, example) pairs, so a slot bionetwork subclasses inherit is reported once per example.
+    offending = {
+        (slot.name, example.value)
         for class_name in schemaview.all_classes()
         for slot in schemaview.class_induced_slots(class_name)
         for example in slot.examples
         if example.value and ";" in example.value
     }
-    assert not joined, f"examples containing ';': {joined}"
+    assert not offending, f"examples containing ';': {sorted(offending)}"
 
 
 def test_core_slots_have_every_network(data_dictionary):
