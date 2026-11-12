@@ -83,9 +83,9 @@ override BATCH_JD_ARGS = \
 override LAMBDA_AWS = aws --profile $(LAMBDA_DEPLOY_PROFILE)
 
 # Deploy, invoke and Batch profiles may only come from .env.make. Stops the
-# target when PROFILE, $(1) or $(ENV_PREFIX)_$(1) is set on the command line
-# or in the environment. Root targets only: the service Makefiles receive
-# PROFILE on their command line by design.
+# target when PROFILE, $(1) or $(ENV_PREFIX)_$(1) is set on the command line,
+# or in the environment and not in .env.make. Root targets only: the service
+# Makefiles receive PROFILE on their command line by design.
 override require_env_make_profile = $(foreach v,PROFILE $(1) $(ENV_PREFIX)_$(1),$(if $(filter command environment,$(firstword $(origin $(v)))),$(error $(v) comes from the $(origin $(v)); a deploy profile may only come from .env.make: set $(ENV_PREFIX)_$(1) there)))
 
 # ECR registry and repository path

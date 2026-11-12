@@ -52,7 +52,7 @@ This document summarizes the approach, technical decisions, and workflow for bui
 ## 6. Automation & Deployment
 - The Makefile provides targets to:
   - Build the container image (`make build-lambda-container`)
-  - Push to ECR and deploy/update the Lambda function (`make deploy-lambda-container`)
+  - Push to ECR and update the existing Lambda function (`make deploy-lambda-container`); the function must already exist
 - Variables in `.env.make` (like `DEV_LAMBDA_DEPLOY_PROFILE`, `DEV_AWS_ACCOUNT_ID`, etc.) control deployment, selected by `ENV=dev|prod`.
 
 ---
