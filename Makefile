@@ -65,7 +65,7 @@ BATCH_EPHEMERAL_STORAGE ?= $(DEV_BATCH_EPHEMERAL_STORAGE)
 endif
 
 # Arguments for the dataset-validator publish-batch and register-jd sub-makes.
-BATCH_JD_ARGS = \
+override BATCH_JD_ARGS = \
     PROFILE=$(BATCH_PROFILE) \
     AWS_REGION=$(BATCH_AWS_REGION) \
     AWS_ACCOUNT_ID=$(BATCH_AWS_ACCOUNT_ID) \
