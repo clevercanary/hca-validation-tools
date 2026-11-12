@@ -12,8 +12,6 @@ dependencies = [
 dev = [
     "pytest>=8.3.5,<9",
     "pytest-cov>=7,<8",
-    "pytest-mock>=3.14.0,<4",
-    "moto>=4.2.0,<5",
     # The container smoke test POSTs to the running Lambda over HTTP.
     "requests>=2.32.3,<3",
 ]
