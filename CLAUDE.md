@@ -92,9 +92,9 @@ For Pylance to match in-editor, open the repo via `hca-validation-tools.code-wor
 # comes from LAMBDA_PROFILE in .env.make (override with PROFILE=... if needed).
 # Deploy and invoke use DEV_LAMBDA_DEPLOY_PROFILE or PROD_LAMBDA_DEPLOY_PROFILE
 # from .env.make, per ENV; the Batch targets use DEV_BATCH_PROFILE or
-# PROD_BATCH_PROFILE. Those targets stop when a profile variable (PROFILE included)
-# is set on the command line, or in the environment and not in .env.make;
-# AWS_PROFILE is ignored.
+# PROD_BATCH_PROFILE. Each of those targets stops when PROFILE, its own profile
+# variable or that variable's DEV_/PROD_ form for the current ENV is set on the
+# command line, or in the environment and not in .env.make; AWS_PROFILE is ignored.
 make build-lambda-container
 make deploy-lambda-container ENV=dev
 make invoke-lambda SHEET_ID=<google-sheet-id>

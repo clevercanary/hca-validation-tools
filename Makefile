@@ -86,7 +86,7 @@ override LAMBDA_AWS = aws --profile $(LAMBDA_DEPLOY_PROFILE)
 # target when PROFILE, $(1) or $(ENV_PREFIX)_$(1) is set on the command line
 # or in the environment. Root targets only: the service Makefiles receive
 # PROFILE on their command line by design.
-require_env_make_profile = $(foreach v,PROFILE $(1) $(ENV_PREFIX)_$(1),$(if $(filter command environment,$(firstword $(origin $(v)))),$(error $(v) comes from the $(origin $(v)); a deploy profile may only come from .env.make: set $(ENV_PREFIX)_$(1) there)))
+override require_env_make_profile = $(foreach v,PROFILE $(1) $(ENV_PREFIX)_$(1),$(if $(filter command environment,$(firstword $(origin $(v)))),$(error $(v) comes from the $(origin $(v)); a deploy profile may only come from .env.make: set $(ENV_PREFIX)_$(1) there)))
 
 # ECR registry and repository path
 ECR_REGISTRY := $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_REGION).amazonaws.com

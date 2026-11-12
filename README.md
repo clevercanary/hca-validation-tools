@@ -156,10 +156,11 @@ Both are **gitignored** — keep credentials and machine-specific values out of 
 - **`.env.make`** - AWS deployment variables (account IDs, regions, roles) and the
   AWS CLI profiles: one to build the Lambda image, and one per environment to deploy
   and invoke it (`DEV_LAMBDA_DEPLOY_PROFILE`, `PROD_LAMBDA_DEPLOY_PROFILE`). The
-  deploy, invoke and Batch targets take their profile only from this file. They stop
-  when `PROFILE`, `LAMBDA_DEPLOY_PROFILE`, `BATCH_PROFILE` or a `DEV_`/`PROD_`
-  profile variable is set on the command line, or in the shell environment and not in
-  this file. `AWS_PROFILE` is ignored.
+  deploy, invoke and Batch targets take their profile only from this file. Each one
+  stops when `PROFILE`, its own profile variable (`LAMBDA_DEPLOY_PROFILE` or
+  `BATCH_PROFILE`) or that variable's `DEV_`/`PROD_` form for the current `ENV` is set
+  on the command line, or in the shell environment and not in this file. `AWS_PROFILE`
+  is ignored.
 
 One-time AWS setup — copy the committed template and fill in your values:
 
