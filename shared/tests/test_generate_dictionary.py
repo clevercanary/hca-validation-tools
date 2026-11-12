@@ -4,6 +4,7 @@ Tests for data dictionary generation: the folding of bionetwork subclass slots i
 """
 
 import json
+import re
 import textwrap
 
 import pytest
@@ -12,16 +13,19 @@ from linkml_runtime import SchemaView
 from hca_validation.data_dictionary.generate_dictionary import (
     generate_dictionary,
     generate_tier_1_dictionary,
+    load_layout,
     load_schemas,
     transform_layout_to_data_dictionary,
     transform_schema_to_data_dictionary,
 )
 from hca_validation.schema_utils.schema_utils import _annotation_value
 
+_CXG = "https://example.org/cxg"
+
 
 @pytest.fixture(scope="module")
 def data_dictionary(schemaview):
-    return transform_schema_to_data_dictionary(schemaview)
+    return transform_schema_to_data_dictionary(schemaview, _CXG)
 
 
 def _attribute(data_dictionary, class_name, attribute_name):
@@ -170,7 +174,7 @@ def test_slot_added_by_several_subclasses_is_folded_once(tmp_path):
             - gut_field
         """,
     )
-    (dataset,) = transform_schema_to_data_dictionary(schemaview)["classes"]
+    (dataset,) = transform_schema_to_data_dictionary(schemaview, _CXG)["classes"]
     by_name = {attribute["name"]: attribute for attribute in dataset["attributes"]}
 
     assert list(by_name) == ["gut_field", "shared_field", "title"]
@@ -193,7 +197,7 @@ def test_unknown_bionetwork_key_is_refused(tmp_path):
         """,
     )
     with pytest.raises(ValueError, match="'guts', which is not in the BioNetwork enum"):
-        transform_schema_to_data_dictionary(schemaview)
+        transform_schema_to_data_dictionary(schemaview, _CXG)
 
 
 def test_subclass_without_bionetwork_is_refused(tmp_path):
@@ -207,7 +211,7 @@ def test_subclass_without_bionetwork_is_refused(tmp_path):
         """,
     )
     with pytest.raises(ValueError, match="GutDataset extends Dataset but has no bioNetwork annotation"):
-        transform_schema_to_data_dictionary(schemaview)
+        transform_schema_to_data_dictionary(schemaview, _CXG)
 
 
 def test_conflicting_definitions_are_refused(tmp_path):
@@ -232,7 +236,7 @@ def test_conflicting_definitions_are_refused(tmp_path):
         """,
     )
     with pytest.raises(ValueError, match="define 'gut_field' differently"):
-        transform_schema_to_data_dictionary(schemaview)
+        transform_schema_to_data_dictionary(schemaview, _CXG)
 
 
 def test_subclass_adding_only_entry_sheet_required_folds(tmp_path):
@@ -250,7 +254,7 @@ def test_subclass_adding_only_entry_sheet_required_folds(tmp_path):
                 entrySheetRequired: false
         """,
     )
-    title = _attribute(transform_schema_to_data_dictionary(schemaview), "dataset", "title")
+    title = _attribute(transform_schema_to_data_dictionary(schemaview, _CXG), "dataset", "title")
     assert title["required"] is True
     assert "entrySheetRequired" not in title.get("annotations", {})
 
@@ -269,7 +273,7 @@ def test_changed_base_slot_is_refused(tmp_path):
         """,
     )
     with pytest.raises(ValueError, match="GutDataset changes Dataset's 'title'"):
-        transform_schema_to_data_dictionary(schemaview)
+        transform_schema_to_data_dictionary(schemaview, _CXG)
 
 
 # The dictionary doesn't show `pattern`, so these differences are invisible in its output and must still be refused
@@ -287,7 +291,7 @@ def test_base_slot_pattern_change_is_refused(tmp_path):
         """,
     )
     with pytest.raises(ValueError, match="GutDataset changes Dataset's 'title'"):
-        transform_schema_to_data_dictionary(schemaview)
+        transform_schema_to_data_dictionary(schemaview, _CXG)
 
 
 def test_conflicting_patterns_are_refused(tmp_path):
@@ -312,7 +316,7 @@ def test_conflicting_patterns_are_refused(tmp_path):
         """,
     )
     with pytest.raises(ValueError, match="define 'gut_field' differently"):
-        transform_schema_to_data_dictionary(schemaview)
+        transform_schema_to_data_dictionary(schemaview, _CXG)
 
 
 @pytest.mark.parametrize(
@@ -352,7 +356,7 @@ def test_conflicting_patterns_are_refused(tmp_path):
 def test_indirect_subclass_is_refused(tmp_path, classes):
     schemaview = _schemaview(tmp_path, classes)
     with pytest.raises(ValueError, match="is not a direct, concrete subclass of Dataset"):
-        transform_schema_to_data_dictionary(schemaview)
+        transform_schema_to_data_dictionary(schemaview, _CXG)
 
 
 # Slot-to-attribute mapping (#548). These run against a small schema written to a temporary directory rather
@@ -485,7 +489,7 @@ def mapping_schema_path(tmp_path_factory):
 
 @pytest.fixture(scope="module")
 def mapping_dictionary(mapping_schema_path):
-    return transform_schema_to_data_dictionary(SchemaView(str(mapping_schema_path), merge_imports=True))
+    return transform_schema_to_data_dictionary(SchemaView(str(mapping_schema_path), merge_imports=True), _CXG)
 
 
 def _class_entry(dictionary, class_name):
@@ -585,9 +589,9 @@ def test_multivalued(mapping_dictionary):
     assert _attributes(mapping_dictionary, "Donor")["donor_id"]["multivalued"] is True
 
 
-def test_generate_dictionary_writes_json(mapping_schema_path, mapping_dictionary, tmp_path):
+def test_generate_dictionary_writes_json(mapping_schema_path, mapping_layout, mapping_dictionary, tmp_path):
     output = tmp_path / "out.json"
-    generate_dictionary(output, mapping_schema_path)
+    generate_dictionary(output, mapping_schema_path, mapping_layout)
     assert json.loads(output.read_text()) == mapping_dictionary
 
 
@@ -597,6 +601,15 @@ def test_generate_dictionary_writes_json(mapping_schema_path, mapping_dictionary
 @pytest.fixture(scope="module")
 def tier_1_dictionary():
     return transform_layout_to_data_dictionary(*load_schemas())
+
+
+def test_every_cellxgene_link_names_the_layouts_schema_version(schemaview, tier_1_dictionary):
+    # #859: the matrix layers note links CELLxGENE's schema in full, so a version bump to the layout's `cxg` prefix
+    # must reach those links too.
+    cxg_reference = load_layout().prefixes["cxg"].prefix_reference
+    linked = json.dumps([tier_1_dictionary, transform_schema_to_data_dictionary(schemaview, cxg_reference)])
+    version = re.compile(r"single-cell-curation/blob/main/schema/([^/]+)/")
+    assert set(version.findall(linked)) == set(version.findall(cxg_reference))
 
 
 # The HCA Data Portal's tier-1.json, which shows fields in file order
@@ -754,7 +767,7 @@ def test_header_comes_from_the_layout(mapping_tier_1):
         "name": "test_dictionary",
         "title": "Test Dictionary",
         "description": "",
-        "prefixes": {"cxg": "https://example.org/cxg"},
+        "prefixes": {"cxg": _CXG},
         "annotations": {"cxg": "CELLxGENE Schema"},
     }
 
