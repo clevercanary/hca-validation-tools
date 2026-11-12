@@ -24,8 +24,8 @@ WORKDIR /build/services/entry-sheet-validator
 #   --no-emit-project    entry-sheet is a virtual project — nothing to install
 #   --no-emit-package …  shared and hca-metadata-schema are served as source from /var/task
 #                        (final stage), so only their dependencies go into /opt/python
-# The build-image python (3.12) is pinned so environment markers resolve for the
-# runtime interpreter, not the builder's default.
+# `uv pip install --python /var/lang/bin/python` installs for the image's own
+# interpreter, so environment markers resolve for the runtime, not uv's default.
 RUN uv export --frozen --no-hashes --no-dev \
         --no-emit-project --no-emit-package hca-validation-shared \
         --no-emit-package hca-metadata-schema \
@@ -34,8 +34,9 @@ RUN uv export --frozen --no-hashes --no-dev \
         -r /tmp/requirements.txt
 
 # Download and unpack the AWS Parameters and Secrets Lambda Extension (v5) using a presigned URL
-ARG EXT_URL
+# EXT_URL changes on every build, so it is declared after the cacheable install.
 RUN dnf install -y unzip file
+ARG EXT_URL
 RUN curl -s "$EXT_URL" -o /tmp/ps-ext.zip && \
     file /tmp/ps-ext.zip && \
     unzip -q /tmp/ps-ext.zip -d /opt && \

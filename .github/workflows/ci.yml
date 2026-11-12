@@ -4,10 +4,10 @@ name: CI
 # local workflow, not a caller of the shared clevercanary/.github reusable
 # workflows (those don't exist yet — see #461); migrating to them is deferred.
 #
-# The entry-sheet-validator suite is intentionally excluded: its only test boots
-# a built Docker image (`hca-entry-sheet-validator:latest`) and needs AWS creds
-# (Lambda extension layer) plus a GOOGLE_SERVICE_ACCOUNT secret, so it can't run
-# on a plain PR runner. Revisit as a separate gated job.
+# entry-sheet-validator's container smoke test is excluded: it boots a built
+# Docker image (`hca-entry-sheet-validator:latest`) and needs AWS creds (Lambda
+# extension layer) plus a GOOGLE_SERVICE_ACCOUNT secret, so it can't run on a
+# plain PR runner. Revisit as a separate gated job.
 
 on:
   pull_request:
@@ -30,7 +30,6 @@ jobs:
       - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
         with:
           version: "0.10.9"
-          python-version: "3.11"
           enable-cache: true
       # Ruff pinned to match .pre-commit-config.yaml (rev v0.11.8) so local and
       # CI agree. Config lives in ruff.toml (select = E/F/I/W; widening tracked
@@ -41,13 +40,12 @@ jobs:
         run: uvx ruff@0.11.8 format --check .
       # Each service commits its uv.lock (#483), and the test matrix's `uv sync --frozen`
       # installs it without checking it against pyproject.toml, so fail on a stale one
-      # here (#823). uv's error doesn't name the lock, so the step does. `env -u UV_PYTHON`
-      # drops setup-uv's 3.11, which uv refuses for a service requiring a later Python.
+      # here (#823). uv's error doesn't name the lock, so the step does.
       - name: Service locks are current
         run: |
           failed=0
           for lock in services/*/uv.lock; do
-            if ! env -u UV_PYTHON uv lock --check --directory "$(dirname "$lock")"; then
+            if ! uv lock --check --directory "$(dirname "$lock")"; then
               echo "::error file=$lock::uv lock --check failed for $lock; if it is stale, run 'uv lock' in its directory and commit it."
               failed=1
             fi
