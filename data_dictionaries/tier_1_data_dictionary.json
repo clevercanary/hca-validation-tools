@@ -142,7 +142,7 @@
             ]
           },
           "rationale": "This captures potential strand hopping which may cause data quality issues.",
-          "values": "Values should be \"subClassOf\" [\"EFO:0002699\"] - https://www.ebi.ac.uk/ols/ontologies/efo/terms?iri=http%3A%2F%2Fwww.ebi.ac.uk%2Fefo%2FEFO_0002699"
+          "values": "Values should be \"subClassOf\" [\"EFO:0002699\"] - https://www.ebi.ac.uk/ols4/ontologies/efo/classes?iri=http%3A%2F%2Fwww.ebi.ac.uk%2Fefo%2FEFO_0002699"
         },
         {
           "name": "assay_ontology_term_id",
@@ -1174,7 +1174,7 @@
             ]
           },
           "rationale": "If cell lineages were filtered, this may be a dataset exclusion criterion.",
-          "values": "This must be a Cell Ontology (CL) term (http://www.ebi.ac.uk/ols4/ontologies/cl). For cells that are enriched, list the CL code followed by a \"+\". For cells that were depleted, list the CL code followed by a \"-\". If no enrichment or depletion occurred, please use 'na' (not applicable)"
+          "values": "This must be a Cell Ontology (CL) term (https://www.ebi.ac.uk/ols4/ontologies/cl). For cells that are enriched, list the CL code followed by a \"+\". For cells that were depleted, list the CL code followed by a \"-\". If no enrichment or depletion occurred, please use 'na' (not applicable)"
         },
         {
           "name": "sample_collection_year",
@@ -1633,7 +1633,7 @@
             ]
           },
           "rationale": "Encoding of cell type to help alignment with other datasets.",
-          "values": "This must be a Cell Ontology (CL) term (http://www.ebi.ac.uk/ols4/ontologies/cl).\n\nIf no appropriate high-level term can be found or the cell type is unknown, then it is strongly recommended to use 'unknown'.\n\nThe following terms must not be used: \"CL:0000255\" for eukaryotic cell; \"CL:0000257\" for Eumycetozoan cell; \"CL:0000548\" for animal cell."
+          "values": "This must be a Cell Ontology (CL) term (https://www.ebi.ac.uk/ols4/ontologies/cl).\n\nIf no appropriate high-level term can be found or the cell type is unknown, then it is strongly recommended to use 'unknown'.\n\nThe following terms must not be used: \"CL:0000255\" for eukaryotic cell; \"CL:0000257\" for Eumycetozoan cell; \"CL:0000548\" for animal cell."
         }
       ]
     },
