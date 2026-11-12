@@ -34,12 +34,13 @@ _SECTION_SUFFIX = "Section"
 _DISPLAY_RANGE = "displayRange"
 
 
-def transform_schema_to_data_dictionary(schemaview: SchemaView) -> dict[str, Any]:
+def transform_schema_to_data_dictionary(schemaview: SchemaView, cxg_reference: str) -> dict[str, Any]:
     """
     Transform the LinkML schema into the requested data dictionary format.
 
     Args:
-        schema_dict: The expanded LinkML schema dictionary
+        schemaview: The core schema, with its imports merged
+        cxg_reference: The CELLxGENE schema URL the header's `cxg` prefix expands to
 
     Returns:
         A dictionary in the requested format for the data dictionary
@@ -49,7 +50,7 @@ def transform_schema_to_data_dictionary(schemaview: SchemaView) -> dict[str, Any
         "name": "tier_1",
         "title": "HCA Tier 1 Metadata",
         "classes": [],
-        "prefixes": {"cxg": "https://github.com/chanzuckerberg/single-cell-curation/blob/main/schema/5.2.0/schema.md"},
+        "prefixes": {"cxg": cxg_reference},
         "annotations": {"cxg": "CELLxGENE"},
     }
 
@@ -301,9 +302,11 @@ def _write(data_dict: dict[str, Any], output_path) -> None:
     print(f"Data dictionary written to {output_path}")
 
 
-def generate_dictionary(output_path, schema_path=CORE_SCHEMA_PATH):
-    """Generate the full data dictionary JSON from the specified schema file."""
-    _write(transform_schema_to_data_dictionary(SchemaView(str(schema_path), merge_imports=True)), output_path)
+def generate_dictionary(output_path, schema_path=CORE_SCHEMA_PATH, layout_path=LAYOUT_PATH):
+    """Generate the full data dictionary JSON from the schema, with the layout's CELLxGENE schema URL."""
+    cxg_reference = load_layout(layout_path).prefixes["cxg"].prefix_reference
+    schemaview = SchemaView(str(schema_path), merge_imports=True)
+    _write(transform_schema_to_data_dictionary(schemaview, cxg_reference), output_path)
 
 
 def generate_tier_1_dictionary(output_path, schema_path=CORE_SCHEMA_PATH, layout_path=LAYOUT_PATH):
