@@ -41,12 +41,13 @@ jobs:
         run: uvx ruff@0.11.8 format --check .
       # Each service commits its uv.lock (#483), and the test matrix's `uv sync --frozen`
       # installs it without checking it against pyproject.toml, so fail on a stale one
-      # here (#823). uv's error doesn't name the lock, so the step does.
+      # here (#823). uv's error doesn't name the lock, so the step does. `env -u UV_PYTHON`
+      # drops setup-uv's 3.11, which uv refuses for a service requiring a later Python.
       - name: Service locks are current
         run: |
           failed=0
           for lock in services/*/uv.lock; do
-            if ! uv lock --check --directory "$(dirname "$lock")"; then
+            if ! env -u UV_PYTHON uv lock --check --directory "$(dirname "$lock")"; then
               echo "::error file=$lock::uv lock --check failed for $lock; if it is stale, run 'uv lock' in its directory and commit it."
               failed=1
             fi
@@ -164,15 +165,17 @@ jobs:
             sync-args: '--frozen'
             pytest-args: ''
           # The container smoke test boots the built image; `make test-lambda-container` runs it.
+          # `python-version` overrides the 3.11 default: the Lambda runs on the Python 3.12 image.
           - project: services/entry-sheet-validator
             sync-args: '--frozen'
             pytest-args: '--ignore=tests/test_lambda_container_smoke.py'
+            python-version: '3.12'
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
         with:
           version: "0.10.9"
-          python-version: "3.11"
+          python-version: ${{ matrix.python-version || '3.11' }}
           enable-cache: true
       - name: Install system packages
         if: matrix.apt
