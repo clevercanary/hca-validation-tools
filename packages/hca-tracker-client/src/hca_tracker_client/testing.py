@@ -353,10 +353,12 @@ class FakeSmartSync:
     engine's ``_upload_file`` returning False. ``HCA_TRACKER_FAKE_S3_DELAY``
     seconds are slept per file, so a test can watch a job in flight. When
     ``HCA_TRACKER_FAKE_S3_HOLD`` names a path, each file waits after its first
-    progress frame until that path exists, so a test holds the job in flight
-    for as long as it needs. The return dicts have the engine's shapes, key
-    for key.
+    progress frame until that path exists, so a test holds the job in flight;
+    after ``HOLD_TIMEOUT`` seconds the engine raises instead. The return dicts
+    have the engine's shapes, key for key.
     """
+
+    HOLD_TIMEOUT = 120
 
     def __init__(self, profile, log=None, on_file_start=None, on_file_done=None):
         self.profile = profile
@@ -366,6 +368,15 @@ class FakeSmartSync:
         self.root = Path(os.environ["HCA_TRACKER_FAKE_S3"])
         self.delay = float(os.environ.get("HCA_TRACKER_FAKE_S3_DELAY") or 0)
         self.hold = os.environ.get("HCA_TRACKER_FAKE_S3_HOLD")
+
+    def _wait_for_release(self, hold: Path) -> None:
+        deadline = time.monotonic() + self.HOLD_TIMEOUT
+        while not hold.exists():
+            if time.monotonic() > deadline:
+                raise RuntimeError(
+                    f"{hold} was not created within {self.HOLD_TIMEOUT}s; the test holding this job is gone"
+                )
+            time.sleep(0.05)
 
     def _print(self, text: str, end: str = "\n") -> None:
         if self.log:
@@ -430,8 +441,8 @@ class FakeSmartSync:
                 f"0.00%  ━  0 B / {info['size'] / 1000:.1f} kB (0 B/s) ?s left (0/1)", end=""
             )  # s5cmd's frame shape
             time.sleep(self.delay)
-            while self.hold and not Path(self.hold).exists():
-                time.sleep(0.05)
+            if self.hold:
+                self._wait_for_release(Path(self.hold))
             if info["filename"].startswith("fail-"):
                 self._print(f"upload failed for {info['filename']}")
                 continue

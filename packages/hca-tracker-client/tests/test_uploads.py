@@ -650,14 +650,20 @@ def test_worker_holds_the_plan_it_was_given(uploads, staged, fake_s3):
     assert "snapshot" not in failed and "snapshot" not in uploads.plan("gut", "gut", "source-datasets", str(staged))
 
 
-def test_worker_outlives_the_caller(uploads, staged, monkeypatch, fake_s3):
+def test_worker_outlives_the_caller(uploads, staged, tmp_path, monkeypatch, fake_s3):
     """The worker is in its own session: killing the process group of the caller does not reach it."""
-    monkeypatch.setenv("HCA_TRACKER_FAKE_S3_DELAY", "0.5")
+    release = tmp_path / "release"
+    monkeypatch.setenv("HCA_TRACKER_FAKE_S3_HOLD", str(release))
     started = uploads.start("gut", "gut", "source-datasets", str(staged))
-    wait_for(uploads, started["job_id"], ("uploading",), timeout=30)  # the worker is up, so it has called setsid
-    job = uploads.store.load(started["job_id"])
-    assert job is not None and job.pid and os.getsid(job.pid) == job.pid, "the worker leads its own session"
-    assert os.getsid(job.pid) != os.getsid(os.getpid())
+    try:
+        # The worker is up, so it has called setsid.
+        live = wait_for(uploads, started["job_id"], ("uploading", *UPLOAD_ENDED), timeout=30)
+        assert live["state"] == "uploading", live
+        job = uploads.store.load(started["job_id"])
+        assert job is not None and job.pid and os.getsid(job.pid) == job.pid, "the worker leads its own session"
+        assert os.getsid(job.pid) != os.getsid(os.getpid())
+    finally:
+        release.touch()  # let the held worker finish, pass or fail
     assert wait_for(uploads, started["job_id"], UPLOAD_ENDED, timeout=30)["state"] == "done"
 
 
