@@ -533,8 +533,8 @@ def test_partial_failure(uploads, staged, fake_s3):
     assert ([f["name"] for f in plan["files"]], plan["up_to_date"]) == (["fail-c.h5ad"], ["a.h5ad", "b.h5ad"])
 
 
-def test_interrupted_worker(uploads, staged, monkeypatch):
-    monkeypatch.setenv("HCA_TRACKER_FAKE_S3_DELAY", "5")
+def test_interrupted_worker(uploads, staged, tmp_path, monkeypatch):
+    monkeypatch.setenv("HCA_TRACKER_FAKE_S3_HOLD", str(tmp_path / "never-released"))  # killed while held
     started = uploads.start("gut", "gut", "source-datasets", str(staged))
     wait_for(uploads, started["job_id"], ("uploading",), timeout=30)
     job = uploads.store.load(started["job_id"])
@@ -554,9 +554,9 @@ def test_interrupted_worker(uploads, staged, monkeypatch):
         fresh.status("nope")
 
 
-def test_interrupted_job_does_not_block_its_folder(uploads, staged, monkeypatch):
+def test_interrupted_job_does_not_block_its_folder(uploads, staged, tmp_path, monkeypatch):
     """A folder whose last job died is restarted, not reported as still uploading."""
-    monkeypatch.setenv("HCA_TRACKER_FAKE_S3_DELAY", "5")
+    monkeypatch.setenv("HCA_TRACKER_FAKE_S3_HOLD", str(tmp_path / "never-released"))  # killed while held
     started = uploads.start("gut", "gut", "source-datasets", str(staged))
     wait_for(uploads, started["job_id"], ("uploading",), timeout=30)
     job = uploads.store.load(started["job_id"])
@@ -565,7 +565,7 @@ def test_interrupted_job_does_not_block_its_folder(uploads, staged, monkeypatch)
     deadline = time.monotonic() + 10
     while worker_alive(job) and time.monotonic() < deadline:
         time.sleep(0.05)
-    monkeypatch.setenv("HCA_TRACKER_FAKE_S3_DELAY", "0")
+    monkeypatch.delenv("HCA_TRACKER_FAKE_S3_HOLD")
     again = uploads.start("gut", "gut", "source-datasets", str(staged))
     assert again["job_id"] != started["job_id"] and again["state"] in ("queued", "uploading")
     assert uploads.status(started["job_id"])["state"] == "interrupted"

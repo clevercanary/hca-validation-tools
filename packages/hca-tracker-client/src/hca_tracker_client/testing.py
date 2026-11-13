@@ -373,9 +373,7 @@ class FakeSmartSync:
         deadline = time.monotonic() + self.HOLD_TIMEOUT
         while not hold.exists():
             if time.monotonic() > deadline:
-                raise RuntimeError(
-                    f"{hold} was not created within {self.HOLD_TIMEOUT}s; the test holding this job is gone"
-                )
+                raise RuntimeError(f"{hold} was not created within {self.HOLD_TIMEOUT}s")
             time.sleep(0.05)
 
     def _print(self, text: str, end: str = "\n") -> None:

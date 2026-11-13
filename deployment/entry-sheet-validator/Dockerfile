@@ -20,7 +20,7 @@ COPY services/entry-sheet-validator/pyproject.toml services/entry-sheet-validato
 WORKDIR /build/services/entry-sheet-validator
 
 # Export the locked runtime dependency closure and install it into /opt/python.
-#   --no-dev             the Lambda ships no test dependencies
+#   --no-dev             leaves out the dev dependency group
 #   --no-emit-project    entry-sheet is a virtual project — nothing to install
 #   --no-emit-package …  shared and hca-metadata-schema are served as source from /var/task
 #                        (final stage), so only their dependencies go into /opt/python
