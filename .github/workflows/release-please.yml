@@ -240,3 +240,47 @@ jobs:
           # publishes succeeding (tools on the schema, mcp on the other three)
           # would be locked out of dispatch entirely.
           skip-existing: true
+
+  # The data dictionaries as the npm package hca-metadata-schema (#881): the same package and version as PyPI's,
+  # released by the same release-please component. It waits for the PyPI publish so npm never has a version PyPI
+  # lacks; a workflow_dispatch rerun fills in an npm version whose publish failed. npm's trusted publisher for it names
+  # this workflow file and allows `npm publish` only.
+  publish-hca-metadata-schema-npm:
+    needs: [release-please, publish-hca-metadata-schema]
+    if: |
+      github.ref == 'refs/heads/main' && always() && !cancelled() && needs['release-please'].result == 'success' &&
+      (needs['release-please'].outputs.hca_metadata_schema_release == 'true' || github.event_name == 'workflow_dispatch') &&
+      needs['publish-hca-metadata-schema'].result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        working-directory: packages/hca-metadata-schema/data_dictionaries
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      # Trusted publishing needs npm 11.5.1 or later; Node 24.22.2 ships npm 11.19.1. Bump deliberately.
+      - name: Install Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24.22.2"
+          registry-url: "https://registry.npmjs.org"
+
+      # npm has no skip-existing, so a workflow_dispatch rerun skips a version that is already published. Only a
+      # 404 means "not published"; any other registry error fails the job rather than publishing over a release.
+      # The repo's LICENSE and the package's CHANGELOG sit outside this folder, so they are copied in for the tarball.
+      - name: Publish to npm
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if output=$(npm view "hca-metadata-schema@$version" version 2>&1); then
+            echo "hca-metadata-schema@$version is already published"
+          elif grep -q E404 <<< "$output"; then
+            cp ../../../LICENSE ../CHANGELOG.md .
+            npm publish
+          else
+            echo "$output" >&2
+            exit 1
+          fi

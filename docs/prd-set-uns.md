@@ -24,7 +24,7 @@ This is error-prone and slow, especially for wranglers who aren't Python-fluent.
 
 ## HCA Tier 1 `uns` Fields
 
-Source: `hca_metadata_schema/slots.yaml`, `hca_metadata_schema/dataset.yaml` (in `packages/hca-metadata-schema/src/`), `data_dictionaries/core_data_dictionary.json`
+Source: `hca_metadata_schema/slots.yaml`, `hca_metadata_schema/dataset.yaml` (in `packages/hca-metadata-schema/src/`), `packages/hca-metadata-schema/data_dictionaries/core_data_dictionary.json`
 
 | Field | Required | Type | Validation |
 |-------|----------|------|------------|
@@ -91,7 +91,7 @@ Claude: [calls set_uns(output_path, "doublet_detection", "none")]
 
 The canonical field definitions live in the `hca-metadata-schema` package (`packages/hca-metadata-schema/`, moved out of `shared/` in #350):
 - **LinkML schemas**: `packages/hca-metadata-schema/src/hca_metadata_schema/` — `dataset.yaml`, `slots.yaml`, etc.
-- **Data dictionary**: `data_dictionaries/core_data_dictionary.json` — generated from LinkML, has `annDataLocation` annotations
+- **Data dictionary**: `packages/hca-metadata-schema/data_dictionaries/core_data_dictionary.json` — generated from LinkML, has `annDataLocation` annotations
 - **Generated Pydantic models**: `packages/hca-metadata-schema/src/hca_metadata_schema/generated/core.py`
 
 The edit tools should read from these sources, not duplicate them. This means:
