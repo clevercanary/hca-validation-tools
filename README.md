@@ -19,7 +19,7 @@ Top-level directories and their roles (each package/service has its own
 - **`packages/`** — publishable PyPI packages: `hca-metadata-schema` (the LinkML schema and its generated Pydantic models, which `shared` and `hca-anndata-tools` depend on), `hca-schema-validator`, `hca-anndata-tools`, `hca-anndata-mcp`; and the private (unpublished) `hca-tracker-client` / `hca-tracker-mcp`, installed from git or a local path
 - **`services/`** — deployable services: `entry-sheet-validator` (Lambda), `dataset-validator` (Batch), and the `cellxgene-validator` / `hca-schema-validator` wrappers
 - **`deployment/`** — Dockerfiles and per-service deployment configs
-- **`data_dictionaries/`** — generated data dictionaries
+- **`packages/hca-metadata-schema/data_dictionaries/`** — generated data dictionaries, published to npm as `hca-metadata-schema`
 
 ## Quick Start
 

@@ -82,10 +82,10 @@ jobs:
         run: make -C shared gen-schema generate-data-dictionary
       - name: Fail if they changed
         run: |
-          changed=$(git status --porcelain -- packages/hca-metadata-schema data_dictionaries)
+          changed=$(git status --porcelain -- packages/hca-metadata-schema)
           if [ -n "$changed" ]; then
             echo "$changed"
-            git diff -- packages/hca-metadata-schema data_dictionaries
+            git diff -- packages/hca-metadata-schema
             echo "::error::Generated schema files are stale. Run 'make -C shared gen-schema generate-data-dictionary' and commit the result."
             exit 1
           fi

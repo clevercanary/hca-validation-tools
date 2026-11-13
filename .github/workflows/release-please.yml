@@ -23,7 +23,6 @@ jobs:
       hca_anndata_tools_release: ${{ steps.release.outputs['packages/hca-anndata-tools--release_created'] }}
       hca_anndata_mcp_release: ${{ steps.release.outputs['packages/hca-anndata-mcp--release_created'] }}
       hca_metadata_schema_release: ${{ steps.release.outputs['packages/hca-metadata-schema--release_created'] }}
-      hca_metadata_schema_npm_release: ${{ steps.release.outputs['data_dictionaries--release_created'] }}
     steps:
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         id: release
@@ -242,20 +241,23 @@ jobs:
           # would be locked out of dispatch entirely.
           skip-existing: true
 
-  # The data dictionaries as the npm package hca-metadata-schema (#881), versioned apart from the PyPI package of that
-  # name. npm's trusted publisher for it names this workflow file and allows `npm publish` only.
+  # The data dictionaries as the npm package hca-metadata-schema (#881): the same package and version as PyPI's,
+  # released by the same release-please component. It waits for the PyPI publish so npm never has a version PyPI
+  # lacks; a workflow_dispatch rerun fills in an npm version whose publish failed. npm's trusted publisher for it names
+  # this workflow file and allows `npm publish` only.
   publish-hca-metadata-schema-npm:
-    needs: release-please
+    needs: [release-please, publish-hca-metadata-schema]
     if: |
-      github.ref == 'refs/heads/main' && !failure() && !cancelled() &&
-      (needs['release-please'].outputs.hca_metadata_schema_npm_release == 'true' || github.event_name == 'workflow_dispatch')
+      github.ref == 'refs/heads/main' && always() && !cancelled() && needs['release-please'].result == 'success' &&
+      (needs['release-please'].outputs.hca_metadata_schema_release == 'true' || github.event_name == 'workflow_dispatch') &&
+      needs['publish-hca-metadata-schema'].result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
     defaults:
       run:
-        working-directory: data_dictionaries
+        working-directory: packages/hca-metadata-schema/data_dictionaries
     steps:
       - name: Checkout code
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -269,14 +271,14 @@ jobs:
 
       # npm has no skip-existing, so a workflow_dispatch rerun skips a version that is already published. Only a
       # 404 means "not published"; any other registry error fails the job rather than publishing over a release.
-      # The repo's LICENSE sits outside the package, so it is copied in for the tarball.
+      # The repo's LICENSE and the package's CHANGELOG sit outside this folder, so they are copied in for the tarball.
       - name: Publish to npm
         run: |
           version=$(node -p "require('./package.json').version")
           if output=$(npm view "hca-metadata-schema@$version" version 2>&1); then
             echo "hca-metadata-schema@$version is already published"
           elif grep -q E404 <<< "$output"; then
-            cp ../LICENSE .
+            cp ../../../LICENSE ../CHANGELOG.md .
             npm publish
           else
             echo "$output" >&2

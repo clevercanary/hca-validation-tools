@@ -31,8 +31,8 @@ A version is only useful if a consumer can tell from it whether a file that pass
       only when tools needs nothing from the new minor. Once a tools release admits the pending minor, any later
       schema change bound for that minor must keep working with every released tools version that admits it; if it
       can't, hold the change for the following minor.
-    - The data portal by bumping the tag it syncs from (DataBiosphere/data-portal#3263); the tracker by refreshing
-      its dictionary.
+    - The data portal and the tracker by bumping the `hca-metadata-schema` npm package they depend on, whose
+      version is this one (§4.3; DataBiosphere/data-portal#3263, clevercanary/hca-atlas-tracker#1637).
 
     Until a consumer adopts a release, it reports the version it last adopted.
 
@@ -108,16 +108,15 @@ A version is only useful if a consumer can tell from it whether a file that pass
 - adding `entrySheetRequired: false` to a required slot, which relaxes entry sheets only (§3.4)
 
 4.2 Dictionary-only changes are additions, not text fixes: the portal and the tracker consume the dictionary, and
-    must see from the changelog that it changed.
+    must see from the changelog, `packages/hca-metadata-schema/CHANGELOG.md`, that it changed.
 
-4.3 The dictionaries have their own version: `data_dictionaries/` is the npm package `hca-metadata-schema` (#881),
-    whose version is unrelated to the PyPI package of that name. Every change that regenerates a file there counts
-    toward it, whatever the commit's scope. For the dictionary, a breaking change renames or removes a key, or
-    changes a value's type; anything else is not breaking. Mark a dictionary break with `!` in the pull request title
-    (§2.2) even when the code it changes, such as `shared`, is not breaking for its own package: the portal and the
-    tracker pin `^0.x` ranges, which take a patch and refuse a minor. The reverse is accepted: a schema break (§3)
-    also regenerates the dictionary, so its `!` bumps the npm minor too, even when no dictionary key changed. A pull
-    request is one squash commit and must carry its regenerated dictionary, so the two cannot be split.
+4.3 The data dictionaries are this package too: `packages/hca-metadata-schema/data_dictionaries/` is published to
+    npm as `hca-metadata-schema` (#881), from the same release and at the same version as PyPI. Because the
+    dictionaries sit under this package's path, every change that regenerates them releases the package, whatever
+    the commit's scope, including a generator change in `shared`. A dictionary change that renames or removes a key,
+    or changes a value's type, is breaking (§3) even when the code it changes, such as `shared`, is not: mark it
+    with `!` in the pull request title (§2.2). The portal and the tracker pin `^0.x` ranges, which take a patch and
+    refuse a minor.
 
 ## 5. Text: what is said about a slot, not what it allows
 

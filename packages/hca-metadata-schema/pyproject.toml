@@ -36,6 +36,10 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/hca_metadata_schema"]
 
+# The data dictionaries ship to npm, not PyPI (#881).
+[tool.hatch.build.targets.sdist]
+exclude = ["data_dictionaries"]
+
 # Coverage floor, enforced by CI's test matrix; how to measure and when to raise it: CLAUDE.md, Coverage (#548).
 [tool.coverage.run]
 source = ["hca_metadata_schema"]
