@@ -31,7 +31,8 @@ source = ["src/entry_sheet_validator_lambda"]
 # Also measure code the tests run in a child Python process (`python -c`).
 patch = ["subprocess"]
 branch = true
-# The only test imports the handler in a child process, so the pytest process itself collects nothing.
+# CI runs only the handler-import test (it ignores `tests/test_lambda_container_smoke.py`), and that test
+# imports the handler in a child process, so the pytest process itself collects nothing.
 disable_warnings = ["no-data-collected"]
 
 [tool.coverage.report]

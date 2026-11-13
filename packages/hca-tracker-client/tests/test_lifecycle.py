@@ -13,8 +13,9 @@ import pytest
 
 from hca_tracker_client import CheckError, Downloads
 from hca_tracker_client.daemon import connect, daemon_dir, shutdown
+from hca_tracker_client.store import DOWNLOADING, QUEUED
 
-from .conftest import make_config, make_file, requires_aria2, wait_for
+from .conftest import make_config, make_file, requires_aria2, wait_for, wait_until
 
 pytestmark = [requires_aria2, pytest.mark.usefixtures("plenty_of_space")]
 
@@ -128,11 +129,14 @@ def test_download_survives_the_starting_process(cache_dir, tracker, gut_file):
 def test_resume_after_link_expires_and_daemon_restarts(downloads, tracker, gut_file):
     tracker.rate_bps = 500_000
     started = downloads.start("gut", "gut", "gut.h5ad")
-    status = wait_for(downloads, started["job_id"], ("downloading",))
-    deadline = time.monotonic() + 30
-    while status.get("progress", {}).get("bytes_done", 0) < SIZE // 3 and time.monotonic() < deadline:
-        time.sleep(0.1)
-        status = downloads.status(started["job_id"])
+    status = wait_until(
+        downloads,
+        started["job_id"],
+        lambda status: status["state"] not in (QUEUED, DOWNLOADING)
+        or ("progress" in status and status["progress"]["bytes_done"] >= SIZE // 3),
+        timeout=30,
+    )
+    assert status["state"] == DOWNLOADING, status
     assert status["progress"]["rate"].endswith("/s")
 
     # The daemon goes away (crash, reboot) and the 48 h link expires meanwhile.

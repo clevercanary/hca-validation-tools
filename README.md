@@ -40,7 +40,7 @@ cd hca-validation-tools
 
 # Build everything (schemas, data dictionaries, Docker images, run tests)
 # Note: build-all builds the Lambda container, so it needs Docker running and an
-# AWS profile with access to the Lambda Extension layer (passed as PROFILE=...).
+# AWS profile with access to the Lambda Extension layer (LAMBDA_PROFILE in .env.make).
 make build-all
 
 # Or just install the shared library (no Docker/AWS needed)
@@ -53,7 +53,7 @@ uv sync
 ### Build Commands
 ```bash
 make build-all                 # Build shared lib + containers and run tests (needs Docker + AWS)
-make build-lambda-container PROFILE=<profile>  # Build the entry-sheet Lambda image (AWS profile with Extension-layer access)
+make build-lambda-container   # Build the entry-sheet Lambda image (AWS profile: LAMBDA_PROFILE in .env.make)
 ```
 
 Schema and data-dictionary generation live in the shared library's Makefile:
