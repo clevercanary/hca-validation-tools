@@ -113,8 +113,8 @@ A version is only useful if a consumer can tell from it whether a file that pass
 4.3 The dictionaries have their own version: `data_dictionaries/` is the npm package `hca-metadata-schema` (#881),
     whose version is unrelated to the PyPI package of that name. Every change that regenerates a file there counts
     toward it, whatever the commit's scope. For the dictionary, a breaking change renames or removes a key, or
-    changes a value's type; anything else is not breaking. Mark a dictionary break with `!` or a `BREAKING CHANGE:`
-    footer even when the code it changes, such as `shared`, is not breaking for its own package: the portal and the
+    changes a value's type; anything else is not breaking. Mark a dictionary break with `!` in the pull request title
+    (§2.2) even when the code it changes, such as `shared`, is not breaking for its own package: the portal and the
     tracker pin `^0.x` ranges, which take a patch and refuse a minor. The reverse is accepted: a schema break (§3)
     also regenerates the dictionary, so its `!` bumps the npm minor too, even when no dictionary key changed. A pull
     request is one squash commit and must carry its regenerated dictionary, so the two cannot be split.
