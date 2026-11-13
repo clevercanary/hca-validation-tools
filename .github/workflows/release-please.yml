@@ -23,6 +23,7 @@ jobs:
       hca_anndata_tools_release: ${{ steps.release.outputs['packages/hca-anndata-tools--release_created'] }}
       hca_anndata_mcp_release: ${{ steps.release.outputs['packages/hca-anndata-mcp--release_created'] }}
       hca_metadata_schema_release: ${{ steps.release.outputs['packages/hca-metadata-schema--release_created'] }}
+      hca_metadata_schema_npm_release: ${{ steps.release.outputs['data_dictionaries--release_created'] }}
     steps:
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         id: release
@@ -240,3 +241,44 @@ jobs:
           # publishes succeeding (tools on the schema, mcp on the other three)
           # would be locked out of dispatch entirely.
           skip-existing: true
+
+  # The data dictionaries as the npm package hca-metadata-schema (#881), versioned apart from the PyPI package of that
+  # name. npm's trusted publisher for it names this workflow file and allows `npm publish` only.
+  publish-hca-metadata-schema-npm:
+    needs: release-please
+    if: |
+      github.ref == 'refs/heads/main' && !failure() && !cancelled() &&
+      (needs['release-please'].outputs.hca_metadata_schema_npm_release == 'true' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        working-directory: data_dictionaries
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      # Trusted publishing needs npm 11.5.1 or later; Node 24.22.2 ships npm 11.19.1. Bump deliberately.
+      - name: Install Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24.22.2"
+          registry-url: "https://registry.npmjs.org"
+
+      # npm has no skip-existing, so a workflow_dispatch rerun skips a version that is already published. Only a
+      # 404 means "not published"; any other registry error fails the job rather than publishing over a release.
+      # The repo's LICENSE sits outside the package, so it is copied in for the tarball.
+      - name: Publish to npm
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if output=$(npm view "hca-metadata-schema@$version" version 2>&1); then
+            echo "hca-metadata-schema@$version is already published"
+          elif grep -q E404 <<< "$output"; then
+            cp ../LICENSE .
+            npm publish
+          else
+            echo "$output" >&2
+            exit 1
+          fi

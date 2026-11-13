@@ -29,6 +29,12 @@
         {"type": "generic", "path": "src/hca_metadata_schema/generated/core.py"}
       ]
     },
+    "data_dictionaries": {
+      "release-type": "node",
+      "component": "hca-metadata-schema-npm",
+      "changelog-path": "CHANGELOG.md",
+      "last-release-sha": "971ea21de946e972f4f920a478dd3718e3246011"
+    },
     "packages/hca-anndata-mcp": {
       "release-type": "python",
       "package-name": "hca-anndata-mcp",

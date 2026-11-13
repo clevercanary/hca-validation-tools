@@ -107,9 +107,17 @@ A version is only useful if a consumer can tell from it whether a file that pass
   or `annDataLocation` on a slot that had none
 - adding `entrySheetRequired: false` to a required slot, which relaxes entry sheets only (§3.4)
 
-4.2 Dictionary-only changes are additions, not text fixes: the portal and the tracker consume the dictionary, and a
-    consumer pinned to a release tag (DataBiosphere/data-portal#3263) must see from the changelog that it changed.
-    The dictionary itself does not yet state its version; recording it is #802.
+4.2 Dictionary-only changes are additions, not text fixes: the portal and the tracker consume the dictionary, and
+    must see from the changelog that it changed.
+
+4.3 The dictionaries have their own version: `data_dictionaries/` is the npm package `hca-metadata-schema` (#881),
+    whose version is unrelated to the PyPI package of that name. Every change that regenerates a file there counts
+    toward it, whatever the commit's scope. For the dictionary, a breaking change renames or removes a key, or
+    changes a value's type; anything else is not breaking. Mark a dictionary break with `!` or a `BREAKING CHANGE:`
+    footer even when the code it changes, such as `shared`, is not breaking for its own package: the portal and the
+    tracker pin `^0.x` ranges, which take a patch and refuse a minor. The reverse is accepted: a schema break (§3)
+    also regenerates the dictionary, so its `!` bumps the npm minor too, even when no dictionary key changed. A pull
+    request is one squash commit and must carry its regenerated dictionary, so the two cannot be split.
 
 ## 5. Text: what is said about a slot, not what it allows
 

@@ -1,0 +1,19 @@
+{
+  "name": "hca-metadata-schema",
+  "version": "0.0.0",
+  "description": "The HCA metadata data dictionaries, generated from the HCA LinkML schema",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/clevercanary/hca-validation-tools.git",
+    "directory": "data_dictionaries"
+  },
+  "files": [
+    "*_data_dictionary.json",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "exports": {
+    "./*.json": "./*.json"
+  }
+}
