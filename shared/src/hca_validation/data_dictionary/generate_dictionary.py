@@ -131,7 +131,8 @@ def section_entry(
 
     Raises:
         ValueError: If the section's name does not end in `Section`, it has more than one mixin, or it lists a slot
-            that is neither its core class's (the mixin's, bionetwork subclasses' included) nor defined in the layout
+            that is neither its core class's (the mixin's, bionetwork subclasses' included) nor defined in the layout,
+            or as `slot_to_attribute` does
     """
     if not section_name.endswith(_SECTION_SUFFIX):
         raise ValueError(f"Data dictionary class {section_name!r} must end in {_SECTION_SUFFIX!r}")
@@ -173,7 +174,8 @@ def fold_bionetwork_slots(
     `bioNetworks` set to the sorted union of the networks that add it.
 
     Raises ValueError if a subclass changes a base slot, or two subclasses define the same
-    added slot differently: the data dictionary can show only one definition per slot.
+    added slot differently: the data dictionary can show only one definition per slot. Also
+    raises it as `slot_to_attribute` does.
     """
     base_definitions = {
         slot_info.name: slot_definition(slot_info) for slot_info in schemaview.class_induced_slots(base_class)
@@ -230,7 +232,11 @@ def display_range(schemaview: SchemaView, slot_info, schema_enum_names: set[str]
 
 
 def slot_to_attribute(schemaview: SchemaView, slot_info, schema_enum_names: set[str]) -> dict[str, Any]:
-    """Convert an induced slot into a data dictionary attribute."""
+    """Convert an induced slot into a data dictionary attribute.
+
+    Raises:
+        ValueError: If one of the slot's examples has no value
+    """
     # Create the attribute entry with the exact structure requested
     attribute = {
         "name": slot_info.alias or slot_info.name,
@@ -242,9 +248,10 @@ def slot_to_attribute(schemaview: SchemaView, slot_info, schema_enum_names: set[
         "multivalued": slot_info.multivalued if slot_info.multivalued is not None else False,
     }
 
-    # Add examples if available, joined as the portal lists them
     if slot_info.examples:
-        attribute["example"] = "; ".join(example.value for example in slot_info.examples)
+        if any(example.value is None for example in slot_info.examples):
+            raise ValueError(f"'{slot_info.name}' has an example with no value")
+        attribute["examples"] = [example.value for example in slot_info.examples]
 
     # Add annotations if available - format as requested
     if slot_info.annotations:

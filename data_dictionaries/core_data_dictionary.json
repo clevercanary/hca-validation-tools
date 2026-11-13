@@ -14,7 +14,11 @@
           "range": "string",
           "required": true,
           "multivalued": false,
-          "example": "cell ranger 3.0.1; kallisto bustools; GSNAP",
+          "examples": [
+            "cell ranger 3.0.1",
+            "kallisto bustools",
+            "GSNAP"
+          ],
           "annotations": {
             "annDataLocation": "obs",
             "tier": "Tier 1",
@@ -48,7 +52,11 @@
           "range": "string",
           "required": true,
           "multivalued": false,
-          "example": "none; soupx; cellbender",
+          "examples": [
+            "none",
+            "soupx",
+            "cellbender"
+          ],
           "annotations": {
             "annDataLocation": "obs",
             "tier": "Tier 1",
@@ -97,7 +105,9 @@
           "range": "string",
           "required": true,
           "multivalued": false,
-          "example": "EFO:0009922",
+          "examples": [
+            "EFO:0009922"
+          ],
           "annotations": {
             "cxg": "assay_ontology_term_id",
             "annDataLocation": "obs",
@@ -133,7 +143,9 @@
           "range": "string",
           "required": false,
           "multivalued": true,
-          "example": "[\"patient\", \"seqBatch\"]",
+          "examples": [
+            "[\"patient\", \"seqBatch\"]"
+          ],
           "annotations": {
             "cxg": "batch_condition",
             "annDataLocation": "uns",
@@ -356,7 +368,11 @@
           "range": "string",
           "required": true,
           "multivalued": false,
-          "example": "none; doublet_finder; manual",
+          "examples": [
+            "none",
+            "doublet_finder",
+            "manual"
+          ],
           "annotations": {
             "annDataLocation": "obs",
             "tier": "Tier 1",
@@ -374,7 +390,10 @@
           "range": "string",
           "required": true,
           "multivalued": false,
-          "example": "v110; GCF_000001405.40",
+          "examples": [
+            "v110",
+            "GCF_000001405.40"
+          ],
           "annotations": {
             "annDataLocation": "obs",
             "tier": "Tier 1",
@@ -409,7 +428,10 @@
           "range": "string",
           "required": false,
           "multivalued": false,
-          "example": "yes; no",
+          "examples": [
+            "yes",
+            "no"
+          ],
           "annotations": {
             "annDataLocation": "obs",
             "tier": "Tier 1",
@@ -444,7 +466,9 @@
           "range": "string",
           "required": false,
           "multivalued": false,
-          "example": "https://www.biorxiv.org/content/early/2017/09/24/193219",
+          "examples": [
+            "https://www.biorxiv.org/content/early/2017/09/24/193219"
+          ],
           "annotations": {
             "annDataLocation": "obs",
             "tier": "Tier 1",
@@ -478,7 +502,9 @@
           "range": "string",
           "required": false,
           "multivalued": false,
-          "example": "10.1016/j.cell.2016.07.054",
+          "examples": [
+            "10.1016/j.cell.2016.07.054"
+          ],
           "annotations": {
             "annDataLocation": "obs",
             "bioNetworks": [
@@ -510,7 +536,10 @@
           "range": "string",
           "required": true,
           "multivalued": false,
-          "example": "GRCh38; GRCh37",
+          "examples": [
+            "GRCh38",
+            "GRCh37"
+          ],
           "annotations": {
             "annDataLocation": "obs",
             "tier": "Tier 1",
@@ -545,7 +574,10 @@
           "range": "string",
           "required": true,
           "multivalued": false,
-          "example": "3 prime tag; full length",
+          "examples": [
+            "3 prime tag",
+            "full length"
+          ],
           "annotations": {
             "annDataLocation": "obs",
             "tier": "Tier 1",
@@ -580,7 +612,9 @@
           "range": "string",
           "required": false,
           "multivalued": false,
-          "example": "EFO:0008563",
+          "examples": [
+            "EFO:0008563"
+          ],
           "annotations": {
             "annDataLocation": "obs",
             "tier": "Tier 1",
@@ -615,7 +649,9 @@
           "range": "string",
           "required": true,
           "multivalued": true,
-          "example": "Teichmann,Sarah,A.",
+          "examples": [
+            "Teichmann,Sarah,A."
+          ],
           "annotations": {
             "annDataLocation": "uns",
             "tier": "Tier 1",
@@ -648,7 +684,9 @@
           "range": "string",
           "required": true,
           "multivalued": false,
-          "example": "Cells of the adult human heart collection is \"All \u2014 Cells of the adult human heart\"",
+          "examples": [
+            "Cells of the adult human heart collection is \"All \u2014 Cells of the adult human heart\""
+          ],
           "annotations": {
             "cxg": "title",
             "annDataLocation": "uns",
@@ -720,7 +758,11 @@
           "range": "string",
           "required": true,
           "multivalued": false,
-          "example": "CR_donor_1; MM_donor_1; LR_donor_2",
+          "examples": [
+            "CR_donor_1",
+            "MM_donor_1",
+            "LR_donor_2"
+          ],
           "annotations": {
             "annDataLocation": "obs",
             "tier": "Tier 1",
@@ -756,7 +798,15 @@
           "range": "string",
           "required": true,
           "multivalued": false,
-          "example": "1; 2; 3; 4; 0; unknown; not applicable",
+          "examples": [
+            "1",
+            "2",
+            "3",
+            "4",
+            "0",
+            "unknown",
+            "not applicable"
+          ],
           "annotations": {
             "annDataLocation": "obs",
             "tier": "Tier 1",
@@ -791,7 +841,10 @@
           "range": "string",
           "required": true,
           "multivalued": false,
-          "example": "NCBITaxon:9606; NCBITaxon:10090",
+          "examples": [
+            "NCBITaxon:9606",
+            "NCBITaxon:10090"
+          ],
           "annotations": {
             "annDataLocation": "obs",
             "cxg": "organism_ontology_term_id",
@@ -858,7 +911,10 @@
           "range": "string",
           "required": true,
           "multivalued": false,
-          "example": "PATO:0000383; PATO:0000384",
+          "examples": [
+            "PATO:0000383",
+            "PATO:0000384"
+          ],
           "annotations": {
             "annDataLocation": "obs",
             "tier": "Tier 1",
@@ -932,7 +988,9 @@
           "range": "string",
           "required": false,
           "multivalued": false,
-          "example": "Batch run by different personnel on different days",
+          "examples": [
+            "Batch run by different personnel on different days"
+          ],
           "annotations": {
             "annDataLocation": "obs",
             "tier": "Tier 1",
@@ -966,7 +1024,10 @@
           "range": "string",
           "required": true,
           "multivalued": false,
-          "example": "CL:0000057+; na",
+          "examples": [
+            "CL:0000057+",
+            "na"
+          ],
           "annotations": {
             "annDataLocation": "obs",
             "tier": "Tier 1",
@@ -1001,7 +1062,10 @@
           "range": "integer",
           "required": false,
           "multivalued": false,
-          "example": "5000; 4000",
+          "examples": [
+            "5000",
+            "4000"
+          ],
           "annotations": {
             "annDataLocation": "obs",
             "tier": "Tier 1",
@@ -1035,7 +1099,12 @@
           "range": "decimal",
           "required": false,
           "multivalued": false,
-          "example": "88; 95; 93.5; unknown",
+          "examples": [
+            "88",
+            "95",
+            "93.5",
+            "unknown"
+          ],
           "annotations": {
             "annDataLocation": "obs",
             "tier": "Tier 1",
@@ -1099,7 +1168,10 @@
           "range": "string",
           "required": true,
           "multivalued": false,
-          "example": "HsapDv:0000237; unknown",
+          "examples": [
+            "HsapDv:0000237",
+            "unknown"
+          ],
           "annotations": {
             "annDataLocation": "obs",
             "cxg": "development_stage_ontology_term_id",
@@ -1166,7 +1238,10 @@
           "range": "string",
           "required": true,
           "multivalued": false,
-          "example": "MONDO:0005385; PATO:0000461",
+          "examples": [
+            "MONDO:0005385",
+            "PATO:0000461"
+          ],
           "annotations": {
             "annDataLocation": "obs",
             "cxg": "disease_ontology_term_id",
@@ -1202,7 +1277,11 @@
           "range": "string",
           "required": true,
           "multivalued": false,
-          "example": "trypsin; trypLE; collagenase",
+          "examples": [
+            "trypsin",
+            "trypLE",
+            "collagenase"
+          ],
           "annotations": {
             "annDataLocation": "obs",
             "tier": "Tier 1",
@@ -1219,7 +1298,11 @@
           "range": "string",
           "required": true,
           "multivalued": false,
-          "example": "CR_donor_1; MM_donor_1; LR_donor_2",
+          "examples": [
+            "CR_donor_1",
+            "MM_donor_1",
+            "LR_donor_2"
+          ],
           "annotations": {
             "annDataLocation": "obs",
             "tier": "Tier 1",
@@ -1255,7 +1338,10 @@
           "range": "string",
           "required": true,
           "multivalued": false,
-          "example": "EMBL-EBI; Genome Institute of Singapore",
+          "examples": [
+            "EMBL-EBI",
+            "Genome Institute of Singapore"
+          ],
           "annotations": {
             "annDataLocation": "obs",
             "tier": "Tier 1",
@@ -1289,7 +1375,10 @@
           "range": "string",
           "required": false,
           "multivalued": false,
-          "example": "true; false",
+          "examples": [
+            "true",
+            "false"
+          ],
           "annotations": {
             "annDataLocation": "obs",
             "tier": "Tier 1",
@@ -1325,7 +1414,10 @@
           "range": "string",
           "required": true,
           "multivalued": false,
-          "example": "A24; NK_healthy_001",
+          "examples": [
+            "A24",
+            "NK_healthy_001"
+          ],
           "annotations": {
             "annDataLocation": "obs",
             "tier": "Tier 1",
@@ -1359,7 +1451,9 @@
           "range": "string",
           "required": false,
           "multivalued": false,
-          "example": "GSM1684095",
+          "examples": [
+            "GSM1684095"
+          ],
           "annotations": {
             "annDataLocation": "obs",
             "tier": "Tier 1",
@@ -1393,7 +1487,10 @@
           "range": "string",
           "required": "strongly recommended",
           "multivalued": false,
-          "example": "batch01; batch02",
+          "examples": [
+            "batch01",
+            "batch02"
+          ],
           "annotations": {
             "annDataLocation": "obs",
             "tier": "Tier 1",
@@ -1427,7 +1524,10 @@
           "range": "string",
           "required": "strongly recommended",
           "multivalued": false,
-          "example": "run1; NV0087",
+          "examples": [
+            "run1",
+            "NV0087"
+          ],
           "annotations": {
             "annDataLocation": "obs",
             "tier": "Tier 1",
@@ -1461,7 +1561,14 @@
           "range": "string",
           "required": true,
           "multivalued": false,
-          "example": "EPI; LP; MUSC; SUB; MLN; Peyers patch",
+          "examples": [
+            "EPI",
+            "LP",
+            "MUSC",
+            "SUB",
+            "MLN",
+            "Peyers patch"
+          ],
           "annotations": {
             "annDataLocation": "obs",
             "tier": "Tier 1",
@@ -1478,7 +1585,11 @@
           "range": "string",
           "required": true,
           "multivalued": false,
-          "example": "biopsy; brush; surgical resection",
+          "examples": [
+            "biopsy",
+            "brush",
+            "surgical resection"
+          ],
           "annotations": {
             "annDataLocation": "obs",
             "tier": "Tier 1",
@@ -1513,7 +1624,9 @@
           "range": "string",
           "required": false,
           "multivalued": false,
-          "example": "sampleX_day1",
+          "examples": [
+            "sampleX_day1"
+          ],
           "annotations": {
             "annDataLocation": "obs",
             "tier": "Tier 1",
@@ -1547,7 +1660,10 @@
           "range": "string",
           "required": false,
           "multivalued": false,
-          "example": "AIDA_site_1; AIDA_site_2",
+          "examples": [
+            "AIDA_site_1",
+            "AIDA_site_2"
+          ],
           "annotations": {
             "annDataLocation": "obs",
             "tier": "Tier 1",
@@ -1582,7 +1698,9 @@
           "range": "string",
           "required": false,
           "multivalued": false,
-          "example": "2018",
+          "examples": [
+            "2018"
+          ],
           "annotations": {
             "annDataLocation": "obs",
             "tier": "Tier 1",
@@ -1616,7 +1734,11 @@
           "range": "string",
           "required": true,
           "multivalued": false,
-          "example": "SC24; SC25; SC28",
+          "examples": [
+            "SC24",
+            "SC25",
+            "SC28"
+          ],
           "annotations": {
             "annDataLocation": "obs",
             "tier": "Tier 1",
@@ -1650,7 +1772,10 @@
           "range": "string",
           "required": true,
           "multivalued": false,
-          "example": "fresh; frozen at -70C",
+          "examples": [
+            "fresh",
+            "frozen at -70C"
+          ],
           "annotations": {
             "annDataLocation": "obs",
             "tier": "Tier 1",
@@ -1685,7 +1810,10 @@
           "range": "string",
           "required": true,
           "multivalued": false,
-          "example": "surgical donor; postmortem donor",
+          "examples": [
+            "surgical donor",
+            "postmortem donor"
+          ],
           "annotations": {
             "annDataLocation": "obs",
             "tier": "Tier 1",
@@ -1720,7 +1848,11 @@
           "range": "string",
           "required": true,
           "multivalued": false,
-          "example": "healthy; diseased; adjacent",
+          "examples": [
+            "healthy",
+            "diseased",
+            "adjacent"
+          ],
           "annotations": {
             "annDataLocation": "obs",
             "tier": "Tier 1",
@@ -1755,7 +1887,11 @@
           "range": "string",
           "required": true,
           "multivalued": false,
-          "example": "cell; nucleus; na",
+          "examples": [
+            "cell",
+            "nucleus",
+            "na"
+          ],
           "annotations": {
             "annDataLocation": "obs",
             "cxg": "suspension_type",
@@ -1791,7 +1927,9 @@
           "range": "string",
           "required": false,
           "multivalued": false,
-          "example": "terminal ileum",
+          "examples": [
+            "terminal ileum"
+          ],
           "annotations": {
             "annDataLocation": "obs",
             "tier": "Tier 1",
@@ -1856,7 +1994,10 @@
           "range": "string",
           "required": true,
           "multivalued": false,
-          "example": "UBERON:0001828; UBERON:0000966",
+          "examples": [
+            "UBERON:0001828",
+            "UBERON:0000966"
+          ],
           "annotations": {
             "annDataLocation": "obs",
             "cxg": "tissue_ontology_term_id",
@@ -1892,7 +2033,11 @@
           "range": "string",
           "required": true,
           "multivalued": false,
-          "example": "tissue; organoid; cell culture",
+          "examples": [
+            "tissue",
+            "organoid",
+            "cell culture"
+          ],
           "annotations": {
             "annDataLocation": "obs",
             "cxg": "tissue_type",
@@ -1935,7 +2080,10 @@
           "range": "string",
           "required": false,
           "multivalued": false,
-          "example": "Goblet cell; microglia",
+          "examples": [
+            "Goblet cell",
+            "microglia"
+          ],
           "annotations": {
             "annDataLocation": "obs",
             "tier": "Tier 1",
@@ -1969,7 +2117,9 @@
           "range": "string",
           "required": false,
           "multivalued": false,
-          "example": "CL:0001204",
+          "examples": [
+            "CL:0001204"
+          ],
           "annotations": {
             "annDataLocation": "obs",
             "tier": "Tier 1",
