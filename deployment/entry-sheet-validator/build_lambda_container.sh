@@ -12,7 +12,7 @@ if [ -n "$1" ]; then
   PROFILE_ARG="--profile $1"
 fi
 REGION="${2:-us-east-1}"
-LAYER_ARN="arn:aws:lambda:${REGION}:177933569100:layer:AWS-Parameters-and-Secrets-Lambda-Extension:17"
+LAYER_ARN="arn:aws:lambda:${REGION}:177933569100:layer:AWS-Parameters-and-Secrets-Lambda-Extension:196"
 
 EXT_URL=$(aws $PROFILE_ARG lambda get-layer-version-by-arn \
     --region "$REGION" --arn "$LAYER_ARN" \

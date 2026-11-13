@@ -3,6 +3,7 @@
 import os
 import shutil
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -69,13 +70,20 @@ def plenty_of_space(monkeypatch):
     monkeypatch.setattr("hca_tracker_client.checks.free_bytes", lambda path: 1_000_000_000_000)
 
 
-def wait_for(jobs: Downloads | Uploads | Verifier, job_id: str, states: tuple[str, ...], timeout: float = 60) -> dict:
-    """Poll a download, upload or verify job until it reaches one of ``states``."""
+def wait_until(
+    jobs: Downloads | Uploads | Verifier, job_id: str, ready: Callable[[dict], bool], timeout: float = 60
+) -> dict:
+    """Poll a download, upload or verify job until ``ready(status)`` holds, and return that status."""
     deadline = time.monotonic() + timeout
     while True:
         status = jobs.status(job_id)
-        if status["state"] in states:
+        if ready(status):
             return status
         if time.monotonic() > deadline:
-            raise AssertionError(f"job {job_id} still {status['state']} after {timeout}s: {status}")
+            raise AssertionError(f"job {job_id} not ready after {timeout}s, still {status['state']}: {status}")
         time.sleep(0.1)
+
+
+def wait_for(jobs: Downloads | Uploads | Verifier, job_id: str, states: tuple[str, ...], timeout: float = 60) -> dict:
+    """Poll a download, upload or verify job until it reaches one of ``states``."""
+    return wait_until(jobs, job_id, lambda status: status["state"] in states, timeout)

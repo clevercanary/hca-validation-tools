@@ -52,6 +52,7 @@ cd shared && uv run pytest tests/ -m integration -v            # Integration tes
 cd shared && uv run pytest tests/ -m "not integration" -v      # Skip integration tests
 
 # Service-specific tests
+cd services/entry-sheet-validator && make test                   # Read-only-HOME import test, no image (CI runs it, with coverage)
 cd services/entry-sheet-validator && make test-lambda-container
 cd services/dataset-validator && uv run pytest tests/ -v
 cd services/cellxgene-validator && uv run pytest tests/ -v
@@ -66,7 +67,7 @@ CI's test matrix measures coverage for every project it tests and fails a projec
 cd packages/hca-anndata-tools && uv run pytest tests/ --cov --cov-report=term-missing   # coverage per file, checked against the floor
 ```
 
-To reproduce CI's figure, pass the project's `pytest-args` from the test matrix in `.github/workflows/ci.yml` (`shared` passes `-m "not integration"`) and install what the matrix's `apt` installs (the tracker packages skip their download tests without `aria2c`). Set a floor from CI's figure, not from a run that skipped tests.
+To reproduce CI's figure, pass the project's `pytest-args` from the test matrix in `.github/workflows/ci.yml` (`shared` passes `-m "not integration"`), install what the matrix's `apt` installs (the tracker packages skip their download tests without `aria2c`), and run on the entry's `python-version` where it sets one (`services/entry-sheet-validator` runs on 3.12). Set a floor from CI's figure, not from a run that skipped tests.
 
 A plain `uv run pytest` does not measure coverage. When a change raises a project's coverage, raise its floor in the same PR, to the new figure rounded down, minus 1. A PR that lowers a floor says why. `hca-schema-validator`'s floor leaves out its vendored cellxgene-schema copy, which CI reports separately with no floor.
 

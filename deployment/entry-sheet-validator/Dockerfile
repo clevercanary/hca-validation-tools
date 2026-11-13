@@ -1,5 +1,5 @@
 # Build stage
-FROM --platform=linux/amd64 public.ecr.aws/lambda/python:3.10 AS builder
+FROM --platform=linux/amd64 public.ecr.aws/lambda/python:3.12 AS builder
 
 # Bring in uv (pinned for reproducible builds — do not use :latest).
 COPY --from=ghcr.io/astral-sh/uv:0.10.9 /uv /bin/uv
@@ -20,12 +20,12 @@ COPY services/entry-sheet-validator/pyproject.toml services/entry-sheet-validato
 WORKDIR /build/services/entry-sheet-validator
 
 # Export the locked runtime dependency closure and install it into /opt/python.
-#   --no-dev             the Lambda ships no test deps (pytest/moto/...)
+#   --no-dev             leaves out the dev dependency group
 #   --no-emit-project    entry-sheet is a virtual project — nothing to install
 #   --no-emit-package …  shared and hca-metadata-schema are served as source from /var/task
 #                        (final stage), so only their dependencies go into /opt/python
-# The build-image python (3.10) is pinned so environment markers resolve for the
-# runtime interpreter, not the builder's default.
+# `uv pip install --python /var/lang/bin/python` installs for the image's own
+# interpreter, so environment markers resolve for the runtime, not uv's default.
 RUN uv export --frozen --no-hashes --no-dev \
         --no-emit-project --no-emit-package hca-validation-shared \
         --no-emit-package hca-metadata-schema \
@@ -33,17 +33,17 @@ RUN uv export --frozen --no-hashes --no-dev \
     uv pip install --no-cache --python /var/lang/bin/python --target /opt/python \
         -r /tmp/requirements.txt
 
-# Download and unpack the AWS Parameters and Secrets Lambda Extension (v5) using a presigned URL
+# Download and unpack the AWS Parameters and Secrets Lambda Extension using a presigned URL
+# EXT_URL changes on every build, so it is declared after the cacheable install.
+RUN dnf install -y unzip file
 ARG EXT_URL
-RUN yum install -y unzip file
-RUN echo "EXT_URL=$EXT_URL"
 RUN curl -s "$EXT_URL" -o /tmp/ps-ext.zip && \
     file /tmp/ps-ext.zip && \
     unzip -q /tmp/ps-ext.zip -d /opt && \
     chmod +x /opt/extensions/*
 
 # Final stage
-FROM --platform=linux/amd64 public.ecr.aws/lambda/python:3.10
+FROM --platform=linux/amd64 public.ecr.aws/lambda/python:3.12
 
 # Copy dependencies from builder stage
 COPY --from=builder /opt/python /opt/python

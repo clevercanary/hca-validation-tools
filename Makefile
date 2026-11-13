@@ -210,6 +210,7 @@ test-all:
 	@echo "Running all tests across services..."
 	@$(MAKE) -C packages/hca-metadata-schema test
 	@$(MAKE) -C shared test-shared
+	@$(MAKE) -C services/entry-sheet-validator test
 	@$(MAKE) -C services/entry-sheet-validator test-lambda-container
 	@$(MAKE) -C services/dataset-validator test
 	@$(MAKE) -C services/cellxgene-validator test

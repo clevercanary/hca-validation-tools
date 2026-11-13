@@ -30,7 +30,7 @@ from hca_tracker_client.uploads import (
     worker_alive,
 )
 
-from .conftest import make_config, make_file, wait_for
+from .conftest import make_config, make_file, wait_for, wait_until
 
 FAKE_ENGINE = "hca_tracker_client.testing:FakeSmartSync"
 REAL_TRANSFER_TOOL = module.transfer_tool  # captured before any fixture replaces it
@@ -45,6 +45,7 @@ DEV_URL = "https://test-tracker.data.humancellatlas.dev.clevercanary.com/"
 def fake_s3(tmp_path, monkeypatch):
     """A folder standing in for S3, with both buckets present."""
     monkeypatch.delenv("HCA_TRACKER_FAKE_S3_DELAY", raising=False)
+    monkeypatch.delenv("HCA_TRACKER_FAKE_S3_HOLD", raising=False)
     monkeypatch.setenv("HCA_TRACKER_FAKE_S3", "")  # restored by monkeypatch; make_fake_s3 sets it
     return make_fake_s3(tmp_path / "s3", *BUCKETS.values())
 
@@ -481,26 +482,41 @@ def test_upload_end_to_end(uploads, staged, fake_s3):
     assert [j["job_id"] for j in uploads.status()["jobs"]] == [forced["job_id"], started["job_id"]], "newest first"
 
 
-def test_upload_in_flight_and_already_uploading(uploads, staged, monkeypatch):
-    monkeypatch.setenv("HCA_TRACKER_FAKE_S3_DELAY", "0.6")
+def test_upload_in_flight_and_already_uploading(uploads, staged, tmp_path, monkeypatch):
+    release = tmp_path / "release"
+    monkeypatch.setenv("HCA_TRACKER_FAKE_S3_HOLD", str(release))
     started = uploads.start("gut", "gut", "source-datasets", str(staged))
-    live = wait_for(uploads, started["job_id"], ("uploading",), timeout=30)
-    assert live["current_file"] == "a.h5ad"
-    assert live["progress"] == "0.00%  ━  0 B / 20.0 kB (0 B/s) ?s left (0/1)", "s5cmd's own last frame, from the log"
-    assert "elapsed" in live
-    duplicate = uploads.start("gut", "gut", "source-datasets", str(staged))
-    assert (duplicate["job_id"], duplicate["message"]) == (
-        started["job_id"],
-        f"Already uploading from {staged} to s3://hca-atlas-tracker-data-dev/gut/gut-v1/source-datasets/",
-    )
-    # Another folder aiming at the same prefix waits too: one uploader per atlas.
-    other = staged.parent / "other"
-    make_file(other / "a.h5ad", 5_000)
-    same_target = uploads.start("gut", "gut", "source-datasets", str(other))
-    assert same_target["job_id"] == started["job_id"] and same_target["message"].startswith("Already uploading from")
-    assert uploads.start("gut", "gut", "integrated-objects", str(other))["job_id"] != started["job_id"], (
-        "a different prefix of the same atlas is not blocked"
-    )
+    try:
+        live = wait_until(
+            uploads,
+            started["job_id"],
+            lambda status: status["state"] in UPLOAD_ENDED
+            or (status["state"] == "uploading" and status["current_file"] and status["progress"]),
+            timeout=30,
+        )
+        assert live["state"] == "uploading", live
+        assert live["current_file"] == "a.h5ad"
+        assert live["progress"] == "0.00%  ━  0 B / 20.0 kB (0 B/s) ?s left (0/1)", (
+            "s5cmd's own last frame, from the log"
+        )
+        assert "elapsed" in live
+        duplicate = uploads.start("gut", "gut", "source-datasets", str(staged))
+        assert (duplicate["job_id"], duplicate["message"]) == (
+            started["job_id"],
+            f"Already uploading from {staged} to s3://hca-atlas-tracker-data-dev/gut/gut-v1/source-datasets/",
+        )
+        # Another folder aiming at the same prefix waits too: one uploader per atlas.
+        other = staged.parent / "other"
+        make_file(other / "a.h5ad", 5_000)
+        same_target = uploads.start("gut", "gut", "source-datasets", str(other))
+        assert same_target["job_id"] == started["job_id"] and same_target["message"].startswith(
+            "Already uploading from"
+        )
+        assert uploads.start("gut", "gut", "integrated-objects", str(other))["job_id"] != started["job_id"], (
+            "a different prefix of the same atlas is not blocked"
+        )
+    finally:
+        release.touch()  # let the held worker finish, pass or fail
     assert wait_for(uploads, started["job_id"], UPLOAD_ENDED, timeout=30)["state"] == "done"
 
 
@@ -517,8 +533,8 @@ def test_partial_failure(uploads, staged, fake_s3):
     assert ([f["name"] for f in plan["files"]], plan["up_to_date"]) == (["fail-c.h5ad"], ["a.h5ad", "b.h5ad"])
 
 
-def test_interrupted_worker(uploads, staged, monkeypatch):
-    monkeypatch.setenv("HCA_TRACKER_FAKE_S3_DELAY", "5")
+def test_interrupted_worker(uploads, staged, tmp_path, monkeypatch):
+    monkeypatch.setenv("HCA_TRACKER_FAKE_S3_HOLD", str(tmp_path / "never-released"))  # killed while held
     started = uploads.start("gut", "gut", "source-datasets", str(staged))
     wait_for(uploads, started["job_id"], ("uploading",), timeout=30)
     job = uploads.store.load(started["job_id"])
@@ -538,9 +554,9 @@ def test_interrupted_worker(uploads, staged, monkeypatch):
         fresh.status("nope")
 
 
-def test_interrupted_job_does_not_block_its_folder(uploads, staged, monkeypatch):
+def test_interrupted_job_does_not_block_its_folder(uploads, staged, tmp_path, monkeypatch):
     """A folder whose last job died is restarted, not reported as still uploading."""
-    monkeypatch.setenv("HCA_TRACKER_FAKE_S3_DELAY", "5")
+    monkeypatch.setenv("HCA_TRACKER_FAKE_S3_HOLD", str(tmp_path / "never-released"))  # killed while held
     started = uploads.start("gut", "gut", "source-datasets", str(staged))
     wait_for(uploads, started["job_id"], ("uploading",), timeout=30)
     job = uploads.store.load(started["job_id"])
@@ -549,7 +565,7 @@ def test_interrupted_job_does_not_block_its_folder(uploads, staged, monkeypatch)
     deadline = time.monotonic() + 10
     while worker_alive(job) and time.monotonic() < deadline:
         time.sleep(0.05)
-    monkeypatch.setenv("HCA_TRACKER_FAKE_S3_DELAY", "0")
+    monkeypatch.delenv("HCA_TRACKER_FAKE_S3_HOLD")
     again = uploads.start("gut", "gut", "source-datasets", str(staged))
     assert again["job_id"] != started["job_id"] and again["state"] in ("queued", "uploading")
     assert uploads.status(started["job_id"])["state"] == "interrupted"
@@ -634,14 +650,20 @@ def test_worker_holds_the_plan_it_was_given(uploads, staged, fake_s3):
     assert "snapshot" not in failed and "snapshot" not in uploads.plan("gut", "gut", "source-datasets", str(staged))
 
 
-def test_worker_outlives_the_caller(uploads, staged, monkeypatch, fake_s3):
+def test_worker_outlives_the_caller(uploads, staged, tmp_path, monkeypatch, fake_s3):
     """The worker is in its own session: killing the process group of the caller does not reach it."""
-    monkeypatch.setenv("HCA_TRACKER_FAKE_S3_DELAY", "0.5")
+    release = tmp_path / "release"
+    monkeypatch.setenv("HCA_TRACKER_FAKE_S3_HOLD", str(release))
     started = uploads.start("gut", "gut", "source-datasets", str(staged))
-    wait_for(uploads, started["job_id"], ("uploading",), timeout=30)  # the worker is up, so it has called setsid
-    job = uploads.store.load(started["job_id"])
-    assert job is not None and job.pid and os.getsid(job.pid) == job.pid, "the worker leads its own session"
-    assert os.getsid(job.pid) != os.getsid(os.getpid())
+    try:
+        # The worker is up, so it has called setsid.
+        live = wait_for(uploads, started["job_id"], ("uploading", *UPLOAD_ENDED), timeout=30)
+        assert live["state"] == "uploading", live
+        job = uploads.store.load(started["job_id"])
+        assert job is not None and job.pid and os.getsid(job.pid) == job.pid, "the worker leads its own session"
+        assert os.getsid(job.pid) != os.getsid(os.getpid())
+    finally:
+        release.touch()  # let the held worker finish, pass or fail
     assert wait_for(uploads, started["job_id"], UPLOAD_ENDED, timeout=30)["state"] == "done"
 
 
