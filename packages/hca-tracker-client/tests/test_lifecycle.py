@@ -13,7 +13,7 @@ import pytest
 
 from hca_tracker_client import CheckError, Downloads
 from hca_tracker_client.daemon import connect, daemon_dir, shutdown
-from hca_tracker_client.store import ACTIVE
+from hca_tracker_client.store import DOWNLOADING, QUEUED
 
 from .conftest import make_config, make_file, requires_aria2, wait_for, wait_until
 
@@ -132,11 +132,11 @@ def test_resume_after_link_expires_and_daemon_restarts(downloads, tracker, gut_f
     status = wait_until(
         downloads,
         started["job_id"],
-        lambda status: status["state"] not in ACTIVE
+        lambda status: status["state"] not in (QUEUED, DOWNLOADING)
         or ("progress" in status and status["progress"]["bytes_done"] >= SIZE // 3),
         timeout=30,
     )
-    assert status["state"] in ACTIVE, status
+    assert status["state"] == DOWNLOADING, status
     assert status["progress"]["rate"].endswith("/s")
 
     # The daemon goes away (crash, reboot) and the 48 h link expires meanwhile.

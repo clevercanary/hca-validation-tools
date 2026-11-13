@@ -352,7 +352,7 @@ class FakeSmartSync:
     local file whose name starts with ``fail-`` is never uploaded, as the
     engine's ``_upload_file`` returning False. ``HCA_TRACKER_FAKE_S3_DELAY``
     seconds are slept per file, so a test can watch a job in flight. When
-    ``HCA_TRACKER_FAKE_S3_HOLD`` names a path, each file waits after its first
+    ``HCA_TRACKER_FAKE_S3_HOLD`` names a path, each file waits after its
     progress frame until that path exists, so a test holds the job in flight;
     after ``HOLD_TIMEOUT`` seconds the engine raises instead. The return dicts
     have the engine's shapes, key for key.
