@@ -33,7 +33,7 @@ RUN uv export --frozen --no-hashes --no-dev \
     uv pip install --no-cache --python /var/lang/bin/python --target /opt/python \
         -r /tmp/requirements.txt
 
-# Download and unpack the AWS Parameters and Secrets Lambda Extension (v5) using a presigned URL
+# Download and unpack the AWS Parameters and Secrets Lambda Extension using a presigned URL
 # EXT_URL changes on every build, so it is declared after the cacheable install.
 RUN dnf install -y unzip file
 ARG EXT_URL
