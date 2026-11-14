@@ -103,8 +103,8 @@ token, and the curator's clone and its environments (rebuilt at first boot).
    instead (hca-validation-tools#892).
 2. Sign in Claude Code and turn on Remote Control: `make curation-attach`. In
    the session, sign in with the claude.ai account, using its link and code.
-   Answer yes to "Enable Remote Control?" and to trusting the folder. Then
-   detach with `Ctrl-b d`.
+   Answer yes to "Enable Remote Control?", to trusting the folder, and to
+   using the MCP servers in its `.mcp.json`. Then detach with `Ctrl-b d`.
 
    Anyone who controls that claude.ai account can run commands on the
    instance, so the account must use SSO or MFA.
@@ -183,6 +183,8 @@ differs from the pin.
 
 1. `make curation-status` shows `running`, `first boot done` and the 1 TB volume.
 2. `make curation-attach` shows the Claude Code session; detach with `Ctrl-b d`.
+   The session log group, `/aws/ssm/session-logs`, has a stream named by the
+   session ID that `make` printed, holding what the session showed.
 3. From the Claude app, open the session and ask it to run `hostname` and
    `df -h ~/hca-tracker-upload`. The instance and the 1 TB volume show.
 4. Run `/mcp`. Both MCP servers are connected. Ask for `check_environment`.

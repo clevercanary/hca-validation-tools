@@ -95,7 +95,7 @@ DATA_DEVICE=/dev/disk/by-id/nvme-Amazon_Elastic_Block_Store_${DATA_VOLUME_ID//-/
 # Locked rather than removed, since cloud-init's last module looks it up after this script.
 step "locking ec2-user, which could become root"
 rm -f /etc/sudoers.d/90-cloud-init-users
-if id ec2-user >/dev/null 2>&1; then usermod --lock --expiredate 1 --shell /sbin/nologin ec2-user; fi
+usermod --lock --expiredate 1 --shell /sbin/nologin ec2-user
 
 step "the curator, with a fixed UID and a private home"
 useradd --uid "$CURATION_UID" --create-home --shell /bin/bash "$CURATION_USER"
@@ -138,6 +138,9 @@ rm -rf "$build"
 step "security updates, applied by dnf-automatic"
 sed -i -e 's/^upgrade_type = .*/upgrade_type = security/' -e 's/^apply_updates = .*/apply_updates = yes/' \
   /etc/dnf/automatic.conf
+for setting in 'upgrade_type = security' 'apply_updates = yes'; do
+  grep -qx "$setting" /etc/dnf/automatic.conf || die "/etc/dnf/automatic.conf did not take '$setting'"
+done
 systemctl enable --now dnf-automatic.timer
 
 step "uv $UV_VERSION"
@@ -158,7 +161,10 @@ device=$(readlink -f "$DATA_DEVICE")
 # A backstop: a disk with partitions, or anything mounted, as the root disk has, is refused.
 [[ "$(lsblk -n -o NAME "$device" | wc -l)" == 1 ]] || die "$device has partitions; check DATA_VOLUME_ID"
 [[ -z "$(lsblk -n -o MOUNTPOINTS "$device" | tr -d '[:space:]')" ]] || die "$device is already mounted; check DATA_VOLUME_ID"
-fstype=$(blkid -s TYPE -o value "$device" || true)
+blkid_status=0
+fstype=$(blkid -s TYPE -o value "$device") || blkid_status=$?
+# blkid exits 2 when the device holds no filesystem; any other failure stops first boot.
+((blkid_status == 0 || blkid_status == 2)) || die "blkid could not read $device (exit $blkid_status)"
 formatted=no
 if [[ -z $fstype ]]; then
   echo "formatting $device, which holds no filesystem"

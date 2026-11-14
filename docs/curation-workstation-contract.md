@@ -38,7 +38,8 @@ terminal on the operator's computer, the Claude app or claude.ai.
   `curation-remote-control` service, plus the MCP servers. It has no `sudo`.
 - **First boot:** cloud-init runs the instance's `user_data`, which writes the settings, clones this repo
   at a pinned commit and runs `bootstrap.sh`.
-- **`make curation-on|off|status|shell|attach`:** the operator's commands, run on their own computer.
+- **`make curation-on|off|status|shell|attach|set-tracker-token`:** the operator's commands, run on
+  their own computer.
 
 ---
 
@@ -91,8 +92,12 @@ terminal on the operator's computer, the Claude app or claude.ai.
 - Owns everything outside the curator's home and the data volume.
 - After first boot, no person reaches it from the machine: `ssm-user` cannot `sudo` to it (3.2.4), and
   `bootstrap.sh` removes the image's `ec2-user`'s cloud-init sudoers file and locks the account.
-- The one route left is SSM Run Command (`AWS-RunShellScript`), which runs as `root`. It needs
-  `ssm:SendCommand` in the AWS account, a permission that can already replace the instance.
+- Two routes are left, both through permissions in the AWS account rather than on the machine:
+    - SSM Run Command (`AWS-RunShellScript`), which runs as `root`. It needs `ssm:SendCommand`, a
+      permission that can already replace the instance.
+    - A custom session document with `runAsElevated: true`, which also runs as `root`. It needs
+      `ssm:CreateDocument`, plus `ssm:StartSession` with that document. Limiting which documents an
+      operator may start sessions with belongs to tf-config's access policies.
 
 ### 2.2 `ssm-user`
 
@@ -342,8 +347,10 @@ terminal on the operator's computer, the Claude app or claude.ai.
 
 10.2 The commands start, stop, report on, and open sessions to the instance. They change nothing on it but the
      tracker token, which `make curation-set-tracker-token` writes to the curator's `.env`, and
-     none uses Run Command: each needs only `ssm:StartSession` on the instance, beside starting and
-     stopping it.
+     none uses Run Command: each needs only `ssm:StartSession` on the instance and on the document it
+     opens (`AWS-StartInteractiveCommand`, or the default shell document for `curation-shell`), beside
+     starting and stopping it. Sessions through either document get the account's Session Manager
+     preferences: they are logged, encrypted with its key, and closed after 20 idle minutes.
 
 ---
 
@@ -358,11 +365,6 @@ terminal on the operator's computer, the Claude app or claude.ai.
 - **9.1 is a practice, not a control.** Nothing stops a Python process reading a download without `-I`.
 - **Nothing records what Remote Control runs where the machine cannot change it.** `auditd` and the
   CloudWatch agent come in stage C, after tf-config #92, and before real curation work.
-- **Three assumptions wait for the first-boot test:** that the SSM agent leaves a
-  `/etc/sudoers.d/ssm-agent-users` it finds in place; that Claude Code writes its logs through the
-  `~/.claude/projects` link; and that `/tmp` on Amazon Linux 2023 is in memory, the reason scratch moves.
-- **How long a first boot takes has not been measured.** The aria2 source build and `uv sync` are the
-  slow steps.
 
 ## What this changes
 
