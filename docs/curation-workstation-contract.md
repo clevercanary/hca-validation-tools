@@ -233,7 +233,6 @@ terminal on the operator's computer, the Claude app or claude.ai.
     - `/etc/systemd/system/curation-remote-control.service`
     - `/etc/claude-code/managed-settings.json`
     - `/etc/sudoers.d/curation-use-pty`, `/etc/sudoers.d/ssm-agent-users`
-    - `/etc/tmpfiles.d/curation-scratch.conf`
     - `/etc/fstab`, `/etc/dnf/`
     - `/var/lib/curation-workstation/bootstrapped`, the first boot's record: started, then done or failed
     - the mount point `/srv/curation-data`, whose contents are the curator's
@@ -253,8 +252,8 @@ terminal on the operator's computer, the Claude app or claude.ai.
     - Claude's conversation logs live there, in `~/hca-tracker-upload/.claude-projects`, reached as
       `~/.claude/projects`, a link the curator makes. They survive a replacement, and the volume's weekly
       snapshots back them up.
-    - scratch lives there, in `~/hca-tracker-upload/tmp`, a folder the curator makes. systemd-tmpfiles
-      removes files in it older than 10 days, as it does in `/tmp`.
+    - scratch lives there, in `~/hca-tracker-upload/tmp`, a folder the curator makes. The boot service, as the
+      curator, removes what in it is untouched for 10 days at each start, so root never works in it.
 - The Claude sign-in stays in `~/.claude` on the root volume, so a replacement ends it (1.4).
 
 ### 5.3 One place per setting
@@ -397,7 +396,7 @@ Against the earlier draft of this contract, in which `bootstrap.sh` was re-run o
 - **The settings come from Terraform,** not a hand-written `/etc/curation-workstation.conf`.
 - **The curator has a fixed UID,** so its files on the data volume keep their owner.
 - **Claude's conversation logs move to the data volume,** so a replacement keeps them.
-- **Scratch moves to the data volume,** out of `/tmp`, and is cleaned after 10 days.
+- **Scratch moves to the data volume,** out of `/tmp`, and is cleaned of what is 10 days old at each start.
 - **`ssm-user` loses `root`.** It can become the curator only.
 - **Kept from the earlier draft:** `setup-curator.sh` run as the curator, the data volume at
   `/srv/curation-data`, the managed `.env` deny, one place per setting, the tmux socket out of `/tmp`,

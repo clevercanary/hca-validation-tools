@@ -102,6 +102,7 @@ done < "$CONF"
 DATA_DEVICE=/dev/disk/by-id/nvme-Amazon_Elastic_Block_Store_${DATA_VOLUME_ID//-/}
 [[ $AWS_REGION =~ ^[a-z]{2}(-[a-z]+)+-[0-9]+$ ]] || die "AWS_REGION must be a region name, such as us-east-1"
 [[ $ODP_PROFILE =~ ^[A-Za-z0-9._-]+$ ]] || die "ODP_PROFILE may hold only letters, digits, '.', '_' and '-'"
+[[ $ODP_PROFILE != "$UPLOAD_PROFILE" ]] || die "ODP_PROFILE may not be $UPLOAD_PROFILE, the upload profile's name"
 [[ $ODP_ROLE_ARN =~ ^arn:aws:iam::[0-9]{12}:role/[A-Za-z0-9+=,.@_/-]+$ ]] || die "ODP_ROLE_ARN must be an IAM role ARN"
 
 # The image's default user has passwordless sudo from cloud-init; no one logs in as it.
@@ -201,8 +202,6 @@ elif [[ $owner != "$CURATION_UID" ]]; then
   die "$DATA_MOUNT belongs to UID $owner, not CURATION_UID $CURATION_UID; set CURATION_UID to $owner"
 fi
 chmod 700 "$DATA_MOUNT"
-# Scratch older than 10 days is removed, as in /tmp; the curator makes the folder.
-write_file /etc/tmpfiles.d/curation-scratch.conf 644 "e $SCRATCH_DIR - - - 10d"
 
 step "Claude Code's managed settings, which no user or project setting overrides"
 install -d -m 755 /etc/claude-code

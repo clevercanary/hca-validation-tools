@@ -160,7 +160,8 @@ the curator for everything in the curator's home.
     - the tracker client's download cache, `~/hca-tracker-upload/.hca-tracker-cache`,
       since its default is on the 100 GB root volume;
     - scratch, `~/hca-tracker-upload/tmp`, for Claude Code and the commands it
-      runs; files older than 10 days are removed;
+      runs; the boot service, as the curator, removes what is untouched for
+      10 days at each start;
     - Claude's conversation logs, `~/hca-tracker-upload/.claude-projects`,
       reached as `~/.claude/projects`.
 - This repo, cloned at the pinned commit into the curator's home, with
