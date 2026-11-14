@@ -38,7 +38,7 @@ CURATION_AWS_REGION=...
 | Command | Does |
 |---|---|
 | `make curation-on` | Starts the instance and waits until it is running |
-| `make curation-off` | Stops it |
+| `make curation-off` | Stops it and waits until it has stopped |
 | `make curation-status` | Shows its ID, state and last start; when running, whether first boot has finished, and its data volume use |
 | `make curation-shell` | Opens a Session Manager shell as `ssm-user` |
 | `make curation-attach` | Attaches to the Claude Code session. Detach with `Ctrl-b d`; Claude keeps running. |

@@ -115,7 +115,7 @@ help:
 	@echo ""
 	@echo "Curation workstation (deployment/curation-workstation/README.md):"
 	@echo "  curation-on             - Start the workstation and wait until it is running"
-	@echo "  curation-off            - Stop the workstation"
+	@echo "  curation-off            - Stop the workstation and wait until it has stopped"
 	@echo "  curation-status         - Show its state, start time, first-boot status and data volume use"
 	@echo "  curation-shell          - Open a Session Manager shell on it"
 	@echo "  curation-attach         - Attach to its Claude Code session (detach with Ctrl-b d)"
@@ -264,7 +264,9 @@ curation-on: curation-config
 .PHONY: curation-off
 curation-off: curation-config
 	@$(CURATION_ID) && \
-	$(CURATION_AWS) ec2 stop-instances --instance-ids $$id --query 'StoppingInstances[0].CurrentState.Name' --output text
+	$(CURATION_AWS) ec2 stop-instances --instance-ids $$id --query 'StoppingInstances[0].CurrentState.Name' --output text && \
+	$(CURATION_AWS) ec2 wait instance-stopped --instance-ids $$id && \
+	echo stopped
 
 # The first boot's progress and the data volume's use come from curation-status on
 # the instance, run as ssm-user in a session, not through Run Command, which runs as root.
