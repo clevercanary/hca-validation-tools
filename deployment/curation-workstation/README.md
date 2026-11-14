@@ -108,7 +108,10 @@ first boot).
    instead (hca-validation-tools#892).
 2. Put the tracker upload key on the instance: `make curation-set-upload-key`,
    and paste the access key ID and the secret access key at the prompts. Use an
-   IAM user's key whose only permission is uploading to the tracker's bucket.
+   IAM user's key whose only permission is uploading to the tracker's bucket,
+   made for the workstation rather than the one on your computer. Ask for its
+   policy to also require the workstation's S3 endpoint (`aws:SourceVpce`), so
+   a copy of the key is of no use anywhere else.
    Neither prompt echoes, and neither part is a command-line argument. The key
    goes into the curator's `~/.aws/credentials` as the `tracker-upload` profile,
    mode 600, and `~/.hca-smart-sync/config.yaml` already names that profile.
@@ -160,8 +163,8 @@ the curator for everything in the curator's home.
     - the tracker client's download cache, `~/hca-tracker-upload/.hca-tracker-cache`,
       since its default is on the 100 GB root volume;
     - scratch, `~/hca-tracker-upload/tmp`, for Claude Code and the commands it
-      runs; the boot service, as the curator, removes what is untouched for
-      10 days at each start;
+      runs; the boot service, as the curator, removes what is unchanged for
+      more than 10 days at each start;
     - Claude's conversation logs, `~/hca-tracker-upload/.claude-projects`,
       reached as `~/.claude/projects`.
 - This repo, cloned at the pinned commit into the curator's home, with
@@ -176,15 +179,18 @@ the curator for everything in the curator's home.
   VPC, and the global STS endpoint does not. The curator's files are mode 600
   and its folders 700.
 - Claude Code's managed settings, `/etc/claude-code/managed-settings.json`:
-  Claude's Read tool may not read `.env` or `~/.aws/credentials`. The file is root's, so the curator,
+  Claude may not read `.env` or anything under `~/.aws`. The file is root's, so the curator,
   and so a Claude session, cannot change it.
 - The boot service, `curation-remote-control`, enabled and started, with
   `TMPDIR` set to the scratch folder for Claude Code and everything it runs.
 
-The denies cover Claude's Read tool, not shell commands, so they lower the
-chance of the token or the upload key reaching a transcript but do not prevent
-it. Both must stay readable by the curator, since the tracker MCP server runs
-as that user.
+The denies cover Claude's file tools, the file commands Claude Code recognizes
+in Bash such as `cat`, and redirects; not a program that opens the file itself,
+such as `aws configure get` or a Python script. So they lower the chance of the
+token or the upload key reaching a transcript but do not prevent it. Both must
+stay readable by the curator, since the tracker MCP server runs as that user,
+and so anyone who can open a Session Manager session can read them through
+`sudo -u curator`.
 
 ## Software from outside the Amazon Linux repository
 

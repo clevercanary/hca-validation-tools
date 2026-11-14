@@ -14,7 +14,7 @@ echo
 read -rsp 'Secret access key: ' secret
 echo
 [[ $key_id =~ ^AKIA[A-Z0-9]{16}$ ]] || { echo "error: not an IAM user's access key ID (AKIA and 16 more characters)" >&2; exit 1; }
-[[ -n $secret ]] || { echo "error: no secret access key entered" >&2; exit 1; }
+[[ $secret =~ ^[A-Za-z0-9/+]{40}$ ]] || { echo "error: not a secret access key (40 letters, digits, '/' or '+')" >&2; exit 1; }
 sudo -u @USER@ install -m 600 /dev/null "$credentials"
 printf '[%s]\naws_access_key_id = %s\naws_secret_access_key = %s\n' @PROFILE@ "$key_id" "$secret" |
   sudo -u @USER@ tee "$credentials" >/dev/null

@@ -253,7 +253,7 @@ terminal on the operator's computer, the Claude app or claude.ai.
       `~/.claude/projects`, a link the curator makes. They survive a replacement, and the volume's weekly
       snapshots back them up.
     - scratch lives there, in `~/hca-tracker-upload/tmp`, a folder the curator makes. The boot service, as the
-      curator, removes what in it is untouched for 10 days at each start, so root never works in it.
+      curator, removes what in it is unchanged for more than 10 days at each start, so root never works in it.
 - The Claude sign-in stays in `~/.claude` on the root volume, so a replacement ends it (1.4).
 
 ### 5.3 One place per setting
@@ -288,9 +288,14 @@ terminal on the operator's computer, the Claude app or claude.ai.
       without echoing them, and neither is a session parameter.
     - `~/.hca-smart-sync/config.yaml`, written at first boot, names that profile, so the tracker
       upload tools use it.
-    - Readable by the curator, since the tracker MCP server uploads as that user. The managed settings
-      deny Claude's Read tool `~/.aws/credentials`, as they deny `.env`; that lowers the chance of the key
-      reaching a transcript, and does not prevent it.
+    - Readable by the curator, since the tracker MCP server uploads as that user, and so by anyone who
+      can open a Session Manager session, through `sudo -u curator`. The managed settings deny reading
+      `~/.aws/**`, as they deny `.env`. The deny covers Claude's file tools, the Bash file commands
+      Claude Code recognizes and redirects, not a program that opens the file itself, such as
+      `aws configure get`; it lowers the chance of the key reaching a transcript, and does not prevent
+      it.
+    - Ask for the upload user's policy to require the workstation's S3 endpoint (`aws:SourceVpce`), so
+      a copy of the key is of no use elsewhere.
     - Temporary: short-lived IAM Identity Center credentials replace it once an uploader permission
       set exists.
 

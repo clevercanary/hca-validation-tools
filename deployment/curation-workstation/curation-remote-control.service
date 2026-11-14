@@ -14,9 +14,10 @@ Environment=PATH=@HOME@/.local/bin:/usr/local/bin:/usr/bin:/bin
 Environment=LANG=C.UTF-8
 # Scratch for Claude Code and everything it runs, MCP servers included, on the data volume.
 Environment=TMPDIR=@SCRATCH@
-# Scratch untouched for 10 days is removed at each start, as the curator, so root never works in the
-# curator's folders. A folder emptied now is removed at a later start, once its own age passes 10 days.
-ExecStartPre=/usr/bin/find @SCRATCH@ -depth -mindepth 1 -mtime +10 ( -type d -empty -o ! -type d ) -delete
+# Scratch unchanged for more than 10 days is removed at each start, as the curator, so root never
+# works in the curator's folders. A folder emptied now is removed at a later start. The "-" keeps a
+# failed delete from stopping Remote Control; the error stays in the journal.
+ExecStartPre=-/usr/bin/find @SCRATCH@ -depth -mindepth 1 -mtime +10 ( -type d -empty -o ! -type d ) -delete
 # The socket lives in the working user's home: /tmp is cleaned after 10 days,
 # which would leave the session running but unreachable.
 ExecStart=/usr/bin/tmux -S @HOME@/.tmux-claude new-session -d -s claude /usr/local/bin/curation-claude "@NAME@"
