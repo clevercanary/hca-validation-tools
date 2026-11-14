@@ -111,6 +111,11 @@ token, and the curator's clone and its environments (rebuilt at first boot).
 
 From then on the boot service starts the session at every boot.
 
+If Claude exits, `curation-claude` starts it again. If the tmux server itself
+dies, nothing does: the session is gone from the Claude app and
+`make curation-attach` finds nothing to attach to. Run `make curation-off` and
+`make curation-on`, and the boot service starts it again.
+
 The curator may update its own clone with `git switch main && git pull`, and
 `uv sync` in each MCP server's folder. A replacement resets it to the pinned
 commit.
