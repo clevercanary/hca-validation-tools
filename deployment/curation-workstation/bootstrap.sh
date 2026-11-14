@@ -90,14 +90,15 @@ done < "$CONF"
 [[ $ODP_PROFILE =~ ^[A-Za-z0-9._-]+$ ]] || die "ODP_PROFILE may hold only letters, digits, '.', '_' and '-'"
 [[ $ODP_ROLE_ARN =~ ^arn:aws:iam::[0-9]{12}:role/[A-Za-z0-9+=,.@_/-]+$ ]] || die "ODP_ROLE_ARN must be an IAM role ARN"
 
-step "the curator, with a fixed UID and a private home"
-useradd --uid "$CURATION_UID" --create-home --shell /bin/bash "$CURATION_USER"
-chmod 700 "$HOME_DIR"
-
 # The image's default user has passwordless sudo from cloud-init; no one logs in as it.
+# Removed first, so CURATION_UID may take its UID, 1000.
 step "removing ec2-user, which could become root"
 if id ec2-user >/dev/null 2>&1; then userdel --remove ec2-user; fi
 rm -f /etc/sudoers.d/90-cloud-init-users
+
+step "the curator, with a fixed UID and a private home"
+useradd --uid "$CURATION_UID" --create-home --shell /bin/bash "$CURATION_USER"
+chmod 700 "$HOME_DIR"
 
 # The SSM agent would create ssm-user at the first session with full sudo; it
 # is created here first, and may become the curator only (contract 3.2.4).
