@@ -209,7 +209,7 @@ step "Claude Code's managed settings, which no user or project setting overrides
 install -d -m 755 /etc/claude-code
 write_file /etc/claude-code/managed-settings.json 644 "{
   \"permissions\": {
-    \"deny\": [\"Read(**/.env)\", \"Read(~/.aws/**)\"]
+    \"deny\": [\"Read(**/.env)\", \"Read(~/.aws/**)\", \"Edit(~/.aws/**)\"]
   }
 }"
 

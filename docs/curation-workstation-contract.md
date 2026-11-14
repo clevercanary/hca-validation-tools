@@ -290,10 +290,10 @@ terminal on the operator's computer, the Claude app or claude.ai.
       upload tools use it.
     - Readable by the curator, since the tracker MCP server uploads as that user, and so by anyone who
       can open a Session Manager session, through `sudo -u curator`. The managed settings deny reading
-      `~/.aws/**`, as they deny `.env`. The deny covers Claude's file tools, the Bash file commands
-      Claude Code recognizes and redirects, not a program that opens the file itself, such as
-      `aws configure get`; it lowers the chance of the key reaching a transcript, and does not prevent
-      it.
+      `~/.aws/**`, as they deny `.env`, and editing it, so Claude cannot re-point a profile. The denies
+      cover Claude's file tools, the Bash file commands Claude Code recognizes and redirects, not a
+      program that opens the file itself, such as `aws configure get` or `aws configure set`; the read
+      deny lowers the chance of the key reaching a transcript, and does not prevent it.
     - Ask for the upload user's policy to require the workstation's S3 endpoint (`aws:SourceVpce`), so
       a copy of the key is of no use elsewhere.
     - Temporary: short-lived IAM Identity Center credentials replace it once an uploader permission

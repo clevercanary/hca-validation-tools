@@ -179,7 +179,7 @@ the curator for everything in the curator's home.
   VPC, and the global STS endpoint does not. The curator's files are mode 600
   and its folders 700.
 - Claude Code's managed settings, `/etc/claude-code/managed-settings.json`:
-  Claude may not read `.env` or anything under `~/.aws`. The file is root's, so the curator,
+  Claude may not read `.env`, or read or change anything under `~/.aws`. The file is root's, so the curator,
   and so a Claude session, cannot change it.
 - The boot service, `curation-remote-control`, enabled and started, with
   `TMPDIR` set to the scratch folder for Claude Code and everything it runs.
