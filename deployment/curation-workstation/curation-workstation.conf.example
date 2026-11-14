@@ -1,0 +1,24 @@
+# Settings for bootstrap.sh and the helper commands it installs.
+# Copy to /etc/curation-workstation.conf on the workstation and fill in.
+
+# The unprivileged user Claude Code, the boot service and the MCP servers run as.
+CURATION_USER=curator
+
+# The repo the curator runs Claude in, and the branch or tag of its first
+# clone. Later updates are a `git pull` in the clone, as the curator.
+REPO_URL=https://github.com/clevercanary/hca-validation-tools.git
+REPO_REF=main
+
+# The data volume's device name as attached by Terraform; formatted if blank
+# and mounted at the curator's ~/hca-tracker-upload.
+DATA_DEVICE=/dev/sdf
+
+# The name the Remote Control session shows in the Claude app and claude.ai.
+REMOTE_CONTROL_NAME=curation-workstation
+
+AWS_REGION=us-east-1
+
+# The AWS profile, in the curator's ~/.aws/config, that assumes the ODP
+# writer role with the instance's own credentials.
+ODP_PROFILE=your-odp-profile
+ODP_ROLE_ARN=arn:aws:iam::000000000000:role/your-odp-writer-role

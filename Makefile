@@ -113,6 +113,13 @@ help:
 	@echo "  batch-register-jd       - Register a new Job Definition revision using the pushed tag"
 	@echo "  batch-submit-job        - Submit a job to the configured Job Queue"
 	@echo ""
+	@echo "Curation workstation (deployment/curation-workstation/README.md):"
+	@echo "  curation-on             - Start the workstation and wait until it is running"
+	@echo "  curation-off            - Stop the workstation"
+	@echo "  curation-status         - Show its state, start time and data volume use"
+	@echo "  curation-shell          - Open a Session Manager shell on it"
+	@echo "  curation-attach         - Attach to its Claude Code session (detach with Ctrl-b d)"
+	@echo ""
 	@echo "Service-Specific Commands:"
 	@echo "  cd shared && make help                           - Shared library tasks"
 	@echo "  cd services/entry-sheet-validator && make help  - Lambda service tasks"
@@ -229,3 +236,48 @@ typecheck:
 	@cd services/dataset-validator && uv run pyright --project ../../ src
 	@echo "Running pyright (hca-schema-validator service)..."
 	@cd services/hca-schema-validator && uv run pyright --project ../../ src
+
+# ----- Curation workstation (deployment/curation-workstation/README.md) -----
+# CURATION_INSTANCE_ID, CURATION_AWS_PROFILE and CURATION_AWS_REGION may come only
+# from .env.make, as the deploy profiles do (docs/curation-workstation-contract.md 9.1).
+override CURATION_AWS = aws --profile $(CURATION_AWS_PROFILE) --region $(CURATION_AWS_REGION)
+
+.PHONY: curation-config
+curation-config:
+	$(foreach v,CURATION_INSTANCE_ID CURATION_AWS_PROFILE CURATION_AWS_REGION,$(if $(filter command environment,$(firstword $(origin $(v)))),$(error $(v) comes from the $(origin $(v)); it may only come from .env.make)))
+	@test -n "$(CURATION_INSTANCE_ID)" -a -n "$(CURATION_AWS_PROFILE)" -a -n "$(CURATION_AWS_REGION)" || \
+		{ echo "Set CURATION_INSTANCE_ID, CURATION_AWS_PROFILE and CURATION_AWS_REGION in .env.make" >&2; exit 1; }
+
+.PHONY: curation-on
+curation-on: curation-config
+	@$(CURATION_AWS) ec2 start-instances --instance-ids $(CURATION_INSTANCE_ID) --query 'StartingInstances[0].CurrentState.Name' --output text
+	@$(CURATION_AWS) ec2 wait instance-running --instance-ids $(CURATION_INSTANCE_ID)
+	@echo running
+
+.PHONY: curation-off
+curation-off: curation-config
+	@$(CURATION_AWS) ec2 stop-instances --instance-ids $(CURATION_INSTANCE_ID) --query 'StoppingInstances[0].CurrentState.Name' --output text
+
+# Data volume use needs a command on the instance; Run Command runs `df` there.
+.PHONY: curation-status
+curation-status: curation-config
+	@state=$$($(CURATION_AWS) ec2 describe-instances --instance-ids $(CURATION_INSTANCE_ID) \
+		--query 'Reservations[0].Instances[0].[State.Name,LaunchTime]' --output text) && \
+	echo "state and last start: $$state" && \
+	if [ "$${state%%[[:space:]]*}" = running ]; then \
+		id=$$($(CURATION_AWS) ssm send-command --instance-ids $(CURATION_INSTANCE_ID) --document-name AWS-RunShellScript \
+			--parameters 'commands=["df -h --output=size,used,avail,pcent,target /srv/curation-data"]' \
+			--query Command.CommandId --output text) && \
+		$(CURATION_AWS) ssm wait command-executed --command-id $$id --instance-id $(CURATION_INSTANCE_ID) && \
+		$(CURATION_AWS) ssm get-command-invocation --command-id $$id --instance-id $(CURATION_INSTANCE_ID) \
+			--query StandardOutputContent --output text; \
+	fi
+
+.PHONY: curation-shell
+curation-shell: curation-config
+	@$(CURATION_AWS) ssm start-session --target $(CURATION_INSTANCE_ID)
+
+.PHONY: curation-attach
+curation-attach: curation-config
+	@$(CURATION_AWS) ssm start-session --target $(CURATION_INSTANCE_ID) \
+		--document-name AWS-StartInteractiveCommand --parameters command=curation-attach
