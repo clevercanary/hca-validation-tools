@@ -1,0 +1,26 @@
+# Settings for bootstrap.sh. The instance's user_data writes /etc/curation-workstation.conf from Terraform's
+# values (tf-variables); this file shows its form. Do not edit it on the instance.
+
+# The curator's UID, fixed so its files on the data volume keep their owner
+# across replacements.
+CURATION_UID=2000
+
+# The repo the curator runs Claude in, and the full commit SHA both clones
+# start at: root's in /opt, which user_data checks, and the curator's.
+REPO_URL=https://github.com/clevercanary/hca-validation-tools.git
+REPO_COMMIT=0000000000000000000000000000000000000000
+
+# The data volume's EBS volume ID. bootstrap.sh finds the disk by it, so no
+# other disk can be taken for it; formatted only if it holds no filesystem,
+# and mounted at /srv/curation-data.
+DATA_VOLUME_ID=vol-00000000000000000
+
+# The name the Remote Control session shows in the Claude app and claude.ai.
+REMOTE_CONTROL_NAME=curation-workstation
+
+AWS_REGION=us-east-1
+
+# The AWS profile, in the curator's ~/.aws/config, that assumes the ODP
+# writer role with the instance's own credentials.
+ODP_PROFILE=your-odp-profile
+ODP_ROLE_ARN=arn:aws:iam::000000000000:role/your-odp-writer-role
