@@ -74,6 +74,10 @@ instance by replacing it.
    `/var/log/cloud-init-output.log` on the instance.
 3. Terraform attaches the data volume after the instance starts;
    `bootstrap.sh` waits up to 5 minutes for it.
+4. If `make curation-status` reports that `curation-status` is not found,
+   first boot failed before `bootstrap.sh` started. The instance's console
+   output (`aws ec2 get-console-output --latest` with your profile and region)
+   shows why. Fix the cause and replace the instance.
 
 **To change anything `bootstrap.sh` sets up**, including a pinned version:
 change it here and merge it, put the new commit in the curation workstation's
@@ -138,8 +142,8 @@ the curator for everything in the curator's home.
   applies security updates automatically (`upgrade_type = security`,
   `apply_updates = yes`), with dnf pointed at the latest repository version.
 - aria2, uv and Claude Code (see the next section).
-- The data volume (`DATA_DEVICE`, its path by EBS volume ID, so it can name
-  no other disk) at `/srv/curation-data`, mounted by UUID
+- The data volume, found by its EBS volume ID (`DATA_VOLUME_ID`), so no
+  other disk can be taken for it, at `/srv/curation-data`, mounted by UUID
   with `nofail`, `nosuid` and `nodev`, and formatted as XFS only if it holds no filesystem. The
   curator reaches it as `~/hca-tracker-upload`, a link. On it:
     - the tracker client's download cache, `~/hca-tracker-upload/.hca-tracker-cache`,

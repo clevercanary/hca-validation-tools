@@ -67,13 +67,13 @@ install -m 755 "$SCRIPT_DIR/curation-status.sh" /usr/local/bin/curation-status
 
 # Read as KEY=value lines, never sourced, so no value runs as a command; a key
 # missing from the file stays empty and fails its check below.
-CURATION_UID='' REPO_URL='' REPO_COMMIT='' DATA_DEVICE='' REMOTE_CONTROL_NAME=''
+CURATION_UID='' REPO_URL='' REPO_COMMIT='' DATA_VOLUME_ID='' REMOTE_CONTROL_NAME=''
 AWS_REGION='' ODP_PROFILE='' ODP_ROLE_ARN=''
 [[ -f $CONF ]] || die "$CONF not found; the instance's user_data writes it"
 while IFS='=' read -r key value; do
   case $key in
     '' | '#'*) ;;
-    CURATION_UID | REPO_URL | REPO_COMMIT | DATA_DEVICE | REMOTE_CONTROL_NAME | AWS_REGION | ODP_PROFILE | ODP_ROLE_ARN)
+    CURATION_UID | REPO_URL | REPO_COMMIT | DATA_VOLUME_ID | REMOTE_CONTROL_NAME | AWS_REGION | ODP_PROFILE | ODP_ROLE_ARN)
       printf -v "$key" '%s' "$value" ;;
     *) die "unknown key $key in $CONF" ;;
   esac
@@ -83,9 +83,9 @@ done < "$CONF"
 [[ $REMOTE_CONTROL_NAME =~ ^[A-Za-z0-9._-]+$ ]] || die "REMOTE_CONTROL_NAME may hold only letters, digits, '.', '_' and '-'"
 [[ $REPO_URL =~ ^https://[A-Za-z0-9./_-]+$ ]] || die "REPO_URL must be a plain https URL"
 [[ $REPO_COMMIT =~ ^[0-9a-f]{40}$ ]] || die "REPO_COMMIT must be a full commit SHA"
-# The EBS volume's serial is its ID, so this path can name no other disk.
-[[ $DATA_DEVICE =~ ^/dev/disk/by-id/nvme-Amazon_Elastic_Block_Store_vol[0-9a-f]{8,17}$ ]] ||
-  die "DATA_DEVICE must be the volume's /dev/disk/by-id/nvme-Amazon_Elastic_Block_Store_vol... path"
+[[ $DATA_VOLUME_ID =~ ^vol-[0-9a-f]{8,17}$ ]] || die "DATA_VOLUME_ID must be an EBS volume ID, such as vol-0123456789abcdef0"
+# An EBS volume's NVMe serial is its ID without the hyphen, so this path can name no other disk.
+DATA_DEVICE=/dev/disk/by-id/nvme-Amazon_Elastic_Block_Store_${DATA_VOLUME_ID//-/}
 [[ $AWS_REGION =~ ^[a-z]{2}(-[a-z]+)+-[0-9]+$ ]] || die "AWS_REGION must be a region name, such as us-east-1"
 [[ $ODP_PROFILE =~ ^[A-Za-z0-9._-]+$ ]] || die "ODP_PROFILE may hold only letters, digits, '.', '_' and '-'"
 [[ $ODP_ROLE_ARN =~ ^arn:aws:iam::[0-9]{12}:role/[A-Za-z0-9+=,.@_/-]+$ ]] || die "ODP_ROLE_ARN must be an IAM role ARN"
@@ -155,8 +155,8 @@ done
 [[ -b $DATA_DEVICE ]] || die "$DATA_DEVICE did not appear within $DEVICE_WAIT_SECONDS seconds"
 device=$(readlink -f "$DATA_DEVICE")
 # A backstop: a disk with partitions, or anything mounted, as the root disk has, is refused.
-[[ "$(lsblk -n -o NAME "$device" | wc -l)" == 1 ]] || die "$device has partitions; check DATA_DEVICE"
-[[ -z "$(lsblk -n -o MOUNTPOINTS "$device" | tr -d '[:space:]')" ]] || die "$device is already mounted; check DATA_DEVICE"
+[[ "$(lsblk -n -o NAME "$device" | wc -l)" == 1 ]] || die "$device has partitions; check DATA_VOLUME_ID"
+[[ -z "$(lsblk -n -o MOUNTPOINTS "$device" | tr -d '[:space:]')" ]] || die "$device is already mounted; check DATA_VOLUME_ID"
 fstype=$(blkid -s TYPE -o value "$device" || true)
 formatted=no
 if [[ -z $fstype ]]; then

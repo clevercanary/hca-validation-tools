@@ -199,8 +199,8 @@ terminal on the operator's computer, the Claude app or claude.ai.
 - **3.1.4, arguments, not shell strings:** review. `shellcheck` flags some cases, not all.
 - **3.1.5, validated config values:** a loud check on each value against its expected form, before it
   is used.
-- **3.1.6, the right volume, formatted only if blank:** structure: Terraform writes the volume's
-  `/dev/disk/by-id/` path from its ID, and `bootstrap.sh` accepts no other form. Loud checks: it formats
+- **3.1.6, the right volume, formatted only if blank:** structure: Terraform writes the volume's ID, and
+  `bootstrap.sh` builds the disk's `/dev/disk/by-id/` path from it and accepts no other input. Loud checks: it formats
   only when `blkid` finds no filesystem, and, as a backstop, stops if the device has partitions or
   anything on it is mounted, as the root disk would. A test: replace the instance and confirm the volume's files are intact.
 - **3.2.3, a terminal of its own:** structure: `bootstrap.sh` installs `Defaults use_pty` in
@@ -346,9 +346,11 @@ terminal on the operator's computer, the Claude app or claude.ai.
 
 ## What is not true yet
 
-- **Nothing in tf-config writes `user_data` yet.** A tf-config issue adds it, with
-  `user_data_replace_on_change` and the pin, Remote Control name and curator UID as variables. Until then
-  the instance is the hand-built one from the stage A test.
+- **A first boot that fails before `bootstrap.sh` starts keeps the image's defaults.** If `user_data`'s
+  own steps fail (installing `git`, the clone, the checkout or the commit check), `ec2-user` keeps
+  cloud-init's `sudo`, the SSM agent gives `ssm-user` full `sudo` at the first session, and
+  `curation-status` is missing. No curator exists and nothing from outside has run, so nothing untrusted
+  can use that. `aws ec2 get-console-output` shows the error; fix its cause and replace the instance.
 - **6.1's token is still on the machine.** It stays until #892 lands, after the tracker's #1638.
 - **9.1 is a practice, not a control.** Nothing stops a Python process reading a download without `-I`.
 - **Nothing records what Remote Control runs where the machine cannot change it.** `auditd` and the

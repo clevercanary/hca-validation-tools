@@ -10,10 +10,10 @@ CURATION_UID=2000
 REPO_URL=https://github.com/clevercanary/hca-validation-tools.git
 REPO_COMMIT=0000000000000000000000000000000000000000
 
-# The data volume, named by its EBS volume ID (vol-0123... without the hyphen),
-# so the path can name no other disk; formatted only if it holds no filesystem,
+# The data volume's EBS volume ID. bootstrap.sh finds the disk by it, so no
+# other disk can be taken for it; formatted only if it holds no filesystem,
 # and mounted at /srv/curation-data.
-DATA_DEVICE=/dev/disk/by-id/nvme-Amazon_Elastic_Block_Store_vol00000000000000000
+DATA_VOLUME_ID=vol-00000000000000000
 
 # The name the Remote Control session shows in the Claude app and claude.ai.
 REMOTE_CONTROL_NAME=curation-workstation
