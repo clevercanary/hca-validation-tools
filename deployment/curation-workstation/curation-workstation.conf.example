@@ -1,17 +1,19 @@
-# Settings for bootstrap.sh and the helper commands it installs.
-# Copy to /etc/curation-workstation.conf on the workstation and fill in.
+# Settings for bootstrap.sh. The instance's user_data writes /etc/curation-workstation.conf from Terraform's
+# values (tf-variables); this file shows its form. Do not edit it on the instance.
 
-# The unprivileged user Claude Code, the boot service and the MCP servers run as.
-CURATION_USER=curator
+# The curator's UID, fixed so its files on the data volume keep their owner
+# across replacements.
+CURATION_UID=2000
 
-# The repo the curator runs Claude in, and the branch or tag of its first
-# clone. Later updates are a `git pull` in the clone, as the curator.
+# The repo the curator runs Claude in, and the full commit SHA both clones
+# start at: root's in /opt, which user_data checks, and the curator's.
 REPO_URL=https://github.com/clevercanary/hca-validation-tools.git
-REPO_REF=main
+REPO_COMMIT=0000000000000000000000000000000000000000
 
-# The data volume's device name as attached by Terraform; formatted if blank
-# and mounted at the curator's ~/hca-tracker-upload.
-DATA_DEVICE=/dev/sdf
+# The data volume, named by its EBS volume ID (vol-0123... without the hyphen),
+# so the path can name no other disk; formatted only if it holds no filesystem,
+# and mounted at /srv/curation-data.
+DATA_DEVICE=/dev/disk/by-id/nvme-Amazon_Elastic_Block_Store_vol00000000000000000
 
 # The name the Remote Control session shows in the Claude app and claude.ai.
 REMOTE_CONTROL_NAME=curation-workstation

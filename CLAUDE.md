@@ -21,10 +21,10 @@ it governs; none repeats what the code already says.
 - **`docs/anndata-tools-contract.md`** — read wide, write narrow: the encoding
   profile `hca-anndata-tools` emits, the files it operates on, and what it
   refuses. Governs the tools package, the MCP server and the h5ad skills.
-- **`docs/curation-workstation-contract.md`** — root sets up the machine, the
-  curator owns its home, and root never writes inside it: the users, the
-  privilege boundary, where each file lives and who writes it, secrets and
-  pinned software. Governs `deployment/curation-workstation/` and the
+- **`docs/curation-workstation-contract.md`** — the instance is built once at
+  first boot and replaced rather than changed, and the data volume outlives
+  it: the lifecycle, the users, the privilege boundary, where each file lives
+  and who writes it, secrets and pinned software. Governs `deployment/curation-workstation/` and the
   `curation-*` make targets.
 - **`docs/schema-version-contract.md`** — the LinkML schema version: where it
   lives, how it is bumped, and which schema changes are breaking. Governs every
