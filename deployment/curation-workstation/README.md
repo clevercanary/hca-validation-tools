@@ -47,7 +47,9 @@ CURATION_AWS_REGION=...
 
 The Session Manager plugin must be installed on your computer
 (`brew install --cask session-manager-plugin` on macOS). Session Manager closes
-a session after 20 idle minutes; attach again when it does.
+a session after 20 idle minutes; attach again when it does. Output counts as
+activity, so `make curation-attach` stays open while Claude's screen changes:
+detach with `Ctrl-b d` when you leave it.
 
 The session also appears under its Remote Control name in the Claude app and
 on claude.ai, for whoever is signed in to the claude.ai account that signed in
@@ -112,7 +114,7 @@ token, and the curator's clone and its environments (rebuilt at first boot).
 From then on the boot service starts the session at every boot.
 
 If Claude exits, `curation-claude` starts it again. If the tmux server itself
-dies, nothing does: the session is gone from the Claude app and
+dies, nothing starts it again: the session is gone from the Claude app and
 `make curation-attach` finds nothing to attach to. Run `make curation-off` and
 `make curation-on`, and the boot service starts it again.
 
@@ -197,7 +199,8 @@ differs from the pin.
 5. Download one source dataset with `start_download`, then run
    `/evaluate-h5ad` on it. A report is written next to the file.
 6. In a `make curation-shell` session, `sudo -n true` fails and
-   `sudo -u curator true` succeeds.
+   `sudo -u curator true` succeeds, and `/etc/dnf/automatic.conf` has
+   `upgrade_type = security` and `apply_updates = yes`.
 7. Stop and start the instance. Within a few minutes, the session is back in
    the Claude app.
 

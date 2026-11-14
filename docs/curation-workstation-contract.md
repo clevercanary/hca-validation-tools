@@ -352,7 +352,9 @@ terminal on the operator's computer, the Claude app or claude.ai.
      none uses Run Command: each needs only `ssm:StartSession` on the instance and on the document it
      opens (`AWS-StartInteractiveCommand`, or the default shell document for `curation-shell`), beside
      starting and stopping it. Sessions through either document get the account's Session Manager
-     preferences: they are logged, encrypted with its key, and closed after 20 idle minutes.
+     preferences: they are logged, encrypted with its key, and closed after 20 idle minutes. Output
+     counts as activity, so an attach session stays open while Claude's screen changes; detach when
+     you leave it.
 
 ---
 
