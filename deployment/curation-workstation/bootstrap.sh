@@ -79,7 +79,8 @@ while IFS='=' read -r key value; do
   esac
 done < "$CONF"
 # Each is substituted into a unit, a script or a path.
-[[ $CURATION_UID =~ ^[1-9][0-9]{3,4}$ ]] || die "CURATION_UID must be a number from 1000 to 99999"
+# 1000 is ec2-user's, which stays, locked.
+[[ $CURATION_UID =~ ^[1-9][0-9]{3,4}$ && $CURATION_UID -ge 1001 ]] || die "CURATION_UID must be a number from 1001 to 99999"
 [[ $REMOTE_CONTROL_NAME =~ ^[A-Za-z0-9._-]+$ ]] || die "REMOTE_CONTROL_NAME may hold only letters, digits, '.', '_' and '-'"
 [[ $REPO_URL =~ ^https://[A-Za-z0-9./_-]+$ ]] || die "REPO_URL must be a plain https URL"
 [[ $REPO_COMMIT =~ ^[0-9a-f]{40}$ ]] || die "REPO_COMMIT must be a full commit SHA"
@@ -198,7 +199,7 @@ sudo -u "$CURATION_USER" -H env REPO_URL="$REPO_URL" REPO_COMMIT="$REPO_COMMIT" 
 
 step "the Remote Control boot service and the helper commands"
 write_file /usr/local/bin/curation-attach 755 "$(sed -e "s|@USER@|$CURATION_USER|g" -e "s|@HOME@|$HOME_DIR|g" "$SCRIPT_DIR/curation-attach.sh")"
-write_file /usr/local/bin/curation-set-tracker-token 755 "$(sed -e "s|@HOME@|$HOME_DIR|g" "$SCRIPT_DIR/curation-set-tracker-token.sh")"
+write_file /usr/local/bin/curation-set-tracker-token 755 "$(sed -e "s|@USER@|$CURATION_USER|g" -e "s|@HOME@|$HOME_DIR|g" "$SCRIPT_DIR/curation-set-tracker-token.sh")"
 install -m 755 "$SCRIPT_DIR/curation-claude.sh" /usr/local/bin/curation-claude
 write_file /etc/systemd/system/curation-remote-control.service 644 "$(sed -e "s|@USER@|$CURATION_USER|g" -e "s|@HOME@|$HOME_DIR|g" \
   -e "s|@DATA_MOUNT@|$DATA_MOUNT|g" -e "s|@SCRATCH@|$SCRATCH_DIR|g" -e "s|@NAME@|$REMOTE_CONTROL_NAME|g" \
