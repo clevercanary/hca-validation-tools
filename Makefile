@@ -259,6 +259,12 @@ curation-config:
 .PHONY: curation-on
 curation-on: curation-config
 	@$(CURATION_ID) && \
+	state=$$($(CURATION_AWS) ec2 describe-instances --instance-ids $$id \
+		--query 'Reservations[0].Instances[0].State.Name' --output text) && \
+	if [ "$$state" = stopping ]; then \
+		echo "waiting for the stop in progress to finish"; \
+		$(CURATION_AWS) ec2 wait instance-stopped --instance-ids $$id; \
+	fi && \
 	$(CURATION_AWS) ec2 start-instances --instance-ids $$id --query 'StartingInstances[0].CurrentState.Name' --output text && \
 	$(CURATION_AWS) ec2 wait instance-running --instance-ids $$id && \
 	echo running

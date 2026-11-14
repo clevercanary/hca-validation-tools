@@ -37,6 +37,17 @@ write_file() {
   rm "$tmp"
 }
 
+# Fills in a template's @...@ values and installs it. Stops if the template is
+# missing or a placeholder is left unfilled.
+render() {
+  local template=$1 path=$2 mode=$3 content
+  content=$(sed -e "s|@USER@|$CURATION_USER|g" -e "s|@HOME@|$HOME_DIR|g" -e "s|@PROFILE@|$UPLOAD_PROFILE|g" \
+    -e "s|@DATA_MOUNT@|$DATA_MOUNT|g" -e "s|@SCRATCH@|$SCRATCH_DIR|g" -e "s|@NAME@|$REMOTE_CONTROL_NAME|g" \
+    "$SCRIPT_DIR/$template")
+  [[ $content != *@[A-Z_]*@* ]] || die "$template has a placeholder render does not fill"
+  write_file "$path" "$mode" "$content"
+}
+
 # A sudoers file sudo cannot parse would break sudo, so each is checked first.
 write_sudoers() {
   local path=$1 content=$2 check
@@ -180,10 +191,11 @@ printf 'UUID=%s %s xfs defaults,nofail,nosuid,nodev 0 2\n' "$(blkid -s UUID -o v
 systemctl daemon-reload
 mkdir -p "$DATA_MOUNT"
 mount "$DATA_MOUNT"
-# A new volume's top folder is given to the curator. A volume from an earlier
+# A new volume's top folder is given to the curator, as is an empty one left
+# root's by a first boot that failed after formatting. A volume from an earlier
 # instance already belongs to the curator's fixed UID; root does not walk it.
 owner=$(stat -c '%u' "$DATA_MOUNT")
-if [[ $formatted == yes ]]; then
+if [[ $formatted == yes || ($owner == 0 && -z "$(ls -A "$DATA_MOUNT")") ]]; then
   chown "$CURATION_USER:$CURATION_USER" "$DATA_MOUNT"
 elif [[ $owner != "$CURATION_UID" ]]; then
   die "$DATA_MOUNT belongs to UID $owner, not CURATION_UID $CURATION_UID; set CURATION_UID to $owner"
@@ -196,7 +208,7 @@ step "Claude Code's managed settings, which no user or project setting overrides
 install -d -m 755 /etc/claude-code
 write_file /etc/claude-code/managed-settings.json 644 "{
   \"permissions\": {
-    \"deny\": [\"Read(**/.env)\", \"Read(**/.aws/credentials)\"]
+    \"deny\": [\"Read(**/.env)\", \"Read(~/.aws/credentials)\"]
   }
 }"
 
@@ -206,14 +218,11 @@ sudo -u "$CURATION_USER" -H env REPO_URL="$REPO_URL" REPO_COMMIT="$REPO_COMMIT" 
   bash "$SCRIPT_DIR/setup-curator.sh" </dev/null
 
 step "the Remote Control boot service and the helper commands"
-write_file /usr/local/bin/curation-attach 755 "$(sed -e "s|@USER@|$CURATION_USER|g" -e "s|@HOME@|$HOME_DIR|g" "$SCRIPT_DIR/curation-attach.sh")"
-write_file /usr/local/bin/curation-set-tracker-token 755 "$(sed -e "s|@USER@|$CURATION_USER|g" -e "s|@HOME@|$HOME_DIR|g" "$SCRIPT_DIR/curation-set-tracker-token.sh")"
-write_file /usr/local/bin/curation-set-upload-key 755 "$(sed -e "s|@USER@|$CURATION_USER|g" -e "s|@HOME@|$HOME_DIR|g" \
-  -e "s|@PROFILE@|$UPLOAD_PROFILE|g" "$SCRIPT_DIR/curation-set-upload-key.sh")"
+render curation-attach.sh /usr/local/bin/curation-attach 755
+render curation-set-tracker-token.sh /usr/local/bin/curation-set-tracker-token 755
+render curation-set-upload-key.sh /usr/local/bin/curation-set-upload-key 755
 install -m 755 "$SCRIPT_DIR/curation-claude.sh" /usr/local/bin/curation-claude
-write_file /etc/systemd/system/curation-remote-control.service 644 "$(sed -e "s|@USER@|$CURATION_USER|g" -e "s|@HOME@|$HOME_DIR|g" \
-  -e "s|@DATA_MOUNT@|$DATA_MOUNT|g" -e "s|@SCRATCH@|$SCRATCH_DIR|g" -e "s|@NAME@|$REMOTE_CONTROL_NAME|g" \
-  "$SCRIPT_DIR/curation-remote-control.service")"
+render curation-remote-control.service /etc/systemd/system/curation-remote-control.service 644
 systemctl daemon-reload
 systemctl enable --now curation-remote-control
 

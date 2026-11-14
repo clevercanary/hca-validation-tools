@@ -290,7 +290,7 @@ terminal on the operator's computer, the Claude app or claude.ai.
     - `~/.hca-smart-sync/config.yaml`, written at first boot, names that profile, so the tracker
       upload tools use it.
     - Readable by the curator, since the tracker MCP server uploads as that user. The managed settings
-      deny Claude's Read tool `.aws/credentials`, as they deny `.env`; that lowers the chance of the key
+      deny Claude's Read tool `~/.aws/credentials`, as they deny `.env`; that lowers the chance of the key
       reaching a transcript, and does not prevent it.
     - Temporary: short-lived IAM Identity Center credentials replace it once an uploader permission
       set exists.
