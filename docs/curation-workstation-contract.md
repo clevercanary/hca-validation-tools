@@ -201,7 +201,8 @@ terminal on the operator's computer, the Claude app or claude.ai.
   `sudo -u`, so its writes have only the curator's permissions.
 - **3.1.3, `root` runs only its own files:** a loud check: `user_data` stops if the clone's `HEAD` is not
   the pinned commit.
-- **3.1.4, arguments, not shell strings:** review. `shellcheck` flags some cases, not all.
+- **3.1.4, arguments, not shell strings:** review, and `shellcheck` in CI's lint job, which flags some
+  cases, not all.
 - **3.1.5, validated config values:** a loud check on each value against its expected form, before it
   is used.
 - **3.1.6, the right volume, formatted only if blank:** structure: Terraform writes the volume's ID, and
