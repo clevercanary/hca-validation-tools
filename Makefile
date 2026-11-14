@@ -113,6 +113,14 @@ help:
 	@echo "  batch-register-jd       - Register a new Job Definition revision using the pushed tag"
 	@echo "  batch-submit-job        - Submit a job to the configured Job Queue"
 	@echo ""
+	@echo "Curation workstation (deployment/curation-workstation/README.md):"
+	@echo "  curation-on             - Start the workstation and wait until it is running"
+	@echo "  curation-off            - Stop the workstation and wait until it has stopped"
+	@echo "  curation-status         - Show its state, start time, first-boot status and data volume use"
+	@echo "  curation-shell          - Open a Session Manager shell on it"
+	@echo "  curation-attach         - Attach to its Claude Code session (detach with Ctrl-b d)"
+	@echo "  curation-set-tracker-token - Put the tracker API token on it, prompting without echo"
+	@echo ""
 	@echo "Service-Specific Commands:"
 	@echo "  cd shared && make help                           - Shared library tasks"
 	@echo "  cd services/entry-sheet-validator && make help  - Lambda service tasks"
@@ -229,3 +237,63 @@ typecheck:
 	@cd services/dataset-validator && uv run pyright --project ../../ src
 	@echo "Running pyright (hca-schema-validator service)..."
 	@cd services/hca-schema-validator && uv run pyright --project ../../ src
+
+# ----- Curation workstation (deployment/curation-workstation/README.md) -----
+# CURATION_INSTANCE_NAME, CURATION_AWS_PROFILE and CURATION_AWS_REGION may come only
+# from .env.make, as the deploy profiles do (docs/curation-workstation-contract.md 10.1).
+override CURATION_AWS = aws --profile $(CURATION_AWS_PROFILE) --region $(CURATION_AWS_REGION)
+# The instance is found by its Name tag, since each replacement gives it a new ID.
+override CURATION_ID = id=$$($(CURATION_AWS) ec2 describe-instances \
+	--filters 'Name=tag:Name,Values=$(CURATION_INSTANCE_NAME)' Name=instance-state-name,Values=pending,running,stopping,stopped \
+	--query 'Reservations[].Instances[].InstanceId' --output text) && \
+	{ [ -n "$$id" ] && [ "$$id" = "$${id%%[[:space:]]*}" ] || \
+	{ echo "expected one instance named $(CURATION_INSTANCE_NAME), found: $${id:-none}" >&2; exit 1; }; }
+
+.PHONY: curation-config
+curation-config:
+	$(foreach v,CURATION_INSTANCE_NAME CURATION_AWS_PROFILE CURATION_AWS_REGION,$(if $(filter command environment,$(firstword $(origin $(v)))),$(error $(v) comes from the $(origin $(v)); it may only come from .env.make)))
+	@test -n "$(CURATION_INSTANCE_NAME)" -a -n "$(CURATION_AWS_PROFILE)" -a -n "$(CURATION_AWS_REGION)" || \
+		{ echo "Set CURATION_INSTANCE_NAME, CURATION_AWS_PROFILE and CURATION_AWS_REGION in .env.make" >&2; exit 1; }
+
+.PHONY: curation-on
+curation-on: curation-config
+	@$(CURATION_ID) && \
+	$(CURATION_AWS) ec2 start-instances --instance-ids $$id --query 'StartingInstances[0].CurrentState.Name' --output text && \
+	$(CURATION_AWS) ec2 wait instance-running --instance-ids $$id && \
+	echo running
+
+.PHONY: curation-off
+curation-off: curation-config
+	@$(CURATION_ID) && \
+	$(CURATION_AWS) ec2 stop-instances --instance-ids $$id --query 'StoppingInstances[0].CurrentState.Name' --output text && \
+	$(CURATION_AWS) ec2 wait instance-stopped --instance-ids $$id && \
+	echo stopped
+
+# The first boot's progress and the data volume's use come from curation-status on
+# the instance, run as ssm-user in a session, not through Run Command, which runs as root.
+.PHONY: curation-status
+curation-status: curation-config
+	@$(CURATION_ID) && \
+	state=$$($(CURATION_AWS) ec2 describe-instances --instance-ids $$id \
+		--query 'Reservations[0].Instances[0].[State.Name,LaunchTime]' --output text) && \
+	echo "$$id state and last start: $$state" && \
+	if [ "$${state%%[[:space:]]*}" = running ]; then \
+		$(CURATION_AWS) ssm start-session --target $$id \
+			--document-name AWS-StartInteractiveCommand --parameters command=curation-status; \
+	fi
+
+.PHONY: curation-shell
+curation-shell: curation-config
+	@$(CURATION_ID) && $(CURATION_AWS) ssm start-session --target $$id
+
+.PHONY: curation-attach
+curation-attach: curation-config
+	@$(CURATION_ID) && $(CURATION_AWS) ssm start-session --target $$id \
+		--document-name AWS-StartInteractiveCommand --parameters command=curation-attach
+
+# The token is typed into the session, never passed as a parameter: session
+# parameters are recorded in CloudTrail.
+.PHONY: curation-set-tracker-token
+curation-set-tracker-token: curation-config
+	@$(CURATION_ID) && $(CURATION_AWS) ssm start-session --target $$id \
+		--document-name AWS-StartInteractiveCommand --parameters command=curation-set-tracker-token

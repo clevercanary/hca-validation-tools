@@ -1,0 +1,24 @@
+# Template: bootstrap.sh fills in the @...@ values and installs the result as
+# /etc/systemd/system/curation-remote-control.service.
+[Unit]
+Description=Claude Code with Remote Control for the curation workstation
+Wants=network-online.target
+After=network-online.target
+RequiresMountsFor=@DATA_MOUNT@
+
+[Service]
+Type=forking
+User=@USER@
+WorkingDirectory=@HOME@/hca-validation-tools
+Environment=PATH=@HOME@/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=LANG=C.UTF-8
+# Scratch for Claude Code and everything it runs, MCP servers included, on the data volume.
+Environment=TMPDIR=@SCRATCH@
+# The socket lives in the working user's home: /tmp is cleaned after 10 days,
+# which would leave the session running but unreachable.
+ExecStart=/usr/bin/tmux -S @HOME@/.tmux-claude new-session -d -s claude /usr/local/bin/curation-claude "@NAME@"
+ExecStop=/usr/bin/tmux -S @HOME@/.tmux-claude kill-session -t claude
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
