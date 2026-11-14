@@ -346,10 +346,10 @@ terminal on the operator's computer, the Claude app or claude.ai.
 
 ## What is not true yet
 
-- **A first boot that fails before `bootstrap.sh` starts keeps the image's defaults.** If `user_data`'s
-  own steps fail (installing `git`, the clone, the checkout or the commit check), `ec2-user` keeps
-  cloud-init's `sudo`, the SSM agent gives `ssm-user` full `sudo` at the first session, and
-  `curation-status` is missing. No curator exists and nothing from outside has run, so nothing untrusted
+- **A first boot that fails early keeps the image's defaults.** If it fails before `bootstrap.sh` has
+  removed `ec2-user` and restricted `ssm-user`, `ec2-user` keeps cloud-init's `sudo` and the SSM agent
+  gives `ssm-user` full `sudo` at the first session. A failure in `user_data`'s own steps (installing
+  `git`, the clone, the checkout or the commit check) also leaves `curation-status` missing. No curator exists and nothing from outside has run, so nothing untrusted
   can use that. `aws ec2 get-console-output` shows the error; fix its cause and replace the instance.
 - **6.1's token is still on the machine.** It stays until #892 lands, after the tracker's #1638.
 - **9.1 is a practice, not a control.** Nothing stops a Python process reading a download without `-I`.
