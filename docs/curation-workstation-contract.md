@@ -38,8 +38,8 @@ terminal on the operator's computer, the Claude app or claude.ai.
   `curation-remote-control` service, plus the MCP servers. It has no `sudo`.
 - **First boot:** cloud-init runs the instance's `user_data`, which writes the settings, clones this repo
   at a pinned commit and runs `bootstrap.sh`.
-- **`make curation-on|off|status|shell|attach|set-tracker-token`:** the operator's commands, run on
-  their own computer.
+- **`make curation-on|off|status|shell|attach|set-tracker-token|set-upload-key`:** the operator's commands,
+  run on their own computer.
 
 ---
 
@@ -67,12 +67,13 @@ terminal on the operator's computer, the Claude app or claude.ai.
 - The data volume and everything on it, including Claude's conversation logs and its memory files (5.2).
   A replacement therefore does not clean up after a compromised curator: recovering from one also means
   reviewing or removing `.claude-projects`, whose memory files load into the next session.
-- Nothing on the root volume: the Claude sign-in, the tracker token, and the curator's clone and its
-  environments.
+- Nothing on the root volume: the Claude sign-in, the tracker token, the tracker upload key, and the
+  curator's clone and its environments.
 
 ### 1.4 What the operator redoes after a replacement
 
 - Puts the tracker token in the curator's `.env` with `make curation-set-tracker-token` (until #892).
+- Puts the tracker upload key in the curator's `~/.aws/credentials` with `make curation-set-upload-key`.
 - Signs in to claude.ai through `curation-attach`, and accepts the Remote Control and trust prompts.
 
 ### 1.5 What changes on a running instance
@@ -228,7 +229,7 @@ terminal on the operator's computer, the Claude app or claude.ai.
     - `/etc/curation-workstation.conf`, from Terraform's values;
     - `/opt/hca-validation-tools`, the clone at the pinned commit.
 - Written by `bootstrap.sh`:
-    - `/usr/local/bin/{aria2c,uv,uvx,curation-claude,curation-attach,curation-set-tracker-token,curation-status}`
+    - `/usr/local/bin/{aria2c,uv,uvx,curation-claude,curation-attach,curation-set-tracker-token,curation-set-upload-key,curation-status}`
     - `/etc/systemd/system/curation-remote-control.service`
     - `/etc/claude-code/managed-settings.json`
     - `/etc/sudoers.d/curation-use-pty`, `/etc/sudoers.d/ssm-agent-users`
@@ -241,7 +242,8 @@ terminal on the operator's computer, the Claude app or claude.ai.
 
 - Everything under its home, written by the curator:
     - the clone, `~/hca-validation-tools`, with its `.mcp.json` and `.env`;
-    - `~/.aws/config` and `~/.claude`;
+    - `~/.aws/config`, `~/.aws/credentials` (the upload key), `~/.hca-smart-sync/config.yaml` and
+      `~/.claude`;
     - the tmux socket the boot service and `curation-attach` share, `~/.tmux-claude`. It is not in `/tmp`,
       which is cleaned after 10 days.
 - The data volume, mounted at `/srv/curation-data` and reached as `~/hca-tracker-upload`, a link the
@@ -279,8 +281,19 @@ terminal on the operator's computer, the Claude app or claude.ai.
 
 ### 6.2 AWS
 
-- No long-lived AWS keys on the machine. It uses the instance role.
-- Uploads, when added, use short-lived IAM Identity Center credentials.
+- Reads and ODP writes use the instance role, and the ODP writer role assumed with it.
+- One long-lived key: the tracker upload key, an IAM user's access key limited to uploading to the
+  tracker's bucket.
+    - In the curator's `~/.aws/credentials` as the `tracker-upload` profile, mode 600, put there by the
+      operator after each replacement with `make curation-set-upload-key`. It prompts for both parts
+      without echoing them, and neither is a session parameter.
+    - `~/.hca-smart-sync/config.yaml`, written at first boot, names that profile, so the tracker
+      upload tools use it.
+    - Readable by the curator, since the tracker MCP server uploads as that user. The managed settings
+      deny Claude's Read tool `.aws/credentials`, as they deny `.env`; that lowers the chance of the key
+      reaching a transcript, and does not prevent it.
+    - Temporary: short-lived IAM Identity Center credentials replace it once an uploader permission
+      set exists.
 
 ### 6.3 claude.ai
 
@@ -348,7 +361,8 @@ terminal on the operator's computer, the Claude app or claude.ai.
      target.
 
 10.2 The commands start, stop, report on, and open sessions to the instance. They change nothing on it but the
-     tracker token, which `make curation-set-tracker-token` writes to the curator's `.env`, and
+     tracker token, which `make curation-set-tracker-token` writes to the curator's `.env`, and the upload
+     key, which `make curation-set-upload-key` writes to the curator's `~/.aws/credentials`, and
      none uses Run Command: each needs only `ssm:StartSession` on the instance and on the document it
      opens (`AWS-StartInteractiveCommand`, or the default shell document for `curation-shell`), beside
      starting and stopping it. Sessions through either document get the account's Session Manager
@@ -366,6 +380,8 @@ terminal on the operator's computer, the Claude app or claude.ai.
   `git`, the clone, the checkout or the commit check) also leaves `curation-status` missing. No curator exists and nothing from outside has run, so nothing untrusted
   can use that. `aws ec2 get-console-output` shows the error; fix its cause and replace the instance.
 - **6.1's token is still on the machine.** It stays until #892 lands, after the tracker's #1638.
+- **6.2's upload key is long-lived.** It stays until an IAM Identity Center permission set limited to
+  tracker uploads exists, and the curator signs in with it instead.
 - **9.1 is a practice, not a control.** Nothing stops a Python process reading a download without `-I`.
 - **Nothing records what Remote Control runs where the machine cannot change it.** `auditd` and the
   CloudWatch agent come in stage C, after tf-config #92, and before real curation work.

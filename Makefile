@@ -120,6 +120,7 @@ help:
 	@echo "  curation-shell          - Open a Session Manager shell on it"
 	@echo "  curation-attach         - Attach to its Claude Code session (detach with Ctrl-b d)"
 	@echo "  curation-set-tracker-token - Put the tracker API token on it, prompting without echo"
+	@echo "  curation-set-upload-key    - Put the tracker upload key on it, prompting without echo"
 	@echo ""
 	@echo "Service-Specific Commands:"
 	@echo "  cd shared && make help                           - Shared library tasks"
@@ -297,3 +298,8 @@ curation-attach: curation-config
 curation-set-tracker-token: curation-config
 	@$(CURATION_ID) && $(CURATION_AWS) ssm start-session --target $$id \
 		--document-name AWS-StartInteractiveCommand --parameters command=curation-set-tracker-token
+
+.PHONY: curation-set-upload-key
+curation-set-upload-key: curation-config
+	@$(CURATION_ID) && $(CURATION_AWS) ssm start-session --target $$id \
+		--document-name AWS-StartInteractiveCommand --parameters command=curation-set-upload-key

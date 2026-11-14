@@ -21,6 +21,8 @@ CURATION_USER=curator
 HOME_DIR=/home/$CURATION_USER
 DATA_MOUNT=/srv/curation-data
 SCRATCH_DIR=$DATA_MOUNT/tmp
+# The curator's AWS profile for tracker uploads, local to the machine; hca-smart-sync is set to use it.
+UPLOAD_PROFILE=tracker-upload
 # Terraform attaches the data volume after the instance starts.
 DEVICE_WAIT_SECONDS=300
 
@@ -194,18 +196,20 @@ step "Claude Code's managed settings, which no user or project setting overrides
 install -d -m 755 /etc/claude-code
 write_file /etc/claude-code/managed-settings.json 644 "{
   \"permissions\": {
-    \"deny\": [\"Read(**/.env)\"]
+    \"deny\": [\"Read(**/.env)\", \"Read(**/.aws/credentials)\"]
   }
 }"
 
 step "the curator's home, set up as the curator"
 sudo -u "$CURATION_USER" -H env REPO_URL="$REPO_URL" REPO_COMMIT="$REPO_COMMIT" AWS_REGION="$AWS_REGION" \
-  ODP_PROFILE="$ODP_PROFILE" ODP_ROLE_ARN="$ODP_ROLE_ARN" DATA_MOUNT="$DATA_MOUNT" \
+  ODP_PROFILE="$ODP_PROFILE" ODP_ROLE_ARN="$ODP_ROLE_ARN" DATA_MOUNT="$DATA_MOUNT" UPLOAD_PROFILE="$UPLOAD_PROFILE" \
   bash "$SCRIPT_DIR/setup-curator.sh" </dev/null
 
 step "the Remote Control boot service and the helper commands"
 write_file /usr/local/bin/curation-attach 755 "$(sed -e "s|@USER@|$CURATION_USER|g" -e "s|@HOME@|$HOME_DIR|g" "$SCRIPT_DIR/curation-attach.sh")"
 write_file /usr/local/bin/curation-set-tracker-token 755 "$(sed -e "s|@USER@|$CURATION_USER|g" -e "s|@HOME@|$HOME_DIR|g" "$SCRIPT_DIR/curation-set-tracker-token.sh")"
+write_file /usr/local/bin/curation-set-upload-key 755 "$(sed -e "s|@USER@|$CURATION_USER|g" -e "s|@HOME@|$HOME_DIR|g" \
+  -e "s|@PROFILE@|$UPLOAD_PROFILE|g" "$SCRIPT_DIR/curation-set-upload-key.sh")"
 install -m 755 "$SCRIPT_DIR/curation-claude.sh" /usr/local/bin/curation-claude
 write_file /etc/systemd/system/curation-remote-control.service 644 "$(sed -e "s|@USER@|$CURATION_USER|g" -e "s|@HOME@|$HOME_DIR|g" \
   -e "s|@DATA_MOUNT@|$DATA_MOUNT|g" -e "s|@SCRATCH@|$SCRATCH_DIR|g" -e "s|@NAME@|$REMOTE_CONTROL_NAME|g" \

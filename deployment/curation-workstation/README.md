@@ -21,6 +21,7 @@ outlives it, and no one can become root on it after first boot.
 | `curation-claude.sh` | Installed as `/usr/local/bin/curation-claude`: runs Claude Code with Remote Control, restarting it if it exits. |
 | `curation-attach.sh` | Installed as `/usr/local/bin/curation-attach`: attaches to that tmux session as the curator. |
 | `curation-set-tracker-token.sh` | Installed as `/usr/local/bin/curation-set-tracker-token`: writes the tracker token to the curator's `.env`, for `make curation-set-tracker-token`. |
+| `curation-set-upload-key.sh` | Installed as `/usr/local/bin/curation-set-upload-key`: writes the tracker upload key to the curator's `~/.aws/credentials`, for `make curation-set-upload-key`. |
 | `curation-status.sh` | Installed as `/usr/local/bin/curation-status`: reports the first boot's progress and the data volume's use, for `make curation-status`. |
 
 ## Using it from your computer
@@ -44,6 +45,7 @@ CURATION_AWS_REGION=...
 | `make curation-shell` | Opens a Session Manager shell as `ssm-user` |
 | `make curation-attach` | Attaches to the Claude Code session. Detach with `Ctrl-b d`; Claude keeps running. |
 | `make curation-set-tracker-token` | Prompts for the tracker API token, without echoing it, and puts it in the curator's `.env` |
+| `make curation-set-upload-key` | Prompts for the tracker upload key, without echoing it, and puts it in the curator's `~/.aws/credentials` |
 
 The Session Manager plugin must be installed on your computer
 (`brew install --cask session-manager-plugin` on macOS). Session Manager closes
@@ -90,7 +92,8 @@ data volume, with downloads, curated files, scratch and Claude's conversation
 logs, is reattached to the new instance.
 
 A replacement loses what is on the root volume: the Claude sign-in, the tracker
-token, and the curator's clone and its environments (rebuilt at first boot).
+token, the upload key, and the curator's clone and its environments (rebuilt at
+first boot).
 
 ## After first boot, and after each replacement
 
@@ -103,7 +106,14 @@ token, and the curator's clone and its environments (rebuilt at first boot).
    running, run `/mcp` there to reconnect the tracker server. This is a 30-day token, so it is replaced every month. It goes away when
    `hca-tracker-client` authenticates with the instance's AWS credentials
    instead (hca-validation-tools#892).
-2. Sign in Claude Code and turn on Remote Control: `make curation-attach`. In
+2. Put the tracker upload key on the instance: `make curation-set-upload-key`,
+   and paste the access key ID and the secret access key at the prompts. Use an
+   IAM user's key whose only permission is uploading to the tracker's bucket.
+   Neither prompt echoes, and neither part is a command-line argument. The key
+   goes into the curator's `~/.aws/credentials` as the `tracker-upload` profile,
+   mode 600, and `~/.hca-smart-sync/config.yaml` already names that profile.
+   It is a long-lived key until uploads use Identity Center credentials.
+3. Sign in Claude Code and turn on Remote Control: `make curation-attach`. In
    the session, sign in with the claude.ai account, using its link and code.
    Answer yes to "Enable Remote Control?", to trusting the folder, and to
    using the MCP servers in its `.mcp.json`. Then detach with `Ctrl-b d`.
@@ -157,21 +167,23 @@ the curator for everything in the curator's home.
   `uv sync` in `packages/hca-anndata-mcp` and `packages/hca-tracker-mcp`,
   taking only releases no newer than the pinned commit.
 - The curator's `.mcp.json` (both MCP servers) and `~/.aws/config`: the
-  region, regional STS endpoints, and the ODP writer profile, assumed with the
-  instance's own credentials. Regional STS matters because the instance's
+  region, regional STS endpoints, the ODP writer profile, assumed with the
+  instance's own credentials, and the `tracker-upload` profile, whose key the
+  operator adds. `~/.hca-smart-sync/config.yaml` names that profile for
+  uploads. Regional STS matters because the instance's
   credentials are refused for S3 and STS calls that do not go through its own
   VPC, and the global STS endpoint does not. The curator's files are mode 600
   and its folders 700.
 - Claude Code's managed settings, `/etc/claude-code/managed-settings.json`:
-  Claude's Read tool may not read `.env`. The file is root's, so the curator,
+  Claude's Read tool may not read `.env` or `.aws/credentials`. The file is root's, so the curator,
   and so a Claude session, cannot change it.
 - The boot service, `curation-remote-control`, enabled and started, with
   `TMPDIR` set to the scratch folder for Claude Code and everything it runs.
 
-The deny on `.env` covers Claude's Read tool, not shell commands, so it lowers
-the chance of the token reaching a transcript but does not prevent it. The
-token must stay readable by the curator, since the tracker MCP server
-runs as that user.
+The denies cover Claude's Read tool, not shell commands, so they lower the
+chance of the token or the upload key reaching a transcript but do not prevent
+it. Both must stay readable by the curator, since the tracker MCP server runs
+as that user.
 
 ## Software from outside the Amazon Linux repository
 
@@ -195,7 +207,9 @@ differs from the pin.
    session ID that `make` printed, holding what the session showed.
 3. From the Claude app, open the session and ask it to run `hostname` and
    `df -h ~/hca-tracker-upload`. The instance and the 1 TB volume show.
-4. Run `/mcp`. Both MCP servers are connected. Ask for `check_environment`.
+4. Run `/mcp`. Both MCP servers are connected. Ask for `check_environment`:
+   downloads are ready, and uploads are ready with the `tracker-upload` profile
+   (`can_upload` is true).
 5. Download one source dataset with `start_download`, then run
    `/evaluate-h5ad` on it. A report is written next to the file.
 6. In a `make curation-shell` session, `sudo -n true` fails and
@@ -206,9 +220,9 @@ differs from the pin.
 
 ## Not set up yet
 
-- Uploading from the instance: an upload profile, `hca-smart-sync` and
-  `s5cmd`. Uploads are to use short-lived Identity Center credentials, not
-  long-lived keys.
+- `s5cmd`: uploads use the slower AWS CLI until it is installed.
+- Short-lived Identity Center credentials for uploads, in place of the
+  long-lived upload key.
 - `gh`.
 - The idle switch-off.
 - `auditd` and the CloudWatch agent, which keep a record of what Remote

@@ -73,6 +73,13 @@ role_arn = $ODP_ROLE_ARN
 credential_source = Ec2InstanceMetadata
 region = $AWS_REGION
 sts_regional_endpoints = regional
-EOF
 
-echo "todo: put the tracker token in $REPO_DIR/.env (see README)"
+[profile $UPLOAD_PROFILE]
+region = $AWS_REGION
+sts_regional_endpoints = regional
+EOF
+# The file `hca-smart-sync config` writes; the tracker client reads the upload profile from it.
+mkdir "$HOME/.hca-smart-sync"
+printf 'profile: %s\n' "$UPLOAD_PROFILE" > "$HOME/.hca-smart-sync/config.yaml"
+
+echo "todo: put the tracker token in $REPO_DIR/.env and the upload key in ~/.aws/credentials (see README)"
