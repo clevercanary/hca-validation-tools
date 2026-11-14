@@ -102,7 +102,9 @@ done < "$CONF"
 DATA_DEVICE=/dev/disk/by-id/nvme-Amazon_Elastic_Block_Store_${DATA_VOLUME_ID//-/}
 [[ $AWS_REGION =~ ^[a-z]{2}(-[a-z]+)+-[0-9]+$ ]] || die "AWS_REGION must be a region name, such as us-east-1"
 [[ $ODP_PROFILE =~ ^[A-Za-z0-9._-]+$ ]] || die "ODP_PROFILE may hold only letters, digits, '.', '_' and '-'"
-[[ $ODP_PROFILE != "$UPLOAD_PROFILE" ]] || die "ODP_PROFILE may not be $UPLOAD_PROFILE, the upload profile's name"
+# Either name would collide with a section setup-curator.sh writes to ~/.aws/config.
+[[ $ODP_PROFILE != default && $ODP_PROFILE != "$UPLOAD_PROFILE" ]] ||
+  die "ODP_PROFILE may not be default or $UPLOAD_PROFILE, which ~/.aws/config already uses"
 [[ $ODP_ROLE_ARN =~ ^arn:aws:iam::[0-9]{12}:role/[A-Za-z0-9+=,.@_/-]+$ ]] || die "ODP_ROLE_ARN must be an IAM role ARN"
 
 # The image's default user has passwordless sudo from cloud-init; no one logs in as it.
