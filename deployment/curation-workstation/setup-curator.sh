@@ -38,8 +38,12 @@ printf '%s\n' 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.bashrc"
 step "this repo at $REPO_COMMIT, with the MCP servers' environments"
 git clone --quiet "$REPO_URL" "$REPO_DIR"
 git -C "$REPO_DIR" checkout --quiet "$REPO_COMMIT"
+# The packages' locks are not committed, so every replacement at this commit
+# resolves what was released by the commit's date.
+exclude_newer=$(TZ=UTC git -C "$REPO_DIR" log -1 --format=%cd --date=format-local:%Y-%m-%dT%H:%M:%SZ)
 for pkg in hca-anndata-mcp hca-tracker-mcp; do
-  /usr/local/bin/uv sync --quiet --no-dev --python "$PYTHON_VERSION" --directory "$REPO_DIR/packages/$pkg"
+  /usr/local/bin/uv sync --quiet --no-dev --python "$PYTHON_VERSION" --exclude-newer "$exclude_newer" \
+    --directory "$REPO_DIR/packages/$pkg"
 done
 
 step "the MCP servers and AWS configuration"

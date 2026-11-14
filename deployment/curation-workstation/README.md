@@ -147,7 +147,8 @@ the curator for everything in the curator's home.
     - Claude's conversation logs, `~/hca-tracker-upload/.claude-projects`,
       reached as `~/.claude/projects`.
 - This repo, cloned at the pinned commit into the curator's home, with
-  `uv sync` in `packages/hca-anndata-mcp` and `packages/hca-tracker-mcp`.
+  `uv sync` in `packages/hca-anndata-mcp` and `packages/hca-tracker-mcp`,
+  taking only releases no newer than the pinned commit.
 - The curator's `.mcp.json` (both MCP servers) and `~/.aws/config`: the
   region, regional STS endpoints, and the ODP writer profile, assumed with the
   instance's own credentials. Regional STS matters because the instance's

@@ -311,8 +311,9 @@ terminal on the operator's computer, the Claude app or claude.ai.
 - Claude Code updates itself.
 
 7.4 Python environments use CI's Python version, 3.11, from the Amazon Linux repository; uv never
-    downloads a Python. Their dependencies are resolved at first boot, as CI resolves them, since the
-    packages' locks are not committed.
+    downloads a Python. The packages' locks are not committed, so their dependencies are resolved at
+    first boot, from releases no newer than the pinned commit's date: each replacement at one commit
+    gets the same versions. A yanked release can still change them.
 
 ## 8. `bootstrap.sh`
 
