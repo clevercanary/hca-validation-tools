@@ -91,10 +91,10 @@ DATA_DEVICE=/dev/disk/by-id/nvme-Amazon_Elastic_Block_Store_${DATA_VOLUME_ID//-/
 [[ $ODP_ROLE_ARN =~ ^arn:aws:iam::[0-9]{12}:role/[A-Za-z0-9+=,.@_/-]+$ ]] || die "ODP_ROLE_ARN must be an IAM role ARN"
 
 # The image's default user has passwordless sudo from cloud-init; no one logs in as it.
-# Removed first, so CURATION_UID may take its UID, 1000.
-step "removing ec2-user, which could become root"
-if id ec2-user >/dev/null 2>&1; then userdel --remove ec2-user; fi
+# Locked rather than removed, since cloud-init's last module looks it up after this script.
+step "locking ec2-user, which could become root"
 rm -f /etc/sudoers.d/90-cloud-init-users
+if id ec2-user >/dev/null 2>&1; then usermod --lock --expiredate 1 --shell /sbin/nologin ec2-user; fi
 
 step "the curator, with a fixed UID and a private home"
 useradd --uid "$CURATION_UID" --create-home --shell /bin/bash "$CURATION_USER"
@@ -198,6 +198,7 @@ sudo -u "$CURATION_USER" -H env REPO_URL="$REPO_URL" REPO_COMMIT="$REPO_COMMIT" 
 
 step "the Remote Control boot service and the helper commands"
 write_file /usr/local/bin/curation-attach 755 "$(sed -e "s|@USER@|$CURATION_USER|g" -e "s|@HOME@|$HOME_DIR|g" "$SCRIPT_DIR/curation-attach.sh")"
+write_file /usr/local/bin/curation-set-tracker-token 755 "$(sed -e "s|@HOME@|$HOME_DIR|g" "$SCRIPT_DIR/curation-set-tracker-token.sh")"
 install -m 755 "$SCRIPT_DIR/curation-claude.sh" /usr/local/bin/curation-claude
 write_file /etc/systemd/system/curation-remote-control.service 644 "$(sed -e "s|@USER@|$CURATION_USER|g" -e "s|@HOME@|$HOME_DIR|g" \
   -e "s|@DATA_MOUNT@|$DATA_MOUNT|g" -e "s|@SCRATCH@|$SCRATCH_DIR|g" -e "s|@NAME@|$REMOTE_CONTROL_NAME|g" \

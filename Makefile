@@ -119,6 +119,7 @@ help:
 	@echo "  curation-status         - Show its state, start time, first-boot status and data volume use"
 	@echo "  curation-shell          - Open a Session Manager shell on it"
 	@echo "  curation-attach         - Attach to its Claude Code session (detach with Ctrl-b d)"
+	@echo "  curation-set-tracker-token - Put the tracker API token on it, prompting without echo"
 	@echo ""
 	@echo "Service-Specific Commands:"
 	@echo "  cd shared && make help                           - Shared library tasks"
@@ -289,3 +290,10 @@ curation-shell: curation-config
 curation-attach: curation-config
 	@$(CURATION_ID) && $(CURATION_AWS) ssm start-session --target $$id \
 		--document-name AWS-StartInteractiveCommand --parameters command=curation-attach
+
+# The token is typed into the session, never passed as a parameter: session
+# parameters are recorded in CloudTrail.
+.PHONY: curation-set-tracker-token
+curation-set-tracker-token: curation-config
+	@$(CURATION_ID) && $(CURATION_AWS) ssm start-session --target $$id \
+		--document-name AWS-StartInteractiveCommand --parameters command=curation-set-tracker-token

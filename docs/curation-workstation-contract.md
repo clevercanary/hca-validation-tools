@@ -71,7 +71,7 @@ terminal on the operator's computer, the Claude app or claude.ai.
 
 ### 1.4 What the operator redoes after a replacement
 
-- Puts the tracker token in the curator's `.env` (until #892).
+- Puts the tracker token in the curator's `.env` with `make curation-set-tracker-token` (until #892).
 - Signs in to claude.ai through `curation-attach`, and accepts the Remote Control and trust prompts.
 
 ### 1.5 What changes on a running instance
@@ -90,7 +90,7 @@ terminal on the operator's computer, the Claude app or claude.ai.
   agent.
 - Owns everything outside the curator's home and the data volume.
 - After first boot, no person reaches it from the machine: `ssm-user` cannot `sudo` to it (3.2.4), and
-  `bootstrap.sh` removes the image's `ec2-user` and its cloud-init sudoers file.
+  `bootstrap.sh` removes the image's `ec2-user`'s cloud-init sudoers file and locks the account.
 - The one route left is SSM Run Command (`AWS-RunShellScript`), which runs as `root`. It needs
   `ssm:SendCommand` in the AWS account, a permission that can already replace the instance.
 
@@ -222,7 +222,7 @@ terminal on the operator's computer, the Claude app or claude.ai.
     - `/etc/curation-workstation.conf`, from Terraform's values;
     - `/opt/hca-validation-tools`, the clone at the pinned commit.
 - Written by `bootstrap.sh`:
-    - `/usr/local/bin/{aria2c,uv,uvx,curation-claude,curation-attach,curation-status}`
+    - `/usr/local/bin/{aria2c,uv,uvx,curation-claude,curation-attach,curation-set-tracker-token,curation-status}`
     - `/etc/systemd/system/curation-remote-control.service`
     - `/etc/claude-code/managed-settings.json`
     - `/etc/sudoers.d/curation-use-pty`, `/etc/sudoers.d/ssm-agent-users`
@@ -263,7 +263,9 @@ terminal on the operator's computer, the Claude app or claude.ai.
 
 ### 6.1 The tracker token
 
-- In the clone's `.env`, mode 600, put there by the operator after each replacement.
+- In the clone's `.env`, mode 600, put there by the operator after each replacement with
+  `make curation-set-tracker-token`. It prompts without echoing, so the Session Manager log never shows the
+  token, and it is never a session parameter, which CloudTrail records.
 - Readable by the curator, since the tracker MCP server runs as that user.
 - The managed deny on reading `.env` lowers the chance of the token reaching a transcript; it does not
   prevent it.
@@ -338,7 +340,8 @@ terminal on the operator's computer, the Claude app or claude.ai.
      with the repo's deploy profiles, a profile given on the command line or in the environment stops the
      target.
 
-10.2 The commands start, stop, report on, and open sessions to the instance. They change nothing on it, and
+10.2 The commands start, stop, report on, and open sessions to the instance. They change nothing on it but the
+     tracker token, which `make curation-set-tracker-token` writes to the curator's `.env`, and
      none uses Run Command: each needs only `ssm:StartSession` on the instance, beside starting and
      stopping it.
 
@@ -347,7 +350,7 @@ terminal on the operator's computer, the Claude app or claude.ai.
 ## What is not true yet
 
 - **A first boot that fails early keeps the image's defaults.** If it fails before `bootstrap.sh` has
-  removed `ec2-user` and restricted `ssm-user`, `ec2-user` keeps cloud-init's `sudo` and the SSM agent
+  locked `ec2-user` and restricted `ssm-user`, `ec2-user` keeps cloud-init's `sudo` and the SSM agent
   gives `ssm-user` full `sudo` at the first session. A failure in `user_data`'s own steps (installing
   `git`, the clone, the checkout or the commit check) also leaves `curation-status` missing. No curator exists and nothing from outside has run, so nothing untrusted
   can use that. `aws ec2 get-console-output` shows the error; fix its cause and replace the instance.

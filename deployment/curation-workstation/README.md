@@ -20,6 +20,7 @@ outlives it, and no one can become root on it after first boot.
 | `curation-remote-control.service` | Template for the systemd unit that keeps Claude Code running in tmux. |
 | `curation-claude.sh` | Installed as `/usr/local/bin/curation-claude`: runs Claude Code with Remote Control, restarting it if it exits. |
 | `curation-attach.sh` | Installed as `/usr/local/bin/curation-attach`: attaches to that tmux session as the curator. |
+| `curation-set-tracker-token.sh` | Installed as `/usr/local/bin/curation-set-tracker-token`: writes the tracker token to the curator's `.env`, for `make curation-set-tracker-token`. |
 | `curation-status.sh` | Installed as `/usr/local/bin/curation-status`: reports the first boot's progress and the data volume's use, for `make curation-status`. |
 
 ## Using it from your computer
@@ -42,6 +43,7 @@ CURATION_AWS_REGION=...
 | `make curation-status` | Shows its ID, state and last start; when running, whether first boot has finished, and its data volume use |
 | `make curation-shell` | Opens a Session Manager shell as `ssm-user` |
 | `make curation-attach` | Attaches to the Claude Code session. Detach with `Ctrl-b d`; Claude keeps running. |
+| `make curation-set-tracker-token` | Prompts for the tracker API token, without echoing it, and puts it in the curator's `.env` |
 
 The Session Manager plugin must be installed on your computer
 (`brew install --cask session-manager-plugin` on macOS). Session Manager closes
@@ -90,21 +92,13 @@ token, and the curator's clone and its environments (rebuilt at first boot).
 
 ## After first boot, and after each replacement
 
-1. Put the tracker token in the curator's clone, readable only by the curator.
-   Use a token made for the workstation on the tracker's `/api-token` page, not
-   the one on your computer, so each expires on its own. Session Manager logs
-   everything a session shows, so read the token without echoing it. From
-   `make curation-shell`:
-   ```bash
-   sudo -iu curator
-   cd ~/hca-validation-tools
-   umask 077
-   read -rsp 'Tracker API token: ' token; echo
-   printf 'HCA_TRACKER_URL=%s\nHCA_TRACKER_API_TOKEN=%s\n' https://tracker.data.humancellatlas.org "$token" > .env
-   unset token
-   exit
-   ```
-   This is a 30-day token, so it is replaced every month. It goes away when
+1. Put the tracker token on the instance: `make curation-set-tracker-token`,
+   and paste the token at the prompt. Use a token made for the workstation on
+   the tracker's `/api-token` page, not the one on your computer, so each
+   expires on its own. The prompt does not echo it, so the Session Manager log
+   never shows it, and it is never a command-line argument. It goes into the
+   curator's `~/hca-validation-tools/.env`, mode 600. If Claude is already
+   running, run `/mcp` there to reconnect the tracker server. This is a 30-day token, so it is replaced every month. It goes away when
    `hca-tracker-client` authenticates with the instance's AWS credentials
    instead (hca-validation-tools#892).
 2. Sign in Claude Code and turn on Remote Control: `make curation-attach`. In
@@ -135,8 +129,8 @@ the curator for everything in the curator's home.
   `sudo`'s `use_pty` (`/etc/sudoers.d/curation-use-pty`) gives each of those
   commands its own terminal, so a curator process cannot type into the
   operator's. Both files are checked with `visudo` before they are installed.
-- The image's `ec2-user` and its cloud-init sudoers file, removed, since
-  that user could become root.
+- The image's `ec2-user`, locked, and its cloud-init sudoers file removed,
+  since that user could become root.
 - From the Amazon Linux repository: `tmux`, `git`, `python3.11` (CI's
   Python, which uv uses instead of downloading one) and `dnf-automatic`, which
   applies security updates automatically (`upgrade_type = security`,
