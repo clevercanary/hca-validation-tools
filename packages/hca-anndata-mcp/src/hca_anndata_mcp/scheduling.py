@@ -11,7 +11,7 @@ import os
 import pickle
 import re
 from collections import deque
-from collections.abc import AsyncGenerator, Callable, Mapping
+from collections.abc import AsyncGenerator, Awaitable, Callable, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
@@ -155,6 +155,32 @@ def worker_died(tool_name: str) -> dict[str, str]:
     return {"error": f"{tool_name}: the worker process died (killed, or out of memory); nothing was written"}
 
 
+def raise_if_start_failed(exc: BrokenWorkerProcess) -> None:
+    """Re-raise a worker start-up failure with its cause; return for a worker that died later.
+
+    Raises:
+        RuntimeError: ``exc`` is a start-up failure; the message names its cause.
+    """
+    # anyio gives a message only to a start-up failure, with the real exception as its cause.
+    if exc.args:
+        cause = exc.__cause__
+        detail = f"{type(cause).__name__}: {cause}" if cause else exc.args[0]
+        raise RuntimeError(f"a read worker could not start: {detail}") from exc
+
+
+async def find_live_worker(ping: Callable[[], Awaitable[object]], tries: int) -> None:
+    """Await ``ping`` until it answers, at most ``tries`` times, then return either way.
+
+    Only ``BrokenWorkerProcess`` counts as a miss; anything else ``ping`` raises propagates.
+    """
+    for _ in range(tries):
+        try:
+            await ping()
+            return
+        except BrokenWorkerProcess:
+            continue
+
+
 @dataclass(frozen=True)
 class Registered:
     """A registered tool: the function as written, and its label."""
@@ -191,26 +217,26 @@ class Registrar:
         @functools.wraps(fn)
         async def read(**kwargs: Any) -> Any:
             async with self._slots, self._gate.read():
-                await self._find_live_worker()
+                await find_live_worker(self._ping, self._pings)
                 try:
-                    return await to_process.run_sync(
-                        functools.partial(run_in_worker, fn, **kwargs), cancellable=True, limiter=self._unbounded
-                    )
+                    return await self._in_worker(functools.partial(run_in_worker, fn, **kwargs))
                 except BrokenWorkerProcess:
                     return worker_died(fn.__name__)
 
         return read
 
-    async def _find_live_worker(self) -> None:
+    async def _in_worker(self, call: Callable[[], Any]) -> Any:
+        try:
+            return await to_process.run_sync(call, cancellable=True, limiter=self._unbounded)
+        except BrokenWorkerProcess as exc:
+            raise_if_start_failed(exc)
+            raise
+
+    async def _ping(self) -> None:
         # anyio hands a call to an idle worker that has died until the event loop sees
         # the exit. A ping runs nothing, so unlike a read it is safe to repeat, and each
         # failed ping discards one dead worker; the read then reuses the worker that answered.
-        for _ in range(self._pings):
-            try:
-                await to_process.run_sync(os.getpid, cancellable=True, limiter=self._unbounded)
-                return
-            except BrokenWorkerProcess:
-                continue
+        await self._in_worker(os.getpid)
 
     def _write(self, fn: Callable[..., Any]) -> Callable[..., Any]:
         @functools.wraps(fn)

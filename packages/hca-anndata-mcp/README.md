@@ -28,9 +28,10 @@ and syncs an environment first is not one.
 ### Parallel reads
 
 Read tools run in worker processes, up to `HCA_ANNDATA_MCP_READ_WORKERS` at once
-(a positive integer; default 6). Each worker can hold a whole file in memory, so
-size it to the machine. Write tools run one at a time, and never while a read in
-the same server is running. The rules are in `docs/anndata-mcp-concurrency-contract.md`.
+(a positive integer; default 6, a placeholder until #899 sets it from measured
+memory). Each worker can hold a whole file in memory, so size it to the machine.
+Write tools run one at a time, and never while a read in the same server is
+running. The rules are in `docs/anndata-mcp-concurrency-contract.md`.
 
 ## Tools
 

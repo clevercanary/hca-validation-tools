@@ -36,7 +36,7 @@ The 39 tools registered in `server.py` on 2026-11-15 divide as follows. The writ
 ### Reads
 
 3. Each read call runs in a worker, never in the server process. Its registered function is an async wrapper made with `functools.wraps`, so FastMCP no longer runs it on the event loop. A worker finds the tool function by its `__module__` and `__qualname__`, so a read it cannot find that way is refused at registration and the server does not start.
-4. At most N reads run at once. The wrapper takes a slot from the server's own `CapacityLimiter(N)` and passes `run_sync` an unbounded limiter, because `run_sync` takes its limiter internally, after the gate, and anyio's default allows one worker per core. N comes from `HCA_ANNDATA_MCP_READ_WORKERS`, checked at startup as a positive integer. The default is set from measurement (Definition of done); 6 is a placeholder.
+4. At most N reads run at once. The wrapper takes a slot from the server's own `CapacityLimiter(N)` and passes `run_sync` an unbounded limiter, because `run_sync` takes its limiter internally, after the gate, and anyio's default allows one worker per core. N comes from `HCA_ANNDATA_MCP_READ_WORKERS`, checked at startup as a positive integer. The default, 6, is a placeholder until #899 sets it from measured peak memory.
 5. A read takes the gate only once it holds a slot, so a read that is only queued never delays a write.
 6. A read resolves the file it opens (`resolve_latest`) inside the worker, after taking the gate. Its result then describes one snapshot.
 7. A read returns the same value, or raises the same exception type with the same message, as it does today. Arguments go by keyword through `functools.partial`, because `run_sync` passes positional arguments only.
@@ -52,7 +52,7 @@ The 39 tools registered in `server.py` on 2026-11-15 divide as follows. The writ
 11. The gate and the slot are released when a call returns, raises or is cancelled.
 12. A read runs with `cancellable=True`: a cancelled read's worker is killed with SIGKILL, then the gate is released. This is safe because a read writes nothing.
 13. A write cannot be cancelled once it runs, as today.
-14. A worker that dies, for example out of memory, fails only its own call. anyio raises `BrokenWorkerProcess` with no message, so the wrapper returns `{"error": "<tool>: the worker process died (killed, or out of memory); nothing was written"}` and no traceback, because there is none to give (`scheduling.worker_died`). Other calls carry on. anyio hands a call to an idle worker that has died until the event loop has seen the exit, under 10 ms in testing, so before each read the wrapper sends a call that does nothing (`os.getpid`) and repeats it, up to N + 1 times, while it meets a dead worker (`Registrar._find_live_worker`). A ping, unlike a read, is safe to repeat; the read itself is never repeated, because a read that killed its worker by running out of memory would do so again. A worker that dies between the ping and the read still fails that read with the error above. An exception that cannot be pickled and rebuilt in the server would arrive there as an unrelated `TypeError`, so the worker raises `RuntimeError("<Type>: <message>")` in its place (`scheduling.call_rebuildable`). Every other exception arrives with its own type and message, as rule 7 says.
+14. A worker that dies, for example out of memory, fails only its own call. anyio raises `BrokenWorkerProcess` with no message, so the wrapper returns `{"error": "<tool>: the worker process died (killed, or out of memory); nothing was written"}` and no traceback, because there is none to give (`scheduling.worker_died`). Other calls carry on. anyio hands a call to an idle worker that has died until the event loop has seen the exit, under 10 ms in testing, so before each read the wrapper sends a call that does nothing (`os.getpid`) and repeats it, up to N + 1 times, while it meets a dead worker (`scheduling.find_live_worker`). A worker that cannot start raises `RuntimeError("a read worker could not start: <Type>: <message>")` with the real cause instead, and the pings stop at the first such failure (`scheduling.raise_if_start_failed`). A ping, unlike a read, is safe to repeat; the read itself is never repeated, because a read that killed its worker by running out of memory would do so again. A worker that dies between the ping and the read still fails that read with the error above. An exception that cannot be pickled and rebuilt in the server would arrive there as an unrelated `TypeError`, so the worker raises `RuntimeError("<Type>: <message>")` in its place (`scheduling.call_rebuildable`). Every other exception arrives with its own type and message, as rule 7 says.
 
 ### Known costs, accepted
 
@@ -66,30 +66,35 @@ The 39 tools registered in `server.py` on 2026-11-15 divide as follows. The writ
 
 20. The server sets `PYTHONSAFEPATH=1` in its own environment before it starts (`main.run`), and every worker inherits it. A worker starts as `python -u -m anyio.to_process`, which would otherwise put the server's working directory first on its `sys.path` until the parent's path arrives, so a module there named like `anyio` or a standard-library module would run in the worker. Python 3.10 ignores the variable, so there that exposure remains.
 
+### Server death and hung reads
+
+21. When the server is killed, idle workers exit, and a busy worker finishes its read, still holding its memory, before it exits. Nothing is written, because a read writes nothing.
+22. A read that never returns holds its slot and the gate. Once a write is waiting, every later read in that server waits behind the write until the client cancels the hung read (rule 12).
+
 ## What this contract does not promise
 
 - **No coordination between processes.** Two Claude sessions each run their own server, and a script or the CLI is a third process. A write in one can overlap a read or a write in another, exactly as today. The optional per-file `flock` in #896 covers that later.
 - **No parallel writes.** Two writes never run together, even on different files.
 - **No write during a long read.** A write waits for every running read to finish. Reads over a large file can take minutes. During evaluation, which is all reads, this costs nothing.
-- **No memory guard per file.** `plot_embedding` loads a whole file (`backed=None`), and the largest file on the workstation is 63.6 GB, so one worker could take most of its 123 GB alone. If the measurement in Definition of done shows that, a rule follows: reads of files over a set size run one at a time.
+- **No memory guard per file.** `plot_embedding` loads a whole file (`backed=None`), and the largest file on the workstation is 63.6 GB, so one worker could take most of its 123 GB alone. #899 replaces this with a memory budget for scans.
 - **No change to the file model.** `hca-anndata-tools` keeps claiming the final snapshot name and editing it in place. That is safe here only because rule 9 keeps reads and writes apart inside one server.
 
 ## Moving on to #895
 
-#895 lets writes overlap reads once #894 publishes snapshots only when complete. Moving on means replacing rules 9 and 10 with #895's write mutex. Rules 1 to 7 and 11 to 20 carry over.
+#895 lets writes overlap reads once #894 publishes snapshots only when complete. Moving on means replacing rules 9 and 10 with #895's write mutex. Rules 1 to 7 and 11 to 22 carry over.
 
 ## Definition of done
 
-- [ ] Every tool is registered with a required read or write label, and the write set equals the table above (rules 1–2). Test: the write-set test.
-- [ ] `list_tools()` returns the same names, parameters, output schemas and descriptions as `main` (rules 2–3). Test: a parity test over the tool list.
-- [ ] Two reads run at the same time in different worker processes (rules 3–4). Test: two fixture reads each wait for the other's barrier file in `tmp_path`, and report different PIDs.
-- [ ] A write waits for running reads; a read that arrives while a write waits runs after it; and reads waiting when a write finishes run before the next write (rules 5, 9, 10). Test: the gate on its own, driven by anyio events, records the order.
-- [ ] A cancelled read releases the gate, and a dead worker returns the rule 14 error while other calls carry on (rules 11, 12, 14). Test: cancel a fixture read and kill a worker, then a write runs.
-- [ ] Each of the 22 read tools returns the same result through a worker as in the server process (rule 7). Test: a parity test over the test fixture file.
-- [ ] `HCA_ANNDATA_MCP_READ_WORKERS` set to `0` or `abc` stops the server at startup with a message naming the variable (rule 4).
-- [ ] The default N is set from measurement: peak memory of `plot_embedding` and `validate_schema` on the largest immune v1 file and on the 63.6 GB reproduction object, with N = floor(0.8 × 123 GB / peak) recorded in the PR (rule 4; No memory guard per file).
+- [x] Every tool is registered with a required read or write label, and the write set equals the table above (rules 1–2). Test: the write-set test.
+- [x] `list_tools()` returns the same names, parameters, output schemas and descriptions as `main` (rules 2–3). Test: a parity test over the tool list.
+- [x] Two reads run at the same time in different worker processes (rules 3–4). Test: two fixture reads each wait for the other's barrier file in `tmp_path`, and report different PIDs.
+- [x] A write waits for running reads; a read that arrives while a write waits runs after it; and reads waiting when a write finishes run before the next write (rules 5, 9, 10). Test: the gate on its own, driven by anyio events, records the order.
+- [x] A cancelled read releases the gate, and a dead worker returns the rule 14 error while other calls carry on (rules 11, 12, 14). Test: cancel a fixture read and kill a worker, then a write runs.
+- [x] Each of the 22 read tools returns the same result through a worker as in the server process (rule 7). Test: a parity test over the test fixture file.
+- [x] `HCA_ANNDATA_MCP_READ_WORKERS` set to `0` or `abc` stops the server at startup with a message naming the variable (rule 4).
+- Moved to #899: setting the default N from measured peak memory, and a memory guard per file (rule 4; No memory guard per file).
 
 ## Not yet confirmed
 
-- Peak memory per read on multi-GB files.
+- Peak memory per read on the workstation's largest files (#899).
 - Whether Claude Code sends `notifications/cancelled` when a call is interrupted.

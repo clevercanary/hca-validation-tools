@@ -10,11 +10,18 @@ from pathlib import Path
 
 import anyio
 import pytest
-from anyio import wait_all_tasks_blocked
+from anyio import BrokenWorkerProcess, wait_all_tasks_blocked
 from fastmcp import Client, FastMCP
 from fastmcp.client.transports import StdioTransport
 
-from hca_anndata_mcp.scheduling import READ_WORKERS_VAR, Registrar, call_rebuildable, read_workers
+from hca_anndata_mcp.scheduling import (
+    READ_WORKERS_VAR,
+    Registrar,
+    call_rebuildable,
+    find_live_worker,
+    raise_if_start_failed,
+    read_workers,
+)
 from tests import worker_fixtures as fx
 
 READS = (fx.rendezvous, fx.block, fx.pid, fx.die, fx.flood_stderr, fx.raise_two_arg_error, fx.raise_value_error)
@@ -221,3 +228,79 @@ async def test_worker_ignores_a_module_planted_in_the_servers_working_directory(
             result = await client.call_tool("locate_files", {"directory": str(tmp_path)})
     assert json.loads(result.content[0].text) == {"h5ad": [], "total": 0}
     assert not marker.exists()
+
+
+class Pings:
+    """A stand-in ping: fails its first ``failures`` calls with ``error``, then answers."""
+
+    def __init__(self, failures: int, error: BaseException) -> None:
+        self.failures = failures
+        self.error = error
+        self.calls = 0
+
+    async def __call__(self) -> None:
+        self.calls += 1
+        if self.calls <= self.failures:
+            raise self.error
+
+
+@pytest.mark.asyncio
+async def test_find_live_worker_stops_at_the_first_ping_that_answers():
+    pings = Pings(failures=2, error=BrokenWorkerProcess())
+    await find_live_worker(pings, tries=5)
+    assert pings.calls == 3
+
+
+@pytest.mark.asyncio
+async def test_find_live_worker_gives_up_after_its_tries_and_lets_the_read_go():
+    pings = Pings(failures=10, error=BrokenWorkerProcess())
+    await find_live_worker(pings, tries=3)
+    assert pings.calls == 3
+
+
+@pytest.mark.asyncio
+async def test_find_live_worker_stops_at_an_error_that_is_not_a_dead_worker():
+    pings = Pings(failures=10, error=RuntimeError("a read worker could not start: IndexError: planted"))
+    with pytest.raises(RuntimeError, match="could not start"):
+        await find_live_worker(pings, tries=3)
+    assert pings.calls == 1
+
+
+def test_start_up_failure_is_raised_with_its_cause_and_a_later_death_is_not():
+    error = BrokenWorkerProcess("Error during worker process initialization")
+    error.__cause__ = IndexError("list index out of range")
+    with pytest.raises(RuntimeError, match=r"^a read worker could not start: IndexError: list index out of range$"):
+        raise_if_start_failed(error)
+    raise_if_start_failed(BrokenWorkerProcess())
+
+
+START_FAILS = """
+import anyio
+from fastmcp import FastMCP
+from hca_anndata_mcp.scheduling import Registrar
+from hca_anndata_tools import locate_files
+
+if __name__ != "__main__":
+    raise IndexError("planted start-up failure")
+
+
+async def main():
+    mcp = FastMCP("start-fails")
+    Registrar(mcp, 2).register(locate_files, kind="read")
+    read = (await mcp.get_tool("locate_files")).fn
+    try:
+        await read(directory=".")
+    except RuntimeError as exc:
+        print(exc)
+
+
+anyio.run(main)
+"""
+
+
+def test_read_whose_worker_cannot_start_raises_with_the_cause(tmp_path):
+    # anyio re-runs the parent's entry script in each new worker, so this script fails there.
+    script = tmp_path / "start_fails.py"
+    script.write_text(START_FAILS)
+    proc = subprocess.run([sys.executable, str(script)], capture_output=True, text=True, timeout=60, cwd=tmp_path)
+    assert proc.stdout.strip() == "a read worker could not start: IndexError: planted start-up failure", proc.stderr
