@@ -91,6 +91,12 @@ tf-variables, and apply. A change to `user_data` replaces the instance. The
 data volume, with downloads, curated files, scratch and Claude's conversation
 logs, is reattached to the new instance.
 
+**To make the data volume larger**, raise `size` on `aws_ebs_volume.data` in
+tf-config and apply. That changes the volume in place but not `user_data`, so
+the instance is not replaced, and the filesystem keeps its old size until the
+next replacement grows it. To use the space at once, replace the instance with
+`terraform apply -replace=aws_instance.this`.
+
 A replacement loses what is on the root volume: the Claude sign-in, the tracker
 token, the upload key, and the curator's clone and its environments (rebuilt at
 first boot).
@@ -208,12 +214,12 @@ differs from the pin.
 
 ## Smoke test
 
-1. `make curation-status` shows `running`, `first boot done` and the 1 TB volume.
+1. `make curation-status` shows `running`, `first boot done` and a size of about `2.0T` at `/srv/curation-data`.
 2. `make curation-attach` shows the Claude Code session; detach with `Ctrl-b d`.
    The session log group, `/aws/ssm/session-logs`, has a stream named by the
    session ID that `make` printed, holding what the session showed.
 3. From the Claude app, open the session and ask it to run `hostname` and
-   `df -h ~/hca-tracker-upload`. The instance and the 1 TB volume show.
+   `df -h ~/hca-tracker-upload`. The instance shows, and `df` reports a size of about `2.0T`.
 4. Run `/mcp`. Both MCP servers are connected. Ask for `check_environment`:
    downloads are ready, and uploads are ready with the `tracker-upload` profile
    (`can_upload` is true).
