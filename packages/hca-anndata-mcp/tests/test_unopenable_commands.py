@@ -31,18 +31,18 @@ from hca_anndata_tools.testing import assert_no_snapshot_written, create_truncat
 
 @functools.cache
 def _registered() -> dict[str, object]:
-    """Every command the server actually registered, by name.
+    """Every command the server actually registered, by name, as the function it was registered with.
 
     Asked of the server rather than parsed out of its source, so a
     registration written any other way still counts. Resolved through the
-    tool's own callable, not ``getattr`` on the module: a command can be
+    server's registration record, not ``getattr`` on the module: a command can be
     registered under a name that is not its attribute name
     (``plot_embedding_mcp`` registers as ``plot_embedding``), and a getattr
     lookup drops exactly those silently.
     """
     tools = asyncio.run(server.mcp.get_tools())
     assert tools, "the server registered no tools"
-    return {name: tool.fn for name, tool in tools.items()}
+    return {name: server.registrar.tools[name].fn for name in tools}
 
 
 def _path_params(fn) -> set[str]:
