@@ -28,16 +28,16 @@ WRITES = {
 
 @pytest.mark.asyncio
 async def test_every_registered_tool_is_labelled():
-    assert set(registrar.kinds) == set(await mcp.get_tools())
-    assert len(registrar.kinds) == 39
+    assert set(registrar.tools) == set(await mcp.get_tools())
+    assert len(registrar.tools) == 39
 
 
 def test_write_set_is_the_seventeen_writes():
-    assert {name for name, kind in registrar.kinds.items() if kind == "write"} == WRITES
+    assert {name for name, tool in registrar.tools.items() if tool.kind == "write"} == WRITES
 
 
 @pytest.mark.asyncio
 async def test_wrapped_tools_list_as_the_bare_functions_do():
     for name, tool in (await mcp.get_tools()).items():
-        bare = FunctionTool.from_function(tool.fn.__wrapped__)
+        bare = FunctionTool.from_function(registrar.tools[name].fn)
         assert tool.to_mcp_tool().model_dump() == bare.to_mcp_tool().model_dump(), name

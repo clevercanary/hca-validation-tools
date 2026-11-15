@@ -35,7 +35,7 @@ The 39 tools registered in `server.py` on 2026-11-15 divide as follows. The writ
 
 ### Reads
 
-3. Each read call runs in a worker, never in the server process. Its registered function is an async wrapper made with `functools.wraps`, so FastMCP no longer runs it on the event loop.
+3. Each read call runs in a worker, never in the server process. Its registered function is an async wrapper made with `functools.wraps`, so FastMCP no longer runs it on the event loop. A worker finds the tool function by its `__module__` and `__qualname__`, so a read it cannot find that way is refused at registration and the server does not start.
 4. At most N reads run at once. The wrapper takes a slot from the server's own `CapacityLimiter(N)` and passes `run_sync` an unbounded limiter, because `run_sync` takes its limiter internally, after the gate, and anyio's default allows one worker per core. N comes from `HCA_ANNDATA_MCP_READ_WORKERS`, checked at startup as a positive integer. The default is set from measurement (Definition of done); 6 is a placeholder.
 5. A read takes the gate only once it holds a slot, so a read that is only queued never delays a write.
 6. A read resolves the file it opens (`resolve_latest`) inside the worker, after taking the gate. Its result then describes one snapshot.
@@ -52,15 +52,19 @@ The 39 tools registered in `server.py` on 2026-11-15 divide as follows. The writ
 11. The gate and the slot are released when a call returns, raises or is cancelled.
 12. A read runs with `cancellable=True`: a cancelled read's worker is killed with SIGKILL, then the gate is released. This is safe because a read writes nothing.
 13. A write cannot be cancelled once it runs, as today.
-14. A worker that dies, for example out of memory, fails only its own call. anyio raises `BrokenWorkerProcess` with no message, so the wrapper returns `{"error": "<tool>: the worker process died (killed, or out of memory); nothing was written"}` and no traceback, because there is none to give (`scheduling.worker_died`). Other calls carry on, and the next read starts a new worker. An exception that cannot be pickled and rebuilt in the server would arrive there as an unrelated `TypeError`, so the worker raises `RuntimeError("<Type>: <message>")` in its place (`scheduling.call_rebuildable`). Every other exception arrives with its own type and message, as rule 7 says.
+14. A worker that dies, for example out of memory, fails only its own call. anyio raises `BrokenWorkerProcess` with no message, so the wrapper returns `{"error": "<tool>: the worker process died (killed, or out of memory); nothing was written"}` and no traceback, because there is none to give (`scheduling.worker_died`). Other calls carry on. anyio hands a call to an idle worker that has died until the event loop has seen the exit, under 10 ms in testing, so before each read the wrapper sends a call that does nothing (`os.getpid`) and repeats it, up to N + 1 times, while it meets a dead worker (`Registrar._find_live_worker`). A ping, unlike a read, is safe to repeat; the read itself is never repeated, because a read that killed its worker by running out of memory would do so again. A worker that dies between the ping and the read still fails that read with the error above. An exception that cannot be pickled and rebuilt in the server would arrive there as an unrelated `TypeError`, so the worker raises `RuntimeError("<Type>: <message>")` in its place (`scheduling.call_rebuildable`). Every other exception arrives with its own type and message, as rule 7 says.
 
 ### Known costs, accepted
 
 15. Worker output is lost. anyio points a worker's `sys.stdout` and `sys.stderr` at `/dev/null` and connects its file descriptor 2 to a pipe nobody reads, which hangs the worker once the pipe fills, so the worker points descriptor 2 at `/dev/null` before each call (`scheduling.run_in_worker`). Descriptor 1 is the pipe that carries results back: a read that writes to it below Python's `print` breaks the worker, and the call is reported as rule 14's dead worker. Today a read's warnings reach Claude Code's MCP log through the server's stderr; that is what is given up.
-16. A new worker re-imports the server and every tool module: 2.0 s and 240 MiB measured on 2026-11-15, plus 9.4 s and 100 MiB the first time it runs `plot_embedding`, which loads scanpy. A call to a warm worker adds 0.2 ms.
+16. A new worker imports the modules of the tools it runs, not the server: `main.py` imports the server inside `run()`, because anyio re-runs the entry script in every worker. Measured on 2026-11-15, a worker's first `get_summary` takes 0.7 s and leaves it at 174 MiB; its first `plot_embedding` loads scanpy, adding 0.9 s and 120 MiB with a warm disk cache and up to 9.4 s without one. A call to a warm worker adds 0.2 ms, and rule 14's ping adds one more such round trip.
 17. Idle workers do not exit on a timer. anyio kills a worker idle for 300 s only when a later read finds it, and the most recently used worker never exits on its own. A worker keeps its peak memory until then, so after an evaluation up to N workers may hold their peaks.
 18. A read cancelled while its worker is still starting leaks that one worker process.
 19. Coverage does not count code that runs in a worker. anyio kills a loop's workers with SIGKILL when the loop's root task ends, so they never write coverage data, and under pytest-asyncio every test is its own root task. Tests call the tool bodies in the test process as well.
+
+### Worker start-up
+
+20. The server sets `PYTHONSAFEPATH=1` in its own environment before it starts (`main.run`), and every worker inherits it. A worker starts as `python -u -m anyio.to_process`, which would otherwise put the server's working directory first on its `sys.path` until the parent's path arrives, so a module there named like `anyio` or a standard-library module would run in the worker. Python 3.10 ignores the variable, so there that exposure remains.
 
 ## What this contract does not promise
 
@@ -72,7 +76,7 @@ The 39 tools registered in `server.py` on 2026-11-15 divide as follows. The writ
 
 ## Moving on to #895
 
-#895 lets writes overlap reads once #894 publishes snapshots only when complete. Moving on means replacing rules 9 and 10 with #895's write mutex. Rules 1 to 7 and 11 to 19 carry over.
+#895 lets writes overlap reads once #894 publishes snapshots only when complete. Moving on means replacing rules 9 and 10 with #895's write mutex. Rules 1 to 7 and 11 to 20 carry over.
 
 ## Definition of done
 

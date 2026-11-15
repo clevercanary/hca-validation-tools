@@ -11,7 +11,7 @@ from hca_anndata_mcp.server import mcp, registrar
 def _read_args(sample_h5ad, sample_dir) -> dict[str, dict]:
     path = str(sample_h5ad)
     args: dict[str, dict[str, object]] = {
-        name: {"path": path} for name, kind in registrar.kinds.items() if kind == "read"
+        name: {"path": path} for name, tool in registrar.tools.items() if tool.kind == "read"
     }
     args["locate_files"] = {"directory": str(sample_dir)}
     args["check_cap_currency"] = {"path": path, "cap_url": "https://celltype.info/project/1"}
@@ -32,7 +32,6 @@ async def test_reads_return_the_same_through_a_worker(sample_h5ad, sample_dir):
     args = _read_args(sample_h5ad, sample_dir)
     assert len(args) == 22
     for name, kwargs in args.items():
-        fn = tools[name].fn
-        direct = fn.__wrapped__(**kwargs)
-        through_worker = await fn(**kwargs)
+        direct = registrar.tools[name].fn(**kwargs)
+        through_worker = await tools[name].fn(**kwargs)
         assert _canonical(through_worker) == _canonical(direct), name

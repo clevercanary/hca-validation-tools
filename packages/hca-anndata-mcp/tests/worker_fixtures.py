@@ -12,6 +12,15 @@ def rendezvous(fifo: str, end: str) -> dict:
     return {"pid": os.getpid()}
 
 
+def block(started: str, never: str) -> dict:
+    """Open ``started`` for writing, then block for good opening ``never``, which nobody writes."""
+    with Path(started).open("w"):
+        pass
+    with Path(never).open("r"):
+        pass
+    return {}
+
+
 def pid() -> dict:
     return {"pid": os.getpid()}
 
