@@ -266,11 +266,35 @@ async def test_find_live_worker_stops_at_an_error_that_is_not_a_dead_worker():
     assert pings.calls == 1
 
 
+@pytest.mark.asyncio
+async def test_read_pings_n_plus_one_times_before_it_runs(monkeypatch):
+    # N idle workers can all be dead; N + 1 pings get past every one of them.
+    mcp, registrar = _server(2)
+    pings = Pings(failures=10, error=BrokenWorkerProcess())
+    calls = []
+
+    async def in_worker(call):
+        calls.append(call)
+        return "ran"
+
+    monkeypatch.setattr(registrar, "_ping", pings)
+    monkeypatch.setattr(registrar, "_in_worker", in_worker)
+    assert await (await _fn(mcp, "pid"))() == "ran"
+    assert (pings.calls, len(calls)) == (3, 1)
+
+
 def test_start_up_failure_is_raised_with_its_cause_and_a_later_death_is_not():
     error = BrokenWorkerProcess("Error during worker process initialization")
     error.__cause__ = IndexError("list index out of range")
     with pytest.raises(RuntimeError, match=r"^a read worker could not start: IndexError: list index out of range$"):
         raise_if_start_failed(error)
+    # anyio's 20 s start-up limit gives a cause with no text.
+    error.__cause__ = TimeoutError()
+    with pytest.raises(RuntimeError, match=r"^a read worker could not start: TimeoutError$"):
+        raise_if_start_failed(error)
+    # A worker that prints before `READY` fails with anyio's own message and no cause.
+    with pytest.raises(RuntimeError, match=r"^a read worker could not start: .*unexpected response: b'hello\\n'$"):
+        raise_if_start_failed(BrokenWorkerProcess("Worker process returned unexpected response: b'hello\\n'"))
     raise_if_start_failed(BrokenWorkerProcess())
 
 
@@ -281,6 +305,8 @@ from hca_anndata_mcp.scheduling import Registrar
 from hca_anndata_tools import locate_files
 
 if __name__ != "__main__":
+    with open("starts.log", "a") as log:
+        log.write("start\\n")
     raise IndexError("planted start-up failure")
 
 
@@ -304,3 +330,5 @@ def test_read_whose_worker_cannot_start_raises_with_the_cause(tmp_path):
     script.write_text(START_FAILS)
     proc = subprocess.run([sys.executable, str(script)], capture_output=True, text=True, timeout=60, cwd=tmp_path)
     assert proc.stdout.strip() == "a read worker could not start: IndexError: planted start-up failure", proc.stderr
+    # The first ping's failure ends the read: no further pings, and no worker for the read itself.
+    assert (tmp_path / "starts.log").read_text() == "start\n"

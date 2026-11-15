@@ -164,7 +164,10 @@ def raise_if_start_failed(exc: BrokenWorkerProcess) -> None:
     # anyio gives a message only to a start-up failure, with the real exception as its cause.
     if exc.args:
         cause = exc.__cause__
-        detail = f"{type(cause).__name__}: {cause}" if cause else exc.args[0]
+        if cause is None:
+            detail = exc.args[0]
+        else:
+            detail = f"{type(cause).__name__}: {cause}" if str(cause) else type(cause).__name__
         raise RuntimeError(f"a read worker could not start: {detail}") from exc
 
 
