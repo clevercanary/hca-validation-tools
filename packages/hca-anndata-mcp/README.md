@@ -25,6 +25,13 @@ Point an MCP client at the venv binary directly, not at a wrapper command:
 client needs a stable executable to spawn, and a wrapper command that resolves
 and syncs an environment first is not one.
 
+### Parallel reads
+
+Read tools run in worker processes, up to `HCA_ANNDATA_MCP_READ_WORKERS` at once
+(a positive integer; default 6). Each worker can hold a whole file in memory, so
+size it to the machine. Write tools run one at a time, and never while a read in
+the same server is running. The rules are in `docs/anndata-mcp-concurrency-contract.md`.
+
 ## Tools
 
 - **locate_files** — Find all .h5ad files in a directory

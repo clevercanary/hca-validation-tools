@@ -38,11 +38,12 @@ def _registered() -> dict[str, object]:
     tool's own callable, not ``getattr`` on the module: a command can be
     registered under a name that is not its attribute name
     (``plot_embedding_mcp`` registers as ``plot_embedding``), and a getattr
-    lookup drops exactly those silently.
+    lookup drops exactly those silently. The callable is the function the
+    registrar's read or write wrapper holds (``__wrapped__``).
     """
     tools = asyncio.run(server.mcp.get_tools())
     assert tools, "the server registered no tools"
-    return {name: tool.fn for name, tool in tools.items()}
+    return {name: tool.fn.__wrapped__ for name, tool in tools.items()}
 
 
 def _path_params(fn) -> set[str]:
