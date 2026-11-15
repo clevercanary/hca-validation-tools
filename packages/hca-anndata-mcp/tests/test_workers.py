@@ -209,6 +209,7 @@ def test_call_rebuildable_turns_an_exception_that_cannot_be_rebuilt_into_runtime
         call_rebuildable(fx.raise_two_arg_error)
 
 
+@pytest.mark.skipif(sys.version_info < (3, 11), reason="Python 3.10 ignores PYTHONSAFEPATH (contract rule 20)")
 @pytest.mark.asyncio
 async def test_worker_ignores_a_module_planted_in_the_servers_working_directory(tmp_path):
     marker = tmp_path / "planted-ran"
