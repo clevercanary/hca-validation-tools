@@ -243,8 +243,8 @@ jobs:
 
   # The data dictionaries as the npm package hca-metadata-schema (#881): the same package and version as PyPI's,
   # released by the same release-please component. It waits for the PyPI publish so npm never has a version PyPI
-  # lacks; a workflow_dispatch rerun fills in an npm version whose publish failed. npm's trusted publisher for it names
-  # this workflow file and allows `npm publish` only.
+  # lacks; a workflow_dispatch rerun fills in an npm version whose publish failed, from that version's tag. npm's
+  # trusted publisher for it names this workflow file and allows `npm publish` only.
   publish-hca-metadata-schema-npm:
     needs: [release-please, publish-hca-metadata-schema]
     if: |
@@ -268,6 +268,16 @@ jobs:
         with:
           node-version: "24.22.2"
           registry-url: "https://registry.npmjs.org"
+
+      # Publish what was released, not main as it is now: a workflow_dispatch run builds main, whose dictionaries may
+      # already differ from the tag that PyPI's copy of this version was built from. A version tagged before the npm
+      # package existed has no data_dictionaries folder, so the next step fails rather than publishing.
+      - name: Check out the release's tag
+        working-directory: .
+        run: |
+          tag="hca-metadata-schema-v$(node -p "require('./packages/hca-metadata-schema/data_dictionaries/package.json').version")"
+          git fetch --depth=1 origin tag "$tag"
+          git checkout "$tag"
 
       # npm has no skip-existing, so a workflow_dispatch rerun skips a version that is already published. Only a
       # 404 means "not published"; any other registry error fails the job rather than publishing over a release.
