@@ -51,3 +51,30 @@ def raise_value_error() -> dict:
 
 def write_marker() -> dict:
     return {"written": True, "pid": os.getpid()}
+
+
+_held: list[bytearray] = []
+
+
+def touched(mib: int) -> bytearray:
+    """``mib`` MiB with every byte written, so every page is resident."""
+    return bytearray(b"\x01") * (mib * 2**20)
+
+
+def hold(mib: int) -> dict:
+    """Allocate ``mib`` MiB of touched memory and keep it for the life of the worker."""
+    _held.append(touched(mib))
+    return {"pid": os.getpid()}
+
+
+def hold_then_raise(mib: int) -> dict:
+    hold(mib)
+    raise ValueError("held, then failed")
+
+
+def hold_until(mib: int, release: str) -> dict:
+    """Hold ``mib`` MiB, then block until another process opens the fifo ``release`` for writing."""
+    hold(mib)
+    with Path(release).open("r"):
+        pass
+    return {"pid": os.getpid()}

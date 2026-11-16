@@ -11,7 +11,7 @@ from hca_anndata_mcp.server import mcp, registrar
 def _read_args(sample_h5ad, sample_dir) -> dict[str, dict]:
     path = str(sample_h5ad)
     args: dict[str, dict[str, object]] = {
-        name: {"path": path} for name, tool in registrar.tools.items() if tool.kind == "read"
+        name: {"path": path} for name, tool in registrar.tools.items() if tool.kind != "write"
     }
     args["locate_files"] = {"directory": str(sample_dir)}
     args["check_cap_currency"] = {"path": path, "cap_url": "https://celltype.info/project/1"}

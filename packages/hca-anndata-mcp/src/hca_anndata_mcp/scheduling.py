@@ -5,15 +5,19 @@ The rules are in ``docs/anndata-mcp-concurrency-contract.md``.
 
 from __future__ import annotations
 
+import contextlib
+import ctypes
 import functools
 import math
 import os
 import pickle
 import re
+import sys
 from collections import deque
 from collections.abc import AsyncGenerator, Awaitable, Callable, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
 import anyio
@@ -22,24 +26,55 @@ from anyio import BrokenWorkerProcess, to_process
 if TYPE_CHECKING:
     from fastmcp import FastMCP
 
-Kind = Literal["read", "write"]
+Kind = Literal["fast", "slow", "write"]
 
 READ_WORKERS_VAR = "HCA_ANNDATA_MCP_READ_WORKERS"
-DEFAULT_READ_WORKERS = 6
+SLOW_WORKERS_VAR = "HCA_ANNDATA_MCP_SLOW_WORKERS"
+RETIRE_GIB_VAR = "HCA_ANNDATA_MCP_RETIRE_GIB"
+DEFAULT_READ_WORKERS = 16
+DEFAULT_RETIRE_GIB = 3.0
 
 
-def read_workers(environ: Mapping[str, str]) -> int:
-    """The read-worker count from ``HCA_ANNDATA_MCP_READ_WORKERS``, or 6 when it is unset.
+@dataclass(frozen=True)
+class Settings:
+    """N read workers, ``slow_workers`` of them for slow reads, and the memory an idle worker may keep."""
+
+    read_workers: int
+    slow_workers: int
+    retire_bytes: int
+
+
+def _count(environ: Mapping[str, str], var: str) -> int | None:
+    raw = environ.get(var)
+    if raw is None:
+        return None
+    if not re.fullmatch(r"[0-9]+", raw) or int(raw) < 1:
+        raise ValueError(f"{var} must be a positive integer, got {raw!r}")
+    return int(raw)
+
+
+def settings(environ: Mapping[str, str]) -> Settings:
+    """The worker settings from the environment.
+
+    Unset, N is 16, the slow workers half of N rounded down, and the retire limit 3 GiB.
 
     Raises:
-        ValueError: the variable is set to anything but a positive integer.
+        ValueError: a variable is malformed, N is below 2, or the slow workers are not fewer than N.
     """
-    raw = environ.get(READ_WORKERS_VAR)
-    if raw is None:
-        return DEFAULT_READ_WORKERS
-    if not re.fullmatch(r"[0-9]+", raw) or int(raw) < 1:
-        raise ValueError(f"{READ_WORKERS_VAR} must be a positive integer, got {raw!r}")
-    return int(raw)
+    n = _count(environ, READ_WORKERS_VAR) or DEFAULT_READ_WORKERS
+    if n < 2:
+        raise ValueError(f"{READ_WORKERS_VAR} must be at least 2, one fast and one slow worker, got {n}")
+    s = _count(environ, SLOW_WORKERS_VAR) or n // 2
+    if s >= n:
+        raise ValueError(f"{SLOW_WORKERS_VAR} must be less than {READ_WORKERS_VAR} ({n}), got {s}")
+    raw_gib = environ.get(RETIRE_GIB_VAR)
+    if raw_gib is None:
+        gib = DEFAULT_RETIRE_GIB
+    elif re.fullmatch(r"[0-9]+(\.[0-9]+)?", raw_gib) and float(raw_gib) > 0:
+        gib = float(raw_gib)
+    else:
+        raise ValueError(f"{RETIRE_GIB_VAR} must be a positive number of GiB, got {raw_gib!r}")
+    return Settings(n, s, int(gib * 2**30))
 
 
 class Gate:
@@ -138,8 +173,54 @@ def call_rebuildable(fn: Callable[..., Any], /, **kwargs: Any) -> Any:
         raise RuntimeError(f"{type(exc).__name__}: {exc}") from None
 
 
-def run_in_worker(fn: Callable[..., Any], /, **kwargs: Any) -> Any:
-    """Call ``fn`` inside a worker process through :func:`call_rebuildable`.
+@dataclass(frozen=True)
+class Returned:
+    """A read's value, with the worker's pid and the memory it held once the read ended."""
+
+    value: Any
+    pid: int
+    held_bytes: int
+
+
+@dataclass(frozen=True)
+class Raised:
+    """A read's exception, with the worker's pid and the memory it held once the read ended."""
+
+    error: Exception
+    pid: int
+    held_bytes: int
+
+
+def held_bytes() -> int:
+    """The memory this process holds now: anonymous resident memory on Linux, physical footprint on macOS.
+
+    Raises:
+        NotImplementedError: on any other platform.
+        OSError: macOS refused the read.
+    """
+    if sys.platform == "linux":
+        _, resident, shared, *_ = Path("/proc/self/statm").read_text().split()
+        return (int(resident) - int(shared)) * os.sysconf("SC_PAGE_SIZE")
+    if sys.platform == "darwin":
+        return _macos_footprint()
+    raise NotImplementedError(f"held memory is not measured on {sys.platform}")
+
+
+@functools.cache
+def _proc_pid_rusage() -> Callable[..., int]:
+    return ctypes.CDLL("/usr/lib/libSystem.B.dylib", use_errno=True).proc_pid_rusage
+
+
+def _macos_footprint() -> int:
+    # rusage_info_v4 (<sys/resource.h>): a 16-byte uuid, then uint64 fields; ri_phys_footprint is the 8th.
+    info = (ctypes.c_uint64 * 66)()
+    if _proc_pid_rusage()(os.getpid(), 4, ctypes.byref(info)) != 0:
+        raise OSError(ctypes.get_errno(), "proc_pid_rusage failed")
+    return info[2 + 7]
+
+
+def run_in_worker(fn: Callable[..., Any], /, **kwargs: Any) -> Returned | Raised:
+    """Call ``fn`` inside a worker process through :func:`call_rebuildable`, and report what it left behind.
 
     Points file descriptor 2 at ``/dev/null`` first: anyio connects it to a
     pipe nobody reads, so output there would fill the pipe and hang the worker.
@@ -147,7 +228,34 @@ def run_in_worker(fn: Callable[..., Any], /, **kwargs: Any) -> Any:
     devnull = os.open(os.devnull, os.O_WRONLY)
     os.dup2(devnull, 2)
     os.close(devnull)
-    return call_rebuildable(fn, **kwargs)
+    try:
+        value = call_rebuildable(fn, **kwargs)
+    except Exception as exc:
+        # The traceback's frames hold the read's locals; drop them before measuring.
+        exc.__traceback__ = exc.__cause__ = exc.__context__ = None
+        return Raised(exc, os.getpid(), held_bytes())
+    return Returned(value, os.getpid(), held_bytes())
+
+
+async def retire(pid: int) -> None:
+    """Take worker ``pid`` out of anyio's pool and kill it.
+
+    Call it straight after the read on ``pid`` returns, with no await in between,
+    so that worker is still the last one anyio put back as idle and no other
+    call can have taken it.
+
+    Raises:
+        RuntimeError: the last idle worker is not ``pid``.
+    """
+    idle = to_process._process_pool_idle_workers.get()
+    if not idle or idle[-1][0].pid != pid:
+        raise RuntimeError(f"cannot retire worker {pid}: it is not the last idle worker")
+    process, _ = idle.pop()
+    to_process._process_pool_workers.get().discard(process)
+    with contextlib.suppress(ProcessLookupError):
+        process.kill()
+    with anyio.CancelScope(shield=True):
+        await process.aclose()
 
 
 def worker_died(tool_name: str) -> dict[str, str]:
@@ -193,38 +301,50 @@ class Registered:
 
 
 class Registrar:
-    """Registers tools on one server, each labelled read or write, all sharing one gate."""
+    """Registers tools on one server, each labelled fast, slow or write, all sharing one gate."""
 
-    def __init__(self, mcp: FastMCP, read_workers: int) -> None:
+    def __init__(self, mcp: FastMCP, settings: Settings) -> None:
         self._mcp = mcp
         self._gate = Gate()
-        self._slots = anyio.CapacityLimiter(read_workers)
+        self._lanes = {
+            "fast": anyio.CapacityLimiter(settings.read_workers - settings.slow_workers),
+            "slow": anyio.CapacityLimiter(settings.slow_workers),
+        }
         self._unbounded = anyio.CapacityLimiter(math.inf)
-        self._pings = read_workers + 1
+        self._pings = settings.read_workers + 1
+        self._retire_bytes = settings.retire_bytes
         self.tools: dict[str, Registered] = {}
 
     def register(self, fn: Callable[..., Any], *, kind: Kind) -> None:
-        """Register ``fn`` as a tool: a read runs in a worker process, a write in this one.
+        """Register ``fn`` as a tool: a fast or slow read runs in a worker process in its lane, a write in this one.
 
         Raises:
             TypeError: ``fn`` is a read that a worker cannot find by its
                 ``__module__`` and ``__qualname__``.
         """
-        if kind == "read" and not _pickles_by_reference(fn):
+        if kind == "write":
+            wrapped = self._write(fn)
+        elif _pickles_by_reference(fn):
+            wrapped = self._read(fn, self._lanes[kind])
+        else:
             raise TypeError(f"{fn.__name__}: a worker cannot find it by its __module__ and __qualname__")
-        wrap = {"read": self._read, "write": self._write}[kind]
-        self._mcp.tool()(wrap(fn))
+        self._mcp.tool()(wrapped)
         self.tools[fn.__name__] = Registered(fn, kind)
 
-    def _read(self, fn: Callable[..., Any]) -> Callable[..., Any]:
+    def _read(self, fn: Callable[..., Any], lane: anyio.CapacityLimiter) -> Callable[..., Any]:
         @functools.wraps(fn)
         async def read(**kwargs: Any) -> Any:
-            async with self._slots, self._gate.read():
+            async with lane, self._gate.read():
                 await find_live_worker(self._ping, self._pings)
                 try:
-                    return await self._in_worker(functools.partial(run_in_worker, fn, **kwargs))
+                    done = await self._in_worker(functools.partial(run_in_worker, fn, **kwargs))
                 except BrokenWorkerProcess:
                     return worker_died(fn.__name__)
+                if done.held_bytes > self._retire_bytes:
+                    await retire(done.pid)
+                if isinstance(done, Raised):
+                    raise done.error
+                return done.value
 
         return read
 
