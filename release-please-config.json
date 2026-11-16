@@ -26,7 +26,8 @@
       "extra-files": [
         "src/hca_metadata_schema/__init__.py",
         {"type": "generic", "path": "src/hca_metadata_schema/core.yaml"},
-        {"type": "generic", "path": "src/hca_metadata_schema/generated/core.py"}
+        {"type": "generic", "path": "src/hca_metadata_schema/generated/core.py"},
+        {"type": "json", "path": "data_dictionaries/package.json", "jsonpath": "$.version"}
       ]
     },
     "packages/hca-anndata-mcp": {

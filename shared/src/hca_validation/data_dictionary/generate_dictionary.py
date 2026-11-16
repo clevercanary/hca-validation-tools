@@ -4,7 +4,8 @@
 Two dictionaries are generated: the full export of every slot under its schema class, which the HCA Atlas Tracker
 reads, and the HCA Data Portal's Tier 1 dictionary, laid out by `dictionary.yaml`.
 
-`make generate-data-dictionary` writes both to the 'data_dictionaries' directory in the project root.
+`make generate-data-dictionary` writes both to `packages/hca-metadata-schema/data_dictionaries/`, the npm package
+`hca-metadata-schema`.
 """
 
 import json

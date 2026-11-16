@@ -1,5 +1,6 @@
 """The package's one version and the files it ships (docs/schema-version-contract.md §1)."""
 
+import json
 import re
 from importlib.metadata import version
 from pathlib import Path
@@ -10,6 +11,7 @@ from hca_metadata_schema import CORE_SCHEMA_PATH
 from hca_metadata_schema.generated import core
 
 _PACKAGE_DIR = Path(hca_metadata_schema.__file__).parent
+_NPM_PACKAGE_JSON = Path(__file__).parents[1] / "data_dictionaries" / "package.json"
 _MARKED_VERSION = re.compile(r'^version = "[^"]*"  # x-release-please-version$', flags=re.M)
 
 
@@ -32,11 +34,12 @@ def test_only_core_yaml_declares_a_version():
 
 
 def test_every_copy_of_the_version_agrees():
-    """release-please bumps all four; a missed marker would leave one behind."""
+    """release-please bumps all five; a missed marker would leave one behind, and npm out of step with PyPI."""
     versions = {
         "generated/core.py": core.version,
         "__init__.py": hca_metadata_schema.__version__,
         "pyproject.toml": version("hca-metadata-schema"),
+        "data_dictionaries/package.json": json.loads(_NPM_PACKAGE_JSON.read_text())["version"],
     }
     assert versions == dict.fromkeys(versions, _core_yaml_version())
 

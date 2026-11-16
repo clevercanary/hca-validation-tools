@@ -42,7 +42,6 @@ hca-validation-tools/
 │       ├── Dockerfile
 │       ├── build.sh
 │       └── task-definition.json
-├── data_dictionaries/              # Generated JSON data dictionaries (checked in)
 ├── tests/                          # Integration tests
 └── docs/                          # Documentation
 ```
