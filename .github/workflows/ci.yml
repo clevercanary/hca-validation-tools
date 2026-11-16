@@ -38,6 +38,9 @@ jobs:
         run: uvx ruff@0.11.8 check .
       - name: Ruff format check
         run: uvx ruff@0.11.8 format --check .
+      # Pinned like Ruff; docs/curation-workstation-contract.md 3.1.4 relies on it for these scripts.
+      - name: Shellcheck the curation workstation scripts
+        run: uvx --from shellcheck-py==0.11.0.1 shellcheck -x deployment/curation-workstation/*.sh
       # Each service commits its uv.lock (#483), and the test matrix's `uv sync --frozen`
       # installs it without checking it against pyproject.toml, so fail on a stale one
       # here (#823). uv's error doesn't name the lock, so the step does.

@@ -8,7 +8,7 @@ HCA Validation Tools is a multi-service validation system for Human Cell Atlas (
 
 ## Contracts
 
-Three documents state rules that code review checks changes against, rather than
+Five documents state rules that code review checks changes against, rather than
 leaving each caller to improvise. Read the relevant one before changing the code
 it governs; none repeats what the code already says.
 
@@ -21,6 +21,17 @@ it governs; none repeats what the code already says.
 - **`docs/anndata-tools-contract.md`** — read wide, write narrow: the encoding
   profile `hca-anndata-tools` emits, the files it operates on, and what it
   refuses. Governs the tools package, the MCP server and the h5ad skills.
+- **`docs/curation-workstation-contract.md`** — the instance is built once at
+  first boot and replaced rather than changed, and the data volume outlives
+  it: the lifecycle, the users, the privilege boundary, where each file lives
+  and who writes it, secrets and pinned software. Governs `deployment/curation-workstation/` and the
+  `curation-*` make targets.
+- **`docs/anndata-mcp-concurrency-contract.md`** — parallel reads, serial
+  writes: which tools are reads and which are writes, how reads run in worker
+  processes, how a write is kept from overlapping a read inside one server, and
+  what a dead or cancelled worker returns. Governs
+  `packages/hca-anndata-mcp/src/hca_anndata_mcp/scheduling.py` and every tool
+  registration in `server.py`.
 - **`docs/schema-version-contract.md`** — the LinkML schema version: where it
   lives, how it is bumped, and which schema changes are breaking. Governs every
   change under `packages/hca-metadata-schema/`, including whatever regenerates
