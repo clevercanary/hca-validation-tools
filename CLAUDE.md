@@ -141,6 +141,8 @@ Before tagging 1.0.0, widen the sibling bounds in `packages/hca-anndata-mcp/pypr
 
 **The data dictionaries' npm package.** `packages/hca-metadata-schema/data_dictionaries/` is published to npm as `hca-metadata-schema` (#881), for the HCA Data Portal and the HCA Atlas Tracker. It is the same package as PyPI's `hca-metadata-schema`: the one release-please component bumps both (`package.json` through `extra-files`), and the npm job publishes after the PyPI publish succeeds, so the two registries carry the same versions. What makes a dictionary change breaking is §4.3 of `docs/schema-version-contract.md`.
 
+**The schema release PR also bumps the service locks** (#907). A service that resolves `hca-metadata-schema` from the checkout (today `dataset-validator` and `entry-sheet-validator`) records its version in its committed `uv.lock`, so the component's `extra-files` rewrites it in every `services/*/uv.lock`. The filter matches only an `editable` entry, so a lock that installs the schema from PyPI keeps its version and hash. It reads `@.name.value`, not `@.name`, because release-please's TOML parser wraps each scalar in an object. If a schema release PR's lint fails on a stale service lock, check that filter, then the release-please run's log: release-please only warns, and leaves a lock unchanged, when the filter matches nothing (as it does for the services that don't use the schema) or a lock fails to parse.
+
 **Private packages.** `hca-tracker-client` and `hca-tracker-mcp` are deliberately **not** published: they are not in `release-please-config.json` and have no publish job. They are installed from git (`uvx --from "git+https://github.com/clevercanary/hca-validation-tools@main#subdirectory=packages/hca-tracker-mcp" hca-tracker-mcp`) or a local path (`uv tool install ./packages/hca-tracker-mcp`); uv builds `hca-tracker-client` from the same commit via `[tool.uv.sources]`. Their versions are bumped by hand. Don't add them to release-please without deciding to publish.
 
 `scripts/check_sibling_deps.py` runs in the publish workflow and fails the build if a sibling is declared without a bound, as a direct `file://` reference, or with a bound that excludes the sibling's current version. None of these are visible locally: `[tool.uv.sources]` resolves siblings from the checkout, so `uv sync`, pytest, and pyright all pass regardless of what the bound says.
@@ -219,7 +221,7 @@ make batch-publish-container ENV=dev     # then ENV=prod, from main
 
 ## Key Technologies
 
-- uv for dependency management across `packages/`, `shared/`, and `services/` (project-local `.venv/`, its own `uv.lock` per project — no workspace, see #248). Service locks are committed, and CI's lint job fails if one is stale; run `uv lock` in that service to fix it. Library locks under `packages/` and `shared/` are gitignored (see #483). The Poetry→uv migration (#248) is complete.
+- uv for dependency management across `packages/`, `shared/`, and `services/` (project-local `.venv/`, its own `uv.lock` per project — no workspace, see #248). Service locks are committed, and CI's lint job fails if one is stale; run `uv lock` in that service to fix it, except on a schema release PR, which bumps them itself (see the Release Policy). Library locks under `packages/` and `shared/` are gitignored (see #483). The Poetry→uv migration (#248) is complete.
 - LinkML for schema definition
 - Pydantic for runtime validation
 - gspread for Google Sheets API
