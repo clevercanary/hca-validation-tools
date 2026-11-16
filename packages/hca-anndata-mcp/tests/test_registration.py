@@ -25,6 +25,17 @@ WRITES = {
     "populate_labels",
 }
 
+SLOW = {
+    "plot_embedding",
+    "validate_schema",
+    "check_raw_counts",
+    "check_duplicate_cells",
+    "check_donor_sex",
+    "find_source_datasets",
+    "check_source_obs",
+    "check_cap_currency",
+}
+
 
 @pytest.mark.asyncio
 async def test_every_registered_tool_is_labelled():
@@ -32,8 +43,17 @@ async def test_every_registered_tool_is_labelled():
     assert len(registrar.tools) == 39
 
 
+def _kind(kind: str) -> set[str]:
+    return {name for name, tool in registrar.tools.items() if tool.kind == kind}
+
+
 def test_write_set_is_the_seventeen_writes():
-    assert {name for name, tool in registrar.tools.items() if tool.kind == "write"} == WRITES
+    assert _kind("write") == WRITES
+
+
+def test_slow_set_is_the_contracts_eight_and_every_other_read_is_fast():
+    assert _kind("slow") == SLOW
+    assert len(_kind("fast")) == 14
 
 
 @pytest.mark.asyncio

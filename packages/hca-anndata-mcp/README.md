@@ -27,11 +27,19 @@ and syncs an environment first is not one.
 
 ### Parallel reads
 
-Read tools run in worker processes, up to `HCA_ANNDATA_MCP_READ_WORKERS` at once
-(a positive integer; default 6, a placeholder until #899 sets it from measured
-memory). Each worker can hold a whole file in memory, so size it to the machine.
+Read tools run in worker processes, in two lanes, so a quick read never waits
+behind a read that takes minutes. Three settings, checked at startup:
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `HCA_ANNDATA_MCP_READ_WORKERS` | `16` | N, the reads that run at once; at least 2 |
+| `HCA_ANNDATA_MCP_SLOW_WORKERS` | N ÷ 2, rounded down | S, how many of them may be slow reads (whole-file loads, full matrix passes and folder scans); 1 to N - 1 |
+| `HCA_ANNDATA_MCP_RETIRE_GIB` | `3` | a worker left holding more than this many GiB after a read exits |
+
+Each slow read can hold a whole file in memory, so size S to the machine.
 Write tools run one at a time, and never while a read in the same server is
-running. The rules are in `docs/anndata-mcp-concurrency-contract.md`.
+running. The rules, and which tools are slow, are in
+`docs/anndata-mcp-concurrency-contract.md`.
 
 ## Tools
 
