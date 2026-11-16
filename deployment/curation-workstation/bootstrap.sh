@@ -204,6 +204,8 @@ elif [[ $owner != "$CURATION_UID" ]]; then
   die "$DATA_MOUNT belongs to UID $owner, not CURATION_UID $CURATION_UID; set CURATION_UID to $owner"
 fi
 chmod 700 "$DATA_MOUNT"
+# Picks up space added to the volume in Terraform; a no-op at full size.
+xfs_growfs -d "$DATA_MOUNT"
 
 step "Claude Code's managed settings, which no user or project setting overrides"
 install -d -m 755 /etc/claude-code

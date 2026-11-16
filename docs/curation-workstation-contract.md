@@ -29,7 +29,7 @@ terminal on the operator's computer, the Claude app or claude.ai.
 - **The data volume:** its own entity, not part of the instance.
     - A separate Terraform resource, `aws_ebs_volume.data`, with `prevent_destroy`, joined to the
       instance by a separate `aws_volume_attachment`. Replacing the instance replaces only the attachment.
-    - 1 TB, encrypted, snapshotted weekly.
+    - 2 TiB, encrypted, snapshotted weekly.
     - Mounted at `/srv/curation-data` and reached as the curator's `~/hca-tracker-upload`; downloads and
       curated files live there.
 - **The instance role:** reads the tracker's data bucket and assumes the ODP writer role. Its S3 and STS
@@ -143,7 +143,9 @@ terminal on the operator's computer, the Claude app or claude.ai.
     as a command. Validates every value before substituting it into a unit, a script or a path.
 
 3.1.6 Finds the data volume by its EBS volume ID, the disk's serial number, so no other disk can be taken
-    for it. Formats it only if it holds no filesystem. A volume with one is mounted as it is.
+    for it. Formats it only if it holds no filesystem. A volume with one is mounted without
+    reformatting. At every first boot, grows the filesystem to fill the volume, so a volume made larger
+    in Terraform takes effect at the next replacement.
 
 ### 3.2 `ssm-user`
 
@@ -206,10 +208,11 @@ terminal on the operator's computer, the Claude app or claude.ai.
   cases, not all.
 - **3.1.5, validated config values:** a loud check on each value against its expected form, before it
   is used.
-- **3.1.6, the right volume, formatted only if blank:** structure: Terraform writes the volume's ID, and
+- **3.1.6, the right volume, formatted only if blank, grown to fill it:** structure: Terraform writes the volume's ID, and
   `bootstrap.sh` builds the disk's `/dev/disk/by-id/` path from it and accepts no other input. Loud checks: it formats
   only when `blkid` finds no filesystem, and, as a backstop, stops if the device has partitions or
-  anything on it is mounted, as the root disk would. A test: replace the instance and confirm the volume's files are intact.
+  anything on it is mounted, as the root disk would. A test: replace the instance and confirm the volume's files are intact
+  and that `df` reports the volume's full size.
 - **3.2.3, a terminal of its own:** structure: `bootstrap.sh` installs `Defaults use_pty` in
   `/etc/sudoers.d/curation-use-pty`, checked with `visudo` first. A test: `sudo -l` lists `use_pty`.
 - **3.2.4, `ssm-user` cannot become `root`:**
