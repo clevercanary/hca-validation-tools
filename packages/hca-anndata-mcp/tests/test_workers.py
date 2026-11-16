@@ -15,6 +15,7 @@ from anyio import BrokenWorkerProcess, wait_all_tasks_blocked
 from fastmcp import Client, FastMCP
 from fastmcp.client.transports import StdioTransport
 
+from hca_anndata_mcp import scheduling
 from hca_anndata_mcp.scheduling import (
     READ_WORKERS_VAR,
     RETIRE_GIB_VAR,
@@ -537,6 +538,23 @@ async def test_retire_refuses_a_worker_that_is_not_the_last_idle_one():
         with pytest.raises(RuntimeError, match=f"^cannot retire worker {kept + 1}: it is not the last idle worker$"):
             await retire(kept + 1)
     assert _pool_pids() == ({kept}, [kept])
+
+
+def test_held_bytes_on_macos_reads_the_footprint_field(monkeypatch):
+    def fake_rusage(pid, flavor, info):
+        info._obj[2 + 7] = 123 * MIB  # ri_phys_footprint
+        return 0
+
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(scheduling, "_proc_pid_rusage", lambda: fake_rusage)
+    assert held_bytes() == 123 * MIB
+
+
+def test_held_bytes_on_macos_raises_when_the_system_refuses(monkeypatch):
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(scheduling, "_proc_pid_rusage", lambda: lambda *args: -1)
+    with pytest.raises(OSError, match="proc_pid_rusage failed"):
+        held_bytes()
 
 
 def test_held_bytes_is_not_measured_on_other_platforms(monkeypatch):
