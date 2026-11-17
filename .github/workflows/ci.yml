@@ -54,6 +54,22 @@ jobs:
             fi
           done
           exit $failed
+      # release-please skips an extra-files path that doesn't exist, or a glob that matches nothing, without an
+      # error (#910).
+      - name: release-please extra-files exist
+        run: |
+          entries=$(jq -r '.packages | to_entries[] | .key as $component | .value["extra-files"][]?
+            | if type == "string" then {path: .} else . end
+            | (if (.path | startswith("/")) then .path[1:] else "\($component)/\(.path)" end) as $path
+            | "\(if .glob == true then "glob" else "file" end) \($path)"' release-please-config.json)
+          missing=0
+          while IFS=' ' read -r kind path; do
+            if { [ "$kind" = file ] && [ ! -f "$path" ]; } || { [ "$kind" = glob ] && ! compgen -G "$path" > /dev/null; }; then
+              echo "::error file=release-please-config.json::extra-files $kind $path matches no file; release-please would skip it without an error."
+              missing=1
+            fi
+          done <<< "$entries"
+          exit $missing
 
   typecheck:
     name: typecheck
