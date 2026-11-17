@@ -109,12 +109,12 @@ ipython_config.py
 #   commonly ignored for libraries.
 #   Everything under packages/ is a published library, not a deployed app: nothing in the build
 #   or deploy path reads these locks (uv build resolves from pyproject.toml; the Docker images use
-#   the services' poetry.lock). Tracking them only invited drift, because release-please bumps
-#   pyproject.toml but not uv.lock (see #483). Scoped to packages/ so future uv-based *services*
-#   (apps) can still commit their locks.
+#   the services' uv.lock). Tracking them only invited drift, because release-please bumps
+#   pyproject.toml but not these locks (see #483). Scoped to packages/ so the services commit
+#   their locks; release-please bumps hca-metadata-schema's version in those (#907).
 packages/*/uv.lock
 #   shared/ is the same shape: a library consumed only as a path dependency, never
-#   installed from its own lock (services build it through their poetry.lock; uv
+#   installed from its own lock (services build it through their uv.lock; uv
 #   build/sync resolve from pyproject.toml). Nothing reads shared/uv.lock, so ignore it.
 shared/uv.lock
 

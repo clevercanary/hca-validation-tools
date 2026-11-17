@@ -27,7 +27,8 @@
         "src/hca_metadata_schema/__init__.py",
         {"type": "generic", "path": "src/hca_metadata_schema/core.yaml"},
         {"type": "generic", "path": "src/hca_metadata_schema/generated/core.py"},
-        {"type": "json", "path": "data_dictionaries/package.json", "jsonpath": "$.version"}
+        {"type": "json", "path": "data_dictionaries/package.json", "jsonpath": "$.version"},
+        {"type": "toml", "path": "/services/*/uv.lock", "glob": true, "jsonpath": "$.package[?(@.name.value==='hca-metadata-schema' && @.source.editable)].version"}
       ]
     },
     "packages/hca-anndata-mcp": {
