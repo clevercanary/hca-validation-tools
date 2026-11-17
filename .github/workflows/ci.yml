@@ -62,9 +62,14 @@ jobs:
             | if type == "string" then {path: .} else . end
             | (if (.path | startswith("/")) then .path[1:] else "\($component)/\(.path)" end) as $path
             | "\(if .glob == true then "glob" else "file" end) \($path)"' release-please-config.json)
+          glob_has_file() {
+            local match
+            while IFS= read -r match; do [ -f "$match" ] && return 0; done < <(compgen -G "$1")
+            return 1
+          }
           missing=0
           while IFS=' ' read -r kind path; do
-            if { [ "$kind" = file ] && [ ! -f "$path" ]; } || { [ "$kind" = glob ] && ! compgen -G "$path" > /dev/null; }; then
+            if { [ "$kind" = file ] && [ ! -f "$path" ]; } || { [ "$kind" = glob ] && ! glob_has_file "$path"; }; then
               echo "::error file=release-please-config.json::extra-files $kind $path matches no file; release-please would skip it without an error."
               missing=1
             fi
