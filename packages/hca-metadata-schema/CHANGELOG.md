@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.3.1](https://github.com/clevercanary/hca-validation-tools/compare/hca-metadata-schema-v0.3.0...hca-metadata-schema-v0.3.1) (2026-11-16)
+
+
+### Features
+
+* publish the data dictionaries to npm as `hca-metadata-schema`, released with the PyPI package at one version ([#881](https://github.com/clevercanary/hca-validation-tools/issues/881)) ([#891](https://github.com/clevercanary/hca-validation-tools/issues/891)) ([b58d2f3](https://github.com/clevercanary/hca-validation-tools/commit/b58d2f3cb72cf09ce1b2478305b2600fce659ba8))
+* **shared:** generate the portal's Tier 1 data dictionary from `dictionary.yaml`, matching its sections, fields and order ([#760](https://github.com/clevercanary/hca-validation-tools/issues/760)) ([#861](https://github.com/clevercanary/hca-validation-tools/issues/861)) ([28fc01f](https://github.com/clevercanary/hca-validation-tools/commit/28fc01f0a8695c3e341dd4666d3aa0cb4048b1a7))
+
+
+### Bug Fixes
+
+* **hca-metadata-schema:** point `sequencing_platform`'s EFO link at OLS4, and serve the Cell Ontology links over HTTPS ([#860](https://github.com/clevercanary/hca-validation-tools/issues/860)) ([#862](https://github.com/clevercanary/hca-validation-tools/issues/862)) ([1cbb493](https://github.com/clevercanary/hca-validation-tools/commit/1cbb493bc42d2ecb50286efd9f38b98bd7cfbdf9))
+
 ## [0.3.0](https://github.com/clevercanary/hca-validation-tools/compare/hca-metadata-schema-v0.2.0...hca-metadata-schema-v0.3.0) (2026-11-11)
 
 
