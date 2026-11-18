@@ -1,6 +1,6 @@
 {
   "name": "hca-metadata-schema",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "The HCA metadata data dictionaries, generated from the HCA LinkML schema",
   "license": "MIT",
   "repository": {
