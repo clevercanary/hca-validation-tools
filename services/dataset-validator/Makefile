@@ -35,7 +35,7 @@ test:
 .PHONY: test-docker
 test-docker:
 	@echo "Running dataset-validator Docker smoke tests..."
-	@$(UV) run pytest tests/test_docker_smoke.py -v
+	@RUN_DOCKER_TESTS=1 $(UV) run pytest tests/test_docker_smoke.py -v
 
 .PHONY: run
 run:
