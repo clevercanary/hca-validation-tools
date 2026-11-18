@@ -2,7 +2,8 @@
 """generate_dictionary.py - Generate data dictionary JSON files from LinkML schema files.
 
 Two dictionaries are generated: the full export of every slot under its schema class, which the HCA Atlas Tracker
-reads, and the HCA Data Portal's Tier 1 dictionary, laid out by `dictionary.yaml`.
+reads, and the HCA Data Portal's Tier 1 dictionary, laid out by `dictionary.yaml`. Only the full export marks a slot
+that entry sheets may leave blank with `entrySheetRequired: false`.
 
 `make generate-data-dictionary` writes both to `packages/hca-metadata-schema/data_dictionaries/`, the npm package
 `hca-metadata-schema`.
@@ -10,7 +11,7 @@ reads, and the HCA Data Portal's Tier 1 dictionary, laid out by `dictionary.yaml
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 import jsonasobj2
 from hca_metadata_schema import CORE_SCHEMA_PATH
@@ -24,6 +25,7 @@ from hca_validation.schema_utils import (
     get_bionetwork_keys,
     get_bionetwork_subclasses,
     get_class_entity_type,
+    get_entry_sheet_optional_slots,
 )
 
 # The portal's header, sections and AnnData structure rows (#760)
@@ -78,17 +80,24 @@ def transform_schema_to_data_dictionary(schemaview: SchemaView, cxg_reference: s
         }
 
         # Slots every network uses get the full network list
-        attributes = []
+        attributes = {}
         for slot_info in schemaview.class_induced_slots(class_name):
             attribute = slot_to_attribute(schemaview, slot_info, schema_enum_names)
             attribute.setdefault("annotations", {})["bioNetworks"] = list(all_networks)
-            attributes.append(attribute)
+            attributes[slot_info.name] = attribute
 
         # Slots only bionetwork subclasses add are folded in, scoped to those networks
-        attributes += fold_bionetwork_slots(schemaview, class_name, schema_enum_names).values()
+        attributes |= fold_bionetwork_slots(schemaview, class_name, schema_enum_names)
+
+        # The fold refuses a network that relaxes a slot differently, so the union has one answer per slot
+        subclasses = get_bionetwork_subclasses(schemaview, class_name)
+        for slot_name in get_entry_sheet_optional_slots(schemaview, class_name).union(
+            *(get_entry_sheet_optional_slots(schemaview, subclass) for subclass in subclasses)
+        ):
+            attributes[slot_name]["annotations"][ENTRY_SHEET_REQUIRED] = False
 
         # Sort by name to retain consistent order
-        class_entry["attributes"] = sorted(attributes, key=lambda attribute: attribute["name"])
+        class_entry["attributes"] = sorted(attributes.values(), key=lambda attribute: attribute["name"])
 
         # Add the class to the output
         output["classes"].append(class_entry)
@@ -167,6 +176,13 @@ def section_entry(
     }
 
 
+class _FoldedDefinition(NamedTuple):
+    """A slot's definition and whether entry sheets may leave it blank, which the induced slot can't show."""
+
+    definition: dict[str, Any]
+    entry_sheet_optional: bool
+
+
 def fold_bionetwork_slots(
     schemaview: SchemaView, base_class: str, schema_enum_names: set[str]
 ) -> dict[str, dict[str, Any]]:
@@ -174,18 +190,21 @@ def fold_bionetwork_slots(
     Map each slot that bionetwork subclasses add to `base_class` to its attribute, with
     `bioNetworks` set to the sorted union of the networks that add it.
 
-    Raises ValueError if a subclass changes a base slot, or two subclasses define the same
-    added slot differently: the data dictionary can show only one definition per slot. Also
-    raises it as `slot_to_attribute` does.
+    Raises ValueError if a subclass changes a base slot (relaxing it for entry sheets included), or two subclasses
+    define the same added slot differently: the data dictionary can show only one definition per slot. Also
+    raises it as `slot_to_attribute` and `get_entry_sheet_optional_slots` do.
     """
+    base_optional = get_entry_sheet_optional_slots(schemaview, base_class)
     base_definitions = {
-        slot_info.name: slot_definition(slot_info) for slot_info in schemaview.class_induced_slots(base_class)
+        slot_info.name: _FoldedDefinition(slot_definition(slot_info), slot_info.name in base_optional)
+        for slot_info in schemaview.class_induced_slots(base_class)
     }
-    folded: dict[str, tuple[dict[str, Any], dict[str, Any], set[str]]] = {}
+    folded: dict[str, tuple[_FoldedDefinition, dict[str, Any], set[str]]] = {}
 
     for subclass_name, network in get_bionetwork_subclasses(schemaview, base_class).items():
+        subclass_optional = get_entry_sheet_optional_slots(schemaview, subclass_name)
         for slot_info in schemaview.class_induced_slots(subclass_name):
-            definition = slot_definition(slot_info)
+            definition = _FoldedDefinition(slot_definition(slot_info), slot_info.name in subclass_optional)
             if slot_info.name in base_definitions:
                 if definition != base_definitions[slot_info.name]:
                     raise ValueError(f"{subclass_name} changes {base_class}'s {slot_info.name!r}")
@@ -260,7 +279,7 @@ def slot_to_attribute(schemaview: SchemaView, slot_info, schema_enum_names: set[
         for annot_name, annot_info in jsonasobj2.items(slot_info.annotations):
             if annot_name == _DISPLAY_RANGE:
                 attribute["range"] = annot_info.value
-            elif annot_name != ENTRY_SHEET_REQUIRED:  # #850: the dictionary reports `required` alone
+            elif annot_name != ENTRY_SHEET_REQUIRED:  # Read by `get_entry_sheet_optional_slots` instead
                 formatted_annotations[annot_name] = annot_info.value
         attribute["annotations"] = formatted_annotations
 
