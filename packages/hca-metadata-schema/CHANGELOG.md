@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.2](https://github.com/clevercanary/hca-validation-tools/compare/hca-metadata-schema-v0.3.1...hca-metadata-schema-v0.3.2) (2026-11-18)
+
+
+### Features
+
+* **shared:** publish `entrySheetRequired` in the core data dictionary, so the Tracker can tell a field's entry-sheet requirement from its h5ad requirement ([#914](https://github.com/clevercanary/hca-validation-tools/issues/914)) ([#916](https://github.com/clevercanary/hca-validation-tools/issues/916)) ([9970d96](https://github.com/clevercanary/hca-validation-tools/commit/9970d96eb8a0cb7c4e8a6e96fa96369770602714))
+
 ## [0.3.1](https://github.com/clevercanary/hca-validation-tools/compare/hca-metadata-schema-v0.3.0...hca-metadata-schema-v0.3.1) (2026-11-16)
 
 
