@@ -11,7 +11,7 @@ that entry sheets may leave blank with `entrySheetRequired: false`.
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 import jsonasobj2
 from hca_metadata_schema import CORE_SCHEMA_PATH
@@ -176,6 +176,13 @@ def section_entry(
     }
 
 
+class _FoldedDefinition(NamedTuple):
+    """A slot's definition and whether entry sheets may leave it blank, which the induced slot can't show."""
+
+    definition: dict[str, Any]
+    entry_sheet_optional: bool
+
+
 def fold_bionetwork_slots(
     schemaview: SchemaView, base_class: str, schema_enum_names: set[str]
 ) -> dict[str, dict[str, Any]]:
@@ -188,17 +195,16 @@ def fold_bionetwork_slots(
     raises it as `slot_to_attribute` and `get_entry_sheet_optional_slots` do.
     """
     base_optional = get_entry_sheet_optional_slots(schemaview, base_class)
-    # A definition pairs the slot with whether entry sheets may leave it blank, which the induced slot can't show
     base_definitions = {
-        slot_info.name: (slot_definition(slot_info), slot_info.name in base_optional)
+        slot_info.name: _FoldedDefinition(slot_definition(slot_info), slot_info.name in base_optional)
         for slot_info in schemaview.class_induced_slots(base_class)
     }
-    folded: dict[str, tuple[tuple[dict[str, Any], bool], dict[str, Any], set[str]]] = {}
+    folded: dict[str, tuple[_FoldedDefinition, dict[str, Any], set[str]]] = {}
 
     for subclass_name, network in get_bionetwork_subclasses(schemaview, base_class).items():
         subclass_optional = get_entry_sheet_optional_slots(schemaview, subclass_name)
         for slot_info in schemaview.class_induced_slots(subclass_name):
-            definition = (slot_definition(slot_info), slot_info.name in subclass_optional)
+            definition = _FoldedDefinition(slot_definition(slot_info), slot_info.name in subclass_optional)
             if slot_info.name in base_definitions:
                 if definition != base_definitions[slot_info.name]:
                     raise ValueError(f"{subclass_name} changes {base_class}'s {slot_info.name!r}")
