@@ -14,6 +14,11 @@ dictionaries by hand: `make -C shared generate-data-dictionary` writes them.
 import tier1 from "hca-metadata-schema/tier_1_data_dictionary.json" with { type: "json" };
 ```
 
+A field's `required` is what an h5ad file must contain. In `core_data_dictionary.json`, a required field that entry
+sheets may leave blank also has the boolean `"entrySheetRequired": false` in its `annotations`; a dataset, donor or
+sample field without the key has the same requirement on entry sheets as in h5ad files. Entry sheets have no cell tab.
+The Tier 1 dictionary never has the key.
+
 ## Versions
 
 This is the same package as `hca-metadata-schema` on PyPI, which ships the LinkML schema and its Python models. Both

@@ -94,12 +94,16 @@ A version is only useful if a consumer can tell from it whether a file that pass
 
 3.4 **`required` describes what an h5ad file must contain.** Entry sheets follow it too, unless the slot carries the
     annotation `entrySheetRequired: false` (#850): then an entry sheet may leave the slot blank or omit its column,
-    while a value that is present is still checked. Only the entry-sheet validator reads the annotation. The data
-    dictionary never publishes it: the portal's dictionary reports the slot's `required` level only. A
-    `slot_usage` that adds the annotation must repeat the slot's other annotations, because LinkML replaces rather
-    than merges them (linkml#2805); otherwise the dictionary refuses the subclass as a changed slot. Making an
-    optional slot required stays breaking (§3.2) even with the annotation: the generated models, and the tools
-    built on them, require it.
+    while a value that is present is still checked. The core data dictionary publishes `entrySheetRequired: false`
+    in the attribute's `annotations` for every slot the entry-sheet validator relaxes, so the HCA Atlas Tracker can
+    tell the two requirements apart (#914). The Tier 1 dictionary does not: the portal reports the slot's `required`
+    level only. A `slot_usage` that sets annotations replaces the slot's own rather than merging them (linkml#2805).
+    The validator and the dictionary still find the tag on the slot or an ancestor's `slot_usage`, but the
+    dictionary reads every other annotation from the class's slot, so a `slot_usage` that adds the tag must repeat
+    the slot's other annotations. A bionetwork subclass cannot relax a base slot for its network alone: the
+    dictionary has one attribute per slot, so it refuses the subclass as a changed slot. Making an optional slot
+    required stays breaking (§3.2) even with the annotation: the generated models, and the tools built on them,
+    require it.
 
 ## 4. Additions: nothing that passed can fail, but consumers see something new
 
