@@ -1,0 +1,52 @@
+id: https://github.com/clevercanary/hca-validation-tools/schema/bionetwork/genetic-diversity
+name: hca-validation-genetic-diversity
+title: Genetic Diversity BioNetwork Extensions
+description: Genetic Diversity network–specific refinements to the HCA schema
+license: MIT
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  hca: https://github.com/clevercanary/hca-validation-tools/schema/
+
+default_prefix: hca
+default_range: string
+
+imports:
+  - linkml:types
+  - ../tier_2_slots
+classes:
+  GeneticDiversityDonorTier2:
+    mixin: true
+    description: Genetic Diversity BioNetwork Tier 2 donor metadata, collected under managed access.
+    annotations:
+      bioNetwork: genetic-diversity
+      tier: Tier 2
+      baseClass: Donor
+    slots:
+      - age_value
+      - age_unit
+      - bmi
+      - height
+      - weight
+      - genderidentity_selfreported
+      - ethnicity_selfreported_freetext
+      - ethnicity_question_text
+      - language_donor_primary_language
+      - geography_currentresidence_location_country_state
+      - geography_currentresidence_location_granular
+      - medication
+      - diet_meat_consumption
+      - smoking_status
+      - geography_collectionsite_latitude_longitude
+      - geography_currentresidence_duration
+      - geography_currentresidence_urbanrural
+      - geography_placeofbirth_location_country_state
+      - geography_placeofbirth_location_granular
+      - geography_placeofbirth_duration
+      - geography_placeofbirth_urbanrural
+      - ethnicity_parents_selfreported_freetext
+      - language_mother_father_tongue
+      - menarche_age
+      - reproductive_menopause
+      - reproductive_number_children
+      - reproductive_number_pregnancies

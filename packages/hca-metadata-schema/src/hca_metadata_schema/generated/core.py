@@ -68,11 +68,13 @@ linkml_meta = LinkMLMeta({'default_prefix': 'hca',
      'imports': ['linkml:types',
                  'dataset',
                  'bionetwork/adipose',
+                 'bionetwork/genetic-diversity',
                  'bionetwork/gut',
                  'bionetwork/musculoskeletal',
                  'donor',
                  'sample',
-                 'cell'],
+                 'cell',
+                 'tier_2_slots'],
      'license': 'MIT',
      'name': 'hca-validation-core',
      'prefixes': {'hca': {'prefix_prefix': 'hca',
@@ -577,6 +579,275 @@ class AdiposeDataset(Dataset):
          'examples': [{'value': 'Cells of the adult human heart collection is "All — '
                                 'Cells of the adult human heart"'}]} })
     dataset_id: str = Field(default=..., title="Dataset ID", description="""A unique identifier for each dataset in the study. This should be unique to the study.""", json_schema_extra = { "linkml_meta": {'alias': 'dataset_id', 'domain_of': ['Dataset', 'Donor', 'Sample']} })
+
+
+class GeneticDiversityDonorTier2(ConfiguredBaseModel):
+    """
+    Genetic Diversity BioNetwork Tier 2 donor metadata, collected under managed access.
+    """
+    linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'annotations': {'baseClass': {'tag': 'baseClass', 'value': 'Donor'},
+                         'bioNetwork': {'tag': 'bioNetwork',
+                                        'value': 'genetic-diversity'},
+                         'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'from_schema': 'https://github.com/clevercanary/hca-validation-tools/schema/bionetwork/genetic-diversity',
+         'mixin': True})
+
+    age_value: Optional[int] = Field(default=None, title="Age Value", description="""Age of donor at the time of sample collection. Specify the age unit (week, month, year) in age_unit.""", json_schema_extra = { "linkml_meta": {'alias': 'age_value',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'comments': ['Age can impact cellular and molecular phenotypes.'],
+         'domain_of': ['GeneticDiversityDonorTier2', 'MusculoskeletalDonorTier2'],
+         'examples': [{'value': '20'}, {'value': '32'}, {'value': '56'}]} })
+    age_unit: Optional[str] = Field(default=None, title="Age Unit", description="""Age unit (week, month, year) for the age_value.""", json_schema_extra = { "linkml_meta": {'alias': 'age_unit',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'comments': ['Age can impact cellular and molecular phenotypes.'],
+         'domain_of': ['GeneticDiversityDonorTier2', 'MusculoskeletalDonorTier2'],
+         'examples': [{'value': 'day'},
+                      {'value': 'week'},
+                      {'value': 'month'},
+                      {'value': 'year'}],
+         'notes': ['day; week; month; year']} })
+    bmi: Optional[Decimal] = Field(default=None, title="BMI", description="""Body mass index of the donor at the time of collection.""", json_schema_extra = { "linkml_meta": {'alias': 'bmi',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'comments': ['May serve as a covariate for analysis of human diversity. If '
+                      'height or weight is not provided but BMI is, fill here.'],
+         'domain_of': ['GeneticDiversityDonorTier2', 'MusculoskeletalDonorTier2'],
+         'examples': [{'value': '36.4'}, {'value': '19.2'}, {'value': '27'}]} })
+    height: Optional[int] = Field(default=None, title="Height", description="""Height of donor in cm at the time of collection.""", json_schema_extra = { "linkml_meta": {'alias': 'height',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'comments': ['Highly heritable (PMID: 36224396); together with weight can '
+                      'allow for computation of body-mass index, which may serve as a '
+                      'covariate for analyses of human diversity.'],
+         'domain_of': ['GeneticDiversityDonorTier2', 'MusculoskeletalDonorTier2'],
+         'examples': [{'value': '160'}, {'value': '137'}, {'value': '203'}]} })
+    weight: Optional[int] = Field(default=None, title="Weight", description="""Weight of donor in kilograms at the time of collection.""", json_schema_extra = { "linkml_meta": {'alias': 'weight',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'comments': ['Together with height can allow for computation of body-mass '
+                      'index, which may serve as a covariate for analyses of human '
+                      'diversity.'],
+         'domain_of': ['GeneticDiversityDonorTier2', 'MusculoskeletalDonorTier2'],
+         'examples': [{'value': '50'}, {'value': '80'}]} })
+    genderidentity_selfreported: Optional[str] = Field(default=None, title="Gender Identity Self-Reported", description="""Donor self-reported gender identity.""", json_schema_extra = { "linkml_meta": {'alias': 'genderidentity_selfreported',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'comments': ['Gender identity information may be important for studies '
+                      'involving hormonal treatments, etc.'],
+         'domain_of': ['GeneticDiversityDonorTier2', 'MusculoskeletalDonorTier2'],
+         'examples': [{'value': 'Female Gender'},
+                      {'value': 'Male Gender'},
+                      {'value': 'Non-Binary Gender'},
+                      {'value': 'Other Gender'},
+                      {'value': 'Agender'},
+                      {'value': 'Gender Fluid'},
+                      {'value': 'Gender Identifier X'},
+                      {'value': 'Genderqueer'},
+                      {'value': 'Transgender'},
+                      {'value': 'Two-spirit'}]} })
+    ethnicity_selfreported_freetext: Optional[str] = Field(default=None, title="Ethnicity Self-Reported Free Text", description="""Donor self-reported ethnicity (or ethnicities) in free-text; can include tribe, dialect group, etc. If race information is submitted under this field, please ensure that the question(s) and response options posed to donors are included in the next metadata category (\"ethnicity_question_text\"). Separate multiple entries with a comma.""", json_schema_extra = { "linkml_meta": {'alias': 'ethnicity_selfreported_freetext',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'comments': ['Self-reported ethnicity information can encompass language, '
+                      'religion, tribe, and cultural factors, beyond genetic '
+                      'ancestry.'],
+         'domain_of': ['GeneticDiversityDonorTier2', 'MusculoskeletalDonorTier2']} })
+    ethnicity_question_text: Optional[str] = Field(default=None, title="Ethnicity Question Text", description="""Question and response options posed to donors for collecting metadata on donor self-reported ethnicity and / or tribe and / or dialect group and / or race etc.""", json_schema_extra = { "linkml_meta": {'alias': 'ethnicity_question_text',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'comments': ['Provides context on the method for collecting self-reported '
+                      'ethnicity, tribe, dialect group, or race information. '
+                      'Self-reported ethnicity information can encompass language, '
+                      'religion, tribe, and cultural factors, beyond genetic '
+                      'ancestry.'],
+         'domain_of': ['GeneticDiversityDonorTier2', 'MusculoskeletalDonorTier2'],
+         'examples': [{'value': '"What is your ethnicity?"'},
+                      {'value': '"Are you Hispanic/Latino?"'},
+                      {'value': 'Example from All of Us "Which categories describe '
+                                'you? Select all that apply. Note You may select more '
+                                'than one group. American Indian or Alaska Native (for '
+                                'example, Aztec, Blackfeet Tribe, Mayan, Navajo '
+                                'Nation, Native Village of Barrow (Utqiagvik) Inupiat '
+                                'Traditional Government, Nome Eskimo Community, etc.)* '
+                                'Asian (for example, Asian Indian, Chinese, Filipino, '
+                                'Japanese, Korean, Vietnamese, etc.)* Black, African '
+                                'American, or African (for example, African American, '
+                                'Ethiopian, Haitian, Jamaican, Nigerian, Somali, '
+                                'etc.)* Hispanic, Latino, or Spanish (for example, '
+                                'Columbian, Cuban, Dominican, Mexican or Mexican '
+                                'American, Puerto Rican, Salvadoran, etc.)* Middle '
+                                'Eastern or North African (for example, Algerian, '
+                                'Egyptian, Iranian, Lebanese, Moroccan, Syrian, etc.)* '
+                                'Native Hawaiian or other Pacific Islander (for '
+                                'example, Chamorro, Fijian, Marshallese, Native '
+                                'Hawaiian, Tongan, etc.)* White (for example, English, '
+                                'European, French, German, Irish, Italian, Polish, '
+                                'etc.)* None of these fully describe me (optional free '
+                                'text answer) Prefer not to answer" not collected, not '
+                                'available'}]} })
+    language_donor_primary_language: Optional[str] = Field(default=None, title="Language Donor Primary Language", description="""Primary language(s), spoken by donor. Can include dialects (for example, Hokkien).""", json_schema_extra = { "linkml_meta": {'alias': 'language_donor_primary_language',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'comments': ['Primary language(s) may contain information relevant to '
+                      "ancestry, as well as a donor's environmental and cultural "
+                      'context.'],
+         'domain_of': ['GeneticDiversityDonorTier2', 'MusculoskeletalDonorTier2'],
+         'examples': [{'value': 'Mandarin Chinese'},
+                      {'value': 'Hokkien'},
+                      {'value': 'Bahasa Melayu'},
+                      {'value': 'Tamil'},
+                      {'value': 'Hausa'},
+                      {'value': 'Yoruba'},
+                      {'value': 'Swahili'}]} })
+    geography_currentresidence_location_country_state: Optional[str] = Field(default=None, title="Geography Current Residence Location Country State", description="""Country and state of donor's current residence at time of sample collection.""", json_schema_extra = { "linkml_meta": {'alias': 'geography_currentresidence_location_country_state',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'comments': ['Geographical diversity of donors, at a coarser level (country '
+                      'and state).'],
+         'domain_of': ['GeneticDiversityDonorTier2', 'MusculoskeletalDonorTier2'],
+         'examples': [{'value': 'Singapore'},
+                      {'value': 'United Kingdom'},
+                      {'value': 'Massachusetts USA'},
+                      {'value': 'New South Wales Australia'},
+                      {'value': 'Bauchi State'},
+                      {'value': 'Nigeria'}]} })
+    geography_currentresidence_location_granular: Optional[str] = Field(default=None, title="Geography Current Residence Location Granular", description="""Nearest city, town, or village to location of donor's current residence at time of sample collection.""", json_schema_extra = { "linkml_meta": {'alias': 'geography_currentresidence_location_granular',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'comments': ['Geographical diversity of donors, at a more granular level '
+                      '(city / town / village).'],
+         'domain_of': ['GeneticDiversityDonorTier2', 'MusculoskeletalDonorTier2'],
+         'examples': [{'value': 'Singapore'},
+                      {'value': 'Cambridge'},
+                      {'value': 'Boston'},
+                      {'value': 'Kingston'}]} })
+    medication: Optional[str] = Field(default=None, title="Medication", description="""List of prescription medication consumed by the donor at time of sample collection. Should be an NCIT ontology term""", json_schema_extra = { "linkml_meta": {'alias': 'medication',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'comments': ['Medication consumption may be a covariate / exclusion criterion '
+                      'in analyses of human diversity.'],
+         'domain_of': ['GeneticDiversityDonorTier2', 'MusculoskeletalDonorTier2'],
+         'examples': [{'value': 'atorvastatin'},
+                      {'value': 'brevicon'},
+                      {'value': 'chlorthalidone'}],
+         'notes': ['[NCIT ontology '
+                   'term](https://www.ebi.ac.uk/ols4/ontologies/ncit/classes/http%253A%252F%252Fpurl.obolibrary.org%252Fobo%252FNCIT_C1908?lang=en)']} })
+    diet_meat_consumption: Optional[str] = Field(default=None, title="Diet Meat Consumption", description="""Dietary patterns of donor – meat (chicken, seafood, fish, pork, lamb, beef, etc.) consumption versus meat-free diet – at time of sample collection. Fill yes if donor consumes meat or no if donor does not consumes meat.""", json_schema_extra = { "linkml_meta": {'alias': 'diet_meat_consumption',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'comments': ['Diet can impact cellular and molecular phenotypes.'],
+         'domain_of': ['GeneticDiversityDonorTier2', 'MusculoskeletalDonorTier2'],
+         'examples': [{'value': 'yes'}, {'value': 'no'}],
+         'notes': ['yes; no']} })
+    smoking_status: Optional[str] = Field(default=None, title="Smoking Status", description="""If the donor smokes/smoked or not.""", json_schema_extra = { "linkml_meta": {'alias': 'smoking_status',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'comments': ['Smoking may impact cellular and molecular phenotypes, and can '
+                      'serve as a covariate for human diversity analyses.'],
+         'domain_of': ['GeneticDiversityDonorTier2', 'MusculoskeletalDonorTier2'],
+         'examples': [{'value': 'active'}, {'value': 'former'}, {'value': 'never'}],
+         'notes': ['active; former; never']} })
+    geography_collectionsite_latitude_longitude: Optional[str] = Field(default=None, title="Geography Collectionsite Latitude Longitude", description="""Latitude and longitude GPS coordinates of collection site in decimal degrees.""", json_schema_extra = { "linkml_meta": {'alias': 'geography_collectionsite_latitude_longitude',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'comments': ['Contains information relevant for geographical diversity of '
+                      'donors; possible proxy for environmental exposures.'],
+         'domain_of': ['GeneticDiversityDonorTier2', 'MusculoskeletalDonorTier2'],
+         'examples': [{'value': '1.3, 103.8'}, {'value': 'not_sharable'}]} })
+    geography_currentresidence_duration: Optional[int] = Field(default=None, title="Geography Currentresidence Duration", description="""Duration of residence, in years, rounded up to the nearest whole number, at time of sample collection.""", json_schema_extra = { "linkml_meta": {'alias': 'geography_currentresidence_duration',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'comments': ['Indication of duration of environmental exposure relating to '
+                      'current residence.'],
+         'domain_of': ['GeneticDiversityDonorTier2', 'MusculoskeletalDonorTier2'],
+         'examples': [{'value': '20'}, {'value': '37'}, {'value': '45'}]} })
+    geography_currentresidence_urbanrural: Optional[str] = Field(default=None, title="Geography Currentresidence Urban Rural", description="""Urban, suburban, or rural descriptor of current residence.""", json_schema_extra = { "linkml_meta": {'alias': 'geography_currentresidence_urbanrural',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'comments': ['Contains information on environmental exposure relating to '
+                      'current residence'],
+         'domain_of': ['GeneticDiversityDonorTier2', 'MusculoskeletalDonorTier2'],
+         'examples': [{'value': 'urban'}, {'value': 'suburban'}, {'value': 'rural'}],
+         'notes': ['urban; suburban; rural']} })
+    geography_placeofbirth_location_country_state: Optional[str] = Field(default=None, title="Geography Place of Birth Location Country State", description="""Country and state of place of birth.""", json_schema_extra = { "linkml_meta": {'alias': 'geography_placeofbirth_location_country_state',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'comments': ['Geographical diversity of donors, at a coarser level (country '
+                      'and state).'],
+         'domain_of': ['GeneticDiversityDonorTier2', 'MusculoskeletalDonorTier2'],
+         'examples': [{'value': 'Singapore'},
+                      {'value': 'United Kingdom'},
+                      {'value': 'Massachusetts USA'},
+                      {'value': 'New South Wales Australia'},
+                      {'value': 'Bauchi State'},
+                      {'value': 'Nigeria'}]} })
+    geography_placeofbirth_location_granular: Optional[str] = Field(default=None, title="Geography Place of Birth Location Granular", description="""Nearest city, town, or village to location of place of birth.""", json_schema_extra = { "linkml_meta": {'alias': 'geography_placeofbirth_location_granular',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'comments': ['Geographical diversity of donors, at a more granular level '
+                      '(city / town / village).'],
+         'domain_of': ['GeneticDiversityDonorTier2', 'MusculoskeletalDonorTier2'],
+         'examples': [{'value': 'Singapore'},
+                      {'value': 'Cambridge'},
+                      {'value': 'Boston'},
+                      {'value': 'Kingston'}]} })
+    geography_placeofbirth_duration: Optional[int] = Field(default=None, title="Geography Place of Birth Duration", description="""Duration of residence, in years, rounded up to the nearest whole number.""", json_schema_extra = { "linkml_meta": {'alias': 'geography_placeofbirth_duration',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'comments': ['Indication of duration of environmental exposure relating to '
+                      'place of birth.'],
+         'domain_of': ['GeneticDiversityDonorTier2', 'MusculoskeletalDonorTier2'],
+         'examples': [{'value': '20'}, {'value': '37'}, {'value': '45'}]} })
+    geography_placeofbirth_urbanrural: Optional[str] = Field(default=None, title="Geography Place of Birth Urban Rural", description="""Urban, suburban, or rural descriptor of place of birth.""", json_schema_extra = { "linkml_meta": {'alias': 'geography_placeofbirth_urbanrural',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'comments': ['Contains information on environmental exposure relating to '
+                      'place of birth'],
+         'domain_of': ['GeneticDiversityDonorTier2', 'MusculoskeletalDonorTier2'],
+         'examples': [{'value': 'urban'}, {'value': 'suburban'}, {'value': 'rural'}],
+         'notes': ['urban; suburban; rural']} })
+    ethnicity_parents_selfreported_freetext: Optional[str] = Field(default=None, title="Ethnicity Parents Self-Reported Freetext", description="""Donor's parents' self-reported ethnicity (or ethnicities) in free-text; can include tribe, dialect group, etc. Separate multiple entries with a comma.""", json_schema_extra = { "linkml_meta": {'alias': 'ethnicity_parents_selfreported_freetext',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'comments': ['Self-reported ethnicity information can encompass language, '
+                      'religion, tribe, and cultural factors, beyond genetic '
+                      'ancestry.'],
+         'domain_of': ['GeneticDiversityDonorTier2', 'MusculoskeletalDonorTier2'],
+         'examples': [{'value': 'Singaporean Chinese'},
+                      {'value': 'Singaporean Malay'},
+                      {'value': 'Singaporean Indian'},
+                      {'value': 'Haitian'},
+                      {'value': 'Nigerian Hausa'},
+                      {'value': 'Ghana Hausa'},
+                      {'value': 'Benin Kanuri'},
+                      {'value': 'Nigerian Kanuri'},
+                      {'value': 'Igbo'},
+                      {'value': 'Luo'},
+                      {'value': 'Herero'},
+                      {'value': 'Garifuna'},
+                      {'value': 'Kalinago'}]} })
+    language_mother_father_tongue: Optional[str] = Field(default=None, title="Language Mother Father Tongue", description="""Ancestral language(s), spoken by parents (\"mother tongue\" and / or \"father tongue\") and / or grandparents. Can include dialects (for example, Hokkien).""", json_schema_extra = { "linkml_meta": {'alias': 'language_mother_father_tongue',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'comments': ['Mother and father tongues may contain information relevant to '
+                      'ancestry.'],
+         'domain_of': ['GeneticDiversityDonorTier2', 'MusculoskeletalDonorTier2'],
+         'examples': [{'value': 'Mandarin Chinese'},
+                      {'value': 'Hokkien'},
+                      {'value': 'Bahasa Melayu'},
+                      {'value': 'Tamil'},
+                      {'value': 'Hausa'},
+                      {'value': 'Yoruba'},
+                      {'value': 'Swahili'}]} })
+    menarche_age: Optional[int] = Field(default=None, title="Menarche Age", description="""Age at menarche, rounded to nearest whole number.""", json_schema_extra = { "linkml_meta": {'alias': 'menarche_age',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'comments': ['Age at menarche may be a covariate in analyses of human '
+                      'diversity.'],
+         'domain_of': ['GeneticDiversityDonorTier2', 'MusculoskeletalDonorTier2'],
+         'examples': [{'value': '13'}, {'value': '12'}, {'value': '16'}]} })
+    reproductive_menopause: Optional[str] = Field(default=None, title="Reproductive Menopause", description="""Menopausal status of donor at time of sample collection.""", json_schema_extra = { "linkml_meta": {'alias': 'reproductive_menopause',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'comments': ['Menopausal status may be a covariate in analyses of human '
+                      'diversity.'],
+         'domain_of': ['GeneticDiversityDonorTier2', 'MusculoskeletalDonorTier2'],
+         'examples': [{'value': 'pre-menopausal'},
+                      {'value': 'peri-menopausal'},
+                      {'value': 'post-menopausal'},
+                      {'value': 'post-menopausal (induced)'},
+                      {'value': 'not applicable'}],
+         'notes': ['pre-menopausal; peri-menopausal; post-menopausal; post-menopausal '
+                   '(induced); not applicable']} })
+    reproductive_number_children: Optional[int] = Field(default=None, title="Reproductive Number Children", description="""Number of children (full-term pregnancies) the donor has given birth to at time of sample collection.""", json_schema_extra = { "linkml_meta": {'alias': 'reproductive_number_children',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'comments': ['Number of children (full-term pregnancies) may be a covariate '
+                      'in analyses of human diversity.'],
+         'domain_of': ['GeneticDiversityDonorTier2', 'MusculoskeletalDonorTier2'],
+         'examples': [{'value': '0'}, {'value': '2'}, {'value': '3'}]} })
+    reproductive_number_pregnancies: Optional[int] = Field(default=None, title="Reproductive Number Pregnancies", description="""Number of pregnancies the donor has had at time of sample collection.""", json_schema_extra = { "linkml_meta": {'alias': 'reproductive_number_pregnancies',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'comments': ['Number of pregnancies may be a covariate in analyses of human '
+                      'diversity.'],
+         'domain_of': ['GeneticDiversityDonorTier2', 'MusculoskeletalDonorTier2'],
+         'examples': [{'value': '2'}, {'value': '3'}, {'value': '5'}]} })
 
 
 class GutDataset(Dataset):
@@ -1812,6 +2083,501 @@ class MusculoskeletalDataset(Dataset):
     dataset_id: str = Field(default=..., title="Dataset ID", description="""A unique identifier for each dataset in the study. This should be unique to the study.""", json_schema_extra = { "linkml_meta": {'alias': 'dataset_id', 'domain_of': ['Dataset', 'Donor', 'Sample']} })
 
 
+class MusculoskeletalDonorTier2(ConfiguredBaseModel):
+    """
+    Musculoskeletal BioNetwork Tier 2 donor metadata, collected under managed access.
+    """
+    linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'annotations': {'baseClass': {'tag': 'baseClass', 'value': 'Donor'},
+                         'bioNetwork': {'tag': 'bioNetwork',
+                                        'value': 'musculoskeletal'},
+                         'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'from_schema': 'https://github.com/clevercanary/hca-validation-tools/schema/bionetwork/musculoskeletal',
+         'mixin': True})
+
+    age_value: Optional[int] = Field(default=None, title="Age Value", description="""Age of donor at the time of sample collection. Specify the age unit (week, month, year) in age_unit.""", json_schema_extra = { "linkml_meta": {'alias': 'age_value',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'comments': ['Age can impact cellular and molecular phenotypes.'],
+         'domain_of': ['GeneticDiversityDonorTier2', 'MusculoskeletalDonorTier2'],
+         'examples': [{'value': '20'}, {'value': '32'}, {'value': '56'}]} })
+    age_unit: Optional[str] = Field(default=None, title="Age Unit", description="""Age unit (week, month, year) for the age_value.""", json_schema_extra = { "linkml_meta": {'alias': 'age_unit',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'comments': ['Age can impact cellular and molecular phenotypes.'],
+         'domain_of': ['GeneticDiversityDonorTier2', 'MusculoskeletalDonorTier2'],
+         'examples': [{'value': 'day'},
+                      {'value': 'week'},
+                      {'value': 'month'},
+                      {'value': 'year'}],
+         'notes': ['day; week; month; year']} })
+    bmi: Optional[Decimal] = Field(default=None, title="BMI", description="""Body mass index of the donor at the time of collection.""", json_schema_extra = { "linkml_meta": {'alias': 'bmi',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'comments': ['May serve as a covariate for analysis of human diversity. If '
+                      'height or weight is not provided but BMI is, fill here.'],
+         'domain_of': ['GeneticDiversityDonorTier2', 'MusculoskeletalDonorTier2'],
+         'examples': [{'value': '36.4'}, {'value': '19.2'}, {'value': '27'}]} })
+    height: Optional[int] = Field(default=None, title="Height", description="""Height of donor in cm at the time of collection.""", json_schema_extra = { "linkml_meta": {'alias': 'height',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'comments': ['Highly heritable (PMID: 36224396); together with weight can '
+                      'allow for computation of body-mass index, which may serve as a '
+                      'covariate for analyses of human diversity.'],
+         'domain_of': ['GeneticDiversityDonorTier2', 'MusculoskeletalDonorTier2'],
+         'examples': [{'value': '160'}, {'value': '137'}, {'value': '203'}]} })
+    weight: Optional[int] = Field(default=None, title="Weight", description="""Weight of donor in kilograms at the time of collection.""", json_schema_extra = { "linkml_meta": {'alias': 'weight',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'comments': ['Together with height can allow for computation of body-mass '
+                      'index, which may serve as a covariate for analyses of human '
+                      'diversity.'],
+         'domain_of': ['GeneticDiversityDonorTier2', 'MusculoskeletalDonorTier2'],
+         'examples': [{'value': '50'}, {'value': '80'}]} })
+    genderidentity_selfreported: Optional[str] = Field(default=None, title="Gender Identity Self-Reported", description="""Donor self-reported gender identity.""", json_schema_extra = { "linkml_meta": {'alias': 'genderidentity_selfreported',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'comments': ['Gender identity information may be important for studies '
+                      'involving hormonal treatments, etc.'],
+         'domain_of': ['GeneticDiversityDonorTier2', 'MusculoskeletalDonorTier2'],
+         'examples': [{'value': 'Female Gender'},
+                      {'value': 'Male Gender'},
+                      {'value': 'Non-Binary Gender'},
+                      {'value': 'Other Gender'},
+                      {'value': 'Agender'},
+                      {'value': 'Gender Fluid'},
+                      {'value': 'Gender Identifier X'},
+                      {'value': 'Genderqueer'},
+                      {'value': 'Transgender'},
+                      {'value': 'Two-spirit'}]} })
+    ethnicity_selfreported_freetext: Optional[str] = Field(default=None, title="Ethnicity Self-Reported Free Text", description="""Donor self-reported ethnicity (or ethnicities) in free-text; can include tribe, dialect group, etc. If race information is submitted under this field, please ensure that the question(s) and response options posed to donors are included in the next metadata category (\"ethnicity_question_text\"). Separate multiple entries with a comma.""", json_schema_extra = { "linkml_meta": {'alias': 'ethnicity_selfreported_freetext',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'comments': ['Self-reported ethnicity information can encompass language, '
+                      'religion, tribe, and cultural factors, beyond genetic '
+                      'ancestry.'],
+         'domain_of': ['GeneticDiversityDonorTier2', 'MusculoskeletalDonorTier2']} })
+    ethnicity_question_text: Optional[str] = Field(default=None, title="Ethnicity Question Text", description="""Question and response options posed to donors for collecting metadata on donor self-reported ethnicity and / or tribe and / or dialect group and / or race etc.""", json_schema_extra = { "linkml_meta": {'alias': 'ethnicity_question_text',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'comments': ['Provides context on the method for collecting self-reported '
+                      'ethnicity, tribe, dialect group, or race information. '
+                      'Self-reported ethnicity information can encompass language, '
+                      'religion, tribe, and cultural factors, beyond genetic '
+                      'ancestry.'],
+         'domain_of': ['GeneticDiversityDonorTier2', 'MusculoskeletalDonorTier2'],
+         'examples': [{'value': '"What is your ethnicity?"'},
+                      {'value': '"Are you Hispanic/Latino?"'},
+                      {'value': 'Example from All of Us "Which categories describe '
+                                'you? Select all that apply. Note You may select more '
+                                'than one group. American Indian or Alaska Native (for '
+                                'example, Aztec, Blackfeet Tribe, Mayan, Navajo '
+                                'Nation, Native Village of Barrow (Utqiagvik) Inupiat '
+                                'Traditional Government, Nome Eskimo Community, etc.)* '
+                                'Asian (for example, Asian Indian, Chinese, Filipino, '
+                                'Japanese, Korean, Vietnamese, etc.)* Black, African '
+                                'American, or African (for example, African American, '
+                                'Ethiopian, Haitian, Jamaican, Nigerian, Somali, '
+                                'etc.)* Hispanic, Latino, or Spanish (for example, '
+                                'Columbian, Cuban, Dominican, Mexican or Mexican '
+                                'American, Puerto Rican, Salvadoran, etc.)* Middle '
+                                'Eastern or North African (for example, Algerian, '
+                                'Egyptian, Iranian, Lebanese, Moroccan, Syrian, etc.)* '
+                                'Native Hawaiian or other Pacific Islander (for '
+                                'example, Chamorro, Fijian, Marshallese, Native '
+                                'Hawaiian, Tongan, etc.)* White (for example, English, '
+                                'European, French, German, Irish, Italian, Polish, '
+                                'etc.)* None of these fully describe me (optional free '
+                                'text answer) Prefer not to answer" not collected, not '
+                                'available'}]} })
+    language_donor_primary_language: Optional[str] = Field(default=None, title="Language Donor Primary Language", description="""Primary language(s), spoken by donor. Can include dialects (for example, Hokkien).""", json_schema_extra = { "linkml_meta": {'alias': 'language_donor_primary_language',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'comments': ['Primary language(s) may contain information relevant to '
+                      "ancestry, as well as a donor's environmental and cultural "
+                      'context.'],
+         'domain_of': ['GeneticDiversityDonorTier2', 'MusculoskeletalDonorTier2'],
+         'examples': [{'value': 'Mandarin Chinese'},
+                      {'value': 'Hokkien'},
+                      {'value': 'Bahasa Melayu'},
+                      {'value': 'Tamil'},
+                      {'value': 'Hausa'},
+                      {'value': 'Yoruba'},
+                      {'value': 'Swahili'}]} })
+    geography_currentresidence_location_country_state: Optional[str] = Field(default=None, title="Geography Current Residence Location Country State", description="""Country and state of donor's current residence at time of sample collection.""", json_schema_extra = { "linkml_meta": {'alias': 'geography_currentresidence_location_country_state',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'comments': ['Geographical diversity of donors, at a coarser level (country '
+                      'and state).'],
+         'domain_of': ['GeneticDiversityDonorTier2', 'MusculoskeletalDonorTier2'],
+         'examples': [{'value': 'Singapore'},
+                      {'value': 'United Kingdom'},
+                      {'value': 'Massachusetts USA'},
+                      {'value': 'New South Wales Australia'},
+                      {'value': 'Bauchi State'},
+                      {'value': 'Nigeria'}]} })
+    geography_currentresidence_location_granular: Optional[str] = Field(default=None, title="Geography Current Residence Location Granular", description="""Nearest city, town, or village to location of donor's current residence at time of sample collection.""", json_schema_extra = { "linkml_meta": {'alias': 'geography_currentresidence_location_granular',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'comments': ['Geographical diversity of donors, at a more granular level '
+                      '(city / town / village).'],
+         'domain_of': ['GeneticDiversityDonorTier2', 'MusculoskeletalDonorTier2'],
+         'examples': [{'value': 'Singapore'},
+                      {'value': 'Cambridge'},
+                      {'value': 'Boston'},
+                      {'value': 'Kingston'}]} })
+    occupation: Optional[str] = Field(default=None, title="Occupation", description="""Specify the occupation of the donor.""", json_schema_extra = { "linkml_meta": {'alias': 'occupation',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'domain_of': ['MusculoskeletalDonorTier2'],
+         'examples': [{'value': 'Should be mapped to OccO Occupation Ontology '
+                                'OCCO:00000001'}],
+         'notes': ['[OCCO '
+                   'ontology](https://www.ebi.ac.uk/ols4/ontologies/occo/classes/http%253A%252F%252Fpurl.obolibrary.org%252Fobo%252FOCCO_00000001?lang=en)']} })
+    comorbidities: Optional[str] = Field(default=None, title="Comorbidities", description="""Indicate all comorbidities/ secondary diagnoses of the donor (primary diagnosis was asked in disease_ontology_term_id field of tier 1 metadata). This must be a MONDO term. Separate multiple entries with a comma.""", json_schema_extra = { "linkml_meta": {'alias': 'comorbidities',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'domain_of': ['MusculoskeletalDonorTier2'],
+         'examples': [{'value': 'MONDO:0005044'}, {'value': 'MONDO:0005148'}],
+         'notes': ['[MONDO ontology](https://www.ebi.ac.uk/ols4/ontologies/mondo)']} })
+    genotype: Optional[str] = Field(default=None, title="Genotype", description="""Genotype of the biomaterial.""", json_schema_extra = { "linkml_meta": {'alias': 'genotype',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'domain_of': ['MusculoskeletalDonorTier2'],
+         'examples': [{'value': 'DRB1 0401 protective allele'},
+                      {'value': 'HLA-B*3901 allele'}]} })
+    medication: Optional[str] = Field(default=None, title="Medication", description="""List of prescription medication consumed by the donor at time of sample collection. Should be an NCIT ontology term""", json_schema_extra = { "linkml_meta": {'alias': 'medication',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'comments': ['Medication consumption may be a covariate / exclusion criterion '
+                      'in analyses of human diversity.'],
+         'domain_of': ['GeneticDiversityDonorTier2', 'MusculoskeletalDonorTier2'],
+         'examples': [{'value': 'atorvastatin'},
+                      {'value': 'brevicon'},
+                      {'value': 'chlorthalidone'}],
+         'notes': ['[NCIT ontology '
+                   'term](https://www.ebi.ac.uk/ols4/ontologies/ncit/classes/http%253A%252F%252Fpurl.obolibrary.org%252Fobo%252FNCIT_C1908?lang=en)']} })
+    diet_meat_consumption: Optional[str] = Field(default=None, title="Diet Meat Consumption", description="""Dietary patterns of donor – meat (chicken, seafood, fish, pork, lamb, beef, etc.) consumption versus meat-free diet – at time of sample collection. Fill yes if donor consumes meat or no if donor does not consumes meat.""", json_schema_extra = { "linkml_meta": {'alias': 'diet_meat_consumption',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'comments': ['Diet can impact cellular and molecular phenotypes.'],
+         'domain_of': ['GeneticDiversityDonorTier2', 'MusculoskeletalDonorTier2'],
+         'examples': [{'value': 'yes'}, {'value': 'no'}],
+         'notes': ['yes; no']} })
+    medical_test_results: Optional[str] = Field(default=None, title="Medical Test Results", description="""Results from medical tests performed on the individual.""", json_schema_extra = { "linkml_meta": {'alias': 'medical_test_results',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'domain_of': ['MusculoskeletalDonorTier2'],
+         'examples': [{'value': 'lipid panel shows normal level of LDL (124 mg/dL)'},
+                      {'value': 'HIV, HBV, HCV: Negative'}]} })
+    treatments: Optional[str] = Field(default=None, title="Treatments", description="""Treatments the individual has undergone prior to biomaterial collection.""", json_schema_extra = { "linkml_meta": {'alias': 'treatments',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'domain_of': ['MusculoskeletalDonorTier2'],
+         'examples': [{'value': 'Patient treated with antibiotics for a urinary tract '
+                                'infection'},
+                      {'value': 'Patient treated with chemotherapy (Epirubicin, '
+                                'cisplatin, capecitabine) to treat stomach cancer'}]} })
+    previous_surgery: Optional[str] = Field(default=None, title="Previous Surgery", description="""Specify the type of previous surgery the individual has undergone prior to biomaterial collection.""", json_schema_extra = { "linkml_meta": {'alias': 'previous_surgery',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'domain_of': ['MusculoskeletalDonorTier2']} })
+    previous_surgery_relative_time_point: Optional[int] = Field(default=None, title="Previous Surgery Relative Time Point", description="""Indicate the time interval between the surgery and the sample collection in Previous surgery Relative Time Unit""", json_schema_extra = { "linkml_meta": {'alias': 'previous_surgery_relative_time_point',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'domain_of': ['MusculoskeletalDonorTier2'],
+         'examples': [{'value': '4'}, {'value': '37'}, {'value': '58'}]} })
+    previous_surgery_relative_time_unit: Optional[str] = Field(default=None, title="Previous Surgery Relative Time Unit", description="""Indicate the Time units of the time interval between the surgery and the sample collection.""", json_schema_extra = { "linkml_meta": {'alias': 'previous_surgery_relative_time_unit',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'domain_of': ['MusculoskeletalDonorTier2'],
+         'examples': [{'value': 'day'},
+                      {'value': 'week'},
+                      {'value': 'month'},
+                      {'value': 'year'}],
+         'notes': ['day; week; month; year']} })
+    history_of_injury_type: Optional[str] = Field(default=None, title="History of Injury Type", description="""Specify the type of injury the individual underwent in the area of the collected biomaterial.""", json_schema_extra = { "linkml_meta": {'alias': 'history_of_injury_type',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'domain_of': ['MusculoskeletalDonorTier2'],
+         'examples': [{'value': 'ankle injury'},
+                      {'value': 'burn'},
+                      {'value': 'spinal cord injury'}]} })
+    history_of_injury_type_relative_time_point: Optional[int] = Field(default=None, title="History of Injury Type Relative Time Point", description="""Indicate the time interval between the injury and the sample collection in History of injury relative time unit.""", json_schema_extra = { "linkml_meta": {'alias': 'history_of_injury_type_relative_time_point',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'domain_of': ['MusculoskeletalDonorTier2'],
+         'examples': [{'value': '4'}, {'value': '37'}, {'value': '58'}]} })
+    history_of_injury_type_relative_time_unit: Optional[str] = Field(default=None, title="History of Injury Type Relative Time Unit", description="""Indicate the Time units of the time interval between the injury and the sample collection.""", json_schema_extra = { "linkml_meta": {'alias': 'history_of_injury_type_relative_time_unit',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'domain_of': ['MusculoskeletalDonorTier2'],
+         'examples': [{'value': 'day'},
+                      {'value': 'week'},
+                      {'value': 'month'},
+                      {'value': 'year'}],
+         'notes': ['day; week; month; year']} })
+    alcohol_status: Optional[str] = Field(default=None, title="Alcohol Status", description="""Does the donor have drink/ drank/ never drank alcohol?""", json_schema_extra = { "linkml_meta": {'alias': 'alcohol_status',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'domain_of': ['MusculoskeletalDonorTier2'],
+         'examples': [{'value': 'active'}, {'value': 'former'}, {'value': 'never'}],
+         'notes': ['active; former; never']} })
+    alcohol_type: Optional[str] = Field(default=None, title="Alcohol Type", description="""Types of alcoholic beverages consumed.""", json_schema_extra = { "linkml_meta": {'alias': 'alcohol_type',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'domain_of': ['MusculoskeletalDonorTier2'],
+         'examples': [{'value': 'beer'}, {'value': 'liquor'}, {'value': 'wine'}],
+         'notes': ['beer; liquor; wine']} })
+    alcohol_usage_duration: Optional[int] = Field(default=None, title="Alcohol Usage Duration", description="""Frequency of alcohol intake per week.""", json_schema_extra = { "linkml_meta": {'alias': 'alcohol_usage_duration',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'domain_of': ['MusculoskeletalDonorTier2'],
+         'examples': [{'value': '3'}, {'value': '14'}, {'value': '21'}]} })
+    alcohol_units: Optional[Decimal] = Field(default=None, title="Alcohol Units", description="""Alcohol consumption of donor in alcohol units per week (strength (ABV) x volume (ml) ÷ 1,000).""", json_schema_extra = { "linkml_meta": {'alias': 'alcohol_units',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'domain_of': ['MusculoskeletalDonorTier2'],
+         'examples': [{'value': '0.4'}, {'value': '7'}, {'value': '14.9'}]} })
+    smoking_status: Optional[str] = Field(default=None, title="Smoking Status", description="""If the donor smokes/smoked or not.""", json_schema_extra = { "linkml_meta": {'alias': 'smoking_status',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'comments': ['Smoking may impact cellular and molecular phenotypes, and can '
+                      'serve as a covariate for human diversity analyses.'],
+         'domain_of': ['GeneticDiversityDonorTier2', 'MusculoskeletalDonorTier2'],
+         'examples': [{'value': 'active'}, {'value': 'former'}, {'value': 'never'}],
+         'notes': ['active; former; never']} })
+    years_since_smoking_cessation: Optional[int] = Field(default=None, title="Years Since Smoking Cessation", description="""If smoking status is \"former\", specify the number of years since smoking cessation, if available.""", json_schema_extra = { "linkml_meta": {'alias': 'years_since_smoking_cessation',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'domain_of': ['MusculoskeletalDonorTier2'],
+         'examples': [{'value': '1'}, {'value': '4'}, {'value': '12'}]} })
+    smoking_pack_years: Optional[Decimal] = Field(default=None, title="Smoking Pack Years", description="""Estimated number of packs (20 cigarettes) smoked per day multiplied by the number of years subject was smoking.""", json_schema_extra = { "linkml_meta": {'alias': 'smoking_pack_years',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'domain_of': ['MusculoskeletalDonorTier2'],
+         'examples': [{'value': '4.55'}, {'value': '12'}, {'value': '49.5'}]} })
+    nutritional_state: Optional[str] = Field(default=None, title="Nutritional State", description="""Nutritional state of individual at time of biomaterial collection.""", json_schema_extra = { "linkml_meta": {'alias': 'nutritional_state',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'domain_of': ['MusculoskeletalDonorTier2'],
+         'examples': [{'value': 'normal'},
+                      {'value': 'fasting'},
+                      {'value': 'feeding tube removed'}],
+         'notes': ['normal; fasting; feeding tube removed']} })
+    physical_activity_physical_exposure: Optional[str] = Field(default=None, title="Physical Activity / Physical Exposure", description="""Indicate the habitual level of physical activity and regular physical activities""", json_schema_extra = { "linkml_meta": {'alias': 'physical_activity_physical_exposure',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'domain_of': ['MusculoskeletalDonorTier2'],
+         'examples': [{'value': 'active -  football, tennis'}, {'value': 'sedentary'}]} })
+    handedness: Optional[str] = Field(default=None, title="Handedness", description="""Dominant hand of the donor""", json_schema_extra = { "linkml_meta": {'alias': 'handedness',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'domain_of': ['MusculoskeletalDonorTier2'],
+         'examples': [{'value': 'left'},
+                      {'value': 'right'},
+                      {'value': 'ambidextrous'},
+                      {'value': 'unknown'}],
+         'notes': ['left; right; ambidextrous; unknown']} })
+    microanatomical_region: Optional[str] = Field(default=None, title="Microanatomical Region", description="""Where in relation to other anatomical landmarks was the tissue collected from?""", json_schema_extra = { "linkml_meta": {'alias': 'microanatomical_region',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'domain_of': ['MusculoskeletalDonorTier2'],
+         'examples': [{'value': 'myotendinous junction, trabecular, enthesis'}]} })
+    geography_collectionsite_latitude_longitude: Optional[str] = Field(default=None, title="Geography Collectionsite Latitude Longitude", description="""Latitude and longitude GPS coordinates of collection site in decimal degrees.""", json_schema_extra = { "linkml_meta": {'alias': 'geography_collectionsite_latitude_longitude',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'comments': ['Contains information relevant for geographical diversity of '
+                      'donors; possible proxy for environmental exposures.'],
+         'domain_of': ['GeneticDiversityDonorTier2', 'MusculoskeletalDonorTier2'],
+         'examples': [{'value': '1.3, 103.8'}, {'value': 'not_sharable'}]} })
+    geography_currentresidence_duration: Optional[int] = Field(default=None, title="Geography Currentresidence Duration", description="""Duration of residence, in years, rounded up to the nearest whole number, at time of sample collection.""", json_schema_extra = { "linkml_meta": {'alias': 'geography_currentresidence_duration',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'comments': ['Indication of duration of environmental exposure relating to '
+                      'current residence.'],
+         'domain_of': ['GeneticDiversityDonorTier2', 'MusculoskeletalDonorTier2'],
+         'examples': [{'value': '20'}, {'value': '37'}, {'value': '45'}]} })
+    geography_currentresidence_urbanrural: Optional[str] = Field(default=None, title="Geography Currentresidence Urban Rural", description="""Urban, suburban, or rural descriptor of current residence.""", json_schema_extra = { "linkml_meta": {'alias': 'geography_currentresidence_urbanrural',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'comments': ['Contains information on environmental exposure relating to '
+                      'current residence'],
+         'domain_of': ['GeneticDiversityDonorTier2', 'MusculoskeletalDonorTier2'],
+         'examples': [{'value': 'urban'}, {'value': 'suburban'}, {'value': 'rural'}],
+         'notes': ['urban; suburban; rural']} })
+    geography_placeofbirth_location_country_state: Optional[str] = Field(default=None, title="Geography Place of Birth Location Country State", description="""Country and state of place of birth.""", json_schema_extra = { "linkml_meta": {'alias': 'geography_placeofbirth_location_country_state',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'comments': ['Geographical diversity of donors, at a coarser level (country '
+                      'and state).'],
+         'domain_of': ['GeneticDiversityDonorTier2', 'MusculoskeletalDonorTier2'],
+         'examples': [{'value': 'Singapore'},
+                      {'value': 'United Kingdom'},
+                      {'value': 'Massachusetts USA'},
+                      {'value': 'New South Wales Australia'},
+                      {'value': 'Bauchi State'},
+                      {'value': 'Nigeria'}]} })
+    geography_placeofbirth_location_granular: Optional[str] = Field(default=None, title="Geography Place of Birth Location Granular", description="""Nearest city, town, or village to location of place of birth.""", json_schema_extra = { "linkml_meta": {'alias': 'geography_placeofbirth_location_granular',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'comments': ['Geographical diversity of donors, at a more granular level '
+                      '(city / town / village).'],
+         'domain_of': ['GeneticDiversityDonorTier2', 'MusculoskeletalDonorTier2'],
+         'examples': [{'value': 'Singapore'},
+                      {'value': 'Cambridge'},
+                      {'value': 'Boston'},
+                      {'value': 'Kingston'}]} })
+    geography_placeofbirth_duration: Optional[int] = Field(default=None, title="Geography Place of Birth Duration", description="""Duration of residence, in years, rounded up to the nearest whole number.""", json_schema_extra = { "linkml_meta": {'alias': 'geography_placeofbirth_duration',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'comments': ['Indication of duration of environmental exposure relating to '
+                      'place of birth.'],
+         'domain_of': ['GeneticDiversityDonorTier2', 'MusculoskeletalDonorTier2'],
+         'examples': [{'value': '20'}, {'value': '37'}, {'value': '45'}]} })
+    geography_placeofbirth_urbanrural: Optional[str] = Field(default=None, title="Geography Place of Birth Urban Rural", description="""Urban, suburban, or rural descriptor of place of birth.""", json_schema_extra = { "linkml_meta": {'alias': 'geography_placeofbirth_urbanrural',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'comments': ['Contains information on environmental exposure relating to '
+                      'place of birth'],
+         'domain_of': ['GeneticDiversityDonorTier2', 'MusculoskeletalDonorTier2'],
+         'examples': [{'value': 'urban'}, {'value': 'suburban'}, {'value': 'rural'}],
+         'notes': ['urban; suburban; rural']} })
+    ethnicity_parents_selfreported_freetext: Optional[str] = Field(default=None, title="Ethnicity Parents Self-Reported Freetext", description="""Donor's parents' self-reported ethnicity (or ethnicities) in free-text; can include tribe, dialect group, etc. Separate multiple entries with a comma.""", json_schema_extra = { "linkml_meta": {'alias': 'ethnicity_parents_selfreported_freetext',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'comments': ['Self-reported ethnicity information can encompass language, '
+                      'religion, tribe, and cultural factors, beyond genetic '
+                      'ancestry.'],
+         'domain_of': ['GeneticDiversityDonorTier2', 'MusculoskeletalDonorTier2'],
+         'examples': [{'value': 'Singaporean Chinese'},
+                      {'value': 'Singaporean Malay'},
+                      {'value': 'Singaporean Indian'},
+                      {'value': 'Haitian'},
+                      {'value': 'Nigerian Hausa'},
+                      {'value': 'Ghana Hausa'},
+                      {'value': 'Benin Kanuri'},
+                      {'value': 'Nigerian Kanuri'},
+                      {'value': 'Igbo'},
+                      {'value': 'Luo'},
+                      {'value': 'Herero'},
+                      {'value': 'Garifuna'},
+                      {'value': 'Kalinago'}]} })
+    language_mother_father_tongue: Optional[str] = Field(default=None, title="Language Mother Father Tongue", description="""Ancestral language(s), spoken by parents (\"mother tongue\" and / or \"father tongue\") and / or grandparents. Can include dialects (for example, Hokkien).""", json_schema_extra = { "linkml_meta": {'alias': 'language_mother_father_tongue',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'comments': ['Mother and father tongues may contain information relevant to '
+                      'ancestry.'],
+         'domain_of': ['GeneticDiversityDonorTier2', 'MusculoskeletalDonorTier2'],
+         'examples': [{'value': 'Mandarin Chinese'},
+                      {'value': 'Hokkien'},
+                      {'value': 'Bahasa Melayu'},
+                      {'value': 'Tamil'},
+                      {'value': 'Hausa'},
+                      {'value': 'Yoruba'},
+                      {'value': 'Swahili'}]} })
+    menarche_age: Optional[int] = Field(default=None, title="Menarche Age", description="""Age at menarche, rounded to nearest whole number.""", json_schema_extra = { "linkml_meta": {'alias': 'menarche_age',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'comments': ['Age at menarche may be a covariate in analyses of human '
+                      'diversity.'],
+         'domain_of': ['GeneticDiversityDonorTier2', 'MusculoskeletalDonorTier2'],
+         'examples': [{'value': '13'}, {'value': '12'}, {'value': '16'}]} })
+    reproductive_menopause: Optional[str] = Field(default=None, title="Reproductive Menopause", description="""Menopausal status of donor at time of sample collection.""", json_schema_extra = { "linkml_meta": {'alias': 'reproductive_menopause',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'comments': ['Menopausal status may be a covariate in analyses of human '
+                      'diversity.'],
+         'domain_of': ['GeneticDiversityDonorTier2', 'MusculoskeletalDonorTier2'],
+         'examples': [{'value': 'pre-menopausal'},
+                      {'value': 'peri-menopausal'},
+                      {'value': 'post-menopausal'},
+                      {'value': 'post-menopausal (induced)'},
+                      {'value': 'not applicable'}],
+         'notes': ['pre-menopausal; peri-menopausal; post-menopausal; post-menopausal '
+                   '(induced); not applicable']} })
+    reproductive_number_children: Optional[int] = Field(default=None, title="Reproductive Number Children", description="""Number of children (full-term pregnancies) the donor has given birth to at time of sample collection.""", json_schema_extra = { "linkml_meta": {'alias': 'reproductive_number_children',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'comments': ['Number of children (full-term pregnancies) may be a covariate '
+                      'in analyses of human diversity.'],
+         'domain_of': ['GeneticDiversityDonorTier2', 'MusculoskeletalDonorTier2'],
+         'examples': [{'value': '0'}, {'value': '2'}, {'value': '3'}]} })
+    reproductive_number_pregnancies: Optional[int] = Field(default=None, title="Reproductive Number Pregnancies", description="""Number of pregnancies the donor has had at time of sample collection.""", json_schema_extra = { "linkml_meta": {'alias': 'reproductive_number_pregnancies',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'comments': ['Number of pregnancies may be a covariate in analyses of human '
+                      'diversity.'],
+         'domain_of': ['GeneticDiversityDonorTier2', 'MusculoskeletalDonorTier2'],
+         'examples': [{'value': '2'}, {'value': '3'}, {'value': '5'}]} })
+
+
+class MusculoskeletalSampleTier2(ConfiguredBaseModel):
+    """
+    Musculoskeletal BioNetwork Tier 2 sample metadata, collected under managed access.
+    """
+    linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'annotations': {'baseClass': {'tag': 'baseClass', 'value': 'Sample'},
+                         'bioNetwork': {'tag': 'bioNetwork',
+                                        'value': 'musculoskeletal'},
+                         'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'from_schema': 'https://github.com/clevercanary/hca-validation-tools/schema/bionetwork/musculoskeletal',
+         'mixin': True})
+
+    collected_tissue_processing: Optional[str] = Field(default=None, title="Collected Tissue Processing", description="""A general description of the protocol. If possible specify in what container the tissue was collected in, and if it was processed prior to storage or dissociation""", json_schema_extra = { "linkml_meta": {'alias': 'collected_tissue_processing',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'domain_of': ['MusculoskeletalSampleTier2'],
+         'examples': [{'value': 'tissue collected in DMEM/F12 containing 10% FCS and '
+                                'washed in PBS. Frozen within 2h of surgery after all '
+                                'fat trimmed off.'}]} })
+    tissue_transportation: Optional[str] = Field(default=None, title="Tissue Transportation", description="""Was the sample transported at all? What are the details?""", json_schema_extra = { "linkml_meta": {'alias': 'tissue_transportation',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'domain_of': ['MusculoskeletalSampleTier2'],
+         'examples': [{'value': 'snap frozen tissue shipped from Argentina to the UK '
+                                'on dry ice.'}]} })
+    time_to_laboratory: Optional[Decimal] = Field(default=None, title="Time to Laboratory", description="""Transit time in hours between tissue collection and tissue processing, meaning either storage in the laboratory or processing for sequencing.""", json_schema_extra = { "linkml_meta": {'alias': 'time_to_laboratory',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'domain_of': ['MusculoskeletalSampleTier2'],
+         'examples': [{'value': '1.5'}, {'value': '2'}]} })
+    side_of_tissue_collected: Optional[str] = Field(default=None, title="Side of Tissue Collected", description="""The side of the donor the sample was collected from.""", json_schema_extra = { "linkml_meta": {'alias': 'side_of_tissue_collected',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'domain_of': ['MusculoskeletalSampleTier2'],
+         'examples': [{'value': 'left'},
+                      {'value': 'right'},
+                      {'value': 'main-axis'},
+                      {'value': 'unknown'}],
+         'notes': ['left; right; main-axis; unknown']} })
+    sample_storage_method: Optional[str] = Field(default=None, title="Sample Storage Method", description="""The method by which a biomaterial was stored before tissue dissociation or processing""", json_schema_extra = { "linkml_meta": {'alias': 'sample_storage_method',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'domain_of': ['MusculoskeletalSampleTier2'],
+         'examples': [{'value': 'ambient temperature'},
+                      {'value': 'cut slide'},
+                      {'value': 'fresh'},
+                      {'value': 'frozen at -70C'},
+                      {'value': 'frozen at -80C'},
+                      {'value': 'frozen at -150C'},
+                      {'value': 'frozen in liquid nitrogen'},
+                      {'value': 'frozen in vapor phase'},
+                      {'value': 'paraffin block'},
+                      {'value': 'RNAlater at 4C'},
+                      {'value': 'RNAlater at 25C'},
+                      {'value': 'RNAlater at -20C'}],
+         'notes': ['ambient temperature; cut slide; fresh; frozen at -70C; frozen at '
+                   '-80C; frozen at -150C; frozen in liquid nitrogen; frozen in vapor '
+                   'phase; paraffin block; RNAlater at 4C; RNAlater at 25C; RNAlater '
+                   'at -20C']} })
+    sample_storage_relative_time_point: Optional[int] = Field(default=None, title="Sample Storage Relative Time Point", description="""Indicate the time interval between the sample collection and the sample storage in sample storage relative time units.""", json_schema_extra = { "linkml_meta": {'alias': 'sample_storage_relative_time_point',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'domain_of': ['MusculoskeletalSampleTier2'],
+         'examples': [{'value': '4'}, {'value': '37'}, {'value': '58'}]} })
+    sample_storage_relative_time_unit: Optional[str] = Field(default=None, title="Sample Storage Relative Time Unit", description="""Indicate the Time units of the time interval between the sample collection and the sample storage.""", json_schema_extra = { "linkml_meta": {'alias': 'sample_storage_relative_time_unit',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'domain_of': ['MusculoskeletalSampleTier2'],
+         'examples': [{'value': 'day'},
+                      {'value': 'week'},
+                      {'value': 'month'},
+                      {'value': 'year'}],
+         'notes': ['day; week; month; year']} })
+    sample_dissociation_relative_time_point: Optional[int] = Field(default=None, title="Sample Dissociation Relative Time Point", description="""Indicate the time interval between the sample collection and the sample dissociation in sample dissociation relative time unit.""", json_schema_extra = { "linkml_meta": {'alias': 'sample_dissociation_relative_time_point',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'domain_of': ['MusculoskeletalSampleTier2'],
+         'examples': [{'value': '4'}, {'value': '37'}, {'value': '58'}]} })
+    sample_dissociation_relative_time_unit: Optional[str] = Field(default=None, title="Sample Dissociation Relative Time Unit", description="""Indicate the Time units of the time interval between the sample collection and the sample dissociation.""", json_schema_extra = { "linkml_meta": {'alias': 'sample_dissociation_relative_time_unit',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'domain_of': ['MusculoskeletalSampleTier2'],
+         'examples': [{'value': 'day'},
+                      {'value': 'week'},
+                      {'value': 'month'},
+                      {'value': 'year'}],
+         'notes': ['day; week; month; year']} })
+    digestion_temperature: Optional[str] = Field(default=None, title="Digestion Temperature", description="""The temperature that the tissue was digested with the digestion solution in Celsius degree or hot/ cold""", json_schema_extra = { "linkml_meta": {'alias': 'digestion_temperature',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'domain_of': ['MusculoskeletalSampleTier2'],
+         'examples': [{'value': '42'}, {'value': '37'}, {'value': 'cold'}]} })
+    dissociation_description: Optional[str] = Field(default=None, title="Dissociation Description", description="""A general description for the dissociation protocol of the tissue.""", json_schema_extra = { "linkml_meta": {'alias': 'dissociation_description',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'domain_of': ['MusculoskeletalSampleTier2']} })
+    dissociation_doi: Optional[str] = Field(default=None, title="Dissociation DOI", description="""The publication or protocols.io digital object identifier (doi) for the protocol.""", json_schema_extra = { "linkml_meta": {'alias': 'dissociation_doi',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'domain_of': ['MusculoskeletalSampleTier2'],
+         'examples': [{'value': '10.1073/pnas.2404775131'},
+                      {'value': '10.1016/j.ajog.2016.07.031'}]} })
+    cell_suspension_storage_time: Optional[int] = Field(default=None, title="Cell Suspension Storage Time", description="""Length of time the biomaterial was stored prior to library prepration in Storage time units.""", json_schema_extra = { "linkml_meta": {'alias': 'cell_suspension_storage_time',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'domain_of': ['MusculoskeletalSampleTier2'],
+         'examples': [{'value': '4'}, {'value': '37'}, {'value': '58'}]} })
+    cell_suspension_storage_time_unit: Optional[str] = Field(default=None, title="Cell Suspension Storage Time Unit", description="""A term that may be associated with a time unit-related ontology term.""", json_schema_extra = { "linkml_meta": {'alias': 'cell_suspension_storage_time_unit',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'domain_of': ['MusculoskeletalSampleTier2'],
+         'examples': [{'value': 'day'},
+                      {'value': 'week'},
+                      {'value': 'month'},
+                      {'value': 'year'}],
+         'notes': ['day; week; month; year']} })
+    library_prep_relative_time_point: Optional[int] = Field(default=None, title="Library Prep Relative Time Point", description="""Indicate the time interval between the sample collection and the library preparation in library preparation relative time unit.""", json_schema_extra = { "linkml_meta": {'alias': 'library_prep_relative_time_point',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'domain_of': ['MusculoskeletalSampleTier2'],
+         'examples': [{'value': '4'}, {'value': '37'}, {'value': '58'}]} })
+    library_prep_relative_time_unit: Optional[str] = Field(default=None, title="Library Prep Relative Time Unit", description="""Indicate the Time units of the time interval between the sample collection and the library preparation.""", json_schema_extra = { "linkml_meta": {'alias': 'library_prep_relative_time_unit',
+         'annotations': {'tier': {'tag': 'tier', 'value': 'Tier 2'}},
+         'domain_of': ['MusculoskeletalSampleTier2'],
+         'examples': [{'value': 'day'},
+                      {'value': 'week'},
+                      {'value': 'month'},
+                      {'value': 'year'}],
+         'notes': ['day; week; month; year']} })
+
+
 class Cell(ConfiguredBaseModel):
     """
     A single cell derived from a sample
@@ -1851,11 +2617,14 @@ Use `cell_type_ontology_term_id` for integrated objects. `cell_type_ontology_ter
 # see https://pydantic-docs.helpmanual.io/usage/models/#rebuilding-a-model
 Dataset.model_rebuild()
 AdiposeDataset.model_rebuild()
+GeneticDiversityDonorTier2.model_rebuild()
 GutDataset.model_rebuild()
 Donor.model_rebuild()
 Sample.model_rebuild()
 AdiposeSample.model_rebuild()
 GutSample.model_rebuild()
 MusculoskeletalDataset.model_rebuild()
+MusculoskeletalDonorTier2.model_rebuild()
+MusculoskeletalSampleTier2.model_rebuild()
 Cell.model_rebuild()
 

@@ -16,8 +16,10 @@ imports:
   - linkml:types
   - dataset
   - bionetwork/adipose
+  - bionetwork/genetic-diversity
   - bionetwork/gut
   - bionetwork/musculoskeletal
   - donor
   - sample
   - cell
+  - tier_2_slots

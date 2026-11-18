@@ -205,7 +205,7 @@ make batch-publish-container ENV=dev     # then ENV=prod, from main
 **Schema-Driven Validation:**
 - LinkML YAML schemas in `packages/hca-metadata-schema/src/hca_metadata_schema/` define entities (Dataset, Donor, Sample, Cell)
 - `make gen-schema` generates Pydantic models to `packages/hca-metadata-schema/src/hca_metadata_schema/generated/core.py`
-- Bionetwork-specific schemas (adipose, gut, musculoskeletal) extend the core schema
+- Bionetwork-specific schemas (adipose, gut, musculoskeletal) extend the core schema; a network's Tier 2 fields are a LinkML mixin in its file (`MusculoskeletalDonorTier2`), with the slots in `tier_2_slots.yaml`. No class the validators use includes them; the Tier 2 data dictionary reads them, and the generated models carry the mixins as unused classes (#790)
 
 **Service Independence:**
 - Each service has its own `pyproject.toml` and uv environment (project-local `.venv/`)

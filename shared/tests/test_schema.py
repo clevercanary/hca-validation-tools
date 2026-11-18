@@ -14,6 +14,7 @@ from hca_validation.schema_utils.schema_utils import (
     get_class_bionetwork,
     get_entry_sheet_optional_slots,
     get_slot_anndata_location,
+    get_tier_2_mixins,
     schema_classes,
 )
 
@@ -40,6 +41,8 @@ def _bionetwork_annotations(schemaview):
     """Map every class carrying a `bioNetwork` annotation, at any depth, to its network."""
     annotated = {}
     for class_name, class_info in schemaview.all_classes().items():
+        if class_info.mixin:  # A Tier 2 mixin, which the validator never picks
+            continue
         network = get_class_bionetwork(class_info)
         if network is not None:
             annotated[class_name] = network
@@ -53,6 +56,18 @@ def test_bionetwork_annotations_are_enum_keys(schemaview):
     assert annotated, "no class carries a bioNetwork annotation"
     for class_name, network in annotated.items():
         assert network in keys, f"{class_name} has bioNetwork {network!r}, not a BioNetwork key"
+
+
+def test_tier_2_mixins_by_base_class(schemaview):
+    """Every `mixin: true` class is a Tier 2 mixin of the class its `baseClass` names, and of no other."""
+    assert get_tier_2_mixins(schemaview, "Donor") == {
+        "GeneticDiversityDonorTier2": "genetic-diversity",
+        "MusculoskeletalDonorTier2": "musculoskeletal",
+    }
+    assert get_tier_2_mixins(schemaview, "Sample") == {"MusculoskeletalSampleTier2": "musculoskeletal"}
+    assert get_tier_2_mixins(schemaview, "Dataset") == {}
+    mixins = {name for name, info in schemaview.all_classes().items() if info.mixin}
+    assert mixins == {"GeneticDiversityDonorTier2", "MusculoskeletalDonorTier2", "MusculoskeletalSampleTier2"}
 
 
 def test_generated_bionetwork_enum_matches_schema(schemaview):

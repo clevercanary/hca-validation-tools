@@ -12,15 +12,18 @@ from linkml_runtime import SchemaView
 from linkml_runtime.linkml_model import Example, SlotDefinition
 
 from hca_validation.data_dictionary.generate_dictionary import (
+    TIER_2_LAYOUT_PATH,
+    fold_bionetwork_slots,
     generate_dictionary,
     generate_tier_1_dictionary,
+    generate_tier_2_dictionary,
     load_layout,
     load_schemas,
     slot_to_attribute,
     transform_layout_to_data_dictionary,
     transform_schema_to_data_dictionary,
 )
-from hca_validation.schema_utils.schema_utils import _annotation_value
+from hca_validation.schema_utils.schema_utils import _annotation_value, get_bionetwork_subclasses, get_tier_2_mixins
 
 _CXG = "https://example.org/cxg"
 
@@ -184,6 +187,98 @@ def test_slot_added_by_several_subclasses_is_folded_once(tmp_path):
     assert by_name["shared_field"]["required"] is True
     assert by_name["gut_field"]["annotations"]["bioNetworks"] == ["gut"]
     assert by_name["title"]["annotations"]["bioNetworks"] == ["gut", "heart", "lung"]
+
+
+def _tier_2_mixin(name, network, slot, base="Dataset", extra=""):
+    return f"""
+        {name}:
+          mixin: true
+          annotations:
+            bioNetwork: {network}
+            tier: Tier 2
+            baseClass: {base}
+          slots:
+            - {slot}
+        {extra}"""
+
+
+def test_tier_2_mixins_fold_apart_from_subclasses(tmp_path):
+    # A Tier 2 mixin isn't a subclass: Tier 1 and the core export fold only the subclass, Tier 2 only the mixin.
+    schemaview = _schemaview(
+        tmp_path,
+        """
+        GutDataset:
+          is_a: Dataset
+          annotations:
+            bioNetwork: gut
+          slots:
+            - gut_field
+        """
+        + _tier_2_mixin("GutDatasetTier2", "gut", "shared_field"),
+    )
+    (dataset,) = transform_schema_to_data_dictionary(schemaview, _CXG)["classes"]
+    assert [a["name"] for a in dataset["attributes"]] == ["gut_field", "title"]
+    tier_2 = fold_bionetwork_slots(schemaview, "Dataset", set(), get_tier_2_mixins(schemaview, "Dataset"))
+    assert {name: a["annotations"]["bioNetworks"] for name, a in tier_2.items()} == {"shared_field": ["gut"]}
+
+
+def test_tier_2_slot_of_several_networks_is_folded_once(tmp_path):
+    schemaview = _schemaview(
+        tmp_path,
+        _tier_2_mixin("LungDatasetTier2", "lung", "shared_field")
+        + _tier_2_mixin("GutDatasetTier2", "gut", "shared_field"),
+    )
+    tier_2 = fold_bionetwork_slots(schemaview, "Dataset", set(), get_tier_2_mixins(schemaview, "Dataset"))
+    assert tier_2["shared_field"]["annotations"]["bioNetworks"] == ["gut", "lung"]
+
+
+def test_tier_2_mixins_defining_a_slot_differently_are_refused(tmp_path):
+    schemaview = _schemaview(
+        tmp_path,
+        _tier_2_mixin("LungDatasetTier2", "lung", "shared_field")
+        + _tier_2_mixin(
+            "GutDatasetTier2",
+            "gut",
+            "shared_field",
+            extra="  slot_usage:\n            shared_field:\n              required: false",
+        ),
+    )
+    with pytest.raises(ValueError, match="define 'shared_field' differently"):
+        fold_bionetwork_slots(schemaview, "Dataset", set(), get_tier_2_mixins(schemaview, "Dataset"))
+
+
+def test_tier_2_layout_leaving_out_a_mixin_slot_is_refused(tmp_path):
+    _schemaview(tmp_path, _tier_2_mixin("GutDatasetTier2", "gut", "shared_field"))
+    layout = _layout(tmp_path, "DatasetSection:\n  mixins: [Dataset]\n  slots: [title]\n")
+    with pytest.raises(ValueError, match="No section lists shared_field, which networks add to Dataset"):
+        transform_layout_to_data_dictionary(*load_schemas(tmp_path / "schema.yaml", layout), get_tier_2_mixins)
+
+
+def test_other_mixins_are_not_tier_2(tmp_path):
+    # Only a mixin annotated `tier: Tier 2` is one; an ordinary LinkML mixin is left alone.
+    schemaview = _schemaview(tmp_path, "HasProvenance:\n  mixin: true\n  slots:\n    - gut_field\n")
+    assert get_tier_2_mixins(schemaview, "Dataset") == {}
+
+
+@pytest.mark.parametrize(
+    ("mixin", "match"),
+    [
+        (
+            "GutDatasetTier2:\n  mixin: true\n  annotations:\n    bioNetwork: gut\n    tier: Tier 2\n",
+            "no bioNetwork or baseClass",
+        ),
+        (
+            "GutDatasetTier2:\n  mixin: true\n  annotations:\n    tier: Tier 2\n    baseClass: Dataset\n",
+            "no bioNetwork or baseClass",
+        ),
+        (_tier_2_mixin("GutDatasetTier2", "guts", "gut_field"), "'guts', which is not in the BioNetwork enum"),
+        (_tier_2_mixin("GutDatasetTier2", "gut", "gut_field", base="Datset"), "'Datset', which is not a class"),
+    ],
+    ids=["no-base-class", "no-network", "unknown-network", "unknown-class"],
+)
+def test_bad_tier_2_mixins_are_refused(tmp_path, mixin, match):
+    with pytest.raises(ValueError, match=match):
+        get_tier_2_mixins(_schemaview(tmp_path, mixin), "Dataset")
 
 
 def test_unknown_bionetwork_key_is_refused(tmp_path):
@@ -608,7 +703,7 @@ def test_generate_dictionary_writes_json(mapping_schema_path, mapping_layout, ma
 
 @pytest.fixture(scope="module")
 def tier_1_dictionary():
-    return transform_layout_to_data_dictionary(*load_schemas())
+    return transform_layout_to_data_dictionary(*load_schemas(), get_bionetwork_subclasses)
 
 
 def test_every_cellxgene_link_names_the_layouts_schema_version(schemaview, tier_1_dictionary):
@@ -673,6 +768,143 @@ def test_tier_1_fields_have_anndata_locations_and_networks(tier_1_dictionary):
 def test_tier_1_keeps_the_library_fields_strongly_recommended(tier_1_dictionary):
     required = {a["name"]: a["required"] for a in _class_entry(tier_1_dictionary, "Library")["attributes"]}
     assert required["library_preparation_batch"] == required["library_sequencing_run"] == "strongly recommended"
+
+
+# The HCA Data Portal's Tier 2 dictionary, laid out by tier_2_dictionary.yaml (#790)
+
+# The portal's tier-2.json fields, in its order
+_TIER_2_DONOR_FIELDS = [
+    "age_value",
+    "age_unit",
+    "bmi",
+    "height",
+    "weight",
+    "genderidentity_selfreported",
+    "ethnicity_selfreported_freetext",
+    "ethnicity_question_text",
+    "language_donor_primary_language",
+    "geography_currentresidence_location_country_state",
+    "geography_currentresidence_location_granular",
+    "occupation",
+    "comorbidities",
+    "genotype",
+    "medication",
+    "diet_meat_consumption",
+    "medical_test_results",
+    "treatments",
+    "previous_surgery",
+    "previous_surgery_relative_time_point",
+    "previous_surgery_relative_time_unit",
+    "history_of_injury_type",
+    "history_of_injury_type_relative_time_point",
+    "history_of_injury_type_relative_time_unit",
+    "alcohol_status",
+    "alcohol_type",
+    "alcohol_usage_duration",
+    "alcohol_units",
+    "smoking_status",
+    "years_since_smoking_cessation",
+    "smoking_pack_years",
+    "nutritional_state",
+    "physical_activity_physical_exposure",
+    "handedness",
+    "microanatomical_region",
+    "geography_collectionsite_latitude_longitude",
+    "geography_currentresidence_duration",
+    "geography_currentresidence_urbanrural",
+    "geography_placeofbirth_location_country_state",
+    "geography_placeofbirth_location_granular",
+    "geography_placeofbirth_duration",
+    "geography_placeofbirth_urbanrural",
+    "ethnicity_parents_selfreported_freetext",
+    "language_mother_father_tongue",
+    "menarche_age",
+    "reproductive_menopause",
+    "reproductive_number_children",
+    "reproductive_number_pregnancies",
+]
+_TIER_2_SAMPLE_FIELDS = [
+    "collected_tissue_processing",
+    "tissue_transportation",
+    "time_to_laboratory",
+    "side_of_tissue_collected",
+    "sample_storage_method",
+    "sample_storage_relative_time_point",
+    "sample_storage_relative_time_unit",
+    "sample_dissociation_relative_time_point",
+    "sample_dissociation_relative_time_unit",
+    "digestion_temperature",
+    "dissociation_description",
+    "dissociation_doi",
+    "cell_suspension_storage_time",
+    "cell_suspension_storage_time_unit",
+    "library_prep_relative_time_point",
+    "library_prep_relative_time_unit",
+]
+# The fields the portal also scopes to genetic-diversity; every Tier 2 field is musculoskeletal
+_TIER_2_GENETIC_DIVERSITY_FIELDS = {
+    "age_unit",
+    "age_value",
+    "bmi",
+    "diet_meat_consumption",
+    "ethnicity_parents_selfreported_freetext",
+    "ethnicity_question_text",
+    "ethnicity_selfreported_freetext",
+    "genderidentity_selfreported",
+    "geography_collectionsite_latitude_longitude",
+    "geography_currentresidence_duration",
+    "geography_currentresidence_location_country_state",
+    "geography_currentresidence_location_granular",
+    "geography_currentresidence_urbanrural",
+    "geography_placeofbirth_duration",
+    "geography_placeofbirth_location_country_state",
+    "geography_placeofbirth_location_granular",
+    "geography_placeofbirth_urbanrural",
+    "height",
+    "language_donor_primary_language",
+    "language_mother_father_tongue",
+    "medication",
+    "menarche_age",
+    "reproductive_menopause",
+    "reproductive_number_children",
+    "reproductive_number_pregnancies",
+    "smoking_status",
+    "weight",
+}
+
+
+@pytest.fixture(scope="module")
+def tier_2_dictionary():
+    return transform_layout_to_data_dictionary(*load_schemas(layout_path=TIER_2_LAYOUT_PATH), get_tier_2_mixins)
+
+
+def test_tier_2_sections_and_fields_match_the_portal(tier_2_dictionary):
+    assert [(c["name"], [a["name"] for a in c["attributes"]]) for c in tier_2_dictionary["classes"]] == [
+        ("donor", _TIER_2_DONOR_FIELDS),
+        ("sample", _TIER_2_SAMPLE_FIELDS),
+    ]
+
+
+def test_tier_2_fields_are_tier_2_and_scoped_as_the_portal_scopes_them(tier_2_dictionary):
+    for attribute in (a for c in tier_2_dictionary["classes"] for a in c["attributes"]):
+        expected = (
+            ["genetic-diversity", "musculoskeletal"]
+            if attribute["name"] in _TIER_2_GENETIC_DIVERSITY_FIELDS
+            else ["musculoskeletal"]
+        )
+        assert attribute["annotations"] == {"tier": "Tier 2", "bioNetworks": expected}, attribute["name"]
+
+
+def test_tier_2_number_fields_are_decimal(tier_2_dictionary):
+    ranges = {a["name"]: a["range"] for c in tier_2_dictionary["classes"] for a in c["attributes"]}
+    decimal = {"bmi", "alcohol_units", "smoking_pack_years", "time_to_laboratory"}
+    assert {name for name, value in ranges.items() if value == "decimal"} == decimal
+
+
+def test_generate_tier_2_dictionary_writes_json(tier_2_dictionary, tmp_path):
+    output = tmp_path / "out.json"
+    generate_tier_2_dictionary(output)
+    assert json.loads(output.read_text()) == tier_2_dictionary
 
 
 def _layout(tmp_path, sections, slots=""):
@@ -741,7 +973,9 @@ def mapping_layout(tmp_path_factory):
 
 @pytest.fixture(scope="module")
 def mapping_tier_1(mapping_schema_path, mapping_layout):
-    return transform_layout_to_data_dictionary(*load_schemas(mapping_schema_path, mapping_layout))
+    return transform_layout_to_data_dictionary(
+        *load_schemas(mapping_schema_path, mapping_layout), get_bionetwork_subclasses
+    )
 
 
 def test_only_sections_are_emitted_in_layout_order(mapping_tier_1):
@@ -797,7 +1031,9 @@ def test_header_comes_from_the_layout(mapping_tier_1):
 )
 def test_bad_layouts_are_refused(tmp_path, mapping_schema_path, sections, slots, match):
     with pytest.raises(ValueError, match=match):
-        transform_layout_to_data_dictionary(*load_schemas(mapping_schema_path, _layout(tmp_path, sections, slots)))
+        transform_layout_to_data_dictionary(
+            *load_schemas(mapping_schema_path, _layout(tmp_path, sections, slots)), get_bionetwork_subclasses
+        )
 
 
 def test_generate_tier_1_dictionary_writes_json(mapping_schema_path, mapping_layout, mapping_tier_1, tmp_path):

@@ -16,6 +16,7 @@ imports:
   - ../dataset
   - ../slots
   - ../enums
+  - ../tier_2_slots
 classes:
   MusculoskeletalDataset:
     is_a: Dataset
@@ -25,3 +26,83 @@ classes:
     slots:
       - ambient_count_correction
       - doublet_detection
+  MusculoskeletalDonorTier2:
+    mixin: true
+    description: Musculoskeletal BioNetwork Tier 2 donor metadata, collected under managed access.
+    annotations:
+      bioNetwork: musculoskeletal
+      tier: Tier 2
+      baseClass: Donor
+    slots:
+      - age_value
+      - age_unit
+      - bmi
+      - height
+      - weight
+      - genderidentity_selfreported
+      - ethnicity_selfreported_freetext
+      - ethnicity_question_text
+      - language_donor_primary_language
+      - geography_currentresidence_location_country_state
+      - geography_currentresidence_location_granular
+      - occupation
+      - comorbidities
+      - genotype
+      - medication
+      - diet_meat_consumption
+      - medical_test_results
+      - treatments
+      - previous_surgery
+      - previous_surgery_relative_time_point
+      - previous_surgery_relative_time_unit
+      - history_of_injury_type
+      - history_of_injury_type_relative_time_point
+      - history_of_injury_type_relative_time_unit
+      - alcohol_status
+      - alcohol_type
+      - alcohol_usage_duration
+      - alcohol_units
+      - smoking_status
+      - years_since_smoking_cessation
+      - smoking_pack_years
+      - nutritional_state
+      - physical_activity_physical_exposure
+      - handedness
+      - microanatomical_region
+      - geography_collectionsite_latitude_longitude
+      - geography_currentresidence_duration
+      - geography_currentresidence_urbanrural
+      - geography_placeofbirth_location_country_state
+      - geography_placeofbirth_location_granular
+      - geography_placeofbirth_duration
+      - geography_placeofbirth_urbanrural
+      - ethnicity_parents_selfreported_freetext
+      - language_mother_father_tongue
+      - menarche_age
+      - reproductive_menopause
+      - reproductive_number_children
+      - reproductive_number_pregnancies
+  MusculoskeletalSampleTier2:
+    mixin: true
+    description: Musculoskeletal BioNetwork Tier 2 sample metadata, collected under managed access.
+    annotations:
+      bioNetwork: musculoskeletal
+      tier: Tier 2
+      baseClass: Sample
+    slots:
+      - collected_tissue_processing
+      - tissue_transportation
+      - time_to_laboratory
+      - side_of_tissue_collected
+      - sample_storage_method
+      - sample_storage_relative_time_point
+      - sample_storage_relative_time_unit
+      - sample_dissociation_relative_time_point
+      - sample_dissociation_relative_time_unit
+      - digestion_temperature
+      - dissociation_description
+      - dissociation_doi
+      - cell_suspension_storage_time
+      - cell_suspension_storage_time_unit
+      - library_prep_relative_time_point
+      - library_prep_relative_time_unit

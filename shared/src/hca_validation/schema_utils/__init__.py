@@ -16,6 +16,7 @@ from .schema_utils import (
     get_entity_class_name,
     get_entry_sheet_optional_slots,
     get_slot_anndata_location,
+    get_tier_2_mixins,
     is_deprecated_slot,
     iter_coverage_slots,
     load_schemaview,

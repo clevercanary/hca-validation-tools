@@ -31,6 +31,7 @@ generate-data-dictionary:
 	@echo "Generating data dictionaries from core schema..."
 	@$(UV) python -c "from hca_validation.data_dictionary.generate_dictionary import generate_dictionary; generate_dictionary('../packages/hca-metadata-schema/data_dictionaries/core_data_dictionary.json')"
 	@$(UV) python -c "from hca_validation.data_dictionary.generate_dictionary import generate_tier_1_dictionary; generate_tier_1_dictionary('../packages/hca-metadata-schema/data_dictionaries/tier_1_data_dictionary.json')"
+	@$(UV) python -c "from hca_validation.data_dictionary.generate_dictionary import generate_tier_2_dictionary; generate_tier_2_dictionary('../packages/hca-metadata-schema/data_dictionaries/tier_2_data_dictionary.json')"
 	@echo "✓ Data dictionary generated"
 
 # Run validator tests (in shared library)

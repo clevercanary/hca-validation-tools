@@ -7,15 +7,15 @@ repos:
       - id: ruff-format
   - repo: local
     hooks:
-      # Regenerates the Pydantic models and the data dictionary when a schema YAML file is committed. If either
-      # changes, pre-commit fails the commit; add the regenerated files and commit again. CI's generated-schema
-      # job is the check that cannot be skipped (#350).
+      # Regenerates the Pydantic models and the data dictionaries when a schema or dictionary layout YAML file is
+      # committed. If either changes, pre-commit fails the commit; add the regenerated files and commit again. CI's
+      # generated-schema job is the check that cannot be skipped (#350).
       - id: schema-generated
         name: regenerate schema models and data dictionary
         entry: make -s -C shared gen-schema generate-data-dictionary
         language: system
         pass_filenames: false
-        files: ^packages/hca-metadata-schema/src/hca_metadata_schema/.*\.yaml$
+        files: ^(packages/hca-metadata-schema/src/hca_metadata_schema|shared/src/hca_validation/data_dictionary)/.*\.yaml$
       # Lint errors only; CI's schema-lint job runs the same target, after validate-schema (#546).
       - id: schema-lint
         name: lint the LinkML schema

@@ -1,12 +1,13 @@
 # hca-metadata-schema (npm)
 
 The HCA metadata data dictionaries, generated from the HCA LinkML schema in
-[clevercanary/hca-validation-tools](https://github.com/clevercanary/hca-validation-tools). Don't edit the two
+[clevercanary/hca-validation-tools](https://github.com/clevercanary/hca-validation-tools). Don't edit the
 dictionaries by hand: `make -C shared generate-data-dictionary` writes them.
 
 | File | Contents |
 |-|-|
 | `tier_1_data_dictionary.json` | The HCA Data Portal's Tier 1 dictionary: its sections, fields and order |
+| `tier_2_data_dictionary.json` | The HCA Data Portal's Tier 2 dictionary: the bionetworks' managed-access donor and sample fields, each with the networks that collect it |
 | `core_data_dictionary.json` | Every field of the core Dataset, Donor, Sample and Cell classes, as the HCA Atlas Tracker uses it |
 
 ```js
