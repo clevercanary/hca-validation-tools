@@ -285,10 +285,25 @@ def test_tier_2_layout_leaving_out_a_mixin_slot_is_refused(tmp_path):
         transform_layout_to_data_dictionary(*load_schemas(tmp_path / "schema.yaml", layout), get_tier_2_mixins)
 
 
-def test_other_mixins_are_not_tier_2(tmp_path):
-    # Only a mixin annotated `tier: Tier 2` is one; an ordinary LinkML mixin is left alone.
-    schemaview = _schemaview(tmp_path, "HasProvenance:\n  mixin: true\n  slots:\n    - gut_field\n")
-    assert get_tier_2_mixins(schemaview, "Dataset") == {}
+@pytest.mark.parametrize(
+    "other_class",
+    [
+        "HasProvenance:\n  mixin: true\n  slots:\n    - gut_field\n",
+        "GutDatasetTier2:\n  annotations:\n    bioNetwork: gut\n    tier: Tier 2\n    baseClass: Dataset\n"
+        "  slots:\n    - gut_field\n",
+    ],
+    ids=["plain-mixin", "not-a-mixin"],
+)
+def test_other_classes_are_not_tier_2_mixins(tmp_path, other_class):
+    # Only a mixin annotated `tier: Tier 2` is one; a plain mixin, or a class with the annotations, is left alone.
+    assert get_tier_2_mixins(_schemaview(tmp_path, other_class), "Dataset") == {}
+
+
+def test_network_mixin_without_tier_is_refused(tmp_path):
+    # A network's mixin that forgets `tier: Tier 2` would otherwise drop out of the Tier 2 dictionary unnoticed.
+    mixin = "GutDatasetTier2:\n  mixin: true\n  annotations:\n    bioNetwork: gut\n    baseClass: Dataset\n"
+    with pytest.raises(ValueError, match="GutDatasetTier2 has a bioNetwork or baseClass annotation but no tier"):
+        get_tier_2_mixins(_schemaview(tmp_path, mixin), "Dataset")
 
 
 @pytest.mark.parametrize(

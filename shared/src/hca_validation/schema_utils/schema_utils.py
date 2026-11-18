@@ -137,15 +137,20 @@ def get_bionetwork_subclasses(schemaview: SchemaView, base_class: str) -> dict[s
 def get_tier_2_mixins(schemaview: SchemaView, base_class: str) -> dict[str, str]:
     """Map each Tier 2 mixin (`mixin: true`, annotated `tier: Tier 2`) of `base_class` to its `bioNetwork`.
 
-    Raises ValueError if a Tier 2 mixin lacks `bioNetwork` or `baseClass`, or names an unknown network or class.
+    Raises ValueError if a Tier 2 mixin lacks `bioNetwork` or `baseClass`, or names an unknown network or class, or
+    if another mixin has either annotation.
     """
     network_keys = get_bionetwork_keys(schemaview)
     mixins = {}
     for class_name, class_info in schemaview.all_classes().items():
-        if not class_info.mixin or _annotation_value(class_info, "tier") != "Tier 2":
+        if not class_info.mixin:
             continue
         network = get_class_bionetwork(class_info)
         target = _annotation_value(class_info, "baseClass")
+        if _annotation_value(class_info, "tier") != "Tier 2":
+            if network is not None or target is not None:
+                raise ValueError(f"{class_name} has a bioNetwork or baseClass annotation but no tier: Tier 2")
+            continue
         if network is None or target is None:
             raise ValueError(f"{class_name} is a Tier 2 mixin but has no bioNetwork or baseClass annotation")
         if network not in network_keys:

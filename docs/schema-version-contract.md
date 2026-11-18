@@ -38,9 +38,9 @@ A version is only useful if a consumer can tell from it whether a file that pass
 
 1.4 The bionetwork schemas have no version of their own. Nothing loads one on its own, and all of them feed the
     published data dictionaries. A network's Tier 2 fields are a mixin class in its file (`mixin: true`, with
-    `bioNetwork` and `baseClass` annotations) whose slots `tier_2_slots.yaml` defines (#790); no class the
-    validators use includes them, and they release under the same version. Revisit if Tier 2 makes networks change
-    much faster than core.
+    `bioNetwork`, `tier: Tier 2` and `baseClass` annotations) whose slots `tier_2_slots.yaml` defines (#790); no
+    class the validators use includes them, and they release under the same version. Revisit if Tier 2 makes
+    networks change much faster than core.
 
 1.5 `hca-schema-validator` does not load the LinkML schema; it checks files against its own rule set, which each
     package release pins. Its reports name that release as `validator_version` (#802). Its `__schema_version__`
