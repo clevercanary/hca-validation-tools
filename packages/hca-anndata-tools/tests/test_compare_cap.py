@@ -122,6 +122,16 @@ def _ten_percent_missing(tmp_path, _downgrade):
     return _pair(tmp_path, target_ids=[f"cell_{i}" for i in range(9)] + ["target_only"])
 
 
+def _broken_edit_log(tmp_path, _downgrade):
+    source, target = _pair(tmp_path)
+    return source, _edit(target, lambda a: a.uns.__setitem__("provenance", {"edit_history": "not valid json {{"}))
+
+
+def _rootless_snapshot(tmp_path, _downgrade):
+    source, target = _pair(tmp_path)
+    return source, target.rename(target.with_name("target-edit-2026-03-27-13-54-26.h5ad"))
+
+
 PAIRS = [
     (_matching, "yes", None),
     (_reordered, "yes", None),
@@ -140,6 +150,8 @@ PAIRS = [
     (_disjoint_cells, "no", "cell_overlap"),
     (_ten_percent_missing, "no", "cell_overlap"),
     (_cap_cells_missing_from_target, "no", "cell_overlap"),
+    (_broken_edit_log, "no", "target_edit_log"),
+    (_rootless_snapshot, "no", "target_lineage"),
 ]
 
 

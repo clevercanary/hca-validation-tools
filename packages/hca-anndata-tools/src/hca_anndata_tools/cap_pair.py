@@ -25,6 +25,7 @@ from .cap import (
 )
 from .guards import require_obs_group
 from .strip_cap import _LEGACY_TOP_LEVEL_PROVENANCE
+from .write import MissingLineageRootError, generate_output_path, parse_edit_log
 
 # Demographic annotation sets — not real CAP annotations, just renamed CXG columns
 SKIP_SETS = frozenset({"sex", "development_stage", "self_reported_ethnicity"})
@@ -165,6 +166,19 @@ def existing_cap_failure(target: TargetCap) -> str | None:
         f"Target already has CAP data ({len(target.obs_columns)} obs columns, {len(target.uns_keys)} uns keys). "
         "Use overwrite=True to replace."
     )
+
+
+def edit_log_failure(raw_log: str) -> str | None:
+    return parse_edit_log(raw_log).get("error")
+
+
+def lineage_failure(target_path: str) -> str | None:
+    """The refusal the copy's snapshot meets when ``target_path`` is an edit snapshot without its original."""
+    try:
+        generate_output_path(target_path)
+    except MissingLineageRootError as e:
+        return str(e)
+    return None
 
 
 def compute_axis_overlap(cap_ids: set[str], hca_ids: set[str]) -> dict:

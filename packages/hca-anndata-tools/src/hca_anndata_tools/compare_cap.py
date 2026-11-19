@@ -11,7 +11,7 @@ import h5py
 from . import cap_pair as checks
 from ._errors import failure_result
 from ._gencode import load_gencode_reference
-from ._io import check_duplicate_ids, gate_h5ad_paths, read_column_order, read_obs_column_names
+from ._io import check_duplicate_ids, gate_h5ad_paths, read_column_order, read_edit_log_h5py, read_obs_column_names
 from .cap_currency import _read_cap
 from .guards import require_obs_group
 from .marker_genes import human_gate_failure, marker_symbols, markers_against_var
@@ -98,6 +98,7 @@ def _assess(source_path: str, target_path: str) -> _Pair:
     with h5py.File(target_path, "r") as f:
         target_cells, target_genes = checks.read_ids(f, "HCA")
         target_cap = checks.read_target_cap(f, read_column_order(require_obs_group(f)))
+        raw_log = read_edit_log_h5py(f)
 
     cells = checks.compute_axis_overlap(set(source_cells), set(target_cells))
     out += [
@@ -108,6 +109,8 @@ def _assess(source_path: str, target_path: str) -> _Pair:
         _check("target_layout", checks.target_layout_failure(target_cap)),
         _check(EXISTING_CAP_CHECK, checks.existing_cap_failure(target_cap)),
         _check(CELL_CHECK, checks.cell_overlap_failure(cells)),
+        _check("target_edit_log", checks.edit_log_failure(raw_log)),
+        _check("target_lineage", checks.lineage_failure(target_path)),
     ]
     return _Pair(out, sets, source_cells, target_cells, set(source_genes), set(target_genes), cells)
 
