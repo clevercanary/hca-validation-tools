@@ -28,6 +28,7 @@ from hca_anndata_tools import (
     check_schema_type,
     check_source_obs,
     check_x_normalization,
+    compare_cap_export,
     compress_h5ad,
     convert_cellxgene_to_hca,
     copy_cap_annotations,
@@ -198,6 +199,7 @@ registrar.register(check_barcodes, kind="fast")
 registrar.register(find_source_datasets, kind="slow")
 registrar.register(set_source_dataset, kind="write")
 registrar.register(check_cap_currency, kind="slow")
+registrar.register(compare_cap_export, kind="fast")
 registrar.register(check_source_obs, kind="slow")
 registrar.register(check_schema_type, kind="fast")
 registrar.register(validate_schema, kind="slow")

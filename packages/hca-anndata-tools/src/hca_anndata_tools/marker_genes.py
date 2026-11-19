@@ -67,6 +67,111 @@ def _classify_missing(
     return {"marker_gene": gene, "type": "not_in_gencode"}
 
 
+def human_gate_failure(path: str, obs_columns: list[str]) -> str | None:
+    """Why ``path`` cannot be checked against the human GENCODE, or None when it can."""
+    if "organism_ontology_term_id" not in obs_columns:
+        return "organism_ontology_term_id not found in obs columns"
+    organisms = read_obs_categorical_values(path, "organism_ontology_term_id")
+    # A masked (pd.NA) value is a missing organism, not evidence of a
+    # non-human one — and sorted() below cannot order pd.NA anyway.
+    organisms = {o for o in organisms if not pd.isna(o)}
+    if not organisms:
+        # All values masked or NaN: absence of evidence must not pass the
+        # human-only gate and validate against the human GENCODE.
+        return "organism_ontology_term_id has no readable values — cannot confirm a human dataset"
+    non_human = organisms - {"NCBITaxon:9606"}
+    if non_human:
+        return f"Only human (NCBITaxon:9606) is supported, found non-human: {sorted(non_human)}"
+    return None
+
+
+def marker_symbols(path: str, annotation_sets: list[str]) -> dict[str, set[str]]:
+    """The gene symbols each set's ``--marker_gene_evidence`` column cites; sets without that column are left out."""
+    obs_columns = read_obs_column_names(path)
+    return {
+        s: _extract_marker_genes_from_categories(read_obs_categorical_values(path, f"{s}--marker_gene_evidence"))
+        for s in annotation_sets
+        if f"{s}--marker_gene_evidence" in obs_columns
+    }
+
+
+def classify_markers(
+    markers_by_set: dict[str, set[str]],
+    gene_names: set[str],
+    eid_to_var_name: dict[str, str],
+    name_to_ids: dict[str, list[str]],
+) -> dict:
+    """Which markers are in ``gene_names`` and why each missing one is missing, shaped as `validate_marker_genes`."""
+    all_renames = []
+    all_missing_from_var = []
+    all_not_in_gencode = []
+    all_unique = set()
+    details = {}
+
+    for setname, markers in markers_by_set.items():
+        all_unique.update(markers)
+        found = markers & gene_names
+        missing = markers - gene_names
+
+        renames = []
+        missing_from_var = []
+        not_in_gencode = []
+        for gene in sorted(missing):
+            classification = _classify_missing(gene, name_to_ids, eid_to_var_name)
+            if classification["type"] == "known_rename":
+                renames.append(classification)
+            elif classification["type"] == "missing_from_var":
+                missing_from_var.append(classification)
+            else:
+                not_in_gencode.append(classification)
+
+        all_renames.extend(renames)
+        all_missing_from_var.extend(missing_from_var)
+        all_not_in_gencode.extend(not_in_gencode)
+
+        details[setname] = {
+            "unique_markers": len(markers),
+            "found": len(found),
+            "known_renames": renames,
+            "missing_from_var": missing_from_var,
+            "not_in_gencode": not_in_gencode,
+        }
+
+    total_found = len(all_unique & gene_names)
+
+    # Deduplicate top-level lists (same gene can appear in multiple sets)
+    seen = set()
+
+    def _dedup(items):
+        out = []
+        for item in items:
+            key = item["marker_gene"]
+            if key not in seen:
+                seen.add(key)
+                out.append(item)
+        return out
+
+    return {
+        "annotation_sets_with_markers": list(markers_by_set),
+        "total_unique_markers": len(all_unique),
+        "found_in_var": total_found,
+        "missing": len(all_unique) - total_found,
+        "known_renames": _dedup(all_renames),
+        "missing_from_var": _dedup(all_missing_from_var),
+        "not_in_gencode": _dedup(all_not_in_gencode),
+        "details": details,
+    }
+
+
+def markers_against_var(markers_by_set: dict[str, set[str]], var_path: str) -> dict:
+    """:func:`classify_markers` against the var of ``var_path``; reads nothing when there are no markers."""
+    if not markers_by_set:
+        return classify_markers({}, set(), {}, {})
+    gene_names, eid_to_var_name = read_var_gene_names(var_path)
+    _, name_to_ids = load_gencode_reference()
+    return classify_markers(markers_by_set, gene_names, eid_to_var_name, name_to_ids)
+
+
 @gate_h5ad_paths
 def validate_marker_genes(path: str, annotation_set: str | None = None) -> dict:
     """Validate that CAP marker genes exist in an h5ad file's var.
@@ -87,20 +192,8 @@ def validate_marker_genes(path: str, annotation_set: str | None = None) -> dict:
     try:
         path = resolve_latest(path)
         obs_columns = read_obs_column_names(path)
-
-        if "organism_ontology_term_id" not in obs_columns:
-            return {"error": "organism_ontology_term_id not found in obs columns"}
-        organisms = read_obs_categorical_values(path, "organism_ontology_term_id")
-        # A masked (pd.NA) value is a missing organism, not evidence of a
-        # non-human one — and sorted() below cannot order pd.NA anyway.
-        organisms = {o for o in organisms if not pd.isna(o)}
-        if not organisms:
-            # All values masked or NaN: absence of evidence must not pass the
-            # human-only gate and validate against the human GENCODE.
-            return {"error": "organism_ontology_term_id has no readable values — cannot confirm a human dataset"}
-        non_human = organisms - {"NCBITaxon:9606"}
-        if non_human:
-            return {"error": f"Only human (NCBITaxon:9606) is supported, found non-human: {sorted(non_human)}"}
+        if failure := human_gate_failure(path, obs_columns):
+            return {"error": failure}
         all_sets = _find_annotation_sets(obs_columns)
 
         if annotation_set:
@@ -110,88 +203,7 @@ def validate_marker_genes(path: str, annotation_set: str | None = None) -> dict:
         else:
             sets_to_check = all_sets
 
-        # Filter to sets that have marker_gene_evidence
-        sets_with_markers = [s for s in sets_to_check if f"{s}--marker_gene_evidence" in obs_columns]
-
-        if not sets_with_markers:
-            return {
-                "annotation_sets_with_markers": [],
-                "total_unique_markers": 0,
-                "found_in_var": 0,
-                "missing": 0,
-                "known_renames": [],
-                "missing_from_var": [],
-                "not_in_gencode": [],
-                "details": {},
-            }
-
-        gene_names, eid_to_var_name = read_var_gene_names(path)
-        _, name_to_ids = load_gencode_reference()
-
-        all_renames = []
-        all_missing_from_var = []
-        all_not_in_gencode = []
-        all_unique = set()
-        details = {}
-
-        for setname in sets_with_markers:
-            marker_col = f"{setname}--marker_gene_evidence"
-            # Read only the category values, not the full per-cell column
-            categories = read_obs_categorical_values(path, marker_col)
-            markers = _extract_marker_genes_from_categories(categories)
-            all_unique.update(markers)
-
-            found = markers & gene_names
-            missing = markers - gene_names
-
-            renames = []
-            missing_from_var = []
-            not_in_gencode = []
-            for gene in sorted(missing):
-                classification = _classify_missing(gene, name_to_ids, eid_to_var_name)
-                if classification["type"] == "known_rename":
-                    renames.append(classification)
-                elif classification["type"] == "missing_from_var":
-                    missing_from_var.append(classification)
-                else:
-                    not_in_gencode.append(classification)
-
-            all_renames.extend(renames)
-            all_missing_from_var.extend(missing_from_var)
-            all_not_in_gencode.extend(not_in_gencode)
-
-            details[setname] = {
-                "unique_markers": len(markers),
-                "found": len(found),
-                "known_renames": renames,
-                "missing_from_var": missing_from_var,
-                "not_in_gencode": not_in_gencode,
-            }
-
-        total_found = len(all_unique & gene_names)
-
-        # Deduplicate top-level lists (same gene can appear in multiple sets)
-        seen = set()
-
-        def _dedup(items):
-            out = []
-            for item in items:
-                key = item["marker_gene"]
-                if key not in seen:
-                    seen.add(key)
-                    out.append(item)
-            return out
-
-        return {
-            "annotation_sets_with_markers": sets_with_markers,
-            "total_unique_markers": len(all_unique),
-            "found_in_var": total_found,
-            "missing": len(all_unique) - total_found,
-            "known_renames": _dedup(all_renames),
-            "missing_from_var": _dedup(all_missing_from_var),
-            "not_in_gencode": _dedup(all_not_in_gencode),
-            "details": details,
-        }
+        return markers_against_var(marker_symbols(path, sets_to_check), path)
 
     except Exception as e:
         return {"error": str(e)}

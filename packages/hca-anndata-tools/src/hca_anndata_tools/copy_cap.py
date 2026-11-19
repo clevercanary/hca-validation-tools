@@ -3,45 +3,31 @@
 from __future__ import annotations
 
 import tempfile
-from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import anndata as ad
 import h5py
 import numpy as np
 import pandas as pd
 
+from . import cap_pair as checks
 from ._errors import failure_result
 from ._io import (
     check_duplicate_ids,
     ensure_provenance_group,
     gate_h5ad_paths,
-    obs_index_name,
-    open_h5ad,
     read_categorical_data,
     read_column_order,
     read_edit_log_h5py,
-    read_index,
-    read_provenance,
-    read_uns,
     update_column_order,
     verify_obs_transplant,
 )
 from ._serialize import make_serializable
-from .cap import (
-    _OPTIONAL_SUFFIXES,
-    _REQUIRED_SUFFIXES,
-    CAP_METADATA_KEY,
-    LEGACY_LAYOUT_ERROR,
-    cap_obs_columns,
-    cap_palette_keys,
-    is_legacy_cap_layout,
-    resolve_cap_block,
-)
+from .cap import CAP_METADATA_KEY
 from .guards import require_obs_group
 from .marker_genes import validate_marker_genes
-from .strip_cap import _LEGACY_TOP_LEVEL_PROVENANCE, strip_cap_annotations
+from .strip_cap import strip_cap_annotations
 from .write import (
     EDIT_LOG_KEY,
     _compute_sha256,
@@ -53,73 +39,6 @@ from .write import (
     snapshot_copy_hashed,
 )
 
-# Demographic annotation sets — not real CAP annotations, just renamed CXG columns
-_SKIP_SETS = {"sex", "development_stage", "self_reported_ethnicity"}
-
-# The entire CAP block is written into uns['cap_metadata'] (issue #452);
-# replaced wholesale on overwrite.
-_OVERWRITE_UNS_KEYS = {CAP_METADATA_KEY}
-
-# Maximum percent (0-100) of cells on either side that may be absent from the
-# other. Applied to both `missing_from_hca.pct` and `missing_from_cap.pct`.
-_MAX_MISSING_PCT = 5.0
-
-
-def _compute_axis_overlap(cap_ids: set[str], hca_ids: set[str]) -> dict:
-    """Compare CAP and HCA ID sets along one axis (cells or genes).
-
-    Percentages are 0-100, computed as a share of the side the missing IDs
-    came from: `missing_from_hca.pct = 100 * missing_from_hca.n / n_cap`,
-    and symmetrically for `missing_from_cap`. Rounded to one decimal place
-    for readability — exact ratios can be recomputed from the integer
-    counts if a consumer needs them.
-    """
-    n_cap = len(cap_ids)
-    n_hca = len(hca_ids)
-    n_matched = len(cap_ids & hca_ids)
-    n_missing_from_hca = n_cap - n_matched
-    n_missing_from_cap = n_hca - n_matched
-    return {
-        "n_cap": n_cap,
-        "n_hca": n_hca,
-        "n_matched": n_matched,
-        "missing_from_hca": {
-            "n": n_missing_from_hca,
-            "pct": round(100.0 * n_missing_from_hca / n_cap, 1) if n_cap else 0.0,
-        },
-        "missing_from_cap": {
-            "n": n_missing_from_cap,
-            "pct": round(100.0 * n_missing_from_cap / n_hca, 1) if n_hca else 0.0,
-        },
-    }
-
-
-def _get_annotation_sets(cap_block: Mapping[str, Any]) -> list[str]:
-    """Get annotation sets defined in the CAP block's cellannotation_metadata."""
-    meta = cap_block.get("cellannotation_metadata", {})
-    if isinstance(meta, dict):
-        return [s for s in meta if s not in _SKIP_SETS]
-    return []
-
-
-def _get_obs_columns_to_copy(
-    annotation_sets: list[str],
-    source_obs_columns: list[str],
-) -> list[str]:
-    """Build list of obs columns to copy from source."""
-    columns = []
-    all_suffixes = _REQUIRED_SUFFIXES + _OPTIONAL_SUFFIXES
-
-    for setname in annotation_sets:
-        for suffix in all_suffixes:
-            if not suffix:
-                continue
-            col = f"{setname}{suffix}"
-            if col in source_obs_columns:
-                columns.append(col)
-
-    return columns
-
 
 @gate_h5ad_paths
 def copy_cap_annotations(
@@ -129,12 +48,10 @@ def copy_cap_annotations(
 ) -> dict:
     """Copy CAP cell annotations from source to target h5ad file.
 
-    Uses a hybrid anndata + h5py approach: reads source uns via AnnData
-    (backed mode, fast for metadata), reads source obs columns via h5py
-    (avoids slow backed-mode column access), writes a temp file via
-    anndata for correct encoding, then copies the target and transplants
-    new data via h5py.copy(). Avoids loading either file's expression
-    matrix into memory.
+    Refuses on the first failed check in :mod:`cap_pair`, reading the source's
+    CAP uns and obs columns via h5py, then writes a temp file via anndata for
+    correct encoding, copies the target and transplants the new data via
+    h5py.copy(). Avoids loading either file's expression matrix into memory.
 
     Args:
         source_path: Path to source h5ad with CAP annotations.
@@ -159,178 +76,70 @@ def copy_cap_annotations(
         # Same-file guard (parity with backfill.py): with overwrite=True the
         # pre-strip would otherwise mutate — and via snapshot cleanup delete —
         # the very file it is about to read CAP annotations from.
-        if Path(source_path).exists() and Path(target_path).exists() and Path(source_path).samefile(target_path):
-            return {"error": "Source and target are the same file"}
+        if Path(source_path).samefile(target_path):
+            return {"error": checks.SAME_FILE_ERROR}
 
-        # --- Step 1: Read source data via h5py (no full AnnData load) ---
-
-        # Read source uns via backed mode (fast — uns is small metadata).
-        # We use anndata here because uns contains nested dicts with
-        # anndata-specific encoding that's complex to parse via raw h5py.
-        with open_h5ad(source_path) as source:
+        # --- Step 1: Read and check the source via h5py (no full AnnData load) ---
+        with h5py.File(source_path, "r") as f:
             # Only the nested uns['cap_metadata'] layout is accepted; the
-            # deprecated top-level layout is refused, not normalized. Refuse it
-            # first — including a mixed file that also carries a nested block —
-            # so deprecated keys never slip through. The full block travels into
-            # the target unchanged.
-            if is_legacy_cap_layout(source.uns):
-                return {"error": LEGACY_LAYOUT_ERROR}
-            cap_block = resolve_cap_block(source.uns)
-            if cap_block is None:
-                if CAP_METADATA_KEY in source.uns:
-                    return {"error": "Source uns['cap_metadata'] is malformed (not a dict/group)."}
-                return {"error": "Source has no CAP metadata: uns['cap_metadata'] is missing."}
-            if "cellannotation_metadata" not in cap_block:
-                return {"error": "Source has no cellannotation_metadata in uns['cap_metadata']"}
-            if "cellannotation_schema_version" not in cap_block:
-                return {"error": "Source has no cellannotation_schema_version in uns['cap_metadata']"}
-
-            annotation_sets = _get_annotation_sets(cap_block)
-            if not annotation_sets:
-                return {"error": "Source has no annotation sets in cellannotation_metadata"}
-
+            # deprecated top-level layout is refused, not normalized — including
+            # a mixed file that also carries a nested block. The full block
+            # travels into the target unchanged.
+            cap = checks.read_source_cap(f)
+            if failure := checks.source_layout_failure(cap) or checks.source_block_failure(cap):
+                return {"error": failure}
+            cap_block = cast(dict[str, Any], cap.block)
+            if failure := checks.source_metadata_failure(cap_block) or checks.source_schema_version_failure(cap_block):
+                return {"error": failure}
+            annotation_sets = checks.annotation_sets(cap_block)
+            if failure := checks.annotation_sets_failure(annotation_sets):
+                return {"error": failure}
             cap_schema_version = str(cap_block["cellannotation_schema_version"])
-            # resolve_cap_block already returns a fresh dict, so no extra copy.
             source_cap_block = make_serializable(cap_block)
 
-        # Read source obs via h5py (avoids slow backed-mode column access)
-        with h5py.File(source_path, "r") as f:
             obs_group = require_obs_group(f)
-            source_obs_columns = read_column_order(obs_group)
-            obs_cols_to_copy = _get_obs_columns_to_copy(annotation_sets, source_obs_columns)
-
-            idx_key = obs_index_name(obs_group)
-            source_index_list = list(read_index(obs_group, idx_key, "CAP cells"))
-
-            var_group = f["var"]
-            source_var_list = list(read_index(var_group, obs_index_name(var_group), "CAP genes"))
-
+            obs_cols_to_copy = checks.columns_to_copy(annotation_sets, read_column_order(obs_group))
+            source_index_list, source_var_list = checks.read_ids(f, "CAP")
+            if failure := checks.non_categorical_failure(obs_group, obs_cols_to_copy):
+                return {"error": failure}
             source_obs_data = {}
             for col in obs_cols_to_copy:
-                item = obs_group[col]
-                # CAP serializes all annotation columns as categorical. Enforce
-                # that contract — non-categorical columns would either force a
-                # dtype coercion on copy (schema drift) or break the writer on
-                # the NaN rows that partial-overlap introduces.
-                if not (isinstance(item, h5py.Group) and "categories" in item):
-                    return {
-                        "error": (
-                            f"CAP source column '{col}' is not categorical. "
-                            "CAP is expected to serialize all annotation columns "
-                            "as categorical; please report upstream."
-                        )
-                    }
-                categories, codes = read_categorical_data(item)
+                categories, codes = read_categorical_data(cast(h5py.Group, obs_group[col]))
                 source_obs_data[col] = pd.Categorical.from_codes(codes, categories=categories)
 
-        if not obs_cols_to_copy:
-            return {"error": "No CAP obs columns found to copy"}
-
-        source_index = set(source_index_list)
-        dupe_err = check_duplicate_ids(source_index_list, "CAP cells") or check_duplicate_ids(
+        if failure := checks.columns_failure(obs_cols_to_copy):
+            return {"error": failure}
+        if failure := check_duplicate_ids(source_index_list, "CAP cells") or check_duplicate_ids(
             source_var_list, "CAP genes"
-        )
-        if dupe_err:
-            return {"error": dupe_err}
-        source_var_set = set(source_var_list)
-
+        ):
+            return {"error": failure}
         source_obs_subset = pd.DataFrame(source_obs_data, index=source_index_list)  # pyright: ignore[reportArgumentType]
 
         # --- Step 2: Validate target via h5py (no AnnData load) ---
-        def read_target(path: str) -> tuple[list[str], list[str], list[str], set[str], bool, str]:
-            with h5py.File(path, "r") as f:
-                obs_group = require_obs_group(f)
-                obs_columns = read_column_order(obs_group)
-                idx_key = obs_index_name(obs_group)
-                index = list(read_index(obs_group, idx_key, "HCA cells"))
+        with h5py.File(target_path, "r") as f:
+            target_index, target_var_list = checks.read_ids(f, "HCA")
+            target_cap = checks.read_target_cap(f, read_column_order(require_obs_group(f)))
+            raw_log = read_edit_log_h5py(f)
 
-                var_group = f["var"]
-                var_list = list(read_index(var_group, obs_index_name(var_group), "HCA genes"))
+        if failure := check_duplicate_ids(target_index, "HCA cells") or check_duplicate_ids(
+            target_var_list, "HCA genes"
+        ):
+            return {"error": failure}
+        if failure := checks.target_layout_failure(target_cap):
+            return {"error": failure}
+        # The checks below are non-mutating and unaffected by a strip (the obs
+        # index and var never change), so they run BEFORE the overwrite
+        # pre-strip — a run that is going to fail validation must not have
+        # already replaced the target's snapshot.
+        if not overwrite and (failure := checks.existing_cap_failure(target_cap)):
+            return {"error": failure}
 
-                uns = read_uns(f)
-                uns_keys = set(uns.keys()) if uns is not None else set()
-                prov = read_provenance(uns)
-                has_prov_cap = prov is not None and "cap" in prov
-                log = read_edit_log_h5py(f)
-            return obs_columns, index, var_list, uns_keys, has_prov_cap, log
-
-        target_obs_columns, target_index, target_var_list, target_uns_keys, target_has_prov_cap, raw_log = read_target(
-            target_path
-        )
-
-        dupe_err = check_duplicate_ids(target_index, "HCA cells") or check_duplicate_ids(target_var_list, "HCA genes")
-        if dupe_err:
-            return {"error": dupe_err}
-
-        # Refuse a target carrying deprecated top-level CAP (from older tooling)
-        # rather than silently overwriting it into a mixed-layout file. Symmetric
-        # with the legacy-source refusal above (issue #452). Remediation is an
-        # explicit strip_cap_annotations run, not a silent normalization.
-        if is_legacy_cap_layout(target_uns_keys):
-            return {
-                "error": (
-                    "Target uses the deprecated top-level CAP layout "
-                    "(uns['cellannotation_metadata'] / "
-                    "uns['cellannotation_schema_version']). Only the nested "
-                    "uns['cap_metadata'] layout is accepted; run "
-                    "strip_cap_annotations on the target before copying CAP into it."
-                )
-            }
-
-        target_index_set = set(target_index)
-        target_var_set = set(target_var_list)
-
-        # The cell/gene overlap gate below is non-mutating and unaffected by
-        # a strip (the obs index and var never change), so it runs BEFORE the
-        # overwrite pre-strip — a run that is going to fail validation must
-        # not have already replaced the target's snapshot.
+        cell_stats = checks.compute_axis_overlap(set(source_index_list), set(target_index))
+        gene_stats = checks.compute_axis_overlap(set(source_var_list), set(target_var_list))
+        if failure := checks.cell_overlap_failure(cell_stats):
+            return {"error": failure, "cells": cell_stats}
 
         overwrite_strip = None
-        if not overwrite:
-            # Detect existing CAP data for the refusal: annotation columns
-            # ('--' is CAP's separator) and CAP uns material from any era —
-            # the nested block, older top-level cap_* keys, provenance/cap,
-            # and CAP-shaped palettes (possibly orphaned by the old overwrite
-            # era) — mirroring strip_cap_annotations' inventory.
-            existing_cap_cols = cap_obs_columns(target_obs_columns)
-            existing_cap_uns = [
-                k for k in (*_OVERWRITE_UNS_KEYS, *_LEGACY_TOP_LEVEL_PROVENANCE) if k in target_uns_keys
-            ]
-            if target_has_prov_cap:
-                existing_cap_uns.append("provenance/cap")
-            existing_cap_uns += cap_palette_keys(target_uns_keys)
-            if existing_cap_cols or existing_cap_uns:
-                return {
-                    "error": (
-                        f"Target already has CAP data "
-                        f"({len(existing_cap_cols)} obs columns, "
-                        f"{len(existing_cap_uns)} uns keys). "
-                        f"Use overwrite=True to replace."
-                    )
-                }
-
-        cell_stats = _compute_axis_overlap(source_index, target_index_set)
-        gene_stats = _compute_axis_overlap(source_var_set, target_var_set)
-        # Compare on raw fractions, not the 1-dp-rounded `pct` in cell_stats —
-        # otherwise 5.04% rounds to 5.0 and slips past the gate.
-        n_cap = cell_stats["n_cap"]
-        n_hca = cell_stats["n_hca"]
-        raw_missing_from_hca_pct = 100.0 * cell_stats["missing_from_hca"]["n"] / n_cap if n_cap else 0.0
-        raw_missing_from_cap_pct = 100.0 * cell_stats["missing_from_cap"]["n"] / n_hca if n_hca else 0.0
-        if raw_missing_from_hca_pct > _MAX_MISSING_PCT or raw_missing_from_cap_pct > _MAX_MISSING_PCT:
-            return {
-                "error": (
-                    f"Cell ID mismatch over {_MAX_MISSING_PCT:.0f}%: "
-                    f"CAP has {n_cap}, HCA has {n_hca}, "
-                    f"matched {cell_stats['n_matched']} "
-                    f"({cell_stats['missing_from_hca']['n']} missing from HCA "
-                    f"= {raw_missing_from_hca_pct:.1f}% of CAP; "
-                    f"{cell_stats['missing_from_cap']['n']} missing from CAP "
-                    f"= {raw_missing_from_cap_pct:.1f}% of HCA)"
-                ),
-                "cells": cell_stats,
-            }
-
         if overwrite:
             # Overwrite = strip, then a clean import: one shared removal
             # implementation and two audit entries in the edit log instead of
@@ -353,9 +162,10 @@ def copy_cap_annotations(
                     if k in strip_result
                 }
                 target_path = strip_result["output_path"]
-                # Cells and genes are untouched by a strip; only the column
-                # set, uns keys, and edit log need re-reading.
-                target_obs_columns, _, _, target_uns_keys, _, raw_log = read_target(target_path)
+                # Cells and genes are untouched by a strip; only the edit log
+                # needs re-reading.
+                with h5py.File(target_path, "r") as f:
+                    raw_log = read_edit_log_h5py(f)
 
         # --- Step 3: Build aligned temp AnnData ---
         aligned_obs = source_obs_subset.reindex(target_index)

@@ -23,13 +23,13 @@ One `hca-anndata-mcp` server process. Claude Code starts one stdio server per se
 - **Held memory:** what a worker holds once its read has ended: resident memory less shared pages on Linux (`/proc/self/statm`), physical footprint on macOS (`proc_pid_rusage`).
 - **Retire:** take a worker out of anyio's pool and kill it, so its memory goes back to the machine.
 
-The 39 tools registered in `server.py` on 2026-11-15 divide as follows. The write list is every tool whose code reaches `write_h5ad`, a snapshot helper or `cleanup_previous_version`.
+The 40 tools registered in `server.py` on 2026-11-18 divide as follows. The write list is every tool whose code reaches `write_h5ad`, a snapshot helper or `cleanup_previous_version`.
 
 | Kind | Count | Tools |
 | --- | --- | --- |
 | Write | 17 | `set_uns`, `set_producer_uns`, `convert_cellxgene_to_hca`, `strip_forbidden_obs_columns`, `drop_obs_columns`, `merge_obs_categories`, `rename_obs_column`, `rename_cell_ids`, `backfill_obs_from_source`, `copy_cap_annotations`, `strip_cap_annotations`, `replace_placeholder_values`, `compress_h5ad`, `normalize_raw`, `set_source_dataset`, `label_h5ad`, `populate_labels` |
 | Slow read | 8 | `plot_embedding` (loads the whole file), `validate_schema` (the validator loads the whole file), `check_raw_counts`, `check_duplicate_cells`, `check_donor_sex` (each streams the whole count matrix), `find_source_datasets`, `check_source_obs`, `check_cap_currency` (each opens every candidate file in a folder, which loads its `obs`) |
-| Fast read | 14 | `get_summary`, `get_storage_info`, `get_descriptive_stats`, `view_data`, `locate_files`, `get_cap_annotations`, `list_uns_fields`, `validate_marker_genes`, `view_edit_log`, `check_x_normalization`, `check_embeddings`, `check_barcodes`, `check_schema_type`, `validate_cell_annotation` |
+| Fast read | 15 | `get_summary`, `get_storage_info`, `get_descriptive_stats`, `view_data`, `locate_files`, `get_cap_annotations`, `list_uns_fields`, `validate_marker_genes`, `compare_cap_export`, `view_edit_log`, `check_x_normalization`, `check_embeddings`, `check_barcodes`, `check_schema_type`, `validate_cell_annotation` |
 
 A tool's label does not depend on its arguments. `get_descriptive_stats` reads only `obs` or `var`. `view_data` can be asked for a large slice of the matrix; rule 24 covers the memory that leaves behind.
 
