@@ -292,6 +292,7 @@ def test_cap_layout_of_each_file(tmp_path, downgrade_cap_to_legacy):
     assert nested["target"]["fields"] is None
     malformed = compare_cap_export(*map(str, _malformed_source(tmp_path / "d", None)))["cap"]
     assert (mixed["export"]["layout"], legacy["export"]["layout"]) == ("mixed", "legacy")
+    assert legacy["export"]["fields"]["cap_dataset_url"] == "https://celltype.info/test"
     assert (malformed["export"]["layout"], malformed["export"]["fields"]) == ("malformed", None)
 
 
