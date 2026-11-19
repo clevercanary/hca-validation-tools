@@ -333,8 +333,11 @@ def test_refused_by_names_the_failure_overwrite_does_not_clear(tmp_path):
     source, target = _pair(tmp_path, target_ids=[f"other_{i}" for i in range(10)])
     _edit(target, lambda a: a.obs.__setitem__("existing--cell_ontology_term_id", "CL:0000000"))
 
-    verdict = compare_cap_export(str(source), str(target))["verdict"]
+    result = compare_cap_export(str(source), str(target))
+    verdict = result["verdict"]
 
+    failed = [c["name"] for c in result["checks"] if c["status"] == "fail"]
+    assert failed == ["target_has_no_cap", "cell_overlap"]
     assert (verdict["copy_would_accept"], verdict["refused_by"]) == ("no", "cell_overlap")
     assert copy_cap_annotations(str(source), str(target))["error"].startswith("Target already has CAP data")
     assert verdict["message"] in copy_cap_annotations(str(source), str(target), overwrite=True)["error"]

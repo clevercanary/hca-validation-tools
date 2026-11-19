@@ -193,7 +193,8 @@ def compare_cap_export(source_path: str, target_path: str) -> dict:
         ``checks`` (each with ``status`` pass, fail or not_run) and
         ``verdict`` (``copy_would_accept`` yes, with_overwrite or no;
         ``refused_by``, the first failed check that overwrite=True would not
-        clear, else target_has_no_cap; and its ``message``), or ``{"error": ...}``.
+        clear, else target_has_no_cap, else None; and its ``message``), or
+        ``{"error": ...}``.
     """
     try:
         target_path = resolve_latest(target_path)
