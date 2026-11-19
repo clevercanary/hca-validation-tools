@@ -8,19 +8,26 @@ import re
 import textwrap
 
 import pytest
+from hca_metadata_schema import TIER_2_SCHEMA_PATH
 from linkml_runtime import SchemaView
 from linkml_runtime.linkml_model import Example, SlotDefinition
 
 from hca_validation.data_dictionary.generate_dictionary import (
+    TIER_2_LAYOUT_PATH,
     generate_dictionary,
     generate_tier_1_dictionary,
+    generate_tier_2_dictionary,
     load_layout,
     load_schemas,
     slot_to_attribute,
     transform_layout_to_data_dictionary,
     transform_schema_to_data_dictionary,
 )
-from hca_validation.schema_utils.schema_utils import _annotation_value
+from hca_validation.schema_utils.schema_utils import (
+    _annotation_value,
+    get_bionetwork_subclasses,
+    get_entry_sheet_optional_slots,
+)
 
 _CXG = "https://example.org/cxg"
 
@@ -94,12 +101,38 @@ def test_library_slots_are_strongly_recommended(data_dictionary, attribute_name)
     assert _attribute(data_dictionary, "sample", attribute_name)["required"] == "strongly recommended"
 
 
-def test_title_is_required_without_entry_sheet_relaxation(data_dictionary):
-    # #836: h5ad files require title; the entry-sheet tag never reaches the dictionary (#850).
+def test_title_is_required_with_entry_sheet_relaxation(data_dictionary):
+    # #836: h5ad files require title; entry sheets may leave it blank, which the core dictionary says (#914).
     title = _attribute(data_dictionary, "dataset", "title")
     assert title["required"] is True
     assert title["annotations"]["tier"] == "Tier 1"
-    assert "entrySheetRequired" not in title["annotations"]
+    assert title["annotations"]["entrySheetRequired"] is False
+
+
+def test_core_marks_exactly_the_slots_entry_sheets_relax(schemaview, data_dictionary):
+    for class_name in ["Dataset", "Donor", "Sample", "Cell"]:
+        marked = {
+            name: a["annotations"]["entrySheetRequired"]
+            for name, a in _attributes(data_dictionary, class_name).items()
+            if "entrySheetRequired" in a["annotations"]
+        }
+        relaxed = get_entry_sheet_optional_slots(schemaview, class_name).union(
+            *(
+                get_entry_sheet_optional_slots(schemaview, sub)
+                for sub in get_bionetwork_subclasses(schemaview, class_name)
+            )
+        )
+        assert marked == dict.fromkeys(relaxed, False), class_name
+
+
+def test_tier_1_never_carries_entry_sheet_relaxation(tier_1_dictionary):
+    # The portal shows the `required` level only.
+    assert not [
+        a["name"]
+        for c in tier_1_dictionary["classes"]
+        for a in c["attributes"]
+        if "entrySheetRequired" in a["annotations"]
+    ]
 
 
 def test_real_schema_shows_display_ranges(schemaview, data_dictionary):
@@ -186,6 +219,49 @@ def test_slot_added_by_several_subclasses_is_folded_once(tmp_path):
     assert by_name["title"]["annotations"]["bioNetworks"] == ["gut", "heart", "lung"]
 
 
+def test_another_class_listing_a_network_slot_does_not_count(tmp_path):
+    # GutDataset adds gut_field to Dataset; listing it under another class's section doesn't list it for Dataset.
+    _schemaview(
+        tmp_path,
+        """
+        GutDataset:
+          is_a: Dataset
+          annotations:
+            bioNetwork: gut
+          slots:
+            - gut_field
+        Other:
+          slots:
+            - gut_field
+        """,
+    )
+    layout = _layout(
+        tmp_path,
+        "DatasetSection:\n  mixins: [Dataset]\n  slots: [title]\n"
+        "OtherSection:\n  mixins: [Other]\n  slots: [gut_field]\n",
+    )
+    with pytest.raises(ValueError, match="No section lists gut_field, which networks add to Dataset"):
+        transform_layout_to_data_dictionary(*load_schemas(tmp_path / "schema.yaml", layout))
+
+
+def test_layout_leaving_out_a_network_slot_is_refused(tmp_path):
+    # A network's field the layout forgets would otherwise vanish from the dictionary.
+    _schemaview(
+        tmp_path,
+        """
+        GutDataset:
+          is_a: Dataset
+          annotations:
+            bioNetwork: gut
+          slots:
+            - gut_field
+        """,
+    )
+    layout = _layout(tmp_path, "DatasetSection:\n  mixins: [Dataset]\n  slots: [title]\n")
+    with pytest.raises(ValueError, match="No section lists gut_field, which networks add to Dataset"):
+        transform_layout_to_data_dictionary(*load_schemas(tmp_path / "schema.yaml", layout))
+
+
 def test_unknown_bionetwork_key_is_refused(tmp_path):
     schemaview = _schemaview(
         tmp_path,
@@ -241,8 +317,8 @@ def test_conflicting_definitions_are_refused(tmp_path):
         transform_schema_to_data_dictionary(schemaview, _CXG)
 
 
-def test_subclass_adding_only_entry_sheet_required_folds(tmp_path):
-    # #850: the annotation relaxes entry sheets only, so it is not a definition change the dictionary must refuse.
+def test_subclass_relaxing_a_base_slot_is_refused(tmp_path):
+    # One attribute can't say "optional on gut entry sheets, required elsewhere" (#914).
     schemaview = _schemaview(
         tmp_path,
         """
@@ -256,9 +332,52 @@ def test_subclass_adding_only_entry_sheet_required_folds(tmp_path):
                 entrySheetRequired: false
         """,
     )
-    title = _attribute(transform_schema_to_data_dictionary(schemaview, _CXG), "dataset", "title")
-    assert title["required"] is True
-    assert "entrySheetRequired" not in title.get("annotations", {})
+    with pytest.raises(ValueError, match="GutDataset changes Dataset's 'title'"):
+        transform_schema_to_data_dictionary(schemaview, _CXG)
+
+
+_RELAXED_GUT_FIELD = """
+GutDataset:
+  is_a: Dataset
+  annotations:
+    bioNetwork: gut
+  slots:
+    - shared_field
+  slot_usage:
+    shared_field:
+      annotations:
+        entrySheetRequired: false
+"""
+
+
+def test_slot_a_subclass_adds_keeps_its_relaxation(tmp_path):
+    schemaview = _schemaview(tmp_path, _RELAXED_GUT_FIELD)
+    shared_field = _attribute(transform_schema_to_data_dictionary(schemaview, _CXG), "dataset", "shared_field")
+    assert shared_field["annotations"] == {"entrySheetRequired": False, "bioNetworks": ["gut"]}
+
+
+def test_tier_1_drops_a_folded_slots_relaxation(tmp_path):
+    _schemaview(tmp_path, _RELAXED_GUT_FIELD)
+    layout = _layout(tmp_path, "DatasetSection:\n  mixins: [Dataset]\n  slots: [shared_field]\n")
+    tier_1 = transform_layout_to_data_dictionary(*load_schemas(tmp_path / "schema.yaml", layout))
+    assert _attribute(tier_1, "dataset", "shared_field")["annotations"] == {"bioNetworks": ["gut"]}
+
+
+def test_subclasses_disagreeing_on_a_relaxation_are_refused(tmp_path):
+    schemaview = _schemaview(
+        tmp_path,
+        _RELAXED_GUT_FIELD
+        + """
+LungDataset:
+  is_a: Dataset
+  annotations:
+    bioNetwork: lung
+  slots:
+    - shared_field
+""",
+    )
+    with pytest.raises(ValueError, match="define 'shared_field' differently"):
+        transform_schema_to_data_dictionary(schemaview, _CXG)
 
 
 def test_changed_base_slot_is_refused(tmp_path):
@@ -435,6 +554,11 @@ slots:
     annotations:
       tier: Tier 1
       entrySheetRequired: false
+  # Dataset's slot_usage sets another annotation, which drops this tag from the induced slot (linkml#2805).
+  sheet_optional_by_usage:
+    required: true
+    annotations:
+      entrySheetRequired: false
   recommended_slot:
     recommended: true
   required_and_recommended:
@@ -458,7 +582,12 @@ classes:
       - recommended_slot
       - required_and_recommended
       - sheet_optional
+      - sheet_optional_by_usage
       - unlisted_slot
+    slot_usage:
+      sheet_optional_by_usage:
+        annotations:
+          tier: Tier 1
   Donor:
     slots:
       - donor_id
@@ -586,11 +715,11 @@ def test_requirement_levels(mapping_dictionary, attribute_name, required):
     assert _attributes(mapping_dictionary, "Dataset")[attribute_name]["required"] == required
 
 
-def test_entry_sheet_required_stays_out_of_the_dictionary(mapping_dictionary):
-    # #850: the portal's dictionary reports the `required` level only, never the entry-sheet relaxation.
-    attribute = _attributes(mapping_dictionary, "Dataset")["sheet_optional"]
+@pytest.mark.parametrize("attribute_name", ["sheet_optional", "sheet_optional_by_usage"])
+def test_core_publishes_the_entry_sheet_relaxation(mapping_dictionary, attribute_name):
+    attribute = _attributes(mapping_dictionary, "Dataset")[attribute_name]
     assert attribute["required"] is True
-    assert attribute["annotations"] == {"tier": "Tier 1", "bioNetworks": _ALL_NETWORKS}
+    assert attribute["annotations"] == {"tier": "Tier 1", "entrySheetRequired": False, "bioNetworks": _ALL_NETWORKS}
 
 
 def test_multivalued(mapping_dictionary):
@@ -675,6 +804,160 @@ def test_tier_1_keeps_the_library_fields_strongly_recommended(tier_1_dictionary)
     assert required["library_preparation_batch"] == required["library_sequencing_run"] == "strongly recommended"
 
 
+# The HCA Data Portal's Tier 2 dictionary, laid out by tier_2_dictionary.yaml (#790)
+
+# The portal's tier-2.json fields, in its order
+_TIER_2_DONOR_FIELDS = [
+    "age_value",
+    "age_unit",
+    "bmi",
+    "height",
+    "weight",
+    "genderidentity_selfreported",
+    "ethnicity_selfreported_freetext",
+    "ethnicity_question_text",
+    "language_donor_primary_language",
+    "geography_currentresidence_location_country_state",
+    "geography_currentresidence_location_granular",
+    "occupation",
+    "comorbidities",
+    "genotype",
+    "medication",
+    "diet_meat_consumption",
+    "medical_test_results",
+    "treatments",
+    "previous_surgery",
+    "previous_surgery_relative_time_point",
+    "previous_surgery_relative_time_unit",
+    "history_of_injury_type",
+    "history_of_injury_type_relative_time_point",
+    "history_of_injury_type_relative_time_unit",
+    "alcohol_status",
+    "alcohol_type",
+    "alcohol_usage_duration",
+    "alcohol_units",
+    "smoking_status",
+    "years_since_smoking_cessation",
+    "smoking_pack_years",
+    "nutritional_state",
+    "physical_activity_physical_exposure",
+    "handedness",
+    "microanatomical_region",
+    "geography_collectionsite_latitude_longitude",
+    "geography_currentresidence_duration",
+    "geography_currentresidence_urbanrural",
+    "geography_placeofbirth_location_country_state",
+    "geography_placeofbirth_location_granular",
+    "geography_placeofbirth_duration",
+    "geography_placeofbirth_urbanrural",
+    "ethnicity_parents_selfreported_freetext",
+    "language_mother_father_tongue",
+    "menarche_age",
+    "reproductive_menopause",
+    "reproductive_number_children",
+    "reproductive_number_pregnancies",
+]
+_TIER_2_SAMPLE_FIELDS = [
+    "collected_tissue_processing",
+    "tissue_transportation",
+    "time_to_laboratory",
+    "side_of_tissue_collected",
+    "sample_storage_method",
+    "sample_storage_relative_time_point",
+    "sample_storage_relative_time_unit",
+    "sample_dissociation_relative_time_point",
+    "sample_dissociation_relative_time_unit",
+    "digestion_temperature",
+    "dissociation_description",
+    "dissociation_doi",
+    "cell_suspension_storage_time",
+    "cell_suspension_storage_time_unit",
+    "library_prep_relative_time_point",
+    "library_prep_relative_time_unit",
+]
+# The fields the portal also scopes to genetic-diversity; every Tier 2 field is musculoskeletal
+_TIER_2_GENETIC_DIVERSITY_FIELDS = {
+    "age_unit",
+    "age_value",
+    "bmi",
+    "diet_meat_consumption",
+    "ethnicity_parents_selfreported_freetext",
+    "ethnicity_question_text",
+    "ethnicity_selfreported_freetext",
+    "genderidentity_selfreported",
+    "geography_collectionsite_latitude_longitude",
+    "geography_currentresidence_duration",
+    "geography_currentresidence_location_country_state",
+    "geography_currentresidence_location_granular",
+    "geography_currentresidence_urbanrural",
+    "geography_placeofbirth_duration",
+    "geography_placeofbirth_location_country_state",
+    "geography_placeofbirth_location_granular",
+    "geography_placeofbirth_urbanrural",
+    "height",
+    "language_donor_primary_language",
+    "language_mother_father_tongue",
+    "medication",
+    "menarche_age",
+    "reproductive_menopause",
+    "reproductive_number_children",
+    "reproductive_number_pregnancies",
+    "smoking_status",
+    "weight",
+}
+
+
+@pytest.fixture(scope="module")
+def tier_2_dictionary():
+    return transform_layout_to_data_dictionary(*load_schemas(TIER_2_SCHEMA_PATH, TIER_2_LAYOUT_PATH))
+
+
+def test_tier_2_sections_and_fields_match_the_portal(tier_2_dictionary):
+    assert [(c["name"], [a["name"] for a in c["attributes"]]) for c in tier_2_dictionary["classes"]] == [
+        ("donor", _TIER_2_DONOR_FIELDS),
+        ("sample", _TIER_2_SAMPLE_FIELDS),
+    ]
+
+
+def test_tier_2_fields_are_tier_2_and_scoped_as_the_portal_scopes_them(tier_2_dictionary):
+    for attribute in (a for c in tier_2_dictionary["classes"] for a in c["attributes"]):
+        expected = (
+            ["genetic-diversity", "musculoskeletal"]
+            if attribute["name"] in _TIER_2_GENETIC_DIVERSITY_FIELDS
+            else ["musculoskeletal"]
+        )
+        assert attribute["annotations"] == {"tier": "Tier 2", "bioNetworks": expected}, attribute["name"]
+
+
+def test_tier_2_number_fields_are_decimal(tier_2_dictionary):
+    ranges = {a["name"]: a["range"] for c in tier_2_dictionary["classes"] for a in c["attributes"]}
+    decimal = {"bmi", "alcohol_units", "smoking_pack_years", "time_to_laboratory"}
+    assert {name for name, value in ranges.items() if value == "decimal"} == decimal
+
+
+def test_tier_2_networks_extend_the_tier_2_classes():
+    tier_2 = SchemaView(str(TIER_2_SCHEMA_PATH), merge_imports=True)
+    assert get_bionetwork_subclasses(tier_2, "Tier2Donor") == {
+        "GeneticDiversityTier2Donor": "genetic-diversity",
+        "MusculoskeletalTier2Donor": "musculoskeletal",
+    }
+    assert get_bionetwork_subclasses(tier_2, "Tier2Sample") == {"MusculoskeletalTier2Sample": "musculoskeletal"}
+
+
+def test_tier_1_schema_has_no_tier_2_class_or_slot(schemaview):
+    # Tier 2 has its own root: the validators' schema, and the Tier 1 and core dictionaries, never see it.
+    tier_2 = SchemaView(str(TIER_2_SCHEMA_PATH), merge_imports=True)
+    tier_2_only = {name for name in tier_2.all_classes() if "Tier2" in name}
+    assert tier_2_only and not tier_2_only & set(schemaview.all_classes())
+    assert "bmi" in tier_2.all_slots() and "bmi" not in schemaview.all_slots()
+
+
+def test_generate_tier_2_dictionary_writes_json(tier_2_dictionary, tmp_path):
+    output = tmp_path / "out.json"
+    generate_tier_2_dictionary(output)
+    assert json.loads(output.read_text()) == tier_2_dictionary
+
+
 def _layout(tmp_path, sections, slots=""):
     """Write a dictionary layout with a minimal header, the given section classes and slots, and return its path."""
     layout = (
@@ -754,6 +1037,11 @@ def test_only_sections_are_emitted_in_layout_order(mapping_tier_1):
 
 def test_fields_follow_the_layout_order(mapping_tier_1):
     assert list(_attributes(mapping_tier_1, "Dataset")) == ["sheet_optional", "title", "bare"]
+
+
+def test_tier_1_leaves_out_the_entry_sheet_relaxation(mapping_tier_1):
+    attribute = _attributes(mapping_tier_1, "Dataset")["sheet_optional"]
+    assert attribute["annotations"] == {"tier": "Tier 1", "bioNetworks": _ALL_NETWORKS}
 
 
 def test_mixin_supplies_slot_usage(mapping_tier_1):

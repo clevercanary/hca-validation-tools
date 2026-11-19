@@ -1,19 +1,21 @@
 #!/usr/bin/env python3
 """generate_dictionary.py - Generate data dictionary JSON files from LinkML schema files.
 
-Two dictionaries are generated: the full export of every slot under its schema class, which the HCA Atlas Tracker
-reads, and the HCA Data Portal's Tier 1 dictionary, laid out by `dictionary.yaml`.
+Three dictionaries are generated: the full export of every slot under its schema class, which the HCA Atlas Tracker
+reads, and the HCA Data Portal's Tier 1 and Tier 2 dictionaries, laid out by `dictionary.yaml` and
+`tier_2_dictionary.yaml`. Only the full export marks a slot that entry sheets may leave blank with
+`entrySheetRequired: false`.
 
-`make generate-data-dictionary` writes both to `packages/hca-metadata-schema/data_dictionaries/`, the npm package
+`make generate-data-dictionary` writes all three to `packages/hca-metadata-schema/data_dictionaries/`, the npm package
 `hca-metadata-schema`.
 """
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 import jsonasobj2
-from hca_metadata_schema import CORE_SCHEMA_PATH
+from hca_metadata_schema import CORE_SCHEMA_PATH, TIER_2_SCHEMA_PATH
 from linkml_runtime import SchemaView
 from linkml_runtime.dumpers import json_dumper
 from linkml_runtime.linkml_model import SchemaDefinition
@@ -24,10 +26,12 @@ from hca_validation.schema_utils import (
     get_bionetwork_keys,
     get_bionetwork_subclasses,
     get_class_entity_type,
+    get_entry_sheet_optional_slots,
 )
 
 # The portal's header, sections and AnnData structure rows (#760)
 LAYOUT_PATH = Path(__file__).with_name("dictionary.yaml")
+TIER_2_LAYOUT_PATH = Path(__file__).with_name("tier_2_dictionary.yaml")
 
 _SECTION_SUFFIX = "Section"
 
@@ -78,17 +82,24 @@ def transform_schema_to_data_dictionary(schemaview: SchemaView, cxg_reference: s
         }
 
         # Slots every network uses get the full network list
-        attributes = []
+        attributes = {}
         for slot_info in schemaview.class_induced_slots(class_name):
             attribute = slot_to_attribute(schemaview, slot_info, schema_enum_names)
             attribute.setdefault("annotations", {})["bioNetworks"] = list(all_networks)
-            attributes.append(attribute)
+            attributes[slot_info.name] = attribute
 
         # Slots only bionetwork subclasses add are folded in, scoped to those networks
-        attributes += fold_bionetwork_slots(schemaview, class_name, schema_enum_names).values()
+        attributes |= fold_bionetwork_slots(schemaview, class_name, schema_enum_names)
+
+        # The fold refuses a network that relaxes a slot differently, so the union has one answer per slot
+        subclasses = get_bionetwork_subclasses(schemaview, class_name)
+        for slot_name in get_entry_sheet_optional_slots(schemaview, class_name).union(
+            *(get_entry_sheet_optional_slots(schemaview, subclass) for subclass in subclasses)
+        ):
+            attributes[slot_name]["annotations"][ENTRY_SHEET_REQUIRED] = False
 
         # Sort by name to retain consistent order
-        class_entry["attributes"] = sorted(attributes, key=lambda attribute: attribute["name"])
+        class_entry["attributes"] = sorted(attributes.values(), key=lambda attribute: attribute["name"])
 
         # Add the class to the output
         output["classes"].append(class_entry)
@@ -97,14 +108,16 @@ def transform_schema_to_data_dictionary(schemaview: SchemaView, cxg_reference: s
 
 
 def transform_layout_to_data_dictionary(schemaview: SchemaView, layout: SchemaDefinition) -> dict[str, Any]:
-    """The Tier 1 dictionary: `layout`'s header, then each of its classes as a section, in file order.
+    """A portal dictionary, Tier 1 or Tier 2: `layout`'s header, then each of its classes as a section, in file order.
 
     `schemaview` must have `layout` merged into it, as `load_schemas` returns them. `prefixes` holds the layout's
     prefixes other than `linkml`.
 
     Raises:
-        ValueError: As `section_entry` and `fold_bionetwork_slots` do
+        ValueError: If no section lists a slot that a bionetwork subclass adds to a section's core class, or as
+            `section_entry` and `fold_bionetwork_slots` do
     """
+    check_network_slots_listed(schemaview, layout)
     schema_enum_names = set(schemaview.all_enums())
     all_networks = get_bionetwork_keys(schemaview)
     layout_slots = set(layout.slots)
@@ -119,6 +132,25 @@ def transform_layout_to_data_dictionary(schemaview: SchemaView, layout: SchemaDe
         "prefixes": {tag: prefix.prefix_reference for tag, prefix in layout.prefixes.items() if tag != "linkml"},
         "annotations": {tag: annotation.value for tag, annotation in jsonasobj2.items(layout.annotations)},
     }
+
+
+def check_network_slots_listed(schemaview: SchemaView, layout: SchemaDefinition) -> None:
+    """Raise ValueError if no section of a core class lists a slot that a bionetwork subclass adds to that class."""
+    listed: dict[str, set[str]] = {}
+    for name in layout.classes:
+        section = schemaview.get_class(name)
+        for core_class in section.mixins:
+            listed.setdefault(core_class, set()).update(section.slots)
+    for core_class, core_listed in sorted(listed.items()):
+        base = {slot.name for slot in schemaview.class_induced_slots(core_class)}
+        added = {
+            slot.name
+            for subclass in get_bionetwork_subclasses(schemaview, core_class)
+            for slot in schemaview.class_induced_slots(subclass)
+        }
+        unlisted = sorted(added - base - core_listed)
+        if unlisted:
+            raise ValueError(f"No section lists {', '.join(unlisted)}, which networks add to {core_class}")
 
 
 def section_entry(
@@ -167,6 +199,13 @@ def section_entry(
     }
 
 
+class _FoldedDefinition(NamedTuple):
+    """A slot's definition and whether entry sheets may leave it blank, which the induced slot can't show."""
+
+    definition: dict[str, Any]
+    entry_sheet_optional: bool
+
+
 def fold_bionetwork_slots(
     schemaview: SchemaView, base_class: str, schema_enum_names: set[str]
 ) -> dict[str, dict[str, Any]]:
@@ -174,18 +213,21 @@ def fold_bionetwork_slots(
     Map each slot that bionetwork subclasses add to `base_class` to its attribute, with
     `bioNetworks` set to the sorted union of the networks that add it.
 
-    Raises ValueError if a subclass changes a base slot, or two subclasses define the same
-    added slot differently: the data dictionary can show only one definition per slot. Also
-    raises it as `slot_to_attribute` does.
+    Raises ValueError if a subclass changes a base slot (relaxing it for entry sheets included), or two subclasses
+    define the same added slot differently: the data dictionary can show only one definition per slot. Also
+    raises it as `slot_to_attribute` and `get_entry_sheet_optional_slots` do.
     """
+    base_optional = get_entry_sheet_optional_slots(schemaview, base_class)
     base_definitions = {
-        slot_info.name: slot_definition(slot_info) for slot_info in schemaview.class_induced_slots(base_class)
+        slot_info.name: _FoldedDefinition(slot_definition(slot_info), slot_info.name in base_optional)
+        for slot_info in schemaview.class_induced_slots(base_class)
     }
-    folded: dict[str, tuple[dict[str, Any], dict[str, Any], set[str]]] = {}
+    folded: dict[str, tuple[_FoldedDefinition, dict[str, Any], set[str]]] = {}
 
     for subclass_name, network in get_bionetwork_subclasses(schemaview, base_class).items():
+        subclass_optional = get_entry_sheet_optional_slots(schemaview, subclass_name)
         for slot_info in schemaview.class_induced_slots(subclass_name):
-            definition = slot_definition(slot_info)
+            definition = _FoldedDefinition(slot_definition(slot_info), slot_info.name in subclass_optional)
             if slot_info.name in base_definitions:
                 if definition != base_definitions[slot_info.name]:
                     raise ValueError(f"{subclass_name} changes {base_class}'s {slot_info.name!r}")
@@ -260,7 +302,7 @@ def slot_to_attribute(schemaview: SchemaView, slot_info, schema_enum_names: set[
         for annot_name, annot_info in jsonasobj2.items(slot_info.annotations):
             if annot_name == _DISPLAY_RANGE:
                 attribute["range"] = annot_info.value
-            elif annot_name != ENTRY_SHEET_REQUIRED:  # #850: the dictionary reports `required` alone
+            elif annot_name != ENTRY_SHEET_REQUIRED:  # Read by `get_entry_sheet_optional_slots` instead
                 formatted_annotations[annot_name] = annot_info.value
         attribute["annotations"] = formatted_annotations
 
@@ -319,4 +361,9 @@ def generate_dictionary(output_path, schema_path=CORE_SCHEMA_PATH, layout_path=L
 
 def generate_tier_1_dictionary(output_path, schema_path=CORE_SCHEMA_PATH, layout_path=LAYOUT_PATH):
     """Generate the HCA Data Portal's Tier 1 data dictionary JSON from the schema and the layout."""
+    _write(transform_layout_to_data_dictionary(*load_schemas(schema_path, layout_path)), output_path)
+
+
+def generate_tier_2_dictionary(output_path, schema_path=TIER_2_SCHEMA_PATH, layout_path=TIER_2_LAYOUT_PATH):
+    """Generate the HCA Data Portal's Tier 2 data dictionary JSON from the Tier 2 schema and its layout."""
     _write(transform_layout_to_data_dictionary(*load_schemas(schema_path, layout_path)), output_path)

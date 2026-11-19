@@ -1,0 +1,863 @@
+id: https://github.com/clevercanary/hca-validation-tools/schema/tier_2/slots
+name: hca-validation-tier-2-slots
+title: Tier 2 Slot Definitions for HCA Validation Tools
+description: >-
+  Tier 2 donor and sample slots, collected under managed access. Each bionetwork's Tier 2 class lists the slots it
+  uses; no Tier 1 class does.
+license: MIT
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  hca: https://github.com/clevercanary/hca-validation-tools/schema/
+
+default_prefix: hca
+default_range: string
+
+imports:
+  - linkml:types
+
+slots:
+  # The keys that join a Tier 2 record to its Tier 1 donor or sample, defined as Tier 1 defines them. Tier 2 imports
+  # no Tier 1 slot, so a Tier 1 change never changes a Tier 2 class.
+  donor_id:
+    title: Donor ID
+    description: >-
+      This must be free-text that identifies a unique individual that data were derived from.
+    examples:
+      - value: CR_donor_1
+      - value: MM_donor_1
+      - value: LR_donor_2
+    identifier: true
+    required: true
+  sample_id:
+    title: Sample ID
+    description: >-
+      Identification number of the sample. This is the fundamental unit of sampling the tissue (the specimen taken from the subject), which can be the same as the 'subject_ID', but is often different if multiple samples are taken from the same subject. Note: this is NOT a unit of multiplexing of donor samples, which should be stored in "library".
+    examples:
+      - value: SC24
+      - value: SC25
+      - value: SC28
+    identifier: true
+    required: true
+  age_value:
+    title: Age Value
+    description: Age of donor at the time of sample collection. Specify the age unit (week, month, year) in age_unit.
+    range: integer
+    examples:
+      - value: '20'
+      - value: '32'
+      - value: '56'
+    comments:
+      - Age can impact cellular and molecular phenotypes.
+    annotations:
+      tier: Tier 2
+  age_unit:
+    title: Age Unit
+    description: Age unit (week, month, year) for the age_value.
+    range: string
+    examples:
+      - value: day
+      - value: week
+      - value: month
+      - value: year
+    comments:
+      - Age can impact cellular and molecular phenotypes.
+    notes:
+      - day; week; month; year
+    annotations:
+      tier: Tier 2
+  bmi:
+    title: BMI
+    description: Body mass index of the donor at the time of collection.
+    range: decimal
+    examples:
+      - value: '36.4'
+      - value: '19.2'
+      - value: '27'
+    comments:
+      - >-
+        May serve as a covariate for analysis of human diversity. If height or weight is not provided but BMI is, fill
+        here.
+    annotations:
+      tier: Tier 2
+  height:
+    title: Height
+    description: Height of donor in cm at the time of collection.
+    range: integer
+    examples:
+      - value: '160'
+      - value: '137'
+      - value: '203'
+    comments:
+      - >-
+        Highly heritable (PMID: 36224396); together with weight can allow for computation of body-mass index, which may
+        serve as a covariate for analyses of human diversity.
+    annotations:
+      tier: Tier 2
+  weight:
+    title: Weight
+    description: Weight of donor in kilograms at the time of collection.
+    range: integer
+    examples:
+      - value: '50'
+      - value: '80'
+    comments:
+      - >-
+        Together with height can allow for computation of body-mass index, which may serve as a covariate for analyses
+        of human diversity.
+    annotations:
+      tier: Tier 2
+  genderidentity_selfreported:
+    title: Gender Identity Self-Reported
+    description: Donor self-reported gender identity.
+    range: string
+    examples:
+      - value: Female Gender
+      - value: Male Gender
+      - value: Non-Binary Gender
+      - value: Other Gender
+      - value: Agender
+      - value: Gender Fluid
+      - value: Gender Identifier X
+      - value: Genderqueer
+      - value: Transgender
+      - value: Two-spirit
+    comments:
+      - Gender identity information may be important for studies involving hormonal treatments, etc.
+    annotations:
+      tier: Tier 2
+  ethnicity_selfreported_freetext:
+    title: Ethnicity Self-Reported Free Text
+    description: >-
+      Donor self-reported ethnicity (or ethnicities) in free-text; can include tribe, dialect group, etc. If race information
+      is submitted under this field, please ensure that the question(s) and response options posed to donors are included
+      in the next metadata category ("ethnicity_question_text"). Separate multiple entries with a comma.
+    range: string
+    comments:
+      - >-
+        Self-reported ethnicity information can encompass language, religion, tribe, and cultural factors, beyond genetic
+        ancestry.
+    annotations:
+      tier: Tier 2
+  ethnicity_question_text:
+    title: Ethnicity Question Text
+    description: >-
+      Question and response options posed to donors for collecting metadata on donor self-reported ethnicity and / or tribe
+      and / or dialect group and / or race etc.
+    range: string
+    examples:
+      - value: '"What is your ethnicity?"'
+      - value: '"Are you Hispanic/Latino?"'
+      - value: Example from All of Us "Which categories describe you? Select all that apply. Note You may select more than
+          one group. American Indian or Alaska Native (for example, Aztec, Blackfeet Tribe, Mayan, Navajo Nation, Native
+          Village of Barrow (Utqiagvik) Inupiat Traditional Government, Nome Eskimo Community, etc.)* Asian (for example,
+          Asian Indian, Chinese, Filipino, Japanese, Korean, Vietnamese, etc.)* Black, African American, or African (for
+          example, African American, Ethiopian, Haitian, Jamaican, Nigerian, Somali, etc.)* Hispanic, Latino, or Spanish
+          (for example, Columbian, Cuban, Dominican, Mexican or Mexican American, Puerto Rican, Salvadoran, etc.)* Middle
+          Eastern or North African (for example, Algerian, Egyptian, Iranian, Lebanese, Moroccan, Syrian, etc.)* Native
+          Hawaiian or other Pacific Islander (for example, Chamorro, Fijian, Marshallese, Native Hawaiian, Tongan, etc.)*
+          White (for example, English, European, French, German, Irish, Italian, Polish, etc.)* None of these fully describe
+          me (optional free text answer) Prefer not to answer" not collected, not available
+    comments:
+      - >-
+        Provides context on the method for collecting self-reported ethnicity, tribe, dialect group, or race information.
+        Self-reported ethnicity information can encompass language, religion, tribe, and cultural factors, beyond genetic
+        ancestry.
+    annotations:
+      tier: Tier 2
+  language_donor_primary_language:
+    title: Language Donor Primary Language
+    description: Primary language(s), spoken by donor. Can include dialects (for example, Hokkien).
+    range: string
+    examples:
+      - value: Mandarin Chinese
+      - value: Hokkien
+      - value: Bahasa Melayu
+      - value: Tamil
+      - value: Hausa
+      - value: Yoruba
+      - value: Swahili
+    comments:
+      - >-
+        Primary language(s) may contain information relevant to ancestry, as well as a donor's environmental and cultural
+        context.
+    annotations:
+      tier: Tier 2
+  geography_currentresidence_location_country_state:
+    title: Geography Current Residence Location Country State
+    description: Country and state of donor's current residence at time of sample collection.
+    range: string
+    examples:
+      - value: Singapore
+      - value: United Kingdom
+      - value: Massachusetts USA
+      - value: New South Wales Australia
+      - value: Bauchi State
+      - value: Nigeria
+    comments:
+      - Geographical diversity of donors, at a coarser level (country and state).
+    annotations:
+      tier: Tier 2
+  geography_currentresidence_location_granular:
+    title: Geography Current Residence Location Granular
+    description: >-
+      Nearest city, town, or village to location of donor's current residence at time of sample collection.
+    range: string
+    examples:
+      - value: Singapore
+      - value: Cambridge
+      - value: Boston
+      - value: Kingston
+    comments:
+      - Geographical diversity of donors, at a more granular level (city / town / village).
+    annotations:
+      tier: Tier 2
+  occupation:
+    title: Occupation
+    description: Specify the occupation of the donor.
+    range: string
+    examples:
+      - value: Should be mapped to OccO Occupation Ontology OCCO:00000001
+    notes:
+      - >-
+        [OCCO ontology](https://www.ebi.ac.uk/ols4/ontologies/occo/classes/http%253A%252F%252Fpurl.obolibrary.org%252Fobo%252FOCCO_00000001?lang=en)
+    annotations:
+      tier: Tier 2
+  comorbidities:
+    title: Comorbidities
+    description: >-
+      Indicate all comorbidities/ secondary diagnoses of the donor (primary diagnosis was asked in disease_ontology_term_id
+      field of tier 1 metadata). This must be a MONDO term. Separate multiple entries with a comma.
+    range: string
+    examples:
+      - value: MONDO:0005044
+      - value: MONDO:0005148
+    notes:
+      - '[MONDO ontology](https://www.ebi.ac.uk/ols4/ontologies/mondo)'
+    annotations:
+      tier: Tier 2
+  genotype:
+    title: Genotype
+    description: Genotype of the biomaterial.
+    range: string
+    examples:
+      - value: DRB1 0401 protective allele
+      - value: HLA-B*3901 allele
+    annotations:
+      tier: Tier 2
+  medication:
+    title: Medication
+    description: >-
+      List of prescription medication consumed by the donor at time of sample collection. Should be an NCIT ontology term
+    range: string
+    examples:
+      - value: atorvastatin
+      - value: brevicon
+      - value: chlorthalidone
+    comments:
+      - Medication consumption may be a covariate / exclusion criterion in analyses of human diversity.
+    notes:
+      - >-
+        [NCIT ontology term](https://www.ebi.ac.uk/ols4/ontologies/ncit/classes/http%253A%252F%252Fpurl.obolibrary.org%252Fobo%252FNCIT_C1908?lang=en)
+    annotations:
+      tier: Tier 2
+  diet_meat_consumption:
+    title: Diet Meat Consumption
+    description: >-
+      Dietary patterns of donor – meat (chicken, seafood, fish, pork, lamb, beef, etc.) consumption versus meat-free diet
+      – at time of sample collection. Fill yes if donor consumes meat or no if donor does not consumes meat.
+    range: string
+    examples:
+      - value: 'yes'
+      - value: 'no'
+    comments:
+      - Diet can impact cellular and molecular phenotypes.
+    notes:
+      - yes; no
+    annotations:
+      tier: Tier 2
+  medical_test_results:
+    title: Medical Test Results
+    description: Results from medical tests performed on the individual.
+    range: string
+    examples:
+      - value: lipid panel shows normal level of LDL (124 mg/dL)
+      - value: 'HIV, HBV, HCV: Negative'
+    annotations:
+      tier: Tier 2
+  treatments:
+    title: Treatments
+    description: Treatments the individual has undergone prior to biomaterial collection.
+    range: string
+    examples:
+      - value: Patient treated with antibiotics for a urinary tract infection
+      - value: Patient treated with chemotherapy (Epirubicin, cisplatin, capecitabine) to treat stomach cancer
+    annotations:
+      tier: Tier 2
+  previous_surgery:
+    title: Previous Surgery
+    description: Specify the type of previous surgery the individual has undergone prior to biomaterial collection.
+    range: string
+    annotations:
+      tier: Tier 2
+  previous_surgery_relative_time_point:
+    title: Previous Surgery Relative Time Point
+    description: >-
+      Indicate the time interval between the surgery and the sample collection in Previous surgery Relative Time Unit
+    range: integer
+    examples:
+      - value: '4'
+      - value: '37'
+      - value: '58'
+    annotations:
+      tier: Tier 2
+  previous_surgery_relative_time_unit:
+    title: Previous Surgery Relative Time Unit
+    description: Indicate the Time units of the time interval between the surgery and the sample collection.
+    range: string
+    examples:
+      - value: day
+      - value: week
+      - value: month
+      - value: year
+    notes:
+      - day; week; month; year
+    annotations:
+      tier: Tier 2
+  history_of_injury_type:
+    title: History of Injury Type
+    description: Specify the type of injury the individual underwent in the area of the collected biomaterial.
+    range: string
+    examples:
+      - value: ankle injury
+      - value: burn
+      - value: spinal cord injury
+    annotations:
+      tier: Tier 2
+  history_of_injury_type_relative_time_point:
+    title: History of Injury Type Relative Time Point
+    description: >-
+      Indicate the time interval between the injury and the sample collection in History of injury relative time unit.
+    range: integer
+    examples:
+      - value: '4'
+      - value: '37'
+      - value: '58'
+    annotations:
+      tier: Tier 2
+  history_of_injury_type_relative_time_unit:
+    title: History of Injury Type Relative Time Unit
+    description: Indicate the Time units of the time interval between the injury and the sample collection.
+    range: string
+    examples:
+      - value: day
+      - value: week
+      - value: month
+      - value: year
+    notes:
+      - day; week; month; year
+    annotations:
+      tier: Tier 2
+  alcohol_status:
+    title: Alcohol Status
+    description: Does the donor have drink/ drank/ never drank alcohol?
+    range: string
+    examples:
+      - value: active
+      - value: former
+      - value: never
+    notes:
+      - active; former; never
+    annotations:
+      tier: Tier 2
+  alcohol_type:
+    title: Alcohol Type
+    description: Types of alcoholic beverages consumed.
+    range: string
+    examples:
+      - value: beer
+      - value: liquor
+      - value: wine
+    notes:
+      - beer; liquor; wine
+    annotations:
+      tier: Tier 2
+  alcohol_usage_duration:
+    title: Alcohol Usage Duration
+    description: Frequency of alcohol intake per week.
+    range: integer
+    examples:
+      - value: '3'
+      - value: '14'
+      - value: '21'
+    annotations:
+      tier: Tier 2
+  alcohol_units:
+    title: Alcohol Units
+    description: Alcohol consumption of donor in alcohol units per week (strength (ABV) x volume (ml) ÷ 1,000).
+    range: decimal
+    examples:
+      - value: '0.4'
+      - value: '7'
+      - value: '14.9'
+    annotations:
+      tier: Tier 2
+  smoking_status:
+    title: Smoking Status
+    description: If the donor smokes/smoked or not.
+    range: string
+    examples:
+      - value: active
+      - value: former
+      - value: never
+    comments:
+      - >-
+        Smoking may impact cellular and molecular phenotypes, and can serve as a covariate for human diversity analyses.
+    notes:
+      - active; former; never
+    annotations:
+      tier: Tier 2
+  years_since_smoking_cessation:
+    title: Years Since Smoking Cessation
+    description: If smoking status is "former", specify the number of years since smoking cessation, if available.
+    range: integer
+    examples:
+      - value: '1'
+      - value: '4'
+      - value: '12'
+    annotations:
+      tier: Tier 2
+  smoking_pack_years:
+    title: Smoking Pack Years
+    description: >-
+      Estimated number of packs (20 cigarettes) smoked per day multiplied by the number of years subject was smoking.
+    range: decimal
+    examples:
+      - value: '4.55'
+      - value: '12'
+      - value: '49.5'
+    annotations:
+      tier: Tier 2
+  nutritional_state:
+    title: Nutritional State
+    description: Nutritional state of individual at time of biomaterial collection.
+    range: string
+    examples:
+      - value: normal
+      - value: fasting
+      - value: feeding tube removed
+    notes:
+      - normal; fasting; feeding tube removed
+    annotations:
+      tier: Tier 2
+  physical_activity_physical_exposure:
+    title: Physical Activity / Physical Exposure
+    description: Indicate the habitual level of physical activity and regular physical activities
+    range: string
+    examples:
+      - value: active -  football, tennis
+      - value: sedentary
+    annotations:
+      tier: Tier 2
+  handedness:
+    title: Handedness
+    description: Dominant hand of the donor
+    range: string
+    examples:
+      - value: left
+      - value: right
+      - value: ambidextrous
+      - value: unknown
+    notes:
+      - left; right; ambidextrous; unknown
+    annotations:
+      tier: Tier 2
+  microanatomical_region:
+    title: Microanatomical Region
+    description: Where in relation to other anatomical landmarks was the tissue collected from?
+    range: string
+    examples:
+      - value: myotendinous junction, trabecular, enthesis
+    annotations:
+      tier: Tier 2
+  geography_collectionsite_latitude_longitude:
+    title: Geography Collectionsite Latitude Longitude
+    description: Latitude and longitude GPS coordinates of collection site in decimal degrees.
+    range: string
+    examples:
+      - value: 1.3, 103.8
+      - value: not_sharable
+    comments:
+      - >-
+        Contains information relevant for geographical diversity of donors; possible proxy for environmental exposures.
+    annotations:
+      tier: Tier 2
+  geography_currentresidence_duration:
+    title: Geography Currentresidence Duration
+    description: >-
+      Duration of residence, in years, rounded up to the nearest whole number, at time of sample collection.
+    range: integer
+    examples:
+      - value: '20'
+      - value: '37'
+      - value: '45'
+    comments:
+      - Indication of duration of environmental exposure relating to current residence.
+    annotations:
+      tier: Tier 2
+  geography_currentresidence_urbanrural:
+    title: Geography Currentresidence Urban Rural
+    description: Urban, suburban, or rural descriptor of current residence.
+    range: string
+    examples:
+      - value: urban
+      - value: suburban
+      - value: rural
+    comments:
+      - Contains information on environmental exposure relating to current residence
+    notes:
+      - urban; suburban; rural
+    annotations:
+      tier: Tier 2
+  geography_placeofbirth_location_country_state:
+    title: Geography Place of Birth Location Country State
+    description: Country and state of place of birth.
+    range: string
+    examples:
+      - value: Singapore
+      - value: United Kingdom
+      - value: Massachusetts USA
+      - value: New South Wales Australia
+      - value: Bauchi State
+      - value: Nigeria
+    comments:
+      - Geographical diversity of donors, at a coarser level (country and state).
+    annotations:
+      tier: Tier 2
+  geography_placeofbirth_location_granular:
+    title: Geography Place of Birth Location Granular
+    description: Nearest city, town, or village to location of place of birth.
+    range: string
+    examples:
+      - value: Singapore
+      - value: Cambridge
+      - value: Boston
+      - value: Kingston
+    comments:
+      - Geographical diversity of donors, at a more granular level (city / town / village).
+    annotations:
+      tier: Tier 2
+  geography_placeofbirth_duration:
+    title: Geography Place of Birth Duration
+    description: Duration of residence, in years, rounded up to the nearest whole number.
+    range: integer
+    examples:
+      - value: '20'
+      - value: '37'
+      - value: '45'
+    comments:
+      - Indication of duration of environmental exposure relating to place of birth.
+    annotations:
+      tier: Tier 2
+  geography_placeofbirth_urbanrural:
+    title: Geography Place of Birth Urban Rural
+    description: Urban, suburban, or rural descriptor of place of birth.
+    range: string
+    examples:
+      - value: urban
+      - value: suburban
+      - value: rural
+    comments:
+      - Contains information on environmental exposure relating to place of birth
+    notes:
+      - urban; suburban; rural
+    annotations:
+      tier: Tier 2
+  ethnicity_parents_selfreported_freetext:
+    title: Ethnicity Parents Self-Reported Freetext
+    description: >-
+      Donor's parents' self-reported ethnicity (or ethnicities) in free-text; can include tribe, dialect group, etc. Separate
+      multiple entries with a comma.
+    range: string
+    examples:
+      - value: Singaporean Chinese
+      - value: Singaporean Malay
+      - value: Singaporean Indian
+      - value: Haitian
+      - value: Nigerian Hausa
+      - value: Ghana Hausa
+      - value: Benin Kanuri
+      - value: Nigerian Kanuri
+      - value: Igbo
+      - value: Luo
+      - value: Herero
+      - value: Garifuna
+      - value: Kalinago
+    comments:
+      - >-
+        Self-reported ethnicity information can encompass language, religion, tribe, and cultural factors, beyond genetic
+        ancestry.
+    annotations:
+      tier: Tier 2
+  language_mother_father_tongue:
+    title: Language Mother Father Tongue
+    description: >-
+      Ancestral language(s), spoken by parents ("mother tongue" and / or "father tongue") and / or grandparents. Can include
+      dialects (for example, Hokkien).
+    range: string
+    examples:
+      - value: Mandarin Chinese
+      - value: Hokkien
+      - value: Bahasa Melayu
+      - value: Tamil
+      - value: Hausa
+      - value: Yoruba
+      - value: Swahili
+    comments:
+      - Mother and father tongues may contain information relevant to ancestry.
+    annotations:
+      tier: Tier 2
+  menarche_age:
+    title: Menarche Age
+    description: Age at menarche, rounded to nearest whole number.
+    range: integer
+    examples:
+      - value: '13'
+      - value: '12'
+      - value: '16'
+    comments:
+      - Age at menarche may be a covariate in analyses of human diversity.
+    annotations:
+      tier: Tier 2
+  reproductive_menopause:
+    title: Reproductive Menopause
+    description: Menopausal status of donor at time of sample collection.
+    range: string
+    examples:
+      - value: pre-menopausal
+      - value: peri-menopausal
+      - value: post-menopausal
+      - value: post-menopausal (induced)
+      - value: not applicable
+    comments:
+      - Menopausal status may be a covariate in analyses of human diversity.
+    notes:
+      - pre-menopausal; peri-menopausal; post-menopausal; post-menopausal (induced); not applicable
+    annotations:
+      tier: Tier 2
+  reproductive_number_children:
+    title: Reproductive Number Children
+    description: >-
+      Number of children (full-term pregnancies) the donor has given birth to at time of sample collection.
+    range: integer
+    examples:
+      - value: '0'
+      - value: '2'
+      - value: '3'
+    comments:
+      - Number of children (full-term pregnancies) may be a covariate in analyses of human diversity.
+    annotations:
+      tier: Tier 2
+  reproductive_number_pregnancies:
+    title: Reproductive Number Pregnancies
+    description: Number of pregnancies the donor has had at time of sample collection.
+    range: integer
+    examples:
+      - value: '2'
+      - value: '3'
+      - value: '5'
+    comments:
+      - Number of pregnancies may be a covariate in analyses of human diversity.
+    annotations:
+      tier: Tier 2
+  collected_tissue_processing:
+    title: Collected Tissue Processing
+    description: >-
+      A general description of the protocol. If possible specify in what container the tissue was collected in, and if
+      it was processed prior to storage or dissociation
+    range: string
+    examples:
+      - value: tissue collected in DMEM/F12 containing 10% FCS and washed in PBS. Frozen within 2h of surgery after all
+          fat trimmed off.
+    annotations:
+      tier: Tier 2
+  tissue_transportation:
+    title: Tissue Transportation
+    description: Was the sample transported at all? What are the details?
+    range: string
+    examples:
+      - value: snap frozen tissue shipped from Argentina to the UK on dry ice.
+    annotations:
+      tier: Tier 2
+  time_to_laboratory:
+    title: Time to Laboratory
+    description: >-
+      Transit time in hours between tissue collection and tissue processing, meaning either storage in the laboratory or
+      processing for sequencing.
+    range: decimal
+    examples:
+      - value: '1.5'
+      - value: '2'
+    annotations:
+      tier: Tier 2
+  side_of_tissue_collected:
+    title: Side of Tissue Collected
+    description: The side of the donor the sample was collected from.
+    range: string
+    examples:
+      - value: left
+      - value: right
+      - value: main-axis
+      - value: unknown
+    notes:
+      - left; right; main-axis; unknown
+    annotations:
+      tier: Tier 2
+  sample_storage_method:
+    title: Sample Storage Method
+    description: The method by which a biomaterial was stored before tissue dissociation or processing
+    range: string
+    examples:
+      - value: ambient temperature
+      - value: cut slide
+      - value: fresh
+      - value: frozen at -70C
+      - value: frozen at -80C
+      - value: frozen at -150C
+      - value: frozen in liquid nitrogen
+      - value: frozen in vapor phase
+      - value: paraffin block
+      - value: RNAlater at 4C
+      - value: RNAlater at 25C
+      - value: RNAlater at -20C
+    notes:
+      - >-
+        ambient temperature; cut slide; fresh; frozen at -70C; frozen at -80C; frozen at -150C; frozen in liquid nitrogen;
+        frozen in vapor phase; paraffin block; RNAlater at 4C; RNAlater at 25C; RNAlater at -20C
+    annotations:
+      tier: Tier 2
+  sample_storage_relative_time_point:
+    title: Sample Storage Relative Time Point
+    description: >-
+      Indicate the time interval between the sample collection and the sample storage in sample storage relative time units.
+    range: integer
+    examples:
+      - value: '4'
+      - value: '37'
+      - value: '58'
+    annotations:
+      tier: Tier 2
+  sample_storage_relative_time_unit:
+    title: Sample Storage Relative Time Unit
+    description: Indicate the Time units of the time interval between the sample collection and the sample storage.
+    range: string
+    examples:
+      - value: day
+      - value: week
+      - value: month
+      - value: year
+    notes:
+      - day; week; month; year
+    annotations:
+      tier: Tier 2
+  sample_dissociation_relative_time_point:
+    title: Sample Dissociation Relative Time Point
+    description: >-
+      Indicate the time interval between the sample collection and the sample dissociation in sample dissociation relative
+      time unit.
+    range: integer
+    examples:
+      - value: '4'
+      - value: '37'
+      - value: '58'
+    annotations:
+      tier: Tier 2
+  sample_dissociation_relative_time_unit:
+    title: Sample Dissociation Relative Time Unit
+    description: >-
+      Indicate the Time units of the time interval between the sample collection and the sample dissociation.
+    range: string
+    examples:
+      - value: day
+      - value: week
+      - value: month
+      - value: year
+    notes:
+      - day; week; month; year
+    annotations:
+      tier: Tier 2
+  digestion_temperature:
+    title: Digestion Temperature
+    description: >-
+      The temperature that the tissue was digested with the digestion solution in Celsius degree or hot/ cold
+    range: string
+    examples:
+      - value: '42'
+      - value: '37'
+      - value: cold
+    annotations:
+      tier: Tier 2
+  dissociation_description:
+    title: Dissociation Description
+    description: A general description for the dissociation protocol of the tissue.
+    range: string
+    annotations:
+      tier: Tier 2
+  dissociation_doi:
+    title: Dissociation DOI
+    description: The publication or protocols.io digital object identifier (doi) for the protocol.
+    range: string
+    examples:
+      - value: 10.1073/pnas.2404775131
+      - value: 10.1016/j.ajog.2016.07.031
+    annotations:
+      tier: Tier 2
+  cell_suspension_storage_time:
+    title: Cell Suspension Storage Time
+    description: Length of time the biomaterial was stored prior to library prepration in Storage time units.
+    range: integer
+    examples:
+      - value: '4'
+      - value: '37'
+      - value: '58'
+    annotations:
+      tier: Tier 2
+  cell_suspension_storage_time_unit:
+    title: Cell Suspension Storage Time Unit
+    description: A term that may be associated with a time unit-related ontology term.
+    range: string
+    examples:
+      - value: day
+      - value: week
+      - value: month
+      - value: year
+    notes:
+      - day; week; month; year
+    annotations:
+      tier: Tier 2
+  library_prep_relative_time_point:
+    title: Library Prep Relative Time Point
+    description: >-
+      Indicate the time interval between the sample collection and the library preparation in library preparation relative
+      time unit.
+    range: integer
+    examples:
+      - value: '4'
+      - value: '37'
+      - value: '58'
+    annotations:
+      tier: Tier 2
+  library_prep_relative_time_unit:
+    title: Library Prep Relative Time Unit
+    description: >-
+      Indicate the Time units of the time interval between the sample collection and the library preparation.
+    range: string
+    examples:
+      - value: day
+      - value: week
+      - value: month
+      - value: year
+    notes:
+      - day; week; month; year
+    annotations:
+      tier: Tier 2

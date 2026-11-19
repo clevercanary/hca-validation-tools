@@ -1,0 +1,23 @@
+id: https://github.com/clevercanary/hca-validation-tools/schema/tier_2
+name: hca-validation-tier-2
+title: HCA Tier 2 Schema
+description: >-
+  Tier 2 donor and sample metadata, collected under managed access and kept apart from Tier 1. Released with the core
+  schema, at its version.
+license: MIT
+version: 0.3.2  # x-release-please-version
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  hca: https://github.com/clevercanary/hca-validation-tools/schema/
+
+default_prefix: hca
+default_range: string
+
+imports:
+  - linkml:types
+  - ../enums
+  - ./classes
+  - ./slots
+  - ./bionetwork/genetic-diversity
+  - ./bionetwork/musculoskeletal

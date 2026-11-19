@@ -710,7 +710,8 @@
               "pancreas",
               "reproduction",
               "skin"
-            ]
+            ],
+            "entrySheetRequired": false
           },
           "rationale": "Distinguishes this dataset from others in the same collection."
         }

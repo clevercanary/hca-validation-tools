@@ -1,17 +1,23 @@
 # hca-metadata-schema (npm)
 
 The HCA metadata data dictionaries, generated from the HCA LinkML schema in
-[clevercanary/hca-validation-tools](https://github.com/clevercanary/hca-validation-tools). Don't edit the two
+[clevercanary/hca-validation-tools](https://github.com/clevercanary/hca-validation-tools). Don't edit the
 dictionaries by hand: `make -C shared generate-data-dictionary` writes them.
 
 | File | Contents |
 |-|-|
 | `tier_1_data_dictionary.json` | The HCA Data Portal's Tier 1 dictionary: its sections, fields and order |
+| `tier_2_data_dictionary.json` | The HCA Data Portal's Tier 2 dictionary: the bionetworks' managed-access donor and sample fields, each with the networks that collect it |
 | `core_data_dictionary.json` | Every field of the core Dataset, Donor, Sample and Cell classes, as the HCA Atlas Tracker uses it |
 
 ```js
 import tier1 from "hca-metadata-schema/tier_1_data_dictionary.json" with { type: "json" };
 ```
+
+A field's `required` is what an h5ad file must contain. In `core_data_dictionary.json`, a required field that entry
+sheets may leave blank also has the boolean `"entrySheetRequired": false` in its `annotations`; a dataset, donor or
+sample field without the key has the same requirement on entry sheets as in h5ad files. Entry sheets have no cell tab.
+The Tier 1 dictionary never has the key.
 
 ## Versions
 
