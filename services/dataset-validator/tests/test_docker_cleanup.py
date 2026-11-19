@@ -52,6 +52,7 @@ SMOKE_TEST_COUNT = 6
     [
         ({}, {"skipped": SMOKE_TEST_COUNT}),
         ({"RUN_DOCKER_TESTS": "1"}, {"errors": SMOKE_TEST_COUNT}),
+        ({"RUN_DOCKER_TESTS": "true"}, {"skipped": SMOKE_TEST_COUNT}),
         ({"CI": "true"}, {"errors": SMOKE_TEST_COUNT}),
     ],
 )

@@ -30,7 +30,7 @@ install:
 .PHONY: test
 test:
 	@echo "Running dataset-validator tests..."
-	@$(UV) run pytest tests/ -v
+	@$(UV) run pytest tests/ -v --ignore=tests/test_docker_smoke.py
 
 .PHONY: test-docker
 test-docker:
