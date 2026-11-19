@@ -1,0 +1,28 @@
+id: https://github.com/clevercanary/hca-validation-tools/schema/tier_2/classes
+name: hca-validation-tier-2-classes
+title: HCA Tier 2 Base Classes
+description: >-
+  The Tier 2 donor and sample records. A Tier 2 record is kept apart from Tier 1 and joined to it by its ID; each
+  bionetwork extends these classes with its own Tier 2 fields.
+license: MIT
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  hca: https://github.com/clevercanary/hca-validation-tools/schema/
+
+default_prefix: hca
+default_range: string
+
+imports:
+  - linkml:types
+  - ./slots
+
+classes:
+  Tier2Donor:
+    description: Tier 2 metadata for one donor, joined to the Tier 1 donor by `donor_id`.
+    slots:
+      - donor_id
+  Tier2Sample:
+    description: Tier 2 metadata for one sample, joined to the Tier 1 sample by `sample_id`.
+    slots:
+      - sample_id

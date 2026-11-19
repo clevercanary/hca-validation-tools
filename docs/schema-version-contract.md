@@ -11,8 +11,9 @@ A version is only useful if a consumer can tell from it whether a file that pass
 
 ## 1. What is versioned
 
-1.1 **One version, in `packages/hca-metadata-schema/src/hca_metadata_schema/core.yaml`.** No other schema file
-    declares a `version:`. `core.yaml` imports every other schema file, so any change anywhere is a change to it.
+1.1 **One version, in `packages/hca-metadata-schema/src/hca_metadata_schema/core.yaml`.** The Tier 2 root,
+    `tier_2/tier_2.yaml`, declares the same value (§1.4); no other schema file declares a `version:`. Between them
+    the two roots import every schema file, so any change anywhere is a change to the version.
 
 1.2 The schema is the `hca-metadata-schema` package on PyPI (#350), and the package version is the schema version.
     The generated Pydantic module (`generated/core.py`), `__init__.py`'s `__version__` and `pyproject.toml` carry
@@ -36,8 +37,13 @@ A version is only useful if a consumer can tell from it whether a file that pass
 
     Until a consumer adopts a release, it reports the version it last adopted.
 
-1.4 The bionetwork schemas have no version of their own. Nothing loads one on its own, and all of them feed the one
-    published data dictionary. Revisit if Tier 2 (#790) makes networks change much faster than core.
+1.4 The bionetwork schemas have no version of their own. Nothing loads one on its own, and all of them feed the
+    published data dictionaries. Tier 2 has its own root, `tier_2/tier_2.yaml` (#790): a Tier 2 record is kept apart
+    from Tier 1 and joined to it by `donor_id` or `sample_id`, so the Tier 2 classes (`Tier2Donor`, `Tier2Sample`
+    and each network's `<Network>Tier2<Entity>` subclass) import no Tier 1 class or slot, and `core.yaml` doesn't
+    import them. Both roots release under the one version; the package's `tests/test_package.py` fails if they
+    differ. Revisit if Tier 2 needs its own owners or release schedule: a split then means a release-please
+    component of its own.
 
 1.5 `hca-schema-validator` does not load the LinkML schema; it checks files against its own rule set, which each
     package release pins. Its reports name that release as `validator_version` (#802). Its `__schema_version__`
@@ -48,7 +54,7 @@ A version is only useful if a consumer can tell from it whether a file that pass
 
 2.1 **Never edit the version by hand.** release-please owns it: the `hca-metadata-schema` component in
     `release-please-config.json` (path `packages/hca-metadata-schema`) bumps `pyproject.toml`, `__init__.py`,
-    `core.yaml` and `generated/core.py`, writes the package's `CHANGELOG.md`, tags `hca-metadata-schema-vX.Y.Z`, and
+    `core.yaml`, `tier_2/tier_2.yaml` and `generated/core.py`, writes the package's `CHANGELOG.md`, tags `hca-metadata-schema-vX.Y.Z`, and
     the release workflow publishes the package to PyPI. Releases up to 0.2.0 were tagged `hca-schema-vX.Y.Z`, before
     the schema became a package; 0.2.0 is the first version on PyPI.
 

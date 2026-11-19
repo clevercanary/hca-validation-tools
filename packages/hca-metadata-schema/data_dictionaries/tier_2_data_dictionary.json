@@ -1,0 +1,1334 @@
+{
+  "name": "tier_2",
+  "title": "Tier 2 Metadata",
+  "description": "## Introduction\n\nThe Tier 2 metadata provides richer donor- and sample-level context, such as age, clinical phenotype, treatment, and similar fields, used in downstream analysis. Because some fields may be identifying, Tier\u202f2 metadata are collected and distributed under managed access. The Biological Networks group is finalizing the field list; drafts are in the [HCA Tier 2 Metadata Definitions](https://drive.google.com/drive/folders/1ngcIgKBV9OUM1pPO-CDRH6ZIpyiSpamu?usp=sharing) folder.",
+  "classes": [
+    {
+      "title": "Donor",
+      "description": "",
+      "name": "donor",
+      "attributes": [
+        {
+          "name": "age_value",
+          "title": "Age Value",
+          "description": "Age of donor at the time of sample collection. Specify the age unit (week, month, year) in age_unit.",
+          "range": "integer",
+          "required": false,
+          "multivalued": false,
+          "examples": [
+            "20",
+            "32",
+            "56"
+          ],
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "genetic-diversity",
+              "musculoskeletal"
+            ]
+          },
+          "rationale": "Age can impact cellular and molecular phenotypes."
+        },
+        {
+          "name": "age_unit",
+          "title": "Age Unit",
+          "description": "Age unit (week, month, year) for the age_value.",
+          "range": "string",
+          "required": false,
+          "multivalued": false,
+          "examples": [
+            "day",
+            "week",
+            "month",
+            "year"
+          ],
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "genetic-diversity",
+              "musculoskeletal"
+            ]
+          },
+          "rationale": "Age can impact cellular and molecular phenotypes.",
+          "values": "day; week; month; year"
+        },
+        {
+          "name": "bmi",
+          "title": "BMI",
+          "description": "Body mass index of the donor at the time of collection.",
+          "range": "decimal",
+          "required": false,
+          "multivalued": false,
+          "examples": [
+            "36.4",
+            "19.2",
+            "27"
+          ],
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "genetic-diversity",
+              "musculoskeletal"
+            ]
+          },
+          "rationale": "May serve as a covariate for analysis of human diversity. If height or weight is not provided but BMI is, fill here."
+        },
+        {
+          "name": "height",
+          "title": "Height",
+          "description": "Height of donor in cm at the time of collection.",
+          "range": "integer",
+          "required": false,
+          "multivalued": false,
+          "examples": [
+            "160",
+            "137",
+            "203"
+          ],
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "genetic-diversity",
+              "musculoskeletal"
+            ]
+          },
+          "rationale": "Highly heritable (PMID: 36224396); together with weight can allow for computation of body-mass index, which may serve as a covariate for analyses of human diversity."
+        },
+        {
+          "name": "weight",
+          "title": "Weight",
+          "description": "Weight of donor in kilograms at the time of collection.",
+          "range": "integer",
+          "required": false,
+          "multivalued": false,
+          "examples": [
+            "50",
+            "80"
+          ],
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "genetic-diversity",
+              "musculoskeletal"
+            ]
+          },
+          "rationale": "Together with height can allow for computation of body-mass index, which may serve as a covariate for analyses of human diversity."
+        },
+        {
+          "name": "genderidentity_selfreported",
+          "title": "Gender Identity Self-Reported",
+          "description": "Donor self-reported gender identity.",
+          "range": "string",
+          "required": false,
+          "multivalued": false,
+          "examples": [
+            "Female Gender",
+            "Male Gender",
+            "Non-Binary Gender",
+            "Other Gender",
+            "Agender",
+            "Gender Fluid",
+            "Gender Identifier X",
+            "Genderqueer",
+            "Transgender",
+            "Two-spirit"
+          ],
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "genetic-diversity",
+              "musculoskeletal"
+            ]
+          },
+          "rationale": "Gender identity information may be important for studies involving hormonal treatments, etc."
+        },
+        {
+          "name": "ethnicity_selfreported_freetext",
+          "title": "Ethnicity Self-Reported Free Text",
+          "description": "Donor self-reported ethnicity (or ethnicities) in free-text; can include tribe, dialect group, etc. If race information is submitted under this field, please ensure that the question(s) and response options posed to donors are included in the next metadata category (\"ethnicity_question_text\"). Separate multiple entries with a comma.",
+          "range": "string",
+          "required": false,
+          "multivalued": false,
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "genetic-diversity",
+              "musculoskeletal"
+            ]
+          },
+          "rationale": "Self-reported ethnicity information can encompass language, religion, tribe, and cultural factors, beyond genetic ancestry."
+        },
+        {
+          "name": "ethnicity_question_text",
+          "title": "Ethnicity Question Text",
+          "description": "Question and response options posed to donors for collecting metadata on donor self-reported ethnicity and / or tribe and / or dialect group and / or race etc.",
+          "range": "string",
+          "required": false,
+          "multivalued": false,
+          "examples": [
+            "\"What is your ethnicity?\"",
+            "\"Are you Hispanic/Latino?\"",
+            "Example from All of Us \"Which categories describe you? Select all that apply. Note You may select more than one group. American Indian or Alaska Native (for example, Aztec, Blackfeet Tribe, Mayan, Navajo Nation, Native Village of Barrow (Utqiagvik) Inupiat Traditional Government, Nome Eskimo Community, etc.)* Asian (for example, Asian Indian, Chinese, Filipino, Japanese, Korean, Vietnamese, etc.)* Black, African American, or African (for example, African American, Ethiopian, Haitian, Jamaican, Nigerian, Somali, etc.)* Hispanic, Latino, or Spanish (for example, Columbian, Cuban, Dominican, Mexican or Mexican American, Puerto Rican, Salvadoran, etc.)* Middle Eastern or North African (for example, Algerian, Egyptian, Iranian, Lebanese, Moroccan, Syrian, etc.)* Native Hawaiian or other Pacific Islander (for example, Chamorro, Fijian, Marshallese, Native Hawaiian, Tongan, etc.)* White (for example, English, European, French, German, Irish, Italian, Polish, etc.)* None of these fully describe me (optional free text answer) Prefer not to answer\" not collected, not available"
+          ],
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "genetic-diversity",
+              "musculoskeletal"
+            ]
+          },
+          "rationale": "Provides context on the method for collecting self-reported ethnicity, tribe, dialect group, or race information. Self-reported ethnicity information can encompass language, religion, tribe, and cultural factors, beyond genetic ancestry."
+        },
+        {
+          "name": "language_donor_primary_language",
+          "title": "Language Donor Primary Language",
+          "description": "Primary language(s), spoken by donor. Can include dialects (for example, Hokkien).",
+          "range": "string",
+          "required": false,
+          "multivalued": false,
+          "examples": [
+            "Mandarin Chinese",
+            "Hokkien",
+            "Bahasa Melayu",
+            "Tamil",
+            "Hausa",
+            "Yoruba",
+            "Swahili"
+          ],
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "genetic-diversity",
+              "musculoskeletal"
+            ]
+          },
+          "rationale": "Primary language(s) may contain information relevant to ancestry, as well as a donor's environmental and cultural context."
+        },
+        {
+          "name": "geography_currentresidence_location_country_state",
+          "title": "Geography Current Residence Location Country State",
+          "description": "Country and state of donor's current residence at time of sample collection.",
+          "range": "string",
+          "required": false,
+          "multivalued": false,
+          "examples": [
+            "Singapore",
+            "United Kingdom",
+            "Massachusetts USA",
+            "New South Wales Australia",
+            "Bauchi State",
+            "Nigeria"
+          ],
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "genetic-diversity",
+              "musculoskeletal"
+            ]
+          },
+          "rationale": "Geographical diversity of donors, at a coarser level (country and state)."
+        },
+        {
+          "name": "geography_currentresidence_location_granular",
+          "title": "Geography Current Residence Location Granular",
+          "description": "Nearest city, town, or village to location of donor's current residence at time of sample collection.",
+          "range": "string",
+          "required": false,
+          "multivalued": false,
+          "examples": [
+            "Singapore",
+            "Cambridge",
+            "Boston",
+            "Kingston"
+          ],
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "genetic-diversity",
+              "musculoskeletal"
+            ]
+          },
+          "rationale": "Geographical diversity of donors, at a more granular level (city / town / village)."
+        },
+        {
+          "name": "occupation",
+          "title": "Occupation",
+          "description": "Specify the occupation of the donor.",
+          "range": "string",
+          "required": false,
+          "multivalued": false,
+          "examples": [
+            "Should be mapped to OccO Occupation Ontology OCCO:00000001"
+          ],
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "musculoskeletal"
+            ]
+          },
+          "values": "[OCCO ontology](https://www.ebi.ac.uk/ols4/ontologies/occo/classes/http%253A%252F%252Fpurl.obolibrary.org%252Fobo%252FOCCO_00000001?lang=en)"
+        },
+        {
+          "name": "comorbidities",
+          "title": "Comorbidities",
+          "description": "Indicate all comorbidities/ secondary diagnoses of the donor (primary diagnosis was asked in disease_ontology_term_id field of tier 1 metadata). This must be a MONDO term. Separate multiple entries with a comma.",
+          "range": "string",
+          "required": false,
+          "multivalued": false,
+          "examples": [
+            "MONDO:0005044",
+            "MONDO:0005148"
+          ],
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "musculoskeletal"
+            ]
+          },
+          "values": "[MONDO ontology](https://www.ebi.ac.uk/ols4/ontologies/mondo)"
+        },
+        {
+          "name": "genotype",
+          "title": "Genotype",
+          "description": "Genotype of the biomaterial.",
+          "range": "string",
+          "required": false,
+          "multivalued": false,
+          "examples": [
+            "DRB1 0401 protective allele",
+            "HLA-B*3901 allele"
+          ],
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "musculoskeletal"
+            ]
+          }
+        },
+        {
+          "name": "medication",
+          "title": "Medication",
+          "description": "List of prescription medication consumed by the donor at time of sample collection. Should be an NCIT ontology term",
+          "range": "string",
+          "required": false,
+          "multivalued": false,
+          "examples": [
+            "atorvastatin",
+            "brevicon",
+            "chlorthalidone"
+          ],
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "genetic-diversity",
+              "musculoskeletal"
+            ]
+          },
+          "rationale": "Medication consumption may be a covariate / exclusion criterion in analyses of human diversity.",
+          "values": "[NCIT ontology term](https://www.ebi.ac.uk/ols4/ontologies/ncit/classes/http%253A%252F%252Fpurl.obolibrary.org%252Fobo%252FNCIT_C1908?lang=en)"
+        },
+        {
+          "name": "diet_meat_consumption",
+          "title": "Diet Meat Consumption",
+          "description": "Dietary patterns of donor \u2013 meat (chicken, seafood, fish, pork, lamb, beef, etc.) consumption versus meat-free diet \u2013 at time of sample collection. Fill yes if donor consumes meat or no if donor does not consumes meat.",
+          "range": "string",
+          "required": false,
+          "multivalued": false,
+          "examples": [
+            "yes",
+            "no"
+          ],
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "genetic-diversity",
+              "musculoskeletal"
+            ]
+          },
+          "rationale": "Diet can impact cellular and molecular phenotypes.",
+          "values": "yes; no"
+        },
+        {
+          "name": "medical_test_results",
+          "title": "Medical Test Results",
+          "description": "Results from medical tests performed on the individual.",
+          "range": "string",
+          "required": false,
+          "multivalued": false,
+          "examples": [
+            "lipid panel shows normal level of LDL (124 mg/dL)",
+            "HIV, HBV, HCV: Negative"
+          ],
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "musculoskeletal"
+            ]
+          }
+        },
+        {
+          "name": "treatments",
+          "title": "Treatments",
+          "description": "Treatments the individual has undergone prior to biomaterial collection.",
+          "range": "string",
+          "required": false,
+          "multivalued": false,
+          "examples": [
+            "Patient treated with antibiotics for a urinary tract infection",
+            "Patient treated with chemotherapy (Epirubicin, cisplatin, capecitabine) to treat stomach cancer"
+          ],
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "musculoskeletal"
+            ]
+          }
+        },
+        {
+          "name": "previous_surgery",
+          "title": "Previous Surgery",
+          "description": "Specify the type of previous surgery the individual has undergone prior to biomaterial collection.",
+          "range": "string",
+          "required": false,
+          "multivalued": false,
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "musculoskeletal"
+            ]
+          }
+        },
+        {
+          "name": "previous_surgery_relative_time_point",
+          "title": "Previous Surgery Relative Time Point",
+          "description": "Indicate the time interval between the surgery and the sample collection in Previous surgery Relative Time Unit",
+          "range": "integer",
+          "required": false,
+          "multivalued": false,
+          "examples": [
+            "4",
+            "37",
+            "58"
+          ],
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "musculoskeletal"
+            ]
+          }
+        },
+        {
+          "name": "previous_surgery_relative_time_unit",
+          "title": "Previous Surgery Relative Time Unit",
+          "description": "Indicate the Time units of the time interval between the surgery and the sample collection.",
+          "range": "string",
+          "required": false,
+          "multivalued": false,
+          "examples": [
+            "day",
+            "week",
+            "month",
+            "year"
+          ],
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "musculoskeletal"
+            ]
+          },
+          "values": "day; week; month; year"
+        },
+        {
+          "name": "history_of_injury_type",
+          "title": "History of Injury Type",
+          "description": "Specify the type of injury the individual underwent in the area of the collected biomaterial.",
+          "range": "string",
+          "required": false,
+          "multivalued": false,
+          "examples": [
+            "ankle injury",
+            "burn",
+            "spinal cord injury"
+          ],
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "musculoskeletal"
+            ]
+          }
+        },
+        {
+          "name": "history_of_injury_type_relative_time_point",
+          "title": "History of Injury Type Relative Time Point",
+          "description": "Indicate the time interval between the injury and the sample collection in History of injury relative time unit.",
+          "range": "integer",
+          "required": false,
+          "multivalued": false,
+          "examples": [
+            "4",
+            "37",
+            "58"
+          ],
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "musculoskeletal"
+            ]
+          }
+        },
+        {
+          "name": "history_of_injury_type_relative_time_unit",
+          "title": "History of Injury Type Relative Time Unit",
+          "description": "Indicate the Time units of the time interval between the injury and the sample collection.",
+          "range": "string",
+          "required": false,
+          "multivalued": false,
+          "examples": [
+            "day",
+            "week",
+            "month",
+            "year"
+          ],
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "musculoskeletal"
+            ]
+          },
+          "values": "day; week; month; year"
+        },
+        {
+          "name": "alcohol_status",
+          "title": "Alcohol Status",
+          "description": "Does the donor have drink/ drank/ never drank alcohol?",
+          "range": "string",
+          "required": false,
+          "multivalued": false,
+          "examples": [
+            "active",
+            "former",
+            "never"
+          ],
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "musculoskeletal"
+            ]
+          },
+          "values": "active; former; never"
+        },
+        {
+          "name": "alcohol_type",
+          "title": "Alcohol Type",
+          "description": "Types of alcoholic beverages consumed.",
+          "range": "string",
+          "required": false,
+          "multivalued": false,
+          "examples": [
+            "beer",
+            "liquor",
+            "wine"
+          ],
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "musculoskeletal"
+            ]
+          },
+          "values": "beer; liquor; wine"
+        },
+        {
+          "name": "alcohol_usage_duration",
+          "title": "Alcohol Usage Duration",
+          "description": "Frequency of alcohol intake per week.",
+          "range": "integer",
+          "required": false,
+          "multivalued": false,
+          "examples": [
+            "3",
+            "14",
+            "21"
+          ],
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "musculoskeletal"
+            ]
+          }
+        },
+        {
+          "name": "alcohol_units",
+          "title": "Alcohol Units",
+          "description": "Alcohol consumption of donor in alcohol units per week (strength (ABV) x volume (ml) \u00f7 1,000).",
+          "range": "decimal",
+          "required": false,
+          "multivalued": false,
+          "examples": [
+            "0.4",
+            "7",
+            "14.9"
+          ],
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "musculoskeletal"
+            ]
+          }
+        },
+        {
+          "name": "smoking_status",
+          "title": "Smoking Status",
+          "description": "If the donor smokes/smoked or not.",
+          "range": "string",
+          "required": false,
+          "multivalued": false,
+          "examples": [
+            "active",
+            "former",
+            "never"
+          ],
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "genetic-diversity",
+              "musculoskeletal"
+            ]
+          },
+          "rationale": "Smoking may impact cellular and molecular phenotypes, and can serve as a covariate for human diversity analyses.",
+          "values": "active; former; never"
+        },
+        {
+          "name": "years_since_smoking_cessation",
+          "title": "Years Since Smoking Cessation",
+          "description": "If smoking status is \"former\", specify the number of years since smoking cessation, if available.",
+          "range": "integer",
+          "required": false,
+          "multivalued": false,
+          "examples": [
+            "1",
+            "4",
+            "12"
+          ],
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "musculoskeletal"
+            ]
+          }
+        },
+        {
+          "name": "smoking_pack_years",
+          "title": "Smoking Pack Years",
+          "description": "Estimated number of packs (20 cigarettes) smoked per day multiplied by the number of years subject was smoking.",
+          "range": "decimal",
+          "required": false,
+          "multivalued": false,
+          "examples": [
+            "4.55",
+            "12",
+            "49.5"
+          ],
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "musculoskeletal"
+            ]
+          }
+        },
+        {
+          "name": "nutritional_state",
+          "title": "Nutritional State",
+          "description": "Nutritional state of individual at time of biomaterial collection.",
+          "range": "string",
+          "required": false,
+          "multivalued": false,
+          "examples": [
+            "normal",
+            "fasting",
+            "feeding tube removed"
+          ],
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "musculoskeletal"
+            ]
+          },
+          "values": "normal; fasting; feeding tube removed"
+        },
+        {
+          "name": "physical_activity_physical_exposure",
+          "title": "Physical Activity / Physical Exposure",
+          "description": "Indicate the habitual level of physical activity and regular physical activities",
+          "range": "string",
+          "required": false,
+          "multivalued": false,
+          "examples": [
+            "active -  football, tennis",
+            "sedentary"
+          ],
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "musculoskeletal"
+            ]
+          }
+        },
+        {
+          "name": "handedness",
+          "title": "Handedness",
+          "description": "Dominant hand of the donor",
+          "range": "string",
+          "required": false,
+          "multivalued": false,
+          "examples": [
+            "left",
+            "right",
+            "ambidextrous",
+            "unknown"
+          ],
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "musculoskeletal"
+            ]
+          },
+          "values": "left; right; ambidextrous; unknown"
+        },
+        {
+          "name": "microanatomical_region",
+          "title": "Microanatomical Region",
+          "description": "Where in relation to other anatomical landmarks was the tissue collected from?",
+          "range": "string",
+          "required": false,
+          "multivalued": false,
+          "examples": [
+            "myotendinous junction, trabecular, enthesis"
+          ],
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "musculoskeletal"
+            ]
+          }
+        },
+        {
+          "name": "geography_collectionsite_latitude_longitude",
+          "title": "Geography Collectionsite Latitude Longitude",
+          "description": "Latitude and longitude GPS coordinates of collection site in decimal degrees.",
+          "range": "string",
+          "required": false,
+          "multivalued": false,
+          "examples": [
+            "1.3, 103.8",
+            "not_sharable"
+          ],
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "genetic-diversity",
+              "musculoskeletal"
+            ]
+          },
+          "rationale": "Contains information relevant for geographical diversity of donors; possible proxy for environmental exposures."
+        },
+        {
+          "name": "geography_currentresidence_duration",
+          "title": "Geography Currentresidence Duration",
+          "description": "Duration of residence, in years, rounded up to the nearest whole number, at time of sample collection.",
+          "range": "integer",
+          "required": false,
+          "multivalued": false,
+          "examples": [
+            "20",
+            "37",
+            "45"
+          ],
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "genetic-diversity",
+              "musculoskeletal"
+            ]
+          },
+          "rationale": "Indication of duration of environmental exposure relating to current residence."
+        },
+        {
+          "name": "geography_currentresidence_urbanrural",
+          "title": "Geography Currentresidence Urban Rural",
+          "description": "Urban, suburban, or rural descriptor of current residence.",
+          "range": "string",
+          "required": false,
+          "multivalued": false,
+          "examples": [
+            "urban",
+            "suburban",
+            "rural"
+          ],
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "genetic-diversity",
+              "musculoskeletal"
+            ]
+          },
+          "rationale": "Contains information on environmental exposure relating to current residence",
+          "values": "urban; suburban; rural"
+        },
+        {
+          "name": "geography_placeofbirth_location_country_state",
+          "title": "Geography Place of Birth Location Country State",
+          "description": "Country and state of place of birth.",
+          "range": "string",
+          "required": false,
+          "multivalued": false,
+          "examples": [
+            "Singapore",
+            "United Kingdom",
+            "Massachusetts USA",
+            "New South Wales Australia",
+            "Bauchi State",
+            "Nigeria"
+          ],
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "genetic-diversity",
+              "musculoskeletal"
+            ]
+          },
+          "rationale": "Geographical diversity of donors, at a coarser level (country and state)."
+        },
+        {
+          "name": "geography_placeofbirth_location_granular",
+          "title": "Geography Place of Birth Location Granular",
+          "description": "Nearest city, town, or village to location of place of birth.",
+          "range": "string",
+          "required": false,
+          "multivalued": false,
+          "examples": [
+            "Singapore",
+            "Cambridge",
+            "Boston",
+            "Kingston"
+          ],
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "genetic-diversity",
+              "musculoskeletal"
+            ]
+          },
+          "rationale": "Geographical diversity of donors, at a more granular level (city / town / village)."
+        },
+        {
+          "name": "geography_placeofbirth_duration",
+          "title": "Geography Place of Birth Duration",
+          "description": "Duration of residence, in years, rounded up to the nearest whole number.",
+          "range": "integer",
+          "required": false,
+          "multivalued": false,
+          "examples": [
+            "20",
+            "37",
+            "45"
+          ],
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "genetic-diversity",
+              "musculoskeletal"
+            ]
+          },
+          "rationale": "Indication of duration of environmental exposure relating to place of birth."
+        },
+        {
+          "name": "geography_placeofbirth_urbanrural",
+          "title": "Geography Place of Birth Urban Rural",
+          "description": "Urban, suburban, or rural descriptor of place of birth.",
+          "range": "string",
+          "required": false,
+          "multivalued": false,
+          "examples": [
+            "urban",
+            "suburban",
+            "rural"
+          ],
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "genetic-diversity",
+              "musculoskeletal"
+            ]
+          },
+          "rationale": "Contains information on environmental exposure relating to place of birth",
+          "values": "urban; suburban; rural"
+        },
+        {
+          "name": "ethnicity_parents_selfreported_freetext",
+          "title": "Ethnicity Parents Self-Reported Freetext",
+          "description": "Donor's parents' self-reported ethnicity (or ethnicities) in free-text; can include tribe, dialect group, etc. Separate multiple entries with a comma.",
+          "range": "string",
+          "required": false,
+          "multivalued": false,
+          "examples": [
+            "Singaporean Chinese",
+            "Singaporean Malay",
+            "Singaporean Indian",
+            "Haitian",
+            "Nigerian Hausa",
+            "Ghana Hausa",
+            "Benin Kanuri",
+            "Nigerian Kanuri",
+            "Igbo",
+            "Luo",
+            "Herero",
+            "Garifuna",
+            "Kalinago"
+          ],
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "genetic-diversity",
+              "musculoskeletal"
+            ]
+          },
+          "rationale": "Self-reported ethnicity information can encompass language, religion, tribe, and cultural factors, beyond genetic ancestry."
+        },
+        {
+          "name": "language_mother_father_tongue",
+          "title": "Language Mother Father Tongue",
+          "description": "Ancestral language(s), spoken by parents (\"mother tongue\" and / or \"father tongue\") and / or grandparents. Can include dialects (for example, Hokkien).",
+          "range": "string",
+          "required": false,
+          "multivalued": false,
+          "examples": [
+            "Mandarin Chinese",
+            "Hokkien",
+            "Bahasa Melayu",
+            "Tamil",
+            "Hausa",
+            "Yoruba",
+            "Swahili"
+          ],
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "genetic-diversity",
+              "musculoskeletal"
+            ]
+          },
+          "rationale": "Mother and father tongues may contain information relevant to ancestry."
+        },
+        {
+          "name": "menarche_age",
+          "title": "Menarche Age",
+          "description": "Age at menarche, rounded to nearest whole number.",
+          "range": "integer",
+          "required": false,
+          "multivalued": false,
+          "examples": [
+            "13",
+            "12",
+            "16"
+          ],
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "genetic-diversity",
+              "musculoskeletal"
+            ]
+          },
+          "rationale": "Age at menarche may be a covariate in analyses of human diversity."
+        },
+        {
+          "name": "reproductive_menopause",
+          "title": "Reproductive Menopause",
+          "description": "Menopausal status of donor at time of sample collection.",
+          "range": "string",
+          "required": false,
+          "multivalued": false,
+          "examples": [
+            "pre-menopausal",
+            "peri-menopausal",
+            "post-menopausal",
+            "post-menopausal (induced)",
+            "not applicable"
+          ],
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "genetic-diversity",
+              "musculoskeletal"
+            ]
+          },
+          "rationale": "Menopausal status may be a covariate in analyses of human diversity.",
+          "values": "pre-menopausal; peri-menopausal; post-menopausal; post-menopausal (induced); not applicable"
+        },
+        {
+          "name": "reproductive_number_children",
+          "title": "Reproductive Number Children",
+          "description": "Number of children (full-term pregnancies) the donor has given birth to at time of sample collection.",
+          "range": "integer",
+          "required": false,
+          "multivalued": false,
+          "examples": [
+            "0",
+            "2",
+            "3"
+          ],
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "genetic-diversity",
+              "musculoskeletal"
+            ]
+          },
+          "rationale": "Number of children (full-term pregnancies) may be a covariate in analyses of human diversity."
+        },
+        {
+          "name": "reproductive_number_pregnancies",
+          "title": "Reproductive Number Pregnancies",
+          "description": "Number of pregnancies the donor has had at time of sample collection.",
+          "range": "integer",
+          "required": false,
+          "multivalued": false,
+          "examples": [
+            "2",
+            "3",
+            "5"
+          ],
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "genetic-diversity",
+              "musculoskeletal"
+            ]
+          },
+          "rationale": "Number of pregnancies may be a covariate in analyses of human diversity."
+        }
+      ]
+    },
+    {
+      "title": "Sample",
+      "description": "",
+      "name": "sample",
+      "attributes": [
+        {
+          "name": "collected_tissue_processing",
+          "title": "Collected Tissue Processing",
+          "description": "A general description of the protocol. If possible specify in what container the tissue was collected in, and if it was processed prior to storage or dissociation",
+          "range": "string",
+          "required": false,
+          "multivalued": false,
+          "examples": [
+            "tissue collected in DMEM/F12 containing 10% FCS and washed in PBS. Frozen within 2h of surgery after all fat trimmed off."
+          ],
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "musculoskeletal"
+            ]
+          }
+        },
+        {
+          "name": "tissue_transportation",
+          "title": "Tissue Transportation",
+          "description": "Was the sample transported at all? What are the details?",
+          "range": "string",
+          "required": false,
+          "multivalued": false,
+          "examples": [
+            "snap frozen tissue shipped from Argentina to the UK on dry ice."
+          ],
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "musculoskeletal"
+            ]
+          }
+        },
+        {
+          "name": "time_to_laboratory",
+          "title": "Time to Laboratory",
+          "description": "Transit time in hours between tissue collection and tissue processing, meaning either storage in the laboratory or processing for sequencing.",
+          "range": "decimal",
+          "required": false,
+          "multivalued": false,
+          "examples": [
+            "1.5",
+            "2"
+          ],
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "musculoskeletal"
+            ]
+          }
+        },
+        {
+          "name": "side_of_tissue_collected",
+          "title": "Side of Tissue Collected",
+          "description": "The side of the donor the sample was collected from.",
+          "range": "string",
+          "required": false,
+          "multivalued": false,
+          "examples": [
+            "left",
+            "right",
+            "main-axis",
+            "unknown"
+          ],
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "musculoskeletal"
+            ]
+          },
+          "values": "left; right; main-axis; unknown"
+        },
+        {
+          "name": "sample_storage_method",
+          "title": "Sample Storage Method",
+          "description": "The method by which a biomaterial was stored before tissue dissociation or processing",
+          "range": "string",
+          "required": false,
+          "multivalued": false,
+          "examples": [
+            "ambient temperature",
+            "cut slide",
+            "fresh",
+            "frozen at -70C",
+            "frozen at -80C",
+            "frozen at -150C",
+            "frozen in liquid nitrogen",
+            "frozen in vapor phase",
+            "paraffin block",
+            "RNAlater at 4C",
+            "RNAlater at 25C",
+            "RNAlater at -20C"
+          ],
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "musculoskeletal"
+            ]
+          },
+          "values": "ambient temperature; cut slide; fresh; frozen at -70C; frozen at -80C; frozen at -150C; frozen in liquid nitrogen; frozen in vapor phase; paraffin block; RNAlater at 4C; RNAlater at 25C; RNAlater at -20C"
+        },
+        {
+          "name": "sample_storage_relative_time_point",
+          "title": "Sample Storage Relative Time Point",
+          "description": "Indicate the time interval between the sample collection and the sample storage in sample storage relative time units.",
+          "range": "integer",
+          "required": false,
+          "multivalued": false,
+          "examples": [
+            "4",
+            "37",
+            "58"
+          ],
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "musculoskeletal"
+            ]
+          }
+        },
+        {
+          "name": "sample_storage_relative_time_unit",
+          "title": "Sample Storage Relative Time Unit",
+          "description": "Indicate the Time units of the time interval between the sample collection and the sample storage.",
+          "range": "string",
+          "required": false,
+          "multivalued": false,
+          "examples": [
+            "day",
+            "week",
+            "month",
+            "year"
+          ],
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "musculoskeletal"
+            ]
+          },
+          "values": "day; week; month; year"
+        },
+        {
+          "name": "sample_dissociation_relative_time_point",
+          "title": "Sample Dissociation Relative Time Point",
+          "description": "Indicate the time interval between the sample collection and the sample dissociation in sample dissociation relative time unit.",
+          "range": "integer",
+          "required": false,
+          "multivalued": false,
+          "examples": [
+            "4",
+            "37",
+            "58"
+          ],
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "musculoskeletal"
+            ]
+          }
+        },
+        {
+          "name": "sample_dissociation_relative_time_unit",
+          "title": "Sample Dissociation Relative Time Unit",
+          "description": "Indicate the Time units of the time interval between the sample collection and the sample dissociation.",
+          "range": "string",
+          "required": false,
+          "multivalued": false,
+          "examples": [
+            "day",
+            "week",
+            "month",
+            "year"
+          ],
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "musculoskeletal"
+            ]
+          },
+          "values": "day; week; month; year"
+        },
+        {
+          "name": "digestion_temperature",
+          "title": "Digestion Temperature",
+          "description": "The temperature that the tissue was digested with the digestion solution in Celsius degree or hot/ cold",
+          "range": "string",
+          "required": false,
+          "multivalued": false,
+          "examples": [
+            "42",
+            "37",
+            "cold"
+          ],
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "musculoskeletal"
+            ]
+          }
+        },
+        {
+          "name": "dissociation_description",
+          "title": "Dissociation Description",
+          "description": "A general description for the dissociation protocol of the tissue.",
+          "range": "string",
+          "required": false,
+          "multivalued": false,
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "musculoskeletal"
+            ]
+          }
+        },
+        {
+          "name": "dissociation_doi",
+          "title": "Dissociation DOI",
+          "description": "The publication or protocols.io digital object identifier (doi) for the protocol.",
+          "range": "string",
+          "required": false,
+          "multivalued": false,
+          "examples": [
+            "10.1073/pnas.2404775131",
+            "10.1016/j.ajog.2016.07.031"
+          ],
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "musculoskeletal"
+            ]
+          }
+        },
+        {
+          "name": "cell_suspension_storage_time",
+          "title": "Cell Suspension Storage Time",
+          "description": "Length of time the biomaterial was stored prior to library prepration in Storage time units.",
+          "range": "integer",
+          "required": false,
+          "multivalued": false,
+          "examples": [
+            "4",
+            "37",
+            "58"
+          ],
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "musculoskeletal"
+            ]
+          }
+        },
+        {
+          "name": "cell_suspension_storage_time_unit",
+          "title": "Cell Suspension Storage Time Unit",
+          "description": "A term that may be associated with a time unit-related ontology term.",
+          "range": "string",
+          "required": false,
+          "multivalued": false,
+          "examples": [
+            "day",
+            "week",
+            "month",
+            "year"
+          ],
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "musculoskeletal"
+            ]
+          },
+          "values": "day; week; month; year"
+        },
+        {
+          "name": "library_prep_relative_time_point",
+          "title": "Library Prep Relative Time Point",
+          "description": "Indicate the time interval between the sample collection and the library preparation in library preparation relative time unit.",
+          "range": "integer",
+          "required": false,
+          "multivalued": false,
+          "examples": [
+            "4",
+            "37",
+            "58"
+          ],
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "musculoskeletal"
+            ]
+          }
+        },
+        {
+          "name": "library_prep_relative_time_unit",
+          "title": "Library Prep Relative Time Unit",
+          "description": "Indicate the Time units of the time interval between the sample collection and the library preparation.",
+          "range": "string",
+          "required": false,
+          "multivalued": false,
+          "examples": [
+            "day",
+            "week",
+            "month",
+            "year"
+          ],
+          "annotations": {
+            "tier": "Tier 2",
+            "bioNetworks": [
+              "musculoskeletal"
+            ]
+          },
+          "values": "day; week; month; year"
+        }
+      ]
+    }
+  ],
+  "prefixes": {},
+  "annotations": {}
+}

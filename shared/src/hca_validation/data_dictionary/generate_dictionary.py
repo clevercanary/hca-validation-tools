@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """generate_dictionary.py - Generate data dictionary JSON files from LinkML schema files.
 
-Two dictionaries are generated: the full export of every slot under its schema class, which the HCA Atlas Tracker
-reads, and the HCA Data Portal's Tier 1 dictionary, laid out by `dictionary.yaml`. Only the full export marks a slot
-that entry sheets may leave blank with `entrySheetRequired: false`.
+Three dictionaries are generated: the full export of every slot under its schema class, which the HCA Atlas Tracker
+reads, and the HCA Data Portal's Tier 1 and Tier 2 dictionaries, laid out by `dictionary.yaml` and
+`tier_2_dictionary.yaml`. Only the full export marks a slot that entry sheets may leave blank with
+`entrySheetRequired: false`.
 
-`make generate-data-dictionary` writes both to `packages/hca-metadata-schema/data_dictionaries/`, the npm package
+`make generate-data-dictionary` writes all three to `packages/hca-metadata-schema/data_dictionaries/`, the npm package
 `hca-metadata-schema`.
 """
 
@@ -14,7 +15,7 @@ from pathlib import Path
 from typing import Any, NamedTuple
 
 import jsonasobj2
-from hca_metadata_schema import CORE_SCHEMA_PATH
+from hca_metadata_schema import CORE_SCHEMA_PATH, TIER_2_SCHEMA_PATH
 from linkml_runtime import SchemaView
 from linkml_runtime.dumpers import json_dumper
 from linkml_runtime.linkml_model import SchemaDefinition
@@ -30,6 +31,7 @@ from hca_validation.schema_utils import (
 
 # The portal's header, sections and AnnData structure rows (#760)
 LAYOUT_PATH = Path(__file__).with_name("dictionary.yaml")
+TIER_2_LAYOUT_PATH = Path(__file__).with_name("tier_2_dictionary.yaml")
 
 _SECTION_SUFFIX = "Section"
 
@@ -106,14 +108,16 @@ def transform_schema_to_data_dictionary(schemaview: SchemaView, cxg_reference: s
 
 
 def transform_layout_to_data_dictionary(schemaview: SchemaView, layout: SchemaDefinition) -> dict[str, Any]:
-    """The Tier 1 dictionary: `layout`'s header, then each of its classes as a section, in file order.
+    """A portal dictionary, Tier 1 or Tier 2: `layout`'s header, then each of its classes as a section, in file order.
 
     `schemaview` must have `layout` merged into it, as `load_schemas` returns them. `prefixes` holds the layout's
     prefixes other than `linkml`.
 
     Raises:
-        ValueError: As `section_entry` and `fold_bionetwork_slots` do
+        ValueError: If no section lists a slot that a bionetwork subclass adds to a section's core class, or as
+            `section_entry` and `fold_bionetwork_slots` do
     """
+    check_network_slots_listed(schemaview, layout)
     schema_enum_names = set(schemaview.all_enums())
     all_networks = get_bionetwork_keys(schemaview)
     layout_slots = set(layout.slots)
@@ -128,6 +132,25 @@ def transform_layout_to_data_dictionary(schemaview: SchemaView, layout: SchemaDe
         "prefixes": {tag: prefix.prefix_reference for tag, prefix in layout.prefixes.items() if tag != "linkml"},
         "annotations": {tag: annotation.value for tag, annotation in jsonasobj2.items(layout.annotations)},
     }
+
+
+def check_network_slots_listed(schemaview: SchemaView, layout: SchemaDefinition) -> None:
+    """Raise ValueError if no section of a core class lists a slot that a bionetwork subclass adds to that class."""
+    listed: dict[str, set[str]] = {}
+    for name in layout.classes:
+        section = schemaview.get_class(name)
+        for core_class in section.mixins:
+            listed.setdefault(core_class, set()).update(section.slots)
+    for core_class, core_listed in sorted(listed.items()):
+        base = {slot.name for slot in schemaview.class_induced_slots(core_class)}
+        added = {
+            slot.name
+            for subclass in get_bionetwork_subclasses(schemaview, core_class)
+            for slot in schemaview.class_induced_slots(subclass)
+        }
+        unlisted = sorted(added - base - core_listed)
+        if unlisted:
+            raise ValueError(f"No section lists {', '.join(unlisted)}, which networks add to {core_class}")
 
 
 def section_entry(
@@ -338,4 +361,9 @@ def generate_dictionary(output_path, schema_path=CORE_SCHEMA_PATH, layout_path=L
 
 def generate_tier_1_dictionary(output_path, schema_path=CORE_SCHEMA_PATH, layout_path=LAYOUT_PATH):
     """Generate the HCA Data Portal's Tier 1 data dictionary JSON from the schema and the layout."""
+    _write(transform_layout_to_data_dictionary(*load_schemas(schema_path, layout_path)), output_path)
+
+
+def generate_tier_2_dictionary(output_path, schema_path=TIER_2_SCHEMA_PATH, layout_path=TIER_2_LAYOUT_PATH):
+    """Generate the HCA Data Portal's Tier 2 data dictionary JSON from the Tier 2 schema and its layout."""
     _write(transform_layout_to_data_dictionary(*load_schemas(schema_path, layout_path)), output_path)
