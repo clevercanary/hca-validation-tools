@@ -66,7 +66,8 @@ cd shared && uv run pytest tests/ -m "not integration" -v      # Skip integratio
 # Service-specific tests
 cd services/entry-sheet-validator && make test                   # Read-only-HOME import test, no image (CI runs it, with coverage)
 cd services/entry-sheet-validator && make test-lambda-container
-cd services/dataset-validator && uv run pytest tests/ -v
+cd services/dataset-validator && uv run pytest tests/ -v         # Docker smoke tests skip unless RUN_DOCKER_TESTS=1 or CI is set
+cd services/dataset-validator && make test-docker                # Docker smoke tests only (sets RUN_DOCKER_TESTS=1)
 cd services/cellxgene-validator && uv run pytest tests/ -v
 cd services/hca-schema-validator && uv run pytest tests/ -v
 ```

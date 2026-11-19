@@ -1,9 +1,16 @@
+import os
 import subprocess
 import tempfile
 from pathlib import Path
 
 import pytest
 from docker_cleanup import IMAGE_NAME, remove_test_artifacts
+
+# CI is set on CI runners, so CI runs these tests
+pytestmark = pytest.mark.skipif(
+    os.environ.get("RUN_DOCKER_TESTS") != "1" and not os.environ.get("CI"),
+    reason="Docker smoke tests build an image and run containers; set RUN_DOCKER_TESTS=1 to run them",
+)
 
 
 @pytest.fixture(scope="module", autouse=True)
