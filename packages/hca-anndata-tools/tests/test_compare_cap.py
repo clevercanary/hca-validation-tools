@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from hca_anndata_tools import cap_pair
 from hca_anndata_tools.compare_cap import compare_cap_export
 from hca_anndata_tools.copy_cap import copy_cap_annotations
 
@@ -325,3 +326,22 @@ def test_with_overwrite_says_the_strip_has_checks_of_its_own(tmp_path):
 
     assert verdict["copy_would_accept"] == "with_overwrite"
     assert "strip_cap_annotations, which makes checks of its own" in verdict["message"]
+
+
+@pytest.mark.filterwarnings("ignore::anndata._warnings.OldFormatWarning")
+def test_refused_by_names_the_failure_overwrite_does_not_clear(tmp_path):
+    source, target = _pair(tmp_path, target_ids=[f"other_{i}" for i in range(10)])
+    _edit(target, lambda a: a.obs.__setitem__("existing--cell_ontology_term_id", "CL:0000000"))
+
+    verdict = compare_cap_export(str(source), str(target))["verdict"]
+
+    assert (verdict["copy_would_accept"], verdict["refused_by"]) == ("no", "cell_overlap")
+    assert copy_cap_annotations(str(source), str(target))["error"].startswith("Target already has CAP data")
+    assert verdict["message"] in copy_cap_annotations(str(source), str(target), overwrite=True)["error"]
+
+
+def test_a_missing_file_is_not_the_same_file(tmp_path):
+    source, _ = _pair(tmp_path)
+
+    assert cap_pair.same_file_failure(str(source), str(tmp_path / "absent.h5ad")) is None
+    assert cap_pair.same_file_failure(str(source), str(source)) == cap_pair.SAME_FILE_ERROR

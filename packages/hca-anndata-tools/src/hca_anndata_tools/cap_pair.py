@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import h5py
@@ -53,6 +54,11 @@ class TargetCap:
     legacy: bool
     obs_columns: tuple[str, ...]
     uns_keys: tuple[str, ...]
+
+
+def same_file_failure(source_path: str, target_path: str) -> str | None:
+    source, target = Path(source_path), Path(target_path)
+    return SAME_FILE_ERROR if source.exists() and target.exists() and source.samefile(target) else None
 
 
 def read_source_cap(f: h5py.File) -> SourceCap:

@@ -71,8 +71,7 @@ def _not_run(names: tuple[str, ...], reason: str) -> list[Check]:
 
 def _assess(source_path: str, target_path: str) -> _Pair:
     """Every check of the copy, in its order; a check runs whenever the data it needs could be read."""
-    same = checks.SAME_FILE_ERROR if Path(source_path).samefile(target_path) else None
-    out = [_check("distinct_files", same)]
+    out = [_check("distinct_files", checks.same_file_failure(source_path, target_path))]
 
     with h5py.File(source_path, "r") as f:
         cap = checks.read_source_cap(f)
@@ -182,8 +181,8 @@ def compare_cap_export(source_path: str, target_path: str) -> dict:
 
     Writes nothing, and reads no matrix. ``source_path`` is the CAP export and
     ``target_path`` the file it would annotate, as in the copy; the target
-    resolves to its latest snapshot. The copy's checks all run, where the
-    copy stops at its first refusal.
+    resolves to its latest snapshot. The copy stops at its first refusal;
+    this runs every check whose input could be read, and reports the rest as not_run.
 
     Returns:
         Dict with ``cells`` (overlap and ``within_copy_limit``), ``genes`` (overlap and up to 25 sorted IDs
@@ -192,8 +191,9 @@ def compare_cap_export(source_path: str, target_path: str) -> dict:
         ``ensembl_ids``), ``cap`` (each file's CAP ``layout``: nested, mixed,
         legacy, malformed or absent, and its ``fields``),
         ``checks`` (each with ``status`` pass, fail or not_run) and
-        ``verdict`` (``copy_would_accept`` yes, with_overwrite or no, the
-        ``refused_by`` check and its ``message``), or ``{"error": ...}``.
+        ``verdict`` (``copy_would_accept`` yes, with_overwrite or no;
+        ``refused_by``, the first failed check that overwrite=True would not
+        clear, else target_has_no_cap; and its ``message``), or ``{"error": ...}``.
     """
     try:
         target_path = resolve_latest(target_path)

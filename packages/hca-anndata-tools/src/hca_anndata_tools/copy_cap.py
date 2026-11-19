@@ -76,8 +76,8 @@ def copy_cap_annotations(
         # Same-file guard (parity with backfill.py): with overwrite=True the
         # pre-strip would otherwise mutate — and via snapshot cleanup delete —
         # the very file it is about to read CAP annotations from.
-        if Path(source_path).samefile(target_path):
-            return {"error": checks.SAME_FILE_ERROR}
+        if failure := checks.same_file_failure(source_path, target_path):
+            return {"error": failure}
 
         # --- Step 1: Read and check the source via h5py (no full AnnData load) ---
         with h5py.File(source_path, "r") as f:
