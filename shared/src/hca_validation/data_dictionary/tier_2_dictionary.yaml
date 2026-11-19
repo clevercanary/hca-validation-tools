@@ -1,6 +1,6 @@
 # The HCA Data Portal's Tier 2 data dictionary: its header and its sections. generate_dictionary.py merges this into
-# the core schema; validation never loads it. A section lists its fields in display order and mixes in the core
-# class whose bionetworks' Tier 2 mixins add them.
+# the Tier 2 schema; validation never loads it. A section lists its fields in display order and mixes in the Tier 2
+# class whose bionetwork subclasses add them.
 id: https://github.com/clevercanary/hca-validation-tools/schema/data-dictionary-tier-2
 name: tier_2
 title: Tier 2 Metadata
@@ -20,7 +20,7 @@ classes:
   DonorSection:
     title: Donor
     mixins:
-      - Donor
+      - Tier2Donor
     slots:
       - age_value
       - age_unit
@@ -73,7 +73,7 @@ classes:
   SampleSection:
     title: Sample
     mixins:
-      - Sample
+      - Tier2Sample
     slots:
       - collected_tissue_processing
       - tissue_transportation

@@ -3,8 +3,9 @@
 
 SCHEMA_DIR := src/hca_metadata_schema
 GENERATED := $(SCHEMA_DIR)/generated/core.py
-# bionetwork/ too: core.yaml imports those files, but a break in one would otherwise be reported against core.yaml.
-SCHEMAS := $(wildcard $(SCHEMA_DIR)/*.yaml $(SCHEMA_DIR)/bionetwork/*.yaml)
+# Subfolders too: a break in an imported file would otherwise be reported against the root that imports it.
+SCHEMAS := $(wildcard $(SCHEMA_DIR)/*.yaml $(SCHEMA_DIR)/bionetwork/*.yaml $(SCHEMA_DIR)/tier_2/*.yaml \
+	$(SCHEMA_DIR)/tier_2/bionetwork/*.yaml)
 UV := uv run --group codegen
 LINT := $(UV) linkml lint -c .linkmllint.yaml $(SCHEMA_DIR) --validate
 

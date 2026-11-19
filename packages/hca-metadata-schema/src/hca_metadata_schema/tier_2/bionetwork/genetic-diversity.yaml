@@ -1,7 +1,7 @@
-id: https://github.com/clevercanary/hca-validation-tools/schema/bionetwork/genetic-diversity
-name: hca-validation-genetic-diversity
-title: Genetic Diversity BioNetwork Extensions
-description: Genetic Diversity network–specific refinements to the HCA schema
+id: https://github.com/clevercanary/hca-validation-tools/schema/tier_2/bionetwork/genetic-diversity
+name: hca-validation-tier-2-genetic-diversity
+title: Genetic Diversity BioNetwork Tier 2 Extensions
+description: Genetic Diversity network Tier 2 donor metadata, collected under managed access
 license: MIT
 
 prefixes:
@@ -13,15 +13,13 @@ default_range: string
 
 imports:
   - linkml:types
-  - ../tier_2_slots
+  - ../classes
 classes:
-  GeneticDiversityDonorTier2:
-    mixin: true
+  GeneticDiversityTier2Donor:
+    is_a: Tier2Donor
     description: Genetic Diversity BioNetwork Tier 2 donor metadata, collected under managed access.
     annotations:
       bioNetwork: genetic-diversity
-      tier: Tier 2
-      baseClass: Donor
     slots:
       - age_value
       - age_unit

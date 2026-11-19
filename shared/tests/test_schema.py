@@ -6,6 +6,8 @@ import textwrap
 
 import hca_metadata_schema.generated.core as schema
 import pytest
+import yaml
+from hca_metadata_schema import CORE_SCHEMA_PATH, TIER_2_SCHEMA_PATH
 from linkml_runtime import SchemaView
 
 from hca_validation.schema_utils.schema_utils import (
@@ -14,7 +16,6 @@ from hca_validation.schema_utils.schema_utils import (
     get_class_bionetwork,
     get_entry_sheet_optional_slots,
     get_slot_anndata_location,
-    get_tier_2_mixins,
     schema_classes,
 )
 
@@ -41,8 +42,6 @@ def _bionetwork_annotations(schemaview):
     """Map every class carrying a `bioNetwork` annotation, at any depth, to its network."""
     annotated = {}
     for class_name, class_info in schemaview.all_classes().items():
-        if class_info.mixin:  # A Tier 2 mixin, which the validator never picks
-            continue
         network = get_class_bionetwork(class_info)
         if network is not None:
             annotated[class_name] = network
@@ -56,18 +55,6 @@ def test_bionetwork_annotations_are_enum_keys(schemaview):
     assert annotated, "no class carries a bioNetwork annotation"
     for class_name, network in annotated.items():
         assert network in keys, f"{class_name} has bioNetwork {network!r}, not a BioNetwork key"
-
-
-def test_tier_2_mixins_by_base_class(schemaview):
-    """Every `mixin: true` class is a Tier 2 mixin of the class its `baseClass` names, and of no other."""
-    assert get_tier_2_mixins(schemaview, "Donor") == {
-        "GeneticDiversityDonorTier2": "genetic-diversity",
-        "MusculoskeletalDonorTier2": "musculoskeletal",
-    }
-    assert get_tier_2_mixins(schemaview, "Sample") == {"MusculoskeletalSampleTier2": "musculoskeletal"}
-    assert get_tier_2_mixins(schemaview, "Dataset") == {}
-    mixins = {name for name, info in schemaview.all_classes().items() if info.mixin}
-    assert mixins == {"GeneticDiversityDonorTier2", "MusculoskeletalDonorTier2", "MusculoskeletalSampleTier2"}
 
 
 def test_generated_bionetwork_enum_matches_schema(schemaview):
@@ -313,3 +300,24 @@ def test_only_title_is_entry_sheet_optional(schemaview):
         has_title = any(slot.name == "title" for slot in schemaview.class_induced_slots(class_name))
         expected = {"title"} if has_title else set()
         assert get_entry_sheet_optional_slots(schemaview, class_name) == expected, class_name
+
+
+def _imported_files(root):
+    """Every schema file `root` reaches through its imports; `./` and `../` resolve against the importing file."""
+    seen, pending = set(), [root.resolve()]
+    while pending:
+        path = pending.pop()
+        if path in seen:
+            continue
+        seen.add(path)
+        for name in yaml.safe_load(path.read_text()).get("imports", []):
+            if not name.startswith("linkml:"):
+                base = path.parent if name.startswith(".") else root.parent
+                pending.append((base / f"{name}.yaml").resolve())
+    return seen
+
+
+def test_the_two_roots_import_every_schema_file():
+    # A file neither root imports is validated on its own but reaches no model or dictionary.
+    shipped = {path.resolve() for path in CORE_SCHEMA_PATH.parent.rglob("*.yaml")}
+    assert shipped - _imported_files(CORE_SCHEMA_PATH) - _imported_files(TIER_2_SCHEMA_PATH) == set()

@@ -1,8 +1,8 @@
-id: https://github.com/clevercanary/hca-validation-tools/schema/tier_2_slots
-name: hca-validation-slots-tier-2
+id: https://github.com/clevercanary/hca-validation-tools/schema/tier_2/slots
+name: hca-validation-tier-2-slots
 title: Tier 2 Slot Definitions for HCA Validation Tools
 description: >-
-  Tier 2 donor and sample slots, collected under managed access. Each bionetwork's Tier 2 mixin lists the slots it
+  Tier 2 donor and sample slots, collected under managed access. Each bionetwork's Tier 2 class lists the slots it
   uses; no Tier 1 class does.
 license: MIT
 
@@ -17,6 +17,28 @@ imports:
   - linkml:types
 
 slots:
+  # The keys that join a Tier 2 record to its Tier 1 donor or sample, defined as Tier 1 defines them. Tier 2 imports
+  # no Tier 1 slot, so a Tier 1 change never changes a Tier 2 class.
+  donor_id:
+    title: Donor ID
+    description: >-
+      This must be free-text that identifies a unique individual that data were derived from.
+    examples:
+      - value: CR_donor_1
+      - value: MM_donor_1
+      - value: LR_donor_2
+    identifier: true
+    required: true
+  sample_id:
+    title: Sample ID
+    description: >-
+      Identification number of the sample. This is the fundamental unit of sampling the tissue (the specimen taken from the subject), which can be the same as the 'subject_ID', but is often different if multiple samples are taken from the same subject. Note: this is NOT a unit of multiplexing of donor samples, which should be stored in "library".
+    examples:
+      - value: SC24
+      - value: SC25
+      - value: SC28
+    identifier: true
+    required: true
   age_value:
     title: Age Value
     description: Age of donor at the time of sample collection. Specify the age unit (week, month, year) in age_unit.

@@ -8,12 +8,12 @@ import re
 import textwrap
 
 import pytest
+from hca_metadata_schema import TIER_2_SCHEMA_PATH
 from linkml_runtime import SchemaView
 from linkml_runtime.linkml_model import Example, SlotDefinition
 
 from hca_validation.data_dictionary.generate_dictionary import (
     TIER_2_LAYOUT_PATH,
-    fold_bionetwork_slots,
     generate_dictionary,
     generate_tier_1_dictionary,
     generate_tier_2_dictionary,
@@ -27,7 +27,6 @@ from hca_validation.schema_utils.schema_utils import (
     _annotation_value,
     get_bionetwork_subclasses,
     get_entry_sheet_optional_slots,
-    get_tier_2_mixins,
 )
 
 _CXG = "https://example.org/cxg"
@@ -220,22 +219,9 @@ def test_slot_added_by_several_subclasses_is_folded_once(tmp_path):
     assert by_name["title"]["annotations"]["bioNetworks"] == ["gut", "heart", "lung"]
 
 
-def _tier_2_mixin(name, network, slot, base="Dataset", extra=""):
-    return f"""
-        {name}:
-          mixin: true
-          annotations:
-            bioNetwork: {network}
-            tier: Tier 2
-            baseClass: {base}
-          slots:
-            - {slot}
-        {extra}"""
-
-
-def test_tier_2_mixins_fold_apart_from_subclasses(tmp_path):
-    # A Tier 2 mixin isn't a subclass: Tier 1 and the core export fold only the subclass, Tier 2 only the mixin.
-    schemaview = _schemaview(
+def test_another_class_listing_a_network_slot_does_not_count(tmp_path):
+    # GutDataset adds gut_field to Dataset; listing it under another class's section doesn't list it for Dataset.
+    _schemaview(
         tmp_path,
         """
         GutDataset:
@@ -244,87 +230,36 @@ def test_tier_2_mixins_fold_apart_from_subclasses(tmp_path):
             bioNetwork: gut
           slots:
             - gut_field
+        Other:
+          slots:
+            - gut_field
+        """,
+    )
+    layout = _layout(
+        tmp_path,
+        "DatasetSection:\n  mixins: [Dataset]\n  slots: [title]\n"
+        "OtherSection:\n  mixins: [Other]\n  slots: [gut_field]\n",
+    )
+    with pytest.raises(ValueError, match="No section lists gut_field, which networks add to Dataset"):
+        transform_layout_to_data_dictionary(*load_schemas(tmp_path / "schema.yaml", layout))
+
+
+def test_layout_leaving_out_a_network_slot_is_refused(tmp_path):
+    # A network's field the layout forgets would otherwise vanish from the dictionary.
+    _schemaview(
+        tmp_path,
         """
-        + _tier_2_mixin("GutDatasetTier2", "gut", "shared_field"),
+        GutDataset:
+          is_a: Dataset
+          annotations:
+            bioNetwork: gut
+          slots:
+            - gut_field
+        """,
     )
-    (dataset,) = transform_schema_to_data_dictionary(schemaview, _CXG)["classes"]
-    assert [a["name"] for a in dataset["attributes"]] == ["gut_field", "title"]
-    tier_2 = fold_bionetwork_slots(schemaview, "Dataset", set(), get_tier_2_mixins(schemaview, "Dataset"))
-    assert {name: a["annotations"]["bioNetworks"] for name, a in tier_2.items()} == {"shared_field": ["gut"]}
-
-
-def test_tier_2_slot_of_several_networks_is_folded_once(tmp_path):
-    schemaview = _schemaview(
-        tmp_path,
-        _tier_2_mixin("LungDatasetTier2", "lung", "shared_field")
-        + _tier_2_mixin("GutDatasetTier2", "gut", "shared_field"),
-    )
-    tier_2 = fold_bionetwork_slots(schemaview, "Dataset", set(), get_tier_2_mixins(schemaview, "Dataset"))
-    assert tier_2["shared_field"]["annotations"]["bioNetworks"] == ["gut", "lung"]
-
-
-def test_tier_2_mixins_defining_a_slot_differently_are_refused(tmp_path):
-    schemaview = _schemaview(
-        tmp_path,
-        _tier_2_mixin("LungDatasetTier2", "lung", "shared_field")
-        + _tier_2_mixin(
-            "GutDatasetTier2",
-            "gut",
-            "shared_field",
-            extra="  slot_usage:\n            shared_field:\n              required: false",
-        ),
-    )
-    with pytest.raises(ValueError, match="define 'shared_field' differently"):
-        fold_bionetwork_slots(schemaview, "Dataset", set(), get_tier_2_mixins(schemaview, "Dataset"))
-
-
-def test_tier_2_layout_leaving_out_a_mixin_slot_is_refused(tmp_path):
-    _schemaview(tmp_path, _tier_2_mixin("GutDatasetTier2", "gut", "shared_field"))
     layout = _layout(tmp_path, "DatasetSection:\n  mixins: [Dataset]\n  slots: [title]\n")
-    with pytest.raises(ValueError, match="No section lists shared_field, which networks add to Dataset"):
-        transform_layout_to_data_dictionary(*load_schemas(tmp_path / "schema.yaml", layout), get_tier_2_mixins)
-
-
-@pytest.mark.parametrize(
-    "other_class",
-    [
-        "HasProvenance:\n  mixin: true\n  slots:\n    - gut_field\n",
-        "GutDatasetTier2:\n  annotations:\n    bioNetwork: gut\n    tier: Tier 2\n    baseClass: Dataset\n"
-        "  slots:\n    - gut_field\n",
-    ],
-    ids=["plain-mixin", "not-a-mixin"],
-)
-def test_other_classes_are_not_tier_2_mixins(tmp_path, other_class):
-    # Only a mixin annotated `tier: Tier 2` is one; a plain mixin, or a class with the annotations, is left alone.
-    assert get_tier_2_mixins(_schemaview(tmp_path, other_class), "Dataset") == {}
-
-
-def test_network_mixin_without_tier_is_refused(tmp_path):
-    # A network's mixin that forgets `tier: Tier 2` would otherwise drop out of the Tier 2 dictionary unnoticed.
-    mixin = "GutDatasetTier2:\n  mixin: true\n  annotations:\n    bioNetwork: gut\n    baseClass: Dataset\n"
-    with pytest.raises(ValueError, match="GutDatasetTier2 has a bioNetwork or baseClass annotation but no tier"):
-        get_tier_2_mixins(_schemaview(tmp_path, mixin), "Dataset")
-
-
-@pytest.mark.parametrize(
-    ("mixin", "match"),
-    [
-        (
-            "GutDatasetTier2:\n  mixin: true\n  annotations:\n    bioNetwork: gut\n    tier: Tier 2\n",
-            "no bioNetwork or baseClass",
-        ),
-        (
-            "GutDatasetTier2:\n  mixin: true\n  annotations:\n    tier: Tier 2\n    baseClass: Dataset\n",
-            "no bioNetwork or baseClass",
-        ),
-        (_tier_2_mixin("GutDatasetTier2", "guts", "gut_field"), "'guts', which is not in the BioNetwork enum"),
-        (_tier_2_mixin("GutDatasetTier2", "gut", "gut_field", base="Datset"), "'Datset', which is not a class"),
-    ],
-    ids=["no-base-class", "no-network", "unknown-network", "unknown-class"],
-)
-def test_bad_tier_2_mixins_are_refused(tmp_path, mixin, match):
-    with pytest.raises(ValueError, match=match):
-        get_tier_2_mixins(_schemaview(tmp_path, mixin), "Dataset")
+    with pytest.raises(ValueError, match="No section lists gut_field, which networks add to Dataset"):
+        transform_layout_to_data_dictionary(*load_schemas(tmp_path / "schema.yaml", layout))
 
 
 def test_unknown_bionetwork_key_is_refused(tmp_path):
@@ -424,9 +359,7 @@ def test_slot_a_subclass_adds_keeps_its_relaxation(tmp_path):
 def test_tier_1_drops_a_folded_slots_relaxation(tmp_path):
     _schemaview(tmp_path, _RELAXED_GUT_FIELD)
     layout = _layout(tmp_path, "DatasetSection:\n  mixins: [Dataset]\n  slots: [shared_field]\n")
-    tier_1 = transform_layout_to_data_dictionary(
-        *load_schemas(tmp_path / "schema.yaml", layout), get_bionetwork_subclasses
-    )
+    tier_1 = transform_layout_to_data_dictionary(*load_schemas(tmp_path / "schema.yaml", layout))
     assert _attribute(tier_1, "dataset", "shared_field")["annotations"] == {"bioNetworks": ["gut"]}
 
 
@@ -804,7 +737,7 @@ def test_generate_dictionary_writes_json(mapping_schema_path, mapping_layout, ma
 
 @pytest.fixture(scope="module")
 def tier_1_dictionary():
-    return transform_layout_to_data_dictionary(*load_schemas(), get_bionetwork_subclasses)
+    return transform_layout_to_data_dictionary(*load_schemas())
 
 
 def test_every_cellxgene_link_names_the_layouts_schema_version(schemaview, tier_1_dictionary):
@@ -976,7 +909,7 @@ _TIER_2_GENETIC_DIVERSITY_FIELDS = {
 
 @pytest.fixture(scope="module")
 def tier_2_dictionary():
-    return transform_layout_to_data_dictionary(*load_schemas(layout_path=TIER_2_LAYOUT_PATH), get_tier_2_mixins)
+    return transform_layout_to_data_dictionary(*load_schemas(TIER_2_SCHEMA_PATH, TIER_2_LAYOUT_PATH))
 
 
 def test_tier_2_sections_and_fields_match_the_portal(tier_2_dictionary):
@@ -1000,6 +933,23 @@ def test_tier_2_number_fields_are_decimal(tier_2_dictionary):
     ranges = {a["name"]: a["range"] for c in tier_2_dictionary["classes"] for a in c["attributes"]}
     decimal = {"bmi", "alcohol_units", "smoking_pack_years", "time_to_laboratory"}
     assert {name for name, value in ranges.items() if value == "decimal"} == decimal
+
+
+def test_tier_2_networks_extend_the_tier_2_classes():
+    tier_2 = SchemaView(str(TIER_2_SCHEMA_PATH), merge_imports=True)
+    assert get_bionetwork_subclasses(tier_2, "Tier2Donor") == {
+        "GeneticDiversityTier2Donor": "genetic-diversity",
+        "MusculoskeletalTier2Donor": "musculoskeletal",
+    }
+    assert get_bionetwork_subclasses(tier_2, "Tier2Sample") == {"MusculoskeletalTier2Sample": "musculoskeletal"}
+
+
+def test_tier_1_schema_has_no_tier_2_class_or_slot(schemaview):
+    # Tier 2 has its own root: the validators' schema, and the Tier 1 and core dictionaries, never see it.
+    tier_2 = SchemaView(str(TIER_2_SCHEMA_PATH), merge_imports=True)
+    tier_2_only = {name for name in tier_2.all_classes() if "Tier2" in name}
+    assert tier_2_only and not tier_2_only & set(schemaview.all_classes())
+    assert "bmi" in tier_2.all_slots() and "bmi" not in schemaview.all_slots()
 
 
 def test_generate_tier_2_dictionary_writes_json(tier_2_dictionary, tmp_path):
@@ -1074,9 +1024,7 @@ def mapping_layout(tmp_path_factory):
 
 @pytest.fixture(scope="module")
 def mapping_tier_1(mapping_schema_path, mapping_layout):
-    return transform_layout_to_data_dictionary(
-        *load_schemas(mapping_schema_path, mapping_layout), get_bionetwork_subclasses
-    )
+    return transform_layout_to_data_dictionary(*load_schemas(mapping_schema_path, mapping_layout))
 
 
 def test_only_sections_are_emitted_in_layout_order(mapping_tier_1):
@@ -1137,9 +1085,7 @@ def test_header_comes_from_the_layout(mapping_tier_1):
 )
 def test_bad_layouts_are_refused(tmp_path, mapping_schema_path, sections, slots, match):
     with pytest.raises(ValueError, match=match):
-        transform_layout_to_data_dictionary(
-            *load_schemas(mapping_schema_path, _layout(tmp_path, sections, slots)), get_bionetwork_subclasses
-        )
+        transform_layout_to_data_dictionary(*load_schemas(mapping_schema_path, _layout(tmp_path, sections, slots)))
 
 
 def test_generate_tier_1_dictionary_writes_json(mapping_schema_path, mapping_layout, mapping_tier_1, tmp_path):
