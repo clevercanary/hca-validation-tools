@@ -1,4 +1,4 @@
-"""Whether a CAP export fits a tracker file, before ``copy_cap_annotations`` writes anything (#749)."""
+"""Whether a CAP export fits a tracker file, before ``copy_cap_annotations`` writes anything."""
 
 from __future__ import annotations
 
@@ -70,7 +70,10 @@ def _not_run(names: tuple[str, ...], reason: str) -> list[Check]:
 
 
 def _assess(source_path: str, target_path: str) -> _Pair:
-    """Every check of the copy, in its order; a check runs whenever the data it needs could be read."""
+    """Every check of the copy, in its order; a check runs whenever the data it needs could be read.
+
+    An obs or var index that cannot be read, or a missing obs group, raises.
+    """
     out = [_check("distinct_files", checks.same_file_failure(source_path, target_path))]
 
     with h5py.File(source_path, "r") as f:
@@ -183,6 +186,8 @@ def compare_cap_export(source_path: str, target_path: str) -> dict:
     ``target_path`` the file it would annotate, as in the copy; the target
     resolves to its latest snapshot. The copy stops at its first refusal;
     this runs every check whose input could be read, and reports the rest as not_run.
+    An obs or var index that cannot be read, or a missing obs group, returns
+    only ``{"error": ...}``, the copy's refusal.
 
     Returns:
         Dict with ``cells`` (overlap and ``within_copy_limit``), ``genes`` (overlap and up to 25 sorted IDs

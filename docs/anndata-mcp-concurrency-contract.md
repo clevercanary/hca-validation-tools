@@ -102,7 +102,7 @@ A tool's label does not depend on its arguments. `get_descriptive_stats` reads o
 - [x] Two reads run at the same time in different worker processes (rules 3–4). Test: two fixture reads each wait for the other's barrier file in `tmp_path`, and report different PIDs.
 - [x] A write waits for running reads; a read that arrives while a write waits runs after it; and reads waiting when a write finishes run before the next write (rules 5, 9, 10). Test: the gate on its own, driven by anyio events, records the order.
 - [x] A cancelled read releases the gate, and a dead worker returns the rule 14 error while other calls carry on (rules 11, 12, 14). Test: cancel a fixture read and kill a worker, then a write runs.
-- [x] Each of the 22 read tools returns the same result through a worker as in the server process (rule 7). Test: a parity test over the test fixture file.
+- [x] Each of the 23 read tools returns the same result through a worker as in the server process (rule 7). Test: a parity test over the test fixture file.
 - [x] `HCA_ANNDATA_MCP_READ_WORKERS` set to `0` or `abc` stops the server at startup with a message naming the variable (rule 4).
 - [x] Every read is labelled fast or slow, and the slow set equals the table above (rules 1, 2, 23). Test: the registration tests. (#899)
 - [x] A fast read returns while the slow lane is full, and a further slow read waits (rules 4, 23). Test: the lane test, which fails with one shared limiter. (#899)

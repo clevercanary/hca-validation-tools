@@ -1,7 +1,9 @@
-"""The checks ``copy_cap_annotations`` makes before it writes, as readers and pure checks (#749).
+"""The checks ``copy_cap_annotations`` makes before it writes, as readers and pure checks.
 
-Each check returns the copy's refusal message, or None. The copy runs them in
-its order and refuses on the first failure; ``compare_cap_export`` runs them all.
+Each check returns the copy's refusal message, or None. The copy calls them in
+its order and refuses on the first failure, except the edit log and lineage,
+which it checks through ``parse_edit_log`` and ``generate_output_path``;
+``compare_cap_export`` runs them all.
 """
 
 from __future__ import annotations

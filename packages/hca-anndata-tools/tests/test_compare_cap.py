@@ -70,6 +70,11 @@ def _no_cap_source(tmp_path, _downgrade):
     return _make_hca_target(tmp_path / "no-cap.h5ad", CELL_IDS), _make_hca_target(tmp_path / "t.h5ad", CELL_IDS)
 
 
+def _no_annotation_metadata(tmp_path, _downgrade):
+    source, target = _pair(tmp_path)
+    return _edit(source, lambda a: a.uns["cap_metadata"].pop("cellannotation_metadata")), target
+
+
 def _no_schema_version(tmp_path, _downgrade):
     source, target = _pair(tmp_path)
     return _edit(source, lambda a: a.uns["cap_metadata"].pop("cellannotation_schema_version")), target
@@ -86,6 +91,28 @@ def _non_categorical_column(tmp_path, _downgrade):
         del f["obs"]["author_cell_type--rationale"]
         f["obs"].create_dataset("author_cell_type--rationale", data=np.array(["morphology"] * len(CELL_IDS), dtype="S"))
     return source, target
+
+
+def _no_cap_columns(tmp_path, _downgrade):
+    def drop(adata):
+        adata.obs = adata.obs.drop(columns=[c for c in adata.obs.columns if "--" in c])
+
+    source, target = _pair(tmp_path)
+    return _edit(source, drop), target
+
+
+def _duplicate_source_cells(tmp_path, _downgrade):
+    return _pair(tmp_path, source_ids=[*CELL_IDS[:9], CELL_IDS[0]])
+
+
+def _duplicate_source_genes(tmp_path, _downgrade):
+    tmp_path.mkdir(exist_ok=True)
+    source = _make_cap_source(tmp_path / "cap.h5ad", CELL_IDS, var_ids=["GENE0", "GENE1", "GENE1", "GENE2", "GENE3"])
+    return source, _make_hca_target(tmp_path / "target.h5ad", CELL_IDS)
+
+
+def _duplicate_target_cells(tmp_path, _downgrade):
+    return _pair(tmp_path, target_ids=[*CELL_IDS[:9], CELL_IDS[0]])
 
 
 def _duplicate_target_genes(tmp_path, _downgrade):
@@ -141,9 +168,14 @@ PAIRS = [
     (_mixed_source, "no", "source_layout"),
     (_malformed_source, "no", "source_cap_block"),
     (_no_cap_source, "no", "source_cap_block"),
+    (_no_annotation_metadata, "no", "source_cap_metadata"),
     (_no_schema_version, "no", "source_schema_version"),
     (_metadata_not_a_dict, "no", "source_annotation_sets"),
     (_non_categorical_column, "no", "source_columns_categorical"),
+    (_no_cap_columns, "no", "source_columns_present"),
+    (_duplicate_source_cells, "no", "source_cell_ids_unique"),
+    (_duplicate_source_genes, "no", "source_gene_ids_unique"),
+    (_duplicate_target_cells, "no", "target_cell_ids_unique"),
     (_duplicate_target_genes, "no", "target_gene_ids_unique"),
     (_legacy_target, "no", "target_layout"),
     (_target_with_cap, "with_overwrite", "target_has_no_cap"),
@@ -157,6 +189,7 @@ PAIRS = [
 
 
 @pytest.mark.filterwarnings("ignore:Variable names are not unique:UserWarning")
+@pytest.mark.filterwarnings("ignore:Observation names are not unique:UserWarning")
 @pytest.mark.filterwarnings("ignore::anndata._warnings.OldFormatWarning")
 @pytest.mark.parametrize(("build", "accepts", "refused_by"), PAIRS, ids=[b.__name__.strip("_") for b, *_ in PAIRS])
 def test_the_verdict_is_what_the_copy_does(tmp_path, downgrade_cap_to_legacy, build, accepts, refused_by):
