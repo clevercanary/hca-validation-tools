@@ -222,12 +222,12 @@ differs from the pin.
 
 ## Smoke test
 
-1. `make curation-status` shows `running`, `first boot done` and a size of about `2.0T` at `/srv/curation-data`.
+1. `make curation-status` shows `running`, `first boot done` and a size of about `3.0T` at `/srv/curation-data`.
 2. `make curation-attach` shows the Claude Code session; detach with `Ctrl-b d`.
    The session log group, `/aws/ssm/session-logs`, has a stream named by the
    session ID that `make` printed, holding what the session showed.
 3. From the Claude app, open the session and ask it to run `hostname` and
-   `df -h ~/hca-tracker-upload`. The instance shows, and `df` reports a size of about `2.0T`.
+   `df -h ~/hca-tracker-upload`. The instance shows, and `df` reports a size of about `3.0T`.
 4. Run `/mcp`. Both MCP servers are connected. Ask for `check_environment`:
    downloads are ready, and uploads are ready with the `tracker-upload` profile
    (`can_upload` is true).

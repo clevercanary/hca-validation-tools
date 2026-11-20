@@ -29,7 +29,7 @@ terminal on the operator's computer, the Claude app or claude.ai.
 - **The data volume:** its own entity, not part of the instance.
     - A separate Terraform resource, `aws_ebs_volume.data`, with `prevent_destroy`, joined to the
       instance by a separate `aws_volume_attachment`. Replacing the instance replaces only the attachment.
-    - 2 TiB, encrypted, snapshotted weekly.
+    - 3 TiB, encrypted, snapshotted weekly.
     - Mounted at `/srv/curation-data` and reached as the curator's `~/hca-tracker-upload`; downloads and
       curated files live there.
 - **The instance role:** reads the tracker's data bucket and assumes the ODP writer role. Its S3 and STS
