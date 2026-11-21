@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.3](https://github.com/clevercanary/hca-validation-tools/compare/hca-anndata-tools-v0.7.2...hca-anndata-tools-v0.7.3) (2026-11-21)
+
+
+### Features
+
+* **hca-anndata-tools:** add `compare_cap_export`, which reports whether `copy_cap_annotations` would accept a CAP export and how it differs from its tracker file ([#922](https://github.com/clevercanary/hca-validation-tools/issues/922)) ([6a34fde](https://github.com/clevercanary/hca-validation-tools/commit/6a34fde40bb6bdaba0dbefe852ad40dd6e4f1c1c))
+
 ## [0.7.2](https://github.com/clevercanary/hca-validation-tools/compare/hca-anndata-tools-v0.7.1...hca-anndata-tools-v0.7.2) (2026-11-11)
 
 
