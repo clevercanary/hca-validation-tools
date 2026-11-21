@@ -1,4 +1,4 @@
-"""Tests for compare_cap_export: the copy's pre-write checks, reported without writing (#749)."""
+"""Tests for compare_cap_export: the copy's pre-write checks, reported without writing."""
 
 from collections.abc import Callable
 from pathlib import Path
