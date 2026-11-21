@@ -40,7 +40,7 @@ SLOW = {
 @pytest.mark.asyncio
 async def test_every_registered_tool_is_labelled():
     assert set(registrar.tools) == set(await mcp.get_tools())
-    assert len(registrar.tools) == 39
+    assert len(registrar.tools) == 40
 
 
 def _kind(kind: str) -> set[str]:
@@ -53,7 +53,7 @@ def test_write_set_is_the_seventeen_writes():
 
 def test_slow_set_is_the_contracts_eight_and_every_other_read_is_fast():
     assert _kind("slow") == SLOW
-    assert len(_kind("fast")) == 14
+    assert len(_kind("fast")) == 15
 
 
 @pytest.mark.asyncio

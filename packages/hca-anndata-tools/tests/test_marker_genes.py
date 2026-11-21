@@ -236,6 +236,26 @@ def test_specific_annotation_set(marker_h5ad):
     assert "test_labels" in result["annotation_sets_with_markers"]
 
 
+def test_specific_annotation_set_leaves_the_others_out(tmp_path):
+    n = 4
+    obs = pd.DataFrame(
+        {
+            "organism_ontology_term_id": pd.Categorical(["NCBITaxon:9606"] * n),
+            "first--marker_gene_evidence": pd.Categorical(["GFAP"] * n),
+            "second--marker_gene_evidence": pd.Categorical(["AIF1"] * n),
+        },
+        index=[f"cell_{i}" for i in range(n)],
+    )
+    path = tmp_path / "two_sets.h5ad"
+    var = pd.DataFrame({"feature_name": pd.Categorical(["GFAP", "AIF1"])}, index=["ENSG00000131095", "ENSG00000204472"])
+    ad.AnnData(X=sp.csr_matrix((n, 2), dtype=np.float32), obs=obs, var=var).write_h5ad(path)
+
+    result = validate_marker_genes(str(path), annotation_set="first")
+
+    assert result["annotation_sets_with_markers"] == ["first"]
+    assert result["total_unique_markers"] == 1
+
+
 def test_invalid_annotation_set(marker_h5ad):
     result = validate_marker_genes(str(marker_h5ad), annotation_set="nonexistent")
     assert "error" in result

@@ -7,6 +7,7 @@ if TYPE_CHECKING:
     from .barcodes import check_barcodes
     from .cap import get_cap_annotations
     from .cap_currency import check_cap_currency
+    from .compare_cap import compare_cap_export
     from .compress import compress_h5ad
     from .convert import convert_cellxgene_to_hca
     from .copy_cap import copy_cap_annotations
@@ -93,6 +94,7 @@ _LAZY_IMPORTS = {
     "find_source_datasets": ".sources",
     "set_source_dataset": ".source_dataset",
     "check_cap_currency": ".cap_currency",
+    "compare_cap_export": ".compare_cap",
     "check_source_obs": ".source_obs",
 }
 

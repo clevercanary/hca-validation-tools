@@ -23,13 +23,13 @@ One `hca-anndata-mcp` server process. Claude Code starts one stdio server per se
 - **Held memory:** what a worker holds once its read has ended: resident memory less shared pages on Linux (`/proc/self/statm`), physical footprint on macOS (`proc_pid_rusage`).
 - **Retire:** take a worker out of anyio's pool and kill it, so its memory goes back to the machine.
 
-The 39 tools registered in `server.py` on 2026-11-15 divide as follows. The write list is every tool whose code reaches `write_h5ad`, a snapshot helper or `cleanup_previous_version`.
+The 40 tools registered in `server.py` on 2026-11-18 divide as follows. The write list is every tool whose code reaches `write_h5ad`, a snapshot helper or `cleanup_previous_version`.
 
 | Kind | Count | Tools |
 | --- | --- | --- |
 | Write | 17 | `set_uns`, `set_producer_uns`, `convert_cellxgene_to_hca`, `strip_forbidden_obs_columns`, `drop_obs_columns`, `merge_obs_categories`, `rename_obs_column`, `rename_cell_ids`, `backfill_obs_from_source`, `copy_cap_annotations`, `strip_cap_annotations`, `replace_placeholder_values`, `compress_h5ad`, `normalize_raw`, `set_source_dataset`, `label_h5ad`, `populate_labels` |
 | Slow read | 8 | `plot_embedding` (loads the whole file), `validate_schema` (the validator loads the whole file), `check_raw_counts`, `check_duplicate_cells`, `check_donor_sex` (each streams the whole count matrix), `find_source_datasets`, `check_source_obs`, `check_cap_currency` (each opens every candidate file in a folder, which loads its `obs`) |
-| Fast read | 14 | `get_summary`, `get_storage_info`, `get_descriptive_stats`, `view_data`, `locate_files`, `get_cap_annotations`, `list_uns_fields`, `validate_marker_genes`, `view_edit_log`, `check_x_normalization`, `check_embeddings`, `check_barcodes`, `check_schema_type`, `validate_cell_annotation` |
+| Fast read | 15 | `get_summary`, `get_storage_info`, `get_descriptive_stats`, `view_data`, `locate_files`, `get_cap_annotations`, `list_uns_fields`, `validate_marker_genes`, `compare_cap_export`, `view_edit_log`, `check_x_normalization`, `check_embeddings`, `check_barcodes`, `check_schema_type`, `validate_cell_annotation` |
 
 A tool's label does not depend on its arguments. `get_descriptive_stats` reads only `obs` or `var`. `view_data` can be asked for a large slice of the matrix; rule 24 covers the memory that leaves behind.
 
@@ -102,7 +102,7 @@ A tool's label does not depend on its arguments. `get_descriptive_stats` reads o
 - [x] Two reads run at the same time in different worker processes (rules 3–4). Test: two fixture reads each wait for the other's barrier file in `tmp_path`, and report different PIDs.
 - [x] A write waits for running reads; a read that arrives while a write waits runs after it; and reads waiting when a write finishes run before the next write (rules 5, 9, 10). Test: the gate on its own, driven by anyio events, records the order.
 - [x] A cancelled read releases the gate, and a dead worker returns the rule 14 error while other calls carry on (rules 11, 12, 14). Test: cancel a fixture read and kill a worker, then a write runs.
-- [x] Each of the 22 read tools returns the same result through a worker as in the server process (rule 7). Test: a parity test over the test fixture file.
+- [x] Each of the 23 read tools returns the same result through a worker as in the server process (rule 7). Test: a parity test over the test fixture file.
 - [x] `HCA_ANNDATA_MCP_READ_WORKERS` set to `0` or `abc` stops the server at startup with a message naming the variable (rule 4).
 - [x] Every read is labelled fast or slow, and the slow set equals the table above (rules 1, 2, 23). Test: the registration tests. (#899)
 - [x] A fast read returns while the slow lane is full, and a further slow read waits (rules 4, 23). Test: the lane test, which fails with one shared limiter. (#899)

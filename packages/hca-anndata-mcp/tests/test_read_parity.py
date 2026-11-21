@@ -17,6 +17,7 @@ def _read_args(sample_h5ad, sample_dir) -> dict[str, dict]:
     args["check_cap_currency"] = {"path": path, "cap_url": "https://celltype.info/project/1"}
     args["validate_schema"] = {"path": path, "object_kind": "integrated"}
     args["get_descriptive_stats"] = {"path": path, "attribute": "obs", "value_counts": True}
+    args["compare_cap_export"] = {"source_path": path, "target_path": path}
     return args
 
 
@@ -27,10 +28,11 @@ def _canonical(result) -> str:
 @pytest.mark.asyncio
 async def test_reads_return_the_same_through_a_worker(sample_h5ad, sample_dir):
     # On this file validate_marker_genes, find_source_datasets, check_cap_currency
-    # and check_source_obs return only an error, so for them this compares errors.
+    # and check_source_obs return only an error, so for them this compares errors;
+    # compare_cap_export reports the file against itself, every check included.
     tools = await mcp.get_tools()
     args = _read_args(sample_h5ad, sample_dir)
-    assert len(args) == 22
+    assert len(args) == 23
     for name, kwargs in args.items():
         direct = registrar.tools[name].fn(**kwargs)
         through_worker = await tools[name].fn(**kwargs)
