@@ -7,7 +7,7 @@ models are in `hca_metadata_schema.generated.core`, regenerated from the Tier 1 
 
 from pathlib import Path
 
-__version__ = "0.3.2"  # x-release-please-version
+__version__ = "0.3.3"  # x-release-please-version
 
 CORE_SCHEMA_PATH = Path(__file__).parent / "core.yaml"
 TIER_2_SCHEMA_PATH = Path(__file__).parent / "tier_2" / "tier_2.yaml"
