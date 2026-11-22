@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.4](https://github.com/clevercanary/hca-validation-tools/compare/hca-anndata-tools-v0.7.3...hca-anndata-tools-v0.7.4) (2026-11-22)
+
+
+### Features
+
+* **hca-anndata-tools:** add `copy_matrix_from_file`, which copies a count matrix from another h5ad into a new layer of an HCA target, matching cells by ID and genes by Ensembl ID ([#932](https://github.com/clevercanary/hca-validation-tools/issues/932)) ([1deacbf](https://github.com/clevercanary/hca-validation-tools/commit/1deacbfab13523f4abe983ae20e0462570431181))
+
 ## [0.7.3](https://github.com/clevercanary/hca-validation-tools/compare/hca-anndata-tools-v0.7.2...hca-anndata-tools-v0.7.3) (2026-11-21)
 
 
