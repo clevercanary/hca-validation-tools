@@ -28,7 +28,7 @@ from ._io import (
 from .cap import cellxgene_schema_version
 from .cap_pair import same_file_failure
 from .dup_counts import _canonicalize
-from .guards import is_malformed_name, require_obs_group
+from .guards import is_malformed_name, legacy_layout_problems, require_obs_group
 from .qc import (
     DEFAULT_CHUNK_NNZ,
     SAMPLE_ID_LIMIT,
@@ -98,8 +98,8 @@ class Scratch:
     """The copied rows, uncompressed on disk in source order, and where each target row sits in them.
 
     ``indptr`` is the layer's, in target order; ``offsets`` is each target
-    row's first entry in the scratch files. ``checksums`` is each target
-    row's :func:`row_checksums`, taken from the source block rather than the
+    row's first entry in the scratch files. ``digests`` is each target
+    row's :func:`row_digests`, taken from the source block rather than the
     scratch files, so a misplaced row cannot agree with it.
     """
 
@@ -107,7 +107,7 @@ class Scratch:
     data_path: Path
     offsets: np.ndarray
     indptr: np.ndarray
-    checksums: np.ndarray
+    digests: np.ndarray
     n_var: int
 
     @property
@@ -163,7 +163,7 @@ def read_target(f: h5py.File, layer: str) -> Target:
     """The target's cells, genes and edit log, refusing a target the layer cannot go into.
 
     Raises:
-        Refusal: The target is CellxGENE layout, already has the layer, or has
+        Refusal: The target is CellxGENE or legacy CAP layout, already has the layer, or has
             a ``raw.X`` that cannot be checked against (CSC, or a ``raw.var``
             that is absent or differs from ``var``, or the wrong shape).
     """
@@ -171,6 +171,9 @@ def read_target(f: h5py.File, layer: str) -> Target:
         raise Refusal(
             f"Refusing to copy: the target declares CellxGENE schema {version}; this tool writes HCA-layout files only"
         )
+    uns = f.get("uns")
+    if legacy := legacy_layout_problems(uns if isinstance(uns, h5py.Group) else None):
+        raise Refusal(f"Refusing to copy: {legacy[0]}")
     layers = f.get("layers")
     if isinstance(layers, h5py.Group) and layer in layers:
         raise Refusal(f"Refusing to copy: the target already has layers['{layer}']")
@@ -323,10 +326,19 @@ def row_offsets(written: int, indptr: np.ndarray) -> np.ndarray:
     return written + indptr[:-1].astype(np.int64)
 
 
-def row_checksums(m: sp.csr_matrix) -> np.ndarray:
-    """Each row's sum of value x (gene + 1), as float64; exact while it stays below 2^53."""
-    rows = np.repeat(np.arange(len(m.indptr) - 1), np.diff(m.indptr))
-    return np.bincount(rows, weights=m.data * (m.indices + 1.0), minlength=len(m.indptr) - 1)
+def _splitmix64(x: np.ndarray) -> np.ndarray:
+    x = x + np.uint64(0x9E3779B97F4A7C15)
+    x = (x ^ (x >> np.uint64(30))) * np.uint64(0xBF58476D1CE4E5B9)
+    x = (x ^ (x >> np.uint64(27))) * np.uint64(0x94D049BB133111EB)
+    return x ^ (x >> np.uint64(31))
+
+
+def row_digests(m: sp.csr_matrix) -> np.ndarray:
+    """Each row's 64-bit digest of its (gene, float32 value) entries; rows with the same entries share one."""
+    keys = (m.indices.astype(np.uint64) << np.uint64(32)) | m.data.astype(np.float32).view(np.uint32).astype(np.uint64)
+    # Summing per-entry hashes, wrapping at 2^64, makes the digest one vectorized cumsum.
+    cumulative = np.concatenate(([np.uint64(0)], np.cumsum(_splitmix64(keys), dtype=np.uint64)))
+    return cumulative[m.indptr[1:]] - cumulative[m.indptr[:-1]]
 
 
 def collect_rows(
@@ -341,7 +353,7 @@ def collect_rows(
     n_target = len(alignment.target_obs)
     offsets = np.zeros(n_target, dtype=np.int64)
     lengths = np.zeros(n_target, dtype=np.int64)
-    checksums = np.zeros(n_target, dtype=np.float64)
+    digests = np.zeros(n_target, dtype=np.uint64)
     indices_path, data_path = scratch_dir / "indices.i32", scratch_dir / "data.f32"
     written = 0
     with indices_path.open("wb") as indices_out, data_path.open("wb") as data_out:
@@ -351,12 +363,12 @@ def collect_rows(
             m = rows.matrix
             offsets[rows.target_rows] = row_offsets(written, m.indptr)
             lengths[rows.target_rows] = np.diff(m.indptr)
-            checksums[rows.target_rows] = row_checksums(m)
+            digests[rows.target_rows] = row_digests(m)
             m.indices.astype(np.int32, copy=False).tofile(indices_out)
             m.data.astype(np.float32, copy=False).tofile(data_out)
             written += m.nnz
     indptr = np.concatenate(([0], np.cumsum(lengths)))
-    return Scratch(indices_path, data_path, offsets, indptr, checksums, len(alignment.target_var))
+    return Scratch(indices_path, data_path, offsets, indptr, digests, len(alignment.target_var))
 
 
 def stage_source(
@@ -389,6 +401,15 @@ def _sorted_raw(raw: sp.csr_matrix, start: int, alignment: Alignment) -> sp.csr_
     return raw
 
 
+def _raw_indptr(raw: h5py.Group | h5py.Dataset) -> np.ndarray:
+    """Entries stored before each row of ``raw.X``, as int64; a dense matrix stores every gene."""
+    if isinstance(raw, h5py.Dataset):
+        return np.arange(raw.shape[0] + 1, dtype=np.int64) * raw.shape[1]
+    indptr = raw["indptr"]
+    assert isinstance(indptr, h5py.Dataset)
+    return np.asarray(indptr[:], dtype=np.int64)
+
+
 def _raw_block_reader(raw: h5py.Group | h5py.Dataset) -> Callable[[int, int], sp.csr_matrix]:
     if isinstance(raw, h5py.Dataset):
         return lambda start, stop: dense_block_as_csr(raw[start:stop])
@@ -396,15 +417,33 @@ def _raw_block_reader(raw: h5py.Group | h5py.Dataset) -> Callable[[int, int], sp
     return lambda start, stop: backed[start:stop]  # pyright: ignore[reportReturnType]
 
 
-def write_layer(f_out: h5py.File, layer: str, scratch: Scratch, alignment: Alignment, chunk_nnz: int) -> None:
-    """Write the scratch rows as ``layers/<layer>``, checking each block against ``raw.X`` first.
+def check_against_raw(target_path: str, scratch: Scratch, alignment: Alignment, chunk_nnz: int) -> None:
+    """Check the staged rows against the target's ``raw.X``, before any snapshot is taken; a target without one passes.
+
+    Raises:
+        Refusal: A copied value is above ``raw.X`` or non-zero where it is
+            zero, or ``raw.X`` stores a gene twice in a cell.
+    """
+    with h5py.File(target_path, "r") as f:
+        raw = f.get("raw/X")
+        if raw is None:
+            return
+        read_raw = _raw_block_reader(raw)  # pyright: ignore[reportArgumentType]
+        for start, stop in chunk_bounds(scratch.indptr + _raw_indptr(raw), chunk_nnz):  # pyright: ignore[reportArgumentType]
+            block = scratch.rows(start, stop)
+            if problem := raw_problem(block, _sorted_raw(read_raw(start, stop), start, alignment)):
+                reason, row, col = problem
+                raise Refusal(
+                    f"Refusing to copy: the value {block[row, col]} at cell {alignment.cell(start + row)}, "
+                    f"gene {alignment.gene(col)} is {reason}"
+                )
+
+
+def write_layer(f_out: h5py.File, layer: str, scratch: Scratch, chunk_nnz: int) -> None:
+    """Write the scratch rows as ``layers/<layer>``.
 
     Raw h5py rather than anndata's writer: the layer is streamed block by
     block into datasets sized up front, which ``write_elem`` cannot do.
-
-    Raises:
-        Refusal: A copied value is above ``raw.X`` or non-zero where it is zero,
-            or ``raw.X`` stores a gene twice in a cell.
     """
     nnz, indptr = scratch.nnz, scratch.indptr
     index_dtype = np.int32 if max(nnz, scratch.n_var) < _INT32_LIMIT else np.int64
@@ -414,25 +453,15 @@ def write_layer(f_out: h5py.File, layer: str, scratch: Scratch, alignment: Align
     group.attrs["shape"] = (len(indptr) - 1, scratch.n_var)
     data = group.create_dataset("data", shape=(nnz,), dtype=np.float32, **_COMPRESSION)
     indices = group.create_dataset("indices", shape=(nnz,), dtype=index_dtype, **_COMPRESSION)
-    raw = f_out.get("raw/X")
-    read_raw = None if raw is None else _raw_block_reader(raw)  # pyright: ignore[reportArgumentType]
     for start, stop in chunk_bounds(indptr, chunk_nnz):
         block = scratch.rows(start, stop)
-        if read_raw is not None and (
-            problem := raw_problem(block, _sorted_raw(read_raw(start, stop), start, alignment))
-        ):
-            reason, row, col = problem
-            raise Refusal(
-                f"Refusing to copy: the value {block[row, col]} at cell {alignment.cell(start + row)}, "
-                f"gene {alignment.gene(col)} is {reason}"
-            )
         data[indptr[start] : indptr[stop]] = block.data
         indices[indptr[start] : indptr[stop]] = block.indices
     group.create_dataset("indptr", data=indptr.astype(index_dtype), **_COMPRESSION)
 
 
 def readback_problem(path: str, layer: str, scratch: Scratch, alignment: Alignment, chunk_nnz: int) -> str | None:
-    """Why the written layer differs from the scratch rows or from the source's checksums, or None."""
+    """Why the written layer differs from the scratch rows or from the source's digests, or None."""
     with h5py.File(path, "r") as f:
         written = sparse_dataset(f[f"layers/{layer}"])  # pyright: ignore[reportArgumentType]
         if written.format != "csr" or written.shape != (len(scratch.indptr) - 1, scratch.n_var):
@@ -449,7 +478,7 @@ def readback_problem(path: str, layer: str, scratch: Scratch, alignment: Alignme
             if differs.any():
                 row = start + _entry_row(want.indptr, int(np.argmax(differs)))
                 return f"The readback of layers['{layer}'] differs from the copied values at cell {alignment.cell(row)}"
-            if (mismatch := row_checksums(got) != scratch.checksums[start:stop]).any():  # pyright: ignore[reportArgumentType]
+            if (mismatch := row_digests(got) != scratch.digests[start:stop]).any():  # pyright: ignore[reportArgumentType]
                 row = start + int(np.argmax(mismatch))
                 return f"The readback of layers['{layer}'] does not match the source at cell {alignment.cell(row)}"
     return None
@@ -461,11 +490,11 @@ def write_snapshot(
     """Write the layer and its edit-log entry into a new snapshot of the target, read it back, and return its path.
 
     Raises:
-        Refusal: From :func:`write_layer`, or the readback differs; the snapshot is removed.
+        Refusal: The readback differs; the snapshot is removed.
     """
     with snapshot_copy_hashed(target_path) as (output_path, target_sha256):
         with h5py.File(output_path, "a") as f_out:
-            write_layer(f_out, layer, scratch, alignment, chunk_nnz)
+            write_layer(f_out, layer, scratch, chunk_nnz)
             entry = make_edit_entry(
                 operation=OPERATION,
                 description=f"Copied {details['source_matrix']} of {details['source_file']} into layers['{layer}']",
@@ -530,6 +559,7 @@ def copy_matrix_from_file(
 
         with tempfile.TemporaryDirectory(dir=Path(target_path).parent, prefix=".copy-matrix-") as tmp:
             alignment, scratch = stage_source(source_path, key, source_matrix, target, chunk_nnz, Path(tmp))
+            check_against_raw(target_path, scratch, alignment, chunk_nnz)
             details = {
                 "source_file": Path(source_path).name,
                 "source_sha256": _compute_sha256(source_path),

@@ -77,10 +77,10 @@ obvious sentence and it is false twice over:
 | `rename_obs_column` | **no** | yes |
 | `strip_forbidden_obs_columns` | yes | **no** |
 | `strip_cap_annotations` | yes | **no** |
-| `copy_matrix_from_file` (target) | yes | **no** |
+| `copy_matrix_from_file` (target) | yes | yes |
 | `set_uns`, `replace_placeholder_values`, `set_producer_uns`, `compress_h5ad`, `normalize_raw`, `copy_cap_annotations` (target) | **no** | **no** |
 
-Only `rename_cell_ids` and `set_source_dataset` implement the rule as stated, and `set_source_dataset` also refuses a file not named as a tracker download, since a CAP export named by its title may carry neither marker (#776). Per principle 8, eight
+Only `rename_cell_ids`, `set_source_dataset` and `copy_matrix_from_file` implement the rule as stated, and `set_source_dataset` also refuses a file not named as a tracker download, since a CAP export named by its title may carry neither marker (#776). Per principle 8, nine
 hand-rolled preflights with four different predicates is the smell that the
 chokepoint is missing.
 

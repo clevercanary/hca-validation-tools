@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 import pytest
 import scipy.sparse as sp
+from anndata.io import write_elem
 
 from hca_anndata_tools import copy_matrix
 from hca_anndata_tools.copy_matrix import (
@@ -17,7 +18,7 @@ from hca_anndata_tools.copy_matrix import (
     first_repeated_entry,
     parse_source_matrix,
     raw_problem,
-    row_checksums,
+    row_digests,
     row_offsets,
 )
 
@@ -329,6 +330,17 @@ def test_refuses_cellxgene_target(pair, cellxgene_h5ad, no_snapshot):
     assert no_snapshot(cellxgene_h5ad)
 
 
+def test_refuses_legacy_cap_target(pair, no_snapshot):
+    source, target, _ = pair
+    with h5py.File(target, "a") as f:
+        write_elem(f["uns"], "cellannotation_schema_version", "1.0.0")
+
+    result = _copy(source, target)
+
+    assert result["error"].startswith("Refusing to copy: the file uses the deprecated top-level CAP layout")
+    assert no_snapshot(target)
+
+
 def test_refuses_same_file(pair):
     _, target, _ = pair
 
@@ -369,6 +381,54 @@ def test_tampered_readback_discards_snapshot(pair, monkeypatch, no_snapshot):
 
     assert "differs from the copied values" in result["error"]
     assert "the snapshot was discarded" in result["error"]
+    assert no_snapshot(target)
+    assert _no_scratch(target)
+
+
+@pytest.mark.parametrize(
+    ("tamper", "message"),
+    [
+        (lambda g: g.attrs.__setitem__("shape", (20, 11)), "not the target's shape as CSR"),
+        (lambda g: g["indptr"].__setitem__(1, g["indptr"][1] + 1), "a different number of values per cell"),
+    ],
+    ids=["shape", "indptr"],
+)
+def test_readback_checks_layer_structure(pair, monkeypatch, no_snapshot, tamper, message):
+    source, target, _ = pair
+    write_layer = copy_matrix.write_layer
+
+    def write_then_tamper(f_out, layer, *args):
+        write_layer(f_out, layer, *args)
+        tamper(f_out[f"layers/{layer}"])
+
+    monkeypatch.setattr(copy_matrix, "write_layer", write_then_tamper)
+
+    result = _copy(source, target)
+
+    assert message in result["error"]
+    assert no_snapshot(target)
+
+
+def test_refuses_csc_target_raw(pair, no_snapshot):
+    source, target, _ = pair
+    adata = ad.read_h5ad(target)
+    adata.raw = ad.AnnData(X=sp.csc_matrix(adata.raw.X), obs=adata.obs, var=adata.var)  # pyright: ignore[reportOptionalMemberAccess, reportArgumentType]
+    adata.write_h5ad(target)
+
+    result = _copy(source, target)
+
+    assert result["error"] == "The target's raw.X is csc_matrix, which cannot be read by row to check the copy against"
+    assert no_snapshot(target)
+
+
+def test_refuses_target_with_unreadable_edit_log(pair, no_snapshot):
+    source, target, _ = pair
+    with h5py.File(target, "a") as f:
+        write_elem(f["uns"], "provenance", {"edit_history": "not json {"})
+
+    result = _copy(source, target)
+
+    assert "contains invalid JSON" in result["error"]
     assert no_snapshot(target)
     assert _no_scratch(target)
 
@@ -428,7 +488,12 @@ def test_refuses_target_raw_with_other_genes(tmp_path, pair, no_snapshot):
 
 def test_scratch_rows_with_no_values(tmp_path):
     scratch = copy_matrix.Scratch(
-        tmp_path / "i", tmp_path / "d", np.zeros(3, dtype=np.int64), np.zeros(4, dtype=np.int64), np.zeros(3), 4
+        tmp_path / "i",
+        tmp_path / "d",
+        np.zeros(3, dtype=np.int64),
+        np.zeros(4, dtype=np.int64),
+        np.zeros(3, dtype=np.uint64),
+        4,
     )
 
     rows = scratch.rows(0, 3)
@@ -596,9 +661,63 @@ def test_random_subsets_and_orders_match_scipy(tmp_path, seed):
     )  # pyright: ignore[reportAttributeAccessIssue]
 
 
-def test_row_checksums_tell_genes_apart():
-    m = sp.csr_matrix(np.array([[2, 0, 3], [3, 0, 2], [0, 0, 0]], dtype=np.float32))
+def test_row_digests():
+    m = sp.csr_matrix(np.array([[1, 2, 0], [3, 1, 0], [1, 2, 0], [0, 0, 0], [0, 1, 2]], dtype=np.float32))
 
-    sums = row_checksums(m)
+    digests = row_digests(m)
 
-    assert sums.tolist() == [2 * 1 + 3 * 3, 3 * 1 + 2 * 3, 0]
+    assert digests.dtype == np.uint64
+    assert digests[0] == digests[2]  # the same entries
+    assert len({int(d) for d in digests[[0, 1, 3, 4]]}) == 4  # [1, 2] and [3, 1] share a weighted sum
+    assert digests[3] == 0
+
+
+def test_swapped_rows_with_equal_weighted_sums_are_caught(tmp_path, monkeypatch, no_snapshot):
+    genes = GENES[:2]
+    pair = sp.csr_matrix(np.array([[1, 2], [3, 1]], dtype=np.float32))
+    source = _write(tmp_path / "source.h5ad", pair, ["a", "b"], genes)
+    target = _write(tmp_path / "target.h5ad", pair, ["a", "b"], genes)
+    offsets = copy_matrix.row_offsets
+    monkeypatch.setattr(copy_matrix, "row_offsets", lambda written, indptr: offsets(written, indptr)[::-1])
+
+    result = _copy(source, target)
+
+    assert result["error"].startswith("The readback of layers['desouped_counts'] does not match the source at cell a")
+    assert no_snapshot(target)
+
+
+def test_raw_refusal_comes_before_the_snapshot(pair, monkeypatch):
+    source, target, expected = pair
+    row, col = np.argwhere(expected.to_numpy() > 1)[0]
+    _set_value(target, "raw", row, col, 1.0)
+    monkeypatch.setattr(copy_matrix, "snapshot_copy_hashed", lambda path: pytest.fail("the target was copied"))
+
+    result = _copy(source, target)
+
+    assert "is above raw.X (1.0)" in result["error"]
+
+
+@pytest.mark.parametrize("raw_format", ["csr", "dense"])
+def test_check_blocks_are_bounded_by_raw_too(tmp_path, monkeypatch, raw_format):
+    n_cells, n_genes = 12, 10
+    counts = np.zeros((n_cells, n_genes), dtype=np.float32)
+    counts[0, 0] = 1
+    cells = [f"c{i}" for i in range(n_cells)]
+    source = _write(tmp_path / "source.h5ad", sp.csr_matrix(counts), cells, GENES[:n_genes])
+    raw = np.ones((n_cells, n_genes), dtype=np.float32)
+    raw_x = sp.csr_matrix(raw) if raw_format == "csr" else raw
+    target = _write(tmp_path / "target.h5ad", sp.csr_matrix(raw), cells, GENES[:n_genes], raw_x=raw_x)
+    rows_read = []
+    reader = copy_matrix._raw_block_reader
+
+    def recording_reader(item):
+        read = reader(item)
+        return lambda start, stop: rows_read.append(stop - start) or read(start, stop)
+
+    monkeypatch.setattr(copy_matrix, "_raw_block_reader", recording_reader)
+
+    result = _copy(source, target, chunk_nnz=25)
+
+    assert "error" not in result, result
+    assert sum(rows_read) == n_cells
+    assert max(rows_read) * n_genes <= 25
