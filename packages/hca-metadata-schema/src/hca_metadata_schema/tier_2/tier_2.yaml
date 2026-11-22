@@ -5,7 +5,7 @@ description: >-
   Tier 2 donor and sample metadata, collected under managed access and kept apart from Tier 1. Released with the core
   schema, at its version.
 license: MIT
-version: 0.3.2  # x-release-please-version
+version: 0.3.3  # x-release-please-version
 
 prefixes:
   linkml: https://w3id.org/linkml/

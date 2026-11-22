@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.3](https://github.com/clevercanary/hca-validation-tools/compare/hca-metadata-schema-v0.3.2...hca-metadata-schema-v0.3.3) (2026-11-22)
+
+
+### Features
+
+* **schema:** encode the portal's 64 musculoskeletal and genetic-diversity Tier 2 fields in a Tier 2 LinkML schema, and generate the Tier 2 data dictionary ([#790](https://github.com/clevercanary/hca-validation-tools/issues/790)) ([#918](https://github.com/clevercanary/hca-validation-tools/issues/918)) ([a2278ed](https://github.com/clevercanary/hca-validation-tools/commit/a2278edd18ffcf1a894a6954aa776b033ac05e9a))
+
 ## [0.3.2](https://github.com/clevercanary/hca-validation-tools/compare/hca-metadata-schema-v0.3.1...hca-metadata-schema-v0.3.2) (2026-11-18)
 
 
