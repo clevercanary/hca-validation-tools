@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.10.0](https://github.com/clevercanary/hca-validation-tools/compare/hca-anndata-mcp-v0.9.0...hca-anndata-mcp-v0.10.0) (2026-11-22)
+
+
+### ⚠ BREAKING CHANGES
+
+* **hca-anndata-mcp:** `HCA_ANNDATA_MCP_READ_WORKERS=1`, valid before, now stops the server at startup, because each lane needs at least one slot. The default rose from 6 reads at once to 16, and an existing `HCA_ANNDATA_MCP_READ_WORKERS=6` now allows only 3 slow reads at once (half of N), where it allowed 6 scans before; set `HCA_ANNDATA_MCP_SLOW_WORKERS` to keep more.
+
+### Features
+
+* **hca-anndata-mcp:** give fast reads their own lane, run slow reads in half the workers, and retire a worker left holding more than 3 GiB ([#906](https://github.com/clevercanary/hca-validation-tools/issues/906)) ([789ed19](https://github.com/clevercanary/hca-validation-tools/commit/789ed19636d38695e721e581870b0368ab574fec))
+* **hca-anndata-mcp:** run read tools in parallel worker processes and keep writes one at a time ([#898](https://github.com/clevercanary/hca-validation-tools/issues/898)) ([af19843](https://github.com/clevercanary/hca-validation-tools/commit/af19843c3fdf144b9964ad9ef4c41386b93748d0))
+* **hca-anndata-tools:** add `compare_cap_export`, which reports whether `copy_cap_annotations` would accept a CAP export and how it differs from its tracker file ([#922](https://github.com/clevercanary/hca-validation-tools/issues/922)) ([6a34fde](https://github.com/clevercanary/hca-validation-tools/commit/6a34fde40bb6bdaba0dbefe852ad40dd6e4f1c1c))
+* **hca-anndata-tools:** add `copy_matrix_from_file`, which copies a count matrix from another h5ad into a new layer of an HCA target, matching cells by ID and genes by Ensembl ID ([#932](https://github.com/clevercanary/hca-validation-tools/issues/932)) ([1deacbf](https://github.com/clevercanary/hca-validation-tools/commit/1deacbfab13523f4abe983ae20e0462570431181))
+
 ## [0.9.0](https://github.com/clevercanary/hca-validation-tools/compare/hca-anndata-mcp-v0.8.2...hca-anndata-mcp-v0.9.0) (2026-11-11)
 
 
