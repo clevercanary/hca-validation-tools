@@ -486,6 +486,22 @@ def test_refuses_target_raw_with_other_genes(tmp_path, pair, no_snapshot):
     assert no_snapshot(target)
 
 
+def test_refuses_target_raw_with_other_cells(pair, no_snapshot):
+    source, target, _ = pair
+    with h5py.File(target, "a") as f:
+        raw = f["raw/X"]
+        n_obs, n_var = raw.attrs["shape"]
+        indptr = raw["indptr"][:]
+        del raw["indptr"]
+        raw.create_dataset("indptr", data=np.append(indptr, indptr[-1]))
+        raw.attrs["shape"] = (n_obs + 1, n_var)
+
+    result = _copy(source, target)
+
+    assert "raw.X does not have the target's cells and genes" in result["error"]
+    assert no_snapshot(target)
+
+
 def test_scratch_rows_with_no_values(tmp_path):
     scratch = copy_matrix.Scratch(
         tmp_path / "i",
