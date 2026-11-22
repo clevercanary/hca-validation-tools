@@ -257,12 +257,10 @@ def _walk(f: h5py.File, key: str, n_obs: int, n_var: int, chunk_nnz: int, check_
 
 
 @dataclass(frozen=True)
-class CountMatrix:
-    """The count matrix a read-only check walks, with what every such check
-    needs to know before its first chunk. See :func:`open_count_matrix`."""
+class Matrix:
+    """A cells x genes matrix in an open file, described and index-checked. See :func:`open_matrix`."""
 
     key: str
-    integer_check: dict
     format: MatrixFormat
     n_obs: int
     n_var: int
@@ -278,7 +276,7 @@ class CountMatrix:
     def read_var_ids(self, f: h5py.File) -> np.ndarray:
         """The var index that names this matrix's columns, refused by name when it cannot.
 
-        The var half of the preamble ``open_count_matrix`` does for obs: the
+        The var half of the preamble ``open_matrix`` does for obs: the
         dataframe must exist and its index must be as wide as the matrix.
         anndata's backed open checks neither for ``raw/var``.
         """
@@ -303,17 +301,20 @@ class CountMatrix:
         }
 
 
-def open_count_matrix(f: h5py.File) -> CountMatrix:
-    """Resolve, describe, and index-check the count matrix in an open file.
+@dataclass(frozen=True)
+class CountMatrix(Matrix):
+    """The count matrix a read-only check walks, with what every such check
+    needs to know before its first chunk. See :func:`open_count_matrix`."""
 
-    The preamble every count-matrix check shares (this gate, #677's duplicate
-    hash): which matrix, its format and shape, and the obs index that names
-    its rows. anndata's backed open does not check the index against the
-    matrix, so a shortened obs passes the gate; it is read here and refused
-    by name, rather than IndexError on the first finding or name the wrong
-    cell when none fires.
+    integer_check: dict
+
+
+def open_matrix(f: h5py.File, key: str) -> Matrix:
+    """Describe and index-check the matrix at ``key`` in an open file.
+
+    Raises:
+        Refusal: obs does not name every row of the matrix.
     """
-    key, integer_check = resolve_count_matrix(f)
     item = f[key]
     fmt, (n_obs, n_var), dtype = describe_matrix(item, key)
     nnz = None
@@ -325,7 +326,13 @@ def open_count_matrix(f: h5py.File) -> CountMatrix:
     obs_ids = read_index(obs, obs_index_name(obs), "obs")
     if len(obs_ids) != n_obs:
         raise Refusal(f"obs has {len(obs_ids)} IDs but {key} has {n_obs} rows")
-    return CountMatrix(key, integer_check, fmt, n_obs, n_var, dtype, nnz, obs_ids)
+    return Matrix(key, fmt, n_obs, n_var, dtype, nnz, obs_ids)
+
+
+def open_count_matrix(f: h5py.File) -> CountMatrix:
+    """:func:`open_matrix` on the count matrix :func:`resolve_count_matrix` picks."""
+    key, integer_check = resolve_count_matrix(f)
+    return CountMatrix(**vars(open_matrix(f, key)), integer_check=integer_check)
 
 
 def _check_raw_counts_at_path(path: str, chunk_nnz: int) -> dict:

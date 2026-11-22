@@ -96,6 +96,18 @@ def _cases(bad: str, good: str) -> list[tuple[str, object, dict, bool]]:
         ),
         ("copy_cap_annotations[source]", tools.copy_cap_annotations, {"source_path": bad, "target_path": good}, True),
         ("copy_cap_annotations[target]", tools.copy_cap_annotations, {"source_path": good, "target_path": bad}, True),
+        (
+            "copy_matrix_from_file[source]",
+            tools.copy_matrix_from_file,
+            {"source_path": bad, "source_matrix": "X", "target_path": good, "layer": "counts"},
+            True,
+        ),
+        (
+            "copy_matrix_from_file[target]",
+            tools.copy_matrix_from_file,
+            {"source_path": good, "source_matrix": "X", "target_path": bad, "layer": "counts"},
+            True,
+        ),
         ("drop_obs_columns", tools.drop_obs_columns, {"path": bad, "columns": ["donor_id"]}, True),
         ("strip_forbidden_obs_columns", tools.strip_forbidden_obs_columns, {"path": bad}, True),
         ("strip_cap_annotations", tools.strip_cap_annotations, {"path": bad}, True),

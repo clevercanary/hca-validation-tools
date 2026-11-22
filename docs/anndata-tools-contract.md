@@ -77,6 +77,7 @@ obvious sentence and it is false twice over:
 | `rename_obs_column` | **no** | yes |
 | `strip_forbidden_obs_columns` | yes | **no** |
 | `strip_cap_annotations` | yes | **no** |
+| `copy_matrix_from_file` (target) | yes | **no** |
 | `set_uns`, `replace_placeholder_values`, `set_producer_uns`, `compress_h5ad`, `normalize_raw`, `copy_cap_annotations` (target) | **no** | **no** |
 
 Only `rename_cell_ids` and `set_source_dataset` implement the rule as stated, and `set_source_dataset` also refuses a file not named as a tracker download, since a CAP export named by its title may carry neither marker (#776). Per principle 8, eight
@@ -241,7 +242,7 @@ determines what files it must accept.
 |---|---|---|---|
 | **Read-only** | Reads, never writes | `get_summary`, `view_data`, `get_storage_info`, `validate_*` | Anything anndata reads. No exceptions. |
 | **Copy-and-transplant** | Reads source, writes a *fresh* file through anndata, moves elements between files | `convert_cellxgene_to_hca` | Anything anndata reads on the source side; the file it writes contains only profile encodings |
-| **In-place surgical** | Snapshots, then rewrites *specific elements* preserving the rest byte-for-byte | `rename_cell_ids`, `merge_obs_categories`, `backfill_obs_from_source` (target side), `replace_placeholder_values` | Reads anything anndata reads; normalizes the elements it rewrites (#641); refuses **before the snapshot** only for masked values it would have to keep |
+| **In-place surgical** | Snapshots, then rewrites *specific elements* preserving the rest byte-for-byte | `rename_cell_ids`, `merge_obs_categories`, `backfill_obs_from_source` (target side), `copy_matrix_from_file` (target side), `replace_placeholder_values` | Reads anything anndata reads; normalizes the elements it rewrites (#641); refuses **before the snapshot** only for masked values it would have to keep |
 | **Full rewrite** | Streams the whole file through anndata's writer | `compress_h5ad`, `normalize_raw` | Reads anything anndata reads; the file it writes contains only profile encodings (nullable input: #641 normalize-on-write) |
 
 A tool's *read* side is never allowed to be stricter than its class requires.
@@ -473,7 +474,7 @@ selects by. Success then retires the previous snapshot
 
 | Path | Used by | Mechanism |
 |---|---|---|
-| **Copy-and-patch** | in-place surgical tools (rename, merge, backfill, replace_placeholder, copy_cap) | `snapshot_copy` / `snapshot_copy_hashed`: claim → streamed copy (digest inline) → h5py-patch the copy → unlink the claim on any failure. (convert's transplant additionally normalizes the copy's remaining nullable-string elements — `normalize_file_string_encodings`.) |
+| **Copy-and-patch** | in-place surgical tools (rename, merge, backfill, replace_placeholder, copy_cap, copy_matrix) | `snapshot_copy` / `snapshot_copy_hashed`: claim → streamed copy (digest inline) → h5py-patch the copy → unlink the claim on any failure. (convert's transplant additionally normalizes the copy's remaining nullable-string elements — `normalize_file_string_encodings`.) |
 | **Full rewrite** | anndata-based tools (compress, normalize, set_uns, …) | `write_h5ad`: the masked-string refusal runs first — before `adata` is touched and before the source is hashed → profile normalization (`normalize_nullable_strings` — mask-0 nullable strings flattened to plain, dtype-only and value-identical) → entry validation + source hash (a validation failure after this point leaves only the value-identical normalization applied) → edit log stamped → claim → `adata.write_h5ad` streams → unlink the claim on any failure |
 
 Any destination h5ad — a snapshot or a converted output — is named and

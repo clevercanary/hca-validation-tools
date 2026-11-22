@@ -16,6 +16,7 @@ WRITES = {
     "rename_cell_ids",
     "backfill_obs_from_source",
     "copy_cap_annotations",
+    "copy_matrix_from_file",
     "strip_cap_annotations",
     "replace_placeholder_values",
     "compress_h5ad",
@@ -40,14 +41,14 @@ SLOW = {
 @pytest.mark.asyncio
 async def test_every_registered_tool_is_labelled():
     assert set(registrar.tools) == set(await mcp.get_tools())
-    assert len(registrar.tools) == 40
+    assert len(registrar.tools) == 41
 
 
 def _kind(kind: str) -> set[str]:
     return {name for name, tool in registrar.tools.items() if tool.kind == kind}
 
 
-def test_write_set_is_the_seventeen_writes():
+def test_write_set_is_the_eighteen_writes():
     assert _kind("write") == WRITES
 
 

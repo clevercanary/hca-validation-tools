@@ -20,16 +20,16 @@ requires-python = ">=3.10,<4.0"
 #
 # The lower bound is what this package can actually import. set_source_dataset
 # (#776), check_cap_currency (#781) and check_source_obs (#793) first appear in
-# hca-anndata-tools 0.7.2, compare_cap_export (#749) in 0.7.3, and seven other symbols in 0.7.1, so against
-# any earlier release the server
-# raises ImportError before serving anything — no tool is available, not just
+# hca-anndata-tools 0.7.2, compare_cap_export (#749) in 0.7.3, copy_matrix_from_file
+# (#931) in 0.7.4, and seven other symbols in 0.7.1, so against any earlier release
+# the server raises ImportError before serving anything — no tool is available, not just
 # the new ones (#693). Check the floor against the sibling's exports whenever
 # an import is added; nothing mechanical does it, because [tool.uv.sources]
 # resolves from the checkout and hides the mismatch locally.
 dependencies = [
     "anyio>=4.5,<5",
     "fastmcp>=2,<3",
-    "hca-anndata-tools>=0.7.3,<0.8",
+    "hca-anndata-tools>=0.7.4,<0.8",
     "hca-schema-validator>=0.16,<0.17",
 ]
 
