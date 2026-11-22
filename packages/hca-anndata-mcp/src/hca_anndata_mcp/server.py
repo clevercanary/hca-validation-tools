@@ -32,6 +32,7 @@ from hca_anndata_tools import (
     compress_h5ad,
     convert_cellxgene_to_hca,
     copy_cap_annotations,
+    copy_matrix_from_file,
     find_source_datasets,
     get_cap_annotations,
     get_descriptive_stats,
@@ -185,6 +186,7 @@ registrar.register(rename_cell_ids, kind="write")
 registrar.register(backfill_obs_from_source, kind="write")
 registrar.register(validate_marker_genes, kind="fast")
 registrar.register(copy_cap_annotations, kind="write")
+registrar.register(copy_matrix_from_file, kind="write")
 registrar.register(strip_cap_annotations, kind="write")
 registrar.register(replace_placeholder_values, kind="write")
 registrar.register(compress_h5ad, kind="write")

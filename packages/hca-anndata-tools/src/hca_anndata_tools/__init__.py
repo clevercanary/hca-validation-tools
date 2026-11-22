@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     from .compress import compress_h5ad
     from .convert import convert_cellxgene_to_hca
     from .copy_cap import copy_cap_annotations
+    from .copy_matrix import copy_matrix_from_file
     from .donor_sex import check_donor_sex
     from .drop import drop_obs_columns
     from .dup_counts import check_duplicate_cells
@@ -74,6 +75,7 @@ _LAZY_IMPORTS = {
     "convert_cellxgene_to_hca": ".convert",
     "validate_marker_genes": ".marker_genes",
     "copy_cap_annotations": ".copy_cap",
+    "copy_matrix_from_file": ".copy_matrix",
     "compress_h5ad": ".compress",
     "normalize_raw": ".normalize",
     "strip_forbidden_obs_columns": ".strip",
